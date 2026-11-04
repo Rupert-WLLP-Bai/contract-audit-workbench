@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -107,6 +107,22 @@ func (s *Store) StartReviewAsyncScope(ctx context.Context, user accounts.User, c
 	return s.startReviewAsync(ctx, user, caseID, businessAt, cutoff, scope)
 }
 
+// ReviewReadmission identifies the exact user-cancelled preparation that the
+// caller explicitly wants to replace with a new review. It is not a retry of
+// frozen input; the regular admission checks still run for the new review.
+type ReviewReadmission struct {
+	RunID     string
+	AttemptID string
+}
+
+type reviewReadmissionKey struct{}
+
+// WithReviewReadmission binds a new start command to its cancelled predecessor.
+// A distinct idempotency key is mandatory for this command.
+func WithReviewReadmission(ctx context.Context, target ReviewReadmission) context.Context {
+	return context.WithValue(ctx, reviewReadmissionKey{}, target)
+}
+
 func (s *Store) StartReviewAsync(ctx context.Context, user accounts.User, caseID string) (JobAcceptance, error) {
 	ctx = commandContext(ctx, user)
 	return s.startReviewAsync(ctx, user, caseID, "", "")
@@ -181,6 +197,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		return "", err
 	}
 	idempotency, _ := ctx.Value(reviewIdempotencyContextKey{}).(*reviewIdempotency)
+	readmission, readmit := ctx.Value(reviewReadmissionKey{}).(ReviewReadmission)
 	key, route, digest := "", "POST /api/cases/"+caseID+"/reviews", ""
 	if idempotency != nil {
 		key, err = optionalIdempotencyKey(idempotency.key)
@@ -188,12 +205,19 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			return "", err
 		}
 	}
+	if readmit && (readmission.RunID == "" || readmission.AttemptID == "" || key == "") {
+		return "", fault.Invalid("重新发起需要原审查、原执行记录和新的 Idempotency-Key")
+	}
 	if key != "" {
-		digest, err = canonicalHash([]string{caseID, businessAt, evidenceCutoffAt, scope})
+		request := []string{caseID, businessAt, evidenceCutoffAt, scope}
+		if readmit {
+			request = append(request, readmission.RunID, readmission.AttemptID)
+		}
+		digest, err = canonicalHash(request)
 		if err != nil {
 			return "", err
 		}
-		if receipt, found, err := s.readWriteReceipt(ctx, user, executionWriteReceipts, route, key, digest, access.Review); err != nil {
+		if receipt, found, err := s.readWriteReceipt(ctx, user, executionWriteReceipts, route, key, digest, access.Review, caseID); err != nil {
 			return "", err
 		} else if found {
 			accepted, err := decodeReviewWriteReceipt(receipt.Response)
@@ -433,6 +457,9 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			if err := validateWriteReceiptTarget(ctx, acceptanceTx, executionWriteReceipts, *currentCase, receipt); err != nil {
 				return err
 			}
+			if err := s.validateReviewReceiptEpoch(ctx, acceptanceTx, *currentCase, receipt); err != nil {
+				return err
+			}
 			receiptResult, err = decodeReviewWriteReceipt(receipt.Response)
 			if err != nil {
 				return err
@@ -468,9 +495,22 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 				return err
 			}
 		}
+		if readmit {
+			previous, ok := st.latestRun(caseID)
+			if !ok || previous.ID != readmission.RunID || previous.State != "cancelled" {
+				return fault.Conflict("原审查已变化，请重新核对审查准备")
+			}
+			last, ok := st.latestAttempt(previous.ID)
+			_, hasInput := st.attemptInput(readmission.AttemptID)
+			if !ok || last.ID != readmission.AttemptID || last.State != "cancelled" ||
+				last.HistoryKind != "preparing" || last.ErrorCode == nil || *last.ErrorCode != "cancelled_by_user" ||
+				last.InputHash != nil || hasInput || last.TenantLiveEpoch == nil || *last.TenantLiveEpoch != *epoch {
+				return fault.Conflict("原执行记录不是当前可重新发起的主动取消准备记录")
+			}
+		}
 		if run, ok := st.latestRun(caseID); ok {
 			previous := st.snapshotOf(run.ID)
-			reusable := sameRunSignature(previous, signature) && sameRunCompilerIdentity(previous, signature)
+			reusable := !readmit && sameRunSignature(previous, signature) && sameRunCompilerIdentity(previous, signature)
 			if latest, ok := st.latestAttempt(run.ID); ok && attemptActive(latest.State) && (latest.TenantLiveEpoch == nil || *latest.TenantLiveEpoch != *epoch) {
 				reusable = false
 			}
@@ -543,7 +583,11 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			st.AttemptParseSelections = append(st.AttemptParseSelections, selection)
 		}
 		st.ExecutionEvents = append(st.ExecutionEvents, acceptedEvent(attempt))
-		if err := appendAudit(st, runID, user.ID, "review_started", []string{caseID}); err != nil {
+		correlations := []string{caseID}
+		if readmit {
+			correlations = append(correlations, readmission.RunID, readmission.AttemptID)
+		}
+		if err := appendAudit(st, runID, user.ID, "review_started", correlations); err != nil {
 			return err
 		}
 		appendRunEvent(st, runID, "accepted")

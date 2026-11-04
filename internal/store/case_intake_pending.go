@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -189,12 +189,15 @@ func (s *Store) ListPendingCaseIntakes(ctx context.Context, user accounts.User, 
 	if err != nil {
 		return PendingCaseIntakesPage{}, err
 	}
-	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTxWithCaseFence(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead}, true)
 	if err != nil {
 		return PendingCaseIntakesPage{}, err
 	}
 	defer tx.Rollback(ctx)
 	if err := setLocalScope(ctx, tx, userScope(current)); err != nil {
+		return PendingCaseIntakesPage{}, err
+	}
+	if _, err := tx.Exec(ctx, `SELECT set_config('app.intake_list_actor',$1,true)`, current.ID); err != nil {
 		return PendingCaseIntakesPage{}, err
 	}
 	page := PendingCaseIntakesPage{Items: make([]PendingCaseIntake, 0, limit)}
@@ -207,10 +210,10 @@ func (s *Store) ListPendingCaseIntakes(ctx context.Context, user accounts.User, 
 	var lastVisibleID string
 	for {
 		rows, err := tx.Query(ctx, intakeContinuationSelect+`
-			WHERE o.tenant_id=$1 AND o.actor_id=$2 AND o.status='pending' AND a.operation_id IS NULL
+			WHERE o.tenant_id=$1 AND o.actor_id=$2 AND o.org_id=$6 AND o.status='pending' AND a.operation_id IS NULL
 				AND c.archived_at IS NULL AND c.business_status<>'archived'
 				AND ($3::timestamptz IS NULL OR (o.created_at,o.operation_id)<($3::timestamptz,$4::text))
-			ORDER BY o.created_at DESC,o.operation_id DESC LIMIT $5`, accounts.Tenant(current), current.ID, beforeTime, beforeID, limit+1)
+			ORDER BY o.created_at DESC,o.operation_id DESC LIMIT $5`, accounts.Tenant(current), current.ID, beforeTime, beforeID, limit+1, current.OrgID)
 		if err != nil {
 			return PendingCaseIntakesPage{}, err
 		}
@@ -266,11 +269,14 @@ func (s *Store) ListPendingCaseIntakes(ctx context.Context, user accounts.User, 
 }
 
 func loadOwnedIntakeContinuation(ctx context.Context, tx pgx.Tx, current accounts.User, operationID string, lock bool) (intakeContinuationRow, error) {
-	query := intakeContinuationSelect + ` WHERE o.tenant_id=$1 AND o.actor_id=$2 AND o.operation_id=$3`
+	if err := setIntakeRecoverySelector(ctx, tx, operationID, "", ""); err != nil {
+		return intakeContinuationRow{}, err
+	}
+	query := intakeContinuationSelect + ` WHERE o.tenant_id=$1 AND o.actor_id=$2 AND o.operation_id=$3 AND o.org_id=$4`
 	if lock {
 		query += ` FOR UPDATE OF o`
 	}
-	row, err := scanIntakeContinuation(tx.QueryRow(ctx, query, accounts.Tenant(current), current.ID, operationID))
+	row, err := scanIntakeContinuation(tx.QueryRow(ctx, query, accounts.Tenant(current), current.ID, operationID, current.OrgID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return intakeContinuationRow{}, fault.NotFound("建案操作不存在")
 	}
@@ -294,7 +300,7 @@ func (s *Store) GetCaseIntakeContinuation(ctx context.Context, user accounts.Use
 	if !validCaseIntakeID(operationID) {
 		return CaseIntakeContinuation{}, fault.NotFound("建案操作不存在")
 	}
-	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTxWithCaseFence(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead}, true)
 	if err != nil {
 		return CaseIntakeContinuation{}, err
 	}
@@ -347,9 +353,12 @@ func (s *Store) ArchiveCaseIntake(ctx context.Context, user accounts.User, opera
 		return CaseIntakeArchiveResult{}, err
 	}
 	// The case advisory lock precedes the operation lock, matching case writers.
+	if err := setIntakeRecoverySelector(ctx, tx, operationID, "", ""); err != nil {
+		return CaseIntakeArchiveResult{}, err
+	}
 	var caseID string
-	err = tx.QueryRow(ctx, `SELECT case_id FROM case_intake_operations WHERE tenant_id=$1 AND actor_id=$2 AND operation_id=$3`,
-		accounts.Tenant(current), current.ID, operationID).Scan(&caseID)
+	err = tx.QueryRow(ctx, `SELECT case_id FROM case_intake_operations WHERE tenant_id=$1 AND actor_id=$2 AND operation_id=$3 AND org_id=$4`,
+		accounts.Tenant(current), current.ID, operationID, current.OrgID).Scan(&caseID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return CaseIntakeArchiveResult{}, fault.NotFound("建案操作不存在")
 	}

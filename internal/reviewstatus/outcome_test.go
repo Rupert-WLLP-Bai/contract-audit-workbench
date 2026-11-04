@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-04
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -44,6 +44,18 @@ func TestProjectSelectedFrozenAttempt(t *testing.T) {
 		{"cancelled stays distinct", func(in *Input) { in.State = "cancelled"; in.ErrorCode = "model_timeout" }, Outcome{"cancelled", "unknown", "none"}},
 		{"user cancellation is distinguished", func(in *Input) { in.State = "cancelled"; in.ErrorCode = "cancelled_by_user" }, Outcome{"cancelled_by_user", "unknown", "none"}},
 		{"authorization cancellation is not a user restart", func(in *Input) { in.State = "cancelled"; in.ErrorCode = "authorization_revoked" }, Outcome{"authorization_revoked", "unknown", "none"}},
+		{"cancelled preparation exposes reason only", func(in *Input) {
+			in.HistoryKind = "preparing"
+			in.State = "cancelled"
+			in.ErrorCode = "cancelled_by_user"
+			in.Events = []Event{{"attempt", 1, "agent_review", "agent_review_result", "agent_review_event", "completed", ""}}
+		}, Outcome{"cancelled_by_user", "unknown", "none"}},
+		{"revoked preparation is distinct", func(in *Input) {
+			in.HistoryKind = "preparing"
+			in.State = "cancelled"
+			in.ErrorCode = "authorization_revoked"
+		}, Outcome{"authorization_revoked", "unknown", "none"}},
+		{"unknown preparation cancellation stays unknown", func(in *Input) { in.HistoryKind = "preparing"; in.State = "cancelled"; in.ErrorCode = "" }, Outcome{"cancelled", "unknown", "none"}},
 		{"legacy is unknown", func(in *Input) { in.HistoryKind = "legacy_unfrozen" }, Outcome{"unknown", "unknown", "none"}},
 		{"foreign run is unknown", func(in *Input) { in.AttemptRunID = "other" }, Outcome{"unknown", "unknown", "none"}},
 	}

@@ -15726,6 +15726,25 @@
             "type": "string",
             "format": "date-time"
           },
+          "readmit_cancelled": {
+            "description": "明确针对最近一次用户主动取消且尚未冻结输入的准备记录发起新审查；必须使用新的 Idempotency-Key。",
+            "type": "object",
+            "properties": {
+              "attempt_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "run_id",
+              "attempt_id"
+            ],
+            "additionalProperties": false
+          },
           "scope": {
             "description": "单合同预审仅执行版本固定的单合同检查，不替代完整审查。",
             "type": "string",
@@ -30256,7 +30275,7 @@
           "审查"
         ],
         "summary": "受理审查并后台执行",
-        "description": "需要有权发起审查并访问案件。已治理案件必须提供带时区的 RFC3339Nano business_at，以保存该时间适用的已发布知识；其他案件可以省略。业务时间缺失或无效时返回 422；制度记录不可用或冲突时返回 409，不能用当前时间或旧制度代替。持久任务模式在 PostgreSQL 事务中保存 run、attempt、worker_jobs 和 outbox 事件，返回 202 及 id、attempt_id、job_id，再由独立 Worker 领取；相同输入和配置保持幂等。非持久模式返回 201，由当前进程在后台执行。模型失败时保留规则结果并标记 partial。任务租约支持接管，但不代表跨故障域高可用或灾难恢复。",
+        "description": "需要有权发起审查并访问案件。已治理案件必须提供带时区的 RFC3339Nano business_at，以保存该时间适用的已发布知识；其他案件可以省略。业务时间缺失或无效时返回 422；制度记录不可用或冲突时返回 409，不能用当前时间或旧制度代替。持久任务模式在 PostgreSQL 事务中保存 run、attempt、worker_jobs 和 outbox 事件，返回 202 及 id、attempt_id、job_id，再由独立 Worker 领取；相同输入和配置保持幂等。用户主动取消且输入尚未冻结时，可用新的 Idempotency-Key 和 readmit_cancelled 精确指定最新取消记录发起新审查；服务端重新核验当前权限、准备状态与材料。非持久模式返回 201，由当前进程在后台执行。模型失败时保留规则结果并标记 partial。任务租约支持接管，但不代表跨故障域高可用或灾难恢复。",
         "parameters": [
           {
             "name": "caseID",

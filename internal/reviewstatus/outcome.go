@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-04
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -33,11 +33,11 @@ type Outcome struct {
 	RetryCause string `json:"retry_cause"`
 }
 
-// Project uses only recorded observations from the selected frozen attempt.
-// Missing, unrecognized and legacy data remain unknown.
+// Project uses recorded cancellation reasons from a selected preparation and
+// classifies review results only for frozen attempts. Legacy data stay unknown.
 func Project(in Input) Outcome {
 	out := Outcome{Reason: "unknown", AgentStage: "unknown", RetryCause: "none"}
-	if in.AttemptID == "" || in.RunID == "" || in.AttemptRunID != in.RunID || in.HistoryKind != "frozen" {
+	if in.AttemptID == "" || in.RunID == "" || in.AttemptRunID != in.RunID || (in.HistoryKind != "frozen" && in.HistoryKind != "preparing") {
 		return out
 	}
 	if in.State == "cancelled" {
@@ -47,7 +47,13 @@ func Project(in Input) Outcome {
 		} else if in.ErrorCode == "authorization_revoked" {
 			out.Reason = "authorization_revoked"
 		}
-	} else if in.State == "partial" || in.State == "failed" || in.State == "interrupted" {
+	}
+	// A cancelled preparation has a reliable cancellation reason but no
+	// frozen input or review result to classify.
+	if in.HistoryKind != "frozen" {
+		return out
+	}
+	if in.State == "partial" || in.State == "failed" || in.State == "interrupted" {
 		switch in.ErrorCode {
 		case "precheck_scope_limited":
 			if in.State == "partial" {

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -649,6 +649,10 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 		BusinessAt       string `json:"business_at,omitempty"`
 		EvidenceCutoffAt string `json:"evidence_cutoff_at,omitempty"`
 		Scope            string `json:"scope,omitempty"`
+		ReadmitCancelled *struct {
+			RunID     string `json:"run_id"`
+			AttemptID string `json:"attempt_id"`
+		} `json:"readmit_cancelled,omitempty"`
 	}
 	if err := readJSON(w, r, &body); err != nil {
 		writeErr(w, err)
@@ -660,6 +664,9 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := store.WithReviewIdempotency(r.Context(), key)
+	if body.ReadmitCancelled != nil {
+		ctx = store.WithReviewReadmission(ctx, store.ReviewReadmission{RunID: body.ReadmitCancelled.RunID, AttemptID: body.ReadmitCancelled.AttemptID})
+	}
 	if token := audienceCookieValue(r, "client"); token != "" {
 		ctx = store.WithAdmissionSessionToken(ctx, token)
 	}

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -463,6 +463,14 @@ func TestTenantIdentityNonSuperMigratorProvisioningAndMigration(t *testing.T) {
 	}
 	if currentUser != migrator || sessionUser != migrator || isSuper || bypass {
 		t.Fatalf("migration ran with unexpected authority: current_user=%q session_user=%q super=%t bypass=%t", currentUser, sessionUser, isSuper, bypass)
+	}
+	// The same table owner is the supported embedded non-production login. It
+	// must be able to plan these RLS projections without superuser privileges.
+	for _, relation := range []string{"case_intake_operations", "document_upload_idempotency", "execution_write_receipts"} {
+		var count int
+		if err := migrationPool.QueryRow(ctx, `SELECT count(*) FROM `+pgx.Identifier{schema, relation}.Sanitize()).Scan(&count); err != nil {
+			t.Fatalf("non-superuser embedded owner cannot read %s projection: %v", relation, err)
+		}
 	}
 	var adminOption, inheritOption, setOption bool
 	if err := admin.QueryRow(ctx, `SELECT membership.admin_option,membership.inherit_option,membership.set_option

@@ -3,8 +3,8 @@
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-02 -->
-<!-- Updated: 2026-11-03 -->
-<!-- Revision: r2 -->
+<!-- Updated: 2026-11-04 -->
+<!-- Revision: r3 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -14,7 +14,7 @@
 
 ## 当前源码范围
 
-历史基线 `faeca3938293169f9d7d190b9e4c140feb85d8ae` 使用 schema 39；当前源码要求 schema 40。[0040](../../internal/store/migrations/0040_case_context_shared_fence.sql) 为普通案件写入增加独立授权围栏，升级后仍需配置服务角色的函数权限。应用启动只核对迁移，不会自动执行迁移；旧版与新版二进制分别要求 schema 39 和 40，升级或回退前须固定镜像、备份和维护窗口，不能假设两者可混合运行。迁移名称、校验和及兼容范围以 [`internal/store/migrations.go`](../../internal/store/migrations.go)、[`internal/store/table_catalog.json`](../../internal/store/table_catalog.json) 和迁移账本为准。租户生命周期步骤见 [0038](../../internal/store/migrations/0038_tenant_provision_operations.sql)，辖区投影见 [0039](../../internal/store/migrations/0039_jurisdiction_operations_projection.sql)。schema 版本是数据库兼容边界，不证明任何目标数据库已升级。
+历史基线 `faeca3938293169f9d7d190b9e4c140feb85d8ae` 使用 schema 39；当前源码要求 schema 43。[0040](../../internal/store/migrations/0040_case_context_shared_fence.sql) 为普通案件写入增加独立授权围栏；[0041](../../internal/store/migrations/0041_intake_session_recovery.sql) 增加原经办人续办所需的受限回执恢复和完成审计；[0042](../../internal/store/migrations/0042_review_receipt_session_recovery.sql) 对审查受理增加当前授权下的精确跨会话回执恢复；[0043](../../internal/store/migrations/0043_review_receipt_origin_org.sql) 将发起会话组织与案件组织分别冻结和校验。升级前旧回执缺少可信来源时不会回填猜测，只允许原会话及原上下文重放，其他会话须查看既有审查记录。升级后仍需配置服务角色的函数权限。应用启动只核对迁移，不会自动执行迁移；要求 schema 39、40、41、42 和 43 的二进制不可混用，升级或回退前须固定镜像、备份和维护窗口。迁移名称、校验和及兼容范围以 [`internal/store/migrations.go`](../../internal/store/migrations.go)、[`internal/store/table_catalog.json`](../../internal/store/table_catalog.json) 和迁移账本为准。租户生命周期步骤见 [0038](../../internal/store/migrations/0038_tenant_provision_operations.sql)，辖区投影见 [0039](../../internal/store/migrations/0039_jurisdiction_operations_projection.sql)。schema 版本是数据库兼容边界，不证明任何目标数据库已升级。
 
 PostgreSQL 保存任务和业务状态；NATS 只承载短通知。恢复时必须分别核对数据库快照、原件对象版本与摘要、外部密钥管理中保存的密钥版本引用。当前受限字段使用版本化 `CLM_ENVELOPE_KEYS`；旧 `clmv1:` 数据还依赖显式 legacy key ref。恢复所需密钥材料必须由受控密钥系统按授权恢复，不能从数据库、`CLM_DATA_KEY` 或空值推导。保留回滚窗口仍需的旧版本 key。
 

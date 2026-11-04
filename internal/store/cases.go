@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -715,6 +715,14 @@ func (s *Store) UploadMaterial(ctx context.Context, user accounts.User, caseID, 
 		})
 		return nil
 	})
+	if err != nil && options.IdempotencyKey != "" && strings.HasPrefix(options.IdempotencyKey, "intake-upload-") {
+		// A different session may have committed the exact Document fact after
+		// our first receipt read but before this case lock. Recheck only this
+		// intake key, under the same current authorization and content hash.
+		if replay, found, replayErr := s.readUploadReceipt(ctx, currentUser, caseID, options.IdempotencyKey, requestHash); replayErr == nil && found {
+			return replay, nil
+		}
+	}
 	return uploadResult, err
 }
 

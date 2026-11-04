@@ -3,14 +3,15 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-03
-// Revision: r3
+// Updated: 2026-11-04
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
 package store
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -24,6 +25,7 @@ import (
 	"contractaudit/internal/fault"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const (
@@ -245,70 +247,126 @@ func (s *Store) BeginCaseIntake(ctx context.Context, user accounts.User, input C
 	now := createdAt.Format(timeLayout)
 	var result CaseIntakeOperation
 	var prior *caseIntakeRecord
+	var operationTx pgx.Tx
+	var priorCaseID string
+	needCaseLock := errors.New("retry intake with its case locked")
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	err = s.updateStateWithLocks(ctx, userScope(current), "", nil, []string{caseID}, func(tx pgx.Tx) error {
-		record, err := loadCaseIntakeByKey(ctx, tx, accounts.Tenant(current), current.ID, input.IdempotencyKey, true)
-		if err == nil {
-			if record.Status == caseIntakePendingStatus {
-				record.Archived, err = caseIntakeArchived(ctx, tx, record.TenantID, record.OperationID)
+	for {
+		prior = nil
+		err = s.updateStateWithLocks(ctx, userScope(current), "", nil, []string{caseID, priorCaseID}, func(tx pgx.Tx) error {
+			operationTx = tx
+			record, err := loadCaseIntakeByKey(ctx, tx, accounts.Tenant(current), current.ID, input.IdempotencyKey, false)
+			if err == nil {
+				if record.OrgID != current.OrgID {
+					return fault.NotFound("建案操作不存在")
+				}
+				if priorCaseID != record.CaseID {
+					priorCaseID = record.CaseID
+					return needCaseLock
+				}
+				record, err = loadCaseIntakeByKey(ctx, tx, accounts.Tenant(current), current.ID, input.IdempotencyKey, true)
 				if err != nil {
 					return err
 				}
+				if record.Status == caseIntakePendingStatus {
+					record.Archived, err = caseIntakeArchived(ctx, tx, record.TenantID, record.OperationID)
+					if err != nil {
+						return err
+					}
+				}
+				prior = &record
+				return nil
 			}
-			prior = &record
-			return nil
-		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return err
-		}
-		_, err = tx.Exec(ctx, `INSERT INTO case_intake_operations
+			if !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+			_, err = tx.Exec(ctx, `INSERT INTO case_intake_operations
 			(tenant_id,org_id,operation_id,actor_id,idempotency_key,request_digest,case_id,upload_idempotency_key,status,created_at,updated_at)
 			VALUES($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9,$9)`, accounts.Tenant(current), current.OrgID, operationID,
-			current.ID, input.IdempotencyKey, digest, caseID, uploadKey, createdAt)
-		if err != nil {
-			return err
-		}
-		requestJSON, err := json.Marshal(identity)
-		if err != nil {
-			return err
-		}
-		_, err = tx.Exec(ctx, `INSERT INTO case_intake_requests
-			(tenant_id,operation_id,schema_version,request_json,created_at) VALUES($1,$2,1,$3,$4)`,
-			accounts.Tenant(current), operationID, requestJSON, createdAt)
-		return err
-	}, func(next *state) error {
-		if prior != nil {
-			item, err := s.visibleCase(next, current, prior.CaseID)
+				current.ID, input.IdempotencyKey, digest, caseID, uploadKey, createdAt)
 			if err != nil {
-				return fault.NotFound("建案操作不存在")
+				return err
 			}
-			if !authorizeCase(item, current, access.Read) {
-				return fault.NotFound("建案操作不存在")
+			requestJSON, err := json.Marshal(identity)
+			if err != nil {
+				return err
 			}
-			if prior.Status == caseIntakePendingStatus && prior.Archived {
-				return fault.New(409, "intake_archived", "此待续办事项已归档")
-			}
-			if prior.RequestDigest != digest {
-				return fault.Conflict("Idempotency-Key已用于不同建案请求")
-			}
-			result, err = prior.operation()
+			_, err = tx.Exec(ctx, `INSERT INTO case_intake_requests
+			(tenant_id,operation_id,schema_version,request_json,created_at) VALUES($1,$2,1,$3,$4)`,
+				accounts.Tenant(current), operationID, requestJSON, createdAt)
 			return err
+		}, func(next *state) error {
+			if prior != nil {
+				if prior.OrgID != current.OrgID {
+					return fault.NotFound("建案操作不存在")
+				}
+				item, err := s.visibleCase(next, current, prior.CaseID)
+				if err != nil {
+					return fault.NotFound("建案操作不存在")
+				}
+				if !authorizeCase(item, current, access.Read) {
+					return fault.NotFound("建案操作不存在")
+				}
+				if prior.Status == caseIntakePendingStatus && prior.Archived {
+					return fault.New(409, "intake_archived", "此待续办事项已归档")
+				}
+				if prior.Status == caseIntakePendingStatus {
+					if !accounts.CanUpload(current.Role) || !authorizeCase(item, current, access.Manage) {
+						return fault.Forbidden("当前身份无权继续建案上传")
+					}
+					if err := businessWritable(item); err != nil {
+						return err
+					}
+				}
+				if prior.RequestDigest != digest {
+					return fault.Conflict("Idempotency-Key已用于不同建案请求")
+				}
+				if prior.Status == caseIntakePendingStatus {
+					var version int16
+					var requestJSON []byte
+					requestErr := operationTx.QueryRow(ctx, `SELECT schema_version,request_json FROM case_intake_requests WHERE tenant_id=$1 AND operation_id=$2`, prior.TenantID, prior.OperationID).Scan(&version, &requestJSON)
+					if requestErr != nil && !errors.Is(requestErr, pgx.ErrNoRows) {
+						return requestErr
+					}
+					if requestErr == nil {
+						stored := intakeContinuationRow{schemaVersion: &version, requestJSON: requestJSON, requestDigest: prior.RequestDigest, idempotencyKey: prior.IdempotencyKey}
+						original, _ := stored.requestIdentity()
+						if original == nil || *original != identity {
+							return fault.Conflict("建案原始请求与续传文件不一致")
+						}
+					} else if _, ok := contextProof(ctx); ok {
+						return fault.Conflict("原始建案请求不可用于跨会话续办")
+					}
+				}
+				result, err = prior.operation()
+				return err
+			}
+			if err := appendBusinessCase(next, current, caseInput, caseID, now); err != nil {
+				return err
+			}
+			result = CaseIntakeOperation{OperationID: operationID, CaseID: caseID, Status: caseIntakePendingStatus, UploadKey: uploadKey}
+			return nil
+		})
+		if !errors.Is(err, needCaseLock) {
+			break
 		}
-		if err := appendBusinessCase(next, current, caseInput, caseID, now); err != nil {
-			return err
-		}
-		result = CaseIntakeOperation{OperationID: operationID, CaseID: caseID, Status: caseIntakePendingStatus, UploadKey: uploadKey}
-		return nil
-	})
+	}
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "case_intake_operations_tenant_id_actor_id_idempotency_key_key" {
+			return CaseIntakeOperation{}, fault.NotFound("建案操作不存在")
+		}
 		return CaseIntakeOperation{}, err
 	}
 	return result, nil
 }
 
 func loadCaseIntakeByKey(ctx context.Context, tx pgx.Tx, tenantID, actorID, key string, lock bool) (caseIntakeRecord, error) {
+	if err := setIntakeRecoverySelector(ctx, tx, "", key, ""); err != nil {
+		return caseIntakeRecord{}, err
+	}
 	query := `SELECT tenant_id,org_id,operation_id,actor_id,idempotency_key,request_digest,case_id,upload_idempotency_key,status,response_status,response_body,response_digest,created_at,updated_at
 		FROM case_intake_operations WHERE tenant_id=$1 AND actor_id=$2 AND idempotency_key=$3`
 	if lock {
@@ -318,12 +376,23 @@ func loadCaseIntakeByKey(ctx context.Context, tx pgx.Tx, tenantID, actorID, key 
 }
 
 func loadCaseIntakeByID(ctx context.Context, tx pgx.Tx, tenantID, operationID string, lock bool) (caseIntakeRecord, error) {
+	if err := setIntakeRecoverySelector(ctx, tx, operationID, "", ""); err != nil {
+		return caseIntakeRecord{}, err
+	}
 	query := `SELECT tenant_id,org_id,operation_id,actor_id,idempotency_key,request_digest,case_id,upload_idempotency_key,status,response_status,response_body,response_digest,created_at,updated_at
 		FROM case_intake_operations WHERE tenant_id=$1 AND operation_id=$2`
 	if lock {
 		query += ` FOR UPDATE`
 	}
 	return scanCaseIntake(tx.QueryRow(ctx, query, tenantID, operationID))
+}
+
+// Selectors narrow the RLS recovery exception to one original command. They do
+// not grant authority: the database re-resolves the current fenced session,
+// original owner, organization and case-management grant for each row.
+func setIntakeRecoverySelector(ctx context.Context, tx pgx.Tx, operationID, key, uploadKey string) error {
+	_, err := tx.Exec(ctx, `SELECT set_config('app.intake_operation',$1,true),set_config('app.intake_key',$2,true),set_config('app.intake_upload_key',$3,true),set_config('app.intake_list_actor','',true)`, operationID, key, uploadKey)
+	return err
 }
 
 type rowScanner interface{ Scan(...any) error }
@@ -393,7 +462,7 @@ func (s *Store) readCaseIntake(ctx context.Context, user accounts.User, load fun
 	if err != nil {
 		return CaseIntakeOperation{}, err
 	}
-	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTxWithCaseFence(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead}, true)
 	if err != nil {
 		return CaseIntakeOperation{}, err
 	}
@@ -454,7 +523,11 @@ func (s *Store) GetCaseIntakeByKey(ctx context.Context, user accounts.User, key 
 		return CaseIntakeOperation{}, fault.Invalid(err.Error())
 	}
 	return s.readCaseIntake(ctx, user, func(ctx context.Context, tx pgx.Tx, current accounts.User) (caseIntakeRecord, error) {
-		return loadCaseIntakeByKey(ctx, tx, accounts.Tenant(current), current.ID, key, false)
+		record, err := loadCaseIntakeByKey(ctx, tx, accounts.Tenant(current), current.ID, key, false)
+		if err == nil && record.OrgID != current.OrgID {
+			return caseIntakeRecord{}, pgx.ErrNoRows
+		}
+		return record, err
 	})
 }
 
@@ -472,13 +545,32 @@ func (s *Store) CompleteCaseIntake(ctx context.Context, user accounts.User, oper
 	if !validCaseIntakeID(operationID) {
 		return CaseIntakeOperation{}, fault.NotFound("建案操作不存在")
 	}
+	// Discover the immutable case before entering the write transaction so the
+	// case lock precedes the operation row lock, as it does for personal archive.
+	lookup, err := s.beginContextTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return CaseIntakeOperation{}, err
+	}
+	if err := setLocalScope(ctx, lookup, userScope(current)); err != nil {
+		_ = lookup.Rollback(ctx)
+		return CaseIntakeOperation{}, err
+	}
+	var intakeCaseID string
+	err = lookup.QueryRow(ctx, `SELECT case_id FROM case_intake_operations WHERE tenant_id=$1 AND operation_id=$2`, accounts.Tenant(current), operationID).Scan(&intakeCaseID)
+	_ = lookup.Rollback(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return CaseIntakeOperation{}, fault.NotFound("建案操作不存在")
+	}
+	if err != nil {
+		return CaseIntakeOperation{}, err
+	}
 	var result CaseIntakeOperation
 	var tx pgx.Tx
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// The hook runs inside the same transaction immediately before fn, so it
 	// hands fn the transaction the state mutation will commit with.
-	err = s.updateStateWithLocks(ctx, userScope(current), "", nil, nil, func(transaction pgx.Tx) error {
+	err = s.updateStateWithLocks(ctx, userScope(current), "", nil, []string{intakeCaseID}, func(transaction pgx.Tx) error {
 		tx = transaction
 		return nil
 	}, func(next *state) error {
@@ -491,6 +583,9 @@ func (s *Store) CompleteCaseIntake(ctx context.Context, user accounts.User, oper
 		}
 		if err != nil {
 			return err
+		}
+		if record.CaseID != intakeCaseID {
+			return errors.New("case intake identity changed while acquiring case lock")
 		}
 		item, err := s.visibleCase(next, current, record.CaseID)
 		if err != nil {
@@ -509,14 +604,41 @@ func (s *Store) CompleteCaseIntake(ctx context.Context, user accounts.User, oper
 		if record.ActorID != current.ID {
 			return fault.NotFound("建案操作不存在")
 		}
-		if !authorizeCase(item, current, access.Manage) {
+		if record.OrgID != current.OrgID {
+			return fault.NotFound("建案操作不存在")
+		}
+		if !accounts.CanCreate(current.Role) || !accounts.CanUpload(current.Role) || !authorizeCase(item, current, access.Manage) {
 			return fault.Forbidden("当前身份无权完成建案上传")
 		}
 		if err := businessWritable(item); err != nil {
 			return err
 		}
-		if err := validateCaseIntakeUpload(next, record.CaseID, upload); err != nil {
+		continuation, err := loadOwnedIntakeContinuation(ctx, tx, current, operationID, false)
+		if err != nil {
 			return err
+		}
+		identity, _ := continuation.requestIdentity()
+		if identity == nil {
+			return fault.Conflict("无法验证原始建案请求")
+		}
+		if err := validateCaseIntakeUpload(next, record.CaseID, *identity, upload); err != nil {
+			return err
+		}
+		if err := setIntakeRecoverySelector(ctx, tx, operationID, "", record.UploadKey); err != nil {
+			return err
+		}
+		var documentID, materialID string
+		var uploadHash []byte
+		if err := tx.QueryRow(ctx, `SELECT document_id,material_id,request_hash FROM document_upload_idempotency
+			WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND actor_id=$4 AND idempotency_key=$5`, record.TenantID, record.OrgID, record.CaseID, record.ActorID, record.UploadKey).Scan(&documentID, &materialID, &uploadHash); err != nil {
+			return err
+		}
+		contentDigest, _ := hex.DecodeString(identity.FileSHA256)
+		var contentHash [32]byte
+		copy(contentHash[:], contentDigest)
+		expectedHash := uploadRequestHashForDigest("upload", record.ActorID, record.CaseID, "draft_contract", "primary_contract", identity.FileName, identity.MediaType, contentHash, MaterialUploadOptions{Intent: "add", Purpose: "primary_contract", IdempotencyKey: record.UploadKey})
+		if documentID != upload.DocumentID || materialID != upload.MaterialID || !bytes.Equal(uploadHash, expectedHash[:]) {
+			return errors.New("primary contract upload receipt does not match the original intake request")
 		}
 		receipt := CaseIntakeReceipt{
 			OperationID: record.OperationID, CaseID: record.CaseID, State: caseIntakeCompletedState,
@@ -546,7 +668,7 @@ func (s *Store) CompleteCaseIntake(ctx context.Context, user accounts.User, oper
 	return result, nil
 }
 
-func validateCaseIntakeUpload(st *state, caseID string, upload DocumentUploadResult) error {
+func validateCaseIntakeUpload(st *state, caseID string, identity CaseIntakeRequestIdentity, upload DocumentUploadResult) error {
 	if !validResourceID(upload.DocumentID) || !validResourceID(upload.MaterialID) || upload.Version != 1 {
 		return errors.New("primary contract upload result is invalid")
 	}
@@ -557,7 +679,8 @@ func validateCaseIntakeUpload(st *state, caseID string, upload DocumentUploadRes
 			break
 		}
 	}
-	if document == nil || document.CaseID != caseID || document.Role != "draft_contract" {
+	if document == nil || document.CaseID != caseID || document.Role != "draft_contract" || document.Filename != identity.FileName ||
+		document.MediaType != identity.MediaType || document.Size != identity.FileSize || document.Digest != identity.FileSHA256 {
 		return errors.New("primary contract upload document does not belong to the intake case")
 	}
 	var material *MaterialEntity

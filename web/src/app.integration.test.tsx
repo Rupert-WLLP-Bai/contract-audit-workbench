@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1646,6 +1646,56 @@ describe("application routes and API contract", () => {
     await user.click(await screen.findByRole("button", { name: "取消本次执行" }));
     expect(await screen.findByText(/冻结输入尚不能核对/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "重新发起已取消审查" })).not.toBeInTheDocument();
+  });
+
+  it("binds a fresh command to the selected cancelled preparation and retains a new idempotency key", async () => {
+    const api = new Service();
+    const review = api.addReview("cancelled");
+    review.execution!.attempt.history_kind = "preparing";
+    review.execution!.attempt.outcome = { reason: "cancelled_by_user", agent_stage: "unknown", retry_cause: "none" };
+    const { user } = open(api, "/cases/c1");
+    await selectBusinessTime();
+    const start = await screen.findByRole("button", { name: "重新发起新审查" });
+    await waitFor(() => expect(start).toBeEnabled());
+    await user.click(start);
+    await waitFor(() => expect(api.requests.find((entry) => entry.key === "POST /api/cases/c1/reviews")?.input).toEqual({
+      business_at: "2026-10-21T00:00:00.000Z",
+      readmit_cancelled: { run_id: "r1", attempt_id: "attempt-r1-1" },
+    }));
+    const command = api.requests.find((entry) => entry.key === "POST /api/cases/c1/reviews")!;
+    expect(command.headers.get("Idempotency-Key")).toBeTruthy();
+    expect(api.requests.some((entry) => entry.key.endsWith("/retry"))).toBe(false);
+    await waitFor(() => expect(api.requests.some((entry) => entry.key.startsWith("GET /api/cases/c1/reviews/r2"))).toBe(true), { timeout: 5000 });
+    expect(await screen.findByRole("heading", { name: "审查工作区" })).toBeInTheDocument();
+  });
+
+  it("shows a preparing cancellation without claiming frozen results or offering retry", async () => {
+    const api = new Service();
+    const review = api.addReview("cancelled");
+    review.execution!.attempt.history_kind = "preparing";
+    review.execution!.attempt.outcome = { reason: "cancelled_by_user", agent_stage: "unknown", retry_cause: "none" };
+    open(api, "/cases/c1/reviews/r1");
+    expect(await screen.findByText(/该执行尚未冻结审查输入/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "返回审查准备清单" })).toHaveAttribute("href", "/cases/c1#review-readiness");
+    expect(screen.queryByRole("button", { name: "重新发起已取消审查" })).not.toBeInTheDocument();
+  });
+
+  it("refreshes the case, history and readiness after a readmission conflict", async () => {
+    const api = new Service();
+    const review = api.addReview("cancelled");
+    review.execution!.attempt.history_kind = "preparing";
+    review.execution!.attempt.outcome = { reason: "cancelled_by_user", agent_stage: "unknown", retry_cause: "none" };
+    api.fail("POST /api/cases/c1/reviews", 409);
+    const { user } = open(api, "/cases/c1");
+    await selectBusinessTime();
+    const start = await screen.findByRole("button", { name: "重新发起新审查" });
+    await waitFor(() => expect(start).toBeEnabled());
+    await user.click(start);
+    expect(await screen.findByRole("heading", { name: "需要重新核对审查准备状态" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "刷新准备清单" }));
+    expect(await screen.findByRole("button", { name: "重新发起新审查" })).toBeEnabled();
+    expect(api.requests.filter((entry) => entry.key === "GET /api/cases/c1").length).toBeGreaterThan(1);
+    expect(api.requests.filter((entry) => entry.key.startsWith("GET /api/cases/c1/reviews/r1")).length).toBeGreaterThan(1);
   });
 
   it("does not offer a user restart for a cancellation caused by revoked authorization", async () => {

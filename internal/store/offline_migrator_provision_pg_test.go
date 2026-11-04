@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -84,9 +84,26 @@ func TestOfflineMigratorFreshAndControlledLegacyBootstrap(t *testing.T) {
 				if err = MigrateServiceRoles(ctx); err != nil {
 					t.Fatalf("legacy initial service roles: %v", err)
 				}
+				restoreReviewReceiptVersionForTest(t, ctx, admin.pool, schema, 42)
+				var version int
+				if err := admin.pool.QueryRow(ctx, `SELECT max(version) FROM schema_migrations`).Scan(&version); err != nil || version != 42 {
+					t.Fatalf("legacy upgrade fixture must be schema 42: version=%d err=%v", version, err)
+				}
+				t.Log("upgrading existing isolated schema 42 with the actual offline migrator")
 				t.Setenv("MIGRATOR_DATABASE_URL", migratorDSN)
 			}
 			for round := 0; round < 2; round++ {
+				if round > 0 {
+					var version int
+					want := schemaMaxCompatibleVersion
+					if !legacy {
+						want = 41
+					}
+					if err = admin.pool.QueryRow(ctx, `SELECT max(version) FROM schema_migrations`).Scan(&version); err != nil || version != want {
+						t.Fatalf("repeat provisioning requires an already migrated schema: version=%d err=%v", version, err)
+					}
+					t.Logf("reprovisioning existing schema %d with an actual offline migrator", version)
+				}
 				if err = ProvisionOfflineMigrator(ctx, adminDSN, migratorDSN, schema, true); err != nil {
 					t.Fatalf("round%d offline bootstrap: %v", round, err)
 				}
@@ -115,6 +132,20 @@ func TestOfflineMigratorFreshAndControlledLegacyBootstrap(t *testing.T) {
 				if err = MigrateServiceRoles(ctx); err != nil {
 					t.Fatalf("round%d actual nonSuper service provisioning: %v", round, err)
 				}
+				if round == 1 {
+					pool, e := newStorePool(ctx, migratorDSN, schema, true)
+					if e != nil {
+						t.Fatal(e)
+					}
+					e = migrate(ctx, pool, schema)
+					pool.Close()
+					if e != nil {
+						t.Fatalf("repeat nonSuper migration after upgrade: %v", e)
+					}
+				}
+				if round == 0 && !legacy {
+					restoreReviewReceiptVersionForTest(t, ctx, admin.pool, schema, 41)
+				}
 			}
 			// Every actual runtime login remains unable to assume either owner or read identity SQL.
 			var database string
@@ -139,6 +170,21 @@ func TestOfflineMigratorFreshAndControlledLegacyBootstrap(t *testing.T) {
 				if e == nil {
 					t.Fatalf("runtime %s can read identity SQL", svc)
 				}
+			}
+			// The recovery allowance is an exact ACL list, not a blanket grant.
+			authOwner := pgx.Identifier{tenantIdentityOwnerName(database, schema)}.Sanitize()
+			rolesTable := pgx.Identifier{schema, "service_database_roles"}.Sanitize()
+			if _, err = admin.pool.Exec(ctx, `GRANT UPDATE ON `+rolesTable+` TO `+authOwner); err != nil {
+				t.Fatal(err)
+			}
+			if err = ProvisionTenantIdentityOwner(ctx, adminDSN, migratorDSN, schema); err == nil {
+				t.Fatal("AUTH_FENCE owner accepted an unexpected service role update grant")
+			}
+			if _, err = admin.pool.Exec(ctx, `REVOKE UPDATE ON `+rolesTable+` FROM `+authOwner); err != nil {
+				t.Fatal(err)
+			}
+			if err = ProvisionTenantIdentityOwner(ctx, adminDSN, migratorDSN, schema); err != nil {
+				t.Fatalf("exact AUTH_FENCE ACL should be accepted after revocation: %v", err)
 			}
 			wrong := strings.Replace(migratorDSN, password, strings.Repeat("z", len(password)), 1)
 			if err = ProvisionOfflineMigrator(ctx, adminDSN, wrong, schema, true); err == nil {

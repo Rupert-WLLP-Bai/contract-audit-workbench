@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "schema_version": 40,
+  "schema_version": 43,
   "relations": [
     {
       "name": "activity",
@@ -100,6 +100,12 @@
     },
     {
       "name": "case_intake_archives",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "case_intake_completion_events",
       "classification": "TENANT_DATA",
       "tenant_column": true,
       "force_rls": true

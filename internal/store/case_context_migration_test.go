@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-03
-// Updated: 2026-11-03
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -24,16 +24,32 @@ func TestCaseContextFenceMigrationUpgradeAndRoleACL(t *testing.T) {
 	}
 	ctx := context.Background()
 	core := env.openRole(t, "core")
-	// 0040 adds only this function, so removing it and its ledger entry restores
-	// the 0039 schema while retaining the pre-existing service roles and ACLs.
-	if _, err := env.harness.pool.Exec(ctx, `DROP FUNCTION tenant_case_context_fence(text,bigint,text); DELETE FROM schema_migrations WHERE version=40`); err != nil {
+	// Restore the relevant 0039 policy/trigger definitions in this isolated
+	// fixture, then exercise the forward migrations and their role grants.
+	restoreReviewReceiptVersionForTest(t, ctx, env.harness.pool, env.harness.schema, 41)
+	if _, err := env.harness.pool.Exec(ctx, `
+		DROP TRIGGER command_receipt_context ON case_intake_operations;
+		CREATE TRIGGER command_receipt_context BEFORE INSERT OR UPDATE ON case_intake_operations FOR EACH ROW EXECUTE FUNCTION stamp_command_receipt();
+		ALTER POLICY command_receipt_context ON case_intake_operations
+		  USING (NULLIF(current_setting('app.command_digest',true),'') IS NULL OR command_session=current_setting('app.command_digest',true) AND command_version=NULLIF(current_setting('app.command_version',true),'')::bigint)
+		  WITH CHECK (NULLIF(current_setting('app.command_digest',true),'') IS NULL OR command_session=current_setting('app.command_digest',true) AND command_version=NULLIF(current_setting('app.command_version',true),'')::bigint);
+		ALTER POLICY command_receipt_context ON document_upload_idempotency
+		  USING (NULLIF(current_setting('app.command_digest',true),'') IS NULL OR command_session=current_setting('app.command_digest',true) AND command_version=NULLIF(current_setting('app.command_version',true),'')::bigint);
+		DROP POLICY intake_recovery_owner ON case_intake_operations;
+		DROP TABLE case_intake_completion_events;
+		DROP FUNCTION stamp_intake_completion();
+		DROP FUNCTION tenant_intake_upload_recovery_allowed(text,text,text,text,text);
+		DROP FUNCTION tenant_intake_read_allowed(text,text,text,text,text,text);
+		DROP FUNCTION tenant_intake_recovery_allowed(text,text,text,text,text,text);
+		DROP FUNCTION tenant_case_context_fence(text,bigint,text);
+		DELETE FROM schema_migrations WHERE version IN (40,41)`); err != nil {
 		t.Fatal(err)
 	}
 	if err := migrate(ctx, env.harness.pool, env.harness.schema); err != nil {
-		t.Fatalf("upgrade 0039 to 0040: %v", err)
+		t.Fatalf("upgrade 0039 through 0043: %v", err)
 	}
 	if err := migrate(ctx, env.harness.pool, env.harness.schema); err != nil {
-		t.Fatalf("repeat 0040 migration: %v", err)
+		t.Fatalf("repeat migration: %v", err)
 	}
 	if err := MigrateServiceRoles(ctx); err != nil {
 		t.Fatalf("upgrade service role grants: %v", err)

@@ -3,8 +3,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-31
-# Updated: 2026-11-03
-# Revision: r4
+# Updated: 2026-11-04
+# Revision: r5
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -348,12 +348,27 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
                 for name in check_fast.TENANT_IDENTITY_TESTS:
                     self.assertIn(name, pattern)
                 self.assertIn("./internal/bootstrap", targets)
+                expected_bootstrap = set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS)
+                if check_fast._is_case_intake_authority(path):
+                    expected_bootstrap.add("TestDistributedIntakeRecoversLostDocumentResponseAcrossSessions")
                 self.assertEqual(set(targets["./internal/bootstrap"].tests),
-                                 set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS))
+                                 expected_bootstrap)
                 if check_fast._is_case_intake_authority(path):
                     self.assertTrue(set(check_fast.CASE_INTAKE_AUTHORITY_TESTS).issubset(
                         targets["./internal/store"].tests))
 
+    def test_intake_recovery_paths_select_role_and_http_regressions(self):
+        for path in ("internal/store/case_intake.go", "internal/store/upload_idempotency.go",
+                     "internal/store/migrations/0041_intake_session_recovery.sql",
+                     "internal/documentservice/intake_upload.go"):
+            with self.subTest(path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                targets = {target.package: set(target.tests) for target in plan.database_tests}
+                self.assertTrue(plan.database)
+                self.assertTrue(set(check_fast.CASE_INTAKE_AUTHORITY_TESTS).issubset(targets["./internal/store"]))
+                self.assertIn("TestDistributedIntakeRecoversLostDocumentResponseAcrossSessions", targets["./internal/bootstrap"])
+
+    def test_tenant_identity_http_paths_select_oidc_cases(self):
         http_paths = (
             "internal/accounts/accounts.go",
             "internal/identity/manager.go",
@@ -373,12 +388,37 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
                 plan = self.plan(check_fast.Change("M", path))
                 targets = {target.package: target for target in plan.database_tests}
                 self.assertIn("./internal/httpapi", targets)
-                self.assertEqual(
-                    set(targets["./internal/httpapi"].tests),
-                    set(check_fast.TENANT_IDENTITY_HTTP_TESTS))
+                expected_http = set(check_fast.TENANT_IDENTITY_HTTP_TESTS)
+                if path == "internal/httpapi/server.go":
+                    expected_http.update(check_fast.REVIEW_READMISSION_HTTP_TESTS)
+                self.assertEqual(set(targets["./internal/httpapi"].tests), expected_http)
                 self.assertIn("./internal/store", targets)
                 self.assertTrue(set(check_fast.TENANT_IDENTITY_TESTS).issubset(
                     targets["./internal/store"].tests))
+
+    def test_review_readmission_sources_select_postgres_regressions(self):
+        for path in ("internal/store/execution.go", "internal/store/write_idempotency.go",
+                     "internal/store/attempt_finalize.go", "internal/store/document_prepare.go",
+                     "internal/store/review_readmission_pg_test.go", "internal/store/case_context_migration_test.go", "internal/httpapi/server.go",
+                     "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+                     "internal/store/migrations/0043_review_receipt_origin_org.sql",
+                     "internal/store/service_roles.go", "internal/store/tenant_identity_role_provision.go",
+                     "internal/store/migrations.go", "internal/store/table_catalog.json"):
+            with self.subTest(path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                self.assertTrue(plan.database)
+                targets = {target.package: target for target in plan.database_tests}
+                self.assertTrue(set(check_fast.REVIEW_READMISSION_TESTS).issubset(
+                    targets["./internal/store"].tests))
+        for path in ("internal/httpapi/server.go", "internal/httpapi/pending_image_test.go",
+                     "internal/store/execution.go", "internal/store/write_idempotency.go",
+                     "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+                     "internal/store/migrations/0043_review_receipt_origin_org.sql"):
+            with self.subTest(http_path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                targets = {target.package: target for target in plan.database_tests}
+                self.assertTrue(set(check_fast.REVIEW_READMISSION_HTTP_TESTS).issubset(
+                    targets["./internal/httpapi"].tests))
 
     def test_tenant_authority_session_and_model_paths_select_required_suites(self):
         paths = (
@@ -541,6 +581,8 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
             "scripts/provision_test_db.sh",
             "internal/store/clm_role_provision.go",
             "internal/store/tenant_identity_role_provision.go",
+            "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+            "internal/store/migrations/0043_review_receipt_origin_org.sql",
         )
         for path in paths:
             with self.subTest(path=path):
@@ -770,7 +812,8 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         self.assertEqual(targets["./internal/clmoutbox"].tests,
                          tuple(sorted(check_fast.CLM_OUTBOX_RELAY_TESTS)))
         self.assertEqual(set(targets["./internal/bootstrap"].tests),
-                         set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS))
+                         set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS) |
+                         {"TestDistributedIntakeRecoversLostDocumentResponseAcrossSessions"})
         self.assertEqual(set(targets["./internal/httpapi"].tests),
                          set(check_fast.TENANT_IDENTITY_HTTP_TESTS))
         self.assertFalse(any(target.needs_model for target in targets.values()))

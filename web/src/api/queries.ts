@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r3
+// Updated: 2026-11-04
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -841,7 +841,7 @@ export function useReparse(caseId: string) {
 export function useStartReview(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { business_at?: string; scope?: "full_review" | "single_contract_precheck" }) =>
+    mutationFn: (input: api.StartReviewInput) =>
       keyedMutation(queryClient, "review.start", caseId, input, (key) => api.startReview(caseId, input, key)),
     onSuccess: () =>
       invalidateCaseViews(queryClient, caseId, {

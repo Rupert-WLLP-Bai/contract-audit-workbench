@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -190,6 +190,14 @@ to_regprocedure(format('%I.tenant_operation_fence(jsonb,text,text)',$3))::oid
 			,to_regprocedure(format('%I.tenant_provision_operation_advance(text,text,bigint,text,text,text,text)',$3))::oid
 			,to_regprocedure(format('%I.tenant_operations_mark_dirty()',$3))::oid
 			,to_regprocedure(format('%I.tenant_jurisdiction_operations(text,uuid,uuid,date,date)',$3))::oid
+			,to_regprocedure(format('%I.tenant_intake_recovery_allowed(text,text,text,text,text,text)',$3))::oid
+			,to_regprocedure(format('%I.tenant_intake_read_allowed(text,text,text,text,text,text)',$3))::oid
+			,to_regprocedure(format('%I.tenant_intake_upload_recovery_allowed(text,text,text,text,text)',$3))::oid
+			,to_regprocedure(format('%I.stamp_intake_completion()',$3))::oid
+			,to_regprocedure(format('%I.tenant_review_receipt_recovery_allowed(text,text,text,text,text,text)',$3))::oid
+			,to_regprocedure(format('%I.tenant_review_receipt_recovery_allowed(text,text,text,text,text,text,text)',$3))::oid
+			,to_regprocedure(format('%I.stamp_review_receipt_origin()',$3))::oid
+			,to_regprocedure(format('%I.tenant_review_receipt_key_conflict(text,text,text,text,text,text)',$3))::oid
 		]) AS oid
 	), owner_objects AS (
 		SELECT class.classid,class.objid,class.objsubid,namespace.nspname
@@ -274,6 +282,24 @@ to_regprocedure(format('%I.tenant_operation_fence(jsonb,text,text)',$3))::oid
   ('model_usage','reserved_at','SELECT'),('model_usage','occurred_at','SELECT'),('model_usage','reserved_input_tokens','SELECT'),('model_usage','reserved_output_tokens','SELECT'),('model_usage','input_tokens','SELECT'),('model_usage','output_tokens','SELECT'),('model_usage','total_tokens','SELECT'),
   ('model_call_leases','tenant_id','SELECT'),('model_call_leases','lease_id','SELECT'),('model_call_leases','reserved_input_tokens','SELECT'),('model_call_leases','reserved_output_tokens','SELECT'),('model_call_leases','acquired_at','SELECT')
  ) AS operations_permissions(table_name,column_name,privilege_type) WHERE to_regclass(format('%I.tenant_operations_projection_dirty',$2::text)) IS NOT NULL
+	 UNION ALL SELECT * FROM (VALUES
+		('case_intake_completion_events',NULL::text,'SELECT'),('case_intake_completion_events',NULL::text,'INSERT'),
+		('case_intake_operations',NULL::text,'SELECT'),
+		('service_database_roles','role_name','SELECT'),('service_database_roles','service','SELECT'),
+		('case_intake_requests','tenant_id','SELECT'),('case_intake_requests','operation_id','SELECT'),('case_intake_requests','schema_version','SELECT'),('case_intake_requests','request_json','SELECT'),
+		('documents','tenant_id','SELECT'),('documents','org_id','SELECT'),('documents','case_id','SELECT'),('documents','id','SELECT'),('documents','role','SELECT'),('documents','filename','SELECT'),('documents','media_type','SELECT'),('documents','digest','SELECT'),('documents','size','SELECT'),('documents','origin','SELECT'),
+		('material_entities','tenant_id','SELECT'),('material_entities','org_id','SELECT'),('material_entities','case_id','SELECT'),('material_entities','material_id','SELECT'),('material_entities','role','SELECT'),('material_entities','purpose','SELECT'),
+		('material_versions','tenant_id','SELECT'),('material_versions','org_id','SELECT'),('material_versions','case_id','SELECT'),('material_versions','material_id','SELECT'),('material_versions','version','SELECT'),('material_versions','document_id','SELECT'),
+		('document_upload_idempotency','tenant_id','SELECT'),('document_upload_idempotency','org_id','SELECT'),('document_upload_idempotency','case_id','SELECT'),('document_upload_idempotency','actor_id','SELECT'),('document_upload_idempotency','idempotency_key','SELECT'),('document_upload_idempotency','document_id','SELECT'),('document_upload_idempotency','material_id','SELECT'),('document_upload_idempotency','command_session','SELECT'),('document_upload_idempotency','command_version','SELECT')
+	 ) AS intake_recovery_permissions(table_name,column_name,privilege_type) WHERE to_regclass(format('%I.case_intake_completion_events',$2::text)) IS NOT NULL
+	 UNION ALL SELECT * FROM (VALUES
+		('execution_write_receipts','tenant_id','SELECT'),('execution_write_receipts','org_id','SELECT'),
+		('execution_write_receipts','case_id','SELECT'),('execution_write_receipts','actor_id','SELECT'),
+		('execution_write_receipts','route','SELECT'),('execution_write_receipts','idempotency_key','SELECT'),
+		('execution_write_receipts','command_session','SELECT'),('execution_write_receipts','command_version','SELECT'),
+		('execution_write_receipts','command_origin_org','SELECT')
+	 ) AS review_receipt_key_permissions(table_name,column_name,privilege_type) WHERE EXISTS(
+		SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass(format('%I.execution_write_receipts',$2::text)) AND attname='command_origin_org' AND NOT attisdropped)
 	), actual AS (
 		SELECT namespace.nspname AS schema_name,relation.relname AS table_name,NULL::text AS column_name,acl.privilege_type,acl.is_grantable
 		FROM pg_class relation JOIN pg_namespace namespace ON namespace.oid=relation.relnamespace

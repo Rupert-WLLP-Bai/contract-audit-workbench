@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -139,17 +139,21 @@ func (s *Store) CreateDocumentIntakeTicket(ctx context.Context, user accounts.Us
 	if err := setLocalScope(ctx, tx, userScope(current)); err != nil {
 		return "", err
 	}
-	var status, actualUploadKey, members string
+	if err := setIntakeRecoverySelector(ctx, tx, operationID, "", ""); err != nil {
+		return "", err
+	}
+	var status, actualUploadKey, members, requestDigest, originalKey string
+	var schemaVersion int16
 	var requestJSON []byte
 	var item Case
 	var archivedAt *string
-	err = tx.QueryRow(ctx, `SELECT operation.status,operation.upload_idempotency_key,request.request_json,
+	err = tx.QueryRow(ctx, `SELECT operation.status,operation.upload_idempotency_key,request.request_json,request.schema_version,operation.request_digest,operation.idempotency_key,
 		case_row.id,case_row.tenant_id,case_row.org_id,case_row.owner_id,case_row.member_ids::text,case_row.business_status,case_row.archived_at::text,case_row.title
 		FROM case_intake_operations AS operation
 	JOIN case_intake_requests AS request ON request.tenant_id=operation.tenant_id AND request.operation_id=operation.operation_id
 	JOIN cases AS case_row ON case_row.tenant_id=operation.tenant_id AND case_row.org_id=operation.org_id AND case_row.id=operation.case_id
-	WHERE operation.tenant_id=$1 AND operation.actor_id=$2 AND operation.operation_id=$3 AND operation.case_id=$4`,
-		accounts.Tenant(current), current.ID, operationID, caseID).Scan(&status, &actualUploadKey, &requestJSON,
+	WHERE operation.tenant_id=$1 AND operation.actor_id=$2 AND operation.operation_id=$3 AND operation.case_id=$4 AND operation.org_id=$5`,
+		accounts.Tenant(current), current.ID, operationID, caseID, current.OrgID).Scan(&status, &actualUploadKey, &requestJSON, &schemaVersion, &requestDigest, &originalKey,
 		&item.ID, &item.TenantID, &item.OwnerOrgID, &item.OwnerID, &members, &item.BusinessStatus, &archivedAt, &item.Title)
 	if err != nil || (status != caseIntakePendingStatus && status != caseIntakeCompletedStatus) || actualUploadKey != uploadKey || archivedAt != nil {
 		return "", fault.NotFound("建案操作不存在")
@@ -157,8 +161,9 @@ func (s *Store) CreateDocumentIntakeTicket(ctx context.Context, user accounts.Us
 	if json.Unmarshal([]byte(members), &item.MemberIDs) != nil {
 		return "", fault.NotFound("建案操作不存在")
 	}
-	var identity CaseIntakeRequestIdentity
-	if json.Unmarshal(requestJSON, &identity) != nil || identity.FileSHA256 != bodyHash || !authorizeCase(item, current, access.Manage) {
+	stored := intakeContinuationRow{schemaVersion: &schemaVersion, requestJSON: requestJSON, requestDigest: requestDigest, idempotencyKey: originalKey}
+	identity, _ := stored.requestIdentity()
+	if identity == nil || identity.FileSHA256 != bodyHash || identity.FileSize != int64(len(body)) || !authorizeCase(item, current, access.Manage) {
 		return "", fault.Forbidden("当前身份无权继续此建案上传")
 	}
 	epoch, err := s.admissionEpoch(ctx, tx, accounts.Tenant(current))
@@ -221,6 +226,9 @@ func (s *Store) authorizeCurrentIntakeTicketCase(ctx context.Context, user accou
 	if err := setLocalScope(ctx, tx, userScope(user)); err != nil {
 		return err
 	}
+	if err := setIntakeRecoverySelector(ctx, tx, authority.OperationID, "", ""); err != nil {
+		return err
+	}
 	var item Case
 	var members string
 	var archivedAt *string
@@ -229,8 +237,8 @@ func (s *Store) authorizeCurrentIntakeTicketCase(ctx context.Context, user accou
 		case_row.id,case_row.tenant_id,case_row.org_id,case_row.owner_id,case_row.member_ids::text,case_row.business_status,case_row.archived_at::text,case_row.title
 		FROM case_intake_operations AS operation
 	JOIN cases AS case_row ON case_row.tenant_id=operation.tenant_id AND case_row.org_id=operation.org_id AND case_row.id=operation.case_id
-	WHERE operation.tenant_id=$1 AND operation.actor_id=$2 AND operation.operation_id=$3 AND operation.case_id=$4`,
-		accounts.Tenant(user), user.ID, authority.OperationID, authority.CaseID).Scan(&status, &uploadKey, &item.ID, &item.TenantID, &item.OwnerOrgID,
+	WHERE operation.tenant_id=$1 AND operation.actor_id=$2 AND operation.operation_id=$3 AND operation.case_id=$4 AND operation.org_id=$5`,
+		accounts.Tenant(user), user.ID, authority.OperationID, authority.CaseID, user.OrgID).Scan(&status, &uploadKey, &item.ID, &item.TenantID, &item.OwnerOrgID,
 		&item.OwnerID, &members, &item.BusinessStatus, &archivedAt, &item.Title)
 	if err != nil || (status != caseIntakePendingStatus && status != caseIntakeCompletedStatus) || uploadKey != authority.UploadKey || archivedAt != nil ||
 		json.Unmarshal([]byte(members), &item.MemberIDs) != nil || !authorizeCase(item, user, access.Manage) {

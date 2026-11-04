@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -26,6 +26,10 @@ import (
 
 func uploadRequestHash(operation, actorID, caseID, role, purpose, filename, media string, body []byte, options MaterialUploadOptions) [32]byte {
 	content := sha256.Sum256(body)
+	return uploadRequestHashForDigest(operation, actorID, caseID, role, purpose, filename, media, content, options)
+}
+
+func uploadRequestHashForDigest(operation, actorID, caseID, role, purpose, filename, media string, content [32]byte, options MaterialUploadOptions) [32]byte {
 	intent := options.Intent
 	if intent == "" {
 		intent = "add"

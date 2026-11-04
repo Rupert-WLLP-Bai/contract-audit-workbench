@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-02
 // Updated: 2026-11-04
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -2090,6 +2090,7 @@ type ReviewStartRequest struct {
 	Scope              string `json:"scope,omitempty" openapi:"{\"type\":\"string\",\"enum\":[\"full_review\",\"single_contract_precheck\"],\"default\":\"full_review\",\"description\":\"单合同预审仅执行版本固定的单合同检查，不替代完整审查。\"}"`
 	Business_at        string `json:"business_at,omitempty" openapi:"{\"type\":\"string\",\"format\":\"date-time\",\"description\":\"已治理案件必填，带时区的 RFC3339Nano 业务时间；界面按北京时间输入并提交 UTC。\"}"`
 	Evidence_cutoff_at string `json:"evidence_cutoff_at,omitempty" openapi:"{\"type\":\"string\",\"format\":\"date-time\",\"description\":\"可选法律证据截止时间；省略时由受理事务采样。显式值按UTC微秒规范化且不得晚于受理时刻。\"}"`
+	Readmit_cancelled  any    `json:"readmit_cancelled,omitempty" openapi:"{\"type\":\"object\",\"description\":\"明确针对最近一次用户主动取消且尚未冻结输入的准备记录发起新审查；必须使用新的 Idempotency-Key。\",\"additionalProperties\":false,\"required\":[\"run_id\",\"attempt_id\"],\"properties\":{\"run_id\":{\"type\":\"string\",\"minLength\":1},\"attempt_id\":{\"type\":\"string\",\"minLength\":1}}}"`
 }
 type ReviewDiagnostics struct {
 	Case_id      string                          `json:"case_id" openapi:"{\"type\":\"string\"}"`

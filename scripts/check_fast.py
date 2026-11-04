@@ -4,8 +4,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-31
-# Updated: 2026-11-03
-# Revision: r4
+# Updated: 2026-11-04
+# Revision: r5
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -95,6 +95,10 @@ OFFLINE_MIGRATOR_BOOTSTRAP_TESTS = (
 CASE_INTAKE_AUTHORITY_TESTS = (
     "TestCaseIntakePendingOwnerResumeArchiveAndReceiptPostgres",
     "TestCaseIntakePendingLegacyAndCurrentCaseAuthorityPostgres",
+    "TestCaseIntakeRecoversAcrossBoundSessionsPostgres",
+    "TestCaseIntakeSessionRecoveryBoundariesPostgres",
+    "TestCaseIntakeRecoveryUsesCurrentMembershipPostgres",
+    "TestIntakeRecoveryPolicyProjectionExecuteRequirement",
 )
 MIGRATION_TESTS = ("TestEvaluationProvenanceMigrationPreservesHistoricalRows",
                    "TestContractAggregateMigrationBoundaries")
@@ -104,6 +108,22 @@ DATABASE_CORE_TESTS = ("TestLoginOriginalAndRetryStayInPostgres",)
 FROZEN_EVIDENCE_TESTS = (
     "TestDurableReviewFreezesServiceObjectContextAndRejectsChangedRetryAfterReopen",
 )
+REVIEW_READMISSION_TESTS = (
+    "TestReviewReadmissionPreparingScanPostgres",
+    "TestReviewReadmissionDifferentKeysAndBoundariesPostgres",
+    "TestReviewReadmissionFrozenAndRevokedPostgres",
+    "TestReviewReadmissionRejectsExpiredEpochPostgres",
+    "TestReviewReceiptReplayAfterNewSessionPostgres",
+    "TestReviewReceiptConcurrentSessionsPostgres",
+    "TestReviewReceiptSessionAndServiceBoundariesPostgres",
+    "TestReviewReceiptRejectsChangedEpochPostgres",
+    "TestReviewReceiptCurrentMembershipPostgres",
+    "TestReviewReceiptPolicyProjectionExecuteRequirement",
+    "TestReviewReceiptLegacyMigrationPreservesPostgres",
+    "TestReviewReceiptOriginDiffersFromCaseOrganizationPostgres",
+    "TestCaseContextFenceMigrationUpgradeAndRoleACL",
+)
+REVIEW_READMISSION_HTTP_TESTS = ("TestCancelledPreparingReadmissionHTTP",)
 CONTRACT_SIGNING_TESTS = (
     "TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision",
 )
@@ -399,6 +419,16 @@ def _is_case_intake_authority(path: str) -> bool:
         "internal/store/case_intake_authority.go",
         "internal/store/case_intake_pending.go",
         "internal/store/case_intake_pending_test.go",
+        "internal/store/case_intake_session_recovery_test.go",
+        "internal/store/case_intake_membership_recovery_test.go",
+        "internal/store/upload_idempotency.go",
+        "internal/store/cases.go",
+        "internal/store/materials.go",
+        "internal/store/service_roles.go",
+        "internal/store/migrations/0041_intake_session_recovery.sql",
+        "internal/documentservice/intake_upload.go",
+        "internal/documentclient/intake.go",
+        "internal/bootstrap/intake_session_recovery_test.go",
     }
 
 
@@ -463,6 +493,31 @@ def _is_frozen_evidence(path: str) -> bool:
     return path.startswith("internal/store/") and any(
         token in _stem(path) for token in
         ("frozen", "snapshot", "service_object_context", "attempt_input", "material"))
+
+
+def _is_review_readmission(path: str) -> bool:
+    return path in {
+        "internal/store/execution.go",
+        "internal/store/write_idempotency.go",
+        "internal/store/attempt_finalize.go",
+        "internal/store/document_prepare.go",
+        "internal/store/review_readmission_pg_test.go",
+        "internal/store/case_context_migration_test.go",
+        "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+        "internal/store/migrations/0043_review_receipt_origin_org.sql",
+        "internal/store/migrations.go",
+        "internal/store/table_catalog.json",
+        "internal/store/service_roles.go",
+        "internal/store/tenant_identity_role_provision.go",
+        "internal/httpapi/server.go",
+    }
+
+
+def _is_review_readmission_http(path: str) -> bool:
+    return path in {"internal/httpapi/server.go", "internal/httpapi/pending_image_test.go",
+                    "internal/store/execution.go", "internal/store/write_idempotency.go",
+                    "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+                    "internal/store/migrations/0043_review_receipt_origin_org.sql"}
 
 
 def _is_contract_signing(path: str) -> bool:
@@ -562,6 +617,8 @@ def _is_offline_migrator_bootstrap(path: str) -> bool:
         "internal/store/clm_role_provision.go",
         "internal/store/tenant_identity_role_provision.go",
         "internal/store/migrations/0033_tenant_membership.sql",
+        "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+        "internal/store/migrations/0043_review_receipt_origin_org.sql",
     }
 
 
@@ -695,11 +752,16 @@ SENSITIVE_RULES = (
                   TENANT_AUTHORITY_BOOTSTRAP_TESTS, package="./internal/bootstrap"),
     SensitiveRule("case-intake-authority", _is_case_intake_authority,
                   CASE_INTAKE_AUTHORITY_TESTS),
+    SensitiveRule("case-intake-http", _is_case_intake_authority,
+                  ("TestDistributedIntakeRecoversLostDocumentResponseAcrossSessions",), package="./internal/bootstrap"),
     SensitiveRule("migration", _is_migration, MIGRATION_TESTS),
     SensitiveRule("budget", _is_budget, BUDGET_TESTS, needs_model=True),
     SensitiveRule("lease", _is_lease, LEASE_TESTS),
     SensitiveRule("database-core", _is_database_core, DATABASE_CORE_TESTS),
     SensitiveRule("frozen-evidence", _is_frozen_evidence, FROZEN_EVIDENCE_TESTS),
+    SensitiveRule("review-readmission", _is_review_readmission, REVIEW_READMISSION_TESTS),
+    SensitiveRule("review-readmission-http", _is_review_readmission_http,
+                  REVIEW_READMISSION_HTTP_TESTS, package="./internal/httpapi"),
     SensitiveRule("contract-signing", _is_contract_signing, CONTRACT_SIGNING_TESTS),
     SensitiveRule("contract-fulfillment", _is_contract_fulfillment, CONTRACT_FULFILLMENT_TESTS),
     SensitiveRule("contract-payment", _is_contract_payment, CONTRACT_PAYMENT_TESTS),
