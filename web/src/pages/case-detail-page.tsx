@@ -323,7 +323,8 @@ export function CaseDetailPage() {
 
       <ReviewReadinessPanel caseId={item.id} data={readiness.data} loading={readiness.isFetching}
         error={readiness.isError ? readiness.error : null} onRefresh={() => void readiness.refetch()}
-        selectedScope={reviewScope} onSelectScope={setReviewScope} />
+        selectedScope={reviewScope} onSelectScope={setReviewScope}
+        business={{ business_line: item.business_line, scenario: item.scenario, contract_type: item.contract_type }} />
       <div id="case-materials">
         <MaterialCollectionPanel key={`materials:${item.id}:${actorScope}`} caseDetail={item} canWrite={canUpload} actorId={session.data?.id ?? ""} />
       </div>

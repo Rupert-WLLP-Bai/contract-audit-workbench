@@ -88,6 +88,19 @@ func (s *Store) GetReviewReadiness(ctx context.Context, user accounts.User, case
 		assessment, assessErr := assessGovernedReviewTx(ctx, tx, current, caseItem, at, cutoffNow, "acceptance_time", "")
 		if assessment.Pack != nil {
 			rulePackProjection = &ReviewReadinessRulePack{PackID: assessment.Pack.PackID, Version: assessment.Pack.Version, SnapshotDigest: assessment.Pack.SnapshotDigest}
+			// The selected snapshot was verified by selectActiveRulePackTx. Project
+			// its declared scopes and matching checks even when a later knowledge
+			// or capability gate blocks acceptance; neither projection opens the gate.
+			if parsed, parseErr := rulepack.Parse(assessment.Pack.Snapshot); parseErr == nil {
+				seen := make(map[rulepack.BusinessScope]bool)
+				for _, rule := range parsed.Manifest().Rules {
+					if !seen[rule.BusinessScope] {
+						rulePackProjection.ApplicableScopes = append(rulePackProjection.ApplicableScopes, rule.BusinessScope)
+						seen[rule.BusinessScope] = true
+					}
+				}
+			}
+			checks = reviewReadinessRuleChecks(assessment.Pack, assessment.Knowledge, materials, caseItem)
 		}
 		if assessment.Knowledge != nil {
 			governanceRevision = readinessGovernanceRevision(*assessment.Knowledge)
@@ -99,8 +112,6 @@ func (s *Store) GetReviewReadiness(ctx context.Context, user accounts.User, case
 			} else {
 				return ReviewReadiness{}, assessErr
 			}
-		} else {
-			checks = reviewReadinessRuleChecks(assessment.Pack, assessment.Knowledge, materials, caseItem)
 		}
 	} else if canStartRole && !authorizeCase(caseItem, current, access.Review) {
 		acceptanceBlockers = append(acceptanceBlockers,
@@ -373,7 +384,8 @@ func reviewReadinessRuleChecks(pack *ActiveRulePack, knowledge *ReviewKnowledgeS
 		if rule.BusinessScope.BusinessLine != caseItem.BusinessLine || rule.BusinessScope.Scenario != caseItem.Scenario || rule.BusinessScope.ContractType != caseItem.ContractType {
 			continue
 		}
-		check := ReviewReadinessCheck{RuleID: rule.RuleID, Status: "ready", MissingDependencies: []string{}, NextAction: "start_review"}
+		check := ReviewReadinessCheck{RuleID: rule.RuleID, Comparator: rule.Comparator,
+			SourceRoles: append([]string(nil), rule.RequiredFact.SourceRoles...), Status: "ready", MissingDependencies: []string{}, NextAction: "start_review"}
 		for _, role := range rule.RequiredFact.SourceRoles {
 			status, ok := roleState[role]
 			if !ok {

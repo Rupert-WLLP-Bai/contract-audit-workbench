@@ -16,6 +16,8 @@ import (
 	"encoding/json"
 	"sort"
 	"time"
+
+	"contractaudit/internal/rulepack"
 )
 
 const ReviewScopeFull = "full_review"
@@ -64,13 +66,16 @@ type ReviewReadinessScope struct {
 }
 
 type ReviewReadinessRulePack struct {
-	PackID         string `json:"pack_id"`
-	Version        string `json:"version"`
-	SnapshotDigest string `json:"snapshot_digest"`
+	PackID           string                   `json:"pack_id"`
+	Version          string                   `json:"version"`
+	SnapshotDigest   string                   `json:"snapshot_digest"`
+	ApplicableScopes []rulepack.BusinessScope `json:"applicable_scopes,omitempty"`
 }
 
 type ReviewReadinessCheck struct {
 	RuleID              string   `json:"rule_id"`
+	Comparator          string   `json:"comparator,omitempty"`
+	SourceRoles         []string `json:"source_roles,omitempty"`
 	Status              string   `json:"status"`
 	MissingDependencies []string `json:"missing_dependencies"`
 	NextAction          string   `json:"next_action"`

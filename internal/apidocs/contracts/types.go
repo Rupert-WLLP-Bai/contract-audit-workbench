@@ -2061,12 +2061,20 @@ type ReviewScopeIdentity struct {
 	Rule_set_hash    string `json:"rule_set_hash" openapi:"{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"}"`
 }
 type ReviewReadinessRulePack struct {
-	Pack_id         string `json:"pack_id" openapi:"{\"type\":\"string\"}"`
-	Version         string `json:"version" openapi:"{\"type\":\"string\"}"`
-	Snapshot_digest string `json:"snapshot_digest" openapi:"{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"}"`
+	Pack_id           string                         `json:"pack_id" openapi:"{\"type\":\"string\"}"`
+	Version           string                         `json:"version" openapi:"{\"type\":\"string\"}"`
+	Snapshot_digest   string                         `json:"snapshot_digest" openapi:"{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"}"`
+	Applicable_scopes []ReviewReadinessBusinessScope `json:"applicable_scopes,omitempty" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/ReviewReadinessBusinessScope\"}"`
+}
+type ReviewReadinessBusinessScope struct {
+	Business_line string `json:"business_line" openapi:"{\"type\":\"string\"}"`
+	Scenario      string `json:"scenario" openapi:"{\"type\":\"string\"}"`
+	Contract_type string `json:"contract_type" openapi:"{\"type\":\"string\"}"`
 }
 type ReviewReadinessCheck struct {
 	Rule_id              string   `json:"rule_id" openapi:"{\"type\":\"string\"}"`
+	Comparator           string   `json:"comparator,omitempty" openapi:"{\"type\":\"string\"}"`
+	Source_roles         []string `json:"source_roles,omitempty" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\"}"`
 	Status               string   `json:"status" openapi:"{\"type\":\"string\"}"`
 	Missing_dependencies []string `json:"missing_dependencies" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\"}"`
 	Next_action          string   `json:"next_action" openapi:"{\"type\":\"string\"}"`
@@ -4341,6 +4349,7 @@ var SchemaRules = map[string]string{
 	"ReviewReadinessScope":                   "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"id\",\"status\",\"can_start\",\"checks\",\"blockers\"]}",
 	"ReviewScopeIdentity":                    "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"id\",\"rule_set_id\",\"rule_set_version\",\"rule_set_hash\"]}",
 	"ReviewReadinessRulePack":                "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"pack_id\",\"version\",\"snapshot_digest\"]}",
+	"ReviewReadinessBusinessScope":           "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"business_line\",\"scenario\",\"contract_type\"]}",
 	"ReviewReadinessCheck":                   "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"rule_id\",\"status\",\"missing_dependencies\",\"next_action\"]}",
 	"ReviewReadinessBlocker":                 "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"code\",\"status\",\"message\",\"missing_dependencies\",\"next_action\"]}",
 	"ReviewStartRequest":                     "{\"type\":\"object\",\"additionalProperties\":false}",
@@ -4779,6 +4788,7 @@ func Types() map[string]reflect.Type {
 		"ReviewReadinessScope":                   reflect.TypeOf((*ReviewReadinessScope)(nil)).Elem(),
 		"ReviewScopeIdentity":                    reflect.TypeOf((*ReviewScopeIdentity)(nil)).Elem(),
 		"ReviewReadinessRulePack":                reflect.TypeOf((*ReviewReadinessRulePack)(nil)).Elem(),
+		"ReviewReadinessBusinessScope":           reflect.TypeOf((*ReviewReadinessBusinessScope)(nil)).Elem(),
 		"ReviewReadinessCheck":                   reflect.TypeOf((*ReviewReadinessCheck)(nil)).Elem(),
 		"ReviewReadinessBlocker":                 reflect.TypeOf((*ReviewReadinessBlocker)(nil)).Elem(),
 		"ReviewStartRequest":                     reflect.TypeOf((*ReviewStartRequest)(nil)).Elem(),

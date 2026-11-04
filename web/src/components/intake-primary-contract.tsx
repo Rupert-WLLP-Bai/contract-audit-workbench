@@ -1553,6 +1553,7 @@ export function IntakePrimaryContract({
 
   return (
     <section
+      id="intake-primary-contract"
       className="home-panel home-intake"
       aria-labelledby={headingId}
     >

@@ -9,17 +9,19 @@
 // End file metadata.
 
 import { Button, Radio } from "antd";
-import type { ReviewReadiness, ReviewReadinessBlocker, ReviewScope } from "../api/review-readiness";
+import type { ReviewReadiness, ReviewReadinessBlocker, ReviewReadinessBusinessScope, ReviewScope } from "../api/review-readiness";
 import { errorMessage } from "../api/http";
-import { roleLabel } from "../domain/review";
+import { businessScopeLabel } from "../domain/business-labels";
+import { contractTypeLabel, roleLabel } from "../domain/review";
 import { isSingleContractV1 } from "../features/review/single-contract-coverage";
 import { SingleContractScopeCoverage } from "./single-contract-scope-coverage";
 import { StatusText } from "./status-text";
+import { TechnicalDetail } from "./technical-detail";
 
 const parseStates: Record<string, string> = { ready: "已解析", pending: "待解析", failed: "解析失败", stale: "需要重新解析", not_required: "无需解析" };
-const checkStates: Record<string, string> = { ready: "可执行", missing_basis: "缺少依据", not_executed: "尚未执行", not_applicable: "不适用" };
+const checkStates: Record<string, string> = { ready: "尚未执行", missing_basis: "缺少依据", not_executed: "尚未执行", not_applicable: "不适用" };
 const checkActions: Record<string, string> = {
-  start_review: "准备就绪，开始审查后执行本项检查",
+  start_review: "开始审查后执行本项检查，是否可以开始以准备状态为准",
   reparse_material: "请到材料列表重新解析对应材料",
   provide_missing_material_or_legal_basis: "补充下列材料或法律依据后重新核对",
   no_action: "本项不适用，无需补充材料",
@@ -29,13 +31,26 @@ const checkLabels: Record<string, string> = {
   cross_material_comparison: "跨材料对照",
   formal_policy_review: "正式制度与法律依据审查",
 };
+const comparatorLabels: Record<string, string> = {
+  minimum_bandwidth: "最低保障带宽对照",
+  monthly_sla: "自然月服务可用率对照",
+  advance_payment_ceiling: "预付款比例上限对照",
+};
+function scopeLabel(scope: ReviewReadinessBusinessScope): string {
+  const contractType = contractTypeLabel(scope.contract_type);
+  return `${businessScopeLabel(scope.business_line, scope.scenario)} / ${contractType === "合同类型" ? "合同类型待核对" : contractType}`;
+}
+function governanceURL(): string {
+  const base = import.meta.env.VITE_ADMIN_URL;
+  return base ? new URL("/admin/rulepacks", base).href : "/admin/rulepacks";
+}
 function dependencyLabel(dependency: string): string {
   const [kind, ...parts] = dependency.split(":");
   const value = parts.join(":");
   if (kind === "material_role") return `缺少${roleLabel(value)}`;
   if (kind === "parsed_material_role") return `${roleLabel(value)}等待解析`;
   if (kind === "failed_or_stale_parse_role") return `${roleLabel(value)}需要重新解析`;
-  if (kind === "legal_authority") return `法律依据 ${value}`;
+  if (kind === "legal_authority") return "需要核对对应法律依据";
   if (kind === "exact_legal_authority_gate") return "需要核对适用法律依据";
   if (kind === "comparison_materials") return "缺少采购、审批等对照材料";
   if (kind === "formal_policy_review") return "正式制度与法律依据尚未审查";
@@ -49,11 +64,16 @@ function repairLink(caseId: string, blocker: ReviewReadinessBlocker): { href: st
   if (blocker.code === "case_not_writable") return { href: "#case-business-title", label: "查看案件状态" };
   return null;
 }
-export function ReviewReadinessPanel({ caseId, data, loading, error, onRefresh, selectedScope, onSelectScope }: {
+export function ReviewReadinessPanel({ caseId, data, loading, error, onRefresh, selectedScope, onSelectScope, business }: {
   caseId: string; data: ReviewReadiness | undefined; loading: boolean; error: unknown; onRefresh: () => void;
-  selectedScope: ReviewScope; onSelectScope: (scope: ReviewScope) => void;
+  selectedScope: ReviewScope; onSelectScope: (scope: ReviewScope) => void; business?: ReviewReadinessBusinessScope;
 }) {
   const selected = data?.scopes.find((item) => item.id === selectedScope);
+  const pack = selectedScope === "full_review" ? selected?.rule_pack : null;
+  const declaredScopes = pack?.applicable_scopes ?? [];
+  const matchedScope = business && declaredScopes.find((scope) => scope.business_line === business.business_line &&
+    scope.scenario === business.scenario && scope.contract_type === business.contract_type);
+  const missingBusinessAt = selected?.blockers.some((blocker) => blocker.code === "business_at_required") ?? false;
   return (
     <section className="workflow-panel review-readiness-panel" aria-label="审查准备清单" id="review-readiness">
       <header className="workflow-panel-head">
@@ -61,6 +81,14 @@ export function ReviewReadinessPanel({ caseId, data, loading, error, onRefresh, 
         <Button htmlType="button" onClick={onRefresh} loading={loading}>刷新准备清单</Button>
       </header>
       <p className="meta">清单反映当前材料与依据。开始审查时，服务端会重新校验权限、材料版本和依赖。</p>
+      <section aria-label="合同业务与规则匹配确认">
+        <h3>合同业务与规则匹配确认</h3>
+        <p>案件登记业务：{business ? scopeLabel(business) : "业务信息待核对"}。</p>
+        <p>请对照合同内容确认登记分类。规则按登记的业务分类选择，系统不会从文件名或模型结果判断合同业务。</p>
+        <p>如分类不符，请重新登记并选择适用业务场景，再发起新的审查；已有案件和审查历史保留。</p>
+        <Button type="link" href="/#intake-primary-contract">重新登记并选择业务场景</Button>
+        {business ? <TechnicalDetail label="登记业务技术详情" value={[business.business_line, business.scenario, business.contract_type].join(" / ")} /> : null}
+      </section>
       <fieldset className="field">
         <legend>审查范围</legend>
         <Radio.Group name="review-scope" value={selectedScope} onChange={(event) => onSelectScope(event.target.value as ReviewScope)} disabled={loading || Boolean(error)}>
@@ -79,7 +107,23 @@ export function ReviewReadinessPanel({ caseId, data, loading, error, onRefresh, 
         </StatusText></p>
         {data.scopes.filter((scope) => scope.id === selectedScope).map((scope) => <div key={scope.id}>
           <h3>{scope.id === "full_review" ? "完整审查" : "单合同预审"}</h3>
-          {scope.id !== "single_contract_precheck" && scope.rule_pack ? <p className="meta">规则包 {scope.rule_pack.pack_id} · 第 {scope.rule_pack.version} 版</p> : null}
+          {scope.id === "full_review" ? <section aria-label="已选规则包">
+            <h4>本次适用规则包</h4>
+            {pack ? <>
+              <p>{matchedScope ? `适用于${scopeLabel(matchedScope)}的规则包` : "已选择的规则包"}（治理名称未登记） · 第 {pack.version} 版</p>
+              {declaredScopes.length ? <>
+                <p>规则包声明的业务范围：</p>
+                <ul>{declaredScopes.map((declared) => <li key={`${declared.business_line}:${declared.scenario}:${declared.contract_type}`}>{scopeLabel(declared)}</li>)}</ul>
+                <p>{matchedScope ? "其中一项与案件登记分类一致；仍需人工确认合同内容是否属于该分类。" : "未核对到与案件登记分类一致的规则范围，请联系规则治理人员核对。"}</p>
+              </> : <p>规则包的声明范围未返回，请刷新清单或联系规则治理人员核对。</p>}
+              <TechnicalDetail label="规则包技术详情" value={`${pack.pack_id} / ${pack.snapshot_digest}`}>
+                {declaredScopes.map((declared) => <p key={`${declared.business_line}:${declared.scenario}:${declared.contract_type}`}>
+                  <code>{[declared.business_line, declared.scenario, declared.contract_type].join(" / ")}</code>
+                </p>)}
+              </TechnicalDetail>
+            </> : <p>{missingBusinessAt ? "填写业务时间后才能确定适用规则包。" : "尚未获得可确认的已发布规则包，请核对准备事项或联系规则治理人员。"}</p>}
+            <Button type="link" href={governanceURL()}>联系规则治理人员核对规则包</Button>
+          </section> : null}
           {scope.blockers.length ? <ul className="review-readiness-list" aria-label="开始审查前需要补齐的事项">
             {scope.blockers.map((blocker) => {
               const link = repairLink(caseId, blocker);
@@ -92,12 +136,17 @@ export function ReviewReadinessPanel({ caseId, data, loading, error, onRefresh, 
           </ul> : null}
           {scope.checks.length && (scope.id !== "single_contract_precheck" || isSingleContractV1(scope.rule_set)) ? <>
             <h4>本次检查项目</h4>
+            <p className="meta">材料已解析只表示原文可供检查；缺少规则所需事实或依据时仍需补充、核对，并不表示解析失败。</p>
             <ul className="review-readiness-list" aria-label="规则准备状态">
               {scope.checks.map((check) => <li key={check.rule_id}>
-                <strong>{checkLabels[check.rule_id] ?? (scope.id === "single_contract_precheck" ? "其他范围外检查" : check.rule_id)}</strong>{" "}<StatusText tone={check.status === "missing_basis" || check.status === "not_executed" ? "attention" : "neutral"}>{checkStates[check.status] ?? "状态待核对"}</StatusText>
+                <strong>{(Object.hasOwn(checkLabels, check.rule_id) ? checkLabels[check.rule_id] : undefined) ?? (check.comparator && Object.hasOwn(comparatorLabels, check.comparator) ? comparatorLabels[check.comparator] : undefined) ?? (scope.id === "single_contract_precheck" ? "其他范围外检查" : "检查项目名称待核对")}</strong>{" "}<StatusText tone={check.status === "missing_basis" || check.status === "not_executed" ? "attention" : "neutral"}>{checkStates[check.status] ?? "状态待核对"}</StatusText>
+                {check.source_roles?.length ? <p>规则声明的事实材料角色：{check.source_roles.map(roleLabel).join("、")}；对照依据和附件仍需按合同内容核对。</p> : null}
                 {check.missing_dependencies.length ? <p>待补齐：{check.missing_dependencies.map(dependencyLabel).join("；")}</p> : null}
-                {check.next_action ? <p>{checkActions[check.next_action] ?? check.next_action}</p> : null}
+                {check.next_action ? <p>{checkActions[check.next_action] ?? (/[^\x00-\x7f]/.test(check.next_action) ? check.next_action : "请联系审查人员核对处理方式")}</p> : null}
                 {check.next_action === "reparse_material" ? <Button type="link" href="#case-materials">到材料列表重新解析</Button> : null}
+                {check.missing_dependencies.some((dependency) => dependency.startsWith("material_role:")) ? <Button type="link" href="#case-materials">补充所需材料</Button> : null}
+                {check.missing_dependencies.some((dependency) => dependency.startsWith("legal_authority:") || dependency === "exact_legal_authority_gate") ? <Button type="link" href={`/cases/${encodeURIComponent(caseId)}/legal-knowledge`}>核对法律依据与制度</Button> : null}
+                <TechnicalDetail label="检查项目技术详情" value={[check.rule_id, check.comparator, ...check.missing_dependencies].filter(Boolean).join(" / ")} />
               </li>)}
             </ul>
           </> : null}

@@ -15439,9 +15439,32 @@
         ],
         "additionalProperties": false
       },
+      "ReviewReadinessBusinessScope": {
+        "type": "object",
+        "properties": {
+          "business_line": {
+            "type": "string"
+          },
+          "contract_type": {
+            "type": "string"
+          },
+          "scenario": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "business_line",
+          "scenario",
+          "contract_type"
+        ],
+        "additionalProperties": false
+      },
       "ReviewReadinessCheck": {
         "type": "object",
         "properties": {
+          "comparator": {
+            "type": "string"
+          },
           "missing_dependencies": {
             "type": "array",
             "items": {
@@ -15453,6 +15476,12 @@
           },
           "rule_id": {
             "type": "string"
+          },
+          "source_roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "status": {
             "type": "string"
@@ -15539,6 +15568,12 @@
       "ReviewReadinessRulePack": {
         "type": "object",
         "properties": {
+          "applicable_scopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewReadinessBusinessScope"
+            }
+          },
           "pack_id": {
             "type": "string"
           },
