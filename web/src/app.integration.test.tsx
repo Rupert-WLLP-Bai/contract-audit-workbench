@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-01
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -24,6 +24,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { clearAllDecisionDrafts } from "./hooks/decision-drafts";
 import { AdminApp } from "./admin-app";
 import { App } from "./app";
+import type { WireSchemas } from "./api/wire.generated";
 import type {
   CaseDetail,
   ConstraintEvaluation,
@@ -40,6 +41,29 @@ import type {
 // database/rule correctness and real browser behavior are separate test layers.
 const at = "2026-10-21T06:00:00Z";
 const text = "质保期为36个月。";
+const singleContractScope = { id: "single_contract_precheck", rule_set_id: "single-contract-precheck", rule_set_version: "1", rule_set_hash: "51676a95611b6e1bf4c30fc50be82e1d493528f34b89f3ece9dbb5aa6c291596" };
+function prepareFrozenInputs(review: ReviewWorkspace) {
+  for (const document of review.documents) document.parsed_document_id = `parse-${document.id}`;
+  review.execution!.attempt.parsed_document_ids = review.documents.map((document) => document.parsed_document_id!);
+}
+function markModelTimeout(review: ReviewWorkspace) {
+  prepareFrozenInputs(review);
+  review.execution!.attempt.outcome = { reason: "transient_failure", agent_stage: "unknown", retry_cause: "model_timeout" };
+}
+function markLimitedPrecheck(review: ReviewWorkspace, agentStage = "skipped") {
+  const attempt = review.execution!.attempt;
+  const primary = review.documents.find((item) => item.role === "draft_contract")!;
+  primary.parsed_document_id = "parse-contract";
+  attempt.parsed_document_ids = ["parse-contract"];
+  attempt.review_scope = singleContractScope;
+  attempt.outcome = { reason: "scope_limited", agent_stage: agentStage, retry_cause: "none" };
+  review.snapshot!.review_scope = singleContractScope;
+  review.evaluations = [evaluation({ domain: "payment_sum", relation: "insufficient", rule_id: "single-payment-sum-v1", rule_version: "single-payment-sum-v1", capability_id: "single_contract.payment_sum", reason: "需人工核对付款原文" })];
+}
+type Audience = "client" | "admin";
+type Membership = Omit<WireSchemas["MembershipChoice"], "role"> & { role: WireSchemas["Actor"]["role"] };
+const defaultMembershipId = "11111111-1111-4111-8111-111111111111";
+const otherMembershipId = "22222222-2222-4222-8222-222222222222";
 function doc(
   id: string,
   role: string,
@@ -70,7 +94,10 @@ function doc(
     ...extra,
   };
 }
-function finding(): Finding {
+function finding(source?: ReviewDocument, comparison?: ReviewDocument): Finding {
+  const comparisonStart = comparison?.text
+    ? Array.from(comparison.text.slice(0, comparison.text.indexOf("24个月"))).length
+    : 0;
   return {
     id: "f1",
     origin: "rule",
@@ -87,8 +114,8 @@ function finding(): Finding {
     evidence: [
       {
         id: "a1",
-        document_version_id: "d1",
-        parsed_document_id: null,
+        document_version_id: source?.id ?? "d1",
+        parsed_document_id: source?.parsed_document_id ?? null,
         normalized_digest: null,
         quote: "36个月",
         status: "located",
@@ -97,6 +124,18 @@ function finding(): Finding {
         bbox: null,
         mismatch_reason: null,
       },
+      ...(comparison ? [{
+        id: "a2",
+        document_version_id: comparison.id,
+        parsed_document_id: comparison.parsed_document_id,
+        normalized_digest: null,
+        quote: "24个月",
+        status: "located" as const,
+        page: null,
+        text_offset: { start: comparisonStart, end: comparisonStart + 4 },
+        bbox: null,
+        mismatch_reason: null,
+      }] : []),
     ],
   };
 }
@@ -189,9 +228,16 @@ class Service {
   identity = "u1";
   holdNextWorkspaceRead = false;
   releaseHeldWorkspace: (() => void) | null = null;
-  role = "admin";
+  role: WireSchemas["Actor"]["role"] = "admin";
   tenant = "tenant-test";
   org = "org-test";
+  // Demo sessions have no membership; the switch feature flag is independent.
+  hasMembership = false;
+  contextSwitchEnabled = false;
+  private contextVersions: Record<Audience, number> = { client: 1, admin: 1 };
+  private sessionGenerations: Record<Audience, number> = { client: 1, admin: 1 };
+  private selectedMemberships: Record<Audience, string | null> = { client: null, admin: null };
+  private uploadedTexts = new Map<string, string>();
   cases = new Map<string, CaseDetail>([["c1", caseOf()]]);
   reviews = new Map<string, ReviewWorkspace>();
   requests: {
@@ -211,14 +257,38 @@ class Service {
   fail(key: string, ...codes: number[]) {
     this.failures.set(key, codes);
   }
-  actor(audience: "client" | "admin" = "client") {
+  memberships(): Membership[] {
+    return [
+      { id: defaultMembershipId, tenant_id: this.tenant, tenant_name: "测试租户", org_id: this.org, org_name: "测试组织", role: this.role },
+      { id: otherMembershipId, tenant_id: "tenant-other", tenant_name: "其他租户", org_id: "org-other", org_name: "其他组织", role: "admin" },
+    ];
+  }
+  session(audience: Audience = "client"): WireSchemas["Session"] {
+    const member = this.hasMembership
+      ? this.memberships().find((choice) => choice.id === (this.selectedMemberships[audience] ?? defaultMembershipId))!
+      : null;
+    const tenant = member?.tenant_id ?? this.tenant;
+    const org = member?.org_id ?? this.org;
     return {
-      id: this.identity,
-      display_name: this.identity === "u1" ? "测试管理员" : "测试用户乙",
-      role: this.role,
-      tenant_id: this.tenant,
-      org_id: this.org,
+      actor: {
+        id: this.identity,
+        display_name: this.identity === "u1" ? "测试管理员" : "测试用户乙",
+        role: member?.role ?? this.role,
+        tenant_id: tenant,
+        org_id: org,
+      },
       audience,
+      principal_id: member ? "33333333-3333-4333-8333-333333333333" : null,
+      active_context: {
+        membership_id: member?.id ?? null,
+        tenant_id: tenant,
+        tenant_name: member?.tenant_name ?? "测试租户",
+        org_id: org,
+        org_name: member?.org_name ?? "测试组织",
+        context_version: String(this.contextVersions[audience]),
+      },
+      csrf_token: `test-csrf-${audience}-${this.identity}-${this.sessionGenerations[audience]}`.padEnd(32, "0"),
+      context_switch_enabled: this.contextSwitchEnabled,
     };
   }
   summary(item: CaseDetail) {
@@ -264,6 +334,19 @@ class Service {
       ? (item.documents as ReviewDocument[])
       : [doc("d1", "procurement"), doc("d2", "draft_contract")];
     item.documents = docs;
+    // Simulate review preparation parsing uploaded text without changing the
+    // uploaded version or any earlier review's frozen document projection.
+    const reviewDocs = docs.filter((entry) => !entry.superseded).map((entry) => {
+      const uploadedText = this.uploadedTexts.get(`${caseId}/${entry.id}`);
+      const frozen = structuredClone(entry);
+      return uploadedText === undefined ? frozen : {
+        ...frozen,
+        parse_status: "ready",
+        parsed_document_id: `parsed-${entry.id}`,
+        text: uploadedText,
+      };
+    });
+    const evidenceSource = reviewDocs.find((entry) => entry.text?.includes("36个月"));
     item.latest_run = { id, state, updated_at: at };
     item.finding_counts = {
       total: 1,
@@ -284,7 +367,7 @@ class Service {
       run_id: id,
       ordinal: 1,
       retry_of_attempt_id: null,
-      parsed_document_ids: [],
+      parsed_document_ids: reviewDocs.flatMap((entry) => entry.parsed_document_id ? [entry.parsed_document_id] : []),
       state,
       accepted_at: at,
       started_at: at,
@@ -303,8 +386,8 @@ class Service {
         partial_reason: null,
         failure_message: null,
       },
-      documents: docs.filter((entry) => !entry.superseded),
-      findings: [finding()],
+      documents: reviewDocs,
+      findings: [finding(evidenceSource, reviewDocs.find((entry) => entry.text?.includes("24个月")))],
       review_attempts: { attempt, attempts: [attempt] },
       execution: {
         schema_version: "audit-execution/v1",
@@ -345,12 +428,34 @@ class Service {
     const key = `${method} ${path}${url.search}`;
     const body: unknown =
       typeof init?.body === "string" ? JSON.parse(init.body) : init?.body;
+    const headers = new Headers(init?.headers);
     this.requests.push({
       key,
       input: body,
-      headers: new Headers(init?.headers),
+      headers,
       signal: init?.signal ?? null,
     });
+    const credentials = body as {
+      username?: string;
+      password?: string;
+      audience?: string;
+    } | null;
+    const audience: Audience = path.startsWith("/api/admin/") ||
+      url.searchParams.get("audience") === "admin" ||
+      (path === "/api/session" && credentials?.audience === "admin")
+      ? "admin" : "client";
+    const signedIn = audience === "admin" ? this.adminSignedIn : this.signedIn;
+    const isLogin = path === "/api/session" && method === "POST";
+    if (!["GET", "HEAD", "OPTIONS"].includes(method) && !isLogin) {
+      if (!signedIn) return this.json({ error: "请登录" }, 401);
+      const session = this.session(audience);
+      const version = headers.get("X-Context-Version");
+      if (!version) return this.json({ error: { code: "context_required", message: "写入命令需要原始上下文版本" } }, 428);
+      if (version !== session.active_context.context_version)
+        return this.json({ error: { code: "context_stale", message: "上下文已变更，请重新读取会话" } }, 409);
+      if (headers.get("X-CSRF-Token") !== session.csrf_token)
+        return this.json({ error: { code: "csrf_invalid", message: "命令来源或会话校验无效" } }, 403);
+    }
     const queued = this.failures.get(key);
     const fail = queued?.shift();
     if (fail)
@@ -364,16 +469,6 @@ class Service {
         fail,
       );
     if (path === "/api/session") {
-      const credentials = body as {
-        username?: string;
-        password?: string;
-        audience?: string;
-      } | null;
-      const audience =
-        url.searchParams.get("audience") === "admin" ||
-        credentials?.audience === "admin"
-          ? "admin"
-          : "client";
       if (method === "DELETE") {
         if (audience === "admin") this.adminSignedIn = false;
         else this.signedIn = false;
@@ -387,13 +482,34 @@ class Service {
           return this.json({ error: "账号密码不正确" }, 401);
         if (audience === "admin") this.adminSignedIn = true;
         else this.signedIn = true;
+        this.sessionGenerations[audience] += 1;
+        this.contextVersions[audience] = 1;
+        this.selectedMemberships[audience] = null;
       }
       return (audience === "admin" ? this.adminSignedIn : this.signedIn)
-        ? this.json(this.actor(audience))
+        ? this.json(this.session(audience))
         : this.json({ error: "请登录" }, 401);
     }
-    if (path.startsWith("/api/admin/") ? !this.adminSignedIn : !this.signedIn)
+    if (!signedIn)
       return this.json({ error: "请登录" }, 401);
+    if (path === "/api/auth/contexts" && method === "GET") {
+      return this.json({
+        memberships: this.hasMembership ? this.memberships().filter((member) => audience === "client" || member.role === "admin") : [],
+        context_switch_enabled: this.contextSwitchEnabled,
+      } satisfies WireSchemas["ContextList"]);
+    }
+    if (path === "/api/auth/contexts/switch" && method === "POST") {
+      if (!this.contextSwitchEnabled)
+        return this.json({ error: { code: "context_switch_disabled", message: "上下文切换尚未开放" } }, 403);
+      const command = body as WireSchemas["ContextSwitchRequest"];
+      if (command.expected_context_version !== headers.get("X-Context-Version"))
+        return this.json({ error: { code: "context_stale", message: "切换命令版本不一致" } }, 409);
+      if (!this.hasMembership || !this.memberships().some((member) => member.id === command.membership_id && (audience === "client" || member.role === "admin")))
+        return this.json({ error: { code: "access_denied", message: "当前上下文没有该项授权" } }, 403);
+      this.selectedMemberships[audience] = command.membership_id;
+      this.contextVersions[audience] += 1;
+      return this.json(this.session(audience));
+    }
     if (path === "/api/settings" || path === "/api/admin/settings") {
       const attempts = [...this.reviews.values()].flatMap(
         (review) => review.execution?.attempts ?? [],
@@ -507,6 +623,7 @@ class Service {
         text: null,
         clauses: [],
       });
+      if (file.type === "text/plain") this.uploadedTexts.set(`${caseId}/${id}`, await file.text());
       item.documents.push(sourceDoc);
       let version = 1;
       if (target) {
@@ -632,7 +749,8 @@ class Service {
         if (
           ["accepted", "queued", "started", "running"].includes(current.state)
         ) {
-          const cancelled = { ...current, state: "cancelled", finished_at: at };
+          const cancelled = { ...current, state: "cancelled", finished_at: at,
+            outcome: { reason: "cancelled_by_user", agent_stage: "unknown", retry_cause: "none" } };
           review.execution = {
             ...execution,
             attempt: cancelled,
@@ -717,6 +835,8 @@ class Service {
         finished_at: attempt.finished_at,
         parsed_document_ids: attempt.parsed_document_ids,
         history_kind: attempt.history_kind,
+        review_scope: attempt.review_scope,
+        outcome: attempt.outcome,
       });
       const publicPayload = {
         ...payload,
@@ -725,7 +845,7 @@ class Service {
           attempt: businessAttempt(selectedAttempt),
           attempts: attempts.map(businessAttempt),
         } : null,
-        snapshot: payload.snapshot ? { document_ids: payload.snapshot.document_ids } : null,
+        snapshot: payload.snapshot ? { document_ids: payload.snapshot.document_ids, review_scope: payload.snapshot.review_scope } : null,
         audit_events: [],
         business_events: payload.business_events ?? [],
       };
@@ -837,6 +957,35 @@ async function selectBusinessTime() {
 }
 
 describe("application routes and API contract", () => {
+  it("shows a limited precheck in the case and starts a full review only after readiness", async () => {
+    const api = new Service();
+    const prior = api.addReview("partial");
+    markLimitedPrecheck(prior);
+    const { user } = open(api, "/cases/c1");
+    const summary = await screen.findByRole("region", { name: "审查结果、范围与人工进度" });
+    expect(summary).toHaveTextContent("单合同预审已结束");
+    expect(summary).toHaveTextContent("范围，未执行");
+    expect(summary).toHaveTextContent("1 项尚无人工判断");
+    expect(screen.queryByRole("button", { name: "开始完整审查" })).not.toBeInTheDocument();
+    await selectBusinessTime();
+    await user.click(await screen.findByRole("button", { name: "开始完整审查" }));
+    await screen.findByRole("heading", { name: "审查工作区" });
+    expect(api.requests.find((entry) => entry.key === "POST /api/cases/c1/reviews")?.input).toEqual({ business_at: "2026-10-21T00:00:00.000Z" });
+    expect(api.reviews.get("r1")!.execution!.attempt.outcome?.reason).toBe("scope_limited");
+  });
+
+  it("preserves a limited precheck's agent failure without offering a generic retry", async () => {
+    const api = new Service();
+    markLimitedPrecheck(api.addReview("partial"), "failed");
+    open(api, "/cases/c1/reviews/r1");
+    const summary = await screen.findByRole("region", { name: "审查结果、范围与人工进度" });
+    expect(summary).toHaveTextContent("单合同预审已结束");
+    expect(summary).toHaveTextContent("智能审查执行失败");
+    expect(summary).toHaveTextContent("其他风险不在本次单合同预审范围，未执行");
+    expect(screen.queryByRole("button", { name: "重新执行未完成的审查" })).not.toBeInTheDocument();
+    expect(within(summary).getByRole("link", { name: "查看完整审查准备" })).toHaveAttribute("href", "/cases/c1#review-readiness");
+  });
+
   it("confirms the server-provided legacy material candidates before opening a new review", async () => {
     const api = new Service();
     const item = api.cases.get("c1")!;
@@ -942,7 +1091,23 @@ describe("application routes and API contract", () => {
     expect(
       screen.getByText("质保期限不一致", { selector: "h3" }),
     ).toBeInTheDocument();
+    const frozen = api.reviews.get("r1")!;
+    const anchors = frozen.findings[0]!.evidence;
+    expect(anchors).toHaveLength(2);
+    expect(anchors.map((anchor) => frozen.documents.find((document) => document.id === anchor.document_version_id)?.filename))
+      .toEqual(["采购.txt", "合同.txt"]);
+    for (const anchor of anchors) {
+      const document = frozen.documents.find((entry) => entry.id === anchor.document_version_id)!;
+      expect(api.cases.get("c1")!.documents.some((entry) => entry.id === document.id)).toBe(true);
+      expect(frozen.snapshot?.document_ids).toContain(document.id);
+      expect(anchor.parsed_document_id).toBe(document.parsed_document_id);
+      expect(anchor.parsed_document_id).not.toBeNull();
+      expect(frozen.review_attempts?.attempt.parsed_document_ids).toContain(anchor.parsed_document_id);
+      expect(Array.from(document.text!).slice(anchor.text_offset!.start, anchor.text_offset!.end).join("")).toBe(anchor.quote);
+    }
     await user.click(screen.getByRole("button", { name: "加载运行轨迹与诊断" }));
+    await screen.findByRole("link", { name: "查看运行轨迹" });
+    await user.click(screen.getByText("经验、审查依据与历史"));
     await user.click(
       screen.getByRole("button", { name: "运行依据与规则评估" }),
     );
@@ -965,11 +1130,27 @@ describe("application routes and API contract", () => {
       expected_version: 1,
     });
     expect(submitted.headers.get("Idempotency-Key")).toMatch(/^[\w-]{20,}$/);
+    expect(api.reviews.get("r1")?.findings[0]?.decisions).toMatchObject([
+      { action: "confirm_risk", reason: "逐项核对两份原文，期限确有差异" },
+    ]);
     await user.click(screen.getByRole("button", { name: "退出" }));
     expect(
       await screen.findByRole("heading", { name: "登录合同审查" }),
     ).toBeInTheDocument();
     expect(api.signedIn).toBe(false);
+    const session = api.session();
+    const writes = api.requests.filter((entry) => /^(POST|PUT|PATCH|DELETE) /.test(entry.key) && entry.key !== "POST /api/session");
+    expect(writes.length).toBeGreaterThan(0);
+    for (const request of writes) {
+      expect(request.headers.get("X-Context-Version")).toBe(session.active_context.context_version);
+      expect(request.headers.get("X-CSRF-Token")).toBe(session.csrf_token);
+    }
+    const logins = api.requests.filter((entry) => entry.key === "POST /api/session");
+    expect(logins).toHaveLength(2);
+    for (const login of logins) {
+      expect(login.headers.has("X-Context-Version")).toBe(false);
+      expect(login.headers.has("X-CSRF-Token")).toBe(false);
+    }
   }, 30_000);
 
   it.each([
@@ -1053,7 +1234,8 @@ describe("application routes and API contract", () => {
       doc("d3", "award"),
       doc("d4", "attachment"),
     ];
-    api.addReview();
+    const previousReview = api.addReview();
+    const previousDocuments = structuredClone(previousReview.documents);
     const { user } = open(api, "/cases/c1");
     expect(await screen.findByRole("heading", { name: "材料版本历史" })).toBeInTheDocument();
     expect(
@@ -1074,6 +1256,7 @@ describe("application routes and API contract", () => {
       current_version: 2,
     });
     expect(api.cases.get("c1")!.documents.find((document) => document.id === "d2")?.superseded).toBe(true);
+    expect(previousReview.documents).toEqual(previousDocuments);
     expect(api.cases.get("c1")!.revision_pending).toBe(true);
     await screen.findByLabelText("审查业务时间（北京时间）");
     await selectBusinessTime();
@@ -1084,6 +1267,7 @@ describe("application routes and API contract", () => {
       await screen.findByRole("heading", { name: "审查工作区" }),
     ).toBeInTheDocument();
     expect(api.reviews.size).toBe(2);
+    expect(previousReview.documents).toEqual(previousDocuments);
     expect(api.cases.get("c1")!.revision_pending).toBe(false);
   });
 
@@ -1238,6 +1422,7 @@ describe("application routes and API contract", () => {
   it("shows model failure, retries, and displays ordinary decision errors separately from conflict", async () => {
     const api = new Service();
     const review = api.addReview("failed");
+    markModelTimeout(review);
     review.run.failure_message = "模型调用超时";
     const firstAttempt = review.execution!.attempt;
     review.execution!.events = [
@@ -1422,9 +1607,10 @@ describe("application routes and API contract", () => {
     expect(screen.getByRole("button", { name: /#12/ })).toBeInTheDocument();
   });
 
-  it("blocks decisions during execution and preserves cancellation as a terminal state", async () => {
+  it.each(["queued", "running"])("lets an authorized user restart a cancelled %s attempt with frozen inputs and no frozen result", async (state) => {
     const api = new Service();
-    const review = api.addReview("running");
+    const review = api.addReview(state);
+    prepareFrozenInputs(review);
     const { user } = open(api, "/cases/c1/reviews/r1");
     expect(
       await screen.findByText("本次审查仍在执行，完成后才能提交审查判断。"),
@@ -1444,8 +1630,45 @@ describe("application routes and API contract", () => {
       screen.queryByRole("button", { name: "取消本次执行" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "重新执行未完成的审查" }),
-    ).toBeEnabled();
+      screen.queryByRole("button", { name: "重新执行未完成的审查" }),
+    ).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "重新发起已取消审查" }));
+    await waitFor(() => expect(review.execution!.attempts).toHaveLength(2));
+    expect(review.execution!.attempts[0]!.state).toBe("cancelled");
+    expect(review.execution!.attempts[0]!.output_hash).toBeNull();
+    expect(review.execution!.attempt.retry_of_attempt_id).toBe(review.execution!.attempts[0]!.id);
+  });
+
+  it("does not restart a cancellation when frozen input identity is unavailable", async () => {
+    const api = new Service();
+    api.addReview("running");
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    await user.click(await screen.findByRole("button", { name: "取消本次执行" }));
+    expect(await screen.findByText(/冻结输入尚不能核对/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新发起已取消审查" })).not.toBeInTheDocument();
+  });
+
+  it("does not offer a user restart for a cancellation caused by revoked authorization", async () => {
+    const api = new Service();
+    const review = api.addReview("cancelled");
+    prepareFrozenInputs(review);
+    review.execution!.attempt.outcome = { reason: "authorization_revoked", agent_stage: "unknown", retry_cause: "none" };
+    open(api, "/cases/c1/reviews/r1");
+    expect(await screen.findByText(/审查已取消。取消前保存的规则发现/)).toBeInTheDocument();
+    expect(screen.getByText("本次执行因授权变化而取消，请联系案件管理员核对权限。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新发起已取消审查" })).not.toBeInTheDocument();
+  });
+
+  it.each(["viewer", "archived"])("keeps user cancellation restart disabled for %s", async (availability) => {
+    const api = new Service();
+    const review = api.addReview("cancelled");
+    prepareFrozenInputs(review);
+    review.execution!.attempt.outcome = { reason: "cancelled_by_user", agent_stage: "unknown", retry_cause: "none" };
+    if (availability === "viewer") api.role = "viewer";
+    else api.cases.get("c1")!.archived_at = at;
+    open(api, "/cases/c1/reviews/r1");
+    expect(await screen.findByRole("button", { name: "重新发起已取消审查" })).toBeDisabled();
+    expect(api.requests.filter((entry) => entry.key.endsWith("/retry"))).toHaveLength(0);
   });
   it.each([
     { availability: "archived", state: "awaiting_human", action: "decision" },
@@ -1462,7 +1685,8 @@ describe("application routes and API contract", () => {
     "keeps direct review history readable and disables $action when case state is $availability",
     async ({ availability, state, action }) => {
       const api = new Service();
-      api.addReview(state);
+      const review = api.addReview(state);
+      if (action === "retry") markModelTimeout(review);
       if (availability === "archived") api.cases.get("c1")!.archived_at = at;
       else api.fail("GET /api/cases/c1", 503);
 
@@ -1581,7 +1805,8 @@ describe("application routes and API contract", () => {
       },
     ];
     const { user } = open(api, "/cases/c1/reviews/r1");
-    await user.click(await screen.findByRole("button", { name: "修改稿对照" }));
+    await user.click(await screen.findByText("经验、审查依据与历史"));
+    await user.click(screen.getByRole("button", { name: "修改稿对照" }));
     expect(
       screen.getByText(/先前决定：接受残余风险，\s*原审查员，\s*待复核/),
     ).toBeInTheDocument();
@@ -1593,6 +1818,7 @@ describe("application routes and API contract", () => {
       screen.getByText("还没有审查人员的判断。模型建议不会自动结案。"),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "加载运行轨迹与诊断" }));
+    await screen.findByRole("link", { name: "查看运行轨迹" });
     await user.click(
       screen.getByRole("button", { name: "运行依据与规则评估" }),
     );
@@ -1630,7 +1856,8 @@ describe("application routes and API contract", () => {
     review.snapshot = null;
     review.evaluations = [];
     const { user } = open(api, "/cases/c1/reviews/r1");
-    await user.click(await screen.findByRole("button", { name: "修改稿对照" }));
+    await user.click(await screen.findByText("经验、审查依据与历史"));
+    await user.click(screen.getByRole("button", { name: "修改稿对照" }));
     expect(
       await screen.findByText("两次运行使用不同规则版本，不能直接对照。"),
     ).toBeInTheDocument();
@@ -1857,7 +2084,7 @@ describe("application routes and API contract", () => {
   it("disables retry and decisions for a read-only reviewer without hiding evidence", async () => {
     const api = new Service();
     api.role = "viewer";
-    api.addReview("partial");
+    markModelTimeout(api.addReview("partial"));
     open(api, "/cases/c1/reviews/r1");
     expect(
       await screen.findByText("当前角色不能提交审查判断。"),
@@ -1876,7 +2103,7 @@ describe("application routes and API contract", () => {
   it("allows a clerk to recover execution while keeping human decisions unavailable", async () => {
     const api = new Service();
     api.role = "clerk";
-    api.addReview("partial");
+    markModelTimeout(api.addReview("partial"));
     open(api, "/cases/c1/reviews/r1");
     await screen.findByRole("heading", { name: "审查工作区" });
     expect(
@@ -1889,9 +2116,9 @@ describe("application routes and API contract", () => {
     ).toHaveLength(0);
   });
 
-  it("offers a manual new attempt after interruption without replacing the original attempt", async () => {
+  it("offers a manual new attempt after a recorded timeout without replacing the original attempt", async () => {
     const api = new Service();
-    api.addReview("interrupted");
+    markModelTimeout(api.addReview("interrupted"));
     const { user } = open(api, "/cases/c1/reviews/r1");
     await user.click(
       await screen.findByRole("button", { name: "重新执行未完成的审查" }),
@@ -1980,6 +2207,8 @@ describe("application routes and API contract", () => {
     ).toBe(true);
     expect(api.signedIn).toBe(true);
     expect(api.adminSignedIn).toBe(true);
+    const adminSession = api.session("admin");
+    expect(adminSession.csrf_token).not.toBe(api.session("client").csrf_token);
     await user.click(screen.getByRole("button", { name: "退出" }));
     expect(
       await screen.findByRole("heading", { name: "登录管理工作台" }),
@@ -1989,6 +2218,9 @@ describe("application routes and API contract", () => {
         (entry) => entry.key === "DELETE /api/session?audience=admin",
       ),
     ).toBe(true);
+    const adminLogout = api.requests.find((entry) => entry.key === "DELETE /api/session?audience=admin")!;
+    expect(adminLogout.headers.get("X-Context-Version")).toBe(adminSession.active_context.context_version);
+    expect(adminLogout.headers.get("X-CSRF-Token")).toBe(adminSession.csrf_token);
     expect(api.signedIn).toBe(true);
     expect(api.adminSignedIn).toBe(false);
 
@@ -2000,6 +2232,57 @@ describe("application routes and API contract", () => {
     expect(api.requests.some((entry) => entry.key === "GET /api/session")).toBe(
       true,
     );
+  });
+
+  it.each([
+    ["client", "/cases", "案件", "登录合同审查"],
+    ["admin", "/admin/rulepacks", "规则库 / RulePack 治理", "登录管理工作台"],
+  ] as const)("switches the %s context with its own version and CSRF token", async (audience, path, heading, loginHeading) => {
+    const api = new Service();
+    api.hasMembership = true;
+    api.contextSwitchEnabled = true;
+    const before = api.session(audience);
+    const otherAudience = audience === "client" ? "admin" : "client";
+    const otherBefore = api.session(otherAudience);
+    const { user, client } = open(api, path);
+    await screen.findByRole("heading", { name: heading, level: 1 });
+    const switcher = await screen.findByRole("combobox", { name: "切换工作上下文" });
+    await chooseOption(user, switcher, "其他租户 · 其他组织");
+
+    const switchKey = `POST /api/auth/contexts/switch?audience=${audience}`;
+    await waitFor(() => expect(api.session(audience).active_context.context_version).toBe("2"));
+    const request = api.requests.find((entry) => entry.key === switchKey)!;
+    expect(request.input).toEqual({ membership_id: otherMembershipId, expected_context_version: "1" });
+    expect(request.headers.get("X-Context-Version")).toBe("1");
+    expect(request.headers.get("X-CSRF-Token")).toBe(before.csrf_token);
+    expect(api.session(audience)).toMatchObject({
+      principal_id: before.principal_id,
+      csrf_token: before.csrf_token,
+      actor: { tenant_id: "tenant-other", org_id: "org-other" },
+      active_context: { membership_id: otherMembershipId, tenant_id: "tenant-other", org_id: "org-other", context_version: "2" },
+    });
+    await waitFor(() => expect(client.getQueryData(["session", audience])).toMatchObject({
+      tenant_id: "tenant-other", org_id: "org-other", active_context: { context_version: "2" },
+    }));
+    expect(api.session(otherAudience)).toEqual(otherBefore);
+
+    const sendSwitch = (version: string, csrf: string) => api.handle(`/api/auth/contexts/switch?audience=${audience}`, {
+      method: "POST",
+      headers: { "X-Context-Version": version, "X-CSRF-Token": csrf },
+      body: JSON.stringify({ membership_id: defaultMembershipId, expected_context_version: version }),
+    });
+    expect((await sendSwitch("1", before.csrf_token)).status).toBe(409);
+    expect((await sendSwitch("2", otherBefore.csrf_token)).status).toBe(403);
+    api.contextSwitchEnabled = false;
+    expect((await sendSwitch("2", before.csrf_token)).status).toBe(403);
+    expect(api.session(audience).active_context.context_version).toBe("2");
+
+    await user.click(screen.getByRole("button", { name: "退出" }));
+    expect(await screen.findByRole("heading", { name: loginHeading })).toBeInTheDocument();
+    const logout = api.requests.find((entry) => entry.key === (audience === "admin" ? "DELETE /api/session?audience=admin" : "DELETE /api/session"))!;
+    expect(logout.headers.get("X-Context-Version")).toBe("2");
+    expect(logout.headers.get("X-CSRF-Token")).toBe(before.csrf_token);
+    expect(api.session(otherAudience)).toEqual({ ...otherBefore, context_switch_enabled: false });
   });
 
   it("preserves manual sidebar collapse and expansion across Compare and other routes", async () => {

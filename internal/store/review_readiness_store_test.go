@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,9 +13,12 @@ package store
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
+	"time"
 
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/docir"
 	"contractaudit/internal/fault"
 )
 
@@ -31,6 +34,127 @@ func TestGetReviewReadinessWithoutPoolReturnsUnavailable(t *testing.T) {
 	}
 }
 
+// This is a synthetic cloud-service scenario and synthetic internal policy,
+// not a legal source or a test of an actual model/OCR service.
+func TestReadinessCloudPackAndFrozenSyntheticEvidence(t *testing.T) {
+	env, ok := newDurableRoleEnvironment(t)
+	if !ok {
+		t.Skip("isolated database and migrator required")
+	}
+	core, document, execution := env.openRole(t, "core"), env.openRole(t, "document"), env.openRole(t, "execution")
+	admin, _ := accounts.ByID("demo-admin")
+	pack, policy := seedGovernedCloudPolicy(t, core, admin)
+	token, err := core.EstablishSession(admin, "client")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, _, err = core.AuthenticateSession(context.Background(), token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := WithAdmissionSessionToken(context.Background(), token)
+	authority := durableTestOperationAuthority{core: core}
+	document.UseOperationAuthority(authority)
+	execution.UseOperationAuthority(authority)
+	execution.UseDocumentPreparer(document)
+	reviewer := newGovernedCloudModel()
+	reviewer.unblock()
+	execution.UseModels(reviewer)
+	caseID, err := core.CreateCaseWithBusiness(admin, "合成云服务合同", "service", "ENT", "cloud_services")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for role, body := range syntheticCloudReviewMaterials() {
+		if _, err := document.AddDocument(ctx, admin, caseID, role, "synthetic-"+role+".txt", "text/plain", []byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ready, err := execution.GetReviewReadiness(ctx, admin, caseID, acceptanceBusinessTime)
+	if err != nil || !ready.CanStart || ready.Scopes[0].RulePack == nil {
+		t.Fatalf("matching cloud readiness: %+v, %v", ready, err)
+	}
+	selected := ready.Scopes[0]
+	if selected.RulePack.PackID != pack.Pack.ID || selected.RulePack.Version != pack.Pack.Version ||
+		len(selected.RulePack.ApplicableScopes) != 1 || selected.RulePack.ApplicableScopes[0].Scenario != "cloud_services" || len(selected.Checks) != 3 {
+		t.Fatalf("wrong declared rules or business scope: %+v", selected)
+	}
+	for _, check := range selected.Checks {
+		if check.Comparator == "" || len(check.SourceRoles) == 0 {
+			t.Fatalf("check lost manifest facts: %+v", check)
+		}
+	}
+	otherID, err := core.CreateCaseWithBusiness(admin, "合成不同业务", "service", "ENT", "telecom_dedicated_line")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := execution.GetReviewReadiness(ctx, admin, otherID, acceptanceBusinessTime)
+	if err != nil || other.CanStart || other.Scopes[0].RulePack != nil || !hasReadinessBlocker(other.Scopes[0], "governed_dependencies_incomplete") {
+		t.Fatalf("cloud pack was offered to a dedicated-line case: %+v, %v", other, err)
+	}
+	accepted, err := execution.StartReviewAsyncAt(ctx, admin, caseID, acceptanceBusinessTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, err := execution.ClaimNextJob(ctx, "synthetic-cloud-worker", time.Minute)
+	if err != nil || claim.JobID != accepted.JobID {
+		t.Fatalf("claim synthetic review: %+v, %v", claim, err)
+	}
+	if err := execution.RunClaimedJob(ctx, claim); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := core.Workspace(admin, caseID, accepted.RunID, accepted.AttemptID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := core.snapshotAs(admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, ok := state.attemptInput(accepted.AttemptID)
+	if !ok || workspace.Snapshot.RulePackID != pack.Pack.ID || len(workspace.Evaluations) != 3 {
+		t.Fatalf("matching rule pack or frozen input missing: %+v", workspace.Snapshot)
+	}
+	verified, draftVerified := 0, false
+	for _, evaluation := range workspace.Evaluations {
+		if evaluation.Relation != "compatible" {
+			t.Fatalf("unexpected synthetic evaluation: %+v", evaluation)
+		}
+		for _, evidence := range evaluation.Evidence {
+			ref, found := evidence.Ref, false
+			for _, frozen := range input.Documents {
+				if frozen.Document.ID != ref.DocumentID || frozen.ParsedDocumentID != ref.ParsedDocumentID || frozen.NormalizedHash == nil || *frozen.NormalizedHash != ref.NormalizedDigest {
+					continue
+				}
+				quote, exact := docir.Slice(frozen.Text, ref.Start, ref.End)
+				if !exact || quote != ref.Quote {
+					t.Fatalf("citation does not match frozen original text: %+v", ref)
+				}
+				found, draftVerified = true, draftVerified || frozen.Document.Role == "draft_contract"
+				verified++
+			}
+			if !found {
+				t.Fatalf("citation not bound to a frozen parse: %+v", ref)
+			}
+		}
+	}
+	if verified == 0 || !draftVerified {
+		t.Fatal("synthetic review produced no verified draft citations")
+	}
+	advanceKnowledge(t, core, admin, policy, "withdraw", "synthetic-cloud-withdraw")
+	blocked, err := execution.GetReviewReadiness(ctx, admin, caseID, acceptanceBusinessTime)
+	if err != nil || blocked.CanStart || blocked.Scopes[0].RulePack == nil || len(blocked.Scopes[0].Checks) != 3 || !hasReadinessBlocker(blocked.Scopes[0], "governed_dependencies_incomplete") {
+		t.Fatalf("withdrawn policy must block admission while preserving readable checks: %+v, %v", blocked, err)
+	}
+	if _, err := execution.StartReviewAsyncAt(ctx, admin, caseID, acceptanceBusinessTime); err == nil {
+		t.Fatal("withdrawn policy was accepted for a new review")
+	}
+	after, err := core.Workspace(admin, caseID, accepted.RunID, accepted.AttemptID)
+	if err != nil || !reflect.DeepEqual(after.Snapshot, workspace.Snapshot) || !reflect.DeepEqual(after.Evaluations, workspace.Evaluations) {
+		t.Fatalf("governance change altered the frozen historical review: %v", err)
+	}
+	t.Logf("synthetic cloud evaluation: %d frozen citations verified; real model and OCR NOT_RUN", verified)
+}
+
 func TestReviewReadinessReadsCurrentMaterialsWithoutCreatingReviewState(t *testing.T) {
 	env, ok := newDurableRoleEnvironment(t)
 	if !ok {
@@ -43,7 +167,16 @@ func TestReviewReadinessReadsCurrentMaterialsWithoutCreatingReviewState(t *testi
 	core := env.openRole(t, "core")
 	document := env.openRole(t, "document")
 	execution := env.openRole(t, "execution")
-	ctx := context.Background()
+	token, err := core.EstablishSession(admin, "client")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, _, err = core.AuthenticateSession(context.Background(), token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document.UseOperationAuthority(durableTestOperationAuthority{core: core})
+	ctx := WithAdmissionSessionToken(context.Background(), token)
 	caseID, err := core.CreateCaseWithBusiness(admin, "准备清单规则接纳", "service", "ENT", "telecom_dedicated_line")
 	if err != nil {
 		t.Fatal(err)

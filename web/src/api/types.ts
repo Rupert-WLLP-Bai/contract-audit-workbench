@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r3
+// Updated: 2026-11-04
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -240,6 +240,8 @@ export interface ExecutionAttempt {
   review_scope?: ReviewScopeIdentity;
   history_kind: string;
   frozen_result_available?: boolean;
+  /** Describes this selected attempt; never grants permission to retry. */
+  outcome?: { reason: string; agent_stage: string; retry_cause: string };
 }
 
 export interface ExecutionUsageSubtotals {

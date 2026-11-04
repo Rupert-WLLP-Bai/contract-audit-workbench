@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -212,6 +212,10 @@ function parseExecutionAttempt(value: unknown): ExecutionAttempt {
     review_scope: parseReviewScope(record.review_scope),
     history_kind: requiredString(record, "history_kind"),
     frozen_result_available: record.frozen_result_available === true,
+    outcome: isRecord(record.outcome) && typeof record.outcome.reason === "string" &&
+      typeof record.outcome.agent_stage === "string" && typeof record.outcome.retry_cause === "string"
+      ? { reason: record.outcome.reason, agent_stage: record.outcome.agent_stage, retry_cause: record.outcome.retry_cause }
+      : undefined,
   };
 }
 

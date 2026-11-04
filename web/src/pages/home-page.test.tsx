@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -256,6 +256,7 @@ class HomeService {
   readinessGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
   caseDetailGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
   reviewGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
+  reviewResponse: unknown = null;
   createFailures: number[] = [];
   snapshotGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
   completionGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
@@ -304,6 +305,7 @@ class HomeService {
     }
     if (parts[2] === "cases" && parts[4] === "reviews" && method === "GET") {
       if (this.reviewGate) await this.reviewGate.promise;
+      if (this.reviewResponse) return json(this.reviewResponse);
       return json({ error: { message: "审查历史已撤权" } }, 403);
     }
     if (parts[4] === "tasks" && method === "POST") {
@@ -607,6 +609,30 @@ describe("HomePage snapshot consumers", () => {
     expect(continueLink).toHaveAttribute("href", "/cases/case-1#case-materials");
     expect(service.requests.filter((request) => request.path === "/api/cases/case-1")).toHaveLength(1);
     expect(service.requests.filter((request) => request.path.startsWith("/api/cases/case-1/review-readiness"))).toHaveLength(1);
+  });
+
+  it("shows the same limited-precheck outcome and material next step on the home entry", async () => {
+    const service = new HomeService();
+    service.caseDetail = caseDetail();
+    service.caseDetail.latest_run = { id: "run-1", state: "partial", updated_at: at };
+    service.readinessResponse = readiness("required_materials_missing", "缺少采购材料");
+    const scope = { id: "single_contract_precheck", rule_set_id: "single-contract-precheck", rule_set_version: "1", rule_set_hash: "51676a95611b6e1bf4c30fc50be82e1d493528f34b89f3ece9dbb5aa6c291596" };
+    const attempt = { id: "attempt-1", run_id: "run-1", ordinal: 1, state: "partial", history_kind: "frozen", parsed_document_ids: ["parse-1"], review_scope: scope,
+      outcome: { reason: "scope_limited", agent_stage: "failed", retry_cause: "none" } };
+    service.reviewResponse = { run: { id: "run-1", case_id: "case-1", state: "partial" },
+      review_attempts: { attempt, attempts: [attempt] }, snapshot: { document_ids: ["doc-1"], review_scope: scope },
+      documents: [{ id: "doc-1", role: "draft_contract", filename: "合同.txt", parse_status: "ready", parsed_document_id: "parse-1" }],
+      findings: [{ id: "finding-1", decisions: [], evidence: [] }], evaluations: [{ id: "eval-1", domain: "payment_sum", relation: "insufficient", rule_id: "single-payment-sum-v1", rule_version: "single-payment-sum-v1", capability_id: "single_contract.payment_sum", reason: "需人工核对" }], execution: null, audit_events: [] };
+    const { user } = open(service);
+    const caseWork = await screen.findByRole("region", { name: "按案件处理" });
+    const target = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li")!;
+    await user.click(within(target).getByRole("button", { name: "查看实际下一步" }));
+    const summary = await within(target).findByRole("region", { name: "审查结果、范围与人工进度" });
+    expect(summary).toHaveTextContent("单合同预审已结束");
+    expect(summary).toHaveTextContent("智能审查执行失败");
+    expect(summary).toHaveTextContent("1 项尚无人工判断");
+    expect(within(target).getByRole("link", { name: "转到材料集合" })).toHaveAttribute("href", "/cases/case-1#case-materials");
+    expect(within(target).queryByRole("button", { name: "开始完整审查" })).not.toBeInTheDocument();
   });
 
   it("fails closed when the case detail response belongs to another case", async () => {

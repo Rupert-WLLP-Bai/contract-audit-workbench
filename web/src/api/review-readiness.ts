@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -37,11 +37,12 @@ export interface ReviewReadinessScope {
   id: string;
   status: string;
   can_start: boolean;
-  rule_pack: { pack_id: string; version: string; snapshot_digest: string } | null;
+  rule_pack: { pack_id: string; version: string; snapshot_digest: string; applicable_scopes?: ReviewReadinessBusinessScope[] } | null;
   rule_set: ReviewScopeIdentity | null;
-  checks: { rule_id: string; status: string; missing_dependencies: string[]; next_action: string }[];
+  checks: { rule_id: string; comparator?: string; source_roles?: string[]; status: string; missing_dependencies: string[]; next_action: string }[];
   blockers: ReviewReadinessBlocker[];
 }
+export interface ReviewReadinessBusinessScope { business_line: string; scenario: string; contract_type: string }
 export interface ReviewReadiness {
   case_id: string;
   revision: string;
@@ -74,7 +75,7 @@ function material(value: unknown, path: string): ReviewReadinessMaterial {
 }
 function scope(value: unknown, path: string): ReviewReadinessScope {
   const row = reader.record(value, path, ["id", "status", "can_start", "rule_pack", "rule_set", "checks", "blockers"], ["id", "status", "can_start", "checks", "blockers"]);
-  const pack = row.rule_pack == null ? null : reader.record(row.rule_pack, `${path}.rule_pack`, ["pack_id", "version", "snapshot_digest"]);
+  const pack = row.rule_pack == null ? null : reader.record(row.rule_pack, `${path}.rule_pack`, ["pack_id", "version", "snapshot_digest", "applicable_scopes"], ["pack_id", "version", "snapshot_digest"]);
   const ruleSet = row.rule_set == null ? null : reader.record(row.rule_set, `${path}.rule_set`, ["id", "rule_set_id", "rule_set_version", "rule_set_hash"]);
   return {
     id: reader.text(row.id, `${path}.id`),
@@ -84,14 +85,21 @@ function scope(value: unknown, path: string): ReviewReadinessScope {
       pack_id: reader.text(pack.pack_id, `${path}.rule_pack.pack_id`),
       version: reader.text(pack.version, `${path}.rule_pack.version`),
       snapshot_digest: reader.text(pack.snapshot_digest, `${path}.rule_pack.snapshot_digest`),
+      ...(pack.applicable_scopes === undefined ? {} : { applicable_scopes: reader.array(pack.applicable_scopes, `${path}.rule_pack.applicable_scopes`, (value, scopePath) => {
+        const declared = reader.record(value, scopePath, ["business_line", "scenario", "contract_type"]);
+        return { business_line: reader.text(declared.business_line, `${scopePath}.business_line`),
+          scenario: reader.text(declared.scenario, `${scopePath}.scenario`), contract_type: reader.text(declared.contract_type, `${scopePath}.contract_type`) };
+      }) }),
     },
     rule_set: ruleSet === null ? null : {
       id: reader.text(ruleSet.id, `${path}.rule_set.id`), rule_set_id: reader.text(ruleSet.rule_set_id, `${path}.rule_set.rule_set_id`),
       rule_set_version: reader.text(ruleSet.rule_set_version, `${path}.rule_set.rule_set_version`), rule_set_hash: reader.text(ruleSet.rule_set_hash, `${path}.rule_set.rule_set_hash`),
     },
     checks: reader.array(row.checks, `${path}.checks`, (value, path) => {
-      const check = reader.record(value, path, ["rule_id", "status", "missing_dependencies", "next_action"]);
+      const check = reader.record(value, path, ["rule_id", "comparator", "source_roles", "status", "missing_dependencies", "next_action"], ["rule_id", "status", "missing_dependencies", "next_action"]);
       return { rule_id: reader.text(check.rule_id, `${path}.rule_id`), status: reader.text(check.status, `${path}.status`),
+        ...(check.comparator === undefined ? {} : { comparator: reader.text(check.comparator, `${path}.comparator`) }),
+        ...(check.source_roles === undefined ? {} : { source_roles: reader.array(check.source_roles, `${path}.source_roles`, reader.text) }),
         missing_dependencies: reader.nullableArray(check.missing_dependencies, `${path}.missing_dependencies`, reader.text) ?? [], next_action: reader.text(check.next_action, `${path}.next_action`) };
     }),
     blockers: reader.array(row.blockers, `${path}.blockers`, (value, path) => {

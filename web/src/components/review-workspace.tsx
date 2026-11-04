@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -36,6 +36,8 @@ import { FindingPanel } from "./finding-panel";
 import { BusinessAgentReviewView } from "./business-agent-review";
 import { TrajectoryView } from "./trajectory-view";
 import { SingleContractScopeCoverage } from "./single-contract-scope-coverage";
+import { ReviewOutcomeSummary } from "./review-outcome-summary";
+import { canRestartUserCancelled, hasTransientRetryCause } from "../features/review/review-outcome";
 import { StatusText } from "./status-text";
 import "./review-workspace-layout.css";
 
@@ -47,15 +49,6 @@ const STREAM_LABEL: Record<StreamStatus, string> = {
   closed: "运行状态流已关闭，不会自动重连；请刷新页面或重新登录后再试。",
   inactive: "本次执行没有活动的事件流",
 };
-
-function isRetryableRun(run: ReviewRun): boolean {
-  return (
-    run.state === "failed" ||
-    run.state === "partial" ||
-    run.state === "cancelled" ||
-    run.state === "interrupted"
-  );
-}
 
 function citationMessage(anchors: Finding["evidence"], located: number): string {
   if (anchors.length === 0) return "未提供引用";
@@ -112,20 +105,23 @@ function RetryButton({
   retrying,
   canRetry,
   onRetry,
+  restartCancelled,
 }: {
   retrying: boolean;
   canRetry: boolean;
   onRetry: () => void;
+  restartCancelled: boolean;
 }) {
+  const label = restartCancelled ? "重新发起已取消审查" : "重新执行未完成的审查";
   return (
     <Button
-      aria-label={String(retrying ? "正在受理重试" : "重新执行未完成的审查")}
+      aria-label={String(retrying ? "正在受理重试" : label)}
       type="text"
       htmlType="button"
       onClick={onRetry}
       disabled={retrying || !canRetry}
     >
-      {retrying ? "正在受理重试" : "重新执行未完成的审查"}
+      {retrying ? "正在受理重试" : label}
     </Button>
   );
 }
@@ -138,6 +134,8 @@ function WorkspaceBanner({
   retrying,
   canRetry,
   onRetry,
+  showRetry,
+  restartCancelled,
   hasExecution,
   diagnosticsLoading,
   onLoadDiagnostics,
@@ -149,6 +147,8 @@ function WorkspaceBanner({
   retrying: boolean;
   canRetry: boolean;
   onRetry: () => void;
+  showRetry: boolean;
+  restartCancelled: boolean;
   hasExecution: boolean;
   diagnosticsLoading: boolean;
   onLoadDiagnostics?: () => void;
@@ -164,11 +164,12 @@ function WorkspaceBanner({
         onLoadDiagnostics={onLoadDiagnostics}
       />
       <WorkspaceCircuit documents={documents} findings={findings} />
-      {isRetryableRun(run) ? (
+      {showRetry ? (
         <RetryButton
           retrying={retrying}
           canRetry={canRetry}
           onRetry={onRetry}
+          restartCancelled={restartCancelled}
         />
       ) : null}
     </div>
@@ -210,7 +211,6 @@ function RunCallouts({ run }: { run: ReviewRun }) {
       {run.state === "partial" ? (
         <p className="callout">
           {run.partial_reason ?? "部分结果已保留。"}
-          已经保存的审查判断不会因为重试被重复提交。
         </p>
       ) : null}
       {run.state === "failed" ? (
@@ -557,10 +557,13 @@ export function ReviewWorkspaceView({
         retrying={retrying}
         canRetry={canRetry}
         onRetry={onRetry}
+        showRetry={hasTransientRetryCause(workspace) || canRestartUserCancelled(workspace)}
+        restartCancelled={canRestartUserCancelled(workspace)}
         hasExecution={workspace.execution !== null}
         diagnosticsLoading={diagnosticsLoading}
         onLoadDiagnostics={onLoadDiagnostics}
       />
+      <ReviewOutcomeSummary workspace={workspace} />
       <SingleContractScopeCoverage mode="workspace" workspace={workspace} />
       <RunCallouts run={run} />
       <div className="review-workspace-view-switch" role="group" aria-label="工作区视图">

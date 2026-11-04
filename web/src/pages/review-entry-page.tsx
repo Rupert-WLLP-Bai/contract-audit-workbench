@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -72,7 +72,7 @@ function ReviewEntryRunCell({ run }: { run: WorkbenchRun | null }) {
       <StatusText tone={runTone(run.state)}>{runLabel(run.state)}</StatusText>
       <time dateTime={run.updated_at}>{formatDateTime(run.updated_at)}</time>
       <span className="review-entry-muted">
-        {run.state === "partial" ? "请打开审查查看未完成原因并核对已有结果" : "最新审查记录"}
+        {run.state === "partial" ? "请打开审查核对执行结果、范围和人工进度" : "最新审查记录"}
       </span>
       <TechnicalDetail value={run.id} label="审查标识" />
       <TechnicalDetail value={run.attempt_id} label="执行标识" />

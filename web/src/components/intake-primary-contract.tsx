@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-04
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1553,6 +1553,7 @@ export function IntakePrimaryContract({
 
   return (
     <section
+      id="intake-primary-contract"
       className="home-panel home-intake"
       aria-labelledby={headingId}
     >

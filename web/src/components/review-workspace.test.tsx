@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-01
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -611,6 +611,14 @@ const attempt = (id: string, ordinal: number, state: string) => ({
   error_code: null,
 });
 
+function withTimeout(result: ReviewWorkspace, state: string) {
+  result.run.state = state;
+  result.documents[0]!.parsed_document_id = "parse-1";
+  result.snapshot = { document_ids: [result.documents[0]!.id], rule_set_hash: "", playbook_hash: "", model_ref: null, comparator_ref: null };
+  const selected = { ...attempt("attempt-1", 1, state), parsed_document_ids: ["parse-1"], outcome: { reason: "transient_failure", agent_stage: "unknown", retry_cause: "model_timeout" } };
+  result.review_attempts = { attempt: selected, attempts: [selected] };
+}
+
 describe("review workspace lifecycle", () => {
   it.each([
     ["connecting", "正在连接运行状态"],
@@ -635,12 +643,12 @@ describe("review workspace lifecycle", () => {
     expect(screen.queryByText(/^模型 /)).not.toBeInTheDocument();
   });
 
-  it.each(["failed", "partial", "cancelled", "interrupted"])(
-    "offers a retry for a %s run",
+  it.each(["failed", "partial", "interrupted"])(
+    "offers a retry for a %s run with a recorded timeout",
     async (state) => {
       const user = userEvent.setup();
       const result = workspace();
-      result.run.state = state;
+      withTimeout(result, state);
       const { onRetry } = renderView({ workspace: result });
       expect(
         screen.getByRole("button", { name: "重新执行未完成的审查" }),
@@ -652,8 +660,8 @@ describe("review workspace lifecycle", () => {
     },
   );
 
-  it.each(["completed", "awaiting_human", "running"])(
-    "does not offer a retry for a %s run",
+  it.each(["completed", "awaiting_human", "running", "partial", "failed", "interrupted", "cancelled"])(
+    "does not infer a retry from a %s state alone",
     (state) => {
       const result = workspace();
       result.run.state = state;
@@ -666,7 +674,7 @@ describe("review workspace lifecycle", () => {
 
   it("marks a retry as pending and respects the retry permission", () => {
     const result = workspace();
-    result.run.state = "failed";
+    withTimeout(result, "failed");
     const view = renderView({ workspace: result, retrying: true });
     expect(
       screen.getByRole("button", { name: "正在受理重试" }),
@@ -684,7 +692,7 @@ describe("review workspace lifecycle", () => {
     partial.run.partial_reason = "模型输出超时";
     const view = renderView({ workspace: partial });
     expect(
-      screen.getByText(/模型输出超时.*保存的审查判断/),
+      screen.getByText("模型输出超时"),
     ).toBeInTheDocument();
     view.unmount();
     const failed = workspace();
@@ -705,7 +713,7 @@ describe("review workspace lifecycle", () => {
     const partial = workspace();
     partial.run.state = "partial";
     const view = renderView({ workspace: partial });
-    expect(screen.getByText(/部分结果已保留。.*保存的审查判断/)).toBeInTheDocument();
+    expect(screen.getByText("部分结果已保留。")).toBeInTheDocument();
     view.unmount();
     const failed = workspace();
     failed.run.state = "failed";

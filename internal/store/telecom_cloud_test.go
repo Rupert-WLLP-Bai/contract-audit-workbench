@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -186,18 +186,24 @@ func (m *governedCloudModel) CloudContract(ctx context.Context, policy model.Clo
 	}}}, nil
 }
 
+// syntheticCloudReviewMaterials is controlled test data, not an actual
+// contract, policy or evidence of a real model/OCR acceptance.
+func syntheticCloudReviewMaterials() map[string]string {
+	return map[string]string{
+		"procurement":    "云服务 CLOUD-001：最低保障带宽不低于200 Mbit/s。\n云服务 CLOUD-001：SLA 可用率不低于99.8%，自然月 Asia/Shanghai 公历 gregorian all_service_unavailability 无排除项。",
+		"award":          "云服务 CLOUD-001：审批依据，预付款上限不得超过25%，预付款以合同总额为基础，合同总额100万元含税。",
+		"draft_contract": "云服务 CLOUD-001：最低保障带宽200 Mbit/s。\n云服务 CLOUD-001：SLA 可用率99.8%，自然月 Asia/Shanghai 公历 gregorian all_service_unavailability 无排除项。\n云服务 CLOUD-001：预付款比例25%，预付款以合同总额为基础，合同总额100万元含税。\n服务中断的赔偿按照损失计算。",
+		"attachment":     "云服务 CLOUD-001：SLA 可用率99.8%，自然月 Asia/Shanghai 公历 gregorian all_service_unavailability 无排除项。",
+	}
+}
+
 func startGovernedCloudReview(t *testing.T, st *Store, user accounts.User) (string, string) {
 	t.Helper()
 	caseID, err := st.CreateCaseWithBusiness(user, "云治理审查", "service", "ENT", "cloud_services")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for role, text := range map[string]string{
-		"procurement":    "云服务 CLOUD-001：最低保障带宽不低于200 Mbit/s。\n云服务 CLOUD-001：SLA 可用率不低于99.8%，自然月 Asia/Shanghai 公历 gregorian all_service_unavailability 无排除项。",
-		"award":          "云服务 CLOUD-001：审批依据，预付款上限不得超过25%，预付款以合同总额为基础，合同总额100万元含税。",
-		"draft_contract": "云服务 CLOUD-001：最低保障带宽200 Mbit/s。\n云服务 CLOUD-001：SLA 可用率99.8%，自然月 Asia/Shanghai 公历 gregorian all_service_unavailability 无排除项。\n云服务 CLOUD-001：预付款比例25%，预付款以合同总额为基础，合同总额100万元含税。\n服务中断的赔偿按照损失计算。",
-		"attachment":     "云服务 CLOUD-001：SLA 可用率99.8%，自然月 Asia/Shanghai 公历 gregorian all_service_unavailability 无排除项。",
-	} {
+	for role, text := range syntheticCloudReviewMaterials() {
 		if _, err := st.AddDocument(context.Background(), user, caseID, role, role+".txt", "text/plain", []byte(text)); err != nil {
 			t.Fatal(err)
 		}
