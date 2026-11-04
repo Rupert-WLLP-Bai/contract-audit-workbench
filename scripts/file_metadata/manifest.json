@@ -6957,7 +6957,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "eac4f387e19fd85fcedc86c11e4dbe7cd8cc750b",
+          "commit": "aa9485fac8a507107529afa1461eb0d6b65ab534",
           "path": "docs-site/docusaurus.config.js",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
