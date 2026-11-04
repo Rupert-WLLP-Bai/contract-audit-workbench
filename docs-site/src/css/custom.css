@@ -263,7 +263,7 @@ html.docs-doc-page main .row > .col:first-child {
     max-width: none;
   }
 
-  html.docs-doc-page main .row > .col:last-child {
+  html.docs-doc-page main .row > .col + .col {
     flex: 0 0 13.5rem;
     max-width: 13.5rem;
     padding-right: 0.5rem;
