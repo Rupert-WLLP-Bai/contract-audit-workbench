@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -391,6 +391,7 @@ const MODEL_OUTPUT_ERROR_LABELS: Record<string, string> = {
   model_json_trailing: "模型响应 JSON 后含有多余内容",
   model_json_fields: "模型响应字段不符合要求",
   model_output_semantic: "模型响应内容未通过业务校验",
+  structured_request_rejected: "供应商拒绝了结构化请求",
 };
 
 function errorCodeLabel(code: string | null, fallback: string): string {

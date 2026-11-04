@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -223,5 +223,50 @@ func TestBusinessParseFailureKeepsPhysicalCallCompleted(t *testing.T) {
 	calls := sink.snapshot()
 	if len(calls) != 1 || calls[0].Status != "completed" || calls[0].Usage == nil {
 		t.Fatalf("physical calls %+v", calls)
+	}
+}
+
+func TestStructuredGatewayRejectionObservation(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		gateway  bool
+		content  string
+		status   int
+		code     string
+		disabled bool
+	}{
+		{"gateway structured", true, `{"code":"model_structured_request_rejected","error":"safe"}`, 502, "structured_request_rejected", false},
+		{"gateway ordinary", true, `{"code":"model_provider_failed"}`, 502, "request_failed", false},
+		{"direct forged", false, `{"code":"model_structured_request_rejected"}`, 502, "request_failed", false},
+		{"wrong status", true, `{"code":"model_structured_request_rejected"}`, 401, "request_failed", false},
+		{"disabled format", true, `{"code":"model_structured_request_rejected"}`, 502, "request_failed", true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.content))
+			}))
+			defer server.Close()
+			t.Setenv("CAW_STRUCTURED_OUTPUT_ENABLED", "true")
+			if tt.disabled {
+				t.Setenv("CAW_STRUCTURED_OUTPUT_ENABLED", "")
+			}
+			t.Setenv("CAW_STRUCTURED_OUTPUT_PROVIDER_URL", server.URL)
+			t.Setenv("CAW_STRUCTURED_OUTPUT_REVIEW_MODEL", "review")
+			sink := &observationSink{}
+			client := New(Config{BaseURL: server.URL, Gateway: tt.gateway, APIKey: "key", ChatModel: "review"})
+			ctx := WithCallObserver(context.Background(), sink)
+			if tt.gateway {
+				ctx = WithDelegatedScope(ctx, DelegatedScope{Kind: "execution"})
+			}
+			_, err := client.Warranty(ctx, nil)
+			if !errors.Is(err, ErrRequest) {
+				t.Fatalf("error=%v", err)
+			}
+			calls := sink.snapshot()
+			if len(calls) != 1 || calls[0].Status != "failed" || calls[0].ErrorCode != tt.code {
+				t.Fatalf("observations=%+v", calls)
+			}
+		})
 	}
 }

@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r6
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -518,6 +518,14 @@ func (c *Client) postChatMessages(ctx context.Context, modelID string, messages 
 	if len(raw) > 1<<20 {
 		return chatCompletion{}, fmt.Errorf("%w: response too large", ErrUnusable)
 	}
+	if c.cfg.Gateway && payload.structured && res.StatusCode == http.StatusBadGateway {
+		var response struct {
+			Code string `json:"code"`
+		}
+		if json.Unmarshal(raw, &response) == nil && response.Code == "model_structured_request_rejected" {
+			return chatCompletion{}, fmt.Errorf("%w: %w", ErrRequest, errStructuredRequestRejected)
+		}
+	}
 	return c.decodeChatResponse(raw, res.StatusCode)
 }
 
@@ -544,7 +552,7 @@ func (c *Client) newChatRequest(ctx context.Context, modelID string, messages []
 	if err != nil {
 		return nil, chatRequestPayload{}, err
 	}
-	payload := chatRequestPayload{prefix: encoded}
+	payload := chatRequestPayload{prefix: encoded, structured: responseFormat != nil}
 	if image := transcriptionImage(messages); image != nil {
 		marker := `"data:` + image.media + `;base64,"`
 		start := bytes.LastIndex(encoded, []byte(marker))
@@ -596,9 +604,10 @@ func transcriptionImage(messages []chatMessage) *chatImageURL {
 }
 
 type chatRequestPayload struct {
-	prefix []byte
-	image  []byte
-	suffix []byte
+	prefix     []byte
+	image      []byte
+	suffix     []byte
+	structured bool
 }
 
 func (payload chatRequestPayload) reader() io.Reader {
@@ -764,12 +773,16 @@ func (c *Client) providerErrorMessage(providerError *struct {
 	return c.redact(providerError.Message)
 }
 
+var errStructuredRequestRejected = errors.New("structured request rejected")
+
 func modelCallErrorCode(err error) string {
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		return "timeout"
 	case errors.Is(err, context.Canceled):
 		return "cancelled"
+	case errors.Is(err, errStructuredRequestRejected):
+		return "structured_request_rejected"
 	case errors.Is(err, ErrRequest):
 		return "request_failed"
 	case errors.Is(err, errProviderRefusal):
