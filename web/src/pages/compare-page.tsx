@@ -19,7 +19,7 @@ import { errorMessage } from "../api/http";
 import { getReview } from "../api/endpoints";
 import { paths } from "../api/paths";
 import { useReview, useWorkbench } from "../api/queries";
-import type { Finding, ReviewDocument, WorkbenchRun } from "../api/types";
+import type { EvidenceAnchor, Finding, ReviewDocument, ReviewWorkspace, WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { TechnicalDetail } from "../components/technical-detail";
 import { InvalidTimeDetail } from "../components/invalid-time-detail";
@@ -72,12 +72,77 @@ function useCompareReview(caseId: string, runId: string, attemptId: string | nul
   };
 }
 
-function primaryContract(documents: ReviewDocument[]): ReviewDocument | null {
+type MaterialChoice = { key: string; document: ReviewDocument; parsedId: string | null; originalOnly: boolean };
+
+function materialKey(documentId: string, parsedId: string | null): string {
+  return JSON.stringify([documentId, parsedId]);
+}
+
+// Workspace also contains previous-run documents for revision citations. Only
+// the intersection of this run's frozen documents and this attempt's parse
+// identities can supply a parsed body on this side.
+function materialChoices(workspace: ReviewWorkspace | undefined): { items: MaterialChoice[]; warning: string | null } {
+  if (!workspace) return { items: [], warning: null };
+  const ids = workspace.snapshot?.document_ids ?? [];
+  if (ids.length === 0) return { items: [], warning: workspace.documents.length ? "未报告可验证的冻结材料身份，无法确认本侧材料。" : null };
+  const allowed = new Set(ids);
+  const parsed = new Set(workspace.review_attempts?.attempt.parsed_document_ids ?? []);
+  const byDocument = new Map<string, ReviewDocument[]>();
+  for (const document of workspace.documents) {
+    if (allowed.has(document.id)) byDocument.set(document.id, [...(byDocument.get(document.id) ?? []), document]);
+  }
+  const items: MaterialChoice[] = [];
+  let conflict = false;
+  for (const documents of byDocument.values()) {
+    const verified = new Map<string, ReviewDocument[]>();
+    for (const document of documents) {
+      const metadata = document.parsed_document;
+      const parsedId = document.parsed_document_id ?? metadata?.id ?? null;
+      if (metadata && (metadata.document_id !== document.id || (document.parsed_document_id && metadata.id !== document.parsed_document_id))) {
+        conflict = true;
+        continue;
+      }
+      if (parsedId && parsed.has(parsedId)) verified.set(parsedId, [...(verified.get(parsedId) ?? []), document]);
+    }
+    let count = 0;
+    for (const [parsedId, matches] of verified) {
+      if (matches.length !== 1) { conflict = true; continue; }
+      const document = matches[0]!;
+      items.push({ key: materialKey(document.id, parsedId), document, parsedId, originalOnly: false });
+      count += 1;
+    }
+    if (count === 0) {
+      const document = documents[0]!;
+      items.push({
+        key: materialKey(document.id, null), parsedId: null, originalOnly: true,
+        document: { ...document, parsed_document_id: null, parsed_document: null, text: null, clauses: [], parse_status: "unknown", parse_error: null },
+      });
+    }
+  }
+  return { items, warning: conflict ? "部分材料的解析身份有冲突，无法确认对应正文。" : null };
+}
+
+function matchesMaterialAnchor(choice: MaterialChoice, anchor: EvidenceAnchor): boolean {
+  const document = choice.document;
+  return evidenceSourceMatches(anchor, document.id, document.parsed_document, document.parsed_document_id);
+}
+
+function selectedRunState(workspace: ReviewWorkspace | undefined): string | null {
+  if (!workspace) return null;
+  const attempt = workspace.review_attempts?.attempt;
+  if (!attempt) return workspace.review_attempts_explicit_null ? workspace.run.state : null;
+  const runState = workspace.run.state;
+  if (runState === attempt.state ||
+      (["completed", "awaiting_human"].includes(runState) && ["completed", "awaiting_human"].includes(attempt.state))) return runState;
+  return null;
+}
+
+function primaryContract(documents: MaterialChoice[]): MaterialChoice | null {
   let selected = documents[0] ?? null;
-  for (const document of documents) {
-    if (document.role !== "draft_contract") continue;
-    if (!document.superseded) return document;
-    selected = document;
+  for (const choice of documents) {
+    if (choice.document.role !== "draft_contract") continue;
+    if (!choice.document.superseded) return choice;
+    selected = choice;
   }
   return selected;
 }
@@ -143,7 +208,9 @@ function MaterialPane({
   label,
   caseId,
   run,
+  state,
   documents,
+  warning,
   selected,
   onSelect,
   finding,
@@ -153,37 +220,36 @@ function MaterialPane({
   label: string;
   caseId: string;
   run: WorkbenchRun | null;
-  documents: ReviewDocument[];
-  selected: ReviewDocument | null;
+  state: string | null;
+  documents: MaterialChoice[];
+  warning: string | null;
+  selected: MaterialChoice | null;
   onSelect: (id: string) => void;
   finding: Finding | null;
   error: unknown;
   loading: boolean;
 }) {
+  const selectedDocument = selected?.document ?? null;
   const anchor = selected
-    ? finding?.evidence.find((item) =>
-        evidenceSourceMatches(
-          item,
-          selected.id,
-          selected.parsed_document,
-          selected.parsed_document_id,
-        ),
-      )
+    ? finding?.evidence.find((item) => matchesMaterialAnchor(selected, item) &&
+        documents.filter((choice) => matchesMaterialAnchor(choice, item)).length === 1)
     : null;
+  const ambiguous = selected && finding?.evidence.some((item) => matchesMaterialAnchor(selected, item) &&
+    documents.filter((choice) => matchesMaterialAnchor(choice, item)).length > 1);
   const resolved =
-    selected && anchor
+    selectedDocument && anchor
       ? resolveAnchor(
-          selected.text,
+          selectedDocument.text,
           anchor,
-          selected.parsed_document,
-          selected.parsed_document_id,
+          selectedDocument.parsed_document,
+          selectedDocument.parsed_document_id,
         )
       : null;
   const segments =
-    selected?.text == null
+    selectedDocument?.text == null
       ? []
       : segmentText(
-          selected.text,
+          selectedDocument.text,
           resolved?.kind === "highlight" ? resolved : null,
           [],
         );
@@ -191,66 +257,72 @@ function MaterialPane({
     <article className="compare-material-pane">
       <header className="compare-material-head">
         <span>{label}</span>
-        <span>{run ? runLabel(run.state) : "未选择运行"}</span>
+        <span>{state ? runLabel(state) : run ? "状态未读取" : "未选择运行"}</span>
       </header>
       <label className="field">
         材料
         <Select<string>
           aria-label={"材料"}
-          value={String(selected?.id ?? "")}
+          value={selected?.key ?? ""}
           onChange={(selectedValue) => onSelect(selectedValue)}
           disabled={documents.length === 0}
           options={[
             ...(documents.length === 0
               ? [{ value: "", label: "此运行没有返回材料" }]
               : []),
-            ...documents.map((document) => ({
-              value: String(document.id),
-              label: String(document.filename ?? ""),
+            ...documents.map((choice) => ({
+              value: choice.key,
+              label: `${choice.document.filename}${choice.originalOnly ? "（仅原件，解析身份未确认）" :
+                documents.filter((other) => other.document.filename === choice.document.filename).length > 1
+                  ? ` · 材料标识 ${choice.document.id} · 解析标识 ${choice.parsedId}` : ""}`,
             })),
           ]}
+          virtual={false}
+          optionRender={(option) => <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{option.label}</div>}
+          styles={{ popup: { listItem: { whiteSpace: "normal" } } }}
         />
       </label>
-      {selected ? (
+      {warning ? <p role="status" className="compare-unavailable">{warning}</p> : null}
+      {selected && selectedDocument ? (
         <>
           <Collapse
             className="compare-source"
             items={[
               {
                 key: "content",
-                label: "版本与来源，" + parseLabel(selected.parse_status ?? ""),
+                label: "版本与来源，" + parseLabel(selectedDocument.parse_status ?? ""),
                 children: (
                   <>
                     <dl className="compare-material-meta">
                       <div>
                         <dt>材料名称</dt>
-                        <dd>{selected.filename}</dd>
+                        <dd>{selectedDocument.filename}</dd>
                       </div>
                       <div>
                         <dt>解析状态</dt>
-                        <dd>{parseLabel(selected.parse_status)}</dd>
+                        <dd>{parseLabel(selectedDocument.parse_status)}</dd>
                       </div>
                       <div>
                         <dt>审查状态</dt>
-                        <dd>{run ? runLabel(run.state) : "未报告"}</dd>
+                        <dd>{state ? runLabel(state) : "状态未读取"}</dd>
                       </div>
                       <div>
                         <dt>上传时间</dt>
-                        <dd>{preciseTime(selected.created_at)}<InvalidTimeDetail value={selected.created_at} label="上传时间" /></dd>
+                        <dd>{preciseTime(selectedDocument.created_at)}<InvalidTimeDetail value={selectedDocument.created_at} label="上传时间" /></dd>
                       </div>
                     </dl>
                     <TechnicalDetail
                       label="材料技术详情"
                       value={JSON.stringify({
-                        document_version_id: selected.id,
-                        document_digest: selected.digest,
-                        parsed_document_id: selected.parsed_document_id,
-                        parsed_document_metadata_id: selected.parsed_document?.id ?? null,
-                        parse_status: selected.parse_status,
-                        run_state: run?.state ?? null,
+                        document_version_id: selectedDocument.id,
+                        document_digest: selectedDocument.digest,
+                        parsed_document_id: selectedDocument.parsed_document_id,
+                        parsed_document_metadata_id: selectedDocument.parsed_document?.id ?? null,
+                        parse_status: selectedDocument.parse_status,
+                        run_state: state,
                       })}
                     />
-                    <a href={paths.documentOriginal(caseId, selected.id)}>
+                    <a href={paths.documentOriginal(caseId, selectedDocument.id)}>
                       读取原件
                     </a>
                   </>
@@ -261,10 +333,11 @@ function MaterialPane({
           <div
             className="compare-document-text"
             aria-label={`${label}材料解析正文`}
-            data-document-version-id={selected.id}
+            data-document-version-id={selectedDocument.id}
+            data-parsed-document-id={selected.parsedId ?? undefined}
           >
-            <h2>{selected.filename.replace(/\.[^.]+$/, "")}</h2>
-            {selected.text === null ? (
+            <h2>{selectedDocument.filename.replace(/\.[^.]+$/, "")}</h2>
+            {selectedDocument.text === null ? (
               <p className="compare-unavailable">
                 该运行没有可展示的解析正文。
               </p>
@@ -283,6 +356,8 @@ function MaterialPane({
           {resolved && resolved.kind !== "highlight" ? (
             <p className="compare-unavailable">{resolved.reason}</p>
           ) : null}
+          {selected.originalOnly ? <p className="compare-unavailable">未能确认本次执行的解析身份，仅可读取材料原件。</p> : null}
+          {ambiguous ? <p className="compare-unavailable">引用未区分解析版本，无法确定对应正文。</p> : null}
         </>
       ) : (
         <p className="compare-unavailable">选择审查记录后，查看当时使用的材料。</p>
@@ -315,8 +390,8 @@ export function ComparePage() {
     (params.has("left_run_only") && !leftLegacy) || (leftLegacy && params.has("left_attempt_id"));
   const rightInvalid = (params.has("right_run_id") && !rightRunSelection) || (params.has("right_attempt_id") && !rightAttemptSelection) ||
     (params.has("right_run_only") && !rightLegacy) || (rightLegacy && params.has("right_attempt_id"));
-  const [leftDocumentSelection, setLeftDocumentSelection] = useState("");
-  const [rightDocumentSelection, setRightDocumentSelection] = useState("");
+  const [leftDocumentSelection, setLeftDocumentSelection] = useState<{ scope: string; key: string } | null>(null);
+  const [rightDocumentSelection, setRightDocumentSelection] = useState<{ scope: string; key: string } | null>(null);
   const [bottomTab, setBottomTab] = useState("修订证据");
   const [findingSelection, setFindingSelection] = useState("");
 
@@ -346,6 +421,33 @@ export function ComparePage() {
     rightAttemptId,
     rightInvalid,
   );
+  const leftLegacyChanged = leftLegacy && !!leftReview.data?.review_attempts;
+  const rightLegacyChanged = rightLegacy && !!rightReview.data?.review_attempts;
+  const leftIdentityUnknown = !!leftReview.data && !leftReview.data.review_attempts && !leftReview.data.review_attempts_explicit_null;
+  const rightIdentityUnknown = !!rightReview.data && !rightReview.data.review_attempts && !rightReview.data.review_attempts_explicit_null;
+  function identityMismatch(workspace: typeof leftReview.data, run: WorkbenchRun | null, attemptId: string | null) {
+    if (!workspace) return false;
+    const attempt = workspace.review_attempts?.attempt;
+    return !run || workspace.run.id !== run.id || workspace.run.case_id !== selectedCase?.id ||
+      (!!attempt && (attempt.run_id !== run.id || (!!attemptId && attempt.id !== attemptId))) ||
+      (!!attemptId && !!workspace.review_attempts_explicit_null);
+  }
+  const leftMismatch = identityMismatch(leftReview.data, leftRun, leftAttemptId);
+  const rightMismatch = identityMismatch(rightReview.data, rightRun, rightAttemptId);
+  const leftData = leftInvalid || leftLegacyChanged || leftIdentityUnknown || leftMismatch ? undefined : leftReview.data;
+  const rightData = rightInvalid || rightLegacyChanged || rightIdentityUnknown || rightMismatch ? undefined : rightReview.data;
+  const leftState = selectedRunState(leftData);
+  const rightState = selectedRunState(rightData);
+  const leftScope = JSON.stringify([selectedCase?.id, leftRun?.id, leftAttemptId, leftLegacy]);
+  const rightScope = JSON.stringify([selectedCase?.id, rightRun?.id, rightAttemptId, rightLegacy]);
+  useEffect(() => {
+    setLeftDocumentSelection((selection) => selection && selection.scope === leftScope &&
+      materialChoices(leftData).items.some((item) => item.key === selection.key) ? selection : null);
+  }, [leftScope, leftData]);
+  useEffect(() => {
+    setRightDocumentSelection((selection) => selection && selection.scope === rightScope &&
+      materialChoices(rightData).items.some((item) => item.key === selection.key) ? selection : null);
+  }, [rightScope, rightData]);
   useEffect(() => {
     if (!snapshot || snapshotQuery.isError) return;
     const next = new URLSearchParams(params);
@@ -368,7 +470,7 @@ export function ComparePage() {
       if (!side.result.isSuccess || !workspace || workspace.run.id !== side.run.id || workspace.run.case_id !== selectedCase?.id) continue;
       const attempt = workspace.review_attempts?.attempt;
       if (attempt && attempt.id && attempt.run_id === side.run.id) next.set(attemptKey, attempt.id);
-      else if (workspace.review_attempts === null && workspace.review_attempts_reported) next.set(legacyKey, "1");
+      else if (workspace.review_attempts_explicit_null) next.set(legacyKey, "1");
     }
     if (next.toString() !== params.toString()) setParams(next, { replace: true });
   }, [snapshot, snapshotQuery.isError, params, setParams, selectedCase, leftRun, rightRun, leftReview.data, leftReview.isSuccess, rightReview.data, rightReview.isSuccess, leftInvalid, rightInvalid]);
@@ -393,28 +495,18 @@ export function ComparePage() {
       />
     );
 
-  const leftLegacyChanged = leftLegacy && !!leftReview.data?.review_attempts;
-  const rightLegacyChanged = rightLegacy && !!rightReview.data?.review_attempts;
-  function identityMismatch(workspace: typeof leftReview.data, run: WorkbenchRun | null, attemptId: string | null) {
-    if (!workspace) return false;
-    const attempt = workspace.review_attempts?.attempt;
-    return !run || workspace.run.id !== run.id || workspace.run.case_id !== selectedCase?.id ||
-      (!!attempt && (attempt.run_id !== run.id || (!!attemptId && attempt.id !== attemptId)));
-  }
-  const leftMismatch = identityMismatch(leftReview.data, leftRun, leftAttemptId);
-  const rightMismatch = identityMismatch(rightReview.data, rightRun, rightAttemptId);
-  const leftData = leftInvalid || leftLegacyChanged || leftMismatch ? undefined : leftReview.data;
-  const rightData = rightInvalid || rightLegacyChanged || rightMismatch ? undefined : rightReview.data;
-  const leftHref = selectedCase && leftRun && leftAttemptId && !leftInvalid && !leftMismatch && !leftLegacyChanged
+  const leftHref = selectedCase && leftRun && leftAttemptId && leftData
     ? `/cases/${selectedCase.id}/reviews/${leftRun.id}?attempt_id=${encodeURIComponent(leftAttemptId)}` : null;
-  const leftUnavailable = leftInvalid || leftMismatch || leftLegacy || (params.has("left_run_id") && !leftRun) || (!!leftRun && !leftAttemptId);
-  const leftDocuments = leftData?.documents ?? [];
-  const rightDocuments = rightData?.documents ?? [];
+  const leftUnavailable = leftInvalid || leftMismatch || leftIdentityUnknown || leftLegacy || (params.has("left_run_id") && !leftRun) || (!!leftRun && !leftData);
+  const leftMaterials = materialChoices(leftData);
+  const rightMaterials = materialChoices(rightData);
+  const leftDocuments = leftMaterials.items;
+  const rightDocuments = rightMaterials.items;
   const leftDocument =
-    leftDocuments.find((item) => item.id === leftDocumentSelection) ??
+    leftDocuments.find((item) => leftDocumentSelection?.scope === leftScope && item.key === leftDocumentSelection.key) ??
     primaryContract(leftDocuments);
   const rightDocument =
-    rightDocuments.find((item) => item.id === rightDocumentSelection) ??
+    rightDocuments.find((item) => rightDocumentSelection?.scope === rightScope && item.key === rightDocumentSelection.key) ??
     primaryContract(rightDocuments);
   const revisions = leftData?.revisions ?? [];
   const source = leftData?.revision_comparison_source;
@@ -446,23 +538,19 @@ export function ComparePage() {
     else next.delete(attemptKey);
     setParams(next);
     if (side === "left_run_id") {
-      setLeftDocumentSelection("");
+      setLeftDocumentSelection(null);
       setFindingSelection("");
-    } else setRightDocumentSelection("");
+    } else setRightDocumentSelection(null);
   }
   function chooseFinding(item: Finding) {
     setFindingSelection(item.id);
-    const source = item.evidence.find((anchor) =>
-      leftDocuments.some((document) =>
-        evidenceSourceMatches(
-          anchor,
-          document.id,
-          document.parsed_document,
-          document.parsed_document_id,
-        ),
-      ),
-    );
-    if (source) setLeftDocumentSelection(source.document_version_id);
+    for (const anchor of item.evidence) {
+      const matches = leftDocuments.filter((choice) => matchesMaterialAnchor(choice, anchor));
+      if (matches.length === 1) {
+        setLeftDocumentSelection({ scope: leftScope, key: matches[0]!.key });
+        break;
+      }
+    }
   }
 
   return (
@@ -484,15 +572,15 @@ export function ComparePage() {
         <aside className="compare-risk-panel" aria-label="审查结果">
           <header>
             <h2>审查结果</h2>
-            <span>{findings.length} 项实际发现</span>
+            <span>{leftData ? `${findings.length} 项实际发现` : "审查发现不可用"}</span>
           </header>
           <div className="compare-risk-counts">
             {(["high", "medium", "low", "info"] as const).map(
               (severity, index) => (
                 <span key={severity} data-severity={severity}>
                   {
-                    findings.filter((item) => item.severity === severity)
-                      .length
+                    leftData ? findings.filter((item) => item.severity === severity)
+                      .length : "—"
                   }
                   <small>{["高风险", "中风险", "低风险", "提示"][index]}</small>
                 </span>
@@ -527,10 +615,12 @@ export function ComparePage() {
                       <blockquote key={anchor.id}>
                         {anchor.quote}
                         <small>
-                          {leftDocuments.find((document) => document.id === anchor.document_version_id)?.filename ?? "引用来源未返回"}
+                          {leftDocuments.find((choice) => matchesMaterialAnchor(choice, anchor))?.document.filename ?? "引用来源未返回"}
                         </small>
                       </blockquote>
                     ))}
+                    {item.evidence.some((anchor) => leftDocuments.filter((choice) => matchesMaterialAnchor(choice, anchor)).length > 1) ?
+                      <p>引用未区分解析版本，无法确定对应正文。</p> : null}
                     {item.severity_source ? (
                       <p>
                         依据版本 {item.severity_source.policy_version}，
@@ -550,7 +640,7 @@ export function ComparePage() {
             ))}
             {findings.length === 0 ? (
               <p className="compare-unavailable">
-                此运行没有返回发现；不代表合同已批准。
+                {leftData ? "此运行没有返回发现；不代表合同已批准。" : "审查身份未确认，无法读取发现。"}
               </p>
             ) : null}
           </div>
@@ -581,27 +671,28 @@ export function ComparePage() {
           {leftInvalid || rightInvalid ? <p role="alert">所选执行身份为空或相互冲突，无法读取该侧记录。</p> : null}
           {leftMismatch || rightMismatch ? <p role="alert">返回的审查或执行身份与所选记录不一致，无法读取该侧记录。</p> : null}
           {leftLegacyChanged || rightLegacyChanged ? <p role="alert">所选历史记录原无执行身份，当前返回了不同执行记录，无法确认是同一版本。</p> : null}
-          {(leftLegacy && !leftLegacyChanged) || (rightLegacy && !rightLegacyChanged) ? <p>部分历史记录仅有审查身份，没有可固定的执行身份；派生对照无法验证。</p> : null}
+          {leftIdentityUnknown || rightIdentityUnknown ? <p role="alert">所选记录未报告执行身份或身份信息冲突，无法确认记录来源。</p> : null}
+          {(leftLegacy && leftData?.review_attempts_explicit_null) || (rightLegacy && rightData?.review_attempts_explicit_null) ? <p>部分历史记录仅有审查身份，没有可固定的执行身份；派生对照无法验证。</p> : null}
           <ol className="compare-chain" aria-label="对照链路">
-            <li data-state={leftRun ? "filled" : "open"}>
+            <li data-state={leftState ? "filled" : "open"}>
               <span className="compare-chain-mark" aria-hidden="true" />
               <span className="compare-chain-label">当前版本</span>
-              <strong>{leftRun ? runLabel(leftRun.state) : "未选择"}</strong>
+              <strong>{leftState ? runLabel(leftState) : leftRun ? "状态未读取" : "未选择"}</strong>
             </li>
-            <li data-state={rightRun ? "filled" : "open"}>
+            <li data-state={rightState ? "filled" : "open"}>
               <span className="compare-chain-mark" aria-hidden="true" />
               <span className="compare-chain-label">历史版本</span>
-              <strong>{rightRun ? runLabel(rightRun.state) : "未选择"}</strong>
+              <strong>{rightState ? runLabel(rightState) : rightRun ? "状态未读取" : "未选择"}</strong>
             </li>
             <li data-state={findings.length > 0 ? "filled" : "open"}>
               <span className="compare-chain-mark" aria-hidden="true" />
               <span className="compare-chain-label">实际发现</span>
-              <strong>{findings.length}</strong>
+              <strong>{leftData ? findings.length : "不可用"}</strong>
             </li>
             <li data-state={decidedCount > 0 ? "filled" : "open"}>
               <span className="compare-chain-mark" aria-hidden="true" />
               <span className="compare-chain-label">已有审查判断</span>
-              <strong>{decidedCount}</strong>
+              <strong>{leftData ? decidedCount : "不可用"}</strong>
             </li>
           </ol>
           {selectedCase && caseRuns.length === 0 ? (
@@ -615,9 +706,11 @@ export function ComparePage() {
               label="当前版本"
               caseId={selectedCase?.id ?? ""}
               run={leftRun}
+              state={leftState}
               documents={leftDocuments}
+              warning={leftMaterials.warning}
               selected={leftDocument}
-              onSelect={setLeftDocumentSelection}
+              onSelect={(key) => setLeftDocumentSelection({ scope: leftScope, key })}
               finding={finding}
               error={leftReview.isError ? leftReview.error : null}
               loading={leftReview.isFetching}
@@ -626,9 +719,11 @@ export function ComparePage() {
               label="历史版本"
               caseId={selectedCase?.id ?? ""}
               run={rightRun}
+              state={rightState}
               documents={rightDocuments}
+              warning={rightMaterials.warning}
               selected={rightDocument}
-              onSelect={setRightDocumentSelection}
+              onSelect={(key) => setRightDocumentSelection({ scope: rightScope, key })}
               finding={null}
               error={rightReview.isError ? rightReview.error : null}
               loading={rightReview.isFetching}

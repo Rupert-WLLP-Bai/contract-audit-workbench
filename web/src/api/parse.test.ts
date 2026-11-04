@@ -318,6 +318,14 @@ describe("response parsers", () => {
     }
   });
 
+  it("distinguishes a top-level null attempt history from absent and conflicting attempt objects", () => {
+    const base = { run: { id: "r1", case_id: "c1", state: "completed" }, audit_events: [] };
+    expect(parseReviewWorkspace(base)).toMatchObject({ review_attempts_reported: false, review_attempts_explicit_null: false });
+    expect(parseReviewWorkspace({ ...base, review_attempts: null })).toMatchObject({ review_attempts_reported: true, review_attempts_explicit_null: true });
+    expect(parseReviewWorkspace({ ...base, review_attempts: { attempt: null, attempts: [] } })).toMatchObject({ review_attempts_reported: true, review_attempts_explicit_null: false });
+    expect(() => parseReviewWorkspace({ ...base, review_attempts: { attempts: [] } })).toThrow();
+  });
+
   it("reads public attempts and frozen document identity without privileged diagnostics", () => {
     const attempt = {
       id: "a1", run_id: "r1", ordinal: 1, retry_of_attempt_id: null,

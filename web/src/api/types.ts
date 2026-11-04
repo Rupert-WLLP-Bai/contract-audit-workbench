@@ -720,6 +720,8 @@ export interface ReviewWorkspace {
   review_attempts: ReviewAttempts | null;
   /** Client-side presence indicator; absence on older responses is not proof of a legacy run. */
   review_attempts_reported?: boolean;
+  /** True only when the response explicitly returned top-level review_attempts: null. */
+  review_attempts_explicit_null?: boolean;
   agent_review?: BusinessAgentReview | null;
   execution: Execution | null;
   snapshot?: RunSnapshot | null;

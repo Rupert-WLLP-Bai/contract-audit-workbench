@@ -817,6 +817,7 @@ export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
       : [],
     review_attempts: reviewAttempts,
     review_attempts_reported: Object.prototype.hasOwnProperty.call(record, "review_attempts"),
+    review_attempts_explicit_null: record.review_attempts === null,
     agent_review: parseBusinessAgentReview(record.agent_review),
     execution: parseExecution(record.execution),
     snapshot: parseSnapshot(record.snapshot),
