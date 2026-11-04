@@ -1,0 +1,22 @@
+{
+  "theme.IconExternalLink.ariaLabel": {
+    "message": "（在新标签页中打开）",
+    "description": "外部链接的无障碍说明"
+  },
+  "theme.colorToggle.ariaLabel.mode.system": {
+    "message": "跟随系统",
+    "description": "颜色模式名称"
+  },
+  "theme.docs.breadcrumbs.home": {
+    "message": "首页",
+    "description": "面包屑中的首页标签"
+  },
+  "theme.navbar.mobileDropdown.collapseButton.collapseAriaLabel": {
+    "message": "收起菜单",
+    "description": "移动导航菜单收起按钮"
+  },
+  "theme.navbar.mobileDropdown.collapseButton.expandAriaLabel": {
+    "message": "展开菜单",
+    "description": "移动导航菜单展开按钮"
+  }
+}

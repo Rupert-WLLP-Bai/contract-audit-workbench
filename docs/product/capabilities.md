@@ -3,8 +3,8 @@
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
-<!-- Updated: 2026-11-02 -->
-<!-- Revision: r1 -->
+<!-- Updated: 2026-11-04 -->
+<!-- Revision: r2 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -23,7 +23,7 @@
 
 ## 合同功能的状态边界
 
-历史固定基线 `0421831c5ca86fdf56ea6d32939da4f825f08c3d` 的兼容 schema 为 `[26,26]`；PR [#140](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/140) 合入后的固定源码 `595fe2f` 接受 `[28,28]`。PR [#144](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/144) 已合入 main `1a9eae0`，当前应用源码接受 `[30,30]`：0029 增加本地付款资格核验与可信付款事实，0030 增加冻结资产计划、人工移交及可信 ERP 事实。迁移与兼容范围的权威来源为 [`internal/store/migrations.go`](../../internal/store/migrations.go)、[0029 付款迁移](../../internal/store/migrations/0029_contract_payments.sql) 和 [0030 资产迁移](../../internal/store/migrations/0030_contract_assets.sql)；应用打开连接时核对迁移账本，不自动执行迁移（[`internal/store/pg.go`](../../internal/store/pg.go)）。PR 的 `pr-fast-gate` 为 `PASS`，不等同目标环境部署或完整候选验收；两者为 `NOT_RUN`。真实 finance/ERP 来源接入仍 `BLOCKED`。签署、付款资格、可信回执或人工移交记录均不证明外部系统已接通、银行已转账或完整合同生命周期已验收。
+历史固定基线 `0421831c5ca86fdf56ea6d32939da4f825f08c3d` 的兼容 schema 为 `[26,26]`；PR [#140](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/140) 合入后的固定源码 `595fe2f` 接受 `[28,28]`。PR [#144](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/144) 合入 main `1a9eae0` 时的固定源码接受 `[30,30]`：0029 增加本地付款资格核验与可信付款事实，0030 增加冻结资产计划、人工移交及可信 ERP 事实。当前源码的迁移与兼容范围以 [`internal/store/migrations.go`](../../internal/store/migrations.go) 为准；应用打开连接时核对迁移账本，不自动执行迁移（[`internal/store/pg.go`](../../internal/store/pg.go)）。PR 的 `pr-fast-gate` 为 `PASS`，不等同目标环境部署或完整候选验收；两者为 `NOT_RUN`。真实 finance/ERP 来源接入仍 `BLOCKED`。签署、付款资格、可信回执或人工移交记录均不证明外部系统已接通、银行已转账或完整合同生命周期已验收。
 
 会签记录中的审批决定、任务材料白名单与转交有现存代码模型。它们不能被描述为外部电子签名、真实签署或履约完成凭证。已签存量导入需要保留真实来源；历史会签未知时不会伪造签名或会签轮次。当前源码通过 `CLM_ENVELOPE_KEYS` 中按租户与用途配置的版本化密钥保护受限供应方字段；`CLM_DATA_KEY` 单独设置不会配置当前版本化读写。未配置所需 envelope keys 时，相关受限字段写入失败关闭，不落明文；旧 `clmv1:` 读取还需要显式 legacy key ref。该配置不复用 `LLM_CONFIG_KEY`。密钥格式与部署入口见[部署模式](../operations/deployment.md)。
 
