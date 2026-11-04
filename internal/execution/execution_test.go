@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,12 +13,14 @@ package execution_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"contractaudit/internal/execution"
+	"contractaudit/internal/model"
 	"github.com/cloudwego/eino/compose"
 )
 
@@ -199,5 +201,36 @@ func TestConcurrentSpanFinishIsRecordedOnce(t *testing.T) {
 	start, terminal := recorder.rows[0].event, recorder.rows[1].event
 	if start.EventType != "span_started" || terminal.EventType != "model_failed" || terminal.SpanID != start.SpanID || terminal.ParentSpanID != "attempt-root" || terminal.Usage != nil || terminal.ModelRef != "observed-model" {
 		t.Fatalf("invocation identity or unknown usage changed: %+v", recorder.rows)
+	}
+}
+
+type arbitraryCode string
+
+func (e arbitraryCode) Error() string              { return "secret" }
+func (e arbitraryCode) ExecutionErrorCode() string { return string(e) }
+
+func TestStageOutputDiagnosticsAllowlist(t *testing.T) {
+	_, parseErr := model.ParseWarranty(`{"relation":`)
+	for _, tt := range []struct {
+		err  error
+		code string
+	}{
+		{fmt.Errorf("wrapped: %w", errors.Join(errors.New("other"), parseErr)), "model_json_malformed"},
+		{arbitraryCode("private text"), "eino_error"}, {errors.New("secret"), "eino_error"},
+	} {
+		recorder := &eventRecorder{}
+		err := execution.Run(context.Background(), recorder, execution.Stage{Name: "parse", Run: func(context.Context) error { return tt.err }})
+		if !errors.Is(err, tt.err) {
+			t.Fatalf("lost error: %v", err)
+		}
+		found := false
+		for _, row := range recorder.rows {
+			if row.event.EventType == "node_failed" && row.event.ErrorCode == tt.code {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("want %s in %+v", tt.code, recorder.rows)
+		}
 	}
 }

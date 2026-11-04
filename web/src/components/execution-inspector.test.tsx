@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -364,6 +364,57 @@ describe("execution inspector", () => {
     expect(screen.getAllByText("未报告").length).toBeGreaterThan(0);
     expect(screen.getByText("cache")).toBeInTheDocument();
     expect(screen.getAllByText("未知").length).toBeGreaterThan(0);
+  });
+
+  it("explains structured-output diagnostics while keeping their codes", async () => {
+    const user = userEvent.setup();
+    const diagnostics = [
+      ["model_json_malformed", "模型响应不是有效 JSON"],
+      ["model_json_trailing", "模型响应 JSON 后含有多余内容"],
+      ["model_json_fields", "模型响应字段不符合要求"],
+      ["model_output_semantic", "模型响应内容未通过业务校验"],
+    ] as const;
+    renderInspector({
+      execution: execution({
+        events: [
+          event(1, {
+            attempt_id: "attempt-2",
+            phase: "model_request",
+            event_type: "model_completed",
+            status: "completed",
+          }),
+          ...diagnostics.map(([code], index) =>
+            event(index + 2, {
+              attempt_id: "attempt-2",
+              phase: "model_review",
+              event_type: "node_failed",
+              status: "failed",
+              error_code: code,
+            }),
+          ),
+        ],
+      }),
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /模型调用完成，已完成/ }),
+    );
+    const completedCallDetail = screen.getByText("序号").closest("dl")!;
+    const completedError = within(completedCallDetail)
+      .getByText("错误代码")
+      .parentElement!;
+    expect(within(completedError).getByText("未报告")).toBeInTheDocument();
+
+    for (const [index, [code, explanation]] of diagnostics.entries()) {
+      await user.click(
+        screen.getAllByRole("button", { name: /模型审查，节点失败，失败/ })[
+          index
+        ]!,
+      );
+      const detail = screen.getByText("序号").closest("dl")!;
+      expect(within(detail).getByText(explanation)).toBeInTheDocument();
+      expect(within(detail).getByText(code)).toBeInTheDocument();
+    }
   });
 
   it("renders the span tree with child nodes and a no-events state", async () => {
