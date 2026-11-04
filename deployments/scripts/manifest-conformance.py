@@ -4,8 +4,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-25
-# Updated: 2026-11-02
-# Revision: r2
+# Updated: 2026-11-04
+# Revision: r3
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -108,6 +108,8 @@ GATEWAY_ENV = (
 )
 IDENTITY_SERVICES = ("core", "document", "execution", "worker")
 IDENTITY_KEYS = ("LLM_BASE_URL", "LLM_MODEL", "OCR_MODEL")
+STRUCTURED_KEYS = ("CAW_STRUCTURED_OUTPUT_ENABLED", "CAW_STRUCTURED_OUTPUT_PROVIDER_URL", "CAW_STRUCTURED_OUTPUT_REVIEW_MODEL")
+STRUCTURED_OFF = dict(zip(STRUCTURED_KEYS, ("false", "", "")))
 JEV_ADVISORY_KEYS = (
     "TYPESAFE_JEV_MODE", "TYPESAFE_JEV_EGRESS", "TYPESAFE_JEV_FEATURES",
     "TYPESAFE_JEV_MODEL", "TYPESAFE_JEV_PROVIDER",
@@ -611,6 +613,12 @@ def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys
                     if document.get("kind") == "ConfigMap" and document.get("metadata", {}).get("name") == "contract-audit-runtime"), {})
     if "contract-audit-runtime" not in configs:
         fail("the rendered base does not include the contract-audit-runtime ConfigMap")
+    if any(runtime.get(key) != value for key, value in STRUCTURED_OFF.items()):
+        fail("Kubernetes base must default structured output to disabled and unbound")
+    k3d_docs = read_yaml_all(root / "deployments/k3d/config-patch.yaml")
+    k3d_runtime = next((doc.get("data", {}) for doc in k3d_docs if doc.get("kind") == "ConfigMap" and doc.get("metadata", {}).get("name") == "contract-audit-runtime"), {})
+    if any(k3d_runtime.get(key) != value for key, value in STRUCTURED_OFF.items()):
+        fail("k3d fixture must disable structured output and clear its binding")
     if str(runtime.get("APP_ENV", "")).strip() == "production":
         if str(runtime.get("TYPESAFE_JEV_MODE", "")).strip() != "off":
             fail("production base must disable Jev; enable advisory only in an authorized deployment overlay")
@@ -670,6 +678,10 @@ def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys
                 fail(f"{name}: SERVICE_ROLE {role!r} is not accepted by bootstrap.OpenService")
                 continue
             serving_roles.add(role)
+            if role in (*IDENTITY_SERVICES, "model"):
+                shared = any((source.get("configMapRef") or {}).get("name") == "contract-audit-runtime" for source in container.get("envFrom") or [])
+                if not shared or any(key in env or key not in runtime for key in STRUCTURED_KEYS):
+                    fail(f"{name}: structured output identity must come only from the shared runtime ConfigMap")
             check_jev_kubernetes(name, role, env, config_from)
             check_experience_kubernetes(name, role, container, env, runtime)
             dsn = dsn_keys.get(role)
@@ -869,6 +881,16 @@ def check_compose(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: 
                 if previous != declared:
                     fail(f"compose: {key} differs between services ({previous!r} vs {declared!r})")
 
+    for name in ("core-api", "document-service", "audit-execution", "audit-worker", "model-gateway"):
+        environment = compose_environment(services.get(name, {}).get("environment"))
+        for key in STRUCTURED_KEYS:
+            if environment.get(key) != f"${{{key}:-}}":
+                fail(f"compose {name}: structured output identity {key} must use the shared deployment value")
+    fixture = compose_environment(services.get("model-gateway-fixture", {}).get("environment"))
+    for key, value in STRUCTURED_OFF.items():
+        if str(fixture.get(key, "missing")).strip('"') != value:
+            fail(f"compose model-gateway-fixture: {key} must be disabled and unbound")
+
     if "--scale" in (root / "deployments/local.py").read_text(encoding="utf-8"):
         fail("deployments/local.py still overrides replica counts")
 
@@ -975,6 +997,8 @@ def self_test(root: Path) -> int:
     compose_token = "${WORKER_CORE_TOKEN:?Add a distinct WORKER_CORE_TOKEN to the private distributed profile}"
     compose_url = "${CORE_SERVICE_URL:?Add CORE_SERVICE_URL to the private distributed profile}"
     mutations = (
+        ("compose structured binding mismatch", lambda tree: replace_mutation(tree, compose, "      CAW_STRUCTURED_OUTPUT_REVIEW_MODEL: ${CAW_STRUCTURED_OUTPUT_REVIEW_MODEL:-}\n", "      CAW_STRUCTURED_OUTPUT_REVIEW_MODEL: other\n"), "structured output identity CAW_STRUCTURED_OUTPUT_REVIEW_MODEL must use the shared deployment value"),
+        ("fixture structured output enabled", lambda tree: replace_mutation(tree, "deployments/k3d/config-patch.yaml", 'CAW_STRUCTURED_OUTPUT_ENABLED: "false"', 'CAW_STRUCTURED_OUTPUT_ENABLED: "true"'), "k3d fixture must disable structured output"),
         ("missing required env", lambda tree: replace_mutation(tree, workload, tool_binding, ""), "role worker is missing required env WORKER_TOOL_TOKEN"),
         ("unapproved production Jev", lambda tree: replace_mutation(tree, config, 'TYPESAFE_JEV_MODE: "off"', "TYPESAFE_JEV_MODE: advisory"), "production base must disable Jev"),
         ("missing probe", lambda tree: replace_mutation(tree, workload, "          livenessProbe:\n", "          livenessProbeDisabled:\n"), "declares no livenessProbe"),

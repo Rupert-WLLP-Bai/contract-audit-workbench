@@ -3,8 +3,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-25
-# Updated: 2026-11-02
-# Revision: r2
+# Updated: 2026-11-04
+# Revision: r3
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -59,6 +59,9 @@ data:
   LLM_BASE_URL: https://models.example.com/v1
   # Explicit exact hosts for administrator-managed private model endpoints.
   LLM_ENDPOINT_ALLOWED_HOSTS: ""
+  CAW_STRUCTURED_OUTPUT_ENABLED: "false"
+  CAW_STRUCTURED_OUTPUT_PROVIDER_URL: ""
+  CAW_STRUCTURED_OUTPUT_REVIEW_MODEL: ""
   LLM_MODEL: operator-configured-openai-compatible-model
   OCR_MODEL: operator-configured-vision-model
   MODEL_GATEWAY_MODE: openai-compatible

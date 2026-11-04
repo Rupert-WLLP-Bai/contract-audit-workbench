@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -181,6 +181,7 @@ func (c *Client) Reachable(ctx context.Context) (string, string) {
 
 // Warranty asks the chat model for one warranty finding.
 func (c *Client) Warranty(ctx context.Context, docs []Material) (Warranty, error) {
+	ctx = context.WithValue(ctx, structuredReviewKey{}, "warranty")
 	completion, err := c.postChat(ctx, c.cfg.ChatModel, warrantyPrompt(docs), completionTokenLimit, "")
 	if err != nil {
 		return Warranty{}, err
@@ -191,6 +192,7 @@ func (c *Client) Warranty(ctx context.Context, docs []Material) (Warranty, error
 // CloudContract reviews responsibility, data security, intellectual property,
 // and renewal clauses against the exact approved policy supplied by the caller.
 func (c *Client) CloudContract(ctx context.Context, policy CloudPolicy, docs []Material) (CloudReview, error) {
+	ctx = context.WithValue(ctx, structuredReviewKey{}, "cloud_contract")
 	completion, err := c.postChat(ctx, c.cfg.ChatModel, cloudContractPrompt(policy, docs), completionTokenLimit, "")
 	if err != nil {
 		return CloudReview{}, err
@@ -527,8 +529,17 @@ func (c *Client) newChatRequest(ctx context.Context, modelID string, messages []
 	if gateway == "" || c.cfg.BaseURL == "" || len(messages) == 0 {
 		return nil, chatRequestPayload{}, fmt.Errorf("%w: model is not configured", ErrRequest)
 	}
+	id, enabled, err := StructuredConfigurationIDFor(providerEndpointOf(c.cfg), c.cfg.ChatModel, c.cfg.OCRModel)
+	if err != nil || id == "" || id != c.configurationID {
+		return nil, chatRequestPayload{}, fmt.Errorf("%w: structured output configuration is invalid", ErrRequest)
+	}
+	var responseFormat json.RawMessage
+	if kind, ok := ctx.Value(structuredReviewKey{}).(string); ok && enabled {
+		responseFormat = StructuredResponseFormat(kind)
+	}
 	encoded, err := json.Marshal(chatRequest{
 		Model: gateway, Temperature: 0, MaxTokens: maxTokens, ReasoningEffort: reasoningEffort, Messages: messages,
+		ResponseFormat: responseFormat,
 	})
 	if err != nil {
 		return nil, chatRequestPayload{}, err
@@ -931,12 +942,15 @@ type warrantyJSON struct {
 }
 
 type chatRequest struct {
-	Model           string        `json:"model"`
-	Temperature     float64       `json:"temperature"`
-	MaxTokens       int           `json:"max_tokens"`
-	ReasoningEffort string        `json:"reasoning_effort,omitempty"`
-	Messages        []chatMessage `json:"messages"`
+	Model           string          `json:"model"`
+	Temperature     float64         `json:"temperature"`
+	MaxTokens       int             `json:"max_tokens"`
+	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
+	Messages        []chatMessage   `json:"messages"`
+	ResponseFormat  json.RawMessage `json:"response_format,omitempty"`
 }
+
+type structuredReviewKey struct{}
 
 type chatMessage struct {
 	Role    string `json:"role"`

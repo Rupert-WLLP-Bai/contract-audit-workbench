@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -118,11 +118,19 @@ func (s *Service) loadStoredUpstream(ctx context.Context) (upstreamConfig, error
 // must also agree; it is not a substitute for the configuration identity.
 // Callers without an identity retain the existing unconstrained behavior.
 func (u upstreamConfig) matchesFrozen(scope model.DelegatedScope) bool {
+	id, enabled, err := model.StructuredConfigurationIDFor(u.ProviderURL, u.ChatModel, u.OCRModel)
+	if err != nil {
+		return false
+	}
+	return u.matchesFrozenIdentity(scope, id, enabled)
+}
+
+func (u upstreamConfig) matchesFrozenIdentity(scope model.DelegatedScope, id string, enabled bool) bool {
 	if scope.ConfigurationID == "" {
-		return true
+		return !enabled
 	}
 	if scope.ProviderURL != "" && scope.ProviderURL != u.ProviderURL {
 		return false
 	}
-	return scope.ConfigurationID == model.ConfigurationIDFor(u.ProviderURL, u.ChatModel, u.OCRModel)
+	return scope.ConfigurationID == id
 }

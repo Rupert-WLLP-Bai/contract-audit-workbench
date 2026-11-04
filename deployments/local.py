@@ -4,8 +4,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-25
-# Updated: 2026-11-02
-# Revision: r2
+# Updated: 2026-11-04
+# Revision: r3
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -689,6 +689,10 @@ def start_apps(fixture: bool, offline_images: bool, planner_mode: str | None) ->
 	if fixture:
 		# The fixture answers only its own two model identifiers, and the run
 		# signature identity must agree across Execution, Worker, and Document.
+		# Fixture callers and gateway must not inherit a real provider binding.
+		os.environ["CAW_STRUCTURED_OUTPUT_ENABLED"] = "false"
+		os.environ["CAW_STRUCTURED_OUTPUT_PROVIDER_URL"] = ""
+		os.environ["CAW_STRUCTURED_OUTPUT_REVIEW_MODEL"] = ""
 		os.environ["LLM_MODEL"] = FIXTURE_CHAT_MODEL
 		os.environ["OCR_MODEL"] = FIXTURE_OCR_MODEL
 		# The fixture profile runs its own gateway service; without this the

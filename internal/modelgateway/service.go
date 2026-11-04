@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -386,6 +386,13 @@ type chatRequest struct {
 	scope           model.DelegatedScope
 	upstream        upstreamConfig
 	frozenMatches   bool
+	configurationID string
+	structured      bool
+}
+
+func (r chatRequest) contractMatches() bool {
+	id, enabled, err := model.StructuredConfigurationIDFor(r.upstream.ProviderURL, r.upstream.ChatModel, r.upstream.OCRModel)
+	return err == nil && id != "" && id == r.configurationID && enabled == r.structured
 }
 
 func (s *Service) chatCompletions(w http.ResponseWriter, r *http.Request) {
@@ -450,6 +457,13 @@ func (s *Service) readChatRequest(w http.ResponseWriter, r *http.Request, caller
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model upstream configuration is unavailable", "code": "model_upstream_unavailable"})
 		return chatRequest{}, false
 	}
+	identity, structured, contractErr := model.StructuredConfigurationIDFor(upstream.ProviderURL, upstream.ChatModel, upstream.OCRModel)
+	frozenMatches := upstream.matchesFrozenIdentity(scope, identity, structured)
+	if contractErr != nil || !validStructuredRequest(body, structured, requestedModel, upstream.ChatModel, scope, frozenMatches) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "model output configuration is invalid", "code": "model_configuration_changed"})
+		return chatRequest{}, false
+	}
+
 	if scope.Kind == "execution_prepare" || (scope.Action == "embedded_prepare_parse" && (caller != "document" || scope.Kind != "document" || model.GatewayID(requestedModel) != model.GatewayID(upstream.OCRModel) || !validEmbeddedOCRRequest(body, embeddedOCRPayloadDigest(scope)))) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "scope is restricted to selected document OCR", "code": "model_scope_unavailable"})
 		return chatRequest{}, false
@@ -463,7 +477,7 @@ func (s *Service) readChatRequest(w http.ResponseWriter, r *http.Request, caller
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requested token bound exceeds the configured reservation", "code": "model_token_bound_exceeded"})
 		return chatRequest{}, false
 	}
-	return chatRequest{caller: caller, body: body, requestedModel: requestedModel, requestedTokens: requestedTokens, inputTokens: inputTokens, scope: scope, upstream: upstream, frozenMatches: scope.Kind != "document" || upstream.matchesFrozen(scope)}, true
+	return chatRequest{caller: caller, body: body, requestedModel: requestedModel, requestedTokens: requestedTokens, inputTokens: inputTokens, scope: scope, upstream: upstream, frozenMatches: scope.Kind != "document" || frozenMatches, configurationID: identity, structured: structured}, true
 }
 
 func (s *Service) runChatAttempts(w http.ResponseWriter, ctx context.Context, request chatRequest, probe circuitProbe) {
@@ -479,6 +493,10 @@ func (s *Service) runChatAttempt(w http.ResponseWriter, ctx context.Context, req
 	if !ok {
 		return false
 	}
+	return s.runReservedChatAttempt(w, ctx, request, probe, attempt, lease)
+}
+
+func (s *Service) runReservedChatAttempt(w http.ResponseWriter, ctx context.Context, request chatRequest, probe circuitProbe, attempt int, lease store.ModelCallLease) bool {
 	if !request.frozenMatches {
 		if err := s.finishChatAttempt(lease, "failed", "model_configuration_changed", nil, true); err != nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model usage could not be recorded", "code": "model_usage_unavailable"})
@@ -488,6 +506,14 @@ func (s *Service) runChatAttempt(w http.ResponseWriter, ctx context.Context, req
 		return false
 	}
 	if !s.authorizeReservedDispatch(w, ctx, request.caller, request.scope, lease) {
+		return false
+	}
+	if !request.contractMatches() {
+		if err := s.finishChatAttempt(lease, "failed", "model_configuration_changed", nil, true); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model usage could not be recorded", "code": "model_usage_unavailable"})
+			return false
+		}
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "model configuration no longer matches the configured endpoint", "code": "model_configuration_changed"})
 		return false
 	}
 	response, status, usage, requestErr, retryable, preDispatch := s.dispatchUpstream(ctx, request.upstream, request.requestedModel, request.body)
@@ -509,9 +535,12 @@ func (s *Service) authorizeReservedDispatch(w http.ResponseWriter, ctx context.C
 }
 
 func (s *Service) reserveChatAttempt(w http.ResponseWriter, ctx context.Context, request chatRequest, attempt int) (store.ModelCallLease, bool) {
-	identity := model.ConfigurationIDFor(request.upstream.ProviderURL, request.upstream.ChatModel, request.upstream.OCRModel)
+	if !request.contractMatches() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model configuration is unavailable", "code": "model_configuration_changed"})
+		return store.ModelCallLease{}, false
+	}
 	lease, err := s.store.ReserveModelChatCall(ctx, request.caller, request.scope, request.requestedModel, attempt,
-		request.inputTokens, int64(request.requestedTokens), s.config.Budget, identity)
+		request.inputTokens, int64(request.requestedTokens), s.config.Budget, request.configurationID)
 	if errors.Is(err, store.ErrModelConfigurationChanged) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "frozen model configuration no longer matches the configured endpoint", "code": "model_configuration_changed"})
 		return store.ModelCallLease{}, false
@@ -696,6 +725,144 @@ func decodeRequest(w http.ResponseWriter, r *http.Request) ([]byte, string, int,
 		return nil, "", 0, model.DelegatedScope{}, err
 	}
 	return payload, strings.TrimSpace(request.Model), request.MaxTokens, scope, nil
+}
+
+func validStructuredRequest(body []byte, enabled bool, requestedModel, reviewModel string, scope model.DelegatedScope, frozenMatch bool) bool {
+	format, ok := structuredFormatField(body)
+	if !ok {
+		return false
+	}
+	if format == nil {
+		return true
+	}
+	if len(format) > 4096 {
+		return false
+	}
+	if !enabled || !frozenMatch || model.GatewayID(requestedModel) != model.GatewayID(reviewModel) || scope.Kind != "execution" || scope.ConfigurationID == "" {
+		return false
+	}
+	var actual bytes.Buffer
+	if json.Compact(&actual, format) != nil {
+		return false
+	}
+	for _, kind := range []string{"warranty", "cloud_contract"} {
+		var expected bytes.Buffer
+		if json.Compact(&expected, model.StructuredResponseFormat(kind)) == nil && bytes.Equal(actual.Bytes(), expected.Bytes()) {
+			return true
+		}
+	}
+	return false
+}
+
+// structuredFormatField scans already-validated JSON without copying large values.
+func structuredFormatField(body []byte) ([]byte, bool) {
+	i := 0
+	skip := func() {
+		for i < len(body) && (body[i] == ' ' || body[i] == '\n' || body[i] == '\r' || body[i] == '\t') {
+			i++
+		}
+	}
+	skip()
+	if i >= len(body) || body[i] != '{' {
+		return nil, false
+	}
+	i++
+	seen := map[string]bool{}
+	var format []byte
+	for {
+		skip()
+		if i >= len(body) {
+			return nil, false
+		}
+		if body[i] == '}' {
+			return format, true
+		}
+		if body[i] != '"' {
+			return nil, false
+		}
+		start := i
+		i++
+		for i < len(body) {
+			if body[i] == '\\' {
+				i += 2
+				continue
+			}
+			if body[i] == '"' {
+				i++
+				break
+			}
+			i++
+		}
+		var key string
+		if i > len(body) || json.Unmarshal(body[start:i], &key) != nil {
+			return nil, false
+		}
+		folded := strings.ToLower(key)
+		if seen[folded] {
+			return nil, false
+		}
+		seen[folded] = true
+		if strings.EqualFold(key, "response_format") && key != "response_format" {
+			return nil, false
+		}
+		skip()
+		if i >= len(body) || body[i] != ':' {
+			return nil, false
+		}
+		i++
+		skip()
+		start = i
+		depth := 0
+		quoted := false
+		escaped := false
+		for i < len(body) {
+			c := body[i]
+			if quoted {
+				if escaped {
+					escaped = false
+				} else if c == '\\' {
+					escaped = true
+				} else if c == '"' {
+					quoted = false
+				}
+				i++
+				continue
+			}
+			if c == '"' {
+				quoted = true
+				i++
+				continue
+			}
+			if c == '{' || c == '[' {
+				depth++
+			} else if c == '}' || c == ']' {
+				if depth == 0 {
+					break
+				}
+				depth--
+			} else if c == ',' && depth == 0 {
+				break
+			}
+			i++
+		}
+		if start == i {
+			return nil, false
+		}
+		if key == "response_format" {
+			format = bytes.TrimSpace(body[start:i])
+		}
+		skip()
+		if i >= len(body) {
+			return nil, false
+		}
+		if body[i] == '}' {
+			return format, true
+		}
+		if body[i] != ',' {
+			return nil, false
+		}
+		i++
+	}
 }
 
 // readChatPayload keeps large known-length requests to one final buffer after

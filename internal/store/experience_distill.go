@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -329,6 +329,9 @@ func (s *Store) RequestExperienceDistillation(ctx context.Context, user accounts
 		return ExperienceDistillReceipt{}, err
 	}
 	models := s.currentModels()
+	if err := validateReviewModelConfiguration(models); err != nil {
+		return ExperienceDistillReceipt{}, err
+	}
 	// The model must exist; a provider-backed client also has to expose the
 	// identity the distill job will be compared against when it runs.
 	if models == nil || strings.TrimSpace(models.ConfigurationID()) == "" {

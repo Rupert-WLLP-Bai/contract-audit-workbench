@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -351,6 +351,9 @@ func (s *Store) runExperienceDistill(ctx context.Context, claim JobClaim) error 
 			return fail(claim.stopReason, errors.New("experience task could not be claimed"))
 		}
 		models := s.currentModels()
+		if err := validateReviewModelConfiguration(models); err != nil {
+			return fail("experience_input_unavailable", err)
+		}
 		if models == nil || work.Input.ModelConfigurationID == "" || work.Input.ModelConfigurationID != models.ConfigurationID() || work.Input.TemplateRef != experienceDistillTemplate {
 			return fail("experience_input_unavailable", errors.New("experience task model or template configuration changed"))
 		}

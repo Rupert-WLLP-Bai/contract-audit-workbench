@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -84,6 +84,11 @@ func (s *Store) PrepareAttemptDocument(ctx context.Context, request PrepareDocum
 		return frozenFromParsed(authority.Document, *authority.Parsed), nil
 	}
 	models := s.currentModels()
+	if DocumentParseKind(authority.Document.Filename, authority.Document.MediaType) == "ocr" {
+		if err := validateReviewModelConfiguration(models); err != nil {
+			return FrozenDocument{}, err
+		}
+	}
 	parserID, parserVersion, configHash := parserConfigurationFor(authority.Document, models)
 	if parserID != request.Selection.ParserID || parserVersion != request.Selection.ParserVersion ||
 		configHash != request.Selection.ConfigHash || request.Selection.NormalizationVersion != docir.NormalizationVersion {

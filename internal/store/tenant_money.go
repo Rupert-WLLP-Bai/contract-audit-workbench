@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -150,7 +150,10 @@ func (s *Store) ReadTenantMoneyPolicy(ctx context.Context, user accounts.User) (
 		}
 		if endpoint.Active() {
 			var known bool
-			provider := model.ConfigurationIDFor(endpoint.BaseURL, endpoint.ReviewModel, endpoint.OCRModel)
+			provider, _, err := model.StructuredConfigurationIDFor(endpoint.BaseURL, endpoint.ReviewModel, endpoint.OCRModel)
+			if err != nil {
+				return TenantMoneyPolicy{}, err
+			}
 			if err := tx.QueryRow(ctx, `SELECT model_money_price_known($1,$2,$3)`, provider, endpoint.ReviewModel, endpoint.OCRModel).Scan(&known); err != nil {
 				return TenantMoneyPolicy{}, err
 			}

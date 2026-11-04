@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -31,6 +31,13 @@ func documentIDs(docs []Document) []string {
 	return out
 }
 
+func validateReviewModelConfiguration(models Models) error {
+	if validator, ok := models.(interface{ ConfigurationError() error }); ok && validator.ConfigurationError() != nil {
+		return fault.New(503, "model_configuration_unavailable", "模型配置不可用")
+	}
+	return nil
+}
+
 // currentSignature binds idempotence and retry to the same inputs that are
 // sealed in the immutable audit snapshot. Changing providers needs a new run.
 func (s *Store) currentSignature(docIDs []string, selection ...[]FrozenDocument) RunSnapshot {
@@ -46,10 +53,14 @@ func (s *Store) currentSignature(docIDs []string, selection ...[]FrozenDocument)
 // configuration, so a different selected pack version or planner configuration
 // requires a new run.
 func (s *Store) currentSignatureWithRulePack(docIDs []string, selection []FrozenDocument, pack *ActiveRulePack, compilerRef, plannerConfigurationID string, plannerPayload ...json.RawMessage) RunSnapshot {
+	return currentSignatureWithRulePack(s.currentModels(), docIDs, selection, pack, compilerRef, plannerConfigurationID, plannerPayload...)
+}
+
+func currentSignatureWithRulePack(models Models, docIDs []string, selection []FrozenDocument, pack *ActiveRulePack, compilerRef, plannerConfigurationID string, plannerPayload ...json.RawMessage) RunSnapshot {
 	// The extractor belongs to comparator configuration; the governed pack has
 	// its own compiler marker. Keep both identities so retries cannot execute
 	// changed extraction semantics against a previously frozen run.
-	signature := currentSignatureFor(docIDs, selection, s.currentModels(), compilerRef)
+	signature := currentSignatureFor(docIDs, selection, models, compilerRef)
 	signature.RulePackCompilerRef = ""
 	applyActiveRulePackIdentity(&signature, pack)
 	signature.PlannerConfigurationID = plannerConfigurationID

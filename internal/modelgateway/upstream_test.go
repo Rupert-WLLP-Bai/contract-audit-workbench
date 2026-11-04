@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -203,5 +203,102 @@ func TestStoredEndpointDrivesGatewayCatalogAndDispatch(t *testing.T) {
 func TestStoredEndpointModelIDsMatchGatewayIDs(t *testing.T) {
 	if model.GatewayID("panda-local/stored-review") != "stored-review" {
 		t.Fatal("gateway id normalization changed")
+	}
+}
+
+func TestStructuredRequestRestrictions(t *testing.T) {
+	scope := model.DelegatedScope{Kind: "execution", ConfigurationID: "frozen"}
+	format := string(model.StructuredResponseFormat("warranty"))
+	valid := []byte(`{"response_format":` + format + `}`)
+	if !validStructuredRequest(valid, true, "review", "review", scope, true) {
+		t.Fatal("fixed review schema rejected")
+	}
+	for _, tt := range []struct {
+		body      []byte
+		enabled   bool
+		requested string
+		scope     model.DelegatedScope
+	}{
+		{valid, false, "review", scope}, {valid, true, "ocr", scope}, {valid, true, "review", model.DelegatedScope{Kind: "document", ConfigurationID: "frozen"}},
+		{[]byte(`{"response_format":{"type":"json_schema"}}`), true, "review", scope},
+		{[]byte(`{"response_format":"` + strings.Repeat("x", 4097) + `"}`), true, "review", scope},
+		{[]byte(`{"Response_Format":{"type":"json_schema"}}`), true, "review", scope},
+		{[]byte(`{"reſponſe_format":{"type":"json_schema"}}`), true, "review", scope},
+		{[]byte(`{"response_format":` + format + `,"response_format":null}`), true, "review", scope},
+	} {
+		if validStructuredRequest(tt.body, tt.enabled, tt.requested, "review", tt.scope, true) {
+			t.Fatalf("accepted %s", tt.body)
+		}
+	}
+	if !validStructuredRequest([]byte(`{"model":"review"}`), true, "review", "review", scope, true) {
+		t.Fatal("ordinary routing request rejected")
+	}
+}
+
+func TestStructuredFrozenIdentityMatchesResolvedUpstream(t *testing.T) {
+	t.Setenv("CAW_STRUCTURED_OUTPUT_ENABLED", "true")
+	t.Setenv("CAW_STRUCTURED_OUTPUT_PROVIDER_URL", "https://provider.example/v1")
+	t.Setenv("CAW_STRUCTURED_OUTPUT_REVIEW_MODEL", "review")
+	upstream := upstreamConfig{ProviderURL: "https://provider.example/v1", ChatModel: "review", OCRModel: "ocr"}
+	id, _, err := model.StructuredConfigurationIDFor(upstream.ProviderURL, upstream.ChatModel, upstream.OCRModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !upstream.matchesFrozen(model.DelegatedScope{ConfigurationID: id}) {
+		t.Fatal("matching identity rejected")
+	}
+	for _, scope := range []model.DelegatedScope{{}, {ConfigurationID: model.ConfigurationIDFor(upstream.ProviderURL, upstream.ChatModel, upstream.OCRModel)}, {ConfigurationID: id, ProviderURL: "https://other"}} {
+		if upstream.matchesFrozen(scope) {
+			t.Fatalf("accepted stale identity %+v", scope)
+		}
+	}
+	upstream.ChatModel = "other"
+	if upstream.matchesFrozen(model.DelegatedScope{ConfigurationID: id}) {
+		t.Fatal("mismatched upstream accepted")
+	}
+}
+
+func TestChatRequestRejectsContractDrift(t *testing.T) {
+	t.Setenv("CAW_STRUCTURED_OUTPUT_ENABLED", "")
+	t.Setenv("CAW_STRUCTURED_OUTPUT_PROVIDER_URL", "https://provider.example/v1")
+	t.Setenv("CAW_STRUCTURED_OUTPUT_REVIEW_MODEL", "review")
+	upstream := upstreamConfig{ProviderURL: "https://provider.example/v1", ChatModel: "review", OCRModel: "ocr"}
+	id, enabled, err := model.StructuredConfigurationIDFor(upstream.ProviderURL, upstream.ChatModel, upstream.OCRModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := chatRequest{upstream: upstream, configurationID: id, structured: enabled}
+	if !request.contractMatches() {
+		t.Fatal("unchanged contract rejected")
+	}
+	t.Setenv("CAW_STRUCTURED_OUTPUT_ENABLED", "true")
+	if request.contractMatches() {
+		t.Fatal("changed contract accepted")
+	}
+}
+
+func TestChatRequestPinsContractBeforeReservation(t *testing.T) {
+	t.Setenv("CAW_STRUCTURED_OUTPUT_ENABLED", "")
+	t.Setenv("CAW_STRUCTURED_OUTPUT_PROVIDER_URL", "https://provider.example/v1")
+	t.Setenv("CAW_STRUCTURED_OUTPUT_REVIEW_MODEL", "review")
+	service := &Service{config: Config{Mode: "fixture", ProviderURL: "https://provider.example/v1", ChatModel: "review", OCRModel: "ocr", Budget: store.ModelBudgetLimits{MaxInputTokenReservation: 10000, MaxOutputTokenReservation: 100}}}
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"review","max_tokens":8,"messages":[]}`))
+	req.Header.Set("X-Audit-Execution-Scope", encodedGatewayScope(t, model.DelegatedScope{Kind: "execution"}))
+	response := httptest.NewRecorder()
+	captured, ok := service.readChatRequest(response, req, "worker")
+	if !ok {
+		t.Fatalf("request rejected: %d %s", response.Code, response.Body)
+	}
+	legacy := model.ConfigurationIDFor("https://provider.example/v1", "review", "ocr")
+	if captured.configurationID != legacy || captured.structured {
+		t.Fatalf("incorrect snapshot: %+v", captured)
+	}
+	t.Setenv("CAW_STRUCTURED_OUTPUT_ENABLED", "true")
+	response = httptest.NewRecorder()
+	if service.runChatAttempt(response, context.Background(), captured, 0, 1) {
+		t.Fatal("changed contract requested retry")
+	}
+	if response.Code != http.StatusServiceUnavailable || gatewayErrorCode(t, response.Body.Bytes()) != "model_configuration_changed" {
+		t.Fatalf("drift response: %d %s", response.Code, response.Body)
 	}
 }

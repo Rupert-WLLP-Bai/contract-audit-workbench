@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -238,6 +238,9 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		return "", fault.Conflict("案件材料刚被更新，请重新发起审查")
 	}
 	models := s.currentModels()
+	if err := validateReviewModelConfiguration(models); err != nil {
+		return "", err
+	}
 	frozenDocs, selections, err := s.acceptanceParsePlan(ctx, seen, current, models)
 	if err != nil {
 		return "", err
@@ -272,7 +275,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	if payloadErr != nil {
 		return "", payloadErr
 	}
-	signature := applyReviewScope(s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(caseItem), plannerConfiguration.ConfigurationID, plannerPayload), scope)
+	signature := applyReviewScope(currentSignatureWithRulePack(models, reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(caseItem), plannerConfiguration.ConfigurationID, plannerPayload), scope)
 	reserved := false
 	jobID, outboxID := "", ""
 	if durable {
@@ -323,6 +326,9 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 				return err
 			}
 		}
+		if err := validateReviewModelConfiguration(models); err != nil {
+			return err
+		}
 		lockedCase, err := loadKnowledgeCase(ctx, tx, user, caseID)
 		if err != nil {
 			return err
@@ -340,7 +346,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		// association and mapping pins, and it must name the business instant
 		// itself instead of borrowing the server clock.
 		if !isGovernedReviewCase(lockedCase) {
-			signature = applyReviewScope(s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload), scope)
+			signature = applyReviewScope(currentSignatureWithRulePack(models, reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload), scope)
 			signature, err = withServiceObjectContextTx(ctx, tx, lockedCase, at, serviceObjectDocuments, signature)
 			return err
 		}
@@ -372,7 +378,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			return err
 		}
 		activePack = assessment.Pack
-		signature = applyReviewScope(s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, assessment.Pack, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload), scope)
+		signature = applyReviewScope(currentSignatureWithRulePack(models, reviewDocumentIDs, frozenDocs, assessment.Pack, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload), scope)
 		if assessment.Knowledge != nil {
 			signature.GovernedKnowledge = assessment.Knowledge
 		}
@@ -630,6 +636,9 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 	// One operation, one client: the retried attempt must keep the identity it
 	// validated, even if the endpoint watcher applies a new revision meanwhile.
 	models := s.currentModels()
+	if err := validateReviewModelConfiguration(models); err != nil {
+		return err
+	}
 	currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, models, telecomCompilerRefForCase(caseItem)), frozen)
 	currentSignature, err = withPartyContext(seen, caseID, currentSignature)
 	if err != nil {
@@ -662,6 +671,9 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 	var executionCase Case
 	var retryTx pgx.Tx
 	err = s.updateCaseAsWithContext(ctx, user, caseID, func(tx pgx.Tx) error {
+		if err := validateReviewModelConfiguration(models); err != nil {
+			return err
+		}
 		// The locked callback below re-reads the live attempt state and then
 		// validates the frozen object dependencies on this same transaction, so
 		// an active duplicate and a real retry cannot race each other.

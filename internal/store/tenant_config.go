@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -191,7 +191,11 @@ func (s *Store) tenantConfigCatalogs(ctx context.Context, q queryer, user accoun
 		return nil, nil, nil, nil, err
 	}
 	if found && settings.Active() {
-		models = append(models, TenantModelCatalogEntry{ID: model.ConfigurationIDFor(settings.BaseURL, settings.ReviewModel, settings.OCRModel), Revision: strconv.FormatInt(settings.Revision, 10), ProviderLabel: settings.Name, ChatModel: settings.ReviewModel, OCRModel: settings.OCRModel})
+		identity, _, err := model.StructuredConfigurationIDFor(settings.BaseURL, settings.ReviewModel, settings.OCRModel)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		models = append(models, TenantModelCatalogEntry{ID: identity, Revision: strconv.FormatInt(settings.Revision, 10), ProviderLabel: settings.Name, ChatModel: settings.ReviewModel, OCRModel: settings.OCRModel})
 		if settings.HasAPIKey() {
 			credentials = append(credentials, map[string]string{"id": tenantCredentialRef, "label": "当前平台模型凭据"})
 		}
