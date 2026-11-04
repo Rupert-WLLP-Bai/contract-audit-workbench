@@ -24,7 +24,7 @@
 
 结构化输出默认关闭。只有管理员确认供应商支持系统使用的固定 JSON Schema 后，才设置 `CAW_STRUCTURED_OUTPUT_ENABLED=true`，并同时填写 `CAW_STRUCTURED_OUTPUT_PROVIDER_URL` 与 `CAW_STRUCTURED_OUTPUT_REVIEW_MODEL`。两项必须分别与最终生效的 provider 地址和审查模型完全匹配；未确认支持或不匹配时保持关闭。此配置不表示某个本地供应商已具备该能力。
 
-Compose 部署时，`CAW_STRUCTURED_OUTPUT_PROVIDER_URL` 必须绑定容器用于冻结身份并访问供应商的最终 provider 地址。若部署把宿主机上的 `localhost` 地址改为容器可达的 `host.docker.internal`，绑定值也必须使用容器最终看到的地址；审查模型必须与最终生效的 `LLM_MODEL` 完全一致。
+Compose 部署时，`CAW_STRUCTURED_OUTPUT_PROVIDER_URL` 必须绑定容器用于冻结身份并访问供应商的最终 provider 地址。若部署把宿主机上的 `localhost` 地址改为容器可达的 `host.docker.internal`，绑定值也必须使用容器最终看到的地址。审查模型必须与最终生效的模型一致；采用平台保存的端点时，以该端点选定的审查模型为准。
 
 所有参与该审查路径的 Core、Document、Execution、Worker 和 Model Gateway 进程，都必须使用相同的开关、provider 地址和审查模型配置。启用或调整配置时，按受控部署流程更新所有参与方，再接收新审查。不支持此能力的服务保持关闭，不能接收该启用配置的请求。fixture 与手动 Compose 配置必须显式关闭结构化输出，并将 provider 地址和审查模型绑定值留空。
 

@@ -493,6 +493,10 @@ func (s *Service) runChatAttempt(w http.ResponseWriter, ctx context.Context, req
 	if !ok {
 		return false
 	}
+	return s.runReservedChatAttempt(w, ctx, request, probe, attempt, lease)
+}
+
+func (s *Service) runReservedChatAttempt(w http.ResponseWriter, ctx context.Context, request chatRequest, probe circuitProbe, attempt int, lease store.ModelCallLease) bool {
 	if !request.frozenMatches {
 		if err := s.finishChatAttempt(lease, "failed", "model_configuration_changed", nil, true); err != nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model usage could not be recorded", "code": "model_usage_unavailable"})
