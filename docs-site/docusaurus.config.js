@@ -12,6 +12,19 @@ const config = {
   },
   markdown: {
     mermaid: true,
+    async parseFrontMatter(params) {
+      const parsed = await params.defaultParseFrontMatter(params);
+      if (parsed.frontMatter.title) return parsed;
+
+      // The repository's leading metadata mirror is an HTML comment. Ignore it
+      // when finding the document's first heading for the browser title.
+      const start = parsed.content
+        .replace(/^<!-- File metadata \(manifest mirror\): -->[\s\S]*?<!-- End file metadata\. -->\s*/, '')
+        .replace(/^(?:<a id="[^"]+"><\/a>\s*)+/, '');
+      const heading = /^#[ \t]+([^\r\n]+)/.exec(start);
+      if (heading) parsed.frontMatter.title = heading[1].trim();
+      return parsed;
+    },
     hooks: {
       onBrokenMarkdownLinks: 'warn',
     },
