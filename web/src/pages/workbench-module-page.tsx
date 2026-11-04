@@ -33,9 +33,9 @@ import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
 import { TechnicalDetail } from "../components/technical-detail";
 import { caseSelectPresentation } from "../components/case-select-presentation";
-import { caseHref, formatDateTime } from "../domain/review";
+import { actorRoleLabel, caseHref, formatDateTime, parseLabel, parseTone, roleLabel, runLabel, runTone, taskKindLabel } from "../domain/review";
 import { caseOptionLabel } from "../domain/case-identity";
-import { businessActionLabel, businessSourceTypeLabel, remediationStatusLabel } from "../domain/business-labels";
+import { businessActionLabel, businessSourceTypeLabel, remediationStatusLabel, suppliedBusinessName } from "../domain/business-labels";
 import { SettingsPage } from "./settings-page";
 import "./workbench-module-page.css";
 
@@ -128,6 +128,7 @@ type ModuleRecord = {
   title: string;
   subtitle: string;
   status: string;
+  toolStatus?: string | null;
   searchText: string;
   updatedAt: string | null;
   caseId: string | null;
@@ -165,6 +166,54 @@ function statusLabel(status: string) {
   return Object.hasOwn(STATUS_LABELS, status) ? STATUS_LABELS[status]! : "状态待核对";
 }
 
+const TOOL_STATUS_LABELS: Record<string, string> = {
+  reserved: "调用已预留", completed: "调用完成", failed: "调用失败", cancelled: "调用已取消",
+};
+const TEMPLATE_FIELD_TYPES: Record<string, string> = {
+  string: "文本", decimal: "小数", enum: "选项",
+};
+const FILE_TYPES: Record<string, string> = {
+  "application/pdf": "PDF 文档",
+  "image/png": "PNG 图片",
+  "image/jpeg": "JPEG 图片",
+  "text/plain": "纯文本文档",
+  "text/markdown": "Markdown 文档",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "Word 文档",
+};
+const TASK_PRIORITIES: Record<string, string> = {
+  high: "高优先级", medium: "中优先级", low: "低优先级",
+};
+
+function toolStatusLabel(status: string | null): string {
+  if (!status) return "状态未报告";
+  return Object.hasOwn(TOOL_STATUS_LABELS, status) ? TOOL_STATUS_LABELS[status]! : "状态待核对";
+}
+
+function templateFieldTypeLabel(type: string): string {
+  return Object.hasOwn(TEMPLATE_FIELD_TYPES, type) ? TEMPLATE_FIELD_TYPES[type]! : "类型待核对";
+}
+
+function fileTypeLabel(type: string): string {
+  if (!type.trim()) return "文件类型未提供";
+  return Object.hasOwn(FILE_TYPES, type) ? FILE_TYPES[type]! : "文件类型待核对";
+}
+
+function taskPriorityLabel(priority: string): string {
+  return Object.hasOwn(TASK_PRIORITIES, priority) ? TASK_PRIORITIES[priority]! : "优先级待核对";
+}
+
+function auditCaseName(item: WorkbenchSnapshot["audit"][number]): string {
+  return item.case_id === null ? "平台级事件" : suppliedBusinessName(item.case_title, "案件名称未提供");
+}
+
+function toolName(item: WorkbenchSnapshot["tools"][number]): string {
+  // The current ledger projection repeats the capability as its name; it has
+  // no independently supplied display name (workbenchTools on the server).
+  if (item.description === "持久工具调用账本中的实际能力" && item.name === item.id && item.capabilities.length === 1 && item.capabilities[0] === item.id)
+    return "工具名称未提供";
+  return suppliedBusinessName(item.name, "工具名称未提供");
+}
+
 function field(label: string, value: string | number | null): DetailField {
   return {
     label,
@@ -175,7 +224,22 @@ function field(label: string, value: string | number | null): DetailField {
 /** Machine IDs and digests stay available for audit, but the primary detail
  *  view shows a human label until the reader explicitly opens the value. */
 function technicalField(label: string, value: string | number | null): DetailField {
-  return { ...field(label, value), technical: true };
+  return { label, value: value === null ? "" : String(value), technical: true };
+}
+
+function memberName(members: Map<string, string>, id: string): string {
+  return suppliedBusinessName(members.get(id), "姓名未提供");
+}
+
+function auditFields(entries: WorkbenchSnapshot["audit"], memberView = false): DetailField[] {
+  return entries.flatMap((entry, index) => [
+    memberView
+      ? field(`${businessActionLabel(entry.action)}，${formatDateTime(entry.at)}`, `${auditCaseName(entry)}，${entry.summary}`)
+      : field(`${suppliedBusinessName(entry.actor_name, "操作人姓名未提供")}，${businessActionLabel(entry.action)}`, `${formatDateTime(entry.at)}，${entry.summary}`),
+    technicalField(`事件 ${index + 1} 操作编码`, entry.action),
+    technicalField(`事件 ${index + 1} 标识`, entry.id),
+    ...(entry.case_id === null ? [] : [technicalField(`事件 ${index + 1} 案件标识`, entry.case_id)]),
+  ]);
 }
 
 function panel(
@@ -197,18 +261,19 @@ function knowledgePanels(
   return {
     文档内容: panel(
       [
-        field("知识条目", item.id),
+        technicalField("知识条目标识", item.id),
         field("版本", item.version),
         field("来源", businessSourceTypeLabel(item.source_type)),
         technicalField("来源类型编码", item.source_type),
         field("生效时间", item.effective_at),
-        field("维护人", memberById.get(item.created_by) ?? item.created_by),
+        field("维护人", memberName(memberById, item.created_by)),
+        technicalField("维护人标识", item.created_by),
       ],
       item.body,
     ),
     条目与引用: panel(
       [
-        field("条目 ID", item.id),
+        technicalField("条目 ID", item.id),
         field("版本", item.version),
         field("来源类型", businessSourceTypeLabel(item.source_type)),
         technicalField("来源类型编码", item.source_type),
@@ -227,7 +292,8 @@ function knowledgePanels(
       [
         field("当前版本", item.version),
         field("创建时间", item.created_at),
-        field("创建者", memberById.get(item.created_by) ?? item.created_by),
+        field("创建者", memberName(memberById, item.created_by)),
+        technicalField("创建者标识", item.created_by),
       ],
       "同一知识条目的不可覆盖与版本引用由服务端维护。",
     ),
@@ -269,12 +335,12 @@ function buildRecords(
   const make = (values: Omit<ModuleRecord, "searchText">): ModuleRecord => ({
     ...values,
     searchText:
-      `${values.id} ${values.title} ${values.subtitle} ${values.status} ${Object.values(
+      `${values.id} ${values.caseId ?? ""} ${values.runId ?? ""} ${values.title} ${values.subtitle} ${values.status} ${Object.values(
         values.panels,
       )
         .flatMap((item) => [
           item.body ?? "",
-          ...item.fields.map((entry) => `${entry.label} ${entry.value}`),
+          ...item.fields.map((entry) => `${entry.label} ${entry.value || (entry.technical ? "未报告" : "")}`),
         ])
         .join(" ")}`.toLocaleLowerCase("zh-CN"),
   });
@@ -287,33 +353,31 @@ function buildRecords(
       const panels: Record<string, DetailPanel> = {
         任务详情: panel([
           technicalField("任务 ID", task.id),
-          field("任务类型", task.kind),
-          field("优先级", task.priority),
-          field("状态", task.status),
-          field("责任人", memberById.get(task.assignee_id) ?? task.assignee_id),
+          technicalField("案件标识", task.case_id),
+          field("任务类型", taskKindLabel(task.kind)),
+          technicalField("任务类型编码", task.kind),
+          field("优先级", taskPriorityLabel(task.priority)),
+          technicalField("优先级编码", task.priority),
+          field("状态", statusLabel(task.status)),
+          technicalField("状态编码", task.status),
+          field("责任人", memberName(memberById, task.assignee_id)),
+          technicalField("责任人标识", task.assignee_id),
           field("截止时间", task.due_at),
           field("版本", task.version),
         ]),
         处理记录: caseAudit.length
           ? panel(
-              caseAudit
-                .slice(0, 8)
-                .map((item) =>
-                  field(
-                    `${item.actor_name}，${businessActionLabel(item.action)}`,
-                    `${formatDateTime(item.at)}，${item.summary}`,
-                  ),
-                ),
+              auditFields(caseAudit.slice(0, 8)),
             )
           : emptyPanel("没有获取到相关案件的业务审计记录。"),
         关联材料: documents.length
           ? panel(
-              documents.map((item) =>
-                field(
-                  item.filename,
-                  `${item.role}，${item.parse_status}，${item.id}`,
-                ),
-              ),
+              documents.flatMap((item, index) => [
+                field(item.filename, `${roleLabel(item.role)}，${parseLabel(item.parse_status)}`),
+                technicalField(`材料 ${index + 1} 标识`, item.id),
+                technicalField(`材料 ${index + 1} 角色编码`, item.role),
+                technicalField(`材料 ${index + 1} 解析状态编码`, item.parse_status),
+              ]),
               null,
               documents.map((item) => ({
                 label: `读取 ${item.filename}`,
@@ -324,21 +388,22 @@ function buildRecords(
         协作成员: panel([
           field(
             "当前责任人",
-            memberById.get(task.assignee_id) ?? task.assignee_id,
+            memberName(memberById, task.assignee_id),
           ),
+          technicalField("当前责任人标识", task.assignee_id),
           field(
             "案件负责人",
             relatedCase?.profile?.owner_id
-              ? (memberById.get(relatedCase.profile.owner_id) ??
-                  relatedCase.profile.owner_id)
+              ? memberName(memberById, relatedCase.profile.owner_id)
               : null,
           ),
+          technicalField("案件负责人标识", relatedCase?.profile?.owner_id ?? null),
         ]),
       };
       return make({
         id: task.id,
         title: task.title,
-        subtitle: relatedCase?.title ?? "关联案件",
+        subtitle: suppliedBusinessName(relatedCase?.title, "案件名称未提供"),
         status: task.status,
         updatedAt: task.updated_at,
         caseId: task.case_id,
@@ -359,9 +424,11 @@ function buildRecords(
       const panels: Record<string, DetailPanel> = {
         整改详情: panel([
           technicalField("整改 ID", item.id),
+          technicalField("案件标识", item.case_id),
           field("状态", remediationStatusLabel(item.status)),
           technicalField("状态编码", item.status),
-          field("责任人", memberById.get(item.assignee_id) ?? item.assignee_id),
+          field("责任人", memberName(memberById, item.assignee_id)),
+          technicalField("责任人标识", item.assignee_id),
           field("截止时间", item.due_at),
           field("整改措施", item.measure),
           field("最近理由", item.reason),
@@ -369,12 +436,13 @@ function buildRecords(
         ]),
         材料与版本: documents.length
           ? panel(
-              documents.map((document) =>
-                field(
-                  document.filename,
-                  `${document.role}，${document.parse_status}，${document.digest}`,
-                ),
-              ),
+              documents.flatMap((document, index) => [
+                field(document.filename, `${roleLabel(document.role)}，${parseLabel(document.parse_status)}`),
+                technicalField(`材料 ${index + 1} 标识`, document.id),
+                technicalField(`材料 ${index + 1} 角色编码`, document.role),
+                technicalField(`材料 ${index + 1} 解析状态编码`, document.parse_status),
+                technicalField(`材料 ${index + 1} 摘要`, document.digest),
+              ]),
               null,
               documents.map((document) => ({
                 label: `读取 ${document.filename}`,
@@ -404,21 +472,14 @@ function buildRecords(
         ),
         操作历史: caseAudit.length
           ? panel(
-              caseAudit
-                .slice(0, 8)
-                .map((entry) =>
-                  field(
-                    `${entry.actor_name}，${businessActionLabel(entry.action)}`,
-                    `${formatDateTime(entry.at)}，${entry.summary}`,
-                  ),
-                ),
+              auditFields(caseAudit.slice(0, 8)),
             )
           : emptyPanel("没有获取到相关案件的审计历史。"),
       };
       return make({
         id: item.id,
         title: item.measure,
-        subtitle: item.case_title,
+        subtitle: suppliedBusinessName(item.case_title, "案件名称未提供"),
         status: item.status,
         updatedAt: item.updated_at,
         caseId: item.case_id,
@@ -444,7 +505,8 @@ function buildRecords(
       const panels: Record<string, DetailPanel> = {
         报告预览: panel(
           [
-            field("案件", item.case_title),
+            field("案件", suppliedBusinessName(item.case_title, "案件名称未提供")),
+            technicalField("案件标识", item.case_id),
             field("报告版本", item.version),
             field("生成时间", item.created_at),
           ],
@@ -468,8 +530,8 @@ function buildRecords(
       return make({
         id: item.id,
         reference: `审查报告 v${item.version}`,
-        title: `${item.case_title}，审查报告 v${item.version}`,
-        subtitle: item.case_title,
+        title: `${suppliedBusinessName(item.case_title, "案件名称未提供")}，审查报告 v${item.version}`,
+        subtitle: suppliedBusinessName(item.case_title, "案件名称未提供"),
         status: "已生成",
         updatedAt: item.created_at,
         caseId: item.case_id,
@@ -500,17 +562,20 @@ function buildRecords(
         原文预览: panel(
           [
             field("文件名", item.filename),
-            field("类型", item.media_type),
+            field("已记录文件类型", fileTypeLabel(item.media_type)),
+            technicalField("文件类型标识", item.media_type),
             field("字节数", item.size),
-            field("解析状态", item.parse_status),
+            field("解析状态", parseLabel(item.parse_status)),
+            technicalField("解析状态编码", item.parse_status),
           ],
           "原件按案件权限实时读取；PDF 页数及未返回的页面信息不作估算。",
           links,
         ),
         引用片段: panel(
           [
-            field("案件", item.case_title),
-            field("解析产物", parsed?.id ?? null),
+            field("案件", suppliedBusinessName(item.case_title, "案件名称未提供")),
+            technicalField("案件标识", item.case_id),
+            technicalField("解析产物", parsed?.id ?? null),
           ],
           "原文引用属于具体的审查记录。请打开审查工作区查看被引用的内容。",
           relatedCase?.latest_run
@@ -524,17 +589,19 @@ function buildRecords(
         ),
         来源与身份: panel([
           technicalField("材料 ID", item.id),
-          field("角色", item.role),
+          field("角色", roleLabel(item.role)),
+          technicalField("角色编码", item.role),
           technicalField("原件摘要", item.digest),
           field("上传时间", item.created_at),
-          field("解析器", parsed?.parser_id ?? null),
-          field("解析版本", parsed?.parser_version ?? null),
+          technicalField("解析器标识", parsed?.parser_id ?? null),
+          technicalField("解析版本", parsed?.parser_version ?? null),
         ]),
         使用记录: relatedCase?.latest_run
           ? panel(
               [
                 technicalField("最新运行", relatedCase.latest_run.id),
-                field("最新状态", relatedCase.latest_run.state),
+                field("最新状态", runLabel(relatedCase.latest_run.state)),
+                technicalField("最新状态编码", relatedCase.latest_run.state),
                 field("更新时间", relatedCase.latest_run.updated_at),
               ],
               "查看完整的历史引用，请打开各次审查的工作区。",
@@ -561,7 +628,7 @@ function buildRecords(
       return make({
         id: item.id,
         title: item.filename,
-        subtitle: item.case_title,
+        subtitle: suppliedBusinessName(item.case_title, "案件名称未提供"),
         status: item.parse_status,
         updatedAt: item.created_at,
         caseId: item.case_id,
@@ -578,8 +645,10 @@ function buildRecords(
       const panels: Record<string, DetailPanel> = {
         运行概览: panel(
           [
-            field("案件", item.case_title),
-            field("运行状态", item.state),
+            field("案件", suppliedBusinessName(item.case_title, "案件名称未提供")),
+            technicalField("案件标识", item.case_id),
+            field("运行状态", runLabel(item.state)),
+            technicalField("运行状态编码", item.state),
             field("开始时间", item.started_at),
             field("结束时间", item.finished_at),
             field("创建时间", item.created_at),
@@ -597,7 +666,8 @@ function buildRecords(
           [
             field("实际调用数", usage?.calls ?? null),
             field("用量未知调用数", usage?.unknown_calls ?? null),
-            field("已报告来源", usage?.sources.join("、") ?? null),
+            field("已报告来源", usage ? `${usage.sources.length} 项` : null),
+            ...(usage?.sources.map((source, index) => technicalField(`来源 ${index + 1} 标识`, source)) ?? []),
           ],
           "工作台没有返回单次调用记录；请在审查工作区的执行检查器中查看已保存的详细事件。",
           [{ label: "查看执行事件", href: caseHref(item.case_id, item.id) }],
@@ -616,7 +686,8 @@ function buildRecords(
         ),
         执行日志: panel(
           [
-            field("状态", item.state),
+            field("状态", runLabel(item.state)),
+            technicalField("状态编码", item.state),
             field("开始时间", item.started_at),
             field("结束时间", item.finished_at),
           ],
@@ -626,7 +697,7 @@ function buildRecords(
       };
       return make({
         id: item.id,
-        title: item.case_title,
+        title: suppliedBusinessName(item.case_title, "案件名称未提供"),
         subtitle:
           item.updated_at != null
             ? `更新于 ${formatDateTime(item.updated_at)}`
@@ -663,11 +734,14 @@ function buildRecords(
   if (module === "organization")
     return snapshot.members.map((item) => {
       const fields = [
-        field("身份 ID", item.id),
-        field("显示姓名", item.display_name),
-        field("角色", item.role),
-        field("租户 ID", item.tenant_id),
-        field("组织 ID", item.org_id),
+        technicalField("身份 ID", item.id),
+        field("显示姓名", suppliedBusinessName(item.display_name, "姓名未提供")),
+        field("角色", actorRoleLabel(item.role)),
+        technicalField("角色编码", item.role),
+        field("租户", "租户名称未提供"),
+        technicalField("租户 ID", item.tenant_id),
+        field("组织", "组织名称未提供"),
+        technicalField("组织 ID", item.org_id),
       ];
       const memberEvents = [...(auditByActor.get(item.id) ?? [])]
         .sort((left, right) => right.at.localeCompare(left.at))
@@ -676,29 +750,30 @@ function buildRecords(
         成员信息: panel(fields),
         角色与权限: panel(
           [
-            field("角色", item.role),
-            field("租户", item.tenant_id),
-            field("组织", item.org_id),
+            field("角色", actorRoleLabel(item.role)),
+            technicalField("角色编码", item.role),
+            field("租户", "租户名称未提供"),
+            technicalField("租户 ID", item.tenant_id),
+            field("组织", "组织名称未提供"),
+            technicalField("组织 ID", item.org_id),
           ],
           "这些信息来自公开成员目录。访问案件时，系统仍会逐次检查权限。",
         ),
         案件授权: panel(
           [
-            field("身份 ID", item.id),
-            field("角色", item.role),
-            field("租户", item.tenant_id),
-            field("组织", item.org_id),
+            technicalField("身份 ID", item.id),
+            field("角色", actorRoleLabel(item.role)),
+            technicalField("角色编码", item.role),
+            field("租户", "租户名称未提供"),
+            technicalField("租户 ID", item.tenant_id),
+            field("组织", "组织名称未提供"),
+            technicalField("组织 ID", item.org_id),
           ],
           "成员信息不包含每个案件的授权明细，不能据此推断该成员有权查看哪些案件。",
         ),
         活动记录: memberEvents.length
           ? panel(
-              memberEvents.map((entry) =>
-                field(
-                  `${businessActionLabel(entry.action)}，${formatDateTime(entry.at)}`,
-                  `${entry.case_title ?? "平台级事件"}，${entry.summary}`,
-                ),
-              ),
+              auditFields(memberEvents, true),
               "以下是工作台中与该成员关联的业务审计记录，不包含登录或 HTTP 访问日志。",
               [{ label: "查看审计事件", href: "/workbench/audit" }],
             )
@@ -706,8 +781,8 @@ function buildRecords(
       };
       return make({
         id: item.id,
-        title: item.display_name,
-        subtitle: `${item.role}，${item.org_id}`,
+        title: suppliedBusinessName(item.display_name, "姓名未提供"),
+        subtitle: `${actorRoleLabel(item.role)}，组织名称未提供`,
         status: "当前身份可见",
         updatedAt: null,
         caseId: null,
@@ -720,12 +795,11 @@ function buildRecords(
 
   if (module === "templates")
     return snapshot.templates.map((item) => {
-      const fieldRows = item.fields.map((entry) =>
-        field(
-          entry.label,
-          `${entry.key}，${entry.type}，${entry.required ? "必填" : "选填"}`,
-        ),
-      );
+      const fieldRows = item.fields.flatMap((entry, index) => [
+        field(suppliedBusinessName(entry.label, "字段名称未提供"), `${templateFieldTypeLabel(entry.type)}，${entry.required ? "必填" : "选填"}`),
+        technicalField(`字段 ${index + 1} 标识`, entry.key),
+        technicalField(`字段 ${index + 1} 类型编码`, entry.type),
+      ]);
       const panels: Record<string, DetailPanel> = {
         模板预览: panel(
           [
@@ -743,7 +817,7 @@ function buildRecords(
           [{ label: "打开案件中心查看生成记录", href: "/cases" }],
         ),
         版本记录: panel(
-          [field("当前版本", item.version), field("内容摘要", item.digest)],
+          [field("当前版本", item.version), technicalField("内容摘要", item.digest)],
           "工作台只返回当前模板版本。",
         ),
       };
@@ -763,34 +837,40 @@ function buildRecords(
 
   if (module === "tools")
     return snapshot.tools.map((item) => {
+      const name = toolName(item);
+      const capabilityFields = item.capabilities.map((capability, index) => technicalField(`能力 ${index + 1} 标识`, capability));
       const panels: Record<string, DetailPanel> = {
         工具信息: panel([
-          field("工具 ID", item.id),
-          field("名称", item.name),
+          technicalField("工具 ID", item.id),
+          field("名称", name),
+          technicalField("来源名称原值", item.name),
           field("说明", item.description),
-          field("最近状态", item.last_status),
+          field("最近状态", toolStatusLabel(item.last_status)),
+          technicalField("最近状态编码", item.last_status),
         ]),
         输入与输出: panel(
-          [field("能力", item.capabilities.join("、") || null)],
+          [field("能力", `${item.capabilities.length} 项`), ...capabilityFields],
           "工作台没有提供单次调用的输入和输出正文。",
         ),
         权限与预算: panel(
-          [field("登记能力", item.capabilities.join("、") || null)],
+          [field("登记能力", `${item.capabilities.length} 项`), ...capabilityFields],
           "公开的工具信息不包含权限与预算。",
         ),
         调用记录: panel(
           [
             field("已统计调用", item.calls),
-            field("最近状态", item.last_status),
+            field("最近状态", toolStatusLabel(item.last_status)),
+            technicalField("最近状态编码", item.last_status),
           ],
           "工作台没有提供调用明细；请打开相关审查，查看已保存的执行事件。",
         ),
       };
       return make({
         id: item.id,
-        title: item.name,
+        title: name,
         subtitle: item.description,
         status: item.last_status ?? "未报告",
+        toolStatus: item.last_status,
         updatedAt: null,
         caseId: null,
         runId: null,
@@ -801,25 +881,27 @@ function buildRecords(
     });
 
   return snapshot.audit.map((item) => {
-    const caseLabel =
-      item.case_id === null ? "平台级事件" : (item.case_title ?? item.case_id);
+    const caseLabel = auditCaseName(item);
     const relatedAudit =
       item.case_id === null ? [] : (auditByCase.get(item.case_id) ?? []);
     const panels: Record<string, DetailPanel> = {
       事件详情: panel([
         technicalField("事件标识", item.id),
         field("资源范围", caseLabel),
+        technicalField("案件标识", item.case_id),
         field("操作", businessActionLabel(item.action)),
-        field("操作人", item.actor_name),
+        technicalField("操作编码", item.action),
+        field("操作人", suppliedBusinessName(item.actor_name, "操作人姓名未提供")),
         field("时间", item.at),
         field("摘要", item.summary),
       ]),
       变更内容: panel(
-        [field("操作", businessActionLabel(item.action)), field("摘要", item.summary)],
+        [field("操作", businessActionLabel(item.action)), technicalField("操作编码", item.action), field("摘要", item.summary)],
         "只呈现服务端保存的审计摘要。",
       ),
       来源上下文: panel([
         field("资源范围", caseLabel),
+        technicalField("案件标识", item.case_id),
         technicalField("操作人标识", item.actor_id),
         technicalField("操作编码", item.action),
       ]),
@@ -828,14 +910,7 @@ function buildRecords(
           ? emptyPanel("平台级事件没有案件关联。")
           : relatedAudit.length > 1
             ? panel(
-                relatedAudit
-                  .slice(0, 12)
-                  .map((entry) =>
-                    field(
-                      `${entry.actor_name}，${businessActionLabel(entry.action)}`,
-                      `${formatDateTime(entry.at)}，${entry.summary}`,
-                    ),
-                  ),
+                auditFields(relatedAudit.slice(0, 12)),
               )
             : emptyPanel("没有获取到该案件的其他审计记录。"),
     };
@@ -911,7 +986,14 @@ function tabMatches(
   return true;
 }
 
-function statusTone(status: string): "good" | "attention" | "bad" | "neutral" {
+function statusTone(status: string, module: WorkbenchModuleKey): "good" | "attention" | "bad" | "neutral" | "progress" {
+  if (module === "evidence") return parseTone(status);
+  if (module === "executions") return runTone(status);
+  if (module === "tools") {
+    if (status === "completed") return "good";
+    if (status === "failed") return "bad";
+    return "neutral";
+  }
   if (status === "ready" || status === "closed" || status === "completed")
     return "good";
   if (status === "unavailable" || status === "failed" || status === "high")
@@ -1556,8 +1638,8 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                   title: "状态",
                   key: "status",
                   render: (_, record) => (
-                    <StatusText tone={statusTone(record.status)}>
-                      {module === "remediation" ? remediationStatusLabel(record.status) : module === "knowledge" ? businessSourceTypeLabel(record.status) : statusLabel(record.status)}
+                    <StatusText tone={statusTone(record.status, module)}>
+                      {module === "remediation" ? remediationStatusLabel(record.status) : module === "knowledge" ? businessSourceTypeLabel(record.status) : module === "evidence" ? parseLabel(record.status) : module === "executions" ? runLabel(record.status) : module === "tools" ? toolStatusLabel(record.toolStatus ?? null) : statusLabel(record.status)}
                     </StatusText>
                   ),
                 },
@@ -1641,7 +1723,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                       {currentPanel.fields.map((item) => (
                         <div key={item.label}>
                           <dt>{item.label}</dt>
-                          <dd>{item.technical ? <TechnicalDetail value={item.value} label="查看" /> : item.value}</dd>
+                          <dd>{item.technical ? (item.value ? <TechnicalDetail value={item.value} label="查看" /> : "未报告") : item.value}</dd>
                         </div>
                       ))}
                     </dl>
