@@ -715,6 +715,14 @@ func (s *Store) UploadMaterial(ctx context.Context, user accounts.User, caseID, 
 		})
 		return nil
 	})
+	if err != nil && options.IdempotencyKey != "" && strings.HasPrefix(options.IdempotencyKey, "intake-upload-") {
+		// A different session may have committed the exact Document fact after
+		// our first receipt read but before this case lock. Recheck only this
+		// intake key, under the same current authorization and content hash.
+		if replay, found, replayErr := s.readUploadReceipt(ctx, currentUser, caseID, options.IdempotencyKey, requestHash); replayErr == nil && found {
+			return replay, nil
+		}
+	}
 	return uploadResult, err
 }
 

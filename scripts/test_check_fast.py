@@ -348,12 +348,27 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
                 for name in check_fast.TENANT_IDENTITY_TESTS:
                     self.assertIn(name, pattern)
                 self.assertIn("./internal/bootstrap", targets)
+                expected_bootstrap = set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS)
+                if check_fast._is_case_intake_authority(path):
+                    expected_bootstrap.add("TestDistributedIntakeRecoversLostDocumentResponseAcrossSessions")
                 self.assertEqual(set(targets["./internal/bootstrap"].tests),
-                                 set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS))
+                                 expected_bootstrap)
                 if check_fast._is_case_intake_authority(path):
                     self.assertTrue(set(check_fast.CASE_INTAKE_AUTHORITY_TESTS).issubset(
                         targets["./internal/store"].tests))
 
+    def test_intake_recovery_paths_select_role_and_http_regressions(self):
+        for path in ("internal/store/case_intake.go", "internal/store/upload_idempotency.go",
+                     "internal/store/migrations/0041_intake_session_recovery.sql",
+                     "internal/documentservice/intake_upload.go"):
+            with self.subTest(path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                targets = {target.package: set(target.tests) for target in plan.database_tests}
+                self.assertTrue(plan.database)
+                self.assertTrue(set(check_fast.CASE_INTAKE_AUTHORITY_TESTS).issubset(targets["./internal/store"]))
+                self.assertIn("TestDistributedIntakeRecoversLostDocumentResponseAcrossSessions", targets["./internal/bootstrap"])
+
+    def test_tenant_identity_http_paths_select_oidc_cases(self):
         http_paths = (
             "internal/accounts/accounts.go",
             "internal/identity/manager.go",
@@ -770,7 +785,8 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         self.assertEqual(targets["./internal/clmoutbox"].tests,
                          tuple(sorted(check_fast.CLM_OUTBOX_RELAY_TESTS)))
         self.assertEqual(set(targets["./internal/bootstrap"].tests),
-                         set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS))
+                         set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS) |
+                         {"TestDistributedIntakeRecoversLostDocumentResponseAcrossSessions"})
         self.assertEqual(set(targets["./internal/httpapi"].tests),
                          set(check_fast.TENANT_IDENTITY_HTTP_TESTS))
         self.assertFalse(any(target.needs_model for target in targets.values()))

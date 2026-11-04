@@ -469,6 +469,9 @@ func MigrateServiceRoles(ctx context.Context) error {
 				}
 			}
 		}
+		if _, err := tx.Exec(ctx, `REVOKE ALL PRIVILEGES ON TABLE `+pgx.Identifier{schema, "case_intake_completion_events"}.Sanitize()+` FROM `+quotedRole); err != nil {
+			return errors.New("cannot restrict intake completion audit")
+		}
 	}
 	identityTables := []string{"identity_jurisdictions", "identity_tenants", "identity_org_units", "identity_principals", "identity_memberships", "identity_pending_auth"}
 	for _, table := range identityTables {
@@ -539,6 +542,21 @@ func MigrateServiceRoles(ctx context.Context) error {
 	for _, fn := range []string{"tenant_context_info(text)", "tenant_context_switch(text,bigint,text,uuid)", "tenant_context_list(text)", "tenant_operation_info(jsonb,text)", "tenant_support_validate(text,uuid)", "tenant_support_list(text)", "tenant_support_command(text,bigint,text,text,uuid,text,uuid,text[],text,timestamp with time zone,bigint)", "tenant_support_read(text,bigint,text,uuid)"} {
 		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.`+fn+` TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
 			return err
+		}
+	}
+	if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_intake_recovery_allowed(text,text,text,text,text,text) TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
+		return fmt.Errorf("cannot grant Core intake recovery fence: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_intake_read_allowed(text,text,text,text,text,text) TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
+		return fmt.Errorf("cannot grant Core intake read fence: %w", err)
+	}
+	// PostgreSQL checks policy function EXECUTE even when the selector branch is
+	// false. Other services read this projection at startup; the function itself
+	// admits a registered Core or Document session, or the table-owning embedded
+	// login, which can already alter this policy.
+	for _, role := range configuredRoles {
+		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_intake_upload_recovery_allowed(text,text,text,text,text) TO `+pgx.Identifier{role}.Sanitize()); err != nil {
+			return fmt.Errorf("cannot grant intake upload recovery fence: %w", err)
 		}
 	}
 	for _, fn := range []string{"tenant_config_control(text)", "tenant_config_adopt(text,bigint,text,text,text)", "tenant_model_send_set(text,bigint,boolean,text)"} {

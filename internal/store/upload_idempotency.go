@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strings"
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
@@ -32,6 +33,14 @@ func (s *Store) readUploadReceipt(ctx context.Context, user accounts.User, caseI
 	defer tx.Rollback(context.Background())
 	if err := setLocalScope(ctx, tx, userScope(user)); err != nil {
 		return DocumentUploadResult{}, false, err
+	}
+	if strings.HasPrefix(key, "intake-upload-") {
+		operationID := "intake_" + strings.TrimPrefix(key, "intake-upload-")
+		if validCaseIntakeID(operationID) {
+			if err := setIntakeRecoverySelector(ctx, tx, operationID, "", key); err != nil {
+				return DocumentUploadResult{}, false, err
+			}
+		}
 	}
 	if err := scopedCaseLock(ctx, tx, caseID); err != nil {
 		return DocumentUploadResult{}, false, err

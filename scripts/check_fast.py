@@ -95,6 +95,10 @@ OFFLINE_MIGRATOR_BOOTSTRAP_TESTS = (
 CASE_INTAKE_AUTHORITY_TESTS = (
     "TestCaseIntakePendingOwnerResumeArchiveAndReceiptPostgres",
     "TestCaseIntakePendingLegacyAndCurrentCaseAuthorityPostgres",
+    "TestCaseIntakeRecoversAcrossBoundSessionsPostgres",
+    "TestCaseIntakeSessionRecoveryBoundariesPostgres",
+    "TestCaseIntakeRecoveryUsesCurrentMembershipPostgres",
+    "TestIntakeRecoveryPolicyProjectionExecuteRequirement",
 )
 MIGRATION_TESTS = ("TestEvaluationProvenanceMigrationPreservesHistoricalRows",
                    "TestContractAggregateMigrationBoundaries")
@@ -399,6 +403,16 @@ def _is_case_intake_authority(path: str) -> bool:
         "internal/store/case_intake_authority.go",
         "internal/store/case_intake_pending.go",
         "internal/store/case_intake_pending_test.go",
+        "internal/store/case_intake_session_recovery_test.go",
+        "internal/store/case_intake_membership_recovery_test.go",
+        "internal/store/upload_idempotency.go",
+        "internal/store/cases.go",
+        "internal/store/materials.go",
+        "internal/store/service_roles.go",
+        "internal/store/migrations/0041_intake_session_recovery.sql",
+        "internal/documentservice/intake_upload.go",
+        "internal/documentclient/intake.go",
+        "internal/bootstrap/intake_session_recovery_test.go",
     }
 
 
@@ -695,6 +709,8 @@ SENSITIVE_RULES = (
                   TENANT_AUTHORITY_BOOTSTRAP_TESTS, package="./internal/bootstrap"),
     SensitiveRule("case-intake-authority", _is_case_intake_authority,
                   CASE_INTAKE_AUTHORITY_TESTS),
+    SensitiveRule("case-intake-http", _is_case_intake_authority,
+                  ("TestDistributedIntakeRecoversLostDocumentResponseAcrossSessions",), package="./internal/bootstrap"),
     SensitiveRule("migration", _is_migration, MIGRATION_TESTS),
     SensitiveRule("budget", _is_budget, BUDGET_TESTS, needs_model=True),
     SensitiveRule("lease", _is_lease, LEASE_TESTS),
