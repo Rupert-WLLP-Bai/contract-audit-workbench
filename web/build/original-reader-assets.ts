@@ -2,8 +2,8 @@
 // Purpose: Bundles pinned PDF reader workers, fonts, decoders and Chinese/English OCR resources as same-origin development and production assets without external CDN reads.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: unknown
-// Updated: unknown
+// Created: 2026-11-04
+// Updated: 2026-11-04
 // Revision: r1
 // Copyright: See LICENSE
 // End file metadata.
