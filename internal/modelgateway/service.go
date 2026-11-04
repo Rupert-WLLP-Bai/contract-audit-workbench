@@ -528,13 +528,17 @@ func (s *Service) settleAndRespondChatAttempt(w http.ResponseWriter, ctx context
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model usage could not be recorded", "code": "model_usage_unavailable"})
 		return false
 	}
-	// A sent request with no provider usage is financially unknown. Starting a
+	// A sent request without both provider token counts is financially unknown. Starting a
 	// blind retry would create another billable physical call while retaining
 	// the first call's conservative money hold.
-	if !preDispatch && usage == nil {
+	if !preDispatch && !usageSupportsRetry(usage) {
 		retryable = false
 	}
 	return s.respondToChatAttempt(w, ctx, request, probe, attempt, response, status, requestErr, retryable)
+}
+
+func usageSupportsRetry(usage *model.TokenUsage) bool {
+	return usage != nil && usage.InputTokens != nil && usage.OutputTokens != nil && *usage.InputTokens >= 0 && *usage.OutputTokens >= 0
 }
 
 func chatAttemptResult(requestErr error, status int) (string, string) {
@@ -556,11 +560,11 @@ func (s *Service) respondToChatAttempt(w http.ResponseWriter, ctx context.Contex
 	if requestErr != nil {
 		return s.respondToChatError(w, probe, attempt, requestErr, retryable)
 	}
-	return s.respondToChatStatus(w, ctx, request, probe, attempt, response, status)
+	return s.respondToChatStatus(w, ctx, request, probe, attempt, response, status, retryable)
 }
 
-func (s *Service) respondToChatStatus(w http.ResponseWriter, ctx context.Context, request chatRequest, probe circuitProbe, attempt int, response []byte, status int) bool {
-	if status >= 500 && attempt <= s.config.Retries {
+func (s *Service) respondToChatStatus(w http.ResponseWriter, ctx context.Context, request chatRequest, probe circuitProbe, attempt int, response []byte, status int, retryable bool) bool {
+	if status >= 500 && retryable && attempt <= s.config.Retries {
 		s.circuit.record(probe, false, true, time.Now())
 		return true
 	}
