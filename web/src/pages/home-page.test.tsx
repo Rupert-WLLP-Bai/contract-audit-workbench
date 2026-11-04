@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r4
+// Updated: unknown
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -508,10 +508,10 @@ describe("HomePage snapshot consumers", () => {
     expect(
       within(rows[0]!).getByRole("link", { name: "设备维保合同" }),
     ).toHaveAttribute("href", "/cases/case%2Fold/reviews/run%20old");
-    expect(within(rows[0]!).getByText("未设置")).toBeInTheDocument();
+    expect(within(rows[0]!).getByText("业务范围未设置")).toBeInTheDocument();
     expect(within(rows[1]!).getByText("尚未审查")).toBeInTheDocument();
     expect(
-      within(rows[1]!).getByText("ENT，telecom_dedicated_line"),
+      within(rows[1]!).getByText("政企业务 / 政企专线"),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /补充验收标准.*责任人 missing-member/ }),
@@ -520,11 +520,13 @@ describe("HomePage snapshot consumers", () => {
       screen.getByRole("region", { name: "最近业务记录" }),
     ).getAllByRole("listitem");
     expect(audit[0]).toHaveTextContent(
-      "平台级事件更新了平台规则陈复核，policy.updated",
+      "平台级事件更新了平台规则陈复核，更新策略",
     );
     expect(
-      within(audit[1]!).getByRole("link", { name: "case/old" }),
+      within(audit[1]!).getByRole("link", { name: "未命名案件" }),
     ).toHaveAttribute("href", "/cases/case%2Fold");
+    const technical = within(audit[1]!).getByText("案件标识");
+    expect(technical.closest("details")).toHaveTextContent("case/old");
   });
 
   it("shows a profile deadline without describing the case as high risk", async () => {

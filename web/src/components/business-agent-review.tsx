@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-28
 // Updated: 2026-10-31
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -20,6 +20,7 @@ import type {
 } from "../api/business-agent-review";
 import { FrozenContractCitationReader } from "./contract-citation-reader";
 import { StatusText } from "./status-text";
+import { CollapsibleSection, SectionAnchorNav, type SectionAnchor } from "./collapsible-section";
 
 interface CitationTarget {
   caseId: string;
@@ -592,6 +593,19 @@ function ReviewSections({
   scopesWithoutResults: BusinessAgentScope[];
 }) {
   const facts = reviewFacts(review, domains);
+  const observations = arrayOr(review.observations);
+  const anchors: SectionAnchor[] = [
+    {
+      id: "agent-review-domains",
+      label: "领域与检查项目",
+      count: domains.length + scopesWithoutResults.length,
+    },
+  ];
+  if (observations.length > 0)
+    anchors.push({ id: "agent-review-observations", label: "工具记录", count: observations.length });
+  anchors.push({ id: "agent-review-gaps", label: "缺口清单", count: facts.gaps.length });
+  if (facts.otherEvidence.length > 0)
+    anchors.push({ id: "agent-review-other-evidence", label: "其他引用", count: facts.otherEvidence.length });
   return (
     <section className="agent-review-panel" aria-label="五个方面的审查结果">
       <header className="agent-review-head">
@@ -603,20 +617,31 @@ function ReviewSections({
       {facts.gaps.length > 0 ? (
         <p className="meta">{gapGuidance(facts.gaps)}</p>
       ) : null}
-      <DomainsSection
-        review={review}
-        domains={domains}
-        scopesWithoutResults={scopesWithoutResults}
-      />
-      <ObservationsSection observations={review.observations} />
-      <GapsSection
-        review={review}
-        unresolved={facts.unresolved}
-        gaps={facts.gaps}
-        missingGaps={facts.missingGaps}
-      />
+      <SectionAnchorNav items={anchors} />
+      <CollapsibleSection id="agent-review-domains" title="领域与检查项目" defaultOpen>
+        <DomainsSection
+          review={review}
+          domains={domains}
+          scopesWithoutResults={scopesWithoutResults}
+        />
+      </CollapsibleSection>
+      {observations.length > 0 ? (
+        <CollapsibleSection id="agent-review-observations" title="工具返回记录" summaryLabel="展开工具返回记录" count={observations.length}>
+          <ObservationsSection observations={review.observations} />
+        </CollapsibleSection>
+      ) : null}
+      <CollapsibleSection id="agent-review-gaps" title="审查缺口" summaryLabel="展开审查缺口" count={facts.gaps.length}>
+        <GapsSection
+          review={review}
+          unresolved={facts.unresolved}
+          gaps={facts.gaps}
+          missingGaps={facts.missingGaps}
+        />
+      </CollapsibleSection>
       {facts.otherEvidence.length > 0 ? (
-        <OtherEvidenceSection items={facts.otherEvidence} />
+        <CollapsibleSection id="agent-review-other-evidence" title="其他来源引用" summaryLabel="展开其他来源引用" count={facts.otherEvidence.length}>
+          <OtherEvidenceSection items={facts.otherEvidence} />
+        </CollapsibleSection>
       ) : null}
     </section>
   );

@@ -244,6 +244,8 @@
       "web/src/api/tenant-config.ts",
       "web/src/api/tenant-cost-policy.ts",
       "web/src/api/tenant-provisioning.ts",
+      "web/src/components/agent-path-swimlane.tsx",
+      "web/src/components/collapsible-section.tsx",
       "web/src/components/context-switcher.tsx",
       "web/src/components/contract-assets-panel.tsx",
       "web/src/components/contract-fulfillment-panel.tsx",
@@ -257,6 +259,7 @@
       "web/src/components/original-page-view.test.tsx",
       "web/src/components/original-page-view.tsx",
       "web/src/components/review-workspace-layout.css",
+      "web/src/components/technical-detail.tsx",
       "web/src/components/tenant-config-panel.css",
       "web/src/components/tenant-config-panel.tsx",
       "web/src/components/tenant-cost-policy-panel.css",
@@ -266,6 +269,7 @@
       "web/src/domain/business-labels.ts",
       "web/src/domain/source-annotation.test.ts",
       "web/src/domain/source-annotation.ts",
+      "web/src/domain/swimlane.ts",
       "web/src/features/review/manual-findings/api.ts",
       "web/src/features/review/manual-findings/index.ts",
       "web/src/features/review/manual-findings/manual-findings-panel.tsx",
@@ -50134,7 +50138,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r33",
+      "revision": "r34",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -51171,7 +51175,7 @@
           "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -59599,7 +59603,7 @@
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -60167,7 +60171,7 @@
           "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -60261,7 +60265,7 @@
           "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -60544,7 +60548,7 @@
           "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -60584,14 +60588,13 @@
         }
       },
       "updated": {
-        "value": "2026-10-30",
+        "value": "unknown",
         "source": {
-          "kind": "git-last-content-change",
-          "commit": "0d82b02b299acb8119e92f75331724bfca9e21d1",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "kind": "unknown",
+          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -64187,7 +64190,7 @@
           "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -64235,7 +64238,7 @@
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -64523,7 +64526,7 @@
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -64570,7 +64573,7 @@
           "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -64617,7 +64620,7 @@
           "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -65270,14 +65273,13 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "unknown",
         "source": {
-          "kind": "git-last-content-change",
-          "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "kind": "unknown",
+          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -67815,15 +67817,13 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "unknown",
         "source": {
-          "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
-          "path": "web/src/pages/case-detail-page.tsx",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "kind": "unknown",
+          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -67863,14 +67863,13 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "unknown",
         "source": {
-          "kind": "git-last-content-change",
-          "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "kind": "unknown",
+          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -67957,14 +67956,13 @@
         }
       },
       "updated": {
-        "value": "2026-10-30",
+        "value": "unknown",
         "source": {
-          "kind": "git-last-content-change",
-          "commit": "0d82b02b299acb8119e92f75331724bfca9e21d1",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "kind": "unknown",
+          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -68390,7 +68388,7 @@
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -68430,15 +68428,13 @@
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "unknown",
         "source": {
-          "kind": "git-last-content-change",
-          "commit": "004f692b44ae3f7d4e026079ccd5a3cb3c222076",
-          "path": "web/src/pages/home-page.test.tsx",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "kind": "unknown",
+          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -68478,15 +68474,13 @@
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "unknown",
         "source": {
-          "kind": "git-last-content-change",
-          "commit": "004f692b44ae3f7d4e026079ccd5a3cb3c222076",
-          "path": "web/src/pages/home-page.tsx",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "kind": "unknown",
+          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -69046,14 +69040,13 @@
         }
       },
       "updated": {
-        "value": "2026-10-30",
+        "value": "unknown",
         "source": {
-          "kind": "git-last-content-change",
-          "commit": "0d82b02b299acb8119e92f75331724bfca9e21d1",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "kind": "unknown",
+          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -69528,7 +69521,7 @@
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -69954,7 +69947,7 @@
           "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -70137,15 +70130,13 @@
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "unknown",
         "source": {
-          "kind": "git-last-content-change",
-          "commit": "004f692b44ae3f7d4e026079ccd5a3cb3c222076",
-          "path": "web/src/pages/workbench-module-page.test.tsx",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "kind": "unknown",
+          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -70185,15 +70176,13 @@
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "unknown",
         "source": {
-          "kind": "git-last-content-change",
-          "commit": "004f692b44ae3f7d4e026079ccd5a3cb3c222076",
-          "path": "web/src/pages/workbench-module-page.tsx",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "kind": "unknown",
+          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -70288,7 +70277,7 @@
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -71391,6 +71380,182 @@
           "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
           "path": "web/src/features/review/pdf-reader-types.d.ts",
           "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/domain/swimlane.ts": {
+      "purpose": "Projects saved execution events into swimlanes (phase lanes on one axis, chronological steps on the other) without inventing steps, skills or token values.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "unknown",
+        "source": {
+          "kind": "unknown",
+          "reason": "file exists only in the uncommitted candidate worktree at gate time; Git cannot yet provide a first-introduction commit, so the date is not inferred from the metadata insertion."
+        }
+      },
+      "updated": {
+        "value": "unknown",
+        "source": {
+          "kind": "unknown",
+          "reason": "file exists only in the uncommitted candidate worktree; no body-changing commit exists yet, so the last content-change date remains unknown until the candidate commit is recorded."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/components/agent-path-swimlane.tsx": {
+      "purpose": "Renders the saved Agent execution path as swimlanes, showing each step's lane, tool/model, span parent and reported token usage without inventing skill steps.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "unknown",
+        "source": {
+          "kind": "unknown",
+          "reason": "file exists only in the uncommitted candidate worktree at gate time; Git cannot yet provide a first-introduction commit, so the date is not inferred from the metadata insertion."
+        }
+      },
+      "updated": {
+        "value": "unknown",
+        "source": {
+          "kind": "unknown",
+          "reason": "file exists only in the uncommitted candidate worktree; no body-changing commit exists yet, so the last content-change date remains unknown until the candidate commit is recorded."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/components/collapsible-section.tsx": {
+      "purpose": "Provides one shared disclosure/anchor pattern for long evidence pages so dense secondary sections do not flatten into an unreadable single scroll.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "unknown",
+        "source": {
+          "kind": "unknown",
+          "reason": "file exists only in the uncommitted candidate worktree at gate time; Git cannot yet provide a first-introduction commit, so the date is not inferred from the metadata insertion."
+        }
+      },
+      "updated": {
+        "value": "unknown",
+        "source": {
+          "kind": "unknown",
+          "reason": "file exists only in the uncommitted candidate worktree; no body-changing commit exists yet, so the last content-change date remains unknown until the candidate commit is recorded."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/components/technical-detail.tsx": {
+      "purpose": "Renders machine identifiers and digests as human-readable text while keeping the full value available on demand for audit and troubleshooting.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "unknown",
+        "source": {
+          "kind": "unknown",
+          "reason": "file exists only in the uncommitted candidate worktree at gate time; Git cannot yet provide a first-introduction commit, so the date is not inferred from the metadata insertion."
+        }
+      },
+      "updated": {
+        "value": "unknown",
+        "source": {
+          "kind": "unknown",
+          "reason": "file exists only in the uncommitted candidate worktree; no body-changing commit exists yet, so the last content-change date remains unknown until the candidate commit is recorded."
         }
       },
       "revision": "r1",

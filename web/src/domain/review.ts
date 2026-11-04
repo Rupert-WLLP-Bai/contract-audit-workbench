@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: unknown
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -237,7 +237,7 @@ export function contractTypeLabel(value: string): string {
 
 export function businessStatusLabel(value: string): string {
   if (value === "") return "业务状态未提供";
-  return BUSINESS_STATUS_LABELS[value] ?? value;
+  return BUSINESS_STATUS_LABELS[value] ?? "业务状态待核对";
 }
 
 export function businessStatusTone(value: string): StatusTone {
