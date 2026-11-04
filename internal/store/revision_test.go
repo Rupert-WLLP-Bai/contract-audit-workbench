@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -398,4 +398,52 @@ func TestFrozenRulePackRevisionRequiresTerminalCommit(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRevisionSourceTracksActualPreviousAttemptAndDecision(t *testing.T) {
+	store := &Store{}
+	before, after := Run{ID: "before", CaseID: "case"}, Run{ID: "after", CaseID: "case"}
+	firstSnapshot, nextSnapshot := store.currentSignature(nil), store.currentSignature(nil)
+	firstSnapshot.RunID, nextSnapshot.RunID = before.ID, after.ID
+	hash := "committed-output"
+	makeAttempt := func(id, runID string, ordinal int) Attempt {
+		return Attempt{ID: id, RunID: runID, Ordinal: ordinal, State: "completed", OutputHash: &hash,
+			RulePackCompilerRef: "compiler/v1", RulePackHash: "pack", RulePackSnapshotDigest: "snapshot"}
+	}
+	old, retry, current := makeAttempt("old", before.ID, 1), makeAttempt("retry", before.ID, 2), makeAttempt("current", after.ID, 1)
+	makeEvaluation := func(runID, attemptID, findingID, relation string) ConstraintEval {
+		return ConstraintEval{RunID: runID, AttemptID: attemptID, RuleID: "rule", RuleVersion: "1", CapabilityID: "capability",
+			Domain: "technical", ObjectRefs: []string{"line"}, FindingID: findingID, Relation: relation}
+	}
+	data := state{Runs: []Run{before, after}, Snapshots: []RunSnapshot{firstSnapshot, nextSnapshot},
+		Attempts: []Attempt{retry, current, old},
+		Findings: []Finding{{ID: "old-finding", RunID: before.ID, AttemptID: old.ID, Domain: "technical", Relation: "conflict"},
+			{ID: "retry-finding", RunID: before.ID, AttemptID: retry.ID, Domain: "technical", Relation: "conflict"}},
+		Evaluations: []ConstraintEval{makeEvaluation(before.ID, old.ID, "old-finding", "conflict"),
+			makeEvaluation(before.ID, retry.ID, "retry-finding", "conflict"), makeEvaluation(after.ID, current.ID, "", "compatible")},
+		Decisions: []Decision{{ID: "old-decision", FindingID: "old-finding", Action: "confirm_risk"},
+			{ID: "retry-decision", FindingID: "retry-finding", Action: "dismiss"}},
+	}
+	for _, attempt := range data.Attempts {
+		data.ExecutionEvents = append(data.ExecutionEvents, ExecutionEvent{AttemptID: attempt.ID,
+			Phase: "terminal_persistence", EventType: "attempt_finished", Status: "completed"})
+	}
+	check := func(wantAttempt, wantDecision string) {
+		t.Helper()
+		var source RevisionComparisonSource
+		previousID, revisions, _, reason := store.compareRunWithSource(&data, after, nil, &source, current.ID)
+		if previousID != before.ID || reason != "" || source.Current != (RevisionComparisonSide{CaseID: "case", RunID: after.ID, AttemptID: current.ID}) ||
+			source.Previous != (RevisionComparisonSide{CaseID: "case", RunID: before.ID, AttemptID: wantAttempt}) ||
+			len(revisions) != 1 || revisions[0].Mark != "消除" || revisions[0].Prior == nil || revisions[0].Prior.ID != wantDecision {
+			t.Fatalf("comparison and source disagree: previous=%s source=%+v revisions=%+v reason=%q", previousID, source, revisions, reason)
+		}
+	}
+	check("retry", "retry-decision")
+	third := makeAttempt("retry-3", before.ID, 3)
+	data.Attempts = append(data.Attempts, third)
+	data.Findings = append(data.Findings, Finding{ID: "third-finding", RunID: before.ID, AttemptID: third.ID, Domain: "technical", Relation: "conflict"})
+	data.Evaluations = append(data.Evaluations, makeEvaluation(before.ID, third.ID, "third-finding", "conflict"))
+	data.Decisions = append(data.Decisions, Decision{ID: "third-decision", FindingID: "third-finding", Action: "confirm_risk"})
+	data.ExecutionEvents = append(data.ExecutionEvents, ExecutionEvent{AttemptID: third.ID, Phase: "terminal_persistence", EventType: "attempt_finished", Status: "completed"})
+	check("retry-3", "third-decision")
 }

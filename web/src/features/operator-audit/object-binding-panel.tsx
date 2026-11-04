@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,6 +13,7 @@ import { Button, Checkbox, Input, Select, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { PageStatus } from "../../components/page-status";
 import { StatusText } from "../../components/status-text";
+import { suppliedBusinessName } from "../../domain/business-labels";
 import { defaultOperatorAuditClient, type OperatorAuditClient } from "./api";
 import { OperatorAuditError } from "./error-notice";
 import { type OperatorAuditFlags } from "./feature-flags";
@@ -37,6 +38,7 @@ export interface ExternalObjectOption {
   connectorId: string;
   externalObjectId: string;
   label: string;
+  sourceSystem?: string | null;
 }
 
 export interface ObjectBindingPanelProps {
@@ -72,16 +74,14 @@ function windowLabel(binding: ObjectBinding): string {
   }`;
 }
 
-const bindingColumns: ColumnsType<ObjectBinding> = [
+const bindingColumns = (externalObjects: ExternalObjectOption[]): ColumnsType<ObjectBinding> => [
   {
     title: "合同对象",
     key: "contract",
     render: (_, binding) => (
       <>
         <strong>
-          {binding.contractObject.label ??
-            binding.contractObject.objectId ??
-            "合同对象未报告"}
+          {suppliedBusinessName(binding.contractObject.label, "合同对象名称未提供")}
         </strong>
         <div className="meta">
           {binding.contractObject.objectType ?? "类型未报告"} ·{" "}
@@ -93,16 +93,11 @@ const bindingColumns: ColumnsType<ObjectBinding> = [
   {
     title: "外部对象",
     key: "external",
-    render: (_, binding) => (
-      <>
-        <strong>
-          {binding.externalObject.externalObjectId ?? "外部对象未报告"}
-        </strong>
-        <div className="meta">
-          {binding.externalObject.connectorId ?? "连接器未报告"}
-        </div>
-      </>
-    ),
+    render: (_, binding) => {
+      const candidate = externalObjects.find((option) => option.connectorId === binding.externalObject.connectorId && option.externalObjectId === binding.externalObject.externalObjectId);
+      return <><strong>{suppliedBusinessName(candidate?.label, "外部对象名称未提供")}</strong>
+        <div className="meta">连接器标识 {binding.externalObject.connectorId ?? "未报告"} · 外部对象标识 {binding.externalObject.externalObjectId ?? "未报告"}</div></>;
+    },
   },
   {
     title: "状态",
@@ -236,7 +231,7 @@ function ObjectBindingPanelContent({
         <Table<ObjectBinding>
           rowKey={(binding) => binding.id}
           dataSource={bindings}
-          columns={bindingColumns}
+          columns={bindingColumns(externalObjects)}
           pagination={false}
           size="small"
         />
@@ -260,10 +255,11 @@ function ObjectBindingPanelContent({
             placeholder="选择合同业务对象"
             value={selectedContract || undefined}
             onChange={setSelectedContract}
+            showSearch={{ optionFilterProp: "label" }}
             disabled={pending}
             options={contractObjects.map((option) => ({
               value: contractKey(option),
-              label: `${option.label}（${option.objectType} · ${option.objectId}）`,
+              label: `${suppliedBusinessName(option.label, "合同对象名称未提供")}（对象类型 ${option.objectType} · 合同对象标识 ${option.objectId} · 服务对象标识 ${option.serviceObjectId} · 版本 ${option.objectVersion} / ${option.associationVersion}）`,
             }))}
           />
         </label>
@@ -274,10 +270,11 @@ function ObjectBindingPanelContent({
             placeholder="选择已登记连接器中的外部对象"
             value={selectedExternal || undefined}
             onChange={setSelectedExternal}
+            showSearch={{ optionFilterProp: "label" }}
             disabled={pending || externalObjects.length === 0}
             options={externalObjects.map((option) => ({
               value: externalKey(option),
-              label: `${option.label}（${option.connectorId} · ${option.externalObjectId}）`,
+              label: `${suppliedBusinessName(option.label, "外部对象名称未提供")}（连接器标识 ${option.connectorId} · 外部对象标识 ${option.externalObjectId}${option.sourceSystem ? ` · 来源系统标识 ${option.sourceSystem}` : ""}）`,
             }))}
           />
         </label>

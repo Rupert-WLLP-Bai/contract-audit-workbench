@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r6
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1012,8 +1012,8 @@ describe("HomePage persistent task workflow", () => {
 
     await user.click(screen.getByRole("button", { name: "新建任务" }));
     await user.click(screen.getByRole("combobox", { name: "关联案件" }));
-    expect(screen.getByRole("option", { name: "专线采购合同" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "设备维保合同" })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /专线采购合同.*案件标识/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /设备维保合同.*案件标识/ })).not.toBeInTheDocument();
   });
 
   it("refreshes task creation capability after a refusal and closes the revoked form", async () => {
@@ -1023,7 +1023,7 @@ describe("HomePage persistent task workflow", () => {
     const { user } = open(service);
     await screen.findByRole("heading", { name: "你好，周审查" });
     await user.click(screen.getByRole("button", { name: "新建任务" }));
-    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), "专线采购合同");
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), /专线采购合同.*案件标识/);
     await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), "周审查，reviewer");
     await user.type(screen.getByRole("textbox", { name: "任务名称" }), "受限任务");
     await user.click(screen.getByRole("button", { name: "创建并保存任务" }));
@@ -1040,7 +1040,7 @@ describe("HomePage persistent task workflow", () => {
     const { user, client } = open(service);
     await screen.findByRole("heading", { name: "你好，周审查" });
     await user.click(screen.getByRole("button", { name: "新建任务" }));
-    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), "专线采购合同");
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), /专线采购合同.*案件标识/);
     await user.type(screen.getByRole("textbox", { name: "任务名称" }), "旧上下文任务");
 
     service.snapshotGate = Promise.withResolvers<void>();
@@ -1080,8 +1080,8 @@ describe("HomePage persistent task workflow", () => {
       await user.click(screen.getByRole("button", { name: "新建任务" }));
       const caseSelect = screen.getByRole("combobox", { name: "关联案件" });
       await user.click(caseSelect);
-      expect(screen.getByRole("option", { name: "专线采购合同" })).toBeInTheDocument();
-      expect(screen.queryByRole("option", { name: "设备维保合同" })).not.toBeInTheDocument();
+      expect(screen.getByRole("option", { name: /专线采购合同.*案件标识/ })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: /设备维保合同.*案件标识/ })).not.toBeInTheDocument();
     } else {
       expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument();
       expect(screen.queryByRole("combobox", { name: "关联案件" })).not.toBeInTheDocument();
@@ -1095,7 +1095,7 @@ describe("HomePage persistent task workflow", () => {
     const { user } = open(service);
     await screen.findByRole("heading", { name: "你好，周审查" });
     await user.click(screen.getByRole("button", { name: "新建任务" }));
-    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), "专线采购合同");
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), /专线采购合同.*案件标识/);
     await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), "周审查，reviewer");
     await user.type(screen.getByRole("textbox", { name: "任务名称" }), "受限任务");
     await user.click(screen.getByRole("button", { name: "创建并保存任务" }));
@@ -1245,7 +1245,7 @@ describe("HomePage persistent task workflow", () => {
       await chooseOption(
         user,
         screen.getByRole("combobox", { name: "关联案件" }),
-        "专线采购合同",
+        /专线采购合同.*案件标识/,
       );
       await user.type(
         screen.getByRole("textbox", { name: "任务名称" }),
@@ -1308,7 +1308,7 @@ describe("HomePage persistent task workflow", () => {
     await chooseOption(
       user,
       screen.getByRole("combobox", { name: "关联案件" }),
-      "专线采购合同",
+      /专线采购合同.*案件标识/,
     );
     await chooseOption(
       user,

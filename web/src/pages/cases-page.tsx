@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -213,7 +213,7 @@ export function CasesPage() {
       <header className="page-head">
         <div>
           <h1>案件</h1>
-          <p>搜索和筛选当前身份有权查看的案件；状态以服务端记录为准。</p>
+          <p>在当前身份有权查看的全部已加载案件中搜索和筛选；筛选后分页，状态以服务端记录为准。</p>
         </div>
         <Button
           aria-label={"新建案件"}
@@ -234,7 +234,7 @@ export function CasesPage() {
             onChange={(event) =>
               updateParam("q", event.target.value, { clearSelection: true })
             }
-            placeholder="标题或案件编号"
+            placeholder="标题、业务编号、中文场景或完整案件标识"
             type="search"
           />
         </label>

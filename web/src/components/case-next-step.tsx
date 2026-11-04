@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-04
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,6 +14,7 @@ import type { ReviewReadiness, ReviewScope } from "../api/review-readiness";
 import { errorMessage } from "../api/http";
 import { actorRoleLabel, runLabel, type StatusTone } from "../domain/review";
 import { StatusText } from "./status-text";
+import { TechnicalDetail } from "./technical-detail";
 import { ReviewOutcomeSummary } from "./review-outcome-summary";
 import { canReadmitCancelledPreparation, canRestartUserCancelled, hasFrozenParseFailure, hasTransientRetryCause, limitedPrecheck, selectedOutcome, unresolvedGapKinds } from "../features/review/review-outcome";
 import "./case-next-step.css";
@@ -54,6 +55,7 @@ interface CaseNextStepPlan {
   title: string;
   tone: StatusTone;
   reason: string;
+  technicalDetail?: string;
   missingItems: string[];
   owner: string;
   action: { kind: ActionKind; label: string; href?: string; loading?: boolean; disabled?: boolean };
@@ -221,7 +223,8 @@ function planFor(props: Props): CaseNextStepPlan {
       stage: "状态未识别",
       title: "暂不能确认下一项写入操作",
       tone: "attention",
-      reason: `服务端返回了未识别的运行状态“${run.state || "空"}”。为避免创建错误的后续记录，请先查看这次审查。`,
+      reason: "服务端返回了未识别的运行状态。为避免创建错误的后续记录，请先查看这次审查。",
+      technicalDetail: JSON.stringify({ run_id: run.id, state: run.state }),
       missingItems: ["可识别的审查运行状态"],
       owner: "审查员或案件管理员",
       action: { kind: "link", href: reviewHref, label: "查看最近审查状态" },
@@ -548,7 +551,8 @@ function planFor(props: Props): CaseNextStepPlan {
       stage: "整改状态未识别",
       title: "暂不能确认是否可以生成最终报告",
       tone: "attention",
-      reason: `整改记录 ${unknownRemediation.id} 返回了未识别状态“${unknownRemediation.status || "空"}”；请先核对整改记录。`,
+      reason: "整改记录的状态待核对；请先查看整改记录。",
+      technicalDetail: JSON.stringify({ remediation_id: unknownRemediation.id, status: unknownRemediation.status }),
       missingItems: ["可识别的整改状态"],
       owner: "整改负责人或审查员",
       action: { kind: "link", href: "#remediation-title", label: "查看整改记录" },
@@ -694,6 +698,7 @@ export function CaseNextStep(props: Props) {
             </ul>
           ) : <p>当前阶段没有额外缺项。</p>}
           <p className="case-next-step-reason" role={plan.announcement}>{plan.reason}</p>
+          {plan.technicalDetail ? <TechnicalDetail label="状态技术详情" value={plan.technicalDetail} /> : null}
         </section>
         <section aria-labelledby="case-next-step-owner-title">
           <h3 id="case-next-step-owner-title">负责角色或人员</h3>
@@ -703,6 +708,7 @@ export function CaseNextStep(props: Props) {
       <section className="case-next-step-focus" aria-label={`${actorRoleLabel(actorRole)}工作重点`}>
         <strong>{actorRoleLabel(actorRole)}工作重点</strong>
         <p>{roleFocus(actorRole)}</p>
+        <TechnicalDetail label="角色技术详情" value={actorRole} />
       </section>
       <div className="case-next-step-action">
         <div>

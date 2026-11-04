@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,7 +15,7 @@ import { Link } from "react-router";
 import { getReview, getReviewHistory } from "../api/endpoints";
 import { errorMessage } from "../api/http";
 import type { EvidenceAnchor, ReviewWorkspace } from "../api/types";
-import { decisionLabel, formatDateTime, originLabel, relationLabel, runLabel } from "../domain/review";
+import { decisionLabel, originLabel, relationLabel, runLabel } from "../domain/review";
 import {
   compareReviewWorkspaces,
   frozenDocument,
@@ -31,7 +31,11 @@ import {
   type ReviewDiffSide,
 } from "../domain/review-diff";
 import { resolveAnchor } from "../domain/text";
-import { reviewChoiceForKey, reviewChoices, type ReviewChoice } from "../domain/workflow";
+import { reviewChoiceForKey, reviewChoiceLabel, reviewChoiceShortLabel, reviewChoices, type ReviewChoice } from "../domain/workflow";
+import { preciseTime } from "../domain/time";
+import { businessCapabilityLabel } from "../domain/business-labels";
+import { TechnicalDetail } from "./technical-detail";
+import { InvalidTimeDetail } from "./invalid-time-detail";
 import "./review-diff.css";
 
 interface ReviewDiffProps {
@@ -63,23 +67,38 @@ function Choice({ label, choices, value, onChange }: {
   value: string;
   onChange: (value: string) => void;
 }) {
-  return <label className="field">
-    {label}
+  const selected = reviewChoiceForKey(choices, value);
+  return <div className="field">
+    <label>{label}
     <Select<string>
       aria-label={label}
       value={value || undefined}
       onChange={onChange}
       placeholder="选择审查和具体执行记录"
+      virtual={false}
+      labelRender={() => selected ? reviewChoiceShortLabel(selected) : "请选择"}
+      optionRender={(option) => <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{option.label}</div>}
+      styles={{ popup: { listItem: { whiteSpace: "normal" } } }}
       options={choices.map((choice) => {
         const problem = choiceProblem(choice);
         return {
           value: choice.key,
           disabled: problem !== null,
-          label: `审查 ${choice.runId} · 第 ${choice.attempt.ordinal} 次 (${choice.attempt.id}) · ${runLabel(choice.attempt.state)}${problem ? ` · ${problem}` : ""}`,
+          label: `${reviewChoiceLabel(choice)}${problem ? ` · ${problem}` : ""}`,
         };
       })}
     />
-  </label>;
+    </label>
+    {selected ? <div className="meta caw-wrap">
+      执行开始 {preciseTime(selected.attempt.started_at)} · 完成时间 {preciseTime(selected.attempt.finished_at)} · 审查更新时间 {preciseTime(selected.workspace.run.updated_at)}
+      <InvalidTimeDetail value={selected.attempt.accepted_at} label="受理时间" />
+      <InvalidTimeDetail value={selected.attempt.started_at} label="执行开始时间" />
+      <InvalidTimeDetail value={selected.attempt.finished_at} label="完成时间" />
+      <InvalidTimeDetail value={selected.workspace.run.updated_at} label="审查更新时间" />
+      <TechnicalDetail label="审查标识" value={selected.runId} />
+      <TechnicalDetail label="执行标识" value={selected.attempt.id} />
+    </div> : null}
+  </div>;
 }
 
 function stateText(state: DifferenceState, same: string, different: string, unknown: string): string {
@@ -104,27 +123,25 @@ function SnapshotSide({ title, workspace }: { title: string; workspace: ReviewWo
   const scope = reviewScope(workspace);
   const agent = workspace.agent_review?.attempt_id === attempt?.id ? workspace.agent_review : null;
   const evaluations = workspace.evaluations ?? [];
-  const rules = [...new Set(evaluations.map((item) => `${item.rule_id || "规则 ID 未返回"} / ${item.rule_version || "版本未返回"} / ${item.capability_id || "能力未返回"}`))];
+  const rules = [...new Set(evaluations.map((item) => businessCapabilityLabel(item.capability_id)))];
   return <section className="review-diff-side" aria-label={`${title}身份与依据`}>
     <h4>{title}</h4>
     <dl>
-      <dt>审查 / 执行</dt><dd>{workspace.run.id} / {attempt?.id ?? "未返回"}，{runLabel(attempt?.state ?? "")}</dd>
+      <dt>审查 / 执行</dt><dd>{runLabel(attempt?.state ?? "")}</dd>
       <dt>审查范围</dt><dd>{reviewScopeDescription(workspace)}</dd>
-      <dt>规则身份</dt><dd>{scope ? `${scope.rule_set_id} / ${scope.rule_set_version} / ${scope.rule_set_hash}` : agent?.rulepack ? `${agent.rulepack.id} / ${agent.rulepack.version}，规则包摘要未返回` : "规则包身份未返回"}</dd>
-      <dt>规则集摘要</dt><dd>{scope?.rule_set_hash || snapshot?.rule_set_hash || "未返回"}</dd>
+      <dt>规则身份</dt><dd>{scope || agent?.rulepack ? "已返回规则身份，详见技术详情" : "规则包身份未返回"}</dd>
       <dt>已返回的规则检查</dt><dd>{rules.length ? rules.join("；") : "未返回，不能推断已检查"}</dd>
-      <dt>输入摘要</dt><dd>{attempt?.input_hash || "未返回"}</dd>
-      <dt>输出摘要</dt><dd>{attempt?.output_hash || "未返回"}</dd>
       <dt>冻结材料与解析版本</dt><dd>
         {(snapshot?.document_ids ?? []).map((id) => {
           const doc = workspace.documents.find((item) => item.id === id && !!item.parsed_document_id && attempt?.parsed_document_ids.includes(item.parsed_document_id));
           return <div key={id}>
-            {doc?.filename ?? "材料未返回"} · 材料 {id} · 解析 {doc?.parsed_document_id ?? "未返回"} · 原件摘要 {doc?.digest || "未返回"}
-            <div>解析器 {doc?.parsed_document ? `${doc.parsed_document.parser_id} ${doc.parsed_document.parser_version}` : "未返回"} · 配置摘要 {doc?.parsed_document?.config_hash || "未返回"} · 正文摘要 {doc?.parsed_document?.normalized_digest || "未返回"}</div>
+            {doc?.filename ?? "材料未返回"}
+            <TechnicalDetail label="冻结材料技术详情" value={JSON.stringify({ document_id: id, parsed_document_id: doc?.parsed_document_id ?? null, digest: doc?.digest ?? null, parser_id: doc?.parsed_document?.parser_id ?? null, parser_version: doc?.parsed_document?.parser_version ?? null, config_hash: doc?.parsed_document?.config_hash ?? null, normalized_digest: doc?.parsed_document?.normalized_digest ?? null })} />
           </div>;
         })}
       </dd>
     </dl>
+    <TechnicalDetail label="审查范围与规则技术详情" value={JSON.stringify({ run_id: workspace.run.id, attempt_id: attempt?.id ?? null, scope, agent_scope: agent?.scope ?? null, rulepack: agent?.rulepack ?? null, rule_set_hash: snapshot?.rule_set_hash ?? null, input_hash: attempt?.input_hash ?? null, output_hash: attempt?.output_hash ?? null, rules: evaluations.map(({ rule_id, rule_version, capability_id }) => ({ rule_id, rule_version, capability_id })) })} />
   </section>;
 }
 
@@ -177,8 +194,9 @@ function Citation({ workspace, anchor }: { workspace: ReviewWorkspace; anchor: E
   const from = Math.max(0, resolved.start - 80);
   const to = Math.min(characters.length, resolved.end + 80);
   return <li>
-    <p>{document.filename} · 材料 {document.id} · 解析 {document.parsed_document_id} {resolved.page === null ? "" : `· 第 ${resolved.page} 页`} · 字符 {resolved.start}–{resolved.end}（Unicode 码点）</p>
+    <p>{document.filename} {resolved.page === null ? "" : `· 第 ${resolved.page} 页`}</p>
     <blockquote className="review-diff-quote">{from > 0 ? "…" : ""}{characters.slice(from, resolved.start).join("")}<mark>{characters.slice(resolved.start, resolved.end).join("")}</mark>{characters.slice(resolved.end, to).join("")}{to < characters.length ? "…" : ""}</blockquote>
+    <TechnicalDetail label="引用技术详情" value={JSON.stringify({ document_id: document.id, parsed_document_id: document.parsed_document_id, start: resolved.start, end: resolved.end })} />
   </li>;
 }
 
@@ -196,15 +214,17 @@ function DiffSide({ label, side }: { label: string; side: ReviewDiffSide | null 
     <h4>{label}</h4>
     {evaluation ? <>
       <p><strong>{relationLabel(evaluation.relation)}</strong> · {evaluation.reason || "检查说明未返回"}</p>
-      <p className="meta">规则 {evaluation.rule_id || "未返回"} · 版本 {evaluation.rule_version || "未返回"} · 能力 {evaluation.capability_id || "未返回"} · 来源内对象引用 {evaluation.object_refs.join("、") || "未返回"}</p>
+      <p className="meta">检查项目：{businessCapabilityLabel(evaluation.capability_id)}</p>
+      <TechnicalDetail label="检查记录技术详情" value={JSON.stringify({ rule_id: evaluation.rule_id, rule_version: evaluation.rule_version, capability_id: evaluation.capability_id, object_refs: evaluation.object_refs, relation: evaluation.relation })} />
     </> : null}
     {finding ? <p>{originLabel(finding.origin)}：{finding.claim || "线索内容未返回"}（{relationLabel(finding.relation)}）</p> : <p>本侧没有关联的规则发现。</p>}
+    {finding ? <TechnicalDetail label="发现类型技术详情" value={JSON.stringify({ origin: finding.origin, relation: finding.relation })} /> : null}
     {finding?.unverified_reason ? <p className="callout">尚未核验：{finding.unverified_reason}</p> : null}
     <Link to={href}>打开{label}的冻结执行记录</Link>
     {anchors.length ? <ul className="review-diff-citations">{anchors.map((anchor, index) => <Citation key={`${anchor.id}-${index}`} workspace={side.workspace} anchor={anchor} />)}</ul> : <p className="meta">未返回可定位的引用，不能从本侧定位原文。</p>}
     {finding?.decisions.length ? <details>
       <summary>人工决定历史（独立追加）</summary>
-      <ul>{finding.decisions.map((decision) => <li key={decision.id}>{decisionLabel(decision.action)} · {decision.actor} · {formatDateTime(decision.decided_at)}：{decision.reason}</li>)}</ul>
+      <ul>{finding.decisions.map((decision) => <li key={decision.id}>{decisionLabel(decision.action)} · {decision.actor} · {preciseTime(decision.decided_at)}：{decision.reason}<InvalidTimeDetail value={decision.decided_at} label="决定时间" /><TechnicalDetail label="决定类型技术详情" value={decision.action} /></li>)}</ul>
     </details> : null}
   </section>;
 }

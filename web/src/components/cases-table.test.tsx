@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -42,6 +42,12 @@ function LocationState() {
 }
 
 describe("cases table", () => {
+  it("reports malformed update times and preserves the precise raw value for diagnostics", async () => {
+    render(<MemoryRouter><CasesTable items={[{ ...item, updated_at: "bad-case-time" }]} {...tableProps} /></MemoryRouter>);
+    expect(screen.getAllByText(/时间格式异常/).length).toBeGreaterThan(0);
+    await userEvent.setup().click(screen.getByText("案件更新时间原始值"));
+    expect(screen.getByText("bad-case-time")).toBeVisible();
+  });
   it("opens a case from the row title and shows the run in words", () => {
     render(
       <MemoryRouter initialEntries={["/cases?q=network&run=needs_human"]}>
@@ -123,8 +129,8 @@ describe("cases table", () => {
           items={[
             {
               ...item,
-              business_line: "企业业务",
-              scenario: "专线",
+              business_line: "ENT",
+              scenario: "telecom_dedicated_line",
               business_status: "active",
             },
             {
@@ -141,7 +147,7 @@ describe("cases table", () => {
         />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("cell", { name: "企业业务 / 专线" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "政企业务 / 政企专线" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "进行中" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "业务范围未设置" })).toBeInTheDocument();
     expect(screen.getAllByText("已归档").length).toBeGreaterThan(0);

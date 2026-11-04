@@ -4,14 +4,14 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-04
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Button, Radio } from "antd";
 import type { ReviewReadiness, ReviewReadinessBlocker, ReviewReadinessBusinessScope, ReviewScope } from "../api/review-readiness";
 import { errorMessage } from "../api/http";
-import { businessScopeLabel } from "../domain/business-labels";
+import { businessScopeLabel, knownBusinessComparatorLabel, readinessCheckActionLabel } from "../domain/business-labels";
 import { contractTypeLabel, roleLabel } from "../domain/review";
 import { isSingleContractV1 } from "../features/review/single-contract-coverage";
 import { SingleContractScopeCoverage } from "./single-contract-scope-coverage";
@@ -20,25 +20,14 @@ import { TechnicalDetail } from "./technical-detail";
 
 const parseStates: Record<string, string> = { ready: "已解析", pending: "待解析", failed: "解析失败", stale: "需要重新解析", not_required: "无需解析" };
 const checkStates: Record<string, string> = { ready: "尚未执行", missing_basis: "缺少依据", not_executed: "尚未执行", not_applicable: "不适用" };
-const checkActions: Record<string, string> = {
-  start_review: "开始审查后执行本项检查，是否可以开始以准备状态为准",
-  reparse_material: "请到材料列表重新解析对应材料",
-  provide_missing_material_or_legal_basis: "补充下列材料或法律依据后重新核对",
-  no_action: "本项不适用，无需补充材料",
-};
 const checkLabels: Record<string, string> = {
   "single-payment-sum-v1": "主合同中可识别的付款比例合计",
   cross_material_comparison: "跨材料对照",
   formal_policy_review: "正式制度与法律依据审查",
 };
-const comparatorLabels: Record<string, string> = {
-  minimum_bandwidth: "最低保障带宽对照",
-  monthly_sla: "自然月服务可用率对照",
-  advance_payment_ceiling: "预付款比例上限对照",
-};
 function scopeLabel(scope: ReviewReadinessBusinessScope): string {
   const contractType = contractTypeLabel(scope.contract_type);
-  return `${businessScopeLabel(scope.business_line, scope.scenario)} / ${contractType === "合同类型" ? "合同类型待核对" : contractType}`;
+  return `${businessScopeLabel(scope.business_line, scope.scenario)} / ${contractType}`;
 }
 function governanceURL(): string {
   const base = import.meta.env.VITE_ADMIN_URL;
@@ -139,14 +128,14 @@ export function ReviewReadinessPanel({ caseId, data, loading, error, onRefresh, 
             <p className="meta">材料已解析只表示原文可供检查；缺少规则所需事实或依据时仍需补充、核对，并不表示解析失败。</p>
             <ul className="review-readiness-list" aria-label="规则准备状态">
               {scope.checks.map((check) => <li key={check.rule_id}>
-                <strong>{(Object.hasOwn(checkLabels, check.rule_id) ? checkLabels[check.rule_id] : undefined) ?? (check.comparator && Object.hasOwn(comparatorLabels, check.comparator) ? comparatorLabels[check.comparator] : undefined) ?? (scope.id === "single_contract_precheck" ? "其他范围外检查" : "检查项目名称待核对")}</strong>{" "}<StatusText tone={check.status === "missing_basis" || check.status === "not_executed" ? "attention" : "neutral"}>{checkStates[check.status] ?? "状态待核对"}</StatusText>
+                <strong>{(Object.hasOwn(checkLabels, check.rule_id) ? checkLabels[check.rule_id] : undefined) ?? knownBusinessComparatorLabel(check.comparator) ?? (scope.id === "single_contract_precheck" ? "其他范围外检查" : "检查项目名称待核对")}</strong>{" "}<StatusText tone={check.status === "missing_basis" || check.status === "not_executed" ? "attention" : "neutral"}>{Object.hasOwn(checkStates, check.status) ? checkStates[check.status] : "状态待核对"}</StatusText>
                 {check.source_roles?.length ? <p>规则声明的事实材料角色：{check.source_roles.map(roleLabel).join("、")}；对照依据和附件仍需按合同内容核对。</p> : null}
                 {check.missing_dependencies.length ? <p>待补齐：{check.missing_dependencies.map(dependencyLabel).join("；")}</p> : null}
-                {check.next_action ? <p>{checkActions[check.next_action] ?? (/[^\x00-\x7f]/.test(check.next_action) ? check.next_action : "请联系审查人员核对处理方式")}</p> : null}
+                {check.next_action ? <p>{readinessCheckActionLabel(check.next_action)}</p> : null}
                 {check.next_action === "reparse_material" ? <Button type="link" href="#case-materials">到材料列表重新解析</Button> : null}
                 {check.missing_dependencies.some((dependency) => dependency.startsWith("material_role:")) ? <Button type="link" href="#case-materials">补充所需材料</Button> : null}
                 {check.missing_dependencies.some((dependency) => dependency.startsWith("legal_authority:") || dependency === "exact_legal_authority_gate") ? <Button type="link" href={`/cases/${encodeURIComponent(caseId)}/legal-knowledge`}>核对法律依据与制度</Button> : null}
-                <TechnicalDetail label="检查项目技术详情" value={[check.rule_id, check.comparator, ...check.missing_dependencies].filter(Boolean).join(" / ")} />
+                <TechnicalDetail label="检查项目技术详情" value={[check.rule_id, check.comparator, ...check.missing_dependencies, check.status, check.next_action, ...(check.source_roles ?? [])].filter(Boolean).join(" / ")} />
               </li>)}
             </ul>
           </> : null}
@@ -155,7 +144,8 @@ export function ReviewReadinessPanel({ caseId, data, loading, error, onRefresh, 
         {data.materials.length ? <ul className="review-readiness-list" aria-label="当前审查材料与解析状态">
           {data.materials.map((item) => <li key={`${item.document_id}:${item.version}`}>
             <strong>{item.filename}</strong>{" "}<span>{roleLabel(item.role)} · {item.version > 0 ? `第 ${item.version} 版` : "旧材料身份"}</span>{" "}
-            <StatusText tone={item.parse.status === "failed" || item.parse.status === "stale" ? "attention" : item.parse.status === "pending" ? "progress" : "neutral"}>{parseStates[item.parse.status] ?? "状态待核对"}</StatusText>
+            <StatusText tone={item.parse.status === "failed" || item.parse.status === "stale" ? "attention" : item.parse.status === "pending" ? "progress" : "neutral"}>{Object.hasOwn(parseStates, item.parse.status) ? parseStates[item.parse.status] : "状态待核对"}</StatusText>
+            <TechnicalDetail label="材料状态技术详情" value={[item.role, item.parse.status, item.parse.next_action].filter(Boolean).join(" / ")} />
             {!item.selected ? <p>这份材料的审查选择尚未确认。</p> : null}
             {item.parse.next_action === "reparse_material" ? <p><Button type="link" href="#case-materials">到材料列表重新解析</Button></p> : null}
             {item.parse.status === "pending" ? <p className="meta">受理后处理解析；解析失败会保留缺证状态。</p> : null}

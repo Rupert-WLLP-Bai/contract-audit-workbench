@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-02
 // Updated: 2026-11-04
-// Revision: r6
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -2918,6 +2918,10 @@ type CaseSummary struct {
 	Scenario          string `json:"scenario" openapi:"{\"type\":\"string\"}"`
 	Business_status   string `json:"business_status" openapi:"{\"type\":\"string\"}"`
 	Archived_at       any    `json:"archived_at" openapi:"{\"anyOf\":[{\"type\":\"string\",\"format\":\"date-time\"},{\"type\":\"null\"}]}"`
+	Case_number       string `json:"case_number,omitempty" openapi:"{\"type\":\"string\",\"description\":\"可编辑的案件业务编号，不替代 id；仅在授权资料存在时返回。\"}"`
+	Customer          string `json:"customer,omitempty" openapi:"{\"type\":\"string\"}"`
+	Supplier          string `json:"supplier,omitempty" openapi:"{\"type\":\"string\"}"`
+	Owner_name        string `json:"owner_name,omitempty" openapi:"{\"type\":\"string\"}"`
 }
 type CaseList struct {
 	Items []CaseSummary `json:"items" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/CaseSummary\"}"`
@@ -3149,6 +3153,7 @@ type Workspace struct {
 	Legal_authorities          FrozenLegalReviewProjection `json:"legal_authorities,omitempty" openapi:"{\"$ref\":\"#/components/schemas/FrozenLegalReviewProjection\"}"`
 	Audit_events               []AuditEvent                `json:"audit_events" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/AuditEvent\"}"`
 	Previous_run_id            any                         `json:"previous_run_id" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
+	Revision_comparison_source any                         `json:"revision_comparison_source,omitempty" openapi:"{\"type\":\"object\",\"required\":[\"current\",\"previous\"],\"additionalProperties\":false,\"properties\":{\"current\":{\"type\":\"object\",\"required\":[\"case_id\",\"run_id\",\"attempt_id\"],\"additionalProperties\":false,\"properties\":{\"case_id\":{\"type\":\"string\",\"minLength\":1},\"run_id\":{\"type\":\"string\",\"minLength\":1},\"attempt_id\":{\"type\":\"string\",\"minLength\":1}}},\"previous\":{\"type\":\"object\",\"required\":[\"case_id\",\"run_id\",\"attempt_id\"],\"additionalProperties\":false,\"properties\":{\"case_id\":{\"type\":\"string\",\"minLength\":1},\"run_id\":{\"type\":\"string\",\"minLength\":1},\"attempt_id\":{\"type\":\"string\",\"minLength\":1}}}}}"`
 	Revision_comparison_reason any                         `json:"revision_comparison_reason" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
 	Revisions                  []Revision                  `json:"revisions" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/Revision\"}"`
 	Execution                  any                         `json:"execution" openapi:"{\"type\":\"null\"}"`

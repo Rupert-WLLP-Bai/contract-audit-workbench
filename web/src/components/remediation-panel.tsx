@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-01
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -34,6 +34,7 @@ import {
   runLabel,
   runTone,
 } from "../domain/review";
+import { businessDomainLabel, remediationStatusLabel } from "../domain/business-labels";
 import {
   reviewChoiceForKey,
   reviewChoices,
@@ -41,13 +42,8 @@ import {
 } from "../domain/workflow";
 import { ReviewChoiceSelect } from "./review-choice-select";
 import { StatusText } from "./status-text";
+import { TechnicalDetail } from "./technical-detail";
 
-const REMEDIATION_LABELS: Record<string, string> = {
-  open: "待整改",
-  submitted: "待复审",
-  closed: "已关闭",
-  reopened: "重新打开",
-};
 function uniqueObjectRefs(values: string[] | undefined): values is string[] {
   return (
     values !== undefined &&
@@ -330,9 +326,10 @@ function RemediationCard({
                 : "neutral"
           }
         >
-          {REMEDIATION_LABELS[item.status] ?? item.status}
+          {remediationStatusLabel(item.status)}
         </StatusText>
       </header>
+      <TechnicalDetail label="整改状态技术详情" value={item.status} />
       <dl className="execution-dl">
         <div>
           <dt>来源审查</dt>
@@ -515,13 +512,14 @@ function RemediationCard({
                       <p>没有返回与该来源发现对应的比较记录。</p>
                     ) : (
                       rows.map((revision, index) => (
-                        <p
+                        <div
                           className="meta"
                           key={`${revision.finding_id ?? findingId}-${index}`}
                         >
-                          {revision.mark}，{revision.domain}，
+                          {revision.mark}，{businessDomainLabel(revision.domain)}，
                           {relationLabel(revision.relation)}，{revision.claim}
-                        </p>
+                          <TechnicalDetail label="比较记录技术详情" value={[revision.domain, revision.relation].join(" / ")} />
+                        </div>
                       ))
                     )}
                   </li>
@@ -578,11 +576,12 @@ function RemediationCard({
             </p>
           ) : null}
           {verify.data ? (
-            <p role="status">
+            <div role="status">
               服务端复核结果：
-              {REMEDIATION_LABELS[verify.data.status] ?? verify.data.status}，
+              {remediationStatusLabel(verify.data.status)}，
               版本 {verify.data.version}
-            </p>
+              <TechnicalDetail label="复核状态技术详情" value={verify.data.status} />
+            </div>
           ) : null}
           <Button
             aria-label={String(verify.isPending ? "正在提交复核" : "提交复核")}
@@ -751,8 +750,9 @@ export function RemediationPanel({
                       toggleFinding(finding.id, event.target.checked)
                     }
                   >
-                    {finding.claim}，{finding.domain}
+                    {finding.claim}，{businessDomainLabel(finding.domain)}
                   </Checkbox>
+                  <TechnicalDetail label="发现领域技术详情" value={finding.domain} />
                 </div>
               ))}
             </Card>

@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -257,6 +257,12 @@ type CaseSummary struct {
 	PartialReason  string
 	FailureMessage string
 	Counts         *Counts
+	Identity       *CaseListIdentity
+}
+
+// CaseListIdentity contains only profile fields already visible to a case reader.
+type CaseListIdentity struct {
+	Number, Customer, Supplier, OwnerName string
 }
 
 func (s *Store) ListCases(user accounts.User) []CaseSummary {
@@ -276,13 +282,32 @@ func (s *Store) ListCasesChecked(user accounts.User) ([]CaseSummary, error) {
 	if err != nil {
 		return nil, err
 	}
+	profiles := make(map[string]caseProfileRecord, len(st.Profiles))
+	for _, record := range st.Profiles {
+		profiles[record.Profile.CaseID] = record
+	}
+	owners := make(map[string]accounts.User)
+	for _, member := range accounts.List() {
+		if member.Enabled && accounts.Tenant(member) == current.TenantID {
+			owners[member.ID] = member
+		}
+	}
 	var out []CaseSummary
 	for i := len(st.Cases) - 1; i >= 0; i-- {
 		item := st.Cases[i]
 		if !authorizeCase(item, current, access.Read) {
 			continue
 		}
-		out = append(out, s.summarize(&st, item))
+		summary := s.summarize(&st, item)
+		if record, ok := profiles[item.ID]; ok && record.TenantID == item.TenantID && record.OrgID == item.OwnerOrgID {
+			profile := record.Profile
+			identity := &CaseListIdentity{Number: profile.Number, Customer: profile.Customer, Supplier: profile.Supplier}
+			if owner, ok := owners[profile.OwnerID]; ok && isCaseMember(item, owner.ID) {
+				identity.OwnerName = owner.DisplayName
+			}
+			summary.Identity = identity
+		}
+		out = append(out, summary)
 	}
 	return out, nil
 }

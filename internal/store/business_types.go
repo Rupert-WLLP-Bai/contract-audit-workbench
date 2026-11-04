@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -489,6 +489,18 @@ type workbenchAuditRecord struct {
 }
 
 type reportHTMLModel struct {
-	CaseTitle  string
-	ReportJSON string
+	CaseTitle      string
+	ReportJSON     string
+	BusinessLine   string
+	Scenario       string
+	ContractType   string
+	Scope          string
+	CoverageNotice string
+	Evaluations    []reportHTMLCheck
+	Findings       []reportHTMLFinding
+	Decisions      []reportHTMLDecision
 }
+
+type reportHTMLCheck struct{ Name, Relation, Reason string }
+type reportHTMLFinding struct{ Origin, Claim, Relation, UnverifiedReason string }
+type reportHTMLDecision struct{ Action, Actor, Reason string }

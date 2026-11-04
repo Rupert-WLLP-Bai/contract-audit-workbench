@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -372,6 +372,10 @@ export function parseCaseSummary(value: unknown): CaseSummary {
     scenario: optionalString(record, "scenario") ?? undefined,
     business_status: optionalString(record, "business_status") ?? undefined,
     archived_at: nullableString(record, "archived_at"),
+    ...(record.case_number === undefined ? {} : { case_number: requiredStringValue(record, "case_number") }),
+    ...(record.customer === undefined ? {} : { customer: requiredStringValue(record, "customer") }),
+    ...(record.supplier === undefined ? {} : { supplier: requiredStringValue(record, "supplier") }),
+    ...(record.owner_name === undefined ? {} : { owner_name: requiredStringValue(record, "owner_name") }),
   };
 }
 
@@ -797,6 +801,8 @@ export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
   const legalAuthorities = record.legal_authorities === undefined
     ? undefined
     : parseFrozenLegalReviewProjection(record.legal_authorities);
+  const source = record.revision_comparison_source === undefined
+    ? undefined : parseRevisionComparisonSource(record.revision_comparison_source);
   if (legalAuthorities && (legalAuthorities.run_id !== run.id ||
       legalAuthorities.attempt_id !== reviewAttempts?.attempt?.id)) {
     fail("冻结法律依据不属于当前审查及所选执行记录");
@@ -810,6 +816,8 @@ export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
       ? record.findings.map(parseFinding)
       : [],
     review_attempts: reviewAttempts,
+    review_attempts_reported: Object.prototype.hasOwnProperty.call(record, "review_attempts"),
+    review_attempts_explicit_null: record.review_attempts === null,
     agent_review: parseBusinessAgentReview(record.agent_review),
     execution: parseExecution(record.execution),
     snapshot: parseSnapshot(record.snapshot),
@@ -829,7 +837,19 @@ export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
       "revision_comparison_reason",
     ),
     ...(legalAuthorities === undefined ? {} : { legal_authorities: legalAuthorities }),
+    ...(source === undefined ? {} : { revision_comparison_source: source }),
   };
+}
+
+function parseRevisionComparisonSource(value: unknown): NonNullable<ReviewWorkspace["revision_comparison_source"]> {
+  const source = recordOf(value, "修订对照来源");
+  if (Object.keys(source).some((key) => key !== "current" && key !== "previous")) fail("修订对照来源格式错误");
+  function side(value: unknown) {
+    const item = recordOf(value, "修订对照来源身份");
+    if (Object.keys(item).some((key) => !["case_id", "run_id", "attempt_id"].includes(key))) fail("修订对照来源身份格式错误");
+    return { case_id: requiredString(item, "case_id"), run_id: requiredString(item, "run_id"), attempt_id: requiredString(item, "attempt_id") };
+  }
+  return { current: side(source.current), previous: side(source.previous) };
 }
 
 function parseSnapshot(value: unknown): RunSnapshot | null {

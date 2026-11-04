@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -17,6 +17,7 @@ import type {
   ReviewWorkspace,
 } from "../api/types";
 import { resolveAnchor } from "./text";
+import { businessCapabilityLabel, businessDomainLabel, reviewScopeLabel } from "./business-labels";
 
 export type DifferenceState = "same" | "different" | "unknown";
 export type ReviewDiffKind = "added" | "disappeared" | "changed" | "unchanged" | "unmatched";
@@ -57,9 +58,9 @@ export function reviewScopeDescription(workspace: ReviewWorkspace): string {
   const agent = workspace.agent_review;
   const attempt = workspace.review_attempts?.attempt;
   const details = agent?.attempt_id === attempt?.id && agent?.scope?.length
-    ? agent.scope.map((item) => `${item.domain}：${item.capability_ids?.join("、") || "能力未返回"}；来源 ${item.source_ids?.join("、") || "未返回"}`).join("；")
+    ? agent.scope.map((item) => `${businessDomainLabel(item.domain)}：${item.capability_ids?.map(businessCapabilityLabel).join("、") || "审查项目未返回"}；${item.source_ids?.length ? `来源 ${item.source_ids.length} 项` : "来源未返回"}`).join("；")
     : "执行范围明细未返回";
-  return `${scope ? (scope.id === "single_contract_precheck" ? "单合同预审" : scope.id) : "审查范围身份未返回"}；${details}`;
+  return `${reviewScopeLabel(scope?.id)}；${details}`;
 }
 
 function agentScopeKey(workspace: ReviewWorkspace): string | null {

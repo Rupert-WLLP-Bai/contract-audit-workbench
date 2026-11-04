@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,14 +16,15 @@ import type { CaseSummary } from "../api/types";
 import type { CaseSortField, SortDirection } from "../domain/review";
 import {
   businessStatusLabel,
-  contractTypeLabel,
   formatDateTime,
   runLabel,
   runTone,
 } from "../domain/review";
 import { StatusText } from "./status-text";
 import { TechnicalDetail } from "./technical-detail";
+import { InvalidTimeDetail } from "./invalid-time-detail";
 import { businessScopeLabel } from "../domain/business-labels";
+import { caseIdentityDetails } from "../domain/case-identity";
 
 const SORT_FIELDS: readonly CaseSortField[] = [
   "title",
@@ -75,7 +76,8 @@ function CaseTitleCell({
         {item.title}
       </Link>
       <div className="meta caw-wrap">
-        {contractTypeLabel(item.contract_type)}
+        {caseIdentityDetails(item)}
+        <InvalidTimeDetail value={item.updated_at} label="案件更新时间" />
         <TechnicalDetail value={item.id} label="案件标识" />
       </div>
     </>

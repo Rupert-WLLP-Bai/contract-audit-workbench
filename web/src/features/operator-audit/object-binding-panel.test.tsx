@@ -3,12 +3,12 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/http";
@@ -61,16 +61,59 @@ async function selectPair(user: UserEvent) {
   await chooseOption(
     user,
     screen.getByRole("combobox", { name: "合同对象" }),
-    /政企专线合同（contract_line · line-1）/,
+    /政企专线合同（对象类型 contract_line · 合同对象标识 line-1/,
   );
   await chooseOption(
     user,
     screen.getByRole("combobox", { name: "外部对象" }),
-    /OSS 专线 001（fixture.oss · fixture-line-001）/,
+    /OSS 专线 001（连接器标识 fixture.oss · 外部对象标识 fixture-line-001）/,
   );
 }
 
 describe("object binding panel", () => {
+  it("uses an authorized external display name only for the exact connector and object", () => {
+    const client = operatorAuditClient();
+    const wrongConnector = [{ ...externalObjects[0]!, connectorId: "different-connector", label: "同名线路" }];
+    const view = renderOperatorAudit(<ObjectBindingPanel caseId="case-1" flags={DEMO_OPERATOR_AUDIT_FLAGS} client={client} existingBindings={[confirmedBinding]} externalObjects={wrongConnector} />);
+    expect(within(screen.getByRole("table")).getByText("外部对象名称未提供")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).queryByText("同名线路")).not.toBeInTheDocument();
+    view.rerender(<ObjectBindingPanel caseId="case-1" flags={DEMO_OPERATOR_AUDIT_FLAGS} client={client} existingBindings={[confirmedBinding]} externalObjects={[{ ...externalObjects[0]!, label: "甲方有限公司线路" }]} />);
+    expect(within(screen.getByRole("table")).getByText("甲方有限公司线路")).toBeInTheDocument();
+  });
+  it("can search an allow-listed object by its source system", async () => {
+    const user = userEvent.setup();
+    const candidates = externalObjects.map((item, index) => ({ ...item, label: "", sourceSystem: index === 0 ? "oss-east" : "oss-west" }));
+    renderOperatorAudit(<ObjectBindingPanel caseId="case-1" flags={DEMO_OPERATOR_AUDIT_FLAGS} client={operatorAuditClient()} contractObjects={contractObjects} externalObjects={candidates} />);
+    const external = screen.getByRole("combobox", { name: "外部对象" });
+    await user.click(external);
+    await user.type(external, "oss-west");
+    expect(await screen.findByRole("option", { name: /外部对象标识 fixture-line-002.*来源系统标识 oss-west/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /外部对象标识 fixture-line-001/ })).not.toBeInTheDocument();
+  });
+  it("searches exact identities and submits the chosen same-name and unnamed objects", async () => {
+    const user = userEvent.setup();
+    const createObjectBinding = vi.fn(async (): Promise<ObjectBinding> => confirmedBinding);
+    const sameNames = contractObjects.map((item) => ({ ...item, label: "甲方有限公司专线" }));
+    const unnamed = externalObjects.map((item) => ({ ...item, label: "" }));
+    renderOperatorAudit(<ObjectBindingPanel caseId="case-1" flags={DEMO_OPERATOR_AUDIT_FLAGS} client={operatorAuditClient({ createObjectBinding })} contractObjects={sameNames} externalObjects={unnamed} />);
+    const contract = screen.getByRole("combobox", { name: "合同对象" });
+    await user.click(contract);
+    await user.type(contract, "svc-2");
+    expect(screen.queryByRole("option", { name: /服务对象标识 svc-1/ })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("option", { name: /甲方有限公司专线.*服务对象标识 svc-2/ }));
+    const external = screen.getByRole("combobox", { name: "外部对象" });
+    await user.click(external);
+    await user.type(external, "fixture-line-002");
+    expect(screen.queryByRole("option", { name: /外部对象标识 fixture-line-001/ })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("option", { name: /名称未提供.*外部对象标识 fixture-line-002/ }));
+    await user.click(screen.getByRole("checkbox", { name: "我已人工核对上述合同对象与外部对象的对应关系" }));
+    await user.click(screen.getByRole("button", { name: "确认对象映射" }));
+    expect(createObjectBinding).toHaveBeenCalledWith("case-1", expect.objectContaining({
+      contract_object: expect.objectContaining({ object_id: "line-2", label: "甲方有限公司专线" }),
+      external_object: { connector_id: "fixture.oss", external_object_id: "fixture-line-002" },
+      service_object_id: "svc-2",
+    }), expect.any(String));
+  });
   it("is off by default and never submits without an explicit human confirmation", async () => {
     const user = userEvent.setup();
     const createObjectBinding = vi.fn(
@@ -154,7 +197,7 @@ describe("object binding panel", () => {
     expect(
       screen.getByText(/这些映射不产生确定性结论/),
     ).toBeInTheDocument();
-    expect(screen.getByText("外部对象未报告")).toBeInTheDocument();
+    expect(screen.getByText("外部对象名称未提供")).toBeInTheDocument();
     expect(screen.getByText("时间未报告")).toBeInTheDocument();
   });
 

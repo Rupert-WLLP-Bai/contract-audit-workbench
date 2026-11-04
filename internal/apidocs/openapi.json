@@ -3766,7 +3766,14 @@
           "business_status": {
             "type": "string"
           },
+          "case_number": {
+            "description": "可编辑的案件业务编号，不替代 id；仅在授权资料存在时返回。",
+            "type": "string"
+          },
           "contract_type": {
+            "type": "string"
+          },
+          "customer": {
             "type": "string"
           },
           "document_count": {
@@ -3786,11 +3793,17 @@
               }
             ]
           },
+          "owner_name": {
+            "type": "string"
+          },
           "pending_decisions": {
             "type": "integer",
             "minimum": 0
           },
           "scenario": {
+            "type": "string"
+          },
+          "supplier": {
             "type": "string"
           },
           "title": {
@@ -21649,6 +21662,62 @@
               }
             ]
           },
+          "revision_comparison_source": {
+            "type": "object",
+            "properties": {
+              "current": {
+                "type": "object",
+                "properties": {
+                  "attempt_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "case_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "run_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "case_id",
+                  "run_id",
+                  "attempt_id"
+                ],
+                "additionalProperties": false
+              },
+              "previous": {
+                "type": "object",
+                "properties": {
+                  "attempt_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "case_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "run_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "case_id",
+                  "run_id",
+                  "attempt_id"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "current",
+              "previous"
+            ],
+            "additionalProperties": false
+          },
           "revisions": {
             "type": "array",
             "items": {
@@ -25605,7 +25674,7 @@
           "案件"
         ],
         "summary": "列出可见案件",
-        "description": "演示管理员可见全部案件，其余用户按成员关系可见；当前没有分页、组织或租户过滤参数。",
+        "description": "返回当前服务端授权范围内的案件；不提供服务端分页或搜索参数，客户端在已加载集合中筛选和分页。案件业务编号可编辑，不替代稳定案件标识。",
         "responses": {
           "200": {
             "description": "成功",

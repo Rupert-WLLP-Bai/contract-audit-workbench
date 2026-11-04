@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -268,6 +268,16 @@ func (s *Store) snapshotCaseList(ctx context.Context, user accounts.User) (state
 	st, err := loadCaseSummaries(ctx, tx, visible, true)
 	if err != nil {
 		return state{}, err
+	}
+	if len(visible) > 0 {
+		ids := make([]string, 0, len(visible))
+		for _, item := range visible {
+			ids = append(ids, item.ID)
+		}
+		st.Profiles, err = loadWorkbenchProfiles(ctx, readRows(tx, "case_id=ANY($1)", ids))
+		if err != nil {
+			return state{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return state{}, err

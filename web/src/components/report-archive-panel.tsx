@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -31,6 +31,7 @@ import {
 import { reviewChoiceForKey, reviewChoices } from "../domain/workflow";
 import { ReviewChoiceSelect } from "./review-choice-select";
 import { StatusText } from "./status-text";
+import { TechnicalDetail } from "./technical-detail";
 
 function choiceRunMatches(
   review: ReturnType<typeof useReview>,
@@ -211,6 +212,7 @@ function ReviewAttemptSummary({
           <StatusText tone={runTone(runStateOf(review))}>
             {runLabel(runStateOf(review))}
           </StatusText>
+          <TechnicalDetail label="执行状态技术详情" value={runStateOf(review)} />
         </dd>
       </div>
       <div>

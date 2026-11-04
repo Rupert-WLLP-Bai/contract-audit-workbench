@@ -3,20 +3,24 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-01
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Alert, Button, Select, Tag } from "antd";
-import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   checkContractReferences,
   type ContractReferenceCheck,
   type DraftContent,
 } from "../api/contracts";
 import { errorMessage } from "../api/http";
-import { useCases } from "../api/queries";
+import { queryKeys, useCases, useSession } from "../api/queries";
+import { actorReadContextKey } from "../domain/actor-read-context";
+import { caseOptionLabel } from "../domain/case-identity";
+import { caseSelectPresentation } from "./case-select-presentation";
 
 /**
  * Read-only view of the contract reference chain.
@@ -34,10 +38,65 @@ export function ContractReferencesPanel({
   draft: DraftContent;
 }) {
   const cases = useCases();
+  const session = useSession();
+  const cache = useQueryClient().getQueryCache();
+  const listGeneration = useRef(0);
+  const subscribeList = useCallback((notify: () => void) => cache.subscribe((event) => {
+    if (event.query.queryKey.length !== queryKeys.cases.length || event.query.queryKey[0] !== queryKeys.cases[0]) return;
+    if (event.type === "added" || event.type === "removed" ||
+        (event.type === "updated" && (event.action.type === "fetch" || event.action.type === "invalidate"))) listGeneration.current += 1;
+    notify();
+  }), [cache]);
+  const listVersion = useCallback(() => {
+    const state = cache.find({ queryKey: queryKeys.cases, exact: true })?.state;
+    return `${listGeneration.current}:${state?.dataUpdateCount ?? 0}:${state?.errorUpdateCount ?? 0}:${state?.fetchStatus ?? "missing"}:${state?.status ?? "missing"}:${state?.isInvalidated ?? true}`;
+  }, [cache]);
+  const listRevision = useSyncExternalStore(subscribeList, listVersion, listVersion);
   const [caseID, setCaseID] = useState<string | null>(null);
-  const [check, setCheck] = useState<ContractReferenceCheck | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const actorScope = actorReadContextKey(session.data ?? null);
+  const sessionReady = session.isSuccess && !session.isError && !session.isFetching && actorScope !== "";
+  const listState = cache.find({ queryKey: queryKeys.cases, exact: true })?.state;
+  const listReady = sessionReady && cases.isSuccess && !cases.isError && !cases.isFetching &&
+    !!listState && listState.status === "success" && listState.fetchStatus === "idle" && !listState.isInvalidated;
+  const caseVisible = listReady && (caseID === null || cases.data.some((item) => item.id === caseID));
+  // A refreshed authorization list also starts a new context, even if it contains the same case IDs.
+  const context = useRef({ contractID, caseID, caseVisible, casesData: cases.data, actorScope, listRevision, generation: 0 });
+  const request = useRef(0);
+  const mounted = useRef(false);
+  const [verification, setVerification] = useState<{
+    generation: number;
+    busy: boolean;
+    check: ContractReferenceCheck | null;
+    error: string | null;
+  } | null>(null);
+  const matchesContext = context.current.contractID === contractID && context.current.caseID === caseID &&
+    context.current.caseVisible === caseVisible && context.current.casesData === cases.data && context.current.actorScope === actorScope && context.current.listRevision === listRevision;
+  const visible = matchesContext && verification?.generation === context.current.generation ? verification : null;
+  const check = visible?.check ?? null;
+  const error = visible?.error ?? null;
+  const busy = visible?.busy ?? false;
+
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      request.current += 1;
+    };
+  }, []);
+  // Invalidate before old promises can publish into the newly committed context.
+  useLayoutEffect(() => {
+    if (context.current.contractID !== contractID || context.current.caseID !== caseID ||
+        context.current.caseVisible !== caseVisible || context.current.casesData !== cases.data || context.current.actorScope !== actorScope || context.current.listRevision !== listRevision) {
+      context.current = { contractID, caseID, caseVisible, casesData: cases.data, actorScope, listRevision, generation: context.current.generation + 1 };
+      request.current += 1;
+      setVerification(null);
+    }
+  }, [contractID, caseID, caseVisible, cases.data, actorScope, listRevision]);
+  useEffect(() => {
+    if (caseID && (cases.isError || (cases.isSuccess && !cases.data.some((item) => item.id === caseID)))) {
+      setCaseID(null);
+    }
+  }, [caseID, cases.data, cases.isError, cases.isSuccess]);
 
   const hasReferences =
     (draft.contract.related_parties?.length ?? 0) > 0 ||
@@ -45,16 +104,22 @@ export function ContractReferencesPanel({
     draft.contract.procurement_result_package !== undefined;
 
   async function run() {
-    if (contractID === null) return;
-    setBusy(true);
-    setError(null);
+    if (contractID === null || !caseVisible || context.current.contractID !== contractID ||
+        context.current.caseID !== caseID || context.current.caseVisible !== caseVisible ||
+        context.current.casesData !== cases.data || context.current.actorScope !== actorScope ||
+        context.current.listRevision !== listVersion()) return;
+    const generation = context.current.generation;
+    const sequence = ++request.current;
+    setVerification({ generation, busy: true, check: null, error: null });
     try {
-      setCheck(await checkContractReferences(contractID, caseID ?? undefined));
+      const result = await checkContractReferences(contractID, caseID ?? undefined);
+      if (mounted.current && request.current === sequence && context.current.generation === generation && context.current.listRevision === listVersion()) {
+        setVerification({ generation, busy: false, check: result, error: null });
+      }
     } catch (caught) {
-      setCheck(null);
-      setError(errorMessage(caught));
-    } finally {
-      setBusy(false);
+      if (mounted.current && request.current === sequence && context.current.generation === generation && context.current.listRevision === listVersion()) {
+        setVerification({ generation, busy: false, check: null, error: errorMessage(caught) });
+      }
     }
   }
 
@@ -70,16 +135,17 @@ export function ContractReferencesPanel({
         <>
           <div className="contracts-page-fields">
             <Select
-              showSearch
+              {...caseSelectPresentation}
+              showSearch={{ optionFilterProp: "label" }}
               allowClear
-              optionFilterProp="label"
-              value={caseID ?? undefined}
+              value={caseVisible ? caseID ?? undefined : undefined}
               placeholder="来源案件（草稿必选；已导入合同可留空）"
               loading={cases.isLoading}
-              options={(cases.data ?? []).map((item) => ({ value: item.id, label: item.title }))}
+              disabled={!listReady}
+              options={(listReady ? cases.data : []).map((item) => ({ value: item.id, label: caseOptionLabel(item) }))}
               onChange={(value) => setCaseID(value ?? null)}
             />
-            <Button loading={busy} onClick={() => void run()}>
+            <Button loading={busy} disabled={!caseVisible} onClick={() => void run()}>
               核对引用
             </Button>
           </div>
@@ -87,7 +153,7 @@ export function ContractReferencesPanel({
             <p className="meta">当前快照没有主体、材料或采购结果引用；核对仍会验证来源案件读权限。</p>
           ) : null}
           {error !== null ? <Alert type="error" showIcon message={error} /> : null}
-          {check !== null ? (
+          {check !== null && caseVisible ? (
             <div className="contracts-page-reference-result">
               <p className="meta">
                 来源案件 {check.source_case_id} ·{" "}

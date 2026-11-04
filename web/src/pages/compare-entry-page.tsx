@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-28
 // Updated: 2026-11-04
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,6 +16,9 @@ import { useWorkbench } from "../api/queries";
 import type { WorkbenchCase, WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
+import { TechnicalDetail } from "../components/technical-detail";
+import { InvalidTimeDetail } from "../components/invalid-time-detail";
+import { caseIdentityDetails, caseSearchText } from "../domain/case-identity";
 import {
   businessStatusLabel,
   businessStatusTone,
@@ -25,15 +28,6 @@ import {
   runTone,
 } from "../domain/review";
 import "./compare-entry-page.css";
-import { businessLineLabel } from "../domain/business-labels";
-
-function customerLabel(item: WorkbenchCase): string {
-  const customer = item.profile?.customer;
-  if (customer && customer !== "unspecified") return customer;
-  const businessLine = item.business_line;
-  if (businessLine && businessLine !== "unspecified") return businessLineLabel(businessLine);
-  return "业务信息未报告";
-}
 
 export function CompareEntryPage() {
   const query = useWorkbench("week");
@@ -70,18 +64,7 @@ export function CompareEntryPage() {
     (item) => (runsByCase.get(item.id)?.length ?? 0) >= 2,
   ).length;
   const needle = search.trim().toLowerCase();
-  const visibleCases = snapshot.cases.filter((item) =>
-    [
-      item.title,
-      item.id,
-      item.profile?.number ?? "",
-      item.profile?.customer ?? "",
-      item.business_line ?? "",
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(needle),
-  );
+  const visibleCases = snapshot.cases.filter((item) => caseSearchText(item).includes(needle));
   const columns: TableColumnsType<WorkbenchCase> = [
     {
       title: "合同",
@@ -89,7 +72,8 @@ export function CompareEntryPage() {
       render: (_, item) => (
         <div className="compare-entry-case">
           <strong>{item.title}</strong>
-          <span>{customerLabel(item)}</span>
+          <span>{caseIdentityDetails(item, snapshot.members)}</span>
+          <TechnicalDetail value={item.id} label="案件标识" />
         </div>
       ),
     },
@@ -102,7 +86,7 @@ export function CompareEntryPage() {
           <StatusText tone={businessStatusTone(item.business_status ?? "")}>
             {businessStatusLabel(item.business_status ?? "")}
           </StatusText>
-          <code>{item.profile?.number ?? item.id}</code>
+          <TechnicalDetail value={item.business_status} label="业务状态编码" />
         </div>
       ),
     },
@@ -117,10 +101,11 @@ export function CompareEntryPage() {
           return <span className="compare-entry-muted">尚无审查运行</span>;
         return (
           <div className="compare-entry-run">
-            <code>{latest.id}</code>
+            <TechnicalDetail value={latest.id} label="运行标识" />
             <StatusText tone={runTone(latest.state)}>
               {runLabel(latest.state)}
             </StatusText>
+            <TechnicalDetail value={latest.state} label="运行状态编码" />
             <span className="compare-entry-muted">
               {runCount >= 2 ? `${runCount} 次运行可对照` : "仅 1 次运行"}
             </span>
@@ -133,9 +118,9 @@ export function CompareEntryPage() {
       key: "updated",
       width: 165,
       render: (_, item) => (
-        <time dateTime={item.updated_at}>
-          {formatDateTime(item.updated_at)}
-        </time>
+        <div><time dateTime={item.updated_at}>{formatDateTime(item.updated_at)}</time>
+          <InvalidTimeDetail value={item.updated_at} label="案件更新时间" />
+        </div>
       ),
     },
     {
@@ -208,7 +193,7 @@ export function CompareEntryPage() {
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="合同名称、编号、客户"
+                placeholder="案件标题、业务编号、中文场景或完整案件标识"
               />
             </label>
             <span>共 {visibleCases.length} 份合同</span>

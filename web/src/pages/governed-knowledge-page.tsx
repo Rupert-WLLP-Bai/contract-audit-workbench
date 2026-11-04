@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -24,6 +24,9 @@ import { KnowledgeEditor, emptyKnowledgeContent, validateKnowledgeDraft, type Kn
 import { ExperienceMetricsPanel } from "../components/experience-metrics-panel";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
+import { TechnicalDetail } from "../components/technical-detail";
+import { businessComparatorLabel, businessScopeLabel, businessSourceTypeLabel, policyPreviewReasonLabel } from "../domain/business-labels";
+import { contractTypeLabel } from "../domain/review";
 import { LegalKnowledgeAdminList } from "./legal-knowledge-page";
 
 const root = "/admin/governed-knowledge";
@@ -31,7 +34,7 @@ const queryRoot = ["admin", "governed-knowledge"] as const;
 const labels: Record<string, string> = { policy: "政策制度", guidance: "操作指引", exception: "例外", experience: "审查经验", legal: "法律规范", draft: "草稿", submitted: "已提交", validated: "已校验", approved: "已批准", published: "已发布", withdrawn: "已撤回", create: "创建", submit: "提交", validate: "校验", approve: "批准", publish: "发布", withdraw: "撤回", rollback: "回滚" };
 const comparisonLabels: Record<string, string> = { match: "一致", different: "存在差异", ambiguous: "无法唯一确认", unexpressible: "无法表达" };
 const detailPath = (knowledgeId: string, versionId: string) => `${root}/${encodeURIComponent(knowledgeId)}/versions/${encodeURIComponent(versionId)}`;
-const display = (value: string) => labels[value] ?? value;
+const display = (value: string) => Object.hasOwn(labels, value) ? labels[value]! : "信息待核对";
 
 function ServerError({ error }: { error: unknown }) {
   if (!error) return null;
@@ -42,14 +45,14 @@ function ServerError({ error }: { error: unknown }) {
   </div>;
 }
 function ResultStatus({ status, active }: { status: string; active: boolean }) {
-  return <div className="rulepack-badges"><StatusText tone={status === "published" ? "good" : status === "draft" ? "neutral" : "attention"}>{display(status)}</StatusText><StatusText tone={active ? "good" : "neutral"}>{active ? "当前生效" : "未生效"}</StatusText></div>;
+  return <div className="rulepack-badges"><StatusText tone={status === "published" ? "good" : status === "draft" ? "neutral" : "attention"}>{display(status)}</StatusText><StatusText tone={active ? "good" : "neutral"}>{active ? "当前生效" : "未生效"}</StatusText><TechnicalDetail label="状态技术详情" value={status} /></div>;
 }
 
 function matchesKnowledge(item: KnowledgeSummary, kind: string, search: string): boolean {
   return (kind === "all" || item.kind === kind) && `${item.title} ${item.ref.knowledge_id} ${item.version}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
 }
 function ScopeCell({ scope }: { scope: KnowledgeScope }) {
-  return <>{scope.business_line} / {scope.scenario} / {scope.contract_type}{scope.org_id && <div className="meta">组织 {scope.org_id}{scope.case_id && ` · 案件 ${scope.case_id}`}</div>}</>;
+  return <>{businessScopeLabel(scope.business_line, scope.scenario)} / {contractTypeLabel(scope.contract_type)}<TechnicalDetail label="适用范围技术详情" value={JSON.stringify(scope)} /></>;
 }
 
 export function GovernedKnowledgeListPage() {
@@ -234,19 +237,19 @@ export function GovernedKnowledgeCreatePage() {
 }
 
 function ComparisonList({ comparisons }: { comparisons: PolicyPreview["comparisons"] }) {
-  return <ul>{comparisons.map((item, index) => <li key={`${item.rule_id}-${index}`}><strong>{item.rule_id} · {comparisonLabels[item.status] ?? item.status}</strong><div>比较类型：{item.comparator}</div><div>政策原文：{item.candidate ? `${item.candidate.quote}（${item.candidate.value} ${item.candidate.unit}${item.candidate.basis ? `，${item.candidate.basis}` : ""}；位置 ${item.candidate.start}–${item.candidate.end}）` : "未提取到候选"}</div><div>规则阈值：{item.rule_threshold.value} {item.rule_threshold.unit}{item.rule_threshold.basis ? `，${item.rule_threshold.basis}` : ""}</div>{item.reason && <div>原因：{item.reason}</div>}</li>)}</ul>;
+  return <ul>{comparisons.map((item, index) => <li key={`${item.rule_id}-${index}`}><strong>{businessComparatorLabel(item.comparator)} · {Object.hasOwn(comparisonLabels, item.status) ? comparisonLabels[item.status] : "比较状态待核对"}</strong><div>政策原文：{item.candidate ? `${item.candidate.quote}（${item.candidate.value} ${item.candidate.unit}${item.candidate.basis ? `，${item.candidate.basis}` : ""}）` : "未提取到候选"}</div><div>规则阈值：{item.rule_threshold.value} {item.rule_threshold.unit}{item.rule_threshold.basis ? `，${item.rule_threshold.basis}` : ""}</div>{item.reason && <div>原因：{policyPreviewReasonLabel(item.reason)}</div>}<TechnicalDetail label="比较技术详情" value={JSON.stringify({ rule_id: item.rule_id, comparator: item.comparator, status: item.status, reason: item.reason, candidate_comparator: item.candidate?.comparator ?? null, start: item.candidate?.start ?? null, end: item.candidate?.end ?? null })} /></li>)}</ul>;
 }
 function PreviewIssues({ issues }: { issues: PolicyPreview["issues"] }) {
-  return <ul>{issues.map((item, index) => <li key={index}>{item.reason}{item.quote && `：${item.quote}（${item.start}–${item.end}）`}</li>)}</ul>;
+  return <ul>{issues.map((item, index) => <li key={index}>{policyPreviewReasonLabel(item.reason)}{item.quote && `：${item.quote}`}<TechnicalDetail label="提取问题技术详情" value={JSON.stringify({ reason: item.reason, start: item.start, end: item.end })} /></li>)}</ul>;
 }
 function SemanticNotes({ notes }: { notes: PolicyPreview["semantic_only"] }) {
-  return <ul>{notes.map((item, index) => <li key={index}>{item.quote}（{item.start}–{item.end}）：{item.reason}</li>)}</ul>;
+  return <ul>{notes.map((item, index) => <li key={index}>{item.quote}：{policyPreviewReasonLabel(item.reason)}<TechnicalDetail label="语义核对技术详情" value={JSON.stringify({ reason: item.reason, start: item.start, end: item.end })} /></li>)}</ul>;
 }
 function Preview({ preview }: { preview: PolicyPreview }) {
   return <section className="rulepack-editor-section" aria-labelledby="knowledge-preview-heading">
     <h2 id="knowledge-preview-heading">政策与结构化规则差异</h2>
     <p>{preview.approvable ? "预览：规则关联和可以提取的数值已通过检查。" : "预览：规则关联或数值尚未通过检查。"} 这不代表内容已经人工审核或批准。</p>
-    <p className="meta">提取器：{preview.extractor_ref}</p>
+    <TechnicalDetail label="提取器技术详情" value={preview.extractor_ref} />
     {preview.comparisons.length === 0 ? <p>没有返回规则比较项。</p> : <ComparisonList comparisons={preview.comparisons} />}
     {preview.issues.length > 0 && <><h3>提取或绑定问题</h3><PreviewIssues issues={preview.issues} /></>}
     {preview.semantic_only.length > 0 && <><h3>仍需人工核对含义</h3><SemanticNotes notes={preview.semantic_only} /></>}
@@ -282,10 +285,10 @@ function VersionIdentity({ version, content }: { version: KnowledgeVersion; cont
   </>;
 }
 function SourceLine({ content }: { content: KnowledgeContent }) {
-  return <p>来源：{content.source_type} · {content.source_reference}{content.source_case_id && `；来源案件 ${content.source_case_id}`}{content.source_org_id && `；来源组织 ${content.source_org_id}`}{content.source_feedback_id && `；反馈 ${content.source_feedback_id}`}</p>;
+  return <><p>来源：{businessSourceTypeLabel(content.source_type)} · {content.source_reference}</p><TechnicalDetail label="来源技术详情" value={JSON.stringify({ source_type: content.source_type, source_case_id: content.source_case_id, source_org_id: content.source_org_id, source_feedback_id: content.source_feedback_id })} /></>;
 }
 function ScopeLine({ scope }: { scope: KnowledgeScope }) {
-  return <p>范围：{scope.business_line} / {scope.scenario} / {scope.contract_type}{scope.org_id && `；组织 ${scope.org_id}`}{scope.case_id && `；案件 ${scope.case_id}`}</p>;
+  return <><p>范围：{businessScopeLabel(scope.business_line, scope.scenario)} / {contractTypeLabel(scope.contract_type)}</p><TechnicalDetail label="适用范围技术详情" value={JSON.stringify(scope)} /></>;
 }
 function ConditionLines({ content }: { content: KnowledgeContent }) {
   return <><p>适用条件：{content.applicability?.length ? content.applicability.map((item) => `${item.field} = ${item.equals}`).join("；") : "无"}</p><p>排除条件：{content.exclusions?.length ? content.exclusions.map((item) => `${item.field} = ${item.equals}`).join("；") : "无"}</p></>;

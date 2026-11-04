@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,13 +13,14 @@ import type {
   ReviewHistoryEntry,
   ReviewWorkspace,
 } from "../api/types";
+import { runLabel } from "./review";
+import { preciseTime } from "./time";
 
 export interface ReviewChoice {
   key: string;
   runId: string;
   attempt: ExecutionAttempt;
   workspace: ReviewWorkspace;
-  runOrder: number;
 }
 
 export function reviewChoiceKey(runId: string, attemptId: string): string {
@@ -27,6 +28,14 @@ export function reviewChoiceKey(runId: string, attemptId: string): string {
     ["run_id", runId],
     ["attempt_id", attemptId],
   ]).toString();
+}
+
+export function reviewChoiceLabel(choice: ReviewChoice): string {
+  return `${reviewChoiceShortLabel(choice)} · 执行开始 ${preciseTime(choice.attempt.started_at)} · 完成时间 ${preciseTime(choice.attempt.finished_at)} · 审查更新时间 ${preciseTime(choice.workspace.run.updated_at)} · 审查标识 ${choice.runId} · 执行标识 ${choice.attempt.id}`;
+}
+
+export function reviewChoiceShortLabel(choice: ReviewChoice): string {
+  return `受理时间 ${preciseTime(choice.attempt.accepted_at)} · 第 ${choice.attempt.ordinal} 次尝试 · ${runLabel(choice.attempt.state)}`;
 }
 
 export function reviewChoices(history: ReviewHistoryEntry[]): ReviewChoice[] {
@@ -50,7 +59,8 @@ export function reviewChoices(history: ReviewHistoryEntry[]): ReviewChoice[] {
       (left, right) =>
         left.runOrder - right.runOrder ||
         right.attempt.ordinal - left.attempt.ordinal,
-    );
+    )
+    .map(({ runOrder: _runOrder, ...choice }) => choice);
 }
 
 export function reviewChoiceForKey(

@@ -1,0 +1,22 @@
+[
+  {"field":"business_line","value":"ENT","label":"政企业务"},
+  {"field":"business_line","value":"政企业务","label":"政企业务"},
+  {"field":"business_line","value":"ENT（测试）","label":"业务条线待核对"},
+  {"field":"scenario","value":"telecom_dedicated_line","label":"政企专线"},
+  {"field":"scenario","value":"cloud_services","label":"云服务采购"},
+  {"field":"scenario","value":"政企专线","label":"政企专线"},
+  {"field":"scenario","value":"telecom_dedicated_line（旧）","label":"业务场景待核对"},
+  {"field":"review_scope","value":"full_review","label":"完整审查"},
+  {"field":"review_scope","value":"single_contract_precheck","label":"单合同预审"},
+  {"field":"review_scope","value":"scope·","label":"审查范围待核对"},
+  {"field":"capability","value":"dedicated_line.minimum_bandwidth","label":"最低保障带宽"},
+  {"field":"capability","value":"payment.advance_ratio.ceiling","label":"预付款比例上限"},
+  {"field":"capability","value":"cloud_services.minimum_bandwidth","label":"最低保障带宽"},
+  {"field":"capability","value":"single_contract.payment_sum","label":"主合同中可识别的付款比例合计"},
+  {"field":"capability","value":"amount·","label":"审查项目待核对"},
+  {"field":"contract_type","value":"service","label":"服务合同"},
+  {"field":"contract_type","value":"unregistered","label":"合同类型待核对"},
+  {"field":"relation","value":"compatible","label":"一致"},
+  {"field":"origin","value":"model","label":"模型建议"},
+  {"field":"decision","value":"confirm_risk","label":"确认风险"}
+]

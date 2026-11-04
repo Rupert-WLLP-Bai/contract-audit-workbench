@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -30,7 +30,7 @@ func summaryJSON(item store.CaseSummary) map[string]any {
 			"updated_at": item.Run.UpdatedAt,
 		}
 	}
-	return map[string]any{
+	body := map[string]any{
 		"id":                item.Case.ID,
 		"title":             item.Case.Title,
 		"contract_type":     item.Case.ContractType,
@@ -43,6 +43,13 @@ func summaryJSON(item store.CaseSummary) map[string]any {
 		"latest_run":        latest,
 		"updated_at":        item.Case.UpdatedAt,
 	}
+	if item.Identity != nil {
+		body["case_number"] = item.Identity.Number
+		body["customer"] = item.Identity.Customer
+		body["supplier"] = item.Identity.Supplier
+		body["owner_name"] = item.Identity.OwnerName
+	}
+	return body
 }
 
 func detailJSON(detail store.CaseDetail) map[string]any {
@@ -286,6 +293,9 @@ func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) ma
 	}
 	if ws.LegalAuthorities != nil {
 		out["legal_authorities"] = ws.LegalAuthorities
+	}
+	if ws.RevisionComparisonSource != nil {
+		out["revision_comparison_source"] = ws.RevisionComparisonSource
 	}
 	return out
 }

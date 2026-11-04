@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -32,10 +32,12 @@ import { IntakePrimaryContract } from "../components/intake-primary-contract";
 import { IntakePendingList } from "../components/intake-pending-list";
 import type { IntakeContinuationSelection } from "../features/intake/intake-continuation";
 import { StatusText } from "../components/status-text";
-import { businessActionLabel, businessScopeLabel } from "../domain/business-labels";
+import { businessActionLabel, businessScopeLabel, remediationStatusLabel } from "../domain/business-labels";
 import { TechnicalDetail } from "../components/technical-detail";
+import { caseSelectPresentation } from "../components/case-select-presentation";
 import { CollapsibleSection } from "../components/collapsible-section";
 import { WorkbenchCaseNextStep } from "../components/workbench-case-next-step";
+import { caseOptionLabel } from "../domain/case-identity";
 import {
   caseHref,
   formatDateTime,
@@ -64,16 +66,6 @@ function taskStatusLabel(status: string): string {
   if (status === "open") return "待处理";
   if (status === "in_progress") return "处理中";
   return "状态未知";
-}
-
-function remediationStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    open: "待整改",
-    submitted: "待复审",
-    closed: "已关闭",
-    reopened: "重新打开",
-  };
-  return labels[status] ?? "状态未知";
 }
 
 function ProgressDonut({
@@ -789,6 +781,8 @@ export function HomePage() {
               <label>
                 关联案件
                 <Select<string>
+                  {...caseSelectPresentation}
+                  showSearch={{ optionFilterProp: "label" }}
                   aria-label={"关联案件"}
                   value={String(taskCaseId)}
                   onChange={(selectedValue) => setTaskCaseId(selectedValue)}
@@ -796,7 +790,7 @@ export function HomePage() {
                     { value: "", label: "请选择" },
                     ...creatableCases.map((item) => ({
                       value: String(item.id),
-                      label: String(item.title ?? ""),
+                      label: caseOptionLabel(item, snapshot.data?.members ?? []),
                     })),
                   ]}
                 />
@@ -1027,7 +1021,8 @@ export function HomePage() {
                         {members.get(item.assignee_id) ?? item.assignee_id}
                       </span>
                     </Link>
-                    <span className="home-record-status">{item.status}</span>
+                    <span className="home-record-status">{remediationStatusLabel(item.status)}</span>
+                    <TechnicalDetail label="整改状态技术详情" value={item.status} />
                     <time dateTime={item.due_at}>
                       {formatDateTime(item.due_at)}
                     </time>
@@ -1079,6 +1074,7 @@ export function HomePage() {
                       <small>
                         {event.actor_name}，{businessActionLabel(event.action)}
                       </small>
+                      <TechnicalDetail label="操作类型技术详情" value={event.action} />
                     </div>
                   </li>
                 ))}

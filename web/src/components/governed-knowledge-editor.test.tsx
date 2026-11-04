@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -471,7 +471,7 @@ describe("KnowledgeEditor", () => {
     expect(screen.getByText("人工反馈")).toBeInTheDocument();
     await chooseOption(user, screen.getByLabelText("知识类型"), "政策制度");
     expect(screen.queryByRole("heading", { name: "经验候选与人工审阅" })).not.toBeInTheDocument();
-    expect(screen.getByText("参考制度")).toBeInTheDocument();
+    expect(screen.getByText("参考资料")).toBeInTheDocument();
   });
 
   it("edits basic fields and renders field-level issues", async () => {
@@ -651,10 +651,10 @@ describe("KnowledgeEditor", () => {
     await screen.findByText(/规则包有效期/);
     await user.click(screen.getByLabelText("引用 1 的规则"));
     expect(
-      await screen.findByRole("option", { name: /^BW · dedicated_line\.minimum_bandwidth/ }),
+      await screen.findByRole("option", { name: /^最低保障带宽.*规则标识 BW/ }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "BW" })).not.toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "CUSTOM" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "审查项目待核对 · 规则标识 CUSTOM（原绑定）" })).toBeInTheDocument();
   });
 
   it("does not offer an empty rule option for a new span", async () => {
@@ -670,7 +670,7 @@ describe("KnowledgeEditor", () => {
     });
     await screen.findByText(/规则包有效期/);
     await user.click(screen.getByLabelText("引用 1 的规则"));
-    await screen.findByRole("option", { name: /^BW · dedicated_line/ });
+    await screen.findByRole("option", { name: /^最低保障带宽.*规则标识 BW/ });
     expect(screen.getAllByRole("option")).toHaveLength(1);
   });
 
@@ -760,7 +760,10 @@ describe("KnowledgeEditor", () => {
     expect(changes.at(-1)?.binding.source_spans).toEqual([
       { rule_id: "", start: 0, end: 0, quote: "" },
     ]);
-    await chooseOption(user, screen.getByLabelText("引用 1 的规则"), "BW · dedicated_line.minimum_bandwidth · ENT / line / service");
+    const ruleSelect = screen.getByLabelText("引用 1 的规则");
+    await user.click(ruleSelect);
+    await user.type(ruleSelect, "dedicated_line.minimum_bandwidth");
+    await user.click(await screen.findByRole("option", { name: "最低保障带宽 · 政企业务 / 业务场景待核对 / 服务合同 · 规则标识 BW" }));
     expect(changes.at(-1)?.binding.rule_ids).toEqual(["BW"]);
     expect(screen.getByLabelText("起始字符位置（从 0 开始）")).toHaveAttribute("min", "0");
     fireEvent.change(screen.getByLabelText("正文中的原文"), {
@@ -801,7 +804,7 @@ describe("KnowledgeEditor", () => {
         },
       }),
     });
-    expect(await screen.findByText("CUSTOM")).toBeInTheDocument();
+    expect(await screen.findByText("审查项目待核对 · 规则标识 CUSTOM（原绑定）")).toBeInTheDocument();
   });
 
   it("edits binding notes and retries failed rulepack reads", async () => {

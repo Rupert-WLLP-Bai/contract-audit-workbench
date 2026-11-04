@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,13 +15,13 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setSessionIdentity } from "../api/http";
 import { parseReviewWorkspace } from "../api/parse";
-import type { CaseDetail } from "../api/types";
+import type { Actor, CaseDetail } from "../api/types";
 import { renderWithAntd as render } from "../test/antd";
 import { ReportArchivePanel } from "./report-archive-panel";
 
 const at = "2026-10-21T06:00:00Z";
 const clients: QueryClient[] = [];
-const actor = { id: "reviewer-1", display_name: "审查员", role: "reviewer", tenant_id: "tenant-1", org_id: "org-1", audience: "client" };
+const actor: Actor = { id: "reviewer-1", display_name: "审查员", role: "reviewer", tenant_id: "tenant-1", org_id: "org-1", audience: "client", principal_id: "principal-reviewer", active_context: { membership_id: "membership", tenant_id: "tenant-1", tenant_name: "租户", org_id: "org-1", org_name: "组织", context_version: "1" }, csrf_token: "r".repeat(32), context_switch_enabled: false };
 const detail: CaseDetail = {
   id: "case-1",
   title: "合同",
@@ -148,6 +148,7 @@ function open(
   });
   client.setQueryDefaults(["session", "client"], { gcTime: Infinity });
   client.setQueryData(["session", "client"], actor);
+  setSessionIdentity(actor);
   clients.push(client);
   render(
     <QueryClientProvider client={client}>
@@ -187,8 +188,8 @@ describe("report creation with public attempt history", () => {
       .closest("form")!;
     expect(within(form).queryByText("输入摘要")).not.toBeInTheDocument();
     expect(within(form).getByText("合同正文.txt")).toBeInTheDocument();
-    expect(form).not.toHaveTextContent("run-1");
-    expect(form).not.toHaveTextContent("attempt-2");
+    expect(within(form).getByTitle("run-1")).not.toBeVisible();
+    expect(within(form).getByTitle("attempt-2")).not.toBeVisible();
     expect(form).not.toHaveTextContent("document-1");
     await waitFor(() =>
       expect(within(form).getByRole("button", { name: "生成报告" })).toBeEnabled(),
@@ -199,6 +200,8 @@ describe("report creation with public attempt history", () => {
     );
     const request = requests.find(({ init }) => init?.method === "POST")!;
     expect(request.url.pathname).toBe("/api/cases/case-1/reports");
+    expect(new Headers(request.init?.headers).get("X-Context-Version")).toBe("1");
+    expect(new Headers(request.init?.headers).get("X-CSRF-Token")).toBe(actor.csrf_token);
     expect(JSON.parse(String(request.init?.body))).toEqual({
       run_id: "run-1",
       attempt_id: "attempt-2",
@@ -363,6 +366,7 @@ function renderArchive(options: {
   });
   client.setQueryDefaults(["session", "client"], { gcTime: Infinity });
   client.setQueryData(["session", "client"], actor);
+  setSessionIdentity(actor);
   clients.push(client);
   const caseDetail = options.detail ?? detail;
   const view = render(
@@ -530,6 +534,8 @@ describe("report creation and archiving actions", () => {
     await user.click(screen.getByRole("button", { name: "归档案件" }));
     expect(await screen.findByRole("status")).toHaveTextContent(/已保存归档记录/);
     const request = requests.find(({ url }) => url.pathname.endsWith("/archive"))!;
+    expect(new Headers(request.init?.headers).get("X-Context-Version")).toBe("1");
+    expect(new Headers(request.init?.headers).get("X-CSRF-Token")).toBe(actor.csrf_token);
     expect(JSON.parse(String(request.init?.body))).toEqual({
       report_id: "report-1",
       reason: "审批完成",

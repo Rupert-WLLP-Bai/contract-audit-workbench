@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-01
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -28,6 +28,8 @@ import { errorMessage } from "../api/http";
 import { clearPendingMutationKey, idempotencyActorScope, pendingMutationKey } from "../api/idempotency";
 import { paths } from "../api/paths";
 import { useCaseDetail, useCases } from "../api/queries";
+import { caseOptionLabel } from "../domain/case-identity";
+import { caseSelectPresentation } from "./case-select-presentation";
 import type { Actor } from "../api/types";
 import type { WireSchemas } from "../api/wire.generated";
 
@@ -46,7 +48,8 @@ export function ContractSigningPanel({
 }) {
   const cases = useCases();
   const [caseID, setCaseID] = useState<string>();
-  const caseDetail = useCaseDetail(caseID ?? "");
+  const caseVisible = !cases.isError && !!caseID && !!cases.data?.some((item) => item.id === caseID);
+  const caseDetail = useCaseDetail(caseVisible ? caseID! : "");
   const [materialVersionID, setMaterialVersionID] = useState<string>();
   const [contentJSON, setContentJSON] = useState(() => JSON.stringify(detail.draft ?? emptyDraft(), null, 2));
   const [signingDate, setSigningDate] = useState("");
@@ -64,6 +67,14 @@ export function ContractSigningPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (caseID && (cases.isError || (cases.isSuccess && !cases.data.some((item) => item.id === caseID)))) {
+      setCaseID(undefined);
+      setMaterialVersionID(undefined);
+      setCheck(null);
+    }
+  }, [caseID, cases.data, cases.isError, cases.isSuccess]);
 
   useEffect(() => {
     let active = true;
@@ -90,7 +101,7 @@ export function ContractSigningPanel({
 
   const materials = useMemo(() => {
     const source = caseDetail.data;
-    if (!source || caseDetail.isError) return [];
+    if (!caseVisible || !source || caseDetail.isError) return [];
     const documents = new Map(source.documents.map((document) => [document.id, document]));
     return (source.material_versions ?? []).flatMap((version) => {
       const document = documents.get(version.document_id);
@@ -103,7 +114,7 @@ export function ContractSigningPanel({
         digest: document.digest,
       }];
     });
-  }, [caseDetail.data, caseDetail.isError]);
+  }, [caseVisible, caseDetail.data, caseDetail.isError]);
   const selectedMaterial = materials.find((material) => material.value === materialVersionID);
   let signedContent: DraftContent | null = null;
   let jsonError: string | null = null;
@@ -197,7 +208,7 @@ export function ContractSigningPanel({
     </div>} /> : <>
       <Alert type="warning" showIcon title="此登记由人工转录并核对冻结修订的结构化字段，不会自动读取原件正文，也不验证电子签名或印章真实性。" />
       <div className="contracts-page-fields">
-        <Select placeholder="选择有权读取的案件" value={caseID} loading={cases.isLoading} options={(cases.data ?? []).map((item) => ({ value: item.id, label: item.title }))} onChange={(value) => { setCaseID(value); setMaterialVersionID(undefined); clearCheck(); }} />
+        <Select {...caseSelectPresentation} showSearch={{ optionFilterProp: "label" }} placeholder="选择有权读取的案件" value={caseVisible ? caseID : undefined} loading={cases.isLoading} options={(cases.isError ? [] : cases.data ?? []).map((item) => ({ value: item.id, label: caseOptionLabel(item) }))} onChange={(value) => { setCaseID(value); setMaterialVersionID(undefined); clearCheck(); }} />
         <Select placeholder={caseID ? "选择已授权材料版本" : "先选择案件"} value={materialVersionID} disabled={!caseID || caseDetail.isLoading || caseDetail.isError} loading={caseDetail.isLoading} options={materials.map(({ value, label }) => ({ value, label }))} onChange={(value) => { setMaterialVersionID(value); clearCheck(); }} />
       </div>
       {caseDetail.isError ? <Alert type="error" showIcon title="无法读取该案件材料；材料元数据已隐藏。请检查案件读取授权后重试。" /> : null}

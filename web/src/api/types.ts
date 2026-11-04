@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-04
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -51,6 +51,10 @@ export interface CaseSummary {
   scenario?: string;
   business_status?: string;
   archived_at?: string | null;
+  case_number?: string;
+  customer?: string;
+  supplier?: string;
+  owner_name?: string;
 }
 
 export type ParsedDocumentStatus = "ready" | "failed";
@@ -714,6 +718,10 @@ export interface ReviewWorkspace {
   documents: ReviewDocument[];
   findings: Finding[];
   review_attempts: ReviewAttempts | null;
+  /** Client-side presence indicator; absence on older responses is not proof of a legacy run. */
+  review_attempts_reported?: boolean;
+  /** True only when the response explicitly returned top-level review_attempts: null. */
+  review_attempts_explicit_null?: boolean;
   agent_review?: BusinessAgentReview | null;
   execution: Execution | null;
   snapshot?: RunSnapshot | null;
@@ -723,6 +731,10 @@ export interface ReviewWorkspace {
   previous_run_id?: string | null;
   revisions?: RevisionComparison[];
   revision_comparison_reason?: string | null;
+  revision_comparison_source?: {
+    current: { case_id: string; run_id: string; attempt_id: string };
+    previous: { case_id: string; run_id: string; attempt_id: string };
+  };
   legal_authorities?: FrozenLegalReviewProjection;
 }
 

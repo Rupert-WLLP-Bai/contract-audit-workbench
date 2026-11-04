@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -305,6 +305,27 @@ describe("response parsers", () => {
     });
   });
 
+  it("accepts an absent revision source and strictly parses complete attempt identities when present", () => {
+    const workspace = { run: { id: "current", case_id: "case", state: "completed" }, audit_events: [] };
+    const source = { current: { case_id: "case", run_id: "current", attempt_id: "current-attempt" },
+      previous: { case_id: "case", run_id: "previous", attempt_id: "previous-attempt" } };
+    expect(parseReviewWorkspace(workspace).revision_comparison_source).toBeUndefined();
+    expect(parseReviewWorkspace({ ...workspace, revision_comparison_source: source }).revision_comparison_source).toEqual(source);
+    for (const invalid of [null, {}, { ...source, extra: true },
+      { ...source, previous: { ...source.previous, attempt_id: "" } },
+      { ...source, previous: { ...source.previous, extra: true } }]) {
+      expect(() => parseReviewWorkspace({ ...workspace, revision_comparison_source: invalid })).toThrow();
+    }
+  });
+
+  it("distinguishes a top-level null attempt history from absent and conflicting attempt objects", () => {
+    const base = { run: { id: "r1", case_id: "c1", state: "completed" }, audit_events: [] };
+    expect(parseReviewWorkspace(base)).toMatchObject({ review_attempts_reported: false, review_attempts_explicit_null: false });
+    expect(parseReviewWorkspace({ ...base, review_attempts: null })).toMatchObject({ review_attempts_reported: true, review_attempts_explicit_null: true });
+    expect(parseReviewWorkspace({ ...base, review_attempts: { attempt: null, attempts: [] } })).toMatchObject({ review_attempts_reported: true, review_attempts_explicit_null: false });
+    expect(() => parseReviewWorkspace({ ...base, review_attempts: { attempts: [] } })).toThrow();
+  });
+
   it("reads public attempts and frozen document identity without privileged diagnostics", () => {
     const attempt = {
       id: "a1", run_id: "r1", ordinal: 1, retry_of_attempt_id: null,
@@ -555,6 +576,15 @@ describe("response parsers", () => {
       "案件列表缺少数量",
     );
     expect(() => parseCaseSummary(null)).toThrow("case不是对象");
+  });
+
+  it("accepts optional case identity fields and rejects malformed fields", () => {
+    const base = { id: "case-1", document_count: 0, pending_decisions: 0 };
+    expect(parseCaseSummary({ ...base, case_number: "案-1", customer: "客户", supplier: "供应商", owner_name: "张三" })).toMatchObject({
+      id: "case-1", case_number: "案-1", customer: "客户", supplier: "供应商", owner_name: "张三",
+    });
+    expect(() => parseCaseSummary({ ...base, case_number: 1 })).toThrow(/case_number/);
+    expect(() => parseCaseSummary({ ...base, owner_name: null })).toThrow(/owner_name/);
   });
 
   it("parses case members and drops incomplete activity entries", () => {
