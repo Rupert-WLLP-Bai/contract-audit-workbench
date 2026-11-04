@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -779,8 +779,9 @@ func TestGatewayRetriesProviderFailureAndSettlesEachPhysicalCall(t *testing.T) {
 			t.Errorf("provider path = %q", r.URL.Path)
 		}
 		if providerCalls.Add(1) == 1 {
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = io.WriteString(w, "temporary provider diagnostic")
+			_, _ = io.WriteString(w, `{"error":"temporary provider diagnostic","usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -808,11 +809,75 @@ func TestGatewayRetriesProviderFailureAndSettlesEachPhysicalCall(t *testing.T) {
 	if usage[0].Status != "failed" || usage[0].ErrorCode != "provider_http_503" {
 		t.Fatalf("first provider failure settlement = %+v", usage[0])
 	}
-	assertUnknownUsageConservativelyCharged(t, usage[0])
+	if !usage[0].UsageSource.Valid || usage[0].UsageSource.String != "openai_response.usage" || !usage[0].TotalTokens.Valid || usage[0].TotalTokens.Int64 != 5 || usage[0].ChargedTokens != 5 {
+		t.Fatalf("first provider failure usage was not settled: %+v", usage[0])
+	}
 	if usage[1].Status != "completed" || !usage[1].UsageSource.Valid || usage[1].UsageSource.String != "openai_response.usage" ||
 		!usage[1].InputTokens.Valid || usage[1].InputTokens.Int64 != 11 || !usage[1].OutputTokens.Valid || usage[1].OutputTokens.Int64 != 7 ||
 		!usage[1].TotalTokens.Valid || usage[1].TotalTokens.Int64 != 18 || usage[1].ChargedTokens != 18 {
 		t.Fatalf("reported upstream usage was not preserved exactly: %+v", usage[1])
+	}
+	assertNoActiveGatewayLeases(t, active)
+}
+
+func TestGatewayDoesNotRetryProviderFailureWithUnknownUsage(t *testing.T) {
+	st, admin := openGatewayTestStore(t)
+	caseID, documents := createGatewayCase(t, st, admin, "gateway unknown usage retry")
+	var providerCalls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		providerCalls.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, "private provider diagnostic")
+	}))
+	defer upstream.Close()
+	config := gatewayTestConfig("openai-compatible", upstream.URL+"/v1")
+	config.Retries = 1
+	_, gateway := startGatewayServer(t, st, config)
+	response, body, err := gatewayChatRequest(context.Background(), &http.Client{Timeout: 6 * time.Second}, gateway.URL+"/v1/chat/completions",
+		[]string{config.DocumentCredential}, encodedGatewayScope(t, documentGatewayScope(admin, caseID, documents[0])), "fixture-chat", 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusBadGateway || gatewayErrorCode(t, body) != "model_provider_failed" || strings.Contains(string(body), "private provider diagnostic") {
+		t.Fatalf("provider failure response = %d %s", response.StatusCode, body)
+	}
+	if calls := providerCalls.Load(); calls != 1 {
+		t.Fatalf("unknown usage produced %d provider calls, want 1", calls)
+	}
+	usage, active := readGatewayAccounting(t, caseID)
+	if len(usage) != 1 || usage[0].Attempt != 1 || usage[0].Status != "failed" || usage[0].ErrorCode != "provider_http_503" {
+		t.Fatalf("unknown usage settlement = %+v", usage)
+	}
+	assertUnknownUsageConservativelyCharged(t, usage[0])
+	assertNoActiveGatewayLeases(t, active)
+}
+
+func TestGatewayDoesNotRetryProviderFailureWithPartialUsage(t *testing.T) {
+	st, admin := openGatewayTestStore(t)
+	caseID, documents := createGatewayCase(t, st, admin, "gateway partial usage retry")
+	var providerCalls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		providerCalls.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, `{"usage":{"total_tokens":5}}`)
+	}))
+	defer upstream.Close()
+	config := gatewayTestConfig("openai-compatible", upstream.URL+"/v1")
+	config.Retries = 1
+	_, gateway := startGatewayServer(t, st, config)
+	response, body, err := gatewayChatRequest(context.Background(), &http.Client{Timeout: 6 * time.Second}, gateway.URL+"/v1/chat/completions",
+		[]string{config.DocumentCredential}, encodedGatewayScope(t, documentGatewayScope(admin, caseID, documents[0])), "fixture-chat", 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusBadGateway || gatewayErrorCode(t, body) != "model_provider_failed" || providerCalls.Load() != 1 {
+		t.Fatalf("partial usage response = %d %s, calls=%d", response.StatusCode, body, providerCalls.Load())
+	}
+	usage, active := readGatewayAccounting(t, caseID)
+	if len(usage) != 1 || usage[0].Attempt != 1 || usage[0].Status != "failed" || usage[0].ErrorCode != "provider_http_503" ||
+		!usage[0].UsageSource.Valid || usage[0].UsageSource.String != "openai_response.usage" || usage[0].InputTokens.Valid || usage[0].OutputTokens.Valid ||
+		!usage[0].TotalTokens.Valid || usage[0].TotalTokens.Int64 != 5 {
+		t.Fatalf("partial usage settlement = %+v", usage)
 	}
 	assertNoActiveGatewayLeases(t, active)
 }

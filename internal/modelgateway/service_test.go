@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -311,11 +311,34 @@ func TestProviderAttemptErrorsAndJevStatusUsePublicResponses(t *testing.T) {
 		}
 	}
 	retryResponse := httptest.NewRecorder()
-	if !service.respondToChatAttempt(retryResponse, context.Background(), chatRequest{}, 1, 1, nil, http.StatusServiceUnavailable, nil, false) {
+	if !service.respondToChatAttempt(retryResponse, context.Background(), chatRequest{}, 1, 1, nil, http.StatusServiceUnavailable, nil, true) {
 		t.Fatal("provider 5xx response did not request a configured retry")
+	}
+	noRetryResponse := httptest.NewRecorder()
+	if service.respondToChatAttempt(noRetryResponse, context.Background(), chatRequest{}, 1, 1, nil, http.StatusServiceUnavailable, nil, false) || noRetryResponse.Code != http.StatusBadGateway || gatewayErrorCode(t, noRetryResponse.Body.Bytes()) != "model_provider_failed" {
+		t.Fatalf("non-retryable 5xx response = %d %s", noRetryResponse.Code, noRetryResponse.Body)
 	}
 	if !service.respondToChatError(httptest.NewRecorder(), 1, 1, errors.New("transient provider error"), true) {
 		t.Fatal("retryable provider failure did not request another attempt")
+	}
+}
+
+func TestRetryRequiresCompleteProviderUsage(t *testing.T) {
+	for _, test := range []struct {
+		body string
+		want bool
+	}{
+		{`{}`, false},
+		{`{"usage":{}}`, false},
+		{`{"usage":{"total_tokens":5}}`, false},
+		{`{"usage":{"prompt_tokens":2}}`, false},
+		{`{"usage":{"prompt_tokens":0,"completion_tokens":0}}`, true},
+		{`{"usage":{"prompt_tokens":2,"completion_tokens":3}}`, true},
+		{`{"usage":{"prompt_tokens":-1,"completion_tokens":3}}`, false},
+	} {
+		if got := usageSupportsRetry(reportedUsage([]byte(test.body))); got != test.want {
+			t.Errorf("usageSupportsRetry(%s) = %t, want %t", test.body, got, test.want)
+		}
 	}
 }
 
