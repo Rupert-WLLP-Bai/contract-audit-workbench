@@ -358,3 +358,90 @@ func TestStructuredContractDriftAfterReservationReleasesLease(t *testing.T) {
 		t.Fatalf("money settlement state=%s cost=%s err=%v", costState, cost, err)
 	}
 }
+
+func TestStructuredProviderRejectionSettlesWithoutRetry(t *testing.T) {
+	st, admin := openGatewayTestStore(t)
+	var calls atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		status := http.StatusBadRequest
+		if calls.Add(1) == 2 {
+			status = http.StatusUnprocessableEntity
+		}
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, "private provider diagnostic")
+	}))
+	defer provider.Close()
+	config := gatewayTestConfig("openai-compatible", provider.URL+"/v1")
+	config.Retries = 1
+	t.Setenv("CAW_STRUCTURED_OUTPUT_ENABLED", "true")
+	t.Setenv("CAW_STRUCTURED_OUTPUT_PROVIDER_URL", config.UpstreamBaseURL)
+	t.Setenv("CAW_STRUCTURED_OUTPUT_REVIEW_MODEL", config.ChatModel)
+	id, _, err := model.StructuredConfigurationIDFor(config.UpstreamBaseURL, config.ChatModel, config.OCRModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	models := &frozenBarrier{gatewayBarrierModels: &gatewayBarrierModels{entered: make(chan model.DelegatedScope, 1), release: release}, identity: id}
+	st.UseModels(models)
+	caseID, _ := createGatewayCase(t, st, admin, "structured rejected")
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	if _, err := st.StartReviewAsync(ctx, admin, caseID); err != nil {
+		t.Fatal(err)
+	}
+	claim, err := st.ClaimNextJob(ctx, "structured-rejected-worker", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() { defer close(done); _ = st.RunClaimedJob(ctx, claim) }()
+	defer func() { close(release); <-done }()
+	var scope model.DelegatedScope
+	select {
+	case scope = <-models.entered:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	scope.ConfigurationID, scope.ProviderURL = id, config.UpstreamBaseURL
+	_, gateway := startGatewayServer(t, st, config)
+	for range 2 {
+		payload, _ := json.Marshal(map[string]any{"model": config.ChatModel, "max_tokens": 8, "messages": []map[string]string{{"role": "user", "content": "test"}}, "response_format": model.StructuredResponseFormat("warranty")})
+		request, err := http.NewRequestWithContext(ctx, http.MethodPost, gateway.URL+"/v1/chat/completions", bytes.NewReader(payload))
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("X-Contract-Service-Key", config.WorkerCredential)
+		request.Header.Set("X-Audit-Execution-Scope", encodedGatewayScope(t, scope))
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(response.Body)
+		_ = response.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if response.StatusCode != http.StatusBadGateway || gatewayErrorCode(t, body) != "model_structured_request_rejected" || bytes.Contains(body, []byte("private provider diagnostic")) {
+			t.Fatalf("response %d %s", response.StatusCode, body)
+		}
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("provider calls=%d, want two without retry", calls.Load())
+	}
+	rows, active := readGatewayAccounting(t, caseID)
+	if len(rows) != 2 {
+		t.Fatalf("settlements %+v", rows)
+	}
+	codes := map[string]int{}
+	for _, row := range rows {
+		if row.Status != "failed" || (row.ErrorCode != "provider_http_400" && row.ErrorCode != "provider_http_422") {
+			t.Fatalf("settlement %+v", row)
+		}
+		codes[row.ErrorCode]++
+		assertUnknownUsageConservativelyCharged(t, row)
+	}
+	if codes["provider_http_400"] != 1 || codes["provider_http_422"] != 1 {
+		t.Fatalf("expected one settlement per provider status, got %v", codes)
+	}
+	assertNoActiveGatewayLeases(t, active)
+}

@@ -599,7 +599,13 @@ func (s *Service) respondToChatStatus(w http.ResponseWriter, ctx context.Context
 	}
 	s.circuit.record(probe, status >= 200 && status < 300, status >= 500, time.Now())
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "model provider request failed", "code": "model_provider_failed"})
+		code := "model_provider_failed"
+		if status == http.StatusBadRequest || status == http.StatusUnprocessableEntity {
+			if format, ok := structuredFormatField(request.body); ok && format != nil {
+				code = "model_structured_request_rejected"
+			}
+		}
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "model provider request failed", "code": code})
 		return false
 	}
 	s.writeAuthorizedChatResponse(w, ctx, request, status, response)

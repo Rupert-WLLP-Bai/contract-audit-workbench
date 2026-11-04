@@ -659,3 +659,30 @@ func TestFixtureRequiresDistinctIdentifiersAndOCRContent(t *testing.T) {
 		t.Fatalf("a complete fixture configuration was refused: %v", err)
 	}
 }
+
+func TestStructuredProviderRejectionMapping(t *testing.T) {
+	service := &Service{config: Config{Retries: 1}, circuit: circuitBreaker{threshold: 10, cooldown: time.Second}}
+	format := model.StructuredResponseFormat("warranty")
+	for _, tt := range []struct {
+		status     int
+		structured bool
+		want       string
+	}{
+		{http.StatusBadRequest, true, "model_structured_request_rejected"}, {http.StatusUnprocessableEntity, true, "model_structured_request_rejected"},
+		{http.StatusBadRequest, false, "model_provider_failed"}, {http.StatusUnauthorized, true, "model_provider_failed"}, {http.StatusInternalServerError, true, "model_provider_failed"},
+	} {
+		req := chatRequest{}
+		if tt.structured {
+			req.body = []byte(`{"response_format":` + string(format) + `}`)
+		} else {
+			req.body = []byte(`{"model":"review"}`)
+		}
+		recorder := httptest.NewRecorder()
+		if service.respondToChatAttempt(recorder, context.Background(), req, 0, 2, []byte("private provider detail"), tt.status, nil, false) {
+			t.Fatal("unexpected retry")
+		}
+		if recorder.Code != http.StatusBadGateway || gatewayErrorCode(t, recorder.Body.Bytes()) != tt.want || strings.Contains(recorder.Body.String(), "private provider detail") {
+			t.Fatalf("status=%d body=%s", tt.status, recorder.Body)
+		}
+	}
+}

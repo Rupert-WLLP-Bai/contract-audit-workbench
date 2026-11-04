@@ -383,8 +383,15 @@ describe("execution inspector", () => {
             event_type: "model_completed",
             status: "completed",
           }),
+          event(2, {
+            attempt_id: "attempt-2",
+            phase: "model_request",
+            event_type: "model_failed",
+            status: "failed",
+            error_code: "structured_request_rejected",
+          }),
           ...diagnostics.map(([code], index) =>
-            event(index + 2, {
+            event(index + 3, {
               attempt_id: "attempt-2",
               phase: "model_review",
               event_type: "node_failed",
@@ -404,6 +411,17 @@ describe("execution inspector", () => {
       .getByText("错误代码")
       .parentElement!;
     expect(within(completedError).getByText("未报告")).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: /模型请求，模型调用失败，失败/ }),
+    );
+    const failedCallDetail = screen.getByText("序号").closest("dl")!;
+    expect(
+      within(failedCallDetail).getByText("供应商拒绝了结构化请求"),
+    ).toBeInTheDocument();
+    expect(
+      within(failedCallDetail).getByText("structured_request_rejected"),
+    ).toBeInTheDocument();
 
     for (const [index, [code, explanation]] of diagnostics.entries()) {
       await user.click(
