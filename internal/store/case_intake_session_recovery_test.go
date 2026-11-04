@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Verifies exact cross-session intake recovery, immutable command and request identities, concurrent upload replay, audit isolation and service-role authority in PostgreSQL.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

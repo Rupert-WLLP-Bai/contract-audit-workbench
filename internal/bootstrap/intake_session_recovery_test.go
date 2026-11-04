@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Verifies separate Core and Document HTTP services recover an original intake after a committed upload loses its response across sessions.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package bootstrap_test
 
 import (
