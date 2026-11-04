@@ -2,8 +2,8 @@
 // Purpose: Renders the saved Agent execution path as swimlanes, showing each step's lane, tool/model, span parent and reported token usage without inventing skill steps.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: unknown
-// Updated: unknown
+// Created: 2026-11-04
+// Updated: 2026-11-04
 // Revision: r1
 // Copyright: See LICENSE
 // End file metadata.

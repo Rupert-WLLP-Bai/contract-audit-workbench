@@ -51168,11 +51168,12 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "scripts/seed_telecom.py",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r2",
@@ -59595,10 +59596,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
           "path": "web/src/bootstrap.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -60164,11 +60165,12 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "45193bd53fe6a25a2b3eb4a7758807e89003faa4",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/components/business-agent-review.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r2",
@@ -60258,11 +60260,12 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "7e53ed3c139fd7c833b6acad41655245636fb4c2",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/components/case-legal-applicability-panel.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r2",
@@ -60541,11 +60544,12 @@
         }
       },
       "updated": {
-        "value": "2026-10-30",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0d82b02b299acb8119e92f75331724bfca9e21d1",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/components/cases-table.test.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r2",
@@ -60588,10 +60592,12 @@
         }
       },
       "updated": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
+          "kind": "git-last-content-change",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/components/cases-table.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r2",
@@ -64183,11 +64189,12 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "7e53ed3c139fd7c833b6acad41655245636fb4c2",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/components/template-generation-panel.test.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r2",
@@ -64230,10 +64237,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
           "path": "web/src/components/template-generation-panel.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -64518,10 +64525,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "7f1f06abdfef98522175869a25209c256bead977",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
           "path": "web/src/components/tenant-operations-panel.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -64566,11 +64573,12 @@
         }
       },
       "updated": {
-        "value": "2026-10-30",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0d82b02b299acb8119e92f75331724bfca9e21d1",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/components/trajectory-view.test.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r2",
@@ -64613,11 +64621,12 @@
         }
       },
       "updated": {
-        "value": "2026-10-30",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0d82b02b299acb8119e92f75331724bfca9e21d1",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/components/trajectory-view.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r2",
@@ -65273,10 +65282,12 @@
         }
       },
       "updated": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
+          "kind": "git-last-content-change",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/domain/review.ts",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r2",
@@ -67817,10 +67828,12 @@
         }
       },
       "updated": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
+          "kind": "git-last-content-change",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/pages/case-detail-page.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r3",
@@ -67863,10 +67876,12 @@
         }
       },
       "updated": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
+          "kind": "git-last-content-change",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/pages/cases-page.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r2",
@@ -67956,10 +67971,12 @@
         }
       },
       "updated": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
+          "kind": "git-last-content-change",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/pages/compare-entry-page.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r2",
@@ -68380,10 +68397,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "85a8ad35ff461025a3b73676aaa1ca0941f6fe20",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
           "path": "web/src/pages/home-page.css",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -68428,10 +68445,12 @@
         }
       },
       "updated": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
+          "kind": "git-last-content-change",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/pages/home-page.test.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r5",
@@ -68474,10 +68493,12 @@
         }
       },
       "updated": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
+          "kind": "git-last-content-change",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/pages/home-page.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r5",
@@ -69040,10 +69061,12 @@
         }
       },
       "updated": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
+          "kind": "git-last-content-change",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/pages/review-entry-page.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r2",
@@ -69513,10 +69536,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "7f1f06abdfef98522175869a25209c256bead977",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
           "path": "web/src/pages/settings-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -69940,11 +69963,12 @@
         }
       },
       "updated": {
-        "value": "2026-10-28",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "dea4ca14a86678b38ab2b052c3eec3ecbed63589",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/pages/system-health-page.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r2",
@@ -70130,10 +70154,12 @@
         }
       },
       "updated": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
+          "kind": "git-last-content-change",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/pages/workbench-module-page.test.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r3",
@@ -70176,10 +70202,12 @@
         }
       },
       "updated": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "Content changes exist only in this uncommitted candidate; a last-content-change commit and its UTC date are not yet available."
+          "kind": "git-last-content-change",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/pages/workbench-module-page.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r3",
@@ -70269,10 +70297,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "08f4c3cece928e800e8c62c83989dc48a9fcd772",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
           "path": "web/src/styles.css",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -71413,17 +71441,21 @@
         }
       ],
       "created": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "file exists only in the uncommitted candidate worktree at gate time; Git cannot yet provide a first-introduction commit, so the date is not inferred from the metadata insertion."
+          "kind": "git-first-introduction",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/domain/swimlane.ts",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "file exists only in the uncommitted candidate worktree; no body-changing commit exists yet, so the last content-change date remains unknown until the candidate commit is recorded."
+          "kind": "git-last-content-change",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/domain/swimlane.ts",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -71457,17 +71489,21 @@
         }
       ],
       "created": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "file exists only in the uncommitted candidate worktree at gate time; Git cannot yet provide a first-introduction commit, so the date is not inferred from the metadata insertion."
+          "kind": "git-first-introduction",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/components/agent-path-swimlane.tsx",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "file exists only in the uncommitted candidate worktree; no body-changing commit exists yet, so the last content-change date remains unknown until the candidate commit is recorded."
+          "kind": "git-last-content-change",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/components/agent-path-swimlane.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -71501,17 +71537,21 @@
         }
       ],
       "created": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "file exists only in the uncommitted candidate worktree at gate time; Git cannot yet provide a first-introduction commit, so the date is not inferred from the metadata insertion."
+          "kind": "git-first-introduction",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/components/collapsible-section.tsx",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "file exists only in the uncommitted candidate worktree; no body-changing commit exists yet, so the last content-change date remains unknown until the candidate commit is recorded."
+          "kind": "git-last-content-change",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/components/collapsible-section.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -71545,17 +71585,21 @@
         }
       ],
       "created": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "file exists only in the uncommitted candidate worktree at gate time; Git cannot yet provide a first-introduction commit, so the date is not inferred from the metadata insertion."
+          "kind": "git-first-introduction",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/components/technical-detail.tsx",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "unknown",
+        "value": "2026-11-04",
         "source": {
-          "kind": "unknown",
-          "reason": "file exists only in the uncommitted candidate worktree; no body-changing commit exists yet, so the last content-change date remains unknown until the candidate commit is recorded."
+          "kind": "git-last-content-change",
+          "commit": "389072b8ffa087df58f57c19e20dfdab4b1e6da1",
+          "path": "web/src/components/technical-detail.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
