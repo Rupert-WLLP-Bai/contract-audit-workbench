@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Presents execution results, actual review coverage and human decision progress with source-preserving preparation and material repair links.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { ReviewWorkspace } from "../api/types";
 import { runLabel } from "../domain/review";
 import { agentStage, canRestartUserCancelled, hasFrozenParseFailure, hasTransientRetryCause, limitedPrecheck, selectedOutcome, unresolvedGapKinds } from "../features/review/review-outcome";

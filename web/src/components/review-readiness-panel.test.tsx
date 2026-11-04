@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Verifies business-scope and published-rule preparation presentation, additive readiness parsing, and repair links while preserving server-derived admission decisions.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { render, screen, within } from "@testing-library/react";
 import { parseReviewReadiness } from "../api/review-readiness";
 import { ReviewReadinessPanel } from "./review-readiness-panel";

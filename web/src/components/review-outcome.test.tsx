@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Verifies review outcome presentation and next-step guidance for limited prechecks, failed stages, missing inputs, budgets, unsupported checks and stale authorization context.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { ComponentProps } from "react";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

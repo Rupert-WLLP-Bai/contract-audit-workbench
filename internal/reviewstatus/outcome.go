@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Projects conservative business reasons and agent-stage observations from one selected frozen review attempt without changing stored state or authorizing retries.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package reviewstatus
 
 // Event contains only the fields needed to summarize a selected attempt.

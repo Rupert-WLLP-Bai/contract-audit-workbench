@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Derives selected frozen-review coverage, agent-stage, unresolved-gap and transient-retry presentation hints while preserving server authority.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { ReviewWorkspace } from "../../api/types";
 import { singleContractCoverage } from "./single-contract-coverage";
 

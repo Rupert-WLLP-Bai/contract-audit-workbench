@@ -113,6 +113,8 @@
       "internal/operationauthority/revocation_protocol_test.go",
       "internal/operationauthority/session.go",
       "internal/platform/postgres/transaction.go",
+      "internal/reviewstatus/outcome.go",
+      "internal/reviewstatus/outcome_test.go",
       "internal/store/admission_session_context.go",
       "internal/store/approval_atomicity_test.go",
       "internal/store/case_context_migration_test.go",
@@ -258,6 +260,9 @@
       "web/src/components/original-document-reader.tsx",
       "web/src/components/original-page-view.test.tsx",
       "web/src/components/original-page-view.tsx",
+      "web/src/components/review-outcome-summary.tsx",
+      "web/src/components/review-outcome.test.tsx",
+      "web/src/components/review-readiness-panel.test.tsx",
       "web/src/components/review-workspace-layout.css",
       "web/src/components/technical-detail.tsx",
       "web/src/components/tenant-config-panel.css",
@@ -277,6 +282,7 @@
       "web/src/features/review/original-source.test.ts",
       "web/src/features/review/original-source.ts",
       "web/src/features/review/pdf-reader-types.d.ts",
+      "web/src/features/review/review-outcome.ts",
       "web/src/pages/jurisdiction-operations-page.css",
       "web/src/pages/jurisdiction-operations-page.tsx",
       "web/src/pages/pending-membership-page.tsx",
@@ -11227,15 +11233,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6cdb23c6b5336773f5c2cf17667bf81b21c814e0",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
           "path": "internal/apidocs/contracts/types.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -11415,19 +11421,19 @@
           "kind": "git-first-introduction",
           "commit": "fd5be1c3a71282a9115a7c38648923eb1a6d4074",
           "path": "internal/apidocs/openapi.json",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6cdb23c6b5336773f5c2cf17667bf81b21c814e0",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
           "path": "internal/apidocs/openapi.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -21306,19 +21312,19 @@
           "kind": "git-first-introduction",
           "commit": "dea4ca14a86678b38ab2b052c3eec3ecbed63589",
           "path": "internal/httpapi/diagnostics_present_test.go",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "22cbcc1950948aed42f1c421fc64811fdcb506b5",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
           "path": "internal/httpapi/diagnostics_present_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -23202,19 +23208,19 @@
           "kind": "git-first-introduction",
           "commit": "fd5be1c3a71282a9115a7c38648923eb1a6d4074",
           "path": "internal/httpapi/present.go",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "22cbcc1950948aed42f1c421fc64811fdcb506b5",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
           "path": "internal/httpapi/present.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -41928,18 +41934,19 @@
           "kind": "git-first-introduction",
           "commit": "7e53ed3c139fd7c833b6acad41655245636fb4c2",
           "path": "internal/store/review_readiness.go",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "619c7aca458aae0ea1f874d46fd6baa747a7a507",
+          "path": "internal/store/review_readiness.go",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -41975,19 +41982,19 @@
           "kind": "git-first-introduction",
           "commit": "7e53ed3c139fd7c833b6acad41655245636fb4c2",
           "path": "internal/store/review_readiness_store.go",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "619c7aca458aae0ea1f874d46fd6baa747a7a507",
           "path": "internal/store/review_readiness_store.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -42023,18 +42030,19 @@
           "kind": "git-first-introduction",
           "commit": "7e53ed3c139fd7c833b6acad41655245636fb4c2",
           "path": "internal/store/review_readiness_store_test.go",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "619c7aca458aae0ea1f874d46fd6baa747a7a507",
+          "path": "internal/store/review_readiness_store_test.go",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -44827,18 +44835,19 @@
           "kind": "git-first-introduction",
           "commit": "fd5be1c3a71282a9115a7c38648923eb1a6d4074",
           "path": "internal/store/telecom_cloud_test.go",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-10-28",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "dea4ca14a86678b38ab2b052c3eec3ecbed63589",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "619c7aca458aae0ea1f874d46fd6baa747a7a507",
+          "path": "internal/store/telecom_cloud_test.go",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -50138,7 +50147,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r34",
+      "revision": "r35",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -58298,19 +58307,19 @@
           "kind": "git-first-introduction",
           "commit": "fd5be1c3a71282a9115a7c38648923eb1a6d4074",
           "path": "web/src/api/parse.ts",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "7f1f06abdfef98522175869a25209c256bead977",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
           "path": "web/src/api/parse.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -58678,18 +58687,19 @@
           "kind": "git-first-introduction",
           "commit": "2b7a00bbcb428d4dcea813e8c0597ac4542446a2",
           "path": "web/src/api/review-readiness.ts",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "619c7aca458aae0ea1f874d46fd6baa747a7a507",
+          "path": "web/src/api/review-readiness.ts",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -59294,19 +59304,19 @@
           "kind": "git-first-introduction",
           "commit": "fd5be1c3a71282a9115a7c38648923eb1a6d4074",
           "path": "web/src/api/types.ts",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6cdb23c6b5336773f5c2cf17667bf81b21c814e0",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
           "path": "web/src/api/types.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -59497,18 +59507,19 @@
           "kind": "git-first-introduction",
           "commit": "fd5be1c3a71282a9115a7c38648923eb1a6d4074",
           "path": "web/src/app.integration.test.tsx",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "dde450cd09077e6193a0fb8a3d161e2271e87e7f",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
+          "path": "web/src/app.integration.test.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -60351,19 +60362,19 @@
           "kind": "git-first-introduction",
           "commit": "690151982985b0c21a22808f70195e6626d18a2e",
           "path": "web/src/components/case-next-step.tsx",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "d62bcb401bde6265f0eaa01aef814d219601369e",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
           "path": "web/src/components/case-next-step.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -62441,19 +62452,19 @@
           "kind": "git-first-introduction",
           "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
           "path": "web/src/components/intake-primary-contract.tsx",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "commit": "619c7aca458aae0ea1f874d46fd6baa747a7a507",
           "path": "web/src/components/intake-primary-contract.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -63195,18 +63206,19 @@
           "kind": "git-first-introduction",
           "commit": "2b7a00bbcb428d4dcea813e8c0597ac4542446a2",
           "path": "web/src/components/review-readiness-panel.tsx",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "dca50dbbdba84c7fcd8a979c17fd7e98aa289ccc",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "619c7aca458aae0ea1f874d46fd6baa747a7a507",
+          "path": "web/src/components/review-readiness-panel.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -63290,18 +63302,19 @@
           "kind": "git-first-introduction",
           "commit": "fd5be1c3a71282a9115a7c38648923eb1a6d4074",
           "path": "web/src/components/review-workspace.test.tsx",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "dca50dbbdba84c7fcd8a979c17fd7e98aa289ccc",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
+          "path": "web/src/components/review-workspace.test.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -63337,19 +63350,19 @@
           "kind": "git-first-introduction",
           "commit": "fd5be1c3a71282a9115a7c38648923eb1a6d4074",
           "path": "web/src/components/review-workspace.tsx",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6f76835f7016331b2f1b6d7c28a2ab3bb2f0bcf4",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
           "path": "web/src/components/review-workspace.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -64663,21 +64676,21 @@
         "value": "2026-11-03",
         "source": {
           "kind": "git-first-introduction",
-          "commit": "d62bcb401bde6265f0eaa01aef814d219601369e",
+          "commit": "811b4266b2cb341a0600444aca65906a8ad97bc6",
           "path": "web/src/components/workbench-case-next-step.tsx",
           "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "d62bcb401bde6265f0eaa01aef814d219601369e",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
           "path": "web/src/components/workbench-case-next-step.tsx",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -67824,19 +67837,19 @@
           "kind": "git-first-introduction",
           "commit": "fd5be1c3a71282a9115a7c38648923eb1a6d4074",
           "path": "web/src/pages/case-detail-page.tsx",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ea7ebdb703ae2da175eef84a8bfdfb93163dce64",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
           "path": "web/src/pages/case-detail-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -68441,19 +68454,19 @@
           "kind": "git-first-introduction",
           "commit": "243b27503acab17285750cedff9aef207acf2c09",
           "path": "web/src/pages/home-page.test.tsx",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ea7ebdb703ae2da175eef84a8bfdfb93163dce64",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
           "path": "web/src/pages/home-page.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -69057,19 +69070,19 @@
           "kind": "git-first-introduction",
           "commit": "fd5be1c3a71282a9115a7c38648923eb1a6d4074",
           "path": "web/src/pages/review-entry-page.tsx",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ea7ebdb703ae2da175eef84a8bfdfb93163dce64",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
           "path": "web/src/pages/review-entry-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -69105,19 +69118,19 @@
           "kind": "git-first-introduction",
           "commit": "fd5be1c3a71282a9115a7c38648923eb1a6d4074",
           "path": "web/src/pages/review-page.tsx",
-          "reason": "Rederived from main anchor 77d516c40142b049cea7957d0010e938d4f9d515: legacy source was not accepted from fixed anchor history; first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
           "path": "web/src/pages/review-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -71599,6 +71612,294 @@
           "kind": "git-last-content-change",
           "commit": "ea7ebdb703ae2da175eef84a8bfdfb93163dce64",
           "path": "web/src/components/technical-detail.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/reviewstatus/outcome.go": {
+      "purpose": "Projects conservative business reasons and agent-stage observations from one selected frozen review attempt without changing stored state or authorizing retries.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
+          "path": "internal/reviewstatus/outcome.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
+          "path": "internal/reviewstatus/outcome.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/reviewstatus/outcome_test.go": {
+      "purpose": "Verifies selected-attempt review outcome classification, contradictory and legacy inputs, stage failures, and narrow transient retry hints.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
+          "path": "internal/reviewstatus/outcome_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
+          "path": "internal/reviewstatus/outcome_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/components/review-outcome-summary.tsx": {
+      "purpose": "Presents execution results, actual review coverage and human decision progress with source-preserving preparation and material repair links.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
+          "path": "web/src/components/review-outcome-summary.tsx",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
+          "path": "web/src/components/review-outcome-summary.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/components/review-outcome.test.tsx": {
+      "purpose": "Verifies review outcome presentation and next-step guidance for limited prechecks, failed stages, missing inputs, budgets, unsupported checks and stale authorization context.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
+          "path": "web/src/components/review-outcome.test.tsx",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
+          "path": "web/src/components/review-outcome.test.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/components/review-readiness-panel.test.tsx": {
+      "purpose": "Verifies business-scope and published-rule preparation presentation, additive readiness parsing, and repair links while preserving server-derived admission decisions.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "619c7aca458aae0ea1f874d46fd6baa747a7a507",
+          "path": "web/src/components/review-readiness-panel.test.tsx",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "619c7aca458aae0ea1f874d46fd6baa747a7a507",
+          "path": "web/src/components/review-readiness-panel.test.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/features/review/review-outcome.ts": {
+      "purpose": "Derives selected frozen-review coverage, agent-stage, unresolved-gap and transient-retry presentation hints while preserving server authority.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
+          "path": "web/src/features/review/review-outcome.ts",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "7d217db76f2433d7549d339c3f826d91b3956c09",
+          "path": "web/src/features/review/review-outcome.ts",
           "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
