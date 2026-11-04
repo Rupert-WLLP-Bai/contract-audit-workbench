@@ -4,7 +4,7 @@
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
 <!-- Updated: 2026-11-04 -->
-<!-- Revision: r3 -->
+<!-- Revision: r4 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -28,6 +28,7 @@
 ## 工程
 
 - [本地开发](engineering/local-development.md)
+- [业务界面工程约定](engineering/interface-conventions.md)
 - [检查与验收](engineering/verification.md)
 - [贡献与协作](engineering/contributing.md)
 - [用户上手与扩展指南](engineering/community-guide.md)
