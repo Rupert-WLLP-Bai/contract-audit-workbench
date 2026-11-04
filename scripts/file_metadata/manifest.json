@@ -8030,7 +8030,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "c0d75641ef0555e0f355e7d77a4bcfd4ff8ca37b",
+          "commit": "0c89c92be6c12f4321d22f308e05a91db8b25e00",
           "path": "docs/operations/document-processing.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -27217,7 +27217,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "c0d75641ef0555e0f355e7d77a4bcfd4ff8ca37b",
+          "commit": "0c89c92be6c12f4321d22f308e05a91db8b25e00",
           "path": "internal/modelgateway/frozen_authoritative_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -27595,7 +27595,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "c0d75641ef0555e0f355e7d77a4bcfd4ff8ca37b",
+          "commit": "0c89c92be6c12f4321d22f308e05a91db8b25e00",
           "path": "internal/modelgateway/service.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
