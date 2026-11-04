@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Projects authorized case business identity and searchable display text from existing profile fields while retaining stable machine identity and explicit missing-number labels.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { CaseProfile, CaseSummary, WorkbenchMember } from "../api/types";
 import { businessLineLabel, businessScopeLabel, scenarioLabel } from "./business-labels";
 import { preciseTime } from "./time";

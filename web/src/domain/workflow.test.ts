@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks run and attempt choice identity survives appended or reordered history and missing attempt timestamps are not replaced with a parent run update time.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { describe, expect, it } from "vitest";
 import { parseReviewWorkspace } from "../api/parse";
 import { reviewChoiceForKey, reviewChoiceKey, reviewChoiceLabel, reviewChoices } from "./workflow";

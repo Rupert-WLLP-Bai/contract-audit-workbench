@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Verifies losing source-case list access hides the prior selection and result instead of retaining an unauthorized case reference.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";

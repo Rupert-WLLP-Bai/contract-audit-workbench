@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks optional authorized case-list business identity fields remain exact and absent when no profile projection is available, while stable case identity is retained.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

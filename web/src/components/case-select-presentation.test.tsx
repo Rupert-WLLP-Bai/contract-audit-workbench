@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks same-name case selectors expose full secondary identity, accept Chinese scene or exact identifier searches and submit the selected stable case ID.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Select } from "antd";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

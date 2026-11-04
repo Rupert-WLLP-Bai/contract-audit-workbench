@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Verifies filtering the current authorized loaded case collection before pagination and retaining case-ID links after an editable business-number change.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";

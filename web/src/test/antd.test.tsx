@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Verifies the shared Ant Design test renderer preserves child state, mount and cleanup semantics, caller wrapper/options and Chinese component configuration across rerender instead of silently remounting the component.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { StyleContext } from "@ant-design/cssinjs";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks known business enum labels, bounded legacy Chinese compatibility and conservative unknown or prototype-key fallback without changing supplied business display names or precise machine identifiers.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import casesJSON from "./business-labels.contract.json?raw";
 import { businessActionLabel, businessCapabilityLabel, businessLineLabel, businessSourceTypeLabel, reviewScopeLabel, scenarioLabel, suppliedBusinessName } from "./business-labels";
 import { actorRoleLabel, businessStatusLabel, contractTypeLabel, decisionLabel, modelStatusLabel, originLabel, parseLabel, relationLabel, roleLabel, runLabel, taskKindLabel } from "./review";

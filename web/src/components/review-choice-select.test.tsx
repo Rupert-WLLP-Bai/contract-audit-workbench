@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks frozen review choices display their own attempt times and retain exact run and attempt identity after history changes or reorders.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";

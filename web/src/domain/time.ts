@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Provides shared Beijing-time display formatting and precise readable time labels without changing submitted or persisted timestamps.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Shared Beijing-time formatter for displayed timestamps.
 export function formatDateTime(value: string, seconds = false): string {
   if (value === "") return "时间未记录";

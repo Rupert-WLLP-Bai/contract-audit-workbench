@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises authorized case-list profile projection, same-name records, business-number edits, tenant isolation, read-only access and revoked grants against isolated PostgreSQL fixtures.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

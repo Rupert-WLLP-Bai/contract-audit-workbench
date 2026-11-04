@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Verifies full technical values remain available for manual copy and clipboard success, denial, missing API, value switches and unmount do not report another request result.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TechnicalDetail, technicalLabel } from "./technical-detail";
