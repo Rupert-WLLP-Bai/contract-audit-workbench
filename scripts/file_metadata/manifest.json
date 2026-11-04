@@ -27589,15 +27589,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "7f1f06abdfef98522175869a25209c256bead977",
+          "commit": "9a572ef6cb0481aa1a5b4217d8b56f472136f0aa",
           "path": "internal/modelgateway/service.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -27637,15 +27637,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "d2d2fad5f5c6919b13d1970cd6e0ea2638a3da2c",
+          "commit": "9a572ef6cb0481aa1a5b4217d8b56f472136f0aa",
           "path": "internal/modelgateway/service_integration_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -27732,14 +27732,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-30",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0d82b02b299acb8119e92f75331724bfca9e21d1",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "9a572ef6cb0481aa1a5b4217d8b56f472136f0aa",
+          "path": "internal/modelgateway/service_test.go",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -50114,7 +50115,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r29",
+      "revision": "r30",
       "copyright": [
         {
           "holder": "Bai Junhao",
