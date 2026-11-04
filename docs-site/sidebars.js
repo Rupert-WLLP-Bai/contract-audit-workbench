@@ -18,6 +18,7 @@ module.exports = {
       doc('engineering/community-guide', '用户上手与扩展指南'),
       doc('engineering/contributing', '贡献与协作'),
       doc('engineering/file-metadata', '文件元信息规范'),
+      doc('engineering/interface-conventions', '业务界面工程约定'),
       doc('engineering/licensing', '许可与贡献'),
       doc('engineering/local-development', '本地开发'),
       doc('engineering/verification', '检查与验收'),

@@ -28,6 +28,7 @@
 ## 工程
 
 - [本地开发](engineering/local-development.md)
+- [业务界面工程约定](engineering/interface-conventions.md)
 - [检查与验收](engineering/verification.md)
 - [贡献与协作](engineering/contributing.md)
 - [用户上手与扩展指南](engineering/community-guide.md)
