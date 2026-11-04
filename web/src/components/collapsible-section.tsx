@@ -2,8 +2,8 @@
 // Purpose: Provides one shared disclosure/anchor pattern for long evidence pages so dense secondary sections do not flatten into an unreadable single scroll.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: unknown
-// Updated: unknown
+// Created: 2026-11-04
+// Updated: 2026-11-04
 // Revision: r1
 // Copyright: See LICENSE
 // End file metadata.
