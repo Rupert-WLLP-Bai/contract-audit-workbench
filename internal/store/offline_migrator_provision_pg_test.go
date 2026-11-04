@@ -89,7 +89,11 @@ func TestOfflineMigratorFreshAndControlledLegacyBootstrap(t *testing.T) {
 			for round := 0; round < 2; round++ {
 				if round > 0 {
 					var version int
-					if err = admin.pool.QueryRow(ctx, `SELECT max(version) FROM schema_migrations`).Scan(&version); err != nil || version != schemaMaxCompatibleVersion {
+					want := schemaMaxCompatibleVersion
+					if !legacy {
+						want = 41
+					}
+					if err = admin.pool.QueryRow(ctx, `SELECT max(version) FROM schema_migrations`).Scan(&version); err != nil || version != want {
 						t.Fatalf("repeat provisioning requires an already migrated schema: version=%d err=%v", version, err)
 					}
 					t.Logf("reprovisioning existing schema %d with an actual offline migrator", version)
@@ -121,6 +125,27 @@ func TestOfflineMigratorFreshAndControlledLegacyBootstrap(t *testing.T) {
 				pool.Close()
 				if err = MigrateServiceRoles(ctx); err != nil {
 					t.Fatalf("round%d actual nonSuper service provisioning: %v", round, err)
+				}
+				if round == 1 {
+					pool, e := newStorePool(ctx, migratorDSN, schema, true)
+					if e != nil {
+						t.Fatal(e)
+					}
+					e = migrate(ctx, pool, schema)
+					pool.Close()
+					if e != nil {
+						t.Fatalf("repeat nonSuper migration after upgrade: %v", e)
+					}
+				}
+				if round == 0 && !legacy {
+					// Reconstruct the exact 0041 policy in this isolated test schema;
+					// the real offline login must then apply the new migration.
+					if _, err = admin.pool.Exec(ctx, `ALTER POLICY command_receipt_context ON execution_write_receipts
+						USING (NULLIF(current_setting('app.command_digest',true),'') IS NULL OR command_session=current_setting('app.command_digest',true) AND command_version=NULLIF(current_setting('app.command_version',true),'')::bigint);
+						DROP FUNCTION tenant_review_receipt_recovery_allowed(text,text,text,text,text,text);
+						DELETE FROM schema_migrations WHERE version=42`); err != nil {
+						t.Fatal(err)
+					}
 				}
 			}
 			// Every actual runtime login remains unable to assume either owner or read identity SQL.

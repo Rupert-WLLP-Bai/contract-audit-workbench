@@ -457,6 +457,9 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			if err := validateWriteReceiptTarget(ctx, acceptanceTx, executionWriteReceipts, *currentCase, receipt); err != nil {
 				return err
 			}
+			if err := s.validateReviewReceiptEpoch(ctx, acceptanceTx, *currentCase, receipt); err != nil {
+				return err
+			}
 			receiptResult, err = decodeReviewWriteReceipt(receipt.Response)
 			if err != nil {
 				return err

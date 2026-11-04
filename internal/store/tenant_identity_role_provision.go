@@ -194,6 +194,7 @@ to_regprocedure(format('%I.tenant_operation_fence(jsonb,text,text)',$3))::oid
 			,to_regprocedure(format('%I.tenant_intake_read_allowed(text,text,text,text,text,text)',$3))::oid
 			,to_regprocedure(format('%I.tenant_intake_upload_recovery_allowed(text,text,text,text,text)',$3))::oid
 			,to_regprocedure(format('%I.stamp_intake_completion()',$3))::oid
+			,to_regprocedure(format('%I.tenant_review_receipt_recovery_allowed(text,text,text,text,text,text)',$3))::oid
 		]) AS oid
 	), owner_objects AS (
 		SELECT class.classid,class.objid,class.objsubid,namespace.nspname

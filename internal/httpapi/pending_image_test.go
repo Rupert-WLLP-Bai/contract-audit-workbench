@@ -200,4 +200,13 @@ func TestCancelledPreparingReadmissionHTTP(t *testing.T) {
 	if status != http.StatusCreated || replay["id"] != next["id"] || replay["attempt_id"] != next["attempt_id"] {
 		t.Fatalf("new replay: %d %v", status, replay)
 	}
+	api.login(t, "demo-admin", "admin-demo")
+	status, replay = api.send(t, http.MethodPost, base+"/reviews", body, "new-http")
+	if status != http.StatusCreated || replay["id"] != next["id"] || replay["attempt_id"] != next["attempt_id"] {
+		t.Fatalf("new-session replay: %d %v", status, replay)
+	}
+	status, _ = api.send(t, http.MethodPost, base+"/reviews", map[string]any{}, "new-http")
+	if status != http.StatusConflict {
+		t.Fatalf("new-session changed body: %d", status)
+	}
 }

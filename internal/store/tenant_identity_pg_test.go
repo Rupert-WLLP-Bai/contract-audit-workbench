@@ -466,7 +466,7 @@ func TestTenantIdentityNonSuperMigratorProvisioningAndMigration(t *testing.T) {
 	}
 	// The same table owner is the supported embedded non-production login. It
 	// must be able to plan these RLS projections without superuser privileges.
-	for _, relation := range []string{"case_intake_operations", "document_upload_idempotency"} {
+	for _, relation := range []string{"case_intake_operations", "document_upload_idempotency", "execution_write_receipts"} {
 		var count int
 		if err := migrationPool.QueryRow(ctx, `SELECT count(*) FROM `+pgx.Identifier{schema, relation}.Sanitize()).Scan(&count); err != nil {
 			t.Fatalf("non-superuser embedded owner cannot read %s projection: %v", relation, err)

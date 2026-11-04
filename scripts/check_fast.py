@@ -113,6 +113,14 @@ REVIEW_READMISSION_TESTS = (
     "TestReviewReadmissionDifferentKeysAndBoundariesPostgres",
     "TestReviewReadmissionFrozenAndRevokedPostgres",
     "TestReviewReadmissionRejectsExpiredEpochPostgres",
+    "TestReviewReceiptReplayAfterNewSessionPostgres",
+    "TestReviewReceiptConcurrentSessionsPostgres",
+    "TestReviewReceiptSessionAndServiceBoundariesPostgres",
+    "TestReviewReceiptRejectsChangedEpochPostgres",
+    "TestReviewReceiptCurrentMembershipPostgres",
+    "TestReviewReceiptPolicyProjectionExecuteRequirement",
+    "TestReviewReceiptMigration41PreservesPostgres",
+    "TestCaseContextFenceMigrationUpgradeAndRoleACL",
 )
 REVIEW_READMISSION_HTTP_TESTS = ("TestCancelledPreparingReadmissionHTTP",)
 CONTRACT_SIGNING_TESTS = (
@@ -493,12 +501,20 @@ def _is_review_readmission(path: str) -> bool:
         "internal/store/attempt_finalize.go",
         "internal/store/document_prepare.go",
         "internal/store/review_readmission_pg_test.go",
+        "internal/store/case_context_migration_test.go",
+        "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+        "internal/store/migrations.go",
+        "internal/store/table_catalog.json",
+        "internal/store/service_roles.go",
+        "internal/store/tenant_identity_role_provision.go",
         "internal/httpapi/server.go",
     }
 
 
 def _is_review_readmission_http(path: str) -> bool:
-    return path in {"internal/httpapi/server.go", "internal/httpapi/pending_image_test.go"}
+    return path in {"internal/httpapi/server.go", "internal/httpapi/pending_image_test.go",
+                    "internal/store/execution.go", "internal/store/write_idempotency.go",
+                    "internal/store/migrations/0042_review_receipt_session_recovery.sql"}
 
 
 def _is_contract_signing(path: str) -> bool:
@@ -598,6 +614,7 @@ def _is_offline_migrator_bootstrap(path: str) -> bool:
         "internal/store/clm_role_provision.go",
         "internal/store/tenant_identity_role_provision.go",
         "internal/store/migrations/0033_tenant_membership.sql",
+        "internal/store/migrations/0042_review_receipt_session_recovery.sql",
     }
 
 

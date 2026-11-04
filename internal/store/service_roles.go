@@ -559,6 +559,13 @@ func MigrateServiceRoles(ctx context.Context) error {
 			return fmt.Errorf("cannot grant intake upload recovery fence: %w", err)
 		}
 	}
+	// All services have SELECT projections. PostgreSQL plans the RLS function
+	// for each role; the function admits only the actual Execution login.
+	for _, role := range configuredRoles {
+		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_review_receipt_recovery_allowed(text,text,text,text,text,text) TO `+pgx.Identifier{role}.Sanitize()); err != nil {
+			return fmt.Errorf("cannot grant review receipt recovery fence: %w", err)
+		}
+	}
 	for _, fn := range []string{"tenant_config_control(text)", "tenant_config_adopt(text,bigint,text,text,text)", "tenant_model_send_set(text,bigint,boolean,text)"} {
 		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.`+fn+` TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
 			return fmt.Errorf("cannot grant Core tenant config function %s: %w", fn, err)
@@ -600,6 +607,26 @@ func MigrateServiceRoles(ctx context.Context) error {
 	}
 	if err := verifyContextFunctionACL(ctx, tx, schema, identityOwner, coreRoleName, configuredRoles); err != nil {
 		return err
+	}
+	var reviewReceiptACLUnsafe bool
+	if err := tx.QueryRow(ctx, `WITH function AS (
+		SELECT p.oid,p.proowner,p.prosecdef,p.proacl FROM pg_proc p
+		WHERE p.oid=to_regprocedure(format('%I.tenant_review_receipt_recovery_allowed(text,text,text,text,text,text)',$1::text))
+	), relation_owner AS (
+		SELECT relowner FROM pg_class WHERE oid=to_regclass(format('%I.execution_write_receipts',$1::text))
+	), acl AS (
+		SELECT a.* FROM function f CROSS JOIN LATERAL aclexplode(COALESCE(f.proacl,acldefault('f',f.proowner))) a
+	)
+	SELECT NOT EXISTS (SELECT 1 FROM function WHERE proowner=$2::regrole AND prosecdef)
+	 OR EXISTS (SELECT 1 FROM acl WHERE grantee=0 OR is_grantable OR privilege_type<>'EXECUTE'
+		OR (grantee<>$2::regrole AND grantee<>(SELECT relowner FROM relation_owner)
+		AND grantee<>ALL(ARRAY(SELECT oid FROM pg_roles WHERE rolname=ANY($3::text[])))))
+	 OR NOT has_function_privilege((SELECT relowner FROM relation_owner),(SELECT oid FROM function),'EXECUTE')
+	 OR EXISTS (SELECT 1 FROM unnest($3::text[]) r(role) WHERE NOT has_function_privilege(r.role,(SELECT oid FROM function),'EXECUTE'))`, schema, identityOwner, configuredRoles).Scan(&reviewReceiptACLUnsafe); err != nil {
+		return fmt.Errorf("cannot verify review receipt recovery grants: %w", err)
+	}
+	if reviewReceiptACLUnsafe {
+		return errors.New("review receipt recovery function has missing or unexpected execution grants")
 	}
 	var clmFunctionGrantUnsafe bool
 	if err := tx.QueryRow(ctx, `WITH expected AS (

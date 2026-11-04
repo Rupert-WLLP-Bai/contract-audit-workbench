@@ -20,6 +20,7 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const (
@@ -57,6 +58,13 @@ func lockWriteReceipt(ctx context.Context, tx pgx.Tx, user accounts.User, route,
 
 func loadWriteReceipt(ctx context.Context, tx pgx.Tx, table string, user accounts.User, route, key string) (writeReceipt, bool, error) {
 	var receipt writeReceipt
+	if table == executionWriteReceipts {
+		// Only an exact review admission is selectable across sessions. The RLS
+		// function independently verifies the current session and case grant.
+		if _, err := tx.Exec(ctx, `SELECT set_config('app.review_receipt_route',$1,true), set_config('app.review_receipt_key',$2,true)`, route, key); err != nil {
+			return receipt, false, err
+		}
+	}
 	err := tx.QueryRow(ctx, `SELECT org_id, case_id, request_digest, response_json FROM `+table+
 		` WHERE tenant_id=$1 AND actor_id=$2 AND route=$3 AND idempotency_key=$4`,
 		accounts.Tenant(user), user.ID, route, key).Scan(&receipt.OrgID, &receipt.CaseID, &receipt.RequestDigest, &receipt.Response)
@@ -73,6 +81,10 @@ func insertWriteReceipt(ctx context.Context, tx pgx.Tx, table string, user accou
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO `+table+` (tenant_id,org_id,actor_id,route,idempotency_key,request_digest,case_id,response_json)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`, item.TenantID, item.OwnerOrgID, user.ID, route, key, digest, item.ID, string(body))
+	var pgErr *pgconn.PgError
+	if table == executionWriteReceipts && errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "execution_write_receipts_pkey" {
+		return fault.Conflict("此请求键对应原组织的审查命令，请核对当前组织和会话")
+	}
 	return err
 }
 
@@ -115,6 +127,32 @@ func validateWriteReceiptTarget(ctx context.Context, tx pgx.Tx, table string, it
 	}
 	if !exists {
 		return fault.NotFound("原操作对应的记录不存在")
+	}
+	return nil
+}
+
+// A receipt remains a record of its original acceptance, but cannot revive an
+// attempt or job from an invalidated tenant epoch.
+func (s *Store) validateReviewReceiptEpoch(ctx context.Context, tx pgx.Tx, item Case, receipt writeReceipt) error {
+	accepted, err := decodeReviewWriteReceipt(receipt.Response)
+	if err != nil {
+		return err
+	}
+	var valid bool
+	err = tx.QueryRow(ctx, `SELECT EXISTS (
+		SELECT 1 FROM review_runs r JOIN review_attempts a
+		ON a.tenant_id=r.tenant_id AND a.org_id=r.org_id AND a.run_id=r.id
+		WHERE r.tenant_id=$1 AND r.org_id=$2 AND r.case_id=$3 AND r.id=$4 AND a.id=$5
+		AND tenant_runtime_fence(r.tenant_id,a.tenant_live_epoch,$7)
+		AND ($6='' OR EXISTS (SELECT 1 FROM worker_jobs j WHERE j.tenant_id=r.tenant_id AND j.org_id=r.org_id
+		AND j.case_id=r.case_id AND j.run_id=r.id AND j.attempt_id=a.id AND j.id=$6
+		AND j.kind='review' AND j.actor_id=a.actor_id AND j.tenant_live_epoch=a.tenant_live_epoch)))`,
+		item.TenantID, item.OwnerOrgID, item.ID, accepted.Acceptance.RunID, accepted.Acceptance.AttemptID, accepted.Acceptance.JobID, s.sel.Mode != "production").Scan(&valid)
+	if err != nil {
+		return err
+	}
+	if !valid {
+		return fault.Conflict("原操作的租户执行上下文已失效")
 	}
 	return nil
 }
@@ -163,6 +201,11 @@ func (s *Store) readWriteReceipt(ctx context.Context, user accounts.User, table,
 	}
 	if err := validateWriteReceiptTarget(ctx, tx, table, item, receipt); err != nil {
 		return writeReceipt{}, false, err
+	}
+	if table == executionWriteReceipts {
+		if err := s.validateReviewReceiptEpoch(ctx, tx, item, receipt); err != nil {
+			return writeReceipt{}, false, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return writeReceipt{}, false, err
