@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: unknown
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,12 +13,14 @@ import { Collapse } from "antd";
 import { Button, Input, Select } from "antd";
 import {
   memo,
+  useContext,
   useDeferredValue,
   useEffect,
   useMemo,
   useState,
   type FormEvent,
   type ReactNode,
+  type ComponentProps,
 } from "react";
 import { Link } from "react-router";
 import type {
@@ -53,6 +55,8 @@ import {
   type FrozenQuoteSelection,
 } from "../domain/frozen-quote";
 import { StatusText } from "./status-text";
+import { OriginalDocumentReader, OriginalSourceContext, supportsOriginalPreview } from "./original-document-reader";
+import { businessScopeLabel } from "../domain/business-labels";
 
 export interface ReviewCaseContext {
   caseId: string;
@@ -499,7 +503,7 @@ function PlainBody({
   );
 }
 
-const DocumentBody = memo(function DocumentBody({
+const TextDocumentBody = memo(function TextDocumentBody({
   document,
   finding,
   findRange,
@@ -601,16 +605,33 @@ const DocumentBody = memo(function DocumentBody({
   );
 });
 
+const DocumentBody = memo(function DocumentBody(props: ComponentProps<typeof TextDocumentBody>) {
+  const scope = useContext(OriginalSourceContext);
+  const document = props.document;
+  const quotes = useMemo(() => anchorsFor(document, props.finding).flatMap((anchor) => {
+    const resolved = resolveAnchor(document.text, anchor, document.parsed_document, document.parsed_document_id,
+      props.textIndex ?? undefined);
+    return resolved.kind === "highlight"
+      ? [{ id: anchor.id, quote: anchor.quote, start: resolved.start, end: resolved.end, page: resolved.page }]
+      : [];
+  }), [document, props.finding, props.textIndex]);
+  const textBody = <TextDocumentBody {...props} />;
+  const digest = scope?.digests.get(document.id);
+  if (!scope || !digest || !props.quoteScope?.isFrozenAttempt || !document.parsed_document_id ||
+    !props.quoteScope.parsedDocumentIds.includes(document.parsed_document_id) ||
+    !supportsOriginalPreview(document.filename)) return textBody;
+  return <OriginalDocumentReader key={`${document.id}:${document.parsed_document_id}`} scope={scope}
+    documentId={document.id} filename={document.filename} digest={digest} text={document.text ?? ""} quotes={quotes}>
+    {textBody}
+  </OriginalDocumentReader>;
+});
+
 function ownerLabel(context: ReviewCaseContext): string {
   return context.ownerName || (context.ownerId ? "姓名未返回" : "未分配");
 }
 
 function businessScope(context: ReviewCaseContext): string {
-  return (
-    [context.businessLine, context.scenario]
-      .filter((item) => item !== "" && item !== "未报告")
-      .join(" / ") || "未设置"
-  );
+  return businessScopeLabel(context.businessLine, context.scenario);
 }
 
 function deadlineLabel(context: ReviewCaseContext): string {

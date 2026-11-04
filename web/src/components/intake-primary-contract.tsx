@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: unknown
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1075,6 +1075,7 @@ export function IntakePrimaryContract({
             }}
             options={[...SCENARIOS]}
           />
+          <span className="meta">请核对场景是否适用于本合同；实际检查范围以审查准备清单为准。</span>
         </label>
         <label className="home-intake-field">
           合同类型

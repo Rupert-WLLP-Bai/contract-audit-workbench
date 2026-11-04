@@ -3,13 +3,14 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-25
-// Revision: r1
+// Updated: unknown
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { originalReaderAssets } from "./build/original-reader-assets";
 
 const apiProxy = process.env.VITE_DEV_API_PROXY ?? "http://127.0.0.1:8080";
 
@@ -17,7 +18,7 @@ export default defineConfig(({ mode }) => {
   const htmlEntry = mode === "admin" ? "admin.html" : mode === "portal" ? "portal.html" : "index.html";
   const base = mode === "admin" ? "/admin/" : mode === "portal" ? "/portal/" : "/";
   return {
-    plugins: [react(), {
+    plugins: [react(), originalReaderAssets(base), {
       name: "development-html-entry",
       apply: "serve",
       configureServer(server) {

@@ -3,12 +3,14 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: unknown
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Alert, Button, Tag } from "antd";
+import { useContext } from "react";
+import { OriginalDocumentReader, OriginalSourceContext, supportsOriginalPreview } from "./original-document-reader";
 import { useQuery } from "@tanstack/react-query";
 import type { FrozenContractCitation } from "../api/contract-citations";
 import { getFrozenContractCitation } from "../api/contract-citations";
@@ -91,6 +93,7 @@ function CitationBody({
   expected: BusinessAgentEvidence;
   ids: { caseId: string; runId: string; attemptId: string; evidenceId: string };
 }) {
+  const originalScope = useContext(OriginalSourceContext);
   const problem = identityProblem(citation, ids, expected);
   if (problem !== null) {
     return <Alert type="error" showIcon title={problem} />;
@@ -100,12 +103,13 @@ function CitationBody({
       <p>
         <strong>{citation.filename}</strong>{" "}
         {citation.material_id !== null && citation.material_version !== null ? (
-          <Tag>{`材料 ${citation.material_id} · 第 ${citation.material_version} 版`}</Tag>
+          <Tag>{`材料第 ${citation.material_version} 版`}</Tag>
         ) : (
           <Tag>材料版本未记录</Tag>
         )}
-        <Tag>{`字符 ${citation.start + 1}–${citation.end}（Unicode 码点）`}</Tag>
       </p>
+      <details className="caw-technical-detail"><summary>引用技术详情</summary>
+      <p>字符 {citation.start + 1}–{citation.end}（Unicode 码点）</p>
       <p>
         <code>{`原文摘要 ${citation.original_digest}`}</code>
         <br />
@@ -113,7 +117,15 @@ function CitationBody({
         <br />
         <code>{`冻结解析 ${citation.parsed_document_id}`}</code>
       </p>
-      <FrozenText citation={citation} />
+      </details>
+      {originalScope?.caseId === citation.case_id && supportsOriginalPreview(citation.filename) ? (
+        <OriginalDocumentReader scope={originalScope} documentId={citation.document_id}
+          filename={citation.filename} digest={citation.original_digest} text={citation.text}
+          quotes={[{ id: citation.evidence_id, quote: citation.quote, start: citation.start,
+            end: citation.end, page: expected.anchor.page }]}>
+          <FrozenText citation={citation} />
+        </OriginalDocumentReader>
+      ) : <FrozenText citation={citation} />}
     </>
   );
 }
