@@ -20,12 +20,14 @@ import { useReview, useWorkbench } from "../api/queries";
 import type { Finding, ReviewDocument, WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { TechnicalDetail } from "../components/technical-detail";
+import { businessCapabilityLabel, businessDomainLabel } from "../domain/business-labels";
 import { caseIdentityDetails } from "../domain/case-identity";
 import { preciseTime } from "../domain/time";
 import {
   caseHref,
   decisionLabel,
   formatDateTime,
+  originLabel,
   parseLabel,
   relationLabel,
   runLabel,
@@ -52,6 +54,16 @@ function primaryContract(documents: ReviewDocument[]): ReviewDocument | null {
     selected = document;
   }
   return selected;
+}
+
+function revisionMarkLabel(mark: string): string {
+  return ["持续", "新增", "消除", "未能判断", "保留", "未分类"].includes(mark)
+    ? mark
+    : "修订类型待核对";
+}
+
+function findingOriginLabel(origin: string): string {
+  return origin === "rule" ? "规则核对" : originLabel(origin);
 }
 
 function RunSelect({
@@ -94,6 +106,7 @@ function RunSelect({
       {value ? <div className="meta caw-wrap">
         <TechnicalDetail label="审查标识" value={value.id} />
         <TechnicalDetail label="执行标识" value={attemptId} />
+        <TechnicalDetail label="审查状态编码" value={value.state} />
       </div> : null}
     </div>
   );
@@ -199,6 +212,17 @@ function MaterialPane({
                         <dd>{formatDateTime(selected.created_at)}</dd>
                       </div>
                     </dl>
+                    <TechnicalDetail
+                      label="材料技术详情"
+                      value={JSON.stringify({
+                        document_version_id: selected.id,
+                        document_digest: selected.digest,
+                        parsed_document_id: selected.parsed_document_id,
+                        parsed_document_metadata_id: selected.parsed_document?.id ?? null,
+                        parse_status: selected.parse_status,
+                        run_state: run?.state ?? null,
+                      })}
+                    />
                     <a href={paths.documentOriginal(caseId, selected.id)}>
                       读取原件
                     </a>
@@ -398,14 +422,14 @@ export function ComparePage() {
                 data-selected={item.id === finding?.id}
               >
                 <Button
-                  aria-label={`${item.claim}，${item.origin === "rule" ? "规则核对" : "模型建议"}，${relationLabel(item.relation)}`}
+                  aria-label={`${item.claim}，${findingOriginLabel(item.origin)}，${relationLabel(item.relation)}`}
                   htmlType="button"
                   onClick={() => chooseFinding(item)}
                   aria-pressed={item.id === finding?.id}
                 >
                   <strong>{item.claim}</strong>
                   <span>
-                    {item.origin === "rule" ? "规则核对" : "模型建议"}，
+                    {findingOriginLabel(item.origin)}，
                     {relationLabel(item.relation)}
                   </span>
                 </Button>
@@ -425,6 +449,10 @@ export function ComparePage() {
                         {item.severity_source.clause}
                       </p>
                     ) : null}
+                    <TechnicalDetail
+                      label="发现技术详情"
+                      value={JSON.stringify({ finding_id: item.id, origin: item.origin, domain: item.domain, relation: item.relation })}
+                    />
                     <Link
                       to={`/cases/${selectedCase?.id}/reviews/${leftRun?.id}?${new URLSearchParams({ ...(leftAttemptId ? { attempt_id: leftAttemptId } : {}), finding: item.id }).toString()}`}
                     >
@@ -563,10 +591,10 @@ export function ComparePage() {
                   <li
                     key={`${revision.previous_finding_id ?? "prior"}-${revision.finding_id ?? "current"}-${index}`}
                   >
-                    <span>{revision.mark}</span>
+                    <span>{revisionMarkLabel(revision.mark)}</span>
                     <div>
                       <strong>
-                        {revision.domain}，{revision.relation}
+                        {businessDomainLabel(revision.domain)}，{relationLabel(revision.relation)}
                       </strong>
                       <p>{revision.claim}</p>
                       <small>
@@ -575,6 +603,18 @@ export function ComparePage() {
                           ? decisionLabel(revision.prior_decision.action)
                           : "未报告"}
                       </small>
+                      <TechnicalDetail
+                        label="修订技术详情"
+                        value={JSON.stringify({
+                          mark: revision.mark,
+                          domain: revision.domain,
+                          relation: revision.relation,
+                          finding_id: revision.finding_id,
+                          previous_finding_id: revision.previous_finding_id,
+                          prior_decision_id: revision.prior_decision?.id ?? null,
+                          prior_decision_action: revision.prior_decision?.action ?? null,
+                        })}
+                      />
                     </div>
                   </li>
                 ))}
@@ -604,12 +644,27 @@ export function ComparePage() {
                     {side.evaluations.map((item) => (
                       <li key={item.id}>
                         <strong>
-                          {item.domain}，{item.relation}
+                          {businessDomainLabel(item.domain)}，{relationLabel(item.relation)}
                         </strong>
                         <span>
-                          规则 {item.rule_id}，v{item.rule_version}
+                          {businessCapabilityLabel(item.capability_id)}
                         </span>
                         <p>{item.reason}</p>
+                        <TechnicalDetail
+                          label="规则技术详情"
+                          value={JSON.stringify({
+                            evaluation_id: item.id,
+                            domain: item.domain,
+                            relation: item.relation,
+                            rule_id: item.rule_id,
+                            rule_version: item.rule_version,
+                            capability_id: item.capability_id,
+                            reason_code: item.reason_code,
+                            finding_id: item.finding_id,
+                            fact_ids: item.fact_ids,
+                            object_refs: item.object_refs,
+                          })}
+                        />
                       </li>
                     ))}
                   </ul>

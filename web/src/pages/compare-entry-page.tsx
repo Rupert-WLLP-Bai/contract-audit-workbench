@@ -85,6 +85,7 @@ export function CompareEntryPage() {
           <StatusText tone={businessStatusTone(item.business_status ?? "")}>
             {businessStatusLabel(item.business_status ?? "")}
           </StatusText>
+          <TechnicalDetail value={item.business_status} label="业务状态编码" />
         </div>
       ),
     },
@@ -99,10 +100,11 @@ export function CompareEntryPage() {
           return <span className="compare-entry-muted">尚无审查运行</span>;
         return (
           <div className="compare-entry-run">
-            <code>{latest.id}</code>
+            <TechnicalDetail value={latest.id} label="运行标识" />
             <StatusText tone={runTone(latest.state)}>
               {runLabel(latest.state)}
             </StatusText>
+            <TechnicalDetail value={latest.state} label="运行状态编码" />
             <span className="compare-entry-muted">
               {runCount >= 2 ? `${runCount} 次运行可对照` : "仅 1 次运行"}
             </span>

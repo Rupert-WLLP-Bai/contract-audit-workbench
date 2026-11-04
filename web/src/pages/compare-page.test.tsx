@@ -560,6 +560,35 @@ afterEach(() => {
 });
 
 describe("ComparePage frozen run selection", () => {
+  it("keeps the latest run identity in expandable technical details on the entry page", async () => {
+    const { user } = openEntry();
+    const row = (await screen.findByText("专线合同修订")).closest("tr")!;
+    const id = within(row).getByText("run-z", { selector: "code" });
+    expect(id).not.toBeVisible();
+    await user.click(within(row).getByText("运行标识", { selector: "summary" }));
+    expect(id).toBeVisible();
+    expect(within(row).getByRole("link", { name: "打开审查" })).toHaveAttribute("href", "/cases/case-main/reviews/run-z?attempt_id=attempt-z-2");
+  });
+
+  it("retains an unrecognized latest run state for diagnosis", async () => {
+    const service = new CompareService();
+    service.data.runs.find((item) => item.id === "run-z")!.state = "completed·";
+    service.data.cases[1]!.business_status = "archived（旧）";
+    const { user } = openEntry(service);
+    const row = (await screen.findByText("专线合同修订")).closest("tr")!;
+    expect(within(row).getByText("状态未识别")).toBeVisible();
+    const raw = within(row).getByText("completed·", { selector: "code" });
+    expect(raw).not.toBeVisible();
+    await user.click(within(row).getByText("运行状态编码", { selector: "summary" }));
+    expect(raw).toBeVisible();
+    expect(within(row).getByText("业务状态待核对")).toBeVisible();
+    const businessState = within(row).getByText("archived（旧）", { selector: "code" });
+    expect(businessState).not.toBeVisible();
+    await user.click(within(row).getByText("业务状态编码", { selector: "summary" }));
+    expect(businessState).toBeVisible();
+    expect(within(row).getByRole("link", { name: "打开审查" })).toHaveAttribute("href", "/cases/case-main/reviews/run-z?attempt_id=attempt-z-2");
+  });
+
   it("defaults to a case with multiple runs, resolves timestamp ties and selects the active contract", async () => {
     const { service } = open();
     await screen.findByLabelText("当前版本材料解析正文");
@@ -714,6 +743,104 @@ describe("ComparePage frozen run selection", () => {
 });
 
 describe("ComparePage evidence and actual results", () => {
+  it("shows readable revision labels and keeps their exact identities available", async () => {
+    const { user } = open();
+    const row = (await screen.findByText("质保修订继续存在")).closest("li")!;
+    expect(within(row).getByText("质保，冲突")).toBeVisible();
+    const toggle = within(row).getByText("修订技术详情", { selector: "summary" });
+    const raw = toggle.closest("details")!.querySelector("code")!;
+    expect(raw).not.toBeVisible();
+    await user.click(toggle);
+    expect(raw).toBeVisible();
+    expect(JSON.parse(raw.textContent!)).toMatchObject({ domain: "质保", relation: "conflict", finding_id: "finding-rule", previous_finding_id: "prior-finding" });
+  });
+
+  it("keeps rule codes out of the main explanation and preserves them in details", async () => {
+    const { user } = open();
+    await screen.findByText("质保修订继续存在");
+    await user.click(screen.getByRole("tab", { name: "规则依据" }));
+    const row = screen.getByText("合同质保低于采购要求").closest("li")!;
+    expect(within(row).queryByText(/规则 WARRANTY-001/)).not.toBeInTheDocument();
+    expect(within(row).getByText("质保，冲突")).toBeVisible();
+    expect(within(row).getByText("审查项目待核对")).toBeVisible();
+    const toggle = within(row).getByText("规则技术详情", { selector: "summary" });
+    const raw = toggle.closest("details")!.querySelector("code")!;
+    expect(raw).not.toBeVisible();
+    await user.click(toggle);
+    expect(raw).toBeVisible();
+    expect(JSON.parse(raw.textContent!)).toMatchObject({ domain: "质保", relation: "conflict", rule_id: "WARRANTY-001", rule_version: "2.1", capability_id: "minimum_warranty" });
+  });
+
+  it("keeps unknown mixed codes diagnostic while preserving claims, reasons and known capabilities", async () => {
+    const service = new CompareService();
+    const current = service.reviews.get("run-z")!;
+    Object.assign(current.revisions![0]!, { mark: "changed（旧）", domain: "warranty（旧）", relation: "conflict·", claim: "ENT（测试）股份有限公司原文" });
+    const unknown = current.evaluations![0]!;
+    Object.assign(unknown, { domain: "warranty（旧）", relation: "conflict·", capability_id: "dedicated_line.minimum_bandwidth（旧）", rule_id: "RULE（旧）", reason: "合同原文中的真实理由" });
+    current.evaluations!.push({ ...unknown, id: "evaluation-known", domain: "technical", relation: "compatible", capability_id: "dedicated_line.minimum_bandwidth", rule_id: "RULE-KNOWN", reason: "供应商提供的原始说明" });
+    const { user } = open(service);
+    const revision = (await screen.findByText("ENT（测试）股份有限公司原文")).closest("li")!;
+    expect(within(revision).getByText("修订类型待核对")).toBeVisible();
+    expect(within(revision).getByText("领域待核对，关系未识别")).toBeVisible();
+    const revisionToggle = within(revision).getByText("修订技术详情", { selector: "summary" });
+    const revisionRaw = revisionToggle.closest("details")!.querySelector("code")!;
+    expect(revisionRaw).not.toBeVisible();
+    await user.click(revisionToggle);
+    expect(revisionRaw).toBeVisible();
+    expect(JSON.parse(revisionRaw.textContent!)).toMatchObject({ mark: "changed（旧）", domain: "warranty（旧）", relation: "conflict·" });
+    await user.click(screen.getByRole("tab", { name: "规则依据" }));
+    const rule = screen.getByText("合同原文中的真实理由").closest("li")!;
+    expect(within(rule).getByText("领域待核对，关系未识别")).toBeVisible();
+    expect(within(rule).getByText("审查项目待核对")).toBeVisible();
+    const ruleToggle = within(rule).getByText("规则技术详情", { selector: "summary" });
+    const ruleRaw = ruleToggle.closest("details")!.querySelector("code")!;
+    expect(ruleRaw).not.toBeVisible();
+    await user.click(ruleToggle);
+    expect(ruleRaw).toBeVisible();
+    expect(JSON.parse(ruleRaw.textContent!)).toMatchObject({ domain: "warranty（旧）", relation: "conflict·", capability_id: "dedicated_line.minimum_bandwidth（旧）", rule_id: "RULE（旧）" });
+    const known = screen.getByText("供应商提供的原始说明").closest("li")!;
+    expect(within(known).getByText("技术与服务，一致")).toBeVisible();
+    expect(within(known).getByText("最低保障带宽")).toBeVisible();
+  });
+
+  it("distinguishes human and unknown finding origins without presenting them as model advice", async () => {
+    const service = new CompareService();
+    const findings = service.reviews.get("run-z")!.findings;
+    findings[0]!.origin = "manual";
+    findings[1]!.origin = "model（旧）";
+    const { user } = open(service);
+    expect(await screen.findByRole("button", { name: /质保期限低于采购要求，人工，冲突/ })).toBeVisible();
+    const unknown = screen.getByRole("button", { name: /模型建议复核付款安排，来源待核对，冲突/ });
+    await user.click(unknown);
+    const toggle = within(riskPanel()).getByText("发现技术详情", { selector: "summary" });
+    const raw = toggle.closest("details")!.querySelector("code")!;
+    expect(raw).not.toBeVisible();
+    await user.click(toggle);
+    expect(raw).toBeVisible();
+    expect(JSON.parse(raw.textContent!)).toMatchObject({ origin: "model（旧）", relation: "conflict", finding_id: "finding-model" });
+  });
+
+  it("retains unknown run and material states in their own technical details", async () => {
+    const service = new CompareService();
+    service.data.runs.find((item) => item.id === "run-z")!.state = "completed·";
+    service.reviews.get("run-z")!.documents.find((item) => item.id === "draft-z")!.parse_status = "ready·";
+    const { user } = open(service);
+    await screen.findByText("质保修订继续存在");
+    const runSelect = screen.getByRole("combobox", { name: "当前版本" }).closest(".compare-run-select")!;
+    const runRaw = within(runSelect as HTMLElement).getByText("completed·", { selector: "code" });
+    expect(runRaw).not.toBeVisible();
+    await user.click(within(runSelect as HTMLElement).getByText("审查状态编码", { selector: "summary" }));
+    expect(runRaw).toBeVisible();
+    const pane = material("当前版本").closest("article")!;
+    await user.click(within(pane).getByText(/版本与来源，\s*解析状态未识别/));
+    const toggle = within(pane).getByText("材料技术详情", { selector: "summary" });
+    const raw = toggle.closest("details")!.querySelector("code")!;
+    expect(raw).not.toBeVisible();
+    await user.click(toggle);
+    expect(raw).toBeVisible();
+    expect(JSON.parse(raw.textContent!)).toMatchObject({ document_version_id: "draft-z", parse_status: "ready·", run_state: "completed·" });
+  });
+
   it("opens the exact evidence source, highlights its frozen quote and exposes provenance and decision links", async () => {
     const { user } = open();
     await user.click(
@@ -738,6 +865,12 @@ describe("ComparePage evidence and actual results", () => {
     expect(within(pane).getByText("材料名称").nextElementSibling).toHaveTextContent("source-z.txt");
     expect(within(pane).queryByText("parse-source-z")).not.toBeInTheDocument();
     expect(within(pane).queryByText("digest-source-z")).not.toBeInTheDocument();
+    const materialDetails = within(pane).getByText("材料技术详情", { selector: "summary" });
+    const materialRaw = materialDetails.closest("details")!.querySelector("code")!;
+    expect(materialRaw).not.toBeVisible();
+    await user.click(materialDetails);
+    expect(materialRaw).toBeVisible();
+    expect(JSON.parse(materialRaw.textContent!)).toMatchObject({ document_version_id: "source-z", document_digest: "digest-source-z", parsed_document_metadata_id: "parse-source-z", parse_status: "ready", run_state: "completed" });
     expect(
       within(pane).getByRole("link", { name: "读取原件" }),
     ).toHaveAttribute(
@@ -925,7 +1058,7 @@ describe("ComparePage evidence and actual results", () => {
       "aria-selected",
       "true",
     );
-    expect(screen.getByText(/规则 WARRANTY-001，\s*v2\.1/)).toBeInTheDocument();
+    expect(screen.getByText("审查项目待核对")).toBeVisible();
     expect(screen.getByText("合同质保低于采购要求")).toBeInTheDocument();
     expect(screen.getByText("没有获取到这次审查的规则检查记录。")).toBeInTheDocument();
     expect(screen.queryByText("质保修订继续存在")).not.toBeInTheDocument();
