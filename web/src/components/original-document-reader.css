@@ -1,0 +1,21 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles original-page navigation, responsive canvas scaling and observed citation overlays with existing semantic tokens. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-04 */
+/* Updated: 2026-11-04 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+.original-document-reader { min-width: 0; }
+.original-reader-modes, .original-reader-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-block: 8px; }
+.original-reader-modes [aria-pressed="true"] { color: var(--action-primary); border-color: var(--action-primary); }
+.original-page-filename { overflow-wrap: anywhere; }
+.original-page-scroll { max-height: 70vh; overflow: auto; border: 1px solid var(--border-default); background: var(--surface-subtle); }
+.original-page-scroll:focus-visible { outline: 2px solid var(--action-primary); outline-offset: 2px; }
+.original-page-surface { position: relative; margin-inline: auto; background: var(--surface-raised); }
+.original-page-surface canvas { display: block; width: 100%; height: auto; }
+.original-quote-region { position: absolute; pointer-events: none; background: var(--evidence-mark); outline: 1px solid var(--state-insufficient); mix-blend-mode: multiply; }
+.original-reader-quotes { overflow-wrap: anywhere; }
+.original-reader-quotes blockquote { margin-inline: 0; white-space: pre-wrap; }

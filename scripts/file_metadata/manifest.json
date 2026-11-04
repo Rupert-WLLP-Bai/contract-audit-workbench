@@ -233,10 +233,12 @@
       "scripts/test_ui_terminology.py",
       "scripts/trusted_gate_runner.py",
       "scripts/ui-terminology/policy.json",
+      "web/build/original-reader-assets.ts",
       "web/e2e/command-context.ts",
       "web/e2e/tenant-recovery-smoke.ts",
       "web/src/api/context-sync.ts",
       "web/src/api/jurisdiction-operations.ts",
+      "web/src/api/original-bytes.test.ts",
       "web/src/api/pending-memberships.ts",
       "web/src/api/support-grants.ts",
       "web/src/api/tenant-config.ts",
@@ -250,6 +252,10 @@
       "web/src/components/contract-payments-panel.tsx",
       "web/src/components/contract-signing-panel.tsx",
       "web/src/components/contract-source-capability-panel.tsx",
+      "web/src/components/original-document-reader.css",
+      "web/src/components/original-document-reader.tsx",
+      "web/src/components/original-page-view.test.tsx",
+      "web/src/components/original-page-view.tsx",
       "web/src/components/review-workspace-layout.css",
       "web/src/components/tenant-config-panel.css",
       "web/src/components/tenant-config-panel.tsx",
@@ -257,9 +263,16 @@
       "web/src/components/tenant-cost-policy-panel.tsx",
       "web/src/components/workbench-case-next-step.tsx",
       "web/src/domain/actor-read-context.ts",
+      "web/src/domain/business-labels.ts",
+      "web/src/domain/source-annotation.test.ts",
+      "web/src/domain/source-annotation.ts",
       "web/src/features/review/manual-findings/api.ts",
       "web/src/features/review/manual-findings/index.ts",
       "web/src/features/review/manual-findings/manual-findings-panel.tsx",
+      "web/src/features/review/original-source-cancel.test.ts",
+      "web/src/features/review/original-source.test.ts",
+      "web/src/features/review/original-source.ts",
+      "web/src/features/review/pdf-reader-types.d.ts",
       "web/src/pages/jurisdiction-operations-page.css",
       "web/src/pages/jurisdiction-operations-page.tsx",
       "web/src/pages/pending-membership-page.tsx",
@@ -8030,12 +8043,12 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0c89c92be6c12f4321d22f308e05a91db8b25e00",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
           "path": "docs/operations/document-processing.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -50121,7 +50134,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r32",
+      "revision": "r33",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -54380,14 +54393,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-27",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "da001b89eacb3a628e7390c02bbccab061f4bfa0",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/bun.lock",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -56001,14 +56015,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "7e53ed3c139fd7c833b6acad41655245636fb4c2",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/package.json",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -57478,15 +57493,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
           "path": "web/src/api/http.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -60853,14 +60868,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "45193bd53fe6a25a2b3eb4a7758807e89003faa4",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/components/contract-citation-reader.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -61283,14 +61299,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/components/document-stage.test.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -61330,14 +61347,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/components/document-stage.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -62418,15 +62436,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
           "path": "web/src/components/intake-primary-contract.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -69075,15 +69093,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "08f4c3cece928e800e8c62c83989dc48a9fcd772",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
           "path": "web/src/pages/review-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -70696,14 +70714,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-25",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "fd5be1c3a71282a9115a7c38648923eb1a6d4074",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/vite.config.ts",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -70748,6 +70767,630 @@
           "kind": "git-last-content-change",
           "commit": "0d82b02b299acb8119e92f75331724bfca9e21d1",
           "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/build/original-reader-assets.ts": {
+      "purpose": "Bundles pinned PDF reader workers, fonts, decoders and Chinese/English OCR resources as same-origin development and production assets without external CDN reads.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/build/original-reader-assets.ts",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/build/original-reader-assets.ts",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/api/original-bytes.test.ts": {
+      "purpose": "Checks authenticated bounded original reads, rejects authorization errors and discards binary responses after a session change.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/api/original-bytes.test.ts",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/api/original-bytes.test.ts",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/components/original-document-reader.css": {
+      "purpose": "Styles original-page navigation, responsive canvas scaling and observed citation overlays with existing semantic tokens.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/components/original-document-reader.css",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/components/original-document-reader.css",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/components/original-document-reader.tsx": {
+      "purpose": "Provides attempt-scoped original-reading identity and switches between original annotations and frozen text without changing evidence or decisions.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/components/original-document-reader.tsx",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/components/original-document-reader.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/components/original-page-view.test.tsx": {
+      "purpose": "Checks native and scanned-page overlays, immutable-source mismatch refusal, repeated-text handling, pagination and recognition cleanup.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/components/original-page-view.test.tsx",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/components/original-page-view.test.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/components/original-page-view.tsx": {
+      "purpose": "Reads and verifies immutable originals, renders one page at a time and displays unique frozen quote matches while cancelling obsolete render and recognition tasks.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/components/original-page-view.tsx",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/components/original-page-view.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/domain/business-labels.ts": {
+      "purpose": "Maps stable business scope and audit action identifiers to Chinese presentation labels without renaming API or stored identifiers.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/domain/business-labels.ts",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/domain/business-labels.ts",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/domain/source-annotation.test.ts": {
+      "purpose": "Checks immutable quote ranges, Unicode, layout whitespace, numerical boundaries, duplicate matches, OCR quality and headered or headerless TSV geometry.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/domain/source-annotation.test.ts",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/domain/source-annotation.test.ts",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/domain/source-annotation.ts": {
+      "purpose": "Maps exact frozen Unicode quote ranges to observed native or OCR page regions, rejecting ambiguous text, numerical changes and unreliable geometry.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/domain/source-annotation.ts",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/domain/source-annotation.ts",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/features/review/original-source-cancel.test.ts": {
+      "purpose": "Checks cancellation while the local OCR worker is loading or recognizing, settling the reader promptly and discarding late workers before they receive original pixels.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/features/review/original-source-cancel.test.ts",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/features/review/original-source-cancel.test.ts",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/features/review/original-source.test.ts": {
+      "purpose": "Uses synthetic native PDFs, scanned PDFs and PNG fixtures to check actual original-byte verification, rendering and OCR geometry with pinned local resources.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/features/review/original-source.test.ts",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/features/review/original-source.test.ts",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/features/review/original-source.ts": {
+      "purpose": "Loads bounded immutable PDF and image originals, extracts observed text geometry and recognizes current-page positions locally without writing audit state.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/features/review/original-source.ts",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/features/review/original-source.ts",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/features/review/pdf-reader-types.d.ts": {
+      "purpose": "Reuses official PDF.js API declarations for the compatible reader build used by the original annotation adapter.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/features/review/pdf-reader-types.d.ts",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "path": "web/src/features/review/pdf-reader-types.d.ts",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,8 +15,35 @@ import { describe, expect, it, vi } from "vitest";
 import type { Finding, ReviewDocument } from "../api/types";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { DocumentStage, type ReviewCaseContext } from "./document-stage";
+import { OriginalSourceContext } from "./original-document-reader";
+import type { SourceQuote } from "../domain/source-annotation";
+
+vi.mock("./original-page-view", () => ({
+  default: ({ quotes }: { quotes: readonly SourceQuote[] }) =>
+    <div data-testid="original-page-quotes">{quotes.map((quote) => quote.quote).join("；")}</div>,
+}));
 
 const at = "2026-10-21T06:00:00Z";
+
+it("connects a frozen finding to original-page annotations and keeps unfrozen history on the text reader", async () => {
+  const document = documentOf("doc-pdf", "draft_contract", "合同.pdf", "甲方支付100万元。", {
+    parsed_document_id: "parsed-pdf", media_type: "application/pdf",
+  });
+  const finding = findingWith([locatedAnchor(document.id, "100万元", 4, 9)]);
+  const scope = { caseId: "case-1", contextKey: "reviewer:attempt-1", digests: new Map([[document.id, "a".repeat(64)]]) };
+  const quoteScope = { caseId: "case-1", runId: "run-1", attemptId: "attempt-1", isFrozenAttempt: true,
+    parsedDocumentIds: ["parsed-pdf"] };
+  const element = (frozen: boolean) => <MemoryRouter><OriginalSourceContext.Provider value={scope}>
+    <DocumentStage documents={[document]} finding={finding} findings={[finding]} selectedFindingId={finding.id}
+      onSelectFinding={() => undefined} layout="switch" quoteScope={{ ...quoteScope, isFrozenAttempt: frozen }} />
+  </OriginalSourceContext.Provider></MemoryRouter>;
+  const view = render(element(true));
+  expect(await screen.findByTestId("original-page-quotes")).toHaveTextContent("100万元");
+  await userEvent.setup().click(screen.getByRole("button", { name: "文字原文" }));
+  expect(view.container.querySelector("mark.hit-evidence")?.textContent).toBe("100万元");
+  view.rerender(element(false));
+  expect(screen.queryByRole("button", { name: "原件标注" })).not.toBeInTheDocument();
+});
 
 function documentOf(
   id: string,
@@ -162,7 +189,7 @@ describe("document stage case context", () => {
     expect(screen.getByText("甲方")).toBeInTheDocument();
     expect(screen.getByText("乙方")).toBeInTheDocument();
     expect(screen.getByText("采购合同")).toBeInTheDocument();
-    expect(screen.getByText("ENT / cloud_services")).toBeInTheDocument();
+    expect(screen.getByText("政企业务 / 云服务采购")).toBeInTheDocument();
     expect(screen.getByText("林晓")).toBeInTheDocument();
     expect(screen.getByText(/未设期限/)).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "审查成员 1" })).toBeInTheDocument();
@@ -185,7 +212,7 @@ describe("document stage case context", () => {
       },
     });
     expect(screen.getAllByText("未设置").length).toBeGreaterThan(0);
-    expect(screen.getByText("未报告")).toBeInTheDocument();
+    expect(screen.getAllByText("未报告").length).toBeGreaterThan(0);
     expect(screen.getByText("姓名未返回")).toBeInTheDocument();
   });
 

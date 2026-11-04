@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r3
+// Updated: 2026-11-04
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -71,6 +71,8 @@ import {
   useDecisionDraftsDirty,
 } from "../hooks/decision-drafts";
 import { useReviewLayout } from "../hooks/use-viewport-layout";
+import { actorReadContextKey } from "../domain/actor-read-context";
+import { OriginalSourceContext } from "../components/original-document-reader";
 
 export function ReviewPage() {
   const { caseId = "", runId = "" } = useParams();
@@ -579,6 +581,11 @@ export function ReviewPage() {
         />
       ) : null}
       <DecisionDraftScopeProvider scope={decisionDraftScope}>
+        <OriginalSourceContext.Provider value={caseDetailReady && session.isSuccess && !session.isFetching ? {
+          caseId,
+          contextKey: `${actorReadContextKey(session.data)}:${selectedAttempt?.id ?? "legacy"}`,
+          digests: new Map(caseDetail.data.documents.map((document) => [document.id, document.digest])),
+        } : null}>
         <ReviewWorkspaceView
           workspace={workspace}
           layout={layout}
@@ -654,6 +661,7 @@ export function ReviewPage() {
               : undefined
           }
         />
+        </OriginalSourceContext.Provider>
       </DecisionDraftScopeProvider>
       <DirtyLeaveGuard dirty={decisionDraftsDirty} />
       <details className="review-secondary-section">

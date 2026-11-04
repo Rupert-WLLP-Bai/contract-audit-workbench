@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -399,6 +399,47 @@ export async function requestJson<T>(
   assertSessionEpoch(requestEpoch, isSessionRequest);
   if (!response.ok) throw await errorFromResponse(response);
   return readJsonResponse(response, parse, requestEpoch, isSessionRequest);
+}
+
+/** Authorized original reads obey the same session invalidation as JSON reads. */
+export async function requestBytes(path: string, signal: AbortSignal, maxBytes = 32 << 20): Promise<Uint8Array<ArrayBuffer>> {
+  const requestEpoch = sessionEpoch;
+  const response = await fetchResponse(path, { method: "GET", signal, headers: { Accept: "application/octet-stream" } });
+  assertSessionEpoch(requestEpoch, false);
+  if (!response.ok) throw await errorFromResponse(response);
+  const tooLarge = () => new ApiError("原件过大，无法在页面中预览，请下载后核对", 413, "original_too_large", false, null);
+  if (Number(response.headers.get("Content-Length")) > maxBytes) {
+    await response.body?.cancel();
+    throw tooLarge();
+  }
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    assertSessionEpoch(requestEpoch, false);
+    if (bytes.length > maxBytes) throw tooLarge();
+    return bytes;
+  }
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      assertSessionEpoch(requestEpoch, false);
+      if (done) break;
+      size += value.length;
+      if (size > maxBytes) throw tooLarge();
+      chunks.push(value);
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+  return bytes;
 }
 
 export function jsonInit(
