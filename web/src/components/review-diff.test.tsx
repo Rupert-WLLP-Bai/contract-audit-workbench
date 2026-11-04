@@ -36,7 +36,7 @@ it("shows frozen scope and business names with exact identities behind technical
   render(<QueryClientProvider client={client}><MemoryRouter><ReviewDiff caseId="case-1" latestRunId="run-b" actorScope="test" /></MemoryRouter></QueryClientProvider>);
   const user = userEvent.setup();
   await user.click(screen.getByText("复审差异：选择两个冻结执行记录"));
-  await chooseOption(user, await screen.findByRole("combobox", { name: "来源审查与执行" }), /审查 run-a/);
+  await chooseOption(user, await screen.findByRole("combobox", { name: "来源审查与执行" }), /审查标识 run-a/);
   const previousListboxes = new Set(screen.queryAllByRole("listbox", { hidden: true }));
   await user.click(screen.getByRole("combobox", { name: "目标审查与执行" }));
   const targetListbox = await waitFor(() => {
@@ -44,7 +44,7 @@ it("shows frozen scope and business names with exact identities behind technical
     expect(opened).toHaveLength(1);
     return opened[0]!;
   });
-  await user.click(await within(targetListbox).findByRole("option", { name: /审查 run-b/ }));
+  await user.click(await within(targetListbox).findByRole("option", { name: /审查标识 run-b/ }));
   const context = await screen.findByRole("region", { name: "比较前提" });
   const side = within(context).getByRole("region", { name: "来源身份与依据" });
   expect(within(side).getByText(/完整审查；技术与服务：最低保障带宽、审查项目待核对；来源 1 项/)).toBeVisible();

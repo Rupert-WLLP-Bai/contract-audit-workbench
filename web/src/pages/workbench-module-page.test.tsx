@@ -825,8 +825,8 @@ describe("workbench tasks", () => {
     await user.click(screen.getByRole("button", { name: "分派任务" }));
     await user.click(screen.getByRole("combobox", { name: "关联案件" }));
 
-    expect(screen.getByRole("option", { name: "专线采购案件" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "未启动案件" })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /专线采购案件.*案件标识 case\/alpha/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /未启动案件.*案件标识 case-empty/ })).not.toBeInTheDocument();
   });
 
   it("preserves the knowledge creation entry without task capability", async () => {
@@ -841,7 +841,7 @@ describe("workbench tasks", () => {
     const { user, client } = open("tasks", service);
     await list("审查任务");
     await user.click(screen.getByRole("button", { name: "分派任务" }));
-    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), "专线采购案件");
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), /专线采购案件.*案件标识 case\/alpha/);
     await user.type(screen.getByRole("textbox", { name: "任务名称" }), "旧身份任务");
 
     service.snapshot.cases[0]!.can_create_task = false;
@@ -887,7 +887,7 @@ describe("workbench tasks", () => {
     const { user } = open("tasks", service);
     await list("审查任务");
     await user.click(screen.getByRole("button", { name: "分派任务" }));
-    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), "专线采购案件");
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), /专线采购案件.*案件标识 case\/alpha/);
     await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), "审查员甲，reviewer");
     await user.type(screen.getByRole("textbox", { name: "任务名称" }), "授权外任务");
     await user.click(screen.getByRole("button", { name: "保存任务" }));
@@ -1014,7 +1014,7 @@ describe("workbench tasks", () => {
     expect(rows.getByText("没有获取到记录。")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "分派任务" }));
     expect(screen.getByRole("button", { name: "保存任务" })).toBeDisabled();
-    await chooseOption(user, screen.getByLabelText("关联案件"), "专线采购案件");
+    await chooseOption(user, screen.getByLabelText("关联案件"), /专线采购案件.*案件标识 case\/alpha/);
     await chooseOption(
       user,
       screen.getByLabelText("责任人"),
@@ -1093,7 +1093,7 @@ describe("workbench tasks", () => {
     const { user } = open("tasks", service);
     await list("审查任务");
     await user.click(screen.getByRole("button", { name: "分派任务" }));
-    await chooseOption(user, screen.getByLabelText("关联案件"), "未启动案件");
+    await chooseOption(user, screen.getByLabelText("关联案件"), /未启动案件.*案件标识 case-empty/);
     await chooseOption(
       user,
       screen.getByLabelText("责任人"),

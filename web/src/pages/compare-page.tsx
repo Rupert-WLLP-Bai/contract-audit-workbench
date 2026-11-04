@@ -19,6 +19,9 @@ import { paths } from "../api/paths";
 import { useReview, useWorkbench } from "../api/queries";
 import type { Finding, ReviewDocument, WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { TechnicalDetail } from "../components/technical-detail";
+import { caseIdentityDetails } from "../domain/case-identity";
+import { preciseTime } from "../domain/time";
 import {
   caseHref,
   decisionLabel,
@@ -55,34 +58,44 @@ function RunSelect({
   label,
   value,
   runs,
+  attemptId,
   onChange,
 }: {
   label: string;
   value: WorkbenchRun | null;
   runs: WorkbenchRun[];
+  attemptId: string | null;
   onChange: (id: string) => void;
 }) {
   return (
-    <label className="field compare-run-select">
-      {label}
+    <div className="field compare-run-select">
+      <label>{label}
       <Select<string>
         aria-label={String(label)}
         value={String(value?.id ?? "")}
         labelRender={() =>
           value
-            ? `审查记录 ${runs.findIndex((run) => run.id === value.id) + 1}，${runLabel(value.state)}，${formatDateTime(value.updated_at)}`
+            ? `审查当前状态 ${runLabel(value.state)} · 更新时间 ${preciseTime(value.updated_at)}`
             : "没有可选运行"
         }
         onChange={(selectedValue) => onChange(selectedValue)}
+        virtual={false}
+        optionRender={(option) => <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{option.label}</div>}
+        styles={{ popup: { listItem: { whiteSpace: "normal" } } }}
         options={[
           ...(runs.length === 0 ? [{ value: "", label: "没有可选运行" }] : []),
-          ...runs.map((run, index) => ({
+          ...runs.map((run) => ({
             value: String(run.id),
-            label: `审查记录 ${index + 1}，${runLabel(run.state)}，${formatDateTime(run.updated_at)}`,
+            label: `审查当前状态 ${runLabel(run.state)} · 审查更新时间 ${preciseTime(run.updated_at)} · 审查标识 ${run.id} · 最新执行标识 ${run.attempt_id ?? "未记录"}`,
           })),
         ]}
       />
-    </label>
+      </label>
+      {value ? <div className="meta caw-wrap">
+        <TechnicalDetail label="审查标识" value={value.id} />
+        <TechnicalDetail label="执行标识" value={attemptId} />
+      </div> : null}
+    </div>
   );
 }
 
@@ -243,42 +256,36 @@ export function ComparePage() {
   const caseSelection = params.get("case_id") ?? "";
   const leftRunSelection = params.get("left_run_id") ?? "";
   const rightRunSelection = params.get("right_run_id") ?? "";
+  const leftAttemptSelection = params.get("left_attempt_id");
+  const rightAttemptSelection = params.get("right_attempt_id");
   const [leftDocumentSelection, setLeftDocumentSelection] = useState("");
   const [rightDocumentSelection, setRightDocumentSelection] = useState("");
   const [bottomTab, setBottomTab] = useState("修订证据");
   const [findingSelection, setFindingSelection] = useState("");
 
   const snapshot = snapshotQuery.data;
-  const selectedCase =
-    snapshot?.cases.find((item) => item.id === caseSelection) ??
-    snapshot?.cases.find(
-      (item) =>
-        snapshot.runs.filter((run) => run.case_id === item.id).length > 1,
-    ) ??
-    snapshot?.cases[0] ??
-    null;
+  const selectedCase = caseSelection
+    ? snapshot?.cases.find((item) => item.id === caseSelection) ?? null
+    : snapshot?.cases.find((item) => snapshot.runs.filter((run) => run.case_id === item.id).length > 1) ?? snapshot?.cases[0] ?? null;
   const caseRuns =
     selectedCase && snapshot
       ? snapshot.runs
           .filter((run) => run.case_id === selectedCase.id)
           .sort(latestFirst)
       : [];
-  const leftRun =
-    caseRuns.find((run) => run.id === leftRunSelection) ?? caseRuns[0] ?? null;
-  const rightRun =
-    caseRuns.find((run) => run.id === rightRunSelection) ??
-    caseRuns[1] ??
-    caseRuns[0] ??
-    null;
+  const leftRun = leftRunSelection ? caseRuns.find((run) => run.id === leftRunSelection) ?? null : caseRuns[0] ?? null;
+  const rightRun = rightRunSelection ? caseRuns.find((run) => run.id === rightRunSelection) ?? null : caseRuns[1] ?? caseRuns[0] ?? null;
+  const leftAttemptId = leftAttemptSelection ?? leftRun?.attempt_id ?? null;
+  const rightAttemptId = rightAttemptSelection ?? rightRun?.attempt_id ?? null;
   const leftReview = useReview(
     selectedCase?.id ?? "",
     leftRun?.id ?? "",
-    leftRun?.attempt_id,
+    leftAttemptId,
   );
   const rightReview = useReview(
     selectedCase?.id ?? "",
     rightRun?.id ?? "",
-    rightRun?.attempt_id,
+    rightAttemptId,
   );
   if (snapshotQuery.isLoading)
     return <PageStatus kind="loading" title="正在读取可比较的真实审查记录" />;
@@ -322,6 +329,10 @@ export function ComparePage() {
   function chooseRun(side: "left_run_id" | "right_run_id", id: string) {
     const next = new URLSearchParams(params);
     next.set(side, id);
+    const attemptKey = side === "left_run_id" ? "left_attempt_id" : "right_attempt_id";
+    const attempt = caseRuns.find((run) => run.id === id)?.attempt_id;
+    if (attempt) next.set(attemptKey, attempt);
+    else next.delete(attemptKey);
     setParams(next);
     if (side === "left_run_id") {
       setLeftDocumentSelection("");
@@ -348,7 +359,7 @@ export function ComparePage() {
       <header className="compare-page-head">
         <div>
           <strong>{selectedCase?.title ?? "版本对照"}</strong>
-          <span>{selectedCase?.profile?.number ?? "合同编号未提供"}</span>
+          <span>{selectedCase ? caseIdentityDetails(selectedCase, snapshot.members) : "案件不可用"}</span>
         </div>
         <nav className="compare-page-links" aria-label="版本对照导航">
           <Link to="/compare">全部合同</Link>
@@ -415,7 +426,7 @@ export function ComparePage() {
                       </p>
                     ) : null}
                     <Link
-                      to={`/cases/${selectedCase?.id}/reviews/${leftRun?.id}?finding=${item.id}`}
+                      to={`/cases/${selectedCase?.id}/reviews/${leftRun?.id}?${new URLSearchParams({ ...(leftAttemptId ? { attempt_id: leftAttemptId } : {}), finding: item.id }).toString()}`}
                     >
                       打开原文与审查判断
                     </Link>
@@ -437,7 +448,7 @@ export function ComparePage() {
             <Link
               to={
                 selectedCase && leftRun
-                  ? `/cases/${selectedCase.id}/reviews/${leftRun.id}`
+                  ? `/cases/${selectedCase.id}/reviews/${leftRun.id}${leftAttemptId ? `?attempt_id=${encodeURIComponent(leftAttemptId)}` : ""}`
                   : "/review"
               }
             >
@@ -449,12 +460,14 @@ export function ComparePage() {
               label="当前版本"
               value={leftRun}
               runs={caseRuns}
+              attemptId={leftAttemptId}
               onChange={(id) => chooseRun("left_run_id", id)}
             />
             <RunSelect
               label="历史版本"
               value={rightRun}
               runs={caseRuns}
+              attemptId={rightAttemptId}
               onChange={(id) => chooseRun("right_run_id", id)}
             />
           </div>

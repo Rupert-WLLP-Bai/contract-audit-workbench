@@ -123,8 +123,8 @@ describe("cases table", () => {
           items={[
             {
               ...item,
-              business_line: "企业业务",
-              scenario: "专线",
+              business_line: "ENT",
+              scenario: "telecom_dedicated_line",
               business_status: "active",
             },
             {
@@ -141,7 +141,7 @@ describe("cases table", () => {
         />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("cell", { name: "企业业务 / 专线" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "政企业务 / 政企专线" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "进行中" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "业务范围未设置" })).toBeInTheDocument();
     expect(screen.getAllByText("已归档").length).toBeGreaterThan(0);

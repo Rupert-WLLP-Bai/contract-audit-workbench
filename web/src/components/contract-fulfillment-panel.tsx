@@ -26,7 +26,9 @@ import { errorMessage } from "../api/http";
 import { clearPendingMutationKey, idempotencyActorScope, pendingMutationKey } from "../api/idempotency";
 import { paths } from "../api/paths";
 import { useCaseDetail, useCases } from "../api/queries";
-import type { Actor } from "../api/types";
+import type { Actor, CaseSummary } from "../api/types";
+import { caseOptionLabel } from "../domain/case-identity";
+import { caseSelectPresentation } from "./case-select-presentation";
 import type { WireSchemas } from "../api/wire.generated";
 
 const itemId = (item: { item_id?: string }, index: number) => item.item_id ?? `missing-${index}`;
@@ -77,8 +79,15 @@ export function ContractFulfillmentPanel({ detail, actor, onRefresh }: {
   const active = detail.summary.contract_state === "registered" || detail.summary.contract_state === "performing";
   const cases = useCases();
   const [caseId, setCaseId] = useState<string>();
-  const caseDetail = useCaseDetail(caseId ?? "");
+  const caseVisible = !cases.isError && !!caseId && !!cases.data?.some((item) => item.id === caseId);
+  const caseDetail = useCaseDetail(caseVisible ? caseId! : "");
   const [materialId, setMaterialId] = useState<string>();
+  useEffect(() => {
+    if (caseId && (cases.isError || (cases.isSuccess && !cases.data.some((item) => item.id === caseId)))) {
+      setCaseId(undefined);
+      setMaterialId(undefined);
+    }
+  }, [caseId, cases.data, cases.isError, cases.isSuccess]);
   const [deliveries, setDeliveries] = useState<ContractDeliveryList | null>(null);
   const [acceptances, setAcceptances] = useState<ContractAcceptanceList | null>(null);
   const [loading, setLoading] = useState(false);
@@ -132,7 +141,7 @@ export function ContractFulfillmentPanel({ detail, actor, onRefresh }: {
 
   const materials = useMemo(() => {
     const source = caseDetail.data;
-    if (!source || caseDetail.isError) return [];
+    if (!caseVisible || !source || caseDetail.isError) return [];
     const documents = new Map(source.documents.map((document) => [document.id, document]));
     return (source.material_versions ?? []).flatMap((version) => {
       const document = documents.get(version.document_id);
@@ -141,7 +150,7 @@ export function ContractFulfillmentPanel({ detail, actor, onRefresh }: {
         ref: { material_id: version.material_id, material_version_id: version.document_id, sha256: document.digest, purpose: "supporting" as const } satisfies MaterialRef,
         caseId: source.id, filename: document.filename, digest: document.digest }];
     });
-  }, [caseDetail.data, caseDetail.isError]);
+  }, [caseVisible, caseDetail.data, caseDetail.isError]);
   const selectedMaterial = materials.find((entry) => entry.value === materialId);
   const frozenItems = detail.draft?.items ?? [];
   const selectedDeliveryItem = frozenItems.find((item) => item.item_id === deliveryItem);
@@ -236,7 +245,7 @@ export function ContractFulfillmentPanel({ detail, actor, onRefresh }: {
         <Input aria-label="交付地点" placeholder="实际交付地点" value={location} onChange={(event) => setLocation(event.target.value)} />
         <Input aria-label="交付范围说明" placeholder="范围或说明" value={deliveryNote} onChange={(event) => setDeliveryNote(event.target.value)} />
       </div>
-      <EvidencePicker cases={cases.data ?? []} caseId={caseId} setCaseId={(value) => { setCaseId(value); setMaterialId(undefined); }} materials={materials} value={materialId} onChange={setMaterialId} />
+      <EvidencePicker cases={cases.isError ? [] : cases.data ?? []} caseId={caseVisible ? caseId : undefined} setCaseId={(value) => { setCaseId(value); setMaterialId(undefined); }} materials={materials} value={caseVisible ? materialId : undefined} onChange={setMaterialId} />
       <Button type="primary" loading={busy} disabled={!actor || !revisionId || !deliveryItem || !selectedDeliveryItemVerifiable || !selectedMaterial || !batch.trim() || !quantity.trim() || !location.trim() || !actualAt} onClick={() => void saveDelivery()}>追加实际交付事实</Button>
     </> : <p>当前身份可查看已授权履约事实；没有可用于写入的管理授权。</p>}
 
@@ -274,14 +283,14 @@ export function ContractFulfillmentPanel({ detail, actor, onRefresh }: {
         </div>) : null}
         {acceptanceHasFailedQuantity ? <Button onClick={() => setDefects((current) => [...current, { description: "", responsible: "", remediation_due: "", failed_quantity: "" }])}>添加另一项验收问题</Button> : null}
       </div>
-      <EvidencePicker cases={cases.data ?? []} caseId={caseId} setCaseId={(value) => { setCaseId(value); setMaterialId(undefined); }} materials={materials} value={materialId} onChange={setMaterialId} />
+      <EvidencePicker cases={cases.isError ? [] : cases.data ?? []} caseId={caseVisible ? caseId : undefined} setCaseId={(value) => { setCaseId(value); setMaterialId(undefined); }} materials={materials} value={caseVisible ? materialId : undefined} onChange={setMaterialId} />
       <Button type="primary" loading={busy} disabled={!actor || !revisionId || !selectedMaterial || !selectedDelivery || !actualAt || !standard.trim() || !retestEnd.trim() || !acceptedQuantity.trim() || !acceptanceDefectsMatch || (!!retestParent && retestParent.defects.some((defect) => !retestParent.rectifications.some((fact) => fact.defect_id === defect.defect_id)))} onClick={() => void saveAcceptance(retestParent)}>追加{retestParent ? "复验" : "验收"}事实</Button>
     </> : null}
   </section>;
 }
 
 function EvidencePicker({ cases, caseId, setCaseId, materials, value, onChange }: {
-  cases: Array<{ id: string; title: string }>;
+  cases: CaseSummary[];
   caseId?: string;
   setCaseId: (value: string) => void;
   materials: Array<{ value: string; label: string }>;
@@ -289,7 +298,7 @@ function EvidencePicker({ cases, caseId, setCaseId, materials, value, onChange }
   onChange: (value: string) => void;
 }) {
   return <div className="contracts-page-fields">
-    <Select placeholder="选择有权读取的案件证据" value={caseId} options={cases.map((item) => ({ value: item.id, label: item.title }))} onChange={setCaseId} />
+    <Select {...caseSelectPresentation} showSearch={{ optionFilterProp: "label" }} placeholder="选择有权读取的案件证据" value={caseId} options={cases.map((item) => ({ value: item.id, label: caseOptionLabel(item) }))} onChange={setCaseId} />
     <Select placeholder="选择证据材料版本" value={value} disabled={!caseId} options={materials.map(({ value: id, label }) => ({ value: id, label }))} onChange={onChange} />
   </div>;
 }

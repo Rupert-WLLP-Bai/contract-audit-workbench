@@ -24,6 +24,8 @@ import {
 import { errorMessage } from "../api/http";
 import { clearPendingMutationKey, idempotencyActorScope, pendingMutationKey } from "../api/idempotency";
 import { useCaseDetail, useCases } from "../api/queries";
+import { caseOptionLabel } from "../domain/case-identity";
+import { caseSelectPresentation } from "./case-select-presentation";
 import type { Actor } from "../api/types";
 import { formatDateTime } from "../domain/review";
 import type { WireSchemas } from "../api/wire.generated";
@@ -96,8 +98,15 @@ export function ContractAssetsPanel({ detail, actor, canManage, onRefresh }: {
   const active = detail.summary.contract_state === "registered" || detail.summary.contract_state === "performing";
   const cases = useCases();
   const [caseId, setCaseId] = useState<string>();
-  const caseDetail = useCaseDetail(caseId ?? "");
+  const caseVisible = !cases.isError && !!caseId && !!cases.data?.some((item) => item.id === caseId);
+  const caseDetail = useCaseDetail(caseVisible ? caseId! : "");
   const [materialId, setMaterialId] = useState<string>();
+  useEffect(() => {
+    if (caseId && (cases.isError || (cases.isSuccess && !cases.data.some((item) => item.id === caseId)))) {
+      setCaseId(undefined);
+      setMaterialId(undefined);
+    }
+  }, [caseId, cases.data, cases.isError, cases.isSuccess]);
   const [assets, setAssets] = useState<ContractAssetList | null>(null);
   const [deliveries, setDeliveries] = useState<ContractDelivery[]>([]);
   const [acceptances, setAcceptances] = useState<ContractAcceptance[]>([]);
@@ -177,18 +186,18 @@ export function ContractAssetsPanel({ detail, actor, canManage, onRefresh }: {
   const planAcceptances = acceptances.filter((item) => item.contract_revision_id === revisionId &&
     item.item_id === selectedPlan?.item_id && item.delivery_id === deliveryId && item.result !== "failed");
   const selectedDelivery = planDeliveries.find((item) => item.delivery_id === deliveryId);
-  const selectedMaterial = useMemo(() => caseDetail.data && materialId
-    ? evidenceMaterialRef(caseDetail.data, materialId) : null, [caseDetail.data, materialId]);
+  const selectedMaterial = useMemo(() => caseVisible && !caseDetail.isError && caseDetail.data && materialId
+    ? evidenceMaterialRef(caseDetail.data, materialId) : null, [caseVisible, caseDetail.data, caseDetail.isError, materialId]);
   const materials = useMemo(() => {
     const source = caseDetail.data;
-    if (!source || caseDetail.isError) return [];
+    if (!caseVisible || !source || caseDetail.isError) return [];
     const documents = new Map(source.documents.map((document) => [document.id, document]));
     return (source.material_versions ?? []).flatMap((version) => {
       const document = documents.get(version.document_id);
       return document ? [{ value: version.document_id,
         label: `${document.filename} · 版本 ${version.version} · SHA-256 ${document.digest}` }] : [];
     });
-  }, [caseDetail.data, caseDetail.isError]);
+  }, [caseVisible, caseDetail.data, caseDetail.isError]);
 
   async function createHandover() {
     if (!actor || !revisionId || !assets || !selectedPlan || !selectedDelivery || !acceptanceId ||
@@ -314,7 +323,7 @@ export function ContractAssetsPanel({ detail, actor, canManage, onRefresh }: {
         <Input aria-label="资产移交说明" placeholder="移交说明" value={transferNote} onChange={(event) => setTransferNote(event.target.value)} />
       </div>
       <div className="contracts-page-fields">
-        <Select placeholder="选择有权读取的案件证据" value={caseId} options={(cases.data ?? []).map((item) => ({ value: item.id, label: item.title }))} onChange={(value) => { setCaseId(value); setMaterialId(undefined); }} />
+        <Select {...caseSelectPresentation} showSearch={{ optionFilterProp: "label" }} placeholder="选择有权读取的案件证据" value={caseVisible ? caseId : undefined} options={(cases.isError ? [] : cases.data ?? []).map((item) => ({ value: item.id, label: caseOptionLabel(item) }))} onChange={(value) => { setCaseId(value); setMaterialId(undefined); }} />
         <Select placeholder="选择证据材料版本" value={materialId} disabled={!caseId} options={materials} onChange={setMaterialId} />
       </div>
       <Button type="primary" loading={busy} disabled={!canCreate || !assetPlanId || !deliveryId || !acceptanceId || !selectedMaterial || !scopeStart.trim() || !scopeEnd.trim() || !toRFC3339(handedOverAt) || !location.trim() || !transferNote.trim()} onClick={() => void createHandover()}>追加人工移交事实</Button>

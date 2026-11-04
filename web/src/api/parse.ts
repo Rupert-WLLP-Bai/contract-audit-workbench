@@ -372,6 +372,10 @@ export function parseCaseSummary(value: unknown): CaseSummary {
     scenario: optionalString(record, "scenario") ?? undefined,
     business_status: optionalString(record, "business_status") ?? undefined,
     archived_at: nullableString(record, "archived_at"),
+    ...(record.case_number === undefined ? {} : { case_number: requiredStringValue(record, "case_number") }),
+    ...(record.customer === undefined ? {} : { customer: requiredStringValue(record, "customer") }),
+    ...(record.supplier === undefined ? {} : { supplier: requiredStringValue(record, "supplier") }),
+    ...(record.owner_name === undefined ? {} : { owner_name: requiredStringValue(record, "owner_name") }),
   };
 }
 

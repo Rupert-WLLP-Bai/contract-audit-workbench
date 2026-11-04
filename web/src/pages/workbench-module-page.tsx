@@ -32,7 +32,9 @@ import type {
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
 import { TechnicalDetail } from "../components/technical-detail";
+import { caseSelectPresentation } from "../components/case-select-presentation";
 import { caseHref, formatDateTime } from "../domain/review";
+import { caseOptionLabel } from "../domain/case-identity";
 import { businessActionLabel, businessSourceTypeLabel, remediationStatusLabel } from "../domain/business-labels";
 import { SettingsPage } from "./settings-page";
 import "./workbench-module-page.css";
@@ -967,6 +969,8 @@ function TaskCreateForm({
       <label>
         关联案件
         <Select<string>
+          {...caseSelectPresentation}
+          showSearch={{ optionFilterProp: "label" }}
           aria-label={"关联案件"}
           value={String(caseId)}
           onChange={(selectedValue) => setCaseId(selectedValue)}
@@ -974,7 +978,7 @@ function TaskCreateForm({
             { value: "", label: "选择案件" },
             ...creatableCases.map((item) => ({
               value: String(item.id),
-              label: String(item.title ?? ""),
+              label: caseOptionLabel(item, snapshot.members),
             })),
           ]}
         />

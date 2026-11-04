@@ -37,6 +37,7 @@ import {
   useWorkbench,
 } from "../api/queries";
 import { paths } from "../api/paths";
+import { caseOptionLabel } from "../domain/case-identity";
 import type { CaseRelationInput, DecisionAction } from "../api/types";
 import type { FrozenQuoteScope, FrozenQuoteSelection } from "../domain/frozen-quote";
 import { PageStatus } from "../components/page-status";
@@ -469,7 +470,7 @@ export function ReviewPage() {
         }),
         availableCases: snapshot.cases
           .filter((item) => item.id !== caseId && !relatedIds.has(item.id))
-          .map((item) => ({ id: item.id, title: item.title })),
+          .map((item) => ({ id: item.id, title: caseOptionLabel(item, snapshot.members) })),
       }
     : null;
   const canEditRelations = caseDetailReady && !caseArchived && roleCanManageRun;

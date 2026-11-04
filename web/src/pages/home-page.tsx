@@ -34,8 +34,10 @@ import type { IntakeContinuationSelection } from "../features/intake/intake-cont
 import { StatusText } from "../components/status-text";
 import { businessActionLabel, businessScopeLabel, remediationStatusLabel } from "../domain/business-labels";
 import { TechnicalDetail } from "../components/technical-detail";
+import { caseSelectPresentation } from "../components/case-select-presentation";
 import { CollapsibleSection } from "../components/collapsible-section";
 import { WorkbenchCaseNextStep } from "../components/workbench-case-next-step";
+import { caseOptionLabel } from "../domain/case-identity";
 import {
   caseHref,
   formatDateTime,
@@ -779,6 +781,8 @@ export function HomePage() {
               <label>
                 关联案件
                 <Select<string>
+                  {...caseSelectPresentation}
+                  showSearch={{ optionFilterProp: "label" }}
                   aria-label={"关联案件"}
                   value={String(taskCaseId)}
                   onChange={(selectedValue) => setTaskCaseId(selectedValue)}
@@ -786,7 +790,7 @@ export function HomePage() {
                     { value: "", label: "请选择" },
                     ...creatableCases.map((item) => ({
                       value: String(item.id),
-                      label: String(item.title ?? ""),
+                      label: caseOptionLabel(item, snapshot.data?.members ?? []),
                     })),
                   ]}
                 />

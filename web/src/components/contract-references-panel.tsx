@@ -9,7 +9,7 @@
 // End file metadata.
 
 import { Alert, Button, Select, Tag } from "antd";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   checkContractReferences,
   type ContractReferenceCheck,
@@ -17,6 +17,8 @@ import {
 } from "../api/contracts";
 import { errorMessage } from "../api/http";
 import { useCases } from "../api/queries";
+import { caseOptionLabel } from "../domain/case-identity";
+import { caseSelectPresentation } from "./case-select-presentation";
 
 /**
  * Read-only view of the contract reference chain.
@@ -36,8 +38,16 @@ export function ContractReferencesPanel({
   const cases = useCases();
   const [caseID, setCaseID] = useState<string | null>(null);
   const [check, setCheck] = useState<ContractReferenceCheck | null>(null);
+  const [checkCaseID, setCheckCaseID] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const caseVisible = !cases.isError && (caseID === null || !!cases.data?.some((item) => item.id === caseID));
+  useEffect(() => {
+    if (caseID && (cases.isError || (cases.isSuccess && !cases.data.some((item) => item.id === caseID)))) {
+      setCaseID(null);
+      setCheck(null);
+    }
+  }, [caseID, cases.data, cases.isError, cases.isSuccess]);
 
   const hasReferences =
     (draft.contract.related_parties?.length ?? 0) > 0 ||
@@ -45,11 +55,13 @@ export function ContractReferencesPanel({
     draft.contract.procurement_result_package !== undefined;
 
   async function run() {
-    if (contractID === null) return;
+    if (contractID === null || !caseVisible) return;
     setBusy(true);
     setError(null);
     try {
-      setCheck(await checkContractReferences(contractID, caseID ?? undefined));
+      const result = await checkContractReferences(contractID, caseID ?? undefined);
+      setCheckCaseID(caseID);
+      setCheck(result);
     } catch (caught) {
       setCheck(null);
       setError(errorMessage(caught));
@@ -70,14 +82,14 @@ export function ContractReferencesPanel({
         <>
           <div className="contracts-page-fields">
             <Select
-              showSearch
+              {...caseSelectPresentation}
+              showSearch={{ optionFilterProp: "label" }}
               allowClear
-              optionFilterProp="label"
-              value={caseID ?? undefined}
+              value={caseVisible ? caseID ?? undefined : undefined}
               placeholder="来源案件（草稿必选；已导入合同可留空）"
               loading={cases.isLoading}
-              options={(cases.data ?? []).map((item) => ({ value: item.id, label: item.title }))}
-              onChange={(value) => setCaseID(value ?? null)}
+              options={(cases.isError ? [] : cases.data ?? []).map((item) => ({ value: item.id, label: caseOptionLabel(item) }))}
+              onChange={(value) => { setCaseID(value ?? null); setCheck(null); }}
             />
             <Button loading={busy} onClick={() => void run()}>
               核对引用
@@ -87,7 +99,7 @@ export function ContractReferencesPanel({
             <p className="meta">当前快照没有主体、材料或采购结果引用；核对仍会验证来源案件读权限。</p>
           ) : null}
           {error !== null ? <Alert type="error" showIcon message={error} /> : null}
-          {check !== null ? (
+          {check !== null && caseVisible && checkCaseID === caseID ? (
             <div className="contracts-page-reference-result">
               <p className="meta">
                 来源案件 {check.source_case_id} ·{" "}

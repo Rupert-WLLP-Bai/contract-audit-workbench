@@ -30,7 +30,7 @@ func summaryJSON(item store.CaseSummary) map[string]any {
 			"updated_at": item.Run.UpdatedAt,
 		}
 	}
-	return map[string]any{
+	body := map[string]any{
 		"id":                item.Case.ID,
 		"title":             item.Case.Title,
 		"contract_type":     item.Case.ContractType,
@@ -43,6 +43,13 @@ func summaryJSON(item store.CaseSummary) map[string]any {
 		"latest_run":        latest,
 		"updated_at":        item.Case.UpdatedAt,
 	}
+	if item.Identity != nil {
+		body["case_number"] = item.Identity.Number
+		body["customer"] = item.Identity.Customer
+		body["supplier"] = item.Identity.Supplier
+		body["owner_name"] = item.Identity.OwnerName
+	}
+	return body
 }
 
 func detailJSON(detail store.CaseDetail) map[string]any {

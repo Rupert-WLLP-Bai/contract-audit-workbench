@@ -269,6 +269,16 @@ func (s *Store) snapshotCaseList(ctx context.Context, user accounts.User) (state
 	if err != nil {
 		return state{}, err
 	}
+	if len(visible) > 0 {
+		ids := make([]string, 0, len(visible))
+		for _, item := range visible {
+			ids = append(ids, item.ID)
+		}
+		st.Profiles, err = loadWorkbenchProfiles(ctx, readRows(tx, "case_id=ANY($1)", ids))
+		if err != nil {
+			return state{}, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return state{}, err
 	}

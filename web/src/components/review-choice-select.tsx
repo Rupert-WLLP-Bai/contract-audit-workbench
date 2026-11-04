@@ -9,7 +9,9 @@
 // End file metadata.
 
 import type { ReviewChoice } from "../domain/workflow";
-import { formatDateTime, runLabel } from "../domain/review";
+import { reviewChoiceForKey, reviewChoiceLabel, reviewChoiceShortLabel } from "../domain/workflow";
+import { preciseTime } from "../domain/time";
+import { TechnicalDetail } from "./technical-detail";
 import { Select } from "antd";
 
 export function ReviewChoiceSelect({
@@ -25,20 +27,32 @@ export function ReviewChoiceSelect({
   onChange: (value: string) => void;
   disabled?: boolean;
 }) {
+  const selected = reviewChoiceForKey(choices, value);
   return (
-    <label className="field">
-      {label}
-      <Select
-        aria-label={label}
-        value={value || undefined}
-        onChange={onChange}
-        disabled={disabled}
-        placeholder="选择已保存的审查和执行记录"
-        options={choices.map((choice) => ({
-          value: choice.key,
-          label: `审查记录 ${choice.runOrder + 1}，第 ${choice.attempt.ordinal} 次，${runLabel(choice.attempt.state)}，${formatDateTime(choice.workspace.run.updated_at)}`,
-        }))}
-      />
-    </label>
+    <div className="field">
+      <label>
+        {label}
+        <Select
+          aria-label={label}
+          value={value || undefined}
+          onChange={onChange}
+          disabled={disabled}
+          placeholder="选择已保存的审查和执行记录"
+          virtual={false}
+          labelRender={() => selected ? reviewChoiceShortLabel(selected) : "请选择"}
+          optionRender={(option) => <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{option.label}</div>}
+          styles={{ popup: { listItem: { whiteSpace: "normal" } } }}
+          options={choices.map((choice) => ({
+            value: choice.key,
+            label: reviewChoiceLabel(choice),
+          }))}
+        />
+      </label>
+      {selected ? <div className="meta caw-wrap">
+        执行开始 {preciseTime(selected.attempt.started_at)} · 完成时间 {preciseTime(selected.attempt.finished_at)} · 审查更新时间 {preciseTime(selected.workspace.run.updated_at)}
+        <TechnicalDetail value={selected.runId} label="审查标识" />
+        <TechnicalDetail value={selected.attempt.id} label="执行标识" />
+      </div> : null}
+    </div>
   );
 }

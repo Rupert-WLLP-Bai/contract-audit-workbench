@@ -31,7 +31,8 @@ import {
   type ReviewDiffSide,
 } from "../domain/review-diff";
 import { resolveAnchor } from "../domain/text";
-import { reviewChoiceForKey, reviewChoices, type ReviewChoice } from "../domain/workflow";
+import { reviewChoiceForKey, reviewChoiceLabel, reviewChoiceShortLabel, reviewChoices, type ReviewChoice } from "../domain/workflow";
+import { preciseTime } from "../domain/time";
 import { businessCapabilityLabel } from "../domain/business-labels";
 import { TechnicalDetail } from "./technical-detail";
 import "./review-diff.css";
@@ -65,23 +66,34 @@ function Choice({ label, choices, value, onChange }: {
   value: string;
   onChange: (value: string) => void;
 }) {
-  return <label className="field">
-    {label}
+  const selected = reviewChoiceForKey(choices, value);
+  return <div className="field">
+    <label>{label}
     <Select<string>
       aria-label={label}
       value={value || undefined}
       onChange={onChange}
       placeholder="选择审查和具体执行记录"
+      virtual={false}
+      labelRender={() => selected ? reviewChoiceShortLabel(selected) : "请选择"}
+      optionRender={(option) => <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{option.label}</div>}
+      styles={{ popup: { listItem: { whiteSpace: "normal" } } }}
       options={choices.map((choice) => {
         const problem = choiceProblem(choice);
         return {
           value: choice.key,
           disabled: problem !== null,
-          label: `审查 ${choice.runId} · 第 ${choice.attempt.ordinal} 次 (${choice.attempt.id}) · ${runLabel(choice.attempt.state)}${problem ? ` · ${problem}` : ""}`,
+          label: `${reviewChoiceLabel(choice)}${problem ? ` · ${problem}` : ""}`,
         };
       })}
     />
-  </label>;
+    </label>
+    {selected ? <div className="meta caw-wrap">
+      执行开始 {preciseTime(selected.attempt.started_at)} · 完成时间 {preciseTime(selected.attempt.finished_at)} · 审查更新时间 {preciseTime(selected.workspace.run.updated_at)}
+      <TechnicalDetail label="审查标识" value={selected.runId} />
+      <TechnicalDetail label="执行标识" value={selected.attempt.id} />
+    </div> : null}
+  </div>;
 }
 
 function stateText(state: DifferenceState, same: string, different: string, unknown: string): string {

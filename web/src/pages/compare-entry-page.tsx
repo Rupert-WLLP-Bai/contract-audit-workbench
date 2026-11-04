@@ -16,6 +16,8 @@ import { useWorkbench } from "../api/queries";
 import type { WorkbenchCase, WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
+import { TechnicalDetail } from "../components/technical-detail";
+import { caseIdentityDetails, caseSearchText } from "../domain/case-identity";
 import {
   businessStatusLabel,
   businessStatusTone,
@@ -25,15 +27,6 @@ import {
   runTone,
 } from "../domain/review";
 import "./compare-entry-page.css";
-import { businessLineLabel } from "../domain/business-labels";
-
-function customerLabel(item: WorkbenchCase): string {
-  const customer = item.profile?.customer;
-  if (customer && customer !== "unspecified") return customer;
-  const businessLine = item.business_line;
-  if (businessLine && businessLine !== "unspecified") return businessLineLabel(businessLine);
-  return "业务信息未报告";
-}
 
 export function CompareEntryPage() {
   const query = useWorkbench("week");
@@ -70,18 +63,7 @@ export function CompareEntryPage() {
     (item) => (runsByCase.get(item.id)?.length ?? 0) >= 2,
   ).length;
   const needle = search.trim().toLowerCase();
-  const visibleCases = snapshot.cases.filter((item) =>
-    [
-      item.title,
-      item.id,
-      item.profile?.number ?? "",
-      item.profile?.customer ?? "",
-      item.business_line ?? "",
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(needle),
-  );
+  const visibleCases = snapshot.cases.filter((item) => caseSearchText(item).includes(needle));
   const columns: TableColumnsType<WorkbenchCase> = [
     {
       title: "合同",
@@ -89,7 +71,8 @@ export function CompareEntryPage() {
       render: (_, item) => (
         <div className="compare-entry-case">
           <strong>{item.title}</strong>
-          <span>{customerLabel(item)}</span>
+          <span>{caseIdentityDetails(item, snapshot.members)}</span>
+          <TechnicalDetail value={item.id} label="案件标识" />
         </div>
       ),
     },
@@ -102,7 +85,6 @@ export function CompareEntryPage() {
           <StatusText tone={businessStatusTone(item.business_status ?? "")}>
             {businessStatusLabel(item.business_status ?? "")}
           </StatusText>
-          <code>{item.profile?.number ?? item.id}</code>
         </div>
       ),
     },
@@ -208,7 +190,7 @@ export function CompareEntryPage() {
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="合同名称、编号、客户"
+                placeholder="案件标题、业务编号、中文场景或完整案件标识"
               />
             </label>
             <span>共 {visibleCases.length} 份合同</span>

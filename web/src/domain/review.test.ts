@@ -93,6 +93,16 @@ describe("case filters", () => {
       "c4",
     ]);
   });
+
+  it("searches business numbers, Chinese scenarios and the full case identity before pagination", () => {
+    const named = { ...items[0]!, case_number: "BUS-2026-01", business_line: "ENT", scenario: "telecom_dedicated_line" };
+    const same = { ...items[1]!, title: named.title, id: "case-full-other", scenario: "cloud_services" };
+    for (const term of ["BUS-2026-01", "政企专线", named.id, named.title]) {
+      expect(filterCases([named, same], term, "all")).toContainEqual(named);
+    }
+    expect(filterCases([named, same], "云服务采购", "all")).toEqual([same]);
+    expect(filterCases([named, same], "case-full-other", "all")).toEqual([same]);
+  });
 });
 
 describe("findings and decisions", () => {
@@ -141,5 +151,7 @@ describe("layout and events", () => {
 describe("business display time", () => {
   it("formats UTC timestamps in the fixed Asia/Shanghai zone", () => {
     expect(formatDateTime("2026-01-15T01:00:00.000Z")).toContain("2026/01/15 09:00");
+    expect(formatDateTime("invalid-date")).toBe("时间未记录");
+    expect(formatDateTime("")).toBe("时间未记录");
   });
 });

@@ -16,6 +16,9 @@ import type {
   Finding,
   WorkbenchRun,
 } from "../api/types";
+import { caseSearchText } from "./case-identity";
+export { contractTypeLabel } from "./case-identity";
+export { formatDateTime } from "./time";
 
 export const DECISION_ACTIONS: readonly {
   action: DecisionAction;
@@ -131,14 +134,6 @@ const MODEL_STATUS: Record<string, string> = {
   unknown: "未知",
 };
 
-const CONTRACT_LABELS: Record<string, string> = {
-  procurement_ict: "采购 / ICT",
-  network_engineering: "网络工程",
-  framework: "框架协议",
-  service: "服务合同",
-  unspecified: "未分类",
-};
-
 const BUSINESS_STATUS_LABELS: Record<string, string> = {
   active: "进行中",
   draft: "草稿",
@@ -231,10 +226,6 @@ export function modelStatusLabel(status: string): string {
   return labelOf(MODEL_STATUS, status, "连通状态未识别");
 }
 
-export function contractTypeLabel(value: string): string {
-  return labelOf(CONTRACT_LABELS, value, "合同类型待核对");
-}
-
 export function businessStatusLabel(value: string): string {
   if (value === "") return "业务状态未提供";
   return Object.hasOwn(BUSINESS_STATUS_LABELS, value) ? BUSINESS_STATUS_LABELS[value]! : "业务状态待核对";
@@ -289,7 +280,7 @@ export function filterCases(
   const needle = query.trim().toLowerCase();
   return items.filter((item) => {
     if (needle !== "") {
-      const haystack = `${item.title} ${item.id}`.toLowerCase();
+      const haystack = caseSearchText(item);
       if (!haystack.includes(needle)) return false;
     }
     if (businessStatus !== "all" && item.business_status !== businessStatus)
@@ -430,21 +421,6 @@ export function parseRunEvent(data: string): RunEvent | null {
         ? record.state
         : null;
   return { seq: record.seq, type, state };
-}
-
-export function formatDateTime(value: string): string {
-  if (value === "") return "时间未记录";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(date);
 }
 
 export function formatBytes(size: number): string {

@@ -557,6 +557,15 @@ describe("response parsers", () => {
     expect(() => parseCaseSummary(null)).toThrow("case不是对象");
   });
 
+  it("accepts optional case identity fields and rejects malformed fields", () => {
+    const base = { id: "case-1", document_count: 0, pending_decisions: 0 };
+    expect(parseCaseSummary({ ...base, case_number: "案-1", customer: "客户", supplier: "供应商", owner_name: "张三" })).toMatchObject({
+      id: "case-1", case_number: "案-1", customer: "客户", supplier: "供应商", owner_name: "张三",
+    });
+    expect(() => parseCaseSummary({ ...base, case_number: 1 })).toThrow(/case_number/);
+    expect(() => parseCaseSummary({ ...base, owner_name: null })).toThrow(/owner_name/);
+  });
+
   it("parses case members and drops incomplete activity entries", () => {
     const detail = parseCaseDetail({
       ...caseDefaults,

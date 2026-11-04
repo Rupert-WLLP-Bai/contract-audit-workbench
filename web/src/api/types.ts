@@ -51,6 +51,10 @@ export interface CaseSummary {
   scenario?: string;
   business_status?: string;
   archived_at?: string | null;
+  case_number?: string;
+  customer?: string;
+  supplier?: string;
+  owner_name?: string;
 }
 
 export type ParsedDocumentStatus = "ready" | "failed";

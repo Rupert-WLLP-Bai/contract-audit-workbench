@@ -54,6 +54,7 @@ import {
 import type { Actor } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { ContractReferencesPanel } from "../components/contract-references-panel";
+import { caseSelectPresentation } from "../components/case-select-presentation";
 import { ContractSigningPanel } from "../components/contract-signing-panel";
 import { ContractFulfillmentPanel } from "../components/contract-fulfillment-panel";
 import { ContractPaymentsPanel } from "../components/contract-payments-panel";
@@ -61,6 +62,7 @@ import { ContractAssetsPanel } from "../components/contract-assets-panel";
 import { ContractLifecycleOverviewPanel } from "../components/contract-lifecycle-overview-panel";
 import { ContractSourceCapabilityPanel } from "../components/contract-source-capability-panel";
 import { formatDateTime } from "../domain/review";
+import { caseOptionLabel } from "../domain/case-identity";
 import "./contracts-page.css";
 
 const DRAFTING_PARTIES = [
@@ -1606,7 +1608,8 @@ function LegacyImportDialog({
 }) {
   const cases = useCases();
   const [caseID, setCaseID] = useState<string | null>(null);
-  const detail = useCaseDetail(caseID ?? "");
+  const caseVisible = !cases.isError && !!caseID && !!cases.data?.some((item) => item.id === caseID);
+  const detail = useCaseDetail(caseVisible ? caseID! : "");
   const [materialVersionID, setMaterialVersionID] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [sourceSystem, setSourceSystem] = useState("");
@@ -1615,8 +1618,15 @@ function LegacyImportDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (caseID && (cases.isError || (cases.isSuccess && !cases.data.some((item) => item.id === caseID)))) {
+      setCaseID(null);
+      setMaterialVersionID(null);
+    }
+  }, [caseID, cases.data, cases.isError, cases.isSuccess]);
+
   const materials = useMemo(() => {
-    if (detail.data === undefined) return [];
+    if (!caseVisible || detail.isError || detail.data === undefined) return [];
     const documents = new Map(detail.data.documents.map((document) => [document.id, document]));
     return (detail.data.material_versions ?? []).flatMap((version) => {
       const document = documents.get(version.document_id);
@@ -1634,7 +1644,7 @@ function LegacyImportDialog({
         },
       ];
     });
-  }, [detail.data]);
+  }, [caseVisible, detail.data, detail.isError]);
 
   const selected = materials.find((item) => item.value === materialVersionID) ?? null;
   const ready =
@@ -1711,12 +1721,12 @@ function LegacyImportDialog({
         <label className="field">
           来源案件
           <Select
-            showSearch
-            optionFilterProp="label"
-            value={caseID}
+            {...caseSelectPresentation}
+            showSearch={{ optionFilterProp: "label" }}
+            value={caseVisible ? caseID : undefined}
             placeholder="选择有权访问的案件"
             loading={cases.isLoading}
-            options={(cases.data ?? []).map((item) => ({ value: item.id, label: item.title }))}
+            options={(cases.isError ? [] : cases.data ?? []).map((item) => ({ value: item.id, label: caseOptionLabel(item) }))}
             onChange={(value) => {
               setCaseID(value);
               setMaterialVersionID(null);

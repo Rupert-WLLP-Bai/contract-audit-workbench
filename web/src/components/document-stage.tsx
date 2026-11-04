@@ -24,6 +24,7 @@ import {
 } from "react";
 import { Link } from "react-router";
 import { TechnicalDetail } from "./technical-detail";
+import { caseSelectPresentation } from "./case-select-presentation";
 import type {
   CaseRelationInput,
   EvidenceAnchor,
@@ -988,6 +989,8 @@ function RelationForm({
         关联可见案件
         <Select
           aria-label="关联可见案件"
+          {...caseSelectPresentation}
+          showSearch={{ optionFilterProp: "label" }}
           value={relatedCaseId || undefined}
           onChange={onRelatedCase}
           options={[

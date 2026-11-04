@@ -16,7 +16,6 @@ import type { CaseSummary } from "../api/types";
 import type { CaseSortField, SortDirection } from "../domain/review";
 import {
   businessStatusLabel,
-  contractTypeLabel,
   formatDateTime,
   runLabel,
   runTone,
@@ -24,6 +23,7 @@ import {
 import { StatusText } from "./status-text";
 import { TechnicalDetail } from "./technical-detail";
 import { businessScopeLabel } from "../domain/business-labels";
+import { caseIdentityDetails } from "../domain/case-identity";
 
 const SORT_FIELDS: readonly CaseSortField[] = [
   "title",
@@ -75,7 +75,7 @@ function CaseTitleCell({
         {item.title}
       </Link>
       <div className="meta caw-wrap">
-        {contractTypeLabel(item.contract_type)}
+        {caseIdentityDetails(item)}
         <TechnicalDetail value={item.id} label="案件标识" />
       </div>
     </>

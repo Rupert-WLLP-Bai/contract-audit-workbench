@@ -188,8 +188,8 @@ describe("report creation with public attempt history", () => {
       .closest("form")!;
     expect(within(form).queryByText("输入摘要")).not.toBeInTheDocument();
     expect(within(form).getByText("合同正文.txt")).toBeInTheDocument();
-    expect(form).not.toHaveTextContent("run-1");
-    expect(form).not.toHaveTextContent("attempt-2");
+    expect(within(form).getByTitle("run-1")).not.toBeVisible();
+    expect(within(form).getByTitle("attempt-2")).not.toBeVisible();
     expect(form).not.toHaveTextContent("document-1");
     await waitFor(() =>
       expect(within(form).getByRole("button", { name: "生成报告" })).toBeEnabled(),
