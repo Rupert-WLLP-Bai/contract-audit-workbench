@@ -58294,7 +58294,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4f2963e5efaf7214ee3c25ef89e26f942758afab",
+          "commit": "0168c66545f88f099f5513dff6f0edb2b5a7452d",
           "path": "web/src/api/parse.test.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -58342,7 +58342,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4f2963e5efaf7214ee3c25ef89e26f942758afab",
+          "commit": "0168c66545f88f099f5513dff6f0edb2b5a7452d",
           "path": "web/src/api/parse.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -59339,7 +59339,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4f2963e5efaf7214ee3c25ef89e26f942758afab",
+          "commit": "0168c66545f88f099f5513dff6f0edb2b5a7452d",
           "path": "web/src/api/types.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -68129,7 +68129,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4f2963e5efaf7214ee3c25ef89e26f942758afab",
+          "commit": "0168c66545f88f099f5513dff6f0edb2b5a7452d",
           "path": "web/src/pages/compare-page.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -68177,7 +68177,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4f2963e5efaf7214ee3c25ef89e26f942758afab",
+          "commit": "0168c66545f88f099f5513dff6f0edb2b5a7452d",
           "path": "web/src/pages/compare-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
