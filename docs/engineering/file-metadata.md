@@ -1,73 +1,80 @@
-# File metadata policy
+<a id="file-metadata-policy"></a>
+# 文件元信息规范
 
-This policy defines per-file purpose, authorship, project maintenance, dates, revision, and handling rules. The canonical manifest records the fixed-baseline path set and content-derived purposes. #124/#125 establish header and coverage policy; use the CLI capabilities and maintenance procedure below when preparing or checking changes.
+本规范定义每个文件的用途、作者、项目维护信息、日期、修订版次和处理规则。权威清单记录固定基线的路径集合，并根据内容确定用途。#124/#125 确立了文件头与覆盖范围规则；准备或检查变更时，请使用下列命令行工具和维护流程。
 
-## Current inventory and compatibility fields
+<a id="current-inventory-and-compatibility-fields"></a>
+## 当前清单与兼容字段
 
-The first strict initialization snapshot (#164) contains 1,429 manifest records and 1,261 physical source headers; subsequent tracked additions update those totals. These totals describe different things: the manifest also records files that must remain manifest-only, so their difference is not a count of missing headers. The authoritative header result comes from inspecting the candidate files and running the physical-mirror checks in the trusted BASE-bound gate. Initial bootstrap requires the fixed BASE on the candidate first-parent chain and an exact metadata-only change; if main advances, replay the reviewed net changes from the new main baseline. Treat `header_state: "pending-header-application"` as a retained compatibility label in manifest records; it does not by itself prove that a physical header is absent or required. Resolve status from file bytes, the policy handling mode, and the gate result.
+首次严格初始化快照（#164）包含 1,429 条清单记录和 1,261 个物理源码文件头；后续纳入跟踪的新文件会更新这两个数字。两者统计对象不同：清单还记录必须仅存在于清单中的文件，因此两者之差不代表缺少文件头的数量。权威文件头结果须通过检查候选文件，并在可信的、绑定 BASE 的门禁中运行物理镜像检查得出。初始引导要求固定 BASE 位于候选分支的第一父提交链上，且变更只能涉及元数据；若 main 前进，应以新的 main 基线重新应用已审查的净变更。清单记录中的 `header_state: "pending-header-application"` 是为兼容而保留的标签；它本身不能证明物理文件头缺失或必须添加。应根据文件字节、策略处理模式和门禁结果判定状态。
 
-The manifest and its policy/schema remain the inventory and classification sources. The gate runs the five verifier modules from the actual target BASE Git blobs, including when candidate tooling changes. The schema, policy top-level fields and existing classes stay fixed; a new manifest-only class may name only new, previously unclassified exact paths that exist in the candidate and its manifest. Classification rules are not the file inventory: removing or renaming a file must remove its stale manifest entry and preserve verified identity evidence as applicable. The CLI is primarily read-only: `manifest_tool.py plan|report` validates or reports a fixed subject, and `gate_adapter.py check` checks an explicit BASE and candidate SHA. `plan-apply` produces an exact-path insertion plan for an absent header or an already exact mirror; it refuses to replace a different existing mirror. `apply` writes only when given the reviewed plan hash and explicit `--apply`. These commands do not automatically write or regenerate the manifest inventory. Update manifest records through a separately reviewed inventory change, then rerun the fixed-SHA checks.
+清单及其策略和架构定义仍是文件清点与分类的唯一来源。即使候选工具发生变更，门禁也会从实际目标 BASE 的 Git 对象中运行五个校验模块。架构、策略顶层字段及现有分类保持不变；新增的仅清单分类只能用于候选及其清单中存在、且此前未分类的新增精确路径。分类规则不等于文件清单：删除或重命名文件时，必须移除过时的清单条目，并在适用时保留经过核实的身份依据。命令行工具以只读为主：`manifest_tool.py plan|report` 用于校验或报告固定对象，`gate_adapter.py check` 用于检查明确指定的 BASE 和候选 SHA。`plan-apply` 为缺少文件头或已有完全匹配镜像的路径生成精确插入计划；若现有镜像内容不同则拒绝替换。只有同时提供已审查的计划哈希和显式 `--apply` 时，`apply` 才会写入。这些命令不会自动写入或重新生成清单。应通过单独审查的清单变更更新记录，然后重新运行固定 SHA 检查。
 
-## Canonical record
+<a id="canonical-record"></a>
+## 权威记录
 
-The only machine-readable inventory is `scripts/file_metadata/manifest.json`, validated by `scripts/file_metadata/schema.json` and governed by `scripts/file_metadata/policy.json`. It captures every path tracked at its recorded Git baseline plus explicitly listed metadata-policy additions; its inventory object also records excluded concurrent untracked paths. Every tracked file, including manifest-only files, has exactly one record keyed by its repository-relative POSIX path. Do not keep a second inventory in documentation or CI configuration.
+唯一的机器可读清单是 `scripts/file_metadata/manifest.json`，由 `scripts/file_metadata/schema.json` 校验，并受 `scripts/file_metadata/policy.json` 约束。它记录在指定 Git 基线中跟踪的所有路径，以及明确列出的元数据策略新增项；其清点对象还会记录被排除的并发未跟踪路径。每个已跟踪文件（包括仅列于清单的文件）都必须恰有一条记录，并以仓库相对 POSIX 路径作为键。不得在文档或 CI 配置中维护第二份清单。
 
-Each record contains:
+每条记录包含：
 
-- A file-specific `purpose` describing its responsibility, important input/output, and applicable boundary. A path or filename restatement is not a purpose.
-- `authors`, identifying original authorship. For project-authored files use `Bai Junhao`, `baijunhao@cq.chinamobile.com`, contact `+86 13617696321`. For third-party material preserve the original author attribution and source wording; do not replace it with the project author.
-- `maintainers`, identifying the project maintenance contact separately from authorship. Use Bai Junhao and the supplied email/phone for project-maintained files, including third-party-derived files.
-- `copyright`, recording the actual holder/notice independently from author. For project terms, point to `See LICENSE`; this is a reference to the repository's current license text, not a declaration of SPDX identifier or OSI approval. Preserve third-party copyright and license notices verbatim and record their source location.
-- `created` and `updated` date evidence, plus `revision` (`r1`, `r2`, …).
-- A `handling` mode; any mode that omits a normal metadata comment requires an `exception` with a rule identifier and a reason specific to that path.
+- `purpose`：描述文件职责、重要输入或输出，以及适用的边界。仅重复路径或文件名不算用途说明。
+- `authors`：标明原始作者。项目撰写的文件使用 Bai Junhao、`baijunhao@cq.chinamobile.com` 和联系方式 `+86 13617696321`。第三方材料须保留原作者署名和来源措辞，不得改成项目作者。
+- `maintainers`：将项目维护联系人与作者身份分开记录。项目维护的文件（包括源自第三方的文件）使用 Bai Junhao 及上述邮箱和电话。
+- `copyright`：独立记录实际权利人或版权声明。项目条款填写 `See LICENSE`；这只是指向仓库当前许可文本，不代表声明了 SPDX 标识或 OSI 批准。第三方版权和许可声明须逐字保留，并记录其来源位置。
+- `created` 和 `updated` 日期依据，以及 `revision`（`r1`、`r2` 等）。
+- `handling` 处理模式；任何不采用常规元数据注释的模式，都必须附带 `exception`，其中包含规则标识和针对该路径的具体原因。
 
-No metadata policy changes the terms in `LICENSE`, grants commercial rights, or transfers copyright.
+任何元数据策略都不会改变 `LICENSE` 中的条款、授予商业权利或转移版权。
 
-## Dates and revision
+<a id="dates-and-revision"></a>
+## 日期与修订版次
 
-Dates are ISO 8601 calendar dates (`YYYY-MM-DD`) in UTC. They describe Git history evidence, not a claim about when a person first created the content.
+日期使用 UTC 的 ISO 8601 日历日期格式（`YYYY-MM-DD`），描述 Git 历史证据，不声称某人首次创作内容的时间。
 
-- `created` is the earliest traceable Git introduction of the file's content. Follow Git rename history and cite the full commit SHA and date source. When a traced introduction commit uses an earlier path, record that exact path as `source.path`; state when the link comes from Git similarity detection and treat it as lineage evidence, not proof of authorship or actual creation date. Use an explicit `unknown` value with a reason when a shallow/squashed history, imported archive, or ambiguous rename does not support a defensible date. Never substitute the date when metadata is added.
-- `updated` is the latest traceable change to file content outside the defined metadata block. Ignore commits that only add or edit metadata. Cite the full commit SHA and date source. If the history cannot identify a content change date, use `unknown` and explain why.
-- On rename, carry `created` forward when Git history establishes continuity; preserve `updated` and `revision` if content did not otherwise change. A copy or split is a new path: record the source path and date evidence, then begin its revision at `r1`.
-- `r1` is the file's metadata-policy baseline. Increment to the next integer revision when content outside metadata changes, including content changes to binary or manifest-only files. Metadata-only edits do not change `updated` or `revision`. Do not infer revision from product version, API version, database schema, package version, or commit count.
-- At the initial inventory, `updated` records the last content change found in Git history, even if it predates the metadata baseline. Adding the metadata block itself does not make the file newly updated.
+- `created` 是通过 Git 历史可追溯到的文件内容最早引入时间。沿 Git 重命名历史追溯，并引用完整提交 SHA 和日期来源。若追溯到的引入提交使用较早路径，应在 `source.path` 中记录该确切路径；说明路径关联来自 Git 相似度检测，并将其视为沿袭证据，而非作者身份或实际创作日期的证明。若浅克隆、压缩提交的历史、导入归档或含糊的重命名不足以支持可辩护的日期，应使用明确的 `unknown` 值并说明原因。绝不可用添加元数据的日期代替。
+- `updated` 是文件内容在规定的元数据区块之外最近一次可追溯的变更。忽略只添加或编辑元数据的提交，并引用完整提交 SHA 和日期来源。若历史无法确定内容变更日期，应使用 `unknown` 并解释原因。
+- 重命名时，若 Git 历史能确认连续性，则沿用 `created`；若内容未发生其他变化，则保留 `updated` 和 `revision`。复制或拆分会形成新路径：记录来源路径和日期依据，并从 `r1` 开始该路径的修订版次。
+- `r1` 是文件的元数据策略基线。元数据区块之外的内容发生变化时，修订版次递增至下一个整数，二进制文件或仅清单文件的内容变更也包括在内。仅修改元数据不会改变 `updated` 或 `revision`。不得从产品版本、API 版本、数据库架构版本、软件包版本或提交数量推断修订版次。
+- 初始清点时，`updated` 记录 Git 历史中找到的最后一次内容变更，即使该日期早于元数据基线。添加元数据区块本身不会使文件变成新近更新。
 
-The manifest records date source type, full commit SHA where available, and any limitation. A checker must parse dates as real UTC calendar dates (JSON Schema `format` support is not uniformly enforced), compare content with the metadata block excluded, and ignore metadata-only edits when computing content changes.
+清单记录日期来源类型、可用时的完整提交 SHA，以及任何限制。校验器必须将日期解析为真实的 UTC 日历日期（JSON Schema 对 `format` 的支持并不一致），在排除元数据区块后比较内容，并在计算内容变更时忽略仅涉及元数据的编辑。
 
-## Source header syntax and placement
+<a id="source-header-syntax-and-placement"></a>
+## 源文件头语法与位置
 
-For comment-capable text files, add a compact metadata block using that language's native comment syntax. Its first content line is `File metadata (manifest mirror):`; its final content line is `End file metadata.` Between them, use exactly these labels in order: `Purpose`, `Author`, `Contact`, `Created`, `Updated`, `Revision`, `Copyright`. The machine manifest remains authoritative; the header is a readable mirror checked for consistency by #125. Keep purpose specific to the file. Use `Copyright: See LICENSE` for project terms; do not add an SPDX line unless a separate licensing decision supplies one. For third-party files, prefer manifest-only when adding a project header would blur original authorship; if a header is necessary, preserve the upstream author attribution and state project contact as maintainer, not author.
+对于支持注释的文本文件，使用该语言原生的注释语法添加精简元数据区块。首行内容必须是 `File metadata (manifest mirror):`，末行内容必须是 `End file metadata.`；两者之间必须按顺序使用以下标签：`Purpose`、`Author`、`Contact`、`Created`、`Updated`、`Revision`、`Copyright`。机器清单仍是权威来源；文件头是便于阅读的镜像，由 #125 检查一致性。用途说明须针对具体文件。项目条款使用 `Copyright: See LICENSE`；除非另有许可决定明确提供，否则不得添加 SPDX 行。对于第三方文件，若添加项目文件头会模糊原始作者身份，应优先仅记录在清单中；如确需添加文件头，则保留上游作者署名，并将项目联系人标为维护者，而非作者。
 
-Place the block where it preserves parser and tool requirements:
+按以下位置放置区块，以满足解析器和工具要求：
 
-- Go: after any `//go:build` / `// +build` lines and their required blank line, before the package clause. Preserve generated-code markers and existing copyright blocks exactly.
-- Python and shell: after a shebang and any encoding cookie; retain the shebang as line 1.
-- TypeScript/TSX: after any required shebang or triple-slash directives and before imports. For JSX, use ordinary line comments before imports, not JSX comments.
-- CSS: use a CSS block comment before rules. HTML and Markdown: use an HTML comment before content. YAML/TOML and Makefile/Dockerfile: use only their native `#` comments where a leading comment is accepted.
-- For a format not covered here, require a reviewed native syntax and placement rule before writing a header. Never put comment syntax into data that is parsed as content.
+- Go：放在任何 `//go:build` / `// +build` 行及其必需空行之后、`package` 声明之前。原样保留生成代码标记和既有版权区块。
+- Python 和 shell：放在 shebang 和任何编码声明之后；shebang 保持为第 1 行。
+- TypeScript/TSX：放在任何必需的 shebang 或三斜线指令之后、导入之前。JSX 应在导入之前使用普通行注释，不得使用 JSX 注释。
+- CSS：在规则之前使用 CSS 块注释。HTML 和 Markdown：在正文之前使用 HTML 注释。YAML/TOML 及 Makefile/Dockerfile：仅在文件开头注释会被使用方接受时，使用其原生 `#` 注释。
+- 对于未涵盖的格式，写入文件头前必须审查并确认适用的原生语法和位置规则。不得把注释语法写入会被解析为内容的数据中。
 
-## File handling matrix
+<a id="file-handling-matrix"></a>
+## 文件处理对照表
 
-| Tracked file kind | Handling |
+| 已跟踪文件类型 | 处理方式 |
 | --- | --- |
-| Go, Python, TypeScript/TSX, shell, CSS, HTML, Markdown | Native comment header plus one manifest record, subject to required directive placement and path-specific exceptions. |
-| YAML/YML, TOML, Makefile, Dockerfile, `.env.example`, `.conf` | Native `#` comment header only where the consumer accepts a leading comment; otherwise manifest-only with the specific parser/tool constraint recorded. |
-| Strict JSON, lockfiles, module checksums, and data formats without safe comments | Manifest-only. JSON stays valid JSON; never use JSONC or inject fields into a third-party/public contract to carry repository metadata. |
-| Applied or integrity-checked SQL migrations | Manifest-only. Do not edit historical migration bytes to add metadata; cite the migration path and immutability/integrity reason. A future migration follows its own reviewed authoring convention before application. |
-| Frozen regression fixtures under `testdata/` and `web/e2e/fixtures/` | Manifest-only. Preserve fixture bytes and record what behavior/input the fixture represents; do not rewrite a golden fixture just to add metadata. |
-| Binary documents, images, fonts, and other assets | Manifest-only. Do not alter payload bytes or embedded metadata; record source, purpose, and rights evidence. |
-| Generated output | Manifest-only unless the owning generator is explicitly changed to emit a stable metadata block and its output verification is updated in the same owned change. Record generator/input paths and reason. |
-| Third-party-derived or third-party-noticed source | Preserve every upstream attribution, copyright, and license notice byte-for-byte. Use manifest-only or place the project metadata block outside the preserved notice; record source and project maintainer separately. |
-| Other or unknown formats | Do not guess. Add a reviewed format rule to `policy.json` before inventorying it. |
+| Go、Python、TypeScript/TSX、shell、CSS、HTML、Markdown | 使用原生注释文件头，并保留一条清单记录；须遵循指令位置要求和路径专属例外。 |
+| YAML/YML、TOML、Makefile、Dockerfile、`.env.example`、`.conf` | 仅在使用方接受文件开头注释时使用原生 `#` 注释文件头；否则仅记录在清单中，并记录具体的解析器或工具限制。 |
+| 严格 JSON、锁文件、模块校验和文件及不支持安全注释的数据格式 | 仅记录在清单中。JSON 必须保持有效；不得使用 JSONC，也不得向第三方或公共契约中注入字段来携带仓库元数据。 |
+| 已应用或受完整性校验的 SQL 迁移 | 仅记录在清单中。不得修改历史迁移字节以添加元数据；须引用迁移路径及其不可变性或完整性原因。未来的迁移在应用前，须遵循各自经审查的编写约定。 |
+| `testdata/` 和 `web/e2e/fixtures/` 下冻结的回归 fixture | 仅记录在清单中。保留 fixture 字节，并记录其表示的行为或输入；不得仅为添加文件头而改写黄金样本。 |
+| 二进制文档、图像、字体及其他资源 | 仅记录在清单中。不得修改载荷字节或嵌入元数据；须记录来源、用途和权利依据。 |
+| 生成产物 | 仅记录在清单中；只有在明确修改所属生成器以输出稳定元数据区块，并在同一变更中更新输出校验时，才可添加文件头。记录生成器和输入文件路径及原因。 |
+| 源自第三方或带有第三方声明的源码 | 逐字保留所有上游署名、版权和许可声明。仅记录在清单中，或将项目元数据区块放在受保护声明之外；分别记录来源和项目维护者。 |
+| 其他或未知格式 | 不得猜测。清点前先在 `policy.json` 中添加经审查的格式规则。 |
 
-`policy.json` names current concrete exceptions and class rules. A future manifest record still names each exact path and gives a path-specific reason; a glob rule alone is not a substitute for that record. An exception only changes where metadata is stored, not the requirement to describe the file or capture its authorship, maintenance, date, revision, and rights evidence.
+`policy.json` 列出当前的具体例外和分类规则。未来的清单记录仍须逐一列出每个精确路径，并给出针对该路径的原因；仅有 glob 规则不能替代路径级记录。例外只改变元数据的存放位置，不免除描述文件、记录其作者身份、维护信息、日期、修订版次和权利依据的要求。
 
-## Maintenance procedure
+<a id="maintenance-procedure"></a>
+## 维护流程
 
-1. Fix the trusted BASE and candidate SHA. Enumerate the candidate tracked paths; do not include ignored files or local build output.
-2. For each path, inspect content, rename-aware history, parser directives, generator ownership, fixture/frozen status, and existing notices before changing its record or header.
-3. Select the narrowest handling rule. Preserve attribution and protected bytes. Record each exception against its exact path, policy rule, and reason.
-4. Compare physical headers with their manifest mirrors under the trusted BASE-bound gate. The compatibility value `pending-header-application` is not the verdict. Use the policy handling mode and physical-mirror check to determine whether a header is expected, present, and consistent.
-5. For an absent header, create an exact-path `plan-apply` plan against fixed BASE and candidate SHAs; review the paths, original bytes/mode and plan hash, then use `apply --apply` explicitly. A changed existing mirror requires a separately reviewed refresh plan that preserves all body bytes and Git modes and binds the original/output hashes to the fixed subject. These operations do not author or regenerate inventory records. Prepare manifest updates separately, retaining unchanged BASE evidence, incrementing revisions only for body/mode changes, and recording committed source evidence before final validation.
-6. Run `gate_adapter.py check` with the actual trusted BASE SHA and fixed candidate SHA, then report the status and evidence. The check validates the candidate registry, physical header mirrors, and tracked-path coverage as implemented. Preserve its exact result; do not infer PASS from record totals or a dry-run plan.
+1. 固定可信 BASE 和候选 SHA。枚举候选中受 Git 跟踪的路径；不要纳入被忽略文件或本地构建产物。
+2. 对每个路径，在更改记录或文件头前，检查文件内容、可追溯重命名的历史、解析器指令、生成器归属、fixture 或冻结状态，以及现有声明。
+3. 选择范围最窄的处理规则。保留署名和受保护字节。对每个例外，按确切路径、策略规则和具体原因记录。
+4. 在绑定可信 BASE 的门禁中，依据清单镜像核对物理文件头。`pending-header-application` 兼容值不是判定结果。根据策略处理模式和物理镜像检查，判断是否应有文件头、文件头是否存在且一致。
+5. 对缺失的文件头，针对固定 BASE 和候选 SHA 创建精确路径的 `plan-apply` 计划；审查路径、原始字节、文件模式和计划哈希，然后显式使用 `apply --apply`。对于需要更改的现有镜像，须另行审查刷新计划，保留正文全部字节和 Git 文件模式，并将原始及输出哈希绑定到固定对象。上述操作不会编写或重新生成清单记录。应单独准备清单更新，保留未变化的 BASE 依据，只对正文或文件模式变更递增修订版次，并在最终校验前记录已提交的来源依据。
+6. 使用实际可信 BASE SHA 和固定候选 SHA 运行 `gate_adapter.py check`，然后报告状态及证据。该检查按其实现校验候选清单、物理文件头镜像和受跟踪路径覆盖范围。保留检查的确切结果；不得根据记录总数或试运行计划推断为 PASS。

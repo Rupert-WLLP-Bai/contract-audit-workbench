@@ -1,3 +1,5 @@
+const {themes: prismThemes} = require('prism-react-renderer');
+
 const config = {
   title: '合同智能审计工作台',
   tagline: '产品、工程与运维手册',
@@ -25,8 +27,15 @@ const config = {
       },
     ],
   ],
-  themes: ['@docusaurus/theme-classic', '@docusaurus/theme-mermaid'],
+  themes: [
+    ['@docusaurus/theme-classic', {customCss: './src/css/custom.css'}],
+    '@docusaurus/theme-mermaid',
+  ],
   themeConfig: {
+    colorMode: {
+      defaultMode: 'light',
+      respectPrefersColorScheme: false,
+    },
     navbar: {
       title: '合同审计工作台',
       items: [
@@ -39,13 +48,12 @@ const config = {
         },
         {
           href: 'https://github.com/Rupert-WLLP-Bai/contract-audit-workbench',
-          label: '源码',
+          label: '查看源码',
           position: 'right',
         },
       ],
     },
     footer: {
-      style: 'light',
       links: [
         {
           title: '手册',
@@ -56,9 +64,11 @@ const config = {
           ],
         },
       ],
-      copyright: '手册内容以仓库 docs/ 为唯一编辑来源。',
+      copyright: '合同智能审计工作台 · 使用手册',
     },
     prism: {
+      theme: prismThemes.github,
+      darkTheme: prismThemes.vsDark,
       additionalLanguages: ['bash', 'diff', 'json', 'sql', 'toml', 'yaml'],
     },
   },

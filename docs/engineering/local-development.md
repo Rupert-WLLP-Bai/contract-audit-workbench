@@ -12,7 +12,7 @@
 
 ## 环境
 
-需要 Go 1.26.7+、Bun 1.4.3、Node.js 22.12+、Python 3.10+、Docker Engine/Desktop 与 Compose v2。PDF 解析需要 Poppler 的 `pdfinfo`、`pdftotext`、`pdfimages`、`pdftoppm` 和 CJK mappings。
+需要 Go 1.26.7+、Bun 1.4.3、Node.js 22.12+、Python 3.10+、Docker Engine/Desktop 与 Compose v2。PDF 解析需要 Poppler 的 `pdfinfo`、`pdftotext`、`pdfimages`、`pdftoppm` 和中日韩字符映射文件。
 
 ## 单进程开发
 
@@ -45,7 +45,7 @@ make web
 
 `make infra-up` 使用本地 PostgreSQL、RustFS 和 NATS。`make infra-down` 停止基础设施但保留数据卷。业务数据库使用 PostgreSQL 18；Keycloak 身份库仍独立使用 PostgreSQL 17。不要把 PostgreSQL 17 数据卷直接挂给 PostgreSQL 18。版本迁移须备份、使用 `pg_dump`/`pg_restore`、验证并保留回退窗口。
 
-## Demo 身份
+## 演示账号
 
 开发和测试模式提供以下固定账号。生产环境禁止使用这些账号；配置企业身份目录后本地密码登录会停用。授权仍由服务端按租户、组织、角色和案件范围校验。
 
@@ -65,8 +65,8 @@ make web
 
 ## 会话与运营快照
 
-浏览器身份范围包含工作区、账号、角色、租户和组织；身份变化时前端清理旧身份数据并重建页面与审查事件连接，服务端仍逐次检查权限。Admin 的「身份目录与租户模型预算」页读取 `GET /api/admin/tenant-operations` 的当前租户快照。配置 `IDENTITY_DIRECTORY_FILE` 后，版本按可信文件原始字节的 SHA-256 计算；文件替换会重新核验，同 inode/大小且时间戳保留的修改在身份查询时最多每 1000ms 核验一次。读取或解析失败立即清空有效用户和版本，最后成功版本只保留作诊断，不继续授权。这个频率不保证 Kubernetes 挂载变更到达所有副本的时间。
+浏览器身份范围包含工作区、账号、角色、租户和组织；身份变化时前端清理旧身份数据并重建页面与审查事件连接，服务端仍逐次检查权限。管理员的「身份目录与租户模型预算」页读取 `GET /api/admin/tenant-operations` 的当前租户快照。配置 `IDENTITY_DIRECTORY_FILE` 后，版本按可信文件原始字节的 SHA-256 计算；文件替换会重新核验，同 inode/大小且时间戳保留的修改在身份查询时最多每 1000ms 核验一次。读取或解析失败立即清空有效用户和版本，最后成功版本只保留作诊断，不继续授权。这个频率不保证 Kubernetes 挂载变更到达所有副本的时间。
 
-配额页从 `MODEL_GATEWAY_URL` 读取无凭据配置元数据，只读聚合 PostgreSQL 的当前租户 60 秒滚动窗口。预算包含预留和保守计费；明确未发出的请求才能释放预留。上限或余量未知时显示未知，全局约束仍适用，页面余量不保证请求一定受理。登录失败限流是进程本地，不是多副本共享限制。真实 IdP、配置传播和集群网络策略仍需在目标交付环境单独验收。
+配额页从 `MODEL_GATEWAY_URL` 读取无凭据配置元数据，只读聚合 PostgreSQL 的当前租户 60 秒滚动窗口。预算包含预留和保守计费；明确未发出的请求才能释放预留。上限或余量未知时显示未知，全局约束仍适用，页面余量不保证请求一定受理。登录失败限流是进程本地，不是多副本共享限制。真实身份提供方（IdP）、配置传播和集群网络策略仍需在目标交付环境单独验收。
 
 更完整的本地检查步骤见[检查与验收](verification.md)；多服务启动见[部署模式](../operations/deployment.md)。
