@@ -9,14 +9,15 @@
 // End file metadata.
 
 import { Alert, Button, Select, Tag } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   checkContractReferences,
   type ContractReferenceCheck,
   type DraftContent,
 } from "../api/contracts";
 import { errorMessage } from "../api/http";
-import { useCases } from "../api/queries";
+import { useCases, useSession } from "../api/queries";
+import { actorReadContextKey } from "../domain/actor-read-context";
 import { caseOptionLabel } from "../domain/case-identity";
 import { caseSelectPresentation } from "./case-select-presentation";
 
@@ -36,16 +37,48 @@ export function ContractReferencesPanel({
   draft: DraftContent;
 }) {
   const cases = useCases();
+  const session = useSession();
   const [caseID, setCaseID] = useState<string | null>(null);
-  const [check, setCheck] = useState<ContractReferenceCheck | null>(null);
-  const [checkCaseID, setCheckCaseID] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const caseVisible = !cases.isError && (caseID === null || !!cases.data?.some((item) => item.id === caseID));
+  const actorScope = actorReadContextKey(session.data ?? null);
+  const sessionReady = session.isSuccess && !session.isError && !session.isFetching && actorScope !== "";
+  const listReady = sessionReady && cases.isSuccess && !cases.isError;
+  const caseVisible = listReady && (caseID === null || cases.data.some((item) => item.id === caseID));
+  // A refreshed authorization list also starts a new context, even if it contains the same case IDs.
+  const context = useRef({ contractID, caseID, caseVisible, casesData: cases.data, actorScope, generation: 0 });
+  const request = useRef(0);
+  const mounted = useRef(false);
+  const [verification, setVerification] = useState<{
+    generation: number;
+    busy: boolean;
+    check: ContractReferenceCheck | null;
+    error: string | null;
+  } | null>(null);
+  const matchesContext = context.current.contractID === contractID && context.current.caseID === caseID &&
+    context.current.caseVisible === caseVisible && context.current.casesData === cases.data && context.current.actorScope === actorScope;
+  const visible = matchesContext && verification?.generation === context.current.generation ? verification : null;
+  const check = visible?.check ?? null;
+  const error = visible?.error ?? null;
+  const busy = visible?.busy ?? false;
+
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      request.current += 1;
+    };
+  }, []);
+  // Invalidate before old promises can publish into the newly committed context.
+  useLayoutEffect(() => {
+    if (context.current.contractID !== contractID || context.current.caseID !== caseID ||
+        context.current.caseVisible !== caseVisible || context.current.casesData !== cases.data || context.current.actorScope !== actorScope) {
+      context.current = { contractID, caseID, caseVisible, casesData: cases.data, actorScope, generation: context.current.generation + 1 };
+      request.current += 1;
+      setVerification(null);
+    }
+  }, [contractID, caseID, caseVisible, cases.data, actorScope]);
   useEffect(() => {
     if (caseID && (cases.isError || (cases.isSuccess && !cases.data.some((item) => item.id === caseID)))) {
       setCaseID(null);
-      setCheck(null);
     }
   }, [caseID, cases.data, cases.isError, cases.isSuccess]);
 
@@ -55,18 +88,21 @@ export function ContractReferencesPanel({
     draft.contract.procurement_result_package !== undefined;
 
   async function run() {
-    if (contractID === null || !caseVisible) return;
-    setBusy(true);
-    setError(null);
+    if (contractID === null || !caseVisible || context.current.contractID !== contractID ||
+        context.current.caseID !== caseID || context.current.caseVisible !== caseVisible ||
+        context.current.casesData !== cases.data || context.current.actorScope !== actorScope) return;
+    const generation = context.current.generation;
+    const sequence = ++request.current;
+    setVerification({ generation, busy: true, check: null, error: null });
     try {
       const result = await checkContractReferences(contractID, caseID ?? undefined);
-      setCheckCaseID(caseID);
-      setCheck(result);
+      if (mounted.current && request.current === sequence && context.current.generation === generation) {
+        setVerification({ generation, busy: false, check: result, error: null });
+      }
     } catch (caught) {
-      setCheck(null);
-      setError(errorMessage(caught));
-    } finally {
-      setBusy(false);
+      if (mounted.current && request.current === sequence && context.current.generation === generation) {
+        setVerification({ generation, busy: false, check: null, error: errorMessage(caught) });
+      }
     }
   }
 
@@ -88,10 +124,11 @@ export function ContractReferencesPanel({
               value={caseVisible ? caseID ?? undefined : undefined}
               placeholder="来源案件（草稿必选；已导入合同可留空）"
               loading={cases.isLoading}
-              options={(cases.isError ? [] : cases.data ?? []).map((item) => ({ value: item.id, label: caseOptionLabel(item) }))}
-              onChange={(value) => { setCaseID(value ?? null); setCheck(null); }}
+              disabled={!listReady}
+              options={(listReady ? cases.data : []).map((item) => ({ value: item.id, label: caseOptionLabel(item) }))}
+              onChange={(value) => setCaseID(value ?? null)}
             />
-            <Button loading={busy} onClick={() => void run()}>
+            <Button loading={busy} disabled={!caseVisible} onClick={() => void run()}>
               核对引用
             </Button>
           </div>
@@ -99,7 +136,7 @@ export function ContractReferencesPanel({
             <p className="meta">当前快照没有主体、材料或采购结果引用；核对仍会验证来源案件读权限。</p>
           ) : null}
           {error !== null ? <Alert type="error" showIcon message={error} /> : null}
-          {check !== null && caseVisible && checkCaseID === caseID ? (
+          {check !== null && caseVisible ? (
             <div className="contracts-page-reference-result">
               <p className="meta">
                 来源案件 {check.source_case_id} ·{" "}
