@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks missing and malformed timestamp labels, calendar validation and precise Beijing-time formatting without changing original timestamp values.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-04
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { expect, it } from "vitest";
 import { formatDateTime, preciseTime } from "./time";
 
