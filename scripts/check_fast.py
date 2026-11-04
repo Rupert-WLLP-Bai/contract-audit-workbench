@@ -119,7 +119,8 @@ REVIEW_READMISSION_TESTS = (
     "TestReviewReceiptRejectsChangedEpochPostgres",
     "TestReviewReceiptCurrentMembershipPostgres",
     "TestReviewReceiptPolicyProjectionExecuteRequirement",
-    "TestReviewReceiptMigration41PreservesPostgres",
+    "TestReviewReceiptLegacyMigrationPreservesPostgres",
+    "TestReviewReceiptOriginDiffersFromCaseOrganizationPostgres",
     "TestCaseContextFenceMigrationUpgradeAndRoleACL",
 )
 REVIEW_READMISSION_HTTP_TESTS = ("TestCancelledPreparingReadmissionHTTP",)
@@ -503,6 +504,7 @@ def _is_review_readmission(path: str) -> bool:
         "internal/store/review_readmission_pg_test.go",
         "internal/store/case_context_migration_test.go",
         "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+        "internal/store/migrations/0043_review_receipt_origin_org.sql",
         "internal/store/migrations.go",
         "internal/store/table_catalog.json",
         "internal/store/service_roles.go",
@@ -514,7 +516,8 @@ def _is_review_readmission(path: str) -> bool:
 def _is_review_readmission_http(path: str) -> bool:
     return path in {"internal/httpapi/server.go", "internal/httpapi/pending_image_test.go",
                     "internal/store/execution.go", "internal/store/write_idempotency.go",
-                    "internal/store/migrations/0042_review_receipt_session_recovery.sql"}
+                    "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+                    "internal/store/migrations/0043_review_receipt_origin_org.sql"}
 
 
 def _is_contract_signing(path: str) -> bool:
@@ -615,6 +618,7 @@ def _is_offline_migrator_bootstrap(path: str) -> bool:
         "internal/store/tenant_identity_role_provision.go",
         "internal/store/migrations/0033_tenant_membership.sql",
         "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+        "internal/store/migrations/0043_review_receipt_origin_org.sql",
     }
 
 

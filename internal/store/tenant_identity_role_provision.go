@@ -195,6 +195,9 @@ to_regprocedure(format('%I.tenant_operation_fence(jsonb,text,text)',$3))::oid
 			,to_regprocedure(format('%I.tenant_intake_upload_recovery_allowed(text,text,text,text,text)',$3))::oid
 			,to_regprocedure(format('%I.stamp_intake_completion()',$3))::oid
 			,to_regprocedure(format('%I.tenant_review_receipt_recovery_allowed(text,text,text,text,text,text)',$3))::oid
+			,to_regprocedure(format('%I.tenant_review_receipt_recovery_allowed(text,text,text,text,text,text,text)',$3))::oid
+			,to_regprocedure(format('%I.stamp_review_receipt_origin()',$3))::oid
+			,to_regprocedure(format('%I.tenant_review_receipt_key_conflict(text,text,text,text,text,text)',$3))::oid
 		]) AS oid
 	), owner_objects AS (
 		SELECT class.classid,class.objid,class.objsubid,namespace.nspname
@@ -289,6 +292,14 @@ to_regprocedure(format('%I.tenant_operation_fence(jsonb,text,text)',$3))::oid
 		('material_versions','tenant_id','SELECT'),('material_versions','org_id','SELECT'),('material_versions','case_id','SELECT'),('material_versions','material_id','SELECT'),('material_versions','version','SELECT'),('material_versions','document_id','SELECT'),
 		('document_upload_idempotency','tenant_id','SELECT'),('document_upload_idempotency','org_id','SELECT'),('document_upload_idempotency','case_id','SELECT'),('document_upload_idempotency','actor_id','SELECT'),('document_upload_idempotency','idempotency_key','SELECT'),('document_upload_idempotency','document_id','SELECT'),('document_upload_idempotency','material_id','SELECT'),('document_upload_idempotency','command_session','SELECT'),('document_upload_idempotency','command_version','SELECT')
 	 ) AS intake_recovery_permissions(table_name,column_name,privilege_type) WHERE to_regclass(format('%I.case_intake_completion_events',$2::text)) IS NOT NULL
+	 UNION ALL SELECT * FROM (VALUES
+		('execution_write_receipts','tenant_id','SELECT'),('execution_write_receipts','org_id','SELECT'),
+		('execution_write_receipts','case_id','SELECT'),('execution_write_receipts','actor_id','SELECT'),
+		('execution_write_receipts','route','SELECT'),('execution_write_receipts','idempotency_key','SELECT'),
+		('execution_write_receipts','command_session','SELECT'),('execution_write_receipts','command_version','SELECT'),
+		('execution_write_receipts','command_origin_org','SELECT')
+	 ) AS review_receipt_key_permissions(table_name,column_name,privilege_type) WHERE EXISTS(
+		SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass(format('%I.execution_write_receipts',$2::text)) AND attname='command_origin_org' AND NOT attisdropped)
 	), actual AS (
 		SELECT namespace.nspname AS schema_name,relation.relname AS table_name,NULL::text AS column_name,acl.privilege_type,acl.is_grantable
 		FROM pg_class relation JOIN pg_namespace namespace ON namespace.oid=relation.relnamespace

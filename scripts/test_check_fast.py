@@ -401,6 +401,7 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
                      "internal/store/attempt_finalize.go", "internal/store/document_prepare.go",
                      "internal/store/review_readmission_pg_test.go", "internal/store/case_context_migration_test.go", "internal/httpapi/server.go",
                      "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+                     "internal/store/migrations/0043_review_receipt_origin_org.sql",
                      "internal/store/service_roles.go", "internal/store/tenant_identity_role_provision.go",
                      "internal/store/migrations.go", "internal/store/table_catalog.json"):
             with self.subTest(path=path):
@@ -411,7 +412,8 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
                     targets["./internal/store"].tests))
         for path in ("internal/httpapi/server.go", "internal/httpapi/pending_image_test.go",
                      "internal/store/execution.go", "internal/store/write_idempotency.go",
-                     "internal/store/migrations/0042_review_receipt_session_recovery.sql"):
+                     "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+                     "internal/store/migrations/0043_review_receipt_origin_org.sql"):
             with self.subTest(http_path=path):
                 plan = self.plan(check_fast.Change("M", path))
                 targets = {target.package: target for target in plan.database_tests}
@@ -580,6 +582,7 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
             "internal/store/clm_role_provision.go",
             "internal/store/tenant_identity_role_provision.go",
             "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+            "internal/store/migrations/0043_review_receipt_origin_org.sql",
         )
         for path in paths:
             with self.subTest(path=path):

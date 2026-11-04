@@ -26,10 +26,8 @@ func TestCaseContextFenceMigrationUpgradeAndRoleACL(t *testing.T) {
 	core := env.openRole(t, "core")
 	// Restore the relevant 0039 policy/trigger definitions in this isolated
 	// fixture, then exercise the forward migrations and their role grants.
+	restoreReviewReceiptVersionForTest(t, ctx, env.harness.pool, env.harness.schema, 41)
 	if _, err := env.harness.pool.Exec(ctx, `
-		ALTER POLICY command_receipt_context ON execution_write_receipts
-		  USING (NULLIF(current_setting('app.command_digest',true),'') IS NULL OR command_session=current_setting('app.command_digest',true) AND command_version=NULLIF(current_setting('app.command_version',true),'')::bigint);
-		DROP FUNCTION tenant_review_receipt_recovery_allowed(text,text,text,text,text,text);
 		DROP TRIGGER command_receipt_context ON case_intake_operations;
 		CREATE TRIGGER command_receipt_context BEFORE INSERT OR UPDATE ON case_intake_operations FOR EACH ROW EXECUTE FUNCTION stamp_command_receipt();
 		ALTER POLICY command_receipt_context ON case_intake_operations
@@ -44,11 +42,11 @@ func TestCaseContextFenceMigrationUpgradeAndRoleACL(t *testing.T) {
 		DROP FUNCTION tenant_intake_read_allowed(text,text,text,text,text,text);
 		DROP FUNCTION tenant_intake_recovery_allowed(text,text,text,text,text,text);
 		DROP FUNCTION tenant_case_context_fence(text,bigint,text);
-		DELETE FROM schema_migrations WHERE version IN (40,41,42)`); err != nil {
+		DELETE FROM schema_migrations WHERE version IN (40,41)`); err != nil {
 		t.Fatal(err)
 	}
 	if err := migrate(ctx, env.harness.pool, env.harness.schema); err != nil {
-		t.Fatalf("upgrade 0039 through 0042: %v", err)
+		t.Fatalf("upgrade 0039 through 0043: %v", err)
 	}
 	if err := migrate(ctx, env.harness.pool, env.harness.schema); err != nil {
 		t.Fatalf("repeat migration: %v", err)

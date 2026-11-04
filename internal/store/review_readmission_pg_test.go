@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -29,11 +30,87 @@ import (
 	"contractaudit/internal/model"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func readmissionContext(ctx context.Context, key string, a JobAcceptance) context.Context {
 	ctx = WithReviewIdempotency(ctx, key)
 	return WithReviewReadmission(ctx, ReviewReadmission{RunID: a.RunID, AttemptID: a.AttemptID})
+}
+
+// Reconstruct a historical receipt policy only inside an isolated test schema.
+func restoreReviewReceiptVersionForTest(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schema string, version int) {
+	t.Helper()
+	if version != 41 && version != 42 {
+		t.Fatalf("unsupported historical fixture version: %d", version)
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(context.Background())
+	var database string
+	if err := tx.QueryRow(ctx, `SELECT current_database()`).Scan(&database); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `ALTER POLICY command_receipt_context ON execution_write_receipts
+		USING (NULLIF(current_setting('app.command_digest',true),'') IS NULL OR command_session=current_setting('app.command_digest',true) AND command_version=NULLIF(current_setting('app.command_version',true),'')::bigint);
+		DROP TRIGGER review_receipt_origin ON execution_write_receipts;
+		DROP FUNCTION tenant_review_receipt_key_conflict(text,text,text,text,text,text);
+		DROP FUNCTION tenant_review_receipt_recovery_allowed(text,text,text,text,text,text,text);
+		DROP FUNCTION stamp_review_receipt_origin()`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `REVOKE SELECT (tenant_id,org_id,case_id,actor_id,route,idempotency_key,command_session,command_version,command_origin_org) ON execution_write_receipts FROM `+pgx.Identifier{tenantIdentityOwnerName(database, schema)}.Sanitize()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `ALTER TABLE execution_write_receipts DROP COLUMN command_origin_org`); err != nil {
+		t.Fatal(err)
+	}
+	if version == 42 {
+		catalog, err := migrationCatalog()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := executeMigrationSQL(ctx, tx, schema, catalog[41].sql); err != nil {
+			t.Fatal(err)
+		}
+		rows, err := tx.Query(ctx, `SELECT role_name FROM service_database_roles`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var roles []string
+		for rows.Next() {
+			var role string
+			if err := rows.Scan(&role); err != nil {
+				rows.Close()
+				t.Fatal(err)
+			}
+			roles = append(roles, role)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		rows.Close()
+		if _, err := tx.Exec(ctx, `SET LOCAL ROLE `+pgx.Identifier{tenantIdentityOwnerName(database, schema)}.Sanitize()); err != nil {
+			t.Fatal(err)
+		}
+		for _, role := range roles {
+			if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_review_receipt_recovery_allowed(text,text,text,text,text,text) TO `+pgx.Identifier{role}.Sanitize()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := tx.Exec(ctx, `RESET ROLE`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM schema_migrations WHERE version>$1`, version); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestReviewReadmissionPreparingScanPostgres(t *testing.T) {
@@ -761,11 +838,37 @@ func TestReviewReceiptPolicyProjectionExecuteRequirement(t *testing.T) {
 		t.Skip("isolated PostgreSQL and restricted roles required")
 	}
 	tool := env.openRole(t, "tool")
+	var database string
+	if err := env.harness.pool.QueryRow(context.Background(), `SELECT current_database()`).Scan(&database); err != nil {
+		t.Fatal(err)
+	}
+	owner := tenantIdentityOwnerName(database, env.harness.schema)
+	var canReadDigest, canReadBody bool
+	if err := env.harness.pool.QueryRow(context.Background(), `SELECT has_column_privilege($1,'execution_write_receipts','request_digest','SELECT'),has_column_privilege($1,'execution_write_receipts','response_json','SELECT')`, owner).Scan(&canReadDigest, &canReadBody); err != nil || canReadDigest || canReadBody {
+		t.Fatalf("AUTH owner can read receipt payload: digest=%t body=%t err=%v", canReadDigest, canReadBody, err)
+	}
+	conflictFunction := pgx.Identifier{env.harness.schema}.Sanitize() + `.tenant_review_receipt_key_conflict(text,text,text,text,text,text)`
+	for _, service := range []string{"execution", "core", "document", "model", "tool"} {
+		cfg, err := pgx.ParseConfig(env.roleDSNs[service])
+		if err != nil {
+			t.Fatal(err)
+		}
+		var allowed bool
+		if err := env.harness.pool.QueryRow(context.Background(), `SELECT has_function_privilege($1,$2,'EXECUTE')`, cfg.User, conflictFunction).Scan(&allowed); err != nil || allowed != (service == "execution") {
+			t.Fatalf("%s conflict function execute=%t err=%v", service, allowed, err)
+		}
+	}
+	var forbiddenResult bool
+	denied := tool.pool.QueryRow(context.Background(), `SELECT tenant_review_receipt_key_conflict('','','','','','')`).Scan(&forbiddenResult)
+	var permission *pgconn.PgError
+	if !errors.As(denied, &permission) || permission.Code != "42501" {
+		t.Fatalf("actual Tool login could call conflict function: %v", denied)
+	}
 	cfg, err := pgx.ParseConfig(env.roleDSNs["tool"])
 	if err != nil {
 		t.Fatal(err)
 	}
-	qualified := pgx.Identifier{env.harness.schema}.Sanitize() + `.tenant_review_receipt_recovery_allowed(text,text,text,text,text,text)`
+	qualified := pgx.Identifier{env.harness.schema}.Sanitize() + `.tenant_review_receipt_recovery_allowed(text,text,text,text,text,text,text)`
 	role := pgx.Identifier{cfg.User}.Sanitize()
 	ctx := context.Background()
 	if _, err := env.harness.pool.Exec(ctx, `REVOKE EXECUTE ON FUNCTION `+qualified+` FROM `+role); err != nil {
@@ -795,80 +898,181 @@ func TestReviewReceiptPolicyProjectionExecuteRequirement(t *testing.T) {
 	if err := MigrateServiceRoles(ctx); err != nil {
 		t.Fatalf("exact service function grants should be accepted: %v", err)
 	}
+	stamp := pgx.Identifier{env.harness.schema}.Sanitize() + `.stamp_review_receipt_origin()`
+	if _, err := env.harness.pool.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+stamp+` TO PUBLIC`); err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateServiceRoles(ctx); err == nil {
+		t.Fatal("unexpected PUBLIC origin trigger function grant accepted")
+	}
+	if _, err := env.harness.pool.Exec(ctx, `REVOKE EXECUTE ON FUNCTION `+stamp+` FROM PUBLIC`); err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateServiceRoles(ctx); err != nil {
+		t.Fatalf("exact origin function grants should be accepted: %v", err)
+	}
+	if _, err := env.harness.pool.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+conflictFunction+` TO PUBLIC`); err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateServiceRoles(ctx); err == nil {
+		t.Fatal("unexpected PUBLIC conflict function grant accepted")
+	}
+	if _, err := env.harness.pool.Exec(ctx, `REVOKE EXECUTE ON FUNCTION `+conflictFunction+` FROM PUBLIC`); err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateServiceRoles(ctx); err != nil {
+		t.Fatalf("exact conflict function grants should be accepted: %v", err)
+	}
+	if _, err := env.harness.pool.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+conflictFunction+` TO `+role); err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateServiceRoles(ctx); err == nil {
+		t.Fatal("unexpected Tool conflict function grant accepted")
+	}
+	if _, err := env.harness.pool.Exec(ctx, `REVOKE EXECUTE ON FUNCTION `+conflictFunction+` FROM `+role); err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateServiceRoles(ctx); err != nil {
+		t.Fatalf("exact conflict grants after Tool revocation: %v", err)
+	}
 }
 
-func TestReviewReceiptMigration41PreservesPostgres(t *testing.T) {
-	f, ok := newDurableCaseFixture(t)
-	if !ok {
-		t.Skip("isolated PostgreSQL and restricted roles required")
-	}
-	ctxA := WithAdmissionSessionToken(context.Background(), f.sessionToken)
-	execution := f.environment.openRole(t, "execution")
-	execution.UseOperationAuthority(durableTestOperationAuthority{core: f.core})
-	execution.UseDocumentPreparer(f.document)
-	execution.UseModels(&frozenOCRModel{})
-	original, err := execution.StartReviewAsync(WithReviewIdempotency(ctxA, "pre-upgrade"), f.admin, f.caseID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var stamp, digest string
-	var version int64
-	var response []byte
-	if err := f.environment.harness.pool.QueryRow(ctxA, `SELECT command_session,command_version,request_digest,response_json FROM execution_write_receipts WHERE case_id=$1`, f.caseID).Scan(&stamp, &version, &digest, &response); err != nil {
-		t.Fatal(err)
-	}
-	// Reconstruct the exact 0041 policy in this isolated fixture, retaining
-	// its genuine accepted row; then exercise the production migration.
-	if _, err := f.environment.harness.pool.Exec(ctxA, `ALTER POLICY command_receipt_context ON execution_write_receipts
-		USING (NULLIF(current_setting('app.command_digest',true),'') IS NULL OR command_session=current_setting('app.command_digest',true) AND command_version=NULLIF(current_setting('app.command_version',true),'')::bigint);
-		DROP FUNCTION tenant_review_receipt_recovery_allowed(text,text,text,text,text,text);
-		DELETE FROM schema_migrations WHERE version=42`); err != nil {
-		t.Fatal(err)
-	}
-	var beforeCheck string
-	if err := f.environment.harness.pool.QueryRow(ctxA, `SELECT pg_get_expr(polwithcheck,polrelid) FROM pg_policy WHERE polrelid='execution_write_receipts'::regclass AND polname='command_receipt_context'`).Scan(&beforeCheck); err != nil {
-		t.Fatal(err)
-	}
-	token, err := f.core.EstablishSession(f.admin, "client")
-	if err != nil {
-		t.Fatal(err)
-	}
-	actor, _, err := f.core.AuthenticateSession(context.Background(), token)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctxB := WithAdmissionSessionToken(context.Background(), token)
-	tx, err := execution.beginContextTx(commandContext(ctxB, actor), pgx.TxOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := setLocalScope(ctxB, tx, userScope(actor)); err != nil {
-		t.Fatal(err)
-	}
-	var before int
-	err = tx.QueryRow(ctxB, `SELECT count(*) FROM execution_write_receipts WHERE case_id=$1`, f.caseID).Scan(&before)
-	_ = tx.Rollback(ctxB)
-	if err != nil || before != 0 {
-		t.Fatalf("schema 41 did not retain its old session fence: %d %v", before, err)
-	}
-	if err := migrate(ctxB, f.environment.harness.pool, f.environment.harness.schema); err != nil {
-		t.Fatal(err)
-	}
-	if err := MigrateServiceRoles(ctxB); err != nil {
-		t.Fatal(err)
-	}
-	var afterCheck string
-	if err := f.environment.harness.pool.QueryRow(ctxB, `SELECT pg_get_expr(polwithcheck,polrelid) FROM pg_policy WHERE polrelid='execution_write_receipts'::regclass AND polname='command_receipt_context'`).Scan(&afterCheck); err != nil || afterCheck != beforeCheck {
-		t.Fatalf("upgrade changed the original receipt write check: %v", err)
-	}
-	if replay, err := execution.StartReviewAsync(WithReviewIdempotency(ctxB, "pre-upgrade"), actor, f.caseID); err != nil || replay != original {
-		t.Fatalf("upgraded receipt replay: %+v %v", replay, err)
-	}
-	var afterStamp, afterDigest string
-	var afterVersion int64
-	var afterResponse []byte
-	if err := f.environment.harness.pool.QueryRow(ctxB, `SELECT command_session,command_version,request_digest,response_json FROM execution_write_receipts WHERE case_id=$1`, f.caseID).Scan(&afterStamp, &afterVersion, &afterDigest, &afterResponse); err != nil || stamp != afterStamp || version != afterVersion || digest != afterDigest || !bytes.Equal(response, afterResponse) {
-		t.Fatalf("upgrade rewrote the original receipt: %v", err)
+func TestReviewReceiptLegacyMigrationPreservesPostgres(t *testing.T) {
+	for _, oldVersion := range []int{41, 42} {
+		t.Run(fmt.Sprintf("schema=%d", oldVersion), func(t *testing.T) {
+			f, ok := newDurableCaseFixture(t)
+			if !ok {
+				t.Skip("isolated PostgreSQL and restricted roles required")
+			}
+			ctxA := WithAdmissionSessionToken(context.Background(), f.sessionToken)
+			execution := f.environment.openRole(t, "execution")
+			execution.UseOperationAuthority(durableTestOperationAuthority{core: f.core})
+			execution.UseDocumentPreparer(f.document)
+			execution.UseModels(&frozenOCRModel{})
+			original, err := execution.StartReviewAsync(WithReviewIdempotency(ctxA, "pre-upgrade"), f.admin, f.caseID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var stamp, digest string
+			var version int64
+			var response []byte
+			if err := f.environment.harness.pool.QueryRow(ctxA, `SELECT command_session,command_version,request_digest,response_json FROM execution_write_receipts WHERE case_id=$1`, f.caseID).Scan(&stamp, &version, &digest, &response); err != nil {
+				t.Fatal(err)
+			}
+			// Reconstruct the old policy without inventing a historical origin.
+			restoreReviewReceiptVersionForTest(t, ctxA, f.environment.harness.pool, f.environment.harness.schema, oldVersion)
+			var beforeCheck string
+			if err := f.environment.harness.pool.QueryRow(ctxA, `SELECT pg_get_expr(polwithcheck,polrelid) FROM pg_policy WHERE polrelid='execution_write_receipts'::regclass AND polname='command_receipt_context'`).Scan(&beforeCheck); err != nil {
+				t.Fatal(err)
+			}
+			token, err := f.core.EstablishSession(f.admin, "client")
+			if err != nil {
+				t.Fatal(err)
+			}
+			actor, _, err := f.core.AuthenticateSession(context.Background(), token)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctxB := WithAdmissionSessionToken(context.Background(), token)
+			tx, err := execution.beginContextTx(commandContext(ctxB, actor), pgx.TxOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := setLocalScope(ctxB, tx, userScope(actor)); err != nil {
+				t.Fatal(err)
+			}
+			var before int
+			err = tx.QueryRow(ctxB, `SELECT count(*) FROM execution_write_receipts WHERE case_id=$1`, f.caseID).Scan(&before)
+			_ = tx.Rollback(ctxB)
+			if err != nil || before != 0 {
+				t.Fatalf("historical schema did not retain its old session fence: %d %v", before, err)
+			}
+			if err := migrate(ctxB, f.environment.harness.pool, f.environment.harness.schema); err != nil {
+				t.Fatal(err)
+			}
+			if err := MigrateServiceRoles(ctxB); err != nil {
+				t.Fatal(err)
+			}
+			var afterCheck string
+			if err := f.environment.harness.pool.QueryRow(ctxB, `SELECT pg_get_expr(polwithcheck,polrelid) FROM pg_policy WHERE polrelid='execution_write_receipts'::regclass AND polname='command_receipt_context'`).Scan(&afterCheck); err != nil || afterCheck != beforeCheck {
+				t.Fatalf("upgrade changed the original receipt write check: %v", err)
+			}
+			if replay, err := execution.StartReviewAsync(WithReviewIdempotency(ctxA, "pre-upgrade"), f.admin, f.caseID); err != nil || replay != original {
+				t.Fatalf("legacy receipt must replay in its original session: %+v %v", replay, err)
+			}
+			for _, candidate := range []struct {
+				ctx  context.Context
+				user accounts.User
+				want bool
+			}{{ctxA, f.admin, false}, {ctxB, actor, true}} {
+				tx, err := execution.beginContextTx(commandContext(candidate.ctx, candidate.user), pgx.TxOptions{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := setLocalScope(candidate.ctx, tx, userScope(candidate.user)); err != nil {
+					t.Fatal(err)
+				}
+				route := "POST /api/cases/" + f.caseID + "/reviews"
+				if _, err := tx.Exec(candidate.ctx, `SELECT set_config('app.review_receipt_route',$1,true),set_config('app.review_receipt_key','pre-upgrade',true)`, route); err != nil {
+					t.Fatal(err)
+				}
+				var conflict bool
+				err = tx.QueryRow(candidate.ctx, `SELECT tenant_review_receipt_key_conflict($1,$2,$3,$4,$5,'pre-upgrade')`, candidate.user.TenantID, candidate.user.OrgID, f.caseID, candidate.user.ID, route).Scan(&conflict)
+				_ = tx.Rollback(candidate.ctx)
+				if err != nil || conflict != candidate.want {
+					t.Fatalf("legacy original session conflict=%t want=%t err=%v", conflict, candidate.want, err)
+				}
+			}
+			if _, err := execution.StartReviewAsync(WithReviewIdempotency(ctxB, "pre-upgrade"), actor, f.caseID); !isConflictFault(err) {
+				t.Fatalf("legacy receipt without frozen origin must reject a new session: %v", err)
+			}
+			detail, err := f.core.GetCase(f.admin, f.caseID)
+			if err != nil || len(detail.MaterialSelection.DocumentIDs) < 2 {
+				t.Fatalf("legacy readiness fixture: %v", err)
+			}
+			if err := f.document.ConfirmMaterialSelection(ctxA, f.admin, f.caseID, detail.MaterialSelection.Version, detail.MaterialSelection.DocumentIDs[:1]); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := execution.StartReviewAsync(WithReviewIdempotency(ctxB, "pre-upgrade"), actor, f.caseID); !isConflictFault(err) || !strings.Contains(err.Error(), "查看既有审查记录") {
+				t.Fatalf("legacy conflict must precede changed readiness: %v", err)
+			}
+			if replay, err := execution.StartReviewAsync(WithReviewIdempotency(ctxA, "pre-upgrade"), f.admin, f.caseID); err != nil || replay != original {
+				t.Fatalf("same original session lost its receipt after readiness changed: %+v %v", replay, err)
+			}
+			if _, err := f.environment.harness.pool.Exec(ctxA, `UPDATE sessions SET context_version=context_version+1 WHERE token=$1`, sessionTokenDigest(f.sessionToken)); err != nil {
+				t.Fatal(err)
+			}
+			rebound, _, err := f.core.AuthenticateSession(context.Background(), f.sessionToken)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := execution.StartReviewAsync(WithReviewIdempotency(ctxA, "pre-upgrade"), rebound, f.caseID); !isConflictFault(err) {
+				t.Fatalf("legacy receipt must reject the original session after its version changed: %v", err)
+			}
+			var afterStamp, afterDigest string
+			var afterVersion int64
+			var afterResponse []byte
+			var afterOrigin *string
+			if err := f.environment.harness.pool.QueryRow(ctxB, `SELECT command_session,command_version,request_digest,response_json,command_origin_org FROM execution_write_receipts WHERE case_id=$1`, f.caseID).Scan(&afterStamp, &afterVersion, &afterDigest, &afterResponse, &afterOrigin); err != nil || stamp != afterStamp || version != afterVersion || digest != afterDigest || !bytes.Equal(response, afterResponse) || afterOrigin != nil {
+				t.Fatalf("upgrade rewrote the original receipt: %v", err)
+			}
+			if err := f.core.Logout(f.sessionToken); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := execution.StartReviewAsync(WithReviewIdempotency(ctxB, "pre-upgrade"), actor, f.caseID); !isConflictFault(err) {
+				t.Fatalf("deleted old session must not supply an inferred origin: %v", err)
+			}
+			var runs, attempts, jobs, outbox, receipts int
+			err = f.environment.harness.pool.QueryRow(ctxB, `SELECT
+				(SELECT count(*) FROM review_runs WHERE case_id=$1),
+				(SELECT count(*) FROM review_attempts WHERE run_id IN (SELECT id FROM review_runs WHERE case_id=$1)),
+				(SELECT count(*) FROM worker_jobs WHERE case_id=$1),
+				(SELECT count(*) FROM outbox_events WHERE case_id=$1),
+				(SELECT count(*) FROM execution_write_receipts WHERE case_id=$1)`, f.caseID).Scan(&runs, &attempts, &jobs, &outbox, &receipts)
+			if err != nil || runs != 1 || attempts != 1 || jobs != 1 || outbox != 1 || receipts != 1 {
+				t.Fatalf("legacy retry created facts: runs=%d attempts=%d jobs=%d outbox=%d receipts=%d err=%v", runs, attempts, jobs, outbox, receipts, err)
+			}
+		})
 	}
 }
 
@@ -1073,4 +1277,386 @@ func TestReviewReceiptCurrentMembershipPostgres(t *testing.T) {
 			t.Fatalf("revoked or expired grant replayed: %+v", grant)
 		}
 	}
+}
+
+func TestReviewReceiptOriginDiffersFromCaseOrganizationPostgres(t *testing.T) {
+	env, ok := newDurableRoleEnvironment(t)
+	if !ok {
+		t.Skip("isolated PostgreSQL and restricted roles required")
+	}
+	core, document, execution := env.openRole(t, "core"), env.openRole(t, "document"), env.openRole(t, "execution")
+	document.UseOperationAuthority(durableTestOperationAuthority{core: core})
+	execution.UseOperationAuthority(durableTestOperationAuthority{core: core})
+	execution.UseDocumentPreparer(document)
+	execution.UseModels(&frozenOCRModel{})
+	profile := accounts.User{ID: "review-cross-org-origin", DisplayName: "Review owner", Role: "clerk", TenantID: "directory", OrgID: "directory", Enabled: true, Issuer: "https://origin-identity.invalid", Subject: "owner"}
+	otherProfile := accounts.User{ID: "review-other-actor", DisplayName: "Other reviewer", Role: "clerk", TenantID: "directory", OrgID: "directory", Enabled: true, Issuer: profile.Issuer, Subject: "other"}
+	raw, err := json.Marshal(map[string]any{"users": []accounts.User{profile, otherProfile}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "directory.json")
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := accounts.ConfigureDirectory(path); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = accounts.ConfigureDirectory("") })
+	const principal = "33700000-0000-4000-8000-000000000001"
+	const memberA = "33700000-0000-4000-8000-000000000002"
+	const memberB = "33700000-0000-4000-8000-000000000003"
+	const memberOtherTenant = "33700000-0000-4000-8000-000000000004"
+	const otherPrincipal = "33700000-0000-4000-8000-000000000005"
+	const memberOtherActor = "33700000-0000-4000-8000-000000000006"
+	mapping := IdentityCrosswalk{
+		Version:    1,
+		Tenants:    []IdentityTenantMap{{ID: "origin-tenant", DisplayName: "Origin tenant", Status: "active"}, {ID: "other-tenant", DisplayName: "Other tenant", Status: "active"}},
+		OrgUnits:   []IdentityOrgUnitMap{{TenantID: "origin-tenant", ID: "org-a", DisplayName: "Case organization", Status: "active"}, {TenantID: "origin-tenant", ID: "org-b", DisplayName: "Origin organization", Status: "active"}, {TenantID: "other-tenant", ID: "org-c", DisplayName: "Other tenant", Status: "active"}},
+		Principals: []IdentityPrincipalMap{{ID: principal, ActorID: profile.ID, Issuer: profile.Issuer, Subject: profile.Subject, Status: "active"}, {ID: otherPrincipal, ActorID: otherProfile.ID, Issuer: otherProfile.Issuer, Subject: otherProfile.Subject, Status: "active"}},
+		Memberships: []IdentityMembershipMap{
+			{ID: memberA, ActorID: profile.ID, TenantID: "origin-tenant", OrgUnitID: "org-a", RoleCode: "clerk", Grants: []access.Grant{{Role: "case_owner", Scope: "tenant"}}, Status: "active"},
+			{ID: memberB, ActorID: profile.ID, TenantID: "origin-tenant", OrgUnitID: "org-b", RoleCode: "clerk", Grants: []access.Grant{{Role: "case_owner", Scope: "tenant"}}, Status: "active"},
+			{ID: memberOtherTenant, ActorID: profile.ID, TenantID: "other-tenant", OrgUnitID: "org-c", RoleCode: "clerk", Grants: []access.Grant{{Role: "case_owner", Scope: "tenant"}}, Status: "active"},
+			{ID: memberOtherActor, ActorID: otherProfile.ID, TenantID: "origin-tenant", OrgUnitID: "org-a", RoleCode: "clerk", Grants: []access.Grant{{Role: "case_owner", Scope: "tenant"}}, Status: "active"},
+		},
+	}
+	cfg, err := pgx.ParseConfig(env.harness.sel.TestDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := context.Background()
+	importMapping := func() {
+		t.Helper()
+		if _, err := ImportIdentityCrosswalk(base, env.harness.sel.TestDSN, env.harness.schema, cfg.Database, mapping, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	importMapping()
+	loginFor := func(person accounts.User, member string) (context.Context, accounts.User, string) {
+		t.Helper()
+		result, err := core.ResolveVerifiedOIDC(base, person, "client")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.PendingToken != "" {
+			result, err = core.ConsumePendingMembership(base, result.PendingToken, member, "client")
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		user, _, err := core.AuthenticateSession(base, result.SessionToken)
+		if err != nil || user.MembershipID != member {
+			t.Fatalf("login membership: %v", err)
+		}
+		return WithAdmissionSessionToken(base, result.SessionToken), user, result.SessionToken
+	}
+	login := func(member string) (context.Context, accounts.User, string) { return loginFor(profile, member) }
+	ctxA, actorA, _ := login(memberA)
+	caseID, err := core.CreateCase(actorA, "跨组织原命令回执", "procurement_ict")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []struct{ role, body string }{{"procurement", "采购要求质保三年。"}, {"draft_contract", "合同约定质保两年。"}} {
+		if _, err := document.AddDocument(ctxA, actorA, caseID, item.role, item.role+".txt", "text/plain", []byte(item.body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctxB, actorB, tokenB := login(memberB)
+	seen, err := execution.snapshotAs(actorB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, found := seen.caseByID(caseID)
+	if !found || item.OwnerOrgID != "org-a" || actorB.OrgID != "org-b" || !authorizeCase(item, actorB, access.Review) {
+		t.Fatal("fixture lacks cross-organization review authority")
+	}
+	original, err := execution.StartReviewAsync(WithReviewIdempotency(ctxB, "origin-key"), actorB, caseID)
+	if err != nil {
+		t.Fatalf("authorized origin command: %v", err)
+	}
+	keyConflict := func(ctx context.Context, actor accounts.User, requestedActor, key string) (bool, error) {
+		t.Helper()
+		tx, err := execution.beginContextTx(commandContext(ctx, actor), pgx.TxOptions{})
+		if err != nil {
+			return false, err
+		}
+		defer tx.Rollback(context.Background())
+		if err := setLocalScope(ctx, tx, userScope(actor)); err != nil {
+			return false, err
+		}
+		route := "POST /api/cases/" + caseID + "/reviews"
+		if _, err := tx.Exec(ctx, `SELECT set_config('app.review_receipt_route',$1,true),set_config('app.review_receipt_key',$2,true)`, route, key); err != nil {
+			return false, err
+		}
+		var unavailable bool
+		err = tx.QueryRow(ctx, `SELECT tenant_review_receipt_key_conflict($1,$2,$3,$4,$5,$6)`, "origin-tenant", "org-a", caseID, requestedActor, route, key).Scan(&unavailable)
+		return unavailable, err
+	}
+	t.Run("same_origin_new_session", func(t *testing.T) {
+		ctx, actor, _ := login(memberB)
+		if unavailable, err := keyConflict(ctx, actor, profile.ID, "origin-key"); err != nil || unavailable {
+			t.Fatalf("same-origin committed row must not become a conflict: %t %v", unavailable, err)
+		}
+		replay, err := execution.StartReviewAsync(WithReviewIdempotency(ctx, "origin-key"), actor, caseID)
+		if err != nil || replay != original {
+			t.Fatalf("same origin must replay: original=%+v replay=%+v error=%v", original, replay, err)
+		}
+		if _, err := execution.StartReviewAsyncScope(WithReviewIdempotency(ctx, "origin-key"), actor, caseID, "", "", ReviewScopeSingleContract); !isConflictFault(err) {
+			t.Fatalf("same key with different body must conflict: %v", err)
+		}
+	})
+	t.Run("case_organization_must_not_replay", func(t *testing.T) {
+		ctx, actor, _ := login(memberA)
+		if unavailable, err := keyConflict(ctx, actor, profile.ID, "origin-key"); err != nil || !unavailable {
+			t.Fatalf("other-origin key was not identified as unavailable: %t %v", unavailable, err)
+		}
+		if unavailable, err := keyConflict(ctx, actor, profile.ID, "unknown-key"); err != nil || unavailable {
+			t.Fatalf("another key was reported as unavailable: %t %v", unavailable, err)
+		}
+		replay, err := execution.StartReviewAsync(WithReviewIdempotency(ctx, "origin-key"), actor, caseID)
+		if err == nil {
+			t.Fatalf("other organization replayed original acceptance: %+v", replay)
+		}
+		detail, err := core.GetCase(actorA, caseID)
+		if err != nil || len(detail.MaterialSelection.DocumentIDs) < 2 {
+			t.Fatalf("cross-org readiness fixture: %v", err)
+		}
+		if err := document.ConfirmMaterialSelection(ctxA, actorA, caseID, detail.MaterialSelection.Version, detail.MaterialSelection.DocumentIDs[:1]); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := execution.StartReviewAsync(WithReviewIdempotency(ctx, "origin-key"), actor, caseID); !isConflictFault(err) || !strings.Contains(err.Error(), "查看既有审查记录") {
+			t.Fatalf("other-origin conflict must precede changed readiness: %v", err)
+		}
+		if replay, err := execution.StartReviewAsync(WithReviewIdempotency(ctxB, "origin-key"), actorB, caseID); err != nil || replay != original {
+			t.Fatalf("origin lost its receipt after readiness changed: %+v %v", replay, err)
+		}
+	})
+	t.Run("other_tenant_and_other_actor_cannot_read_receipt", func(t *testing.T) {
+		for _, candidate := range []struct {
+			person accounts.User
+			member string
+		}{{profile, memberOtherTenant}, {otherProfile, memberOtherActor}} {
+			ctx, actor, _ := loginFor(candidate.person, candidate.member)
+			if unavailable, err := keyConflict(ctx, actor, profile.ID, "origin-key"); err != nil || unavailable {
+				t.Fatalf("foreign tenant or actor learned key occupancy: %t %v", unavailable, err)
+			}
+			if candidate.member == memberOtherActor {
+				seen, err := execution.snapshotAs(actor)
+				if err != nil {
+					t.Fatal(err)
+				}
+				item, ok := seen.caseByID(caseID)
+				if !ok || !authorizeCase(item, actor, access.Review) {
+					t.Fatal("other actor lacks its independent case Review grant")
+				}
+			}
+			tx, err := execution.beginContextTx(commandContext(ctx, actor), pgx.TxOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := setLocalScope(ctx, tx, userScope(actor)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := tx.Exec(ctx, `SELECT set_config('app.review_receipt_route',$1,true),set_config('app.review_receipt_key','origin-key',true)`, "POST /api/cases/"+caseID+"/reviews"); err != nil {
+				t.Fatal(err)
+			}
+			var count int
+			err = tx.QueryRow(ctx, `SELECT count(*) FROM execution_write_receipts WHERE case_id=$1 AND idempotency_key='origin-key'`, caseID).Scan(&count)
+			_ = tx.Rollback(ctx)
+			if err != nil || count != 0 {
+				t.Fatalf("foreign tenant or actor saw origin receipt: count=%d err=%v", count, err)
+			}
+		}
+	})
+	t.Run("origin_is_immutable_after_switch_and_logout", func(t *testing.T) {
+		var caseOrg, originOrg, stamp string
+		var version int64
+		if err := env.harness.pool.QueryRow(base, `SELECT org_id,command_origin_org,command_session,command_version FROM execution_write_receipts WHERE case_id=$1 AND idempotency_key='origin-key'`, caseID).Scan(&caseOrg, &originOrg, &stamp, &version); err != nil || caseOrg != "org-a" || originOrg != "org-b" || stamp != sessionTokenDigest(tokenB) || version != 1 {
+			t.Fatalf("incorrect frozen origin or session: case_org=%q origin=%q version=%d err=%v", caseOrg, originOrg, version, err)
+		}
+		// A caller-supplied origin is overwritten from the validated DB session.
+		tx, err := execution.beginContextTx(commandContext(ctxB, actorB), pgx.TxOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := setLocalScope(ctxB, tx, userScope(actorB)); err != nil {
+			t.Fatal(err)
+		}
+		var derived string
+		err = tx.QueryRow(ctxB, `INSERT INTO execution_write_receipts(tenant_id,org_id,actor_id,route,idempotency_key,request_digest,case_id,response_json,command_origin_org)
+			VALUES($1,$2,$3,$4,'origin-spoof',repeat('a',64),$5,'{}'::jsonb,'org-a') RETURNING command_origin_org`, actorB.TenantID, caseOrg, actorB.ID, "POST /api/cases/"+caseID+"/reviews", caseID).Scan(&derived)
+		_ = tx.Rollback(ctxB)
+		if err != nil || derived != "org-b" {
+			t.Fatalf("caller-supplied origin was trusted: origin=%q err=%v", derived, err)
+		}
+		for _, stmt := range []string{`UPDATE execution_write_receipts SET command_origin_org='org-a' WHERE case_id=$1`, `DELETE FROM execution_write_receipts WHERE case_id=$1`} {
+			if _, err := env.harness.pool.Exec(base, stmt, caseID); err == nil {
+				t.Fatal("append-only receipt origin was rewritten")
+			}
+		}
+		if err := core.SwitchSessionContext(base, tokenB, "1", memberA); err != nil {
+			t.Fatal(err)
+		}
+		switched, _, err := core.AuthenticateSession(base, tokenB)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := execution.StartReviewAsync(WithReviewIdempotency(WithAdmissionSessionToken(base, tokenB), "origin-key"), switched, caseID); !isConflictFault(err) {
+			t.Fatalf("switched source session must not replay in org-a: %v", err)
+		}
+		freshCtx, fresh, _ := login(memberB)
+		if replay, err := execution.StartReviewAsync(WithReviewIdempotency(freshCtx, "origin-key"), fresh, caseID); err != nil || replay != original {
+			t.Fatalf("same origin could not replay after original session switched: %+v %v", replay, err)
+		}
+		if err := core.Logout(tokenB); err != nil {
+			t.Fatal(err)
+		}
+		var sessionExists bool
+		if err := env.harness.pool.QueryRow(base, `SELECT EXISTS(SELECT 1 FROM sessions WHERE token=$1)`, sessionTokenDigest(tokenB)).Scan(&sessionExists); err != nil || sessionExists {
+			t.Fatalf("original session was not deleted: exists=%t err=%v", sessionExists, err)
+		}
+		if replay, err := execution.StartReviewAsync(WithReviewIdempotency(freshCtx, "origin-key"), fresh, caseID); err != nil || replay != original {
+			t.Fatalf("same origin could not replay after original session logout: %+v %v", replay, err)
+		}
+		var after string
+		if err := env.harness.pool.QueryRow(base, `SELECT command_origin_org FROM execution_write_receipts WHERE case_id=$1 AND idempotency_key='origin-key'`, caseID).Scan(&after); err != nil || after != originOrg {
+			t.Fatalf("frozen origin changed: %q %v", after, err)
+		}
+	})
+	t.Run("subtree_authorized_readmission", func(t *testing.T) {
+		mapping.Memberships[1].Grants = []access.Grant{{Role: "case_owner", Scope: "org_subtree", ResolvedOrgIDs: []string{"org-a"}}}
+		importMapping()
+		ctxA, owner, _ := login(memberA)
+		caseID, err := core.CreateCase(owner, "跨组织子树授权重新受理", "procurement_ict")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range []struct{ role, body string }{{"procurement", "采购文件"}, {"draft_contract", "拟签合同"}} {
+			if _, err := document.AddDocument(ctxA, owner, caseID, item.role, item.role+".txt", "text/plain", []byte(item.body)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := document.AddDocument(ctxA, owner, caseID, "attachment", "scan.png", "image/png", model.SampleWarrantyPNG); err != nil {
+			t.Fatal(err)
+		}
+		ctxB, actor, token := login(memberB)
+		seen, err := execution.snapshotAs(actor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		item, ok := seen.caseByID(caseID)
+		if !ok || !authorizeCase(item, actor, access.Review) {
+			t.Fatal("org subtree did not grant Review on case organization")
+		}
+		first, err := execution.StartReviewAsync(ctxB, actor, caseID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := execution.CancelReview(ctxB, actor, caseID, first.RunID); err != nil {
+			t.Fatal(err)
+		}
+		otherExecution := env.openRole(t, "execution")
+		otherExecution.UseOperationAuthority(durableTestOperationAuthority{core: core})
+		otherExecution.UseDocumentPreparer(document)
+		otherExecution.UseModels(&frozenOCRModel{})
+		initialCtx, initialActor, initialToken := login(memberB)
+		var initial [2]JobAcceptance
+		var initialErrs [2]error
+		var initialGroup sync.WaitGroup
+		for i, call := range []struct {
+			st   *Store
+			ctx  context.Context
+			user accounts.User
+		}{{execution, ctxB, actor}, {otherExecution, initialCtx, initialActor}} {
+			initialGroup.Add(1)
+			go func(i int, call struct {
+				st   *Store
+				ctx  context.Context
+				user accounts.User
+			}) {
+				defer initialGroup.Done()
+				initial[i], initialErrs[i] = call.st.StartReviewAsync(readmissionContext(call.ctx, "subtree-origin", first), call.user, caseID)
+			}(i, call)
+		}
+		initialGroup.Wait()
+		if initialErrs[0] != nil || initialErrs[1] != nil || initial[0] != initial[1] {
+			t.Fatalf("cross-organization concurrent first admission: values=%+v errors=%v", initial, initialErrs)
+		}
+		accepted := initial[0]
+		var winningStamp string
+		if err := env.harness.pool.QueryRow(base, `SELECT command_session FROM execution_write_receipts WHERE case_id=$1 AND idempotency_key='subtree-origin'`, caseID).Scan(&winningStamp); err != nil {
+			t.Fatal(err)
+		}
+		if winningStamp == sessionTokenDigest(initialToken) {
+			token = initialToken
+		} else if winningStamp != sessionTokenDigest(token) {
+			t.Fatal("receipt was not stamped with an admitting session")
+		}
+		freshCtx, fresh, _ := login(memberB)
+		otherCtx, other, _ := login(memberB)
+		var values [2]JobAcceptance
+		var errs [2]error
+		var group sync.WaitGroup
+		for i, call := range []struct {
+			ctx  context.Context
+			user accounts.User
+		}{{freshCtx, fresh}, {otherCtx, other}} {
+			group.Add(1)
+			go func(i int, call struct {
+				ctx  context.Context
+				user accounts.User
+			}) {
+				defer group.Done()
+				values[i], errs[i] = execution.StartReviewAsync(readmissionContext(call.ctx, "subtree-origin", first), call.user, caseID)
+			}(i, call)
+		}
+		group.Wait()
+		if errs[0] != nil || errs[1] != nil || values[0] != accepted || values[1] != accepted {
+			t.Fatalf("cross-session subtree replays: values=%+v errs=%v", values, errs)
+		}
+		if _, err := execution.StartReviewAsync(WithReviewIdempotency(freshCtx, "subtree-origin"), fresh, caseID); !isConflictFault(err) {
+			t.Fatalf("changed request must conflict: %v", err)
+		}
+		if _, err := execution.StartReviewAsync(readmissionContext(freshCtx, "other-new-intent", first), fresh, caseID); !isConflictFault(err) {
+			t.Fatalf("different key must revalidate the target: %v", err)
+		}
+		caseCtx, caseActor, _ := login(memberA)
+		if _, err := execution.StartReviewAsync(readmissionContext(caseCtx, "subtree-origin", first), caseActor, caseID); !isConflictFault(err) {
+			t.Fatalf("case organization must not replay subtree command: %v", err)
+		}
+		if err := core.SwitchSessionContext(base, token, "1", memberA); err != nil {
+			t.Fatal(err)
+		}
+		if err := core.Logout(token); err != nil {
+			t.Fatal(err)
+		}
+		var sessionExists bool
+		if err := env.harness.pool.QueryRow(base, `SELECT EXISTS(SELECT 1 FROM sessions WHERE token=$1)`, sessionTokenDigest(token)).Scan(&sessionExists); err != nil || sessionExists {
+			t.Fatalf("original readmission session was not deleted: exists=%t err=%v", sessionExists, err)
+		}
+		if replay, err := execution.StartReviewAsync(readmissionContext(freshCtx, "subtree-origin", first), fresh, caseID); err != nil || replay != accepted {
+			t.Fatalf("subtree origin lost after original session switch and logout: %+v %v", replay, err)
+		}
+		var caseOrg, originOrg string
+		var runs, attempts, jobs, outbox, receipts int
+		err = env.harness.pool.QueryRow(base, `SELECT org_id,command_origin_org,
+			(SELECT count(*) FROM review_runs WHERE case_id=$1),
+			(SELECT count(*) FROM review_attempts WHERE run_id IN (SELECT id FROM review_runs WHERE case_id=$1)),
+			(SELECT count(*) FROM worker_jobs WHERE case_id=$1),
+			(SELECT count(*) FROM outbox_events WHERE case_id=$1),
+			(SELECT count(*) FROM execution_write_receipts WHERE case_id=$1)
+			FROM execution_write_receipts WHERE case_id=$1 AND idempotency_key='subtree-origin'`, caseID).Scan(&caseOrg, &originOrg, &runs, &attempts, &jobs, &outbox, &receipts)
+		if err != nil || caseOrg != "org-a" || originOrg != "org-b" || runs != 2 || attempts != 2 || jobs != 2 || outbox != 2 || receipts != 1 {
+			t.Fatalf("subtree facts: case_org=%q origin=%q runs=%d attempts=%d jobs=%d outbox=%d receipts=%d err=%v", caseOrg, originOrg, runs, attempts, jobs, outbox, receipts, err)
+		}
+		state, err := execution.snapshotScoped(freshCtx, userScope(fresh))
+		if err != nil {
+			t.Fatal(err)
+		}
+		old, ok := state.attemptByID(first.AttemptID)
+		if !ok || old.State != "cancelled" || old.ErrorCode == nil || *old.ErrorCode != "cancelled_by_user" {
+			t.Fatalf("cancelled history changed: %+v", old)
+		}
+	})
 }

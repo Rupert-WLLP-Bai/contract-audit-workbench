@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	coreWriteReceipts      = "core_write_receipts"
-	executionWriteReceipts = "execution_write_receipts"
+	coreWriteReceipts               = "core_write_receipts"
+	executionWriteReceipts          = "execution_write_receipts"
+	unavailableReviewReceiptMessage = "此请求键对应的历史审查无法在当前上下文重放，请查看既有审查记录"
 )
 
 type writeReceipt struct {
@@ -83,7 +84,7 @@ func insertWriteReceipt(ctx context.Context, tx pgx.Tx, table string, user accou
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`, item.TenantID, item.OwnerOrgID, user.ID, route, key, digest, item.ID, string(body))
 	var pgErr *pgconn.PgError
 	if table == executionWriteReceipts && errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "execution_write_receipts_pkey" {
-		return fault.Conflict("此请求键对应原组织的审查命令，请核对当前组织和会话")
+		return fault.Conflict(unavailableReviewReceiptMessage)
 	}
 	return err
 }
@@ -160,10 +161,13 @@ func (s *Store) validateReviewReceiptEpoch(ctx context.Context, tx pgx.Tx, item 
 // readWriteReceipt rechecks the current account and case grant while holding the
 // case lock; old receipts never confer access to a revoked case. It is only an
 // early replay path: the effect transaction checks again after its own locks.
-func (s *Store) readWriteReceipt(ctx context.Context, user accounts.User, table, route, key, digest string, action access.Action) (writeReceipt, bool, error) {
+func (s *Store) readWriteReceipt(ctx context.Context, user accounts.User, table, route, key, digest string, action access.Action, requestedCase ...string) (writeReceipt, bool, error) {
 	ctx = commandContext(ctx, user)
 	if key == "" {
 		return writeReceipt{}, false, nil
+	}
+	if table == executionWriteReceipts && (len(requestedCase) != 1 || requestedCase[0] == "") {
+		return writeReceipt{}, false, errors.New("review receipt requires the requested case")
 	}
 	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -174,8 +178,47 @@ func (s *Store) readWriteReceipt(ctx context.Context, user accounts.User, table,
 		return writeReceipt{}, false, err
 	}
 	receipt, found, err := loadWriteReceipt(ctx, tx, table, user, route, key)
-	if err != nil || !found {
+	if err != nil {
 		return writeReceipt{}, found, err
+	}
+	if !found {
+		if table != executionWriteReceipts {
+			return writeReceipt{}, false, nil
+		}
+		if err := scopedCaseLock(ctx, tx, requestedCase[0]); err != nil {
+			return writeReceipt{}, false, err
+		}
+		current, err := trustedUser(user)
+		if err != nil {
+			return writeReceipt{}, false, err
+		}
+		item, err := loadKnowledgeCase(ctx, tx, current, requestedCase[0])
+		if err != nil {
+			return writeReceipt{}, false, err
+		}
+		if err := requireCaseAction(item, current, access.Review); err != nil {
+			return writeReceipt{}, false, err
+		}
+		if err := businessWritable(item); err != nil {
+			return writeReceipt{}, false, err
+		}
+		var occupied bool
+		if err := tx.QueryRow(ctx, `SELECT tenant_review_receipt_key_conflict($1,$2,$3,$4,$5,$6)`, item.TenantID, item.OwnerOrgID, item.ID, current.ID, route, key).Scan(&occupied); err != nil {
+			return writeReceipt{}, false, err
+		}
+		if occupied {
+			return writeReceipt{}, false, fault.Conflict(unavailableReviewReceiptMessage)
+		}
+		// A same-origin transaction may have committed after the first SELECT.
+		// Re-read it before readiness; the later effect transaction still locks
+		// the key and checks again if it remains absent here.
+		receipt, found, err = loadWriteReceipt(ctx, tx, table, user, route, key)
+		if err != nil || !found {
+			return writeReceipt{}, found, err
+		}
+	}
+	if table == executionWriteReceipts && receipt.CaseID != requestedCase[0] {
+		return writeReceipt{}, false, errors.New("idempotency receipt case identity is inconsistent")
 	}
 	if err := scopedCaseLock(ctx, tx, receipt.CaseID); err != nil {
 		return writeReceipt{}, false, err

@@ -217,7 +217,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		if err != nil {
 			return "", err
 		}
-		if receipt, found, err := s.readWriteReceipt(ctx, user, executionWriteReceipts, route, key, digest, access.Review); err != nil {
+		if receipt, found, err := s.readWriteReceipt(ctx, user, executionWriteReceipts, route, key, digest, access.Review, caseID); err != nil {
 			return "", err
 		} else if found {
 			accepted, err := decodeReviewWriteReceipt(receipt.Response)

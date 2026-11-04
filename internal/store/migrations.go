@@ -37,8 +37,8 @@ type clmRoleQueryer interface {
 // Later schema changes must be new numbered files; never edit an applied file.
 // The running application accepts only this explicitly reviewed version range.
 const (
-	schemaMinCompatibleVersion = 42
-	schemaMaxCompatibleVersion = 42
+	schemaMinCompatibleVersion = 43
+	schemaMaxCompatibleVersion = 43
 )
 
 //go:embed migrations/*.sql

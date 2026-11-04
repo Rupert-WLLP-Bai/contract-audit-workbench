@@ -562,9 +562,12 @@ func MigrateServiceRoles(ctx context.Context) error {
 	// All services have SELECT projections. PostgreSQL plans the RLS function
 	// for each role; the function admits only the actual Execution login.
 	for _, role := range configuredRoles {
-		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_review_receipt_recovery_allowed(text,text,text,text,text,text) TO `+pgx.Identifier{role}.Sanitize()); err != nil {
+		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_review_receipt_recovery_allowed(text,text,text,text,text,text,text) TO `+pgx.Identifier{role}.Sanitize()); err != nil {
 			return fmt.Errorf("cannot grant review receipt recovery fence: %w", err)
 		}
+	}
+	if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_review_receipt_key_conflict(text,text,text,text,text,text) TO `+pgx.Identifier{executionRoleName}.Sanitize()); err != nil {
+		return fmt.Errorf("cannot grant Execution receipt conflict check: %w", err)
 	}
 	for _, fn := range []string{"tenant_config_control(text)", "tenant_config_adopt(text,bigint,text,text,text)", "tenant_model_send_set(text,bigint,boolean,text)"} {
 		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.`+fn+` TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
@@ -611,18 +614,34 @@ func MigrateServiceRoles(ctx context.Context) error {
 	var reviewReceiptACLUnsafe bool
 	if err := tx.QueryRow(ctx, `WITH function AS (
 		SELECT p.oid,p.proowner,p.prosecdef,p.proacl FROM pg_proc p
-		WHERE p.oid=to_regprocedure(format('%I.tenant_review_receipt_recovery_allowed(text,text,text,text,text,text)',$1::text))
+		WHERE p.oid=to_regprocedure(format('%I.tenant_review_receipt_recovery_allowed(text,text,text,text,text,text,text)',$1::text))
+	), stamp AS (
+		SELECT p.oid,p.proowner,p.prosecdef,p.prorettype,p.proacl FROM pg_proc p
+		WHERE p.oid=to_regprocedure(format('%I.stamp_review_receipt_origin()',$1::text))
+	), key_check AS (
+		SELECT p.oid,p.proowner,p.prosecdef,p.proacl FROM pg_proc p
+		WHERE p.oid=to_regprocedure(format('%I.tenant_review_receipt_key_conflict(text,text,text,text,text,text)',$1::text))
 	), relation_owner AS (
 		SELECT relowner FROM pg_class WHERE oid=to_regclass(format('%I.execution_write_receipts',$1::text))
 	), acl AS (
 		SELECT a.* FROM function f CROSS JOIN LATERAL aclexplode(COALESCE(f.proacl,acldefault('f',f.proowner))) a
 	)
 	SELECT NOT EXISTS (SELECT 1 FROM function WHERE proowner=$2::regrole AND prosecdef)
+	 OR NOT EXISTS (SELECT 1 FROM stamp WHERE proowner=$2::regrole AND prosecdef AND prorettype='trigger'::regtype)
+	 OR EXISTS (SELECT 1 FROM stamp f CROSS JOIN LATERAL aclexplode(COALESCE(f.proacl,acldefault('f',f.proowner))) a
+		WHERE a.grantee<>$2::regrole OR a.is_grantable OR a.privilege_type<>'EXECUTE')
+	 OR NOT EXISTS (SELECT 1 FROM key_check WHERE proowner=$2::regrole AND prosecdef)
+	 OR EXISTS (SELECT 1 FROM key_check f CROSS JOIN LATERAL aclexplode(COALESCE(f.proacl,acldefault('f',f.proowner))) a
+		WHERE a.grantee=0 OR a.is_grantable OR a.privilege_type<>'EXECUTE' OR a.grantee<>$2::regrole
+		AND a.grantee<>(SELECT relowner FROM relation_owner) AND a.grantee<>$4::regrole)
+	 OR NOT has_function_privilege($4::text,(SELECT oid FROM key_check),'EXECUTE')
+	 OR NOT has_function_privilege((SELECT relowner FROM relation_owner),(SELECT oid FROM key_check),'EXECUTE')
+	 OR EXISTS (SELECT 1 FROM unnest($3::text[]) r(role) WHERE r.role<>$4::text AND has_function_privilege(r.role,(SELECT oid FROM key_check),'EXECUTE'))
 	 OR EXISTS (SELECT 1 FROM acl WHERE grantee=0 OR is_grantable OR privilege_type<>'EXECUTE'
 		OR (grantee<>$2::regrole AND grantee<>(SELECT relowner FROM relation_owner)
 		AND grantee<>ALL(ARRAY(SELECT oid FROM pg_roles WHERE rolname=ANY($3::text[])))))
 	 OR NOT has_function_privilege((SELECT relowner FROM relation_owner),(SELECT oid FROM function),'EXECUTE')
-	 OR EXISTS (SELECT 1 FROM unnest($3::text[]) r(role) WHERE NOT has_function_privilege(r.role,(SELECT oid FROM function),'EXECUTE'))`, schema, identityOwner, configuredRoles).Scan(&reviewReceiptACLUnsafe); err != nil {
+	 OR EXISTS (SELECT 1 FROM unnest($3::text[]) r(role) WHERE NOT has_function_privilege(r.role,(SELECT oid FROM function),'EXECUTE'))`, schema, identityOwner, configuredRoles, executionRoleName).Scan(&reviewReceiptACLUnsafe); err != nil {
 		return fmt.Errorf("cannot verify review receipt recovery grants: %w", err)
 	}
 	if reviewReceiptACLUnsafe {
