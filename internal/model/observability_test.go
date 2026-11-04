@@ -179,3 +179,49 @@ func TestUnknownRefusalShapesPreserveContent(t *testing.T) {
 		}
 	}
 }
+
+func TestBusinessOutputDiagnostics(t *testing.T) {
+	tests := []struct{ raw, code string }{
+		{`{"relation":`, "model_json_malformed"},
+		{`{"relation":"compatible"} {}`, "model_json_trailing"},
+		{`{"relation":42}`, "model_json_fields"},
+		{`{"unknown":true}`, "model_json_fields"},
+		{`{"relation":"invalid"}`, "model_output_semantic"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.code+tt.raw, func(t *testing.T) {
+			_, err := ParseWarranty(tt.raw)
+			var coded interface{ ExecutionErrorCode() string }
+			if !errors.Is(err, ErrUnusable) || !errors.As(err, &coded) || coded.ExecutionErrorCode() != tt.code {
+				t.Fatalf("error=%v code=%v", err, coded)
+			}
+		})
+	}
+	for _, tt := range []struct{ raw, code string }{
+		{`{"findings":`, "model_json_malformed"}, {`{"findings":[]} true`, "model_json_trailing"},
+		{`{"findings":"wrong"}`, "model_json_fields"}, {`{"findings":null}`, "model_output_semantic"},
+	} {
+		_, err := ParseCloudContract(tt.raw)
+		var coded interface{ ExecutionErrorCode() string }
+		if !errors.Is(err, ErrUnusable) || !errors.As(err, &coded) || coded.ExecutionErrorCode() != tt.code {
+			t.Fatalf("%q: %v", tt.raw, err)
+		}
+	}
+}
+
+func TestBusinessParseFailureKeepsPhysicalCallCompleted(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"content": `{"relation":`}}}, "usage": map[string]any{"prompt_tokens": 17, "completion_tokens": 5, "total_tokens": 22}})
+	}))
+	defer server.Close()
+	sink := &observationSink{}
+	_, err := New(Config{BaseURL: server.URL, ChatModel: "model"}).Warranty(WithCallObserver(context.Background(), sink), nil)
+	var coded interface{ ExecutionErrorCode() string }
+	if !errors.Is(err, ErrUnusable) || !errors.As(err, &coded) || coded.ExecutionErrorCode() != "model_json_malformed" {
+		t.Fatalf("error %v", err)
+	}
+	calls := sink.snapshot()
+	if len(calls) != 1 || calls[0].Status != "completed" || calls[0].Usage == nil {
+		t.Fatalf("physical calls %+v", calls)
+	}
+}

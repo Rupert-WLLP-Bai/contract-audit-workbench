@@ -386,6 +386,26 @@ function fallbackText(value: string | null, fallback: string): string {
   return value ?? fallback;
 }
 
+const MODEL_OUTPUT_ERROR_LABELS: Record<string, string> = {
+  model_json_malformed: "模型响应不是有效 JSON",
+  model_json_trailing: "模型响应 JSON 后含有多余内容",
+  model_json_fields: "模型响应字段不符合要求",
+  model_output_semantic: "模型响应内容未通过业务校验",
+};
+
+function errorCodeLabel(code: string | null, fallback: string): string {
+  if (code === null) return fallback;
+  return Object.hasOwn(MODEL_OUTPUT_ERROR_LABELS, code)
+    ? MODEL_OUTPUT_ERROR_LABELS[code]!
+    : code;
+}
+
+function errorCodeDiagnostic(code: string | null): string | null {
+  return code !== null && Object.hasOwn(MODEL_OUTPUT_ERROR_LABELS, code)
+    ? code
+    : null;
+}
+
 function EventDetailDl({ event }: { event: ExecutionEvent }) {
   return (
     <dl className="execution-dl">
@@ -424,10 +444,11 @@ function EventDetailDl({ event }: { event: ExecutionEvent }) {
         value={eventStatusValue(event.status)}
         code={eventStatusCode(event.status)}
       />
-      <div>
-        <dt>错误代码</dt>
-        <dd>{fallbackText(event.error_code, "未报告")}</dd>
-      </div>
+      <CodePair
+        label="错误代码"
+        value={errorCodeLabel(event.error_code, "未报告")}
+        code={errorCodeDiagnostic(event.error_code)}
+      />
       <div>
         <dt>Span</dt>
         <dd>{fallbackText(event.span_id, "未关联")}</dd>
@@ -678,10 +699,11 @@ function AttemptSummary({
             : selected.parsed_document_ids.join("、")}
         </dd>
       </div>
-      <div>
-        <dt>错误代码</dt>
-        <dd>{selected.error_code ?? "无已报告错误代码"}</dd>
-      </div>
+      <CodePair
+        label="错误代码"
+        value={errorCodeLabel(selected.error_code, "无已报告错误代码")}
+        code={errorCodeDiagnostic(selected.error_code)}
+      />
     </dl>
   );
 }

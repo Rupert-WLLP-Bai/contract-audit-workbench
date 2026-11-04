@@ -245,9 +245,31 @@ func (c *Callbacks) onEnd(ctx context.Context, _ *callbacks.RunInfo, _ callbacks
 	return ctx
 }
 
-func (c *Callbacks) onError(ctx context.Context, _ *callbacks.RunInfo, _ error) context.Context {
-	c.finish(ctx, "node_failed", "failed", "eino_error")
+func (c *Callbacks) onError(ctx context.Context, _ *callbacks.RunInfo, err error) context.Context {
+	c.finish(ctx, "node_failed", "failed", executionErrorCode(err))
 	return ctx
+}
+
+func executionErrorCode(err error) string {
+	if err == nil {
+		return "eino_error"
+	}
+	if coded, ok := err.(interface{ ExecutionErrorCode() string }); ok {
+		switch code := coded.ExecutionErrorCode(); code {
+		case "model_json_malformed", "model_json_trailing", "model_json_fields", "model_output_semantic":
+			return code
+		}
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, child := range joined.Unwrap() {
+			if code := executionErrorCode(child); code != "eino_error" {
+				return code
+			}
+		}
+	} else if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return executionErrorCode(wrapped.Unwrap())
+	}
+	return "eino_error"
 }
 
 func (c *Callbacks) finish(ctx context.Context, eventType, status, errorCode string) {

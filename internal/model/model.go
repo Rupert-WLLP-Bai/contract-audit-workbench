@@ -200,7 +200,8 @@ func (c *Client) CloudContract(ctx context.Context, policy CloudPolicy, docs []M
 
 // ParseCloudContract accepts only bounded, cited suggestions from the four
 // supported domains. The caller must bind both citations to frozen evidence.
-func ParseCloudContract(content string) (CloudReview, error) {
+func ParseCloudContract(content string) (_ CloudReview, resultErr error) {
+	defer classifySemanticOutput(&resultErr)
 	var body cloudReviewJSON
 	if err := strictDecode(extractJSON(content), &body, "cloud review is not json", "trailing cloud review content"); err != nil {
 		return CloudReview{}, err
@@ -237,10 +238,15 @@ func strictDecode(raw string, target any, invalidMessage, trailingMessage string
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		return fmt.Errorf("%w: %s", ErrUnusable, invalidMessage)
+		code := "model_json_fields"
+		var syntax *json.SyntaxError
+		if errors.As(err, &syntax) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			code = "model_json_malformed"
+		}
+		return outputDiagnostic{code: code, err: fmt.Errorf("%w: %s", ErrUnusable, invalidMessage)}
 	}
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%w: %s", ErrUnusable, trailingMessage)
+		return outputDiagnostic{code: "model_json_trailing", err: fmt.Errorf("%w: %s", ErrUnusable, trailingMessage)}
 	}
 	return nil
 }
@@ -370,7 +376,8 @@ func (c *Client) Transcribe(ctx context.Context, media string, body []byte) (str
 }
 
 // ParseWarranty accepts the model's content and nothing that is not the schema.
-func ParseWarranty(content string) (Warranty, error) {
+func ParseWarranty(content string) (_ Warranty, resultErr error) {
+	defer classifySemanticOutput(&resultErr)
 	var body warrantyJSON
 	if err := strictDecode(extractJSON(content), &body, "not json", "trailing content"); err != nil {
 		return Warranty{}, err
@@ -1021,4 +1028,24 @@ func blank(value string) string {
 		return "未配置"
 	}
 	return value
+}
+
+// outputDiagnostic carries only a bounded classification across execution layers.
+type outputDiagnostic struct {
+	code string
+	err  error
+}
+
+func (e outputDiagnostic) Error() string              { return e.err.Error() }
+func (e outputDiagnostic) Unwrap() error              { return e.err }
+func (e outputDiagnostic) ExecutionErrorCode() string { return e.code }
+
+func classifySemanticOutput(err *error) {
+	if *err == nil {
+		return
+	}
+	var classified outputDiagnostic
+	if !errors.As(*err, &classified) {
+		*err = outputDiagnostic{code: "model_output_semantic", err: *err}
+	}
 }
