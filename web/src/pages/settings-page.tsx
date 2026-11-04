@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,6 +14,7 @@ import { Button, Statistic, Table, type TableProps } from "antd";
 import { useLLMEndpoint, useSession, useSettings } from "../api/queries";
 import { PageStatus } from "../components/page-status";
 import { TenantOperationsPanel } from "../components/tenant-operations-panel";
+import { CollapsibleSection } from "../components/collapsible-section";
 import { TenantConfigPanel } from "../components/tenant-config-panel";
 import { TenantCostPolicyPanel } from "../components/tenant-cost-policy-panel";
 import {
@@ -149,7 +150,17 @@ export function SettingsPage({
         <Statistic title="最长等待" value={oldestWait} />
         <Statistic title="用户" value={data.users.length} />
       </section>
-      {isAdmin && session.data ? <><TenantOperationsPanel /><TenantCostPolicyPanel actor={session.data} /><TenantConfigPanel actor={session.data} /></> : null}
+      {isAdmin && session.data ? <>
+        <CollapsibleSection id="settings-tenant-operations" title="租户运营、准入与模型预算" summaryLabel="展开租户运营、准入与模型预算">
+          <TenantOperationsPanel />
+        </CollapsibleSection>
+        <CollapsibleSection id="settings-cost-policy" title="模型费用限额" summaryLabel="展开模型费用限额">
+          <TenantCostPolicyPanel actor={session.data} />
+        </CollapsibleSection>
+        <CollapsibleSection id="settings-tenant-config" title="租户配置采用与实时停发" summaryLabel="展开租户配置采用与实时停发">
+          <TenantConfigPanel actor={session.data} />
+        </CollapsibleSection>
+      </> : null}
       <div className="settings-grid">
         <section
           className="settings-panel"

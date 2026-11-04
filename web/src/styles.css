@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
-/* Updated: 2026-11-03 */
-/* Revision: r2 */
+/* Updated: 2026-11-04 */
+/* Revision: r3 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -121,6 +121,14 @@
     --dur-slow: 420ms;
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
+    /* Shared overflow / density scale: one place for long text, technical
+       identifiers and popup widths so pages do not each invent a new
+       truncation rule. */
+    --text-measure: 68ch;
+    --select-popup-min-width: 240px;
+    --select-popup-max-width: min(72vw, 520px);
+    --table-min-content-width: 760px;
+
     font-family: var(--font-ui);
     font-size: var(--font-size-ui);
     line-height: 1.5;
@@ -211,6 +219,380 @@
   }
   .skip:focus {
     top: 12px;
+  }
+}
+
+/* Shared text constraints. Unlayered on purpose: component CSS files are also
+   unlayered and must not override these defaults by accident. Utilities are
+   opt-in via classes so existing one-off rules keep their intended layout. */
+.caw-wrap {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.caw-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.caw-table-scroll > .ant-table-wrapper,
+.caw-table-scroll > .ant-table-wrapper > .ant-spin-nested-loading,
+.caw-table-scroll > .ant-table-wrapper .ant-table,
+.caw-table-scroll > .ant-table-wrapper .ant-table-container,
+.caw-table-scroll > .ant-table-wrapper .ant-table-content {
+  min-width: var(--table-min-content-width);
+}
+
+.caw-technical-detail {
+  display: inline-block;
+  max-width: 100%;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.caw-technical-detail > summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-secondary);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.caw-technical-detail > summary::-webkit-details-marker {
+  display: none;
+}
+.caw-technical-detail > summary::before {
+  content: "ⓘ ";
+}
+.caw-technical-detail-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-subtle);
+}
+.caw-technical-detail-body > code {
+  flex: 1 1 12ch;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.caw-technical-copy {
+  flex: 0 0 auto;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+.caw-technical-copy:hover {
+  border-color: var(--action-primary);
+  color: var(--action-primary);
+}
+
+.caw-section {
+  margin-top: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--panel-radius);
+  background: var(--surface-raised);
+}
+.caw-section > summary.caw-section-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+.caw-section > summary.caw-section-summary::-webkit-details-marker {
+  display: none;
+}
+.caw-section > summary.caw-section-summary::before {
+  content: "▸";
+  margin-right: var(--space-2);
+  color: var(--text-secondary);
+}
+.caw-section[open] > summary.caw-section-summary::before {
+  content: "▾";
+}
+.caw-section > summary.caw-section-summary:focus-visible {
+  outline: 2px solid var(--action-primary);
+  outline-offset: -2px;
+}
+.caw-section-count {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+.caw-section-summary-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: var(--space-1) var(--space-3);
+  margin-left: auto;
+}
+.caw-section-meta {
+  font-size: 12px;
+  font-weight: 400;
+}
+.caw-section-body {
+  padding: 0 var(--space-4) var(--space-4);
+}
+.caw-section-body > .agent-review-section {
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+}
+.caw-section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border-default);
+  font-size: 12px;
+}
+.caw-section-nav > a {
+  color: var(--action-primary);
+}
+
+.caw-swimlane {
+  min-width: 0;
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--panel-radius);
+  background: var(--surface-subtle);
+}
+.caw-swimlane-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+.caw-swimlane-head h3 {
+  margin: 0;
+}
+.caw-swimlane-head .meta {
+  max-width: var(--text-measure);
+  margin: var(--space-1) 0 0;
+}
+.caw-swimlane-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-3) 0;
+}
+.caw-swimlane-summary dt {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.caw-swimlane-summary dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.caw-swimlane-scroll {
+  display: grid;
+  gap: var(--space-2);
+}
+.caw-swimlane-lane {
+  display: grid;
+  grid-template-columns: minmax(96px, 140px) minmax(0, 1fr);
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+}
+.caw-swimlane-label {
+  padding: var(--space-2);
+  border-right: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.caw-swimlane-track {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+  scrollbar-width: thin;
+}
+.caw-swimlane-node {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 2px;
+  width: 132px;
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--state-neutral);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+.caw-swimlane-node:hover,
+.caw-swimlane-node:focus-visible {
+  border-color: var(--action-primary);
+}
+.caw-swimlane-node[data-kind="model"] {
+  border-left-color: var(--signal-info);
+}
+.caw-swimlane-node[data-kind="tool"] {
+  border-left-color: var(--state-compatible);
+}
+.caw-swimlane-node[data-kind="knowledge"] {
+  border-left-color: var(--state-progress);
+}
+.caw-swimlane-node[data-kind="event"] {
+  border-left-color: var(--state-insufficient);
+}
+.caw-swimlane-node-seq {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.caw-swimlane-node-title {
+  font-size: 12px;
+  line-height: 1.35;
+}
+.caw-swimlane-node-usage {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.caw-swimlane-more,
+.caw-swimlane-close {
+  margin-top: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--action-primary);
+  cursor: pointer;
+}
+.caw-swimlane-selected {
+  margin-top: var(--space-3);
+}
+.caw-swim-step {
+  margin-top: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+}
+.caw-swim-step > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  list-style: none;
+}
+.caw-swim-step > summary::-webkit-details-marker {
+  display: none;
+}
+.caw-swim-seq {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.caw-swim-title {
+  flex: 1 1 14ch;
+  min-width: 0;
+}
+.caw-swim-kind {
+  margin-right: var(--space-2);
+  padding: 1px var(--space-1);
+  border-radius: 3px;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.caw-swim-detail {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-default);
+}
+.caw-swim-detail dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+.caw-swim-detail dt {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.caw-swim-detail dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.caw-swim-usage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-subtle);
+  font-size: 12px;
+}
+.caw-swim-usage strong {
+  font-variant-numeric: tabular-nums;
+}
+.caw-swim-usage-source,
+.caw-swim-usage-unknown {
+  color: var(--text-secondary);
+}
+
+/* Unlayered: must beat rc-trigger's inline min-width on the popup element. */
+.ant-select-dropdown {
+  min-width: var(--select-popup-min-width) !important;
+  max-width: var(--select-popup-max-width);
+}
+/* Also unlayered: Ant Design injects option styles unlayered, so a layered
+   rule would lose regardless of specificity. Long choices wrap instead of
+   being silently ellipsized. */
+.ant-select-dropdown .ant-select-item-option-content {
+  overflow: visible !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  text-overflow: clip !important;
+}
+.ant-select-dropdown .ant-select-item-option {
+  height: auto !important;
+  min-height: 32px;
+  padding-block: var(--space-1);
+  line-height: 1.5;
+}
+
+@layer base {
+  .ant-table-container,
+  .ant-table-content {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
   }
 }
 

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -23,6 +23,7 @@ import {
   useStartReview,
 } from "../api/queries";
 import { PageStatus } from "../components/page-status";
+import { CollapsibleSection } from "../components/collapsible-section";
 import { CaseNextStep } from "../components/case-next-step";
 import { MaterialCollectionPanel } from "../components/material-collection-panel";
 import { CaseSubjectRolesPanel } from "../components/case-subject-roles-panel";
@@ -33,6 +34,8 @@ import { EvidenceSLADashboard } from "../components/evidence-sla-dashboard";
 import { RemediationPanel } from "../components/remediation-panel";
 import { TemplateGenerationPanel } from "../components/template-generation-panel";
 import { StatusText } from "../components/status-text";
+import { TechnicalDetail } from "../components/technical-detail";
+import { businessLineLabel, businessScopeLabel, scenarioLabel } from "../domain/business-labels";
 import { CaseSupportGrantPanel } from "./support-grant-pages";
 import {
   businessStatusLabel,
@@ -191,8 +194,7 @@ export function CaseDetailPage() {
           <h1>{item.title}</h1>
           <p>
             {[
-              item.business_line,
-              item.scenario,
+              businessScopeLabel(item.business_line, item.scenario),
               businessStatusLabel(item.business_status),
               contractTypeLabel(item.contract_type),
             ]
@@ -273,8 +275,7 @@ export function CaseDetailPage() {
       </ol>
       {archived ? (
         <p className="callout">
-          案件已归档，只能读取案件、运行历史和已有报告。服务端会以 HTTP 409
-          拒绝所有业务写入。
+          案件已归档，目前仅可查看案件、审查历史和已有报告。
         </p>
       ) : null}
       {pendingParse > 0 ? (
@@ -327,10 +328,14 @@ export function CaseDetailPage() {
         <MaterialCollectionPanel key={`materials:${item.id}:${actorScope}`} caseDetail={item} canWrite={canUpload} actorId={session.data?.id ?? ""} />
       </div>
       <div id="case-subjects">
-        <CaseSubjectRolesPanel key={`subjects:${item.id}:${actorScope}`} caseId={item.id} />
+        <CollapsibleSection id="case-subject-roles" title="案件主体与角色" summaryLabel="展开案件主体与角色">
+          <CaseSubjectRolesPanel key={`subjects:${item.id}:${actorScope}`} caseId={item.id} />
+        </CollapsibleSection>
       </div>
       <div id="case-subject-corrections">
-        <CaseSubjectCorrectionsPanel key={`subject-corrections:${item.id}:${actorScope}`} caseId={item.id} />
+        <CollapsibleSection id="case-subject-corrections-section" title="主体更正与复核" summaryLabel="展开主体更正与复核">
+          <CaseSubjectCorrectionsPanel key={`subject-corrections:${item.id}:${actorScope}`} caseId={item.id} />
+        </CollapsibleSection>
       </div>
       <CaseLegalApplicabilityPanel key={`legal-applicability:${item.id}:${actorScope}`} caseId={item.id} />
 
@@ -342,15 +347,15 @@ export function CaseDetailPage() {
         <dl className="execution-dl">
           <div>
             <dt>业务条线</dt>
-            <dd>{item.business_line || "未提供"}</dd>
+            <dd>{businessLineLabel(item.business_line)}</dd>
           </div>
           <div>
             <dt>场景</dt>
-            <dd>{item.scenario || "未提供"}</dd>
+            <dd>{scenarioLabel(item.scenario)}</dd>
           </div>
           <div>
             <dt>业务状态</dt>
-            <dd>{item.business_status || "未提供"}</dd>
+            <dd>{businessStatusLabel(item.business_status)}</dd>
           </div>
           <div>
             <dt>归档状态</dt>
@@ -361,38 +366,45 @@ export function CaseDetailPage() {
             </dd>
           </div>
         </dl>
+        <TechnicalDetail label="业务范围编码" value={[item.business_line, item.scenario].filter(Boolean).join(" / ")} />
       </section>
-      <TemplateGenerationPanel
-        key={`generation:${item.id}:${session.data?.id ?? ""}`}
-        caseId={caseId}
-        records={item.generations}
-        materials={item.materials}
-        documents={item.documents}
-        materialSelection={item.material_selection}
-        actorId={session.data?.id ?? ""}
-        canWrite={actorRole === "admin" || actorRole === "clerk"}
-        archived={archived}
-      />
-      <RemediationPanel
-        caseId={caseId}
-        detail={item}
-        history={history.data ?? []}
-        historyLoading={history.isLoading}
-        historyError={history.isError ? history.error : null}
-        canWrite={canWriteRemediation}
-        archived={archived}
-      />
-      <ReportArchivePanel
-        caseId={caseId}
-        detail={item}
-        history={history.data ?? []}
-        historyLoading={history.isLoading}
-        historyError={history.isError ? history.error : null}
-        canCreateReport={canCreateReport}
-        canArchive={canArchive}
-        canReadReports={canCreateReport}
-        archived={archived}
-      />
+      <CollapsibleSection id="case-template-generation" title="模板生成" summaryLabel="展开模板生成">
+        <TemplateGenerationPanel
+          key={`generation:${item.id}:${session.data?.id ?? ""}`}
+          caseId={caseId}
+          records={item.generations}
+          materials={item.materials}
+          documents={item.documents}
+          materialSelection={item.material_selection}
+          actorId={session.data?.id ?? ""}
+          canWrite={actorRole === "admin" || actorRole === "clerk"}
+          archived={archived}
+        />
+      </CollapsibleSection>
+      <CollapsibleSection id="case-remediation" title="整改与复核" summaryLabel="展开整改与复核">
+        <RemediationPanel
+          caseId={caseId}
+          detail={item}
+          history={history.data ?? []}
+          historyLoading={history.isLoading}
+          historyError={history.isError ? history.error : null}
+          canWrite={canWriteRemediation}
+          archived={archived}
+        />
+      </CollapsibleSection>
+      <CollapsibleSection id="case-report-archive" title="审查报告与归档" summaryLabel="展开审查报告与归档">
+        <ReportArchivePanel
+          caseId={caseId}
+          detail={item}
+          history={history.data ?? []}
+          historyLoading={history.isLoading}
+          historyError={history.isError ? history.error : null}
+          canCreateReport={canCreateReport}
+          canArchive={canArchive}
+          canReadReports={canCreateReport}
+          archived={archived}
+        />
+      </CollapsibleSection>
 
       <section>
         <h2>问题摘要</h2>
@@ -421,8 +433,7 @@ export function CaseDetailPage() {
         ) : null}
       </section>
 
-      <section>
-        <h2>最近活动</h2>
+      <CollapsibleSection id="case-recent-activity" title="最近活动" summaryLabel="展开最近活动" count={item.activity.length}>
         {item.activity.length === 0 ? <p>还没有活动记录。</p> : null}
         <ol className="history">
           {item.activity.map((entry) => (
@@ -432,7 +443,7 @@ export function CaseDetailPage() {
             </li>
           ))}
         </ol>
-      </section>
+      </CollapsibleSection>
     </section>
   );
 }

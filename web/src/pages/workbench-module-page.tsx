@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -31,7 +31,9 @@ import type {
 } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
+import { TechnicalDetail } from "../components/technical-detail";
 import { caseHref, formatDateTime } from "../domain/review";
+import { businessActionLabel } from "../domain/business-labels";
 import { SettingsPage } from "./settings-page";
 import "./workbench-module-page.css";
 
@@ -109,7 +111,7 @@ export function isWorkbenchModuleKey(
   return Object.hasOwn(WORKBENCH_MODULES, value);
 }
 
-type DetailField = { label: string; value: string };
+type DetailField = { label: string; value: string; technical?: boolean };
 type DetailPanel = {
   fields: DetailField[];
   body: string | null;
@@ -120,6 +122,7 @@ type ModuleRecord = {
   reference?: string;
   knowledgeId?: string;
   knowledgeVersion?: string;
+  actorId?: string;
   title: string;
   subtitle: string;
   status: string;
@@ -163,6 +166,12 @@ function field(label: string, value: string | number | null): DetailField {
     label,
     value: value === null || value === "" ? "未报告" : String(value),
   };
+}
+
+/** Machine IDs and digests stay available for audit, but the primary detail
+ *  view shows a human label until the reader explicitly opens the value. */
+function technicalField(label: string, value: string | number | null): DetailField {
+  return { ...field(label, value), technical: true };
 }
 
 function panel(
@@ -270,7 +279,7 @@ function buildRecords(
       const documents = documentsByCase.get(task.case_id) ?? [];
       const panels: Record<string, DetailPanel> = {
         任务详情: panel([
-          field("任务 ID", task.id),
+          technicalField("任务 ID", task.id),
           field("任务类型", task.kind),
           field("优先级", task.priority),
           field("状态", task.status),
@@ -284,7 +293,7 @@ function buildRecords(
                 .slice(0, 8)
                 .map((item) =>
                   field(
-                    `${item.actor_name}，${item.action}`,
+                    `${item.actor_name}，${businessActionLabel(item.action)}`,
                     `${formatDateTime(item.at)}，${item.summary}`,
                   ),
                 ),
@@ -322,7 +331,7 @@ function buildRecords(
       return make({
         id: task.id,
         title: task.title,
-        subtitle: relatedCase?.title ?? task.case_id,
+        subtitle: relatedCase?.title ?? "关联案件",
         status: task.status,
         updatedAt: task.updated_at,
         caseId: task.case_id,
@@ -342,7 +351,7 @@ function buildRecords(
       const caseAudit = auditByCase.get(item.case_id) ?? [];
       const panels: Record<string, DetailPanel> = {
         整改详情: panel([
-          field("整改 ID", item.id),
+          technicalField("整改 ID", item.id),
           field("状态", item.status),
           field("责任人", memberById.get(item.assignee_id) ?? item.assignee_id),
           field("截止时间", item.due_at),
@@ -367,10 +376,10 @@ function buildRecords(
           : emptyPanel("整改记录没有关联工作台中显示的材料。"),
         复核记录: panel(
           [
-            field("复核运行", item.verification_run_id),
-            field("复核尝试", item.verification_attempt_id),
-            field("原始运行", item.run_id),
-            field("原始尝试", item.attempt_id),
+            technicalField("复核运行", item.verification_run_id),
+            technicalField("复核尝试", item.verification_attempt_id),
+            technicalField("原始运行", item.run_id),
+            technicalField("原始尝试", item.attempt_id),
           ],
           null,
           [
@@ -391,7 +400,7 @@ function buildRecords(
                 .slice(0, 8)
                 .map((entry) =>
                   field(
-                    `${entry.actor_name}，${entry.action}`,
+                    `${entry.actor_name}，${businessActionLabel(entry.action)}`,
                     `${formatDateTime(entry.at)}，${entry.summary}`,
                   ),
                 ),
@@ -506,9 +515,9 @@ function buildRecords(
             : links,
         ),
         来源与身份: panel([
-          field("材料 ID", item.id),
+          technicalField("材料 ID", item.id),
           field("角色", item.role),
-          field("原件摘要", item.digest),
+          technicalField("原件摘要", item.digest),
           field("上传时间", item.created_at),
           field("解析器", parsed?.parser_id ?? null),
           field("解析版本", parsed?.parser_version ?? null),
@@ -516,7 +525,7 @@ function buildRecords(
         使用记录: relatedCase?.latest_run
           ? panel(
               [
-                field("最新运行", relatedCase.latest_run.id),
+                technicalField("最新运行", relatedCase.latest_run.id),
                 field("最新状态", relatedCase.latest_run.state),
                 field("更新时间", relatedCase.latest_run.updated_at),
               ],
@@ -531,11 +540,11 @@ function buildRecords(
           : emptyPanel("工作台没有返回该案件的审查记录。"),
         完整性校验: panel(
           [
-            field("材料 ID", item.id),
-            field("解析产物 ID", parsed?.id ?? null),
-            field("原件摘要", item.digest),
-            field("解析来源原件摘要", parsed?.original_digest ?? null),
-            field("归一化内容摘要", parsed?.normalized_digest ?? null),
+            technicalField("材料 ID", item.id),
+            technicalField("解析产物 ID", parsed?.id ?? null),
+            technicalField("原件摘要", item.digest),
+            technicalField("解析来源原件摘要", parsed?.original_digest ?? null),
+            technicalField("归一化内容摘要", parsed?.normalized_digest ?? null),
             field("校验结果", integrity),
           ],
           "这里比较原件摘要与已保存的解析来源摘要。解析结果编号和正文摘要也来自已保存的材料版本；没有解析结果时，状态为未校验。",
@@ -561,10 +570,8 @@ function buildRecords(
       const panels: Record<string, DetailPanel> = {
         运行概览: panel(
           [
-            field("运行 ID", item.id),
             field("案件", item.case_title),
             field("运行状态", item.state),
-            field("尝试 ID", item.attempt_id),
             field("开始时间", item.started_at),
             field("结束时间", item.finished_at),
             field("创建时间", item.created_at),
@@ -612,7 +619,10 @@ function buildRecords(
       return make({
         id: item.id,
         title: item.case_title,
-        subtitle: item.id,
+        subtitle:
+          item.updated_at != null
+            ? `更新于 ${formatDateTime(item.updated_at)}`
+            : "审查记录",
         status: item.state,
         updatedAt: item.updated_at,
         caseId: item.case_id,
@@ -677,7 +687,7 @@ function buildRecords(
           ? panel(
               memberEvents.map((entry) =>
                 field(
-                  `${entry.action}，${formatDateTime(entry.at)}`,
+                  `${businessActionLabel(entry.action)}，${formatDateTime(entry.at)}`,
                   `${entry.case_title ?? "平台级事件"}，${entry.summary}`,
                 ),
               ),
@@ -712,9 +722,9 @@ function buildRecords(
         模板预览: panel(
           [
             field("模板", item.name),
-            field("ID", item.id),
+            technicalField("ID", item.id),
             field("版本", item.version),
-            field("摘要", item.digest),
+            technicalField("摘要", item.digest),
           ],
           "模板由服务端返回；此处不拼装虚构合同正文。",
         ),
@@ -732,7 +742,7 @@ function buildRecords(
       return make({
         id: item.id,
         title: item.name,
-        subtitle: `${item.id}，${item.version}`,
+        subtitle: `版本 ${item.version}`,
         status: "状态未提供",
         updatedAt: null,
         caseId: null,
@@ -789,21 +799,21 @@ function buildRecords(
       item.case_id === null ? [] : (auditByCase.get(item.case_id) ?? []);
     const panels: Record<string, DetailPanel> = {
       事件详情: panel([
-        field("事件 ID", item.id),
+        technicalField("事件标识", item.id),
         field("资源范围", caseLabel),
-        field("动作", item.action),
+        field("操作", businessActionLabel(item.action)),
         field("操作人", item.actor_name),
         field("时间", item.at),
         field("摘要", item.summary),
       ]),
       变更内容: panel(
-        [field("动作", item.action), field("摘要", item.summary)],
+        [field("操作", businessActionLabel(item.action)), field("摘要", item.summary)],
         "只呈现服务端保存的审计摘要。",
       ),
       来源上下文: panel([
         field("资源范围", caseLabel),
-        field("操作人 ID", item.actor_id),
-        field("动作", item.action),
+        technicalField("操作人标识", item.actor_id),
+        technicalField("操作编码", item.action),
       ]),
       关联事件:
         item.case_id === null
@@ -814,7 +824,7 @@ function buildRecords(
                   .slice(0, 12)
                   .map((entry) =>
                     field(
-                      `${entry.actor_name}，${entry.action}`,
+                      `${entry.actor_name}，${businessActionLabel(entry.action)}`,
                       `${formatDateTime(entry.at)}，${entry.summary}`,
                     ),
                   ),
@@ -823,7 +833,8 @@ function buildRecords(
     };
     return make({
       id: item.id,
-      title: item.action,
+      title: businessActionLabel(item.action),
+      actorId: item.actor_id,
       subtitle: caseLabel,
       status: "已记录",
       updatedAt: item.at,
@@ -885,10 +896,7 @@ function tabMatches(
     return reportCount > 1;
   }
   if (module === "audit" && tab === "操作日志") {
-    const actorField = record.panels["来源上下文"]?.fields.find(
-      (item) => item.label === "操作人 ID",
-    );
-    return actorField?.value === actorId;
+    return actorId !== undefined && record.actorId === actorId;
   }
 
   if (module === "audit" && tab === "访问记录") return false;
@@ -1560,11 +1568,10 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
             <>
               <header className="module-detail-head">
                 <div>
-                  <p>
-                    {selected.reference ??
-                      selected.knowledgeId ??
-                      selected.id}
-                  </p>
+                  <TechnicalDetail
+                    value={selected.reference ?? selected.knowledgeId ?? selected.id}
+                    label="记录标识"
+                  />
                   <h2>{selected.title}</h2>
                   <span>{selected.subtitle}</span>
                 </div>
@@ -1624,7 +1631,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                       {currentPanel.fields.map((item) => (
                         <div key={item.label}>
                           <dt>{item.label}</dt>
-                          <dd>{item.value}</dd>
+                          <dd>{item.technical ? <TechnicalDetail value={item.value} label="查看" /> : item.value}</dd>
                         </div>
                       ))}
                     </dl>

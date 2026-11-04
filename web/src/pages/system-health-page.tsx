@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -38,6 +38,7 @@ import {
   isUnauthenticated,
 } from "../api/http";
 import { PageStatus } from "../components/page-status";
+import { CollapsibleSection } from "../components/collapsible-section";
 import { formatDateTime } from "../domain/review";
 import "./system-health-page.css";
 
@@ -63,6 +64,14 @@ const TABS = ["服务概览", "容器清单", "依赖拓扑", "当前异常"] as
 
 function HealthTag({ status }: { status: HealthStatus }) {
   return <Tag color={STATUS[status].color}>{STATUS[status].label}</Tag>;
+}
+
+function healthStatusSummary(items: HealthService[]): string {
+  const counts = new Map<HealthStatus, number>();
+  for (const item of items) counts.set(item.status, (counts.get(item.status) ?? 0) + 1);
+  return [...counts.entries()]
+    .map(([status, count]) => `${STATUS[status].label} ${count}`)
+    .join(" · ");
 }
 
 const EXPECTED_SOURCE: Record<HealthGroup["expected_source"], string> = {
@@ -657,22 +666,44 @@ export function SystemHealthPage({
           </li>
         ))}
       </ol>
-      <Card
-        role="group"
-        aria-label={"服务组与副本"}
-        title="服务组与副本"
-        extra={
-          <Tag color={stale || partial ? "warning" : "processing"}>
-            {stale ? "观测过期" : partial ? "部分观测" : "当前观测"}
-          </Tag>
-        }
-      >
-        <GroupTable
-          groups={data.groups}
-          services={data.services}
-          onSelect={setSelectedId}
-        />
-      </Card>
+      {audience === "admin" ? (
+        <CollapsibleSection
+          id="infra-service-groups"
+          title="服务组与副本"
+          summaryLabel="展开服务组与副本"
+          count={data.groups.length}
+          meta={
+            <Tag color={stale || partial ? "warning" : "processing"}>
+              {stale ? "观测过期" : partial ? "部分观测" : "当前观测"}
+            </Tag>
+          }
+        >
+          <Card role="group" aria-label={"服务组与副本"}>
+            <GroupTable
+              groups={data.groups}
+              services={data.services}
+              onSelect={setSelectedId}
+            />
+          </Card>
+        </CollapsibleSection>
+      ) : (
+        <Card
+          role="group"
+          aria-label={"服务组与副本"}
+          title="服务组与副本"
+          extra={
+            <Tag color={stale || partial ? "warning" : "processing"}>
+              {stale ? "观测过期" : partial ? "部分观测" : "当前观测"}
+            </Tag>
+          }
+        >
+          <GroupTable
+            groups={data.groups}
+            services={data.services}
+            onSelect={setSelectedId}
+          />
+        </Card>
+      )}
       {data.cluster ? (
         <Card
           role="group"
@@ -786,44 +817,47 @@ export function SystemHealthPage({
             const items = visible.filter((item) => item.category === id);
             return items.length ? (
               <section className="health-group" key={id} aria-label={name}>
-                <h2>
-                  {name}
-                  <span>{items.length}</span>
-                </h2>
-                <div className="health-card-grid">
-                  {items.map((item) => (
-                    <Card
-                      role="group"
-                      aria-label={String(item.name)}
-                      className="health-service-card"
-                      size="small"
-                      key={item.id}
-                      title={item.name}
-                      extra={<HealthTag status={item.status} />}
-                    >
-                      <code className="health-target">
-                        {item.target || "未配置连接地址"}
-                      </code>
-                      <p className="health-service-detail">{item.detail}</p>
-                      <div className="health-card-footer">
-                        <span>
-                          {item.container?.name ??
-                            (item.kind === "container"
-                              ? "未发现部署容器"
-                              : "外部集成")}
-                        </span>
-                        <Button
-                          type="link"
-                          size="small"
-                          aria-label={`查看 ${item.name}`}
-                          onClick={() => setSelectedId(item.instance_id ?? item.id)}
-                        >
-                          详情
-                        </Button>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
+                <CollapsibleSection
+                  id={`health-group-${id}`}
+                  title={name}
+                  count={items.length}
+                  meta={healthStatusSummary(items)}
+                >
+                  <div className="health-card-grid">
+                    {items.map((item) => (
+                      <Card
+                        role="group"
+                        aria-label={String(item.name)}
+                        className="health-service-card"
+                        size="small"
+                        key={item.id}
+                        title={item.name}
+                        extra={<HealthTag status={item.status} />}
+                      >
+                        <code className="health-target">
+                          {item.target || "未配置连接地址"}
+                        </code>
+                        <p className="health-service-detail">{item.detail}</p>
+                        <div className="health-card-footer">
+                          <span>
+                            {item.container?.name ??
+                              (item.kind === "container"
+                                ? "未发现部署容器"
+                                : "外部集成")}
+                          </span>
+                          <Button
+                            type="link"
+                            size="small"
+                            aria-label={`查看 ${item.name}`}
+                            onClick={() => setSelectedId(item.instance_id ?? item.id)}
+                          >
+                            详情
+                          </Button>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </CollapsibleSection>
               </section>
             ) : null;
           })

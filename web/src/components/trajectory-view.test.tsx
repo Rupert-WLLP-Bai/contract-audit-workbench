@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -136,8 +136,36 @@ const events = [
 ];
 
 describe("TrajectoryView", () => {
+  async function showList() {
+    const radio = screen.queryByRole("radio", { name: "列表" });
+    await userEvent.click(radio ?? screen.getByText("列表"));
+  }
+
+  it("shows the Agent path as swimlanes by default with real reported usage only", () => {
+    render(<TrajectoryView execution={execution(events)} />);
+    expect(screen.getByRole("region", { name: "Agent 执行路径泳道图" })).toBeInTheDocument();
+    expect(screen.getByText("4 步 / 2 泳道")).toBeInTheDocument();
+    expect(screen.getByText("有用量报告的步骤")).toBeInTheDocument();
+    expect(screen.getAllByText("1")).toHaveLength(2);
+    expect(screen.getByText("已保存 skill 事件")).toBeInTheDocument();
+    const modelNode = screen.getByRole("button", { name: /模型请求 第 4 步/ });
+    expect(modelNode).toHaveTextContent("120 tok");
+    expect(screen.getAllByText("用量未报告").length).toBeGreaterThan(0);
+    expect(screen.queryByText("本次执行没有保存可展示的轨迹记录。")).not.toBeInTheDocument();
+  });
+
+  it("opens a swimlane step with tool/model, span and token details", async () => {
+    render(<TrajectoryView execution={execution(events)} />);
+    await userEvent.click(screen.getByRole("button", { name: /模型请求 第 4 步/ }));
+    expect(screen.getByText("输入")).toBeInTheDocument();
+    expect(screen.getByText("输出")).toBeInTheDocument();
+    expect(screen.getByText(/来源 provider_response\.usage/)).toBeInTheDocument();
+    expect(screen.getByText(/span span-model/)).toBeInTheDocument();
+  });
+
   it("shows a chronological call timeline with expandable request and output", async () => {
     render(<TrajectoryView execution={execution(events)} />);
+    await showList();
     expect(screen.getByRole("heading", { name: "运行轨迹" })).toBeInTheDocument();
     expect(screen.getByText("2 条记录")).toBeInTheDocument();
     expect(screen.getByText("3.00 秒")).toBeInTheDocument();
@@ -157,8 +185,9 @@ describe("TrajectoryView", () => {
     expect(screen.getByText("模型输出内容")).not.toBeVisible();
   });
 
-  it("filters entries and reports when nothing matches", () => {
+  it("filters entries and reports when nothing matches", async () => {
     render(<TrajectoryView execution={execution(events)} />);
+    await showList();
     const search = screen.getByLabelText("搜索轨迹");
     fireEvent.change(search, { target: { value: "模型" } });
     expect(screen.getByText("已按“模型”筛选出 1 条记录。")).toBeInTheDocument();
@@ -168,8 +197,10 @@ describe("TrajectoryView", () => {
     expect(screen.getByText("没有匹配的轨迹记录。")).toBeInTheDocument();
   });
 
-  it("does not imply activity when the execution saved no events", () => {
+  it("does not imply activity when the execution saved no events", async () => {
     render(<TrajectoryView execution={execution([])} />);
+    expect(screen.getByText("本次执行没有保存可展示的步骤。")).toBeInTheDocument();
+    await showList();
     expect(
       screen.getByText("本次执行没有保存可展示的轨迹记录。"),
     ).toBeInTheDocument();

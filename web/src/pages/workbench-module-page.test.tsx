@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1819,8 +1819,10 @@ describe("workbench execution and platform projections", () => {
   it("renders reported run usage and preserves missing usage instead of inventing zeroes", async () => {
     const { user } = open("executions");
     const rows = await list("执行轨迹");
-    expectField("运行 ID", "run/current");
-    expectField("尝试 ID", "attempt/frozen-3");
+    expect(details().getByText("记录标识")).toBeInTheDocument();
+    expect(details().getByText("run/current")).toBeInTheDocument();
+    expect(details().queryByText("运行 ID")).not.toBeInTheDocument();
+    expect(details().queryByText("尝试 ID")).not.toBeInTheDocument();
     expectField("开始时间", at);
     expect(
       details().getByRole("link", { name: "打开完整执行工作区" }),
@@ -1856,7 +1858,6 @@ describe("workbench execution and platform projections", () => {
     expectField("用量未知调用数", "未报告");
     expectField("已报告来源", "未报告");
     await detailTab(user, "运行概览");
-    expectField("尝试 ID", "未报告");
     expectField("开始时间", "未报告");
     expectField("结束时间", "未报告");
     await detailTab(user, "执行日志");
@@ -1990,28 +1991,28 @@ describe("workbench public directory, templates and audit", () => {
   it("separates case, platform and current-actor audit projections and never treats them as access logs", async () => {
     const { user } = open("audit");
     const rows = await list("审计日志");
-    expectField("事件 ID", "audit-case-1");
+    expectField("事件标识", "audit-case-1");
     expectField("资源范围", "专线采购案件");
     expect(
       details().getByRole("link", { name: "打开关联记录" }),
     ).toHaveAttribute("href", "/cases/case%2Falpha");
     await detailTab(user, "变更内容");
-    expectField("动作", "task.created");
+    expectField("操作", "创建办理任务");
     expectField("摘要", "创建付款核对任务");
     await detailTab(user, "来源上下文");
-    expectField("操作人 ID", "reviewer-1");
+    expectField("操作人标识", "reviewer-1");
     await detailTab(user, "关联事件");
     expect(details().getByText(/创建付款核对任务/)).toBeInTheDocument();
     expect(details().getByText(/提交签章材料/)).toBeInTheDocument();
     expect(
       details().queryByText(/维护安全制度|发布运营商规则包/),
     ).not.toBeInTheDocument();
-    await selectRecord(user, /rulepack.published/);
+    await selectRecord(user, /发布规则包/);
     expect(details().getByText("平台级事件没有案件关联。")).toBeInTheDocument();
     expect(details().queryByRole("link")).not.toBeInTheDocument();
     await detailTab(user, "事件详情");
     expectField("资源范围", "平台级事件");
-    await selectRecord(user, /case.updated/);
+    await selectRecord(user, /更新案件信息/);
     expectField("资源范围", "case-not-in-snapshot");
     expect(
       details().getByRole("link", { name: "打开关联记录" }),
@@ -2024,14 +2025,14 @@ describe("workbench public directory, templates and audit", () => {
     expect(screen.getByRole("status")).toHaveTextContent("与当前用户有关的业务审计记录");
     expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(2);
     expect(
-      rows.getByRole("button", { name: /task.created/ }),
+      rows.getByRole("button", { name: /创建办理任务/ }),
     ).toBeInTheDocument();
     expect(
-      rows.getByRole("button", { name: /knowledge.created/ }),
+      rows.getByRole("button", { name: /新增知识条目/ }),
     ).toBeInTheDocument();
     expect(
       rows.queryByRole("button", {
-        name: /rulepack.published|remediation.submitted|case.updated/,
+        name: /发布规则包|提交整改材料|更新案件信息/,
       }),
     ).not.toBeInTheDocument();
     await category(user, "审计日志", "访问记录");

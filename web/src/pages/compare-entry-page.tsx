@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -25,12 +25,13 @@ import {
   runTone,
 } from "../domain/review";
 import "./compare-entry-page.css";
+import { businessLineLabel } from "../domain/business-labels";
 
 function customerLabel(item: WorkbenchCase): string {
   const customer = item.profile?.customer;
   if (customer && customer !== "unspecified") return customer;
   const businessLine = item.business_line;
-  if (businessLine && businessLine !== "unspecified") return businessLine;
+  if (businessLine && businessLine !== "unspecified") return businessLineLabel(businessLine);
   return "业务信息未报告";
 }
 

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r4
+// Updated: 2026-11-04
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -32,6 +32,9 @@ import { IntakePrimaryContract } from "../components/intake-primary-contract";
 import { IntakePendingList } from "../components/intake-pending-list";
 import type { IntakeContinuationSelection } from "../features/intake/intake-continuation";
 import { StatusText } from "../components/status-text";
+import { businessActionLabel, businessScopeLabel } from "../domain/business-labels";
+import { TechnicalDetail } from "../components/technical-detail";
+import { CollapsibleSection } from "../components/collapsible-section";
 import { WorkbenchCaseNextStep } from "../components/workbench-case-next-step";
 import {
   caseHref,
@@ -457,7 +460,7 @@ export function HomePage() {
             <Link to={caseHref(item.id, item.latest_run?.id ?? null)}>
               {item.title}
             </Link>
-            <span className="home-recent-id">{item.id}</span>
+            <TechnicalDetail value={item.id} label="案件标识" />
           </>
         ),
       },
@@ -482,8 +485,7 @@ export function HomePage() {
         title: "业务线 / 场景",
         key: "business",
         render: (_, item) =>
-          [item.business_line, item.scenario].filter(Boolean).join("，") ||
-          "未设置",
+          businessScopeLabel(item.business_line, item.scenario),
       },
       {
         title: "更新时间",
@@ -675,7 +677,7 @@ export function HomePage() {
               <li key={item.id}>
                 <div className="home-case-work-heading">
                   <Link to={caseHref(item.id, null)}>{item.title}</Link>
-                  <span className="home-case-work-id">{item.id}</span>
+                  <TechnicalDetail value={item.id} label="案件标识" />
                 </div>
                 <div className="home-case-work-details">
                   {item.severity ? (
@@ -974,15 +976,22 @@ export function HomePage() {
           {cases.length === 0 ? (
             <p className="home-empty">当前身份没有可见案件。</p>
           ) : (
-            <div className="home-table-scroll">
-              <Table
-                className="data-table home-recent-table"
-                columns={recentCaseColumns}
-                dataSource={recentCases}
-                rowKey="id"
-                pagination={false}
-              />
-            </div>
+            <CollapsibleSection
+              id="home-recent-reviews"
+              title="最近审查与案件"
+              summaryLabel="展开列表"
+              count={recentCases.length}
+            >
+              <div className="home-table-scroll">
+                <Table
+                  className="data-table home-recent-table"
+                  columns={recentCaseColumns}
+                  dataSource={recentCases}
+                  rowKey="id"
+                  pagination={false}
+                />
+              </div>
+            </CollapsibleSection>
           )}
         </section>
 
@@ -1002,23 +1011,30 @@ export function HomePage() {
           {remediations.length === 0 ? (
             <p className="home-empty">没有获取到整改记录。</p>
           ) : (
-            <ul className="home-record-list">
-              {remediations.map((item) => (
-                <li key={item.id}>
-                  <Link to={caseHref(item.case_id, item.run_id)}>
-                    <strong>{item.measure}</strong>
-                    <span>
-                      {item.case_title}，责任人{" "}
-                      {members.get(item.assignee_id) ?? item.assignee_id}
-                    </span>
-                  </Link>
-                  <span className="home-record-status">{item.status}</span>
-                  <time dateTime={item.due_at}>
-                    {formatDateTime(item.due_at)}
-                  </time>
-                </li>
-              ))}
-            </ul>
+            <CollapsibleSection
+              id="home-remediation-list"
+              title="整改跟踪"
+              summaryLabel="展开整改记录"
+              count={remediations.length}
+            >
+              <ul className="home-record-list">
+                {remediations.map((item) => (
+                  <li key={item.id}>
+                    <Link to={caseHref(item.case_id, item.run_id)}>
+                      <strong>{item.measure}</strong>
+                      <span>
+                        {item.case_title}，责任人{" "}
+                        {members.get(item.assignee_id) ?? item.assignee_id}
+                      </span>
+                    </Link>
+                    <span className="home-record-status">{item.status}</span>
+                    <time dateTime={item.due_at}>
+                      {formatDateTime(item.due_at)}
+                    </time>
+                  </li>
+                ))}
+              </ul>
+            </CollapsibleSection>
           )}
         </section>
 
@@ -1038,26 +1054,36 @@ export function HomePage() {
           {audit.length === 0 ? (
             <p className="home-empty">没有获取到审计记录。</p>
           ) : (
-            <ol className="home-audit-list">
-              {audit.map((event) => (
-                <li key={event.id}>
-                  <time dateTime={event.at}>{formatDateTime(event.at)}</time>
-                  <div>
-                    {event.case_id ? (
-                      <Link to={`/cases/${encodeURIComponent(event.case_id)}`}>
-                        {event.case_title ?? event.case_id}
-                      </Link>
-                    ) : (
-                      <span>平台级事件</span>
-                    )}
-                    <p>{event.summary}</p>
-                    <small>
-                      {event.actor_name}，{event.action}
-                    </small>
-                  </div>
-                </li>
-              ))}
-            </ol>
+            <CollapsibleSection
+              id="home-audit-list"
+              title="最近业务记录"
+              summaryLabel="展开业务记录"
+              count={audit.length}
+            >
+              <ol className="home-audit-list">
+                {audit.map((event) => (
+                  <li key={event.id}>
+                    <time dateTime={event.at}>{formatDateTime(event.at)}</time>
+                    <div>
+                      {event.case_id ? (
+                        <>
+                          <Link to={`/cases/${encodeURIComponent(event.case_id)}`}>
+                            {event.case_title ?? "未命名案件"}
+                          </Link>
+                          <TechnicalDetail value={event.case_id} label="案件标识" />
+                        </>
+                      ) : (
+                        <span>平台级事件</span>
+                      )}
+                      <p>{event.summary}</p>
+                      <small>
+                        {event.actor_name}，{businessActionLabel(event.action)}
+                      </small>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </CollapsibleSection>
           )}
         </section>
       </div>

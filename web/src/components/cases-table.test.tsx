@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -141,9 +141,9 @@ describe("cases table", () => {
         />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("cell", { name: "企业业务，专线" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "企业业务 / 专线" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "进行中" })).toBeInTheDocument();
-    expect(screen.getByRole("cell", { name: "未提供" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "业务范围未设置" })).toBeInTheDocument();
     expect(screen.getAllByText("已归档").length).toBeGreaterThan(0);
   });
 

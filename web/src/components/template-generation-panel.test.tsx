@@ -3,14 +3,15 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-04
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setSessionIdentity } from "../api/http";
 import type { DocumentVersion, GenerationRecord, MaterialProjection, MaterialSelectionProjection, Template } from "../api/types";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { TemplateGenerationPanel } from "./template-generation-panel";
@@ -101,10 +102,24 @@ function renderPanel(
 }
 
 beforeEach(() => {
+  setSessionIdentity({
+    id: "actor-1",
+    role: "reviewer",
+    audience: "client",
+    tenant_id: "tenant-1",
+    org_id: "org-1",
+    principal_id: "actor-1",
+    active_context: { context_version: "context-1" },
+    csrf_token: "test-csrf-token",
+  });
   mocks.useTemplates.mockReturnValue(
     templatesState({ isSuccess: true, data: [template] }),
   );
   mocks.useCreateGeneration.mockReturnValue(generationState());
+});
+
+afterEach(() => {
+  setSessionIdentity(null);
 });
 
 describe("template generation panel", () => {
@@ -157,8 +172,8 @@ describe("template generation panel", () => {
 
   it("renders the selected template identity and a control per field type", () => {
     renderPanel();
-    expect(screen.getByText(/模板 ID：template-1，版本：3/)).toBeInTheDocument();
-    expect(screen.getByText("template-digest")).toBeInTheDocument();
+    expect(screen.getByText(/模板 采购合同模板，版本 3/)).toBeInTheDocument();
+    expect(screen.getByText("模板摘要")).toBeInTheDocument();
     const title = screen.getByRole("textbox", { name: /标题（必填）/ }) as HTMLInputElement;
     expect(title).toHaveAttribute("type", "text");
     expect(screen.getByRole("textbox", { name: "摘要" }).tagName).toBe("TEXTAREA");
@@ -242,7 +257,7 @@ describe("template generation panel", () => {
     renderPanel();
     await user.type(screen.getByRole("textbox", { name: /标题（必填）/ }), "草稿");
     await chooseOption(user, screen.getByRole("combobox", { name: "模板" }), /服务合同模板，1/);
-    expect(screen.getByText(/模板 ID：template-2，版本：1/)).toBeInTheDocument();
+    expect(screen.getByText(/模板 服务合同模板，版本 1/)).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /标题（必填）/ })).toHaveValue("");
   });
 
@@ -347,7 +362,9 @@ describe("template generation panel", () => {
   it("lists generation history with digests and times", () => {
     renderPanel({ records: [record] });
     const history = screen.getByRole("region", { name: "生成历史" });
-    expect(within(history).getByText("template-1，3")).toBeInTheDocument();
+    expect(within(history).getByText("模板版本 3")).toBeInTheDocument();
+    expect(within(history).getByText("查看编号")).toBeInTheDocument();
+    expect(within(history).getByText("查看标识")).toBeInTheDocument();
     expect(within(history).getByText("generation-1")).toBeInTheDocument();
     expect(within(history).getByText("document-1")).toBeInTheDocument();
     expect(within(history).getByText("generation-digest")).toBeInTheDocument();

@@ -3,14 +3,15 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-04
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Button, Table, type TableProps } from "antd";
 import { errorMessage } from "../api/http";
 import { useTenantOperations, type TenantCostWindow } from "../api/tenant-operations";
+import { TechnicalDetail } from "./technical-detail";
 import "./tenant-operations-panel.css";
 
 type BudgetRow = { key: string; label: string; used: number; limit: number | null; globalLimit: number | null };
@@ -71,7 +72,7 @@ export function TenantOperationsPanel() {
             <dt>任务准入</dt><dd>{data.execution_queue.tenant_live ? "服务端开放" : "服务端已停止"}</dd>
           </div>
           <div><dt>队列政策版本</dt><dd>{data.execution_queue.policy_version}</dd></div>
-          <div><dt>队列政策摘要</dt><dd className="is-code">{data.execution_queue.policy_hash}</dd></div>
+          <div><dt>队列政策摘要</dt><dd className="is-code"><TechnicalDetail value={data.execution_queue.policy_hash} label="查看摘要" /></dd></div>
           <div><dt>租户调度权重</dt><dd>{data.execution_queue.tenant_weight.toLocaleString()}</dd></div>
           <div><dt>租户并发上限</dt><dd>{data.execution_queue.tenant_in_flight_limit.toLocaleString()}</dd></div>
           <div><dt>租户待处理上限</dt><dd>{data.execution_queue.tenant_pending_limit.toLocaleString()}</dd></div>

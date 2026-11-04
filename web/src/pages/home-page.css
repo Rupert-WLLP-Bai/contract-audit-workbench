@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
-/* Updated: 2026-11-03 */
-/* Revision: r3 */
+/* Updated: 2026-11-04 */
+/* Revision: r4 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -213,13 +213,6 @@
 .home-case-work-details > a:hover {
   color: var(--action-primary, var(--action-primary));
   text-decoration: underline;
-}
-.home-case-work-id {
-  overflow: hidden;
-  color: var(--text-secondary, var(--text-secondary));
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .home-case-work-details {
   grid-column: 1;
@@ -586,13 +579,6 @@
 .home-recent-table {
   min-width: 740px;
   font-size: 11px;
-}
-.home-recent-id {
-  display: block;
-  margin-top: 4px;
-  color: var(--text-secondary, var(--text-secondary));
-  font-size: 10px;
-  font-weight: 400;
 }
 .home-recent-open {
   min-height: 28px;
