@@ -388,12 +388,30 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
                 plan = self.plan(check_fast.Change("M", path))
                 targets = {target.package: target for target in plan.database_tests}
                 self.assertIn("./internal/httpapi", targets)
-                self.assertEqual(
-                    set(targets["./internal/httpapi"].tests),
-                    set(check_fast.TENANT_IDENTITY_HTTP_TESTS))
+                expected_http = set(check_fast.TENANT_IDENTITY_HTTP_TESTS)
+                if path == "internal/httpapi/server.go":
+                    expected_http.update(check_fast.REVIEW_READMISSION_HTTP_TESTS)
+                self.assertEqual(set(targets["./internal/httpapi"].tests), expected_http)
                 self.assertIn("./internal/store", targets)
                 self.assertTrue(set(check_fast.TENANT_IDENTITY_TESTS).issubset(
                     targets["./internal/store"].tests))
+
+    def test_review_readmission_sources_select_postgres_regressions(self):
+        for path in ("internal/store/execution.go", "internal/store/write_idempotency.go",
+                     "internal/store/attempt_finalize.go", "internal/store/document_prepare.go",
+                     "internal/store/review_readmission_pg_test.go", "internal/httpapi/server.go"):
+            with self.subTest(path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                self.assertTrue(plan.database)
+                targets = {target.package: target for target in plan.database_tests}
+                self.assertTrue(set(check_fast.REVIEW_READMISSION_TESTS).issubset(
+                    targets["./internal/store"].tests))
+        for path in ("internal/httpapi/server.go", "internal/httpapi/pending_image_test.go"):
+            with self.subTest(http_path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                targets = {target.package: target for target in plan.database_tests}
+                self.assertTrue(set(check_fast.REVIEW_READMISSION_HTTP_TESTS).issubset(
+                    targets["./internal/httpapi"].tests))
 
     def test_tenant_authority_session_and_model_paths_select_required_suites(self):
         paths = (

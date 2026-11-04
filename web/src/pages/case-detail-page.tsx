@@ -37,6 +37,7 @@ import { StatusText } from "../components/status-text";
 import { TechnicalDetail } from "../components/technical-detail";
 import { businessLineLabel, businessScopeLabel, scenarioLabel } from "../domain/business-labels";
 import { CaseSupportGrantPanel } from "./support-grant-pages";
+import { canReadmitCancelledPreparation } from "../features/review/review-outcome";
 import {
   businessStatusLabel,
   contractTypeLabel,
@@ -166,11 +167,18 @@ export function CaseDetailPage() {
   const canArchive = actorRole === "admin";
   const requiresBusinessAt = businessAt !== "" ||
     readiness.data?.scopes.some((scope) => scope.blockers.some((blocker) => blocker.code === "business_at_required")) === true;
+  const latestWorkspace = !history.isFetching && !history.isError
+    ? history.data?.find((entry) => entry.runId === item.latest_run?.id)?.workspace
+    : undefined;
+  const readmit = latestWorkspace && latestWorkspace.run.id === item.latest_run?.id &&
+    latestWorkspace.run.case_id === item.id && latestWorkspace.run.state === item.latest_run.state &&
+    canReadmitCancelledPreparation(latestWorkspace) ? latestWorkspace.review_attempts?.attempt : undefined;
   function onStartReview() {
     start.mutate(
       {
         ...(validBusinessAt ? { business_at: businessAtValue } : {}),
         ...(reviewScope === "single_contract_precheck" ? { scope: reviewScope } : {}),
+        ...(readmit ? { readmit_cancelled: { run_id: readmit.run_id, attempt_id: readmit.id } } : {}),
       },
       {
         onSuccess: (accepted) => {
@@ -222,11 +230,14 @@ export function CaseDetailPage() {
         validBusinessAt={validBusinessAt}
         historyLoading={history.isLoading}
         historyError={history.isError ? history.error : null}
-        latestWorkspace={!history.isFetching && !history.isError ? history.data?.find((entry) => entry.runId === item.latest_run?.id)?.workspace : undefined}
+        latestWorkspace={latestWorkspace}
         startPending={start.isPending}
         startError={start.isError ? start.error : null}
         onRetrySession={() => void session.refetch()}
-        onRefreshReadiness={() => void readiness.refetch()}
+        onRefreshReadiness={() => {
+          start.reset();
+          void Promise.all([readiness.refetch(), detail.refetch(), ...(item.latest_run ? [history.refetch()] : [])]);
+        }}
         onRefreshHistory={() => void history.refetch()}
         onStartReview={onStartReview}
       />

@@ -14,7 +14,10 @@ import { singleContractCoverage } from "./single-contract-coverage";
 /** The selected attempt and the workspace must describe the same execution. */
 export function selectedOutcome(workspace: ReviewWorkspace) {
   const attempt = workspace.review_attempts?.attempt;
-  if (!attempt || !attempt.id || attempt.run_id !== workspace.run.id || attempt.history_kind !== "frozen") return null;
+  if (!attempt || !attempt.id || attempt.run_id !== workspace.run.id) return null;
+  if (attempt.history_kind === "preparing" && attempt.state === "cancelled" && workspace.run.state === "cancelled" &&
+      ["cancelled_by_user", "cancelled", "authorization_revoked"].includes(attempt.outcome?.reason ?? "")) return attempt.outcome ?? null;
+  if (attempt.history_kind !== "frozen") return null;
   return attempt.outcome ?? null;
 }
 
@@ -46,12 +49,22 @@ export function hasTransientRetryCause(workspace: ReviewWorkspace): boolean {
 
 export function canRestartUserCancelled(workspace: ReviewWorkspace): boolean {
   const attempt = workspace.review_attempts?.attempt;
-  return Boolean(attempt?.state === "cancelled" && workspace.run.state === "cancelled" &&
+  return Boolean(attempt?.history_kind === "frozen" && attempt.state === "cancelled" && workspace.run.state === "cancelled" &&
     selectedOutcome(workspace)?.reason === "cancelled_by_user" && frozenInputsReady(workspace));
 }
 
+/** A preparation has no frozen input; a new admission must name its source. */
+export function canReadmitCancelledPreparation(workspace: ReviewWorkspace): boolean {
+  const execution = workspace.review_attempts;
+  const attempt = execution?.attempt;
+  return Boolean(attempt && attempt.history_kind === "preparing" && attempt.state === "cancelled" &&
+    workspace.run.state === "cancelled" && selectedOutcome(workspace)?.reason === "cancelled_by_user" &&
+    execution?.attempts.filter((entry) => entry.id === attempt.id && entry.run_id === workspace.run.id).length === 1 &&
+    !execution?.attempts.some((entry) => entry.ordinal > attempt.ordinal));
+}
+
 export function hasFrozenParseFailure(workspace: ReviewWorkspace): boolean {
-  if (!selectedOutcome(workspace)) return false;
+  if (workspace.review_attempts?.attempt.history_kind !== "frozen" || !selectedOutcome(workspace)) return false;
   const ids = workspace.snapshot?.document_ids ?? [];
   return workspace.documents.some((document) => ids.includes(document.id) && document.parse_status === "failed");
 }

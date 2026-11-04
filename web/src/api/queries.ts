@@ -841,7 +841,7 @@ export function useReparse(caseId: string) {
 export function useStartReview(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { business_at?: string; scope?: "full_review" | "single_contract_precheck" }) =>
+    mutationFn: (input: api.StartReviewInput) =>
       keyedMutation(queryClient, "review.start", caseId, input, (key) => api.startReview(caseId, input, key)),
     onSuccess: () =>
       invalidateCaseViews(queryClient, caseId, {

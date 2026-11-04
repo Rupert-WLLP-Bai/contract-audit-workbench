@@ -15,7 +15,7 @@ import { errorMessage } from "../api/http";
 import { actorRoleLabel, runLabel, type StatusTone } from "../domain/review";
 import { StatusText } from "./status-text";
 import { ReviewOutcomeSummary } from "./review-outcome-summary";
-import { canRestartUserCancelled, hasFrozenParseFailure, hasTransientRetryCause, limitedPrecheck, selectedOutcome, unresolvedGapKinds } from "../features/review/review-outcome";
+import { canReadmitCancelledPreparation, canRestartUserCancelled, hasFrozenParseFailure, hasTransientRetryCause, limitedPrecheck, selectedOutcome, unresolvedGapKinds } from "../features/review/review-outcome";
 import "./case-next-step.css";
 
 interface Props {
@@ -173,6 +173,7 @@ function planFor(props: Props): CaseNextStepPlan {
   const subjectContextUnknown = run !== null && item.subject_context_changed_after_latest_run === undefined;
   const latestWorkspace = currentWorkspace(props);
   const isLimitedPrecheck = latestWorkspace !== undefined && limitedPrecheck(latestWorkspace);
+  const readmitPreparation = latestWorkspace !== undefined && canReadmitCancelledPreparation(latestWorkspace);
   const materialIssue = latestWorkspace !== undefined && (selectedOutcome(latestWorkspace)?.reason === "material_unavailable" ||
     hasFrozenParseFailure(latestWorkspace) || unresolvedGapKinds(latestWorkspace).materials);
 
@@ -230,7 +231,7 @@ function planFor(props: Props): CaseNextStepPlan {
 
   const refreshRequiredReview = run !== null && newReviewReason(item).length > 0;
   const prepareFullReview = isLimitedPrecheck && selectedScope === "full_review" && !materialIssue;
-  if (refreshRequiredReview || run === null || prepareFullReview) {
+  if (refreshRequiredReview || run === null || prepareFullReview || readmitPreparation) {
     if (subjectContextUnknown) {
       return {
         stage: "主体状态待确认",
@@ -382,6 +383,17 @@ function planFor(props: Props): CaseNextStepPlan {
     }
 
     const changeReasons = newReviewReason(item);
+    if (readmitPreparation && canStart) {
+      return {
+        stage: "审查准备期间已取消",
+        title: "可以重新发起新的审查",
+        tone: "attention",
+        reason: "此前由用户主动取消，原执行尚未冻结输入。新审查将重新核对当前材料、范围、权限和依据，原取消记录保留。",
+        missingItems: [],
+        owner: "经办或审查员",
+        action: { kind: "start", label: "重新发起新审查", loading: startPending, disabled: startPending },
+      };
+    }
     if (changeReasons.length > 0) {
       if (!canStart) {
         return {

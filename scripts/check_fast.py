@@ -108,6 +108,13 @@ DATABASE_CORE_TESTS = ("TestLoginOriginalAndRetryStayInPostgres",)
 FROZEN_EVIDENCE_TESTS = (
     "TestDurableReviewFreezesServiceObjectContextAndRejectsChangedRetryAfterReopen",
 )
+REVIEW_READMISSION_TESTS = (
+    "TestReviewReadmissionPreparingScanPostgres",
+    "TestReviewReadmissionDifferentKeysAndBoundariesPostgres",
+    "TestReviewReadmissionFrozenAndRevokedPostgres",
+    "TestReviewReadmissionRejectsExpiredEpochPostgres",
+)
+REVIEW_READMISSION_HTTP_TESTS = ("TestCancelledPreparingReadmissionHTTP",)
 CONTRACT_SIGNING_TESTS = (
     "TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision",
 )
@@ -479,6 +486,21 @@ def _is_frozen_evidence(path: str) -> bool:
         ("frozen", "snapshot", "service_object_context", "attempt_input", "material"))
 
 
+def _is_review_readmission(path: str) -> bool:
+    return path in {
+        "internal/store/execution.go",
+        "internal/store/write_idempotency.go",
+        "internal/store/attempt_finalize.go",
+        "internal/store/document_prepare.go",
+        "internal/store/review_readmission_pg_test.go",
+        "internal/httpapi/server.go",
+    }
+
+
+def _is_review_readmission_http(path: str) -> bool:
+    return path in {"internal/httpapi/server.go", "internal/httpapi/pending_image_test.go"}
+
+
 def _is_contract_signing(path: str) -> bool:
     return path in (
         "internal/store/contract_signing.go",
@@ -716,6 +738,9 @@ SENSITIVE_RULES = (
     SensitiveRule("lease", _is_lease, LEASE_TESTS),
     SensitiveRule("database-core", _is_database_core, DATABASE_CORE_TESTS),
     SensitiveRule("frozen-evidence", _is_frozen_evidence, FROZEN_EVIDENCE_TESTS),
+    SensitiveRule("review-readmission", _is_review_readmission, REVIEW_READMISSION_TESTS),
+    SensitiveRule("review-readmission-http", _is_review_readmission_http,
+                  REVIEW_READMISSION_HTTP_TESTS, package="./internal/httpapi"),
     SensitiveRule("contract-signing", _is_contract_signing, CONTRACT_SIGNING_TESTS),
     SensitiveRule("contract-fulfillment", _is_contract_fulfillment, CONTRACT_FULFILLMENT_TESTS),
     SensitiveRule("contract-payment", _is_contract_payment, CONTRACT_PAYMENT_TESTS),

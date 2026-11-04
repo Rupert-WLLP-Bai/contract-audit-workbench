@@ -10,7 +10,7 @@
 
 import type { ReviewWorkspace } from "../api/types";
 import { runLabel } from "../domain/review";
-import { agentStage, canRestartUserCancelled, hasFrozenParseFailure, hasTransientRetryCause, limitedPrecheck, selectedOutcome, unresolvedGapKinds } from "../features/review/review-outcome";
+import { agentStage, canReadmitCancelledPreparation, canRestartUserCancelled, hasFrozenParseFailure, hasTransientRetryCause, limitedPrecheck, selectedOutcome, unresolvedGapKinds } from "../features/review/review-outcome";
 import { singleContractCoverage } from "../features/review/single-contract-coverage";
 
 export function ReviewOutcomeSummary({ workspace }: { workspace: ReviewWorkspace }) {
@@ -43,6 +43,18 @@ export function ReviewOutcomeSummary({ workspace }: { workspace: ReviewWorkspace
   }[stage] ?? "智能审查阶段结果未能确认。";
   const casePath = `/cases/${encodeURIComponent(workspace.run.case_id)}`;
   const gapPath = `${casePath}/reviews/${encodeURIComponent(workspace.run.id)}?attempt_id=${encodeURIComponent(workspace.review_attempts?.attempt.id ?? "")}#agent-review-gaps`;
+  if (workspace.review_attempts?.attempt.history_kind === "preparing") {
+    return <section aria-label="审查结果、范围与人工进度" className="callout">
+      <h2>审查结果、范围与人工进度</h2>
+      <p>该执行尚未冻结审查输入，不能据此确认检查范围或人工进度。</p>
+      {outcome?.reason === "cancelled_by_user" && canReadmitCancelledPreparation(workspace) ? <>
+        <p>审查在准备期间由用户主动取消；请返回案件核对准备清单，确认是否可以重新发起新审查。</p>
+        <p><a href={`${casePath}#review-readiness`}>返回审查准备清单</a></p>
+      </> : null}
+      {outcome?.reason === "authorization_revoked" ? <p>本次执行因授权变化而取消，请联系案件管理员核对权限。</p> : null}
+      {outcome?.reason === "cancelled" ? <p>取消原因未确认，请核对当前身份权限及审查记录。</p> : null}
+    </section>;
+  }
   return <section aria-label="审查结果、范围与人工进度" className="callout">
     <h2>审查结果、范围与人工进度</h2>
     <p><strong>执行结果：</strong>{limited ? "单合同预审已结束，执行记录保留为部分完成。" : `所选执行记录：${runLabel(workspace.run.state)}。`}</p>
@@ -51,7 +63,7 @@ export function ReviewOutcomeSummary({ workspace }: { workspace: ReviewWorkspace
     {outcome?.reason === "dependency_unavailable" ? <p>审查依赖尚未就绪，请联系管理员核对。</p> : null}
     {outcome?.reason === "execution_failed" ? <p>执行发生故障，原因与恢复条件需要进一步核对。</p> : null}
     {outcome?.reason === "review_incomplete" ? <p>部分审查或所需证据尚未完成，请核对现有结果和缺项。</p> : null}
-    {outcome?.reason === "cancelled_by_user" ? <p>{canRestartUserCancelled(workspace) ? "审查由用户主动取消；可由有权人员选择重新发起，服务端会核验冻结输入。" : "审查由用户主动取消；冻结输入尚不能核对，请查看审查准备。"}</p> : null}
+    {outcome?.reason === "cancelled_by_user" ? <p>{canReadmitCancelledPreparation(workspace) ? "审查在准备期间由用户主动取消，尚未冻结审查输入；请返回案件核对准备清单并重新发起新审查。" : canRestartUserCancelled(workspace) ? "审查由用户主动取消；可由有权人员选择重新发起，服务端会核验冻结输入。" : "审查由用户主动取消；冻结输入尚不能核对，请查看审查准备。"}</p> : null}
     {outcome?.reason === "cancelled" ? <p>取消原因未确认，请核对当前身份权限及审查记录。</p> : null}
     {outcome?.reason === "authorization_revoked" ? <p>本次执行因授权变化而取消，请联系案件管理员核对权限。</p> : null}
     <p>{agent}</p>

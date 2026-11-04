@@ -17,7 +17,7 @@ import type { ReviewReadiness } from "../api/review-readiness";
 import { renderWithAntd as render } from "../test/antd";
 import { CaseNextStep } from "./case-next-step";
 import { ReviewOutcomeSummary } from "./review-outcome-summary";
-import { canRestartUserCancelled, hasTransientRetryCause } from "../features/review/review-outcome";
+import { canReadmitCancelledPreparation, canRestartUserCancelled, hasTransientRetryCause } from "../features/review/review-outcome";
 
 const scope = { id: "single_contract_precheck", rule_set_id: "single-contract-precheck", rule_set_version: "1", rule_set_hash: "51676a95611b6e1bf4c30fc50be82e1d493528f34b89f3ece9dbb5aa6c291596" };
 
@@ -167,5 +167,33 @@ describe("selected review outcome", () => {
     value.review_attempts!.attempt.outcome.reason = "cancelled_by_user";
     value.review_attempts!.attempt.parsed_document_ids = [];
     expect(canRestartUserCancelled(value)).toBe(false);
+  });
+
+  it("offers a fresh admission only after a user-cancelled preparation passes readiness", async () => {
+    const value = workspace();
+    value.run.state = "cancelled";
+    value.review_attempts!.attempt.state = "cancelled";
+    value.review_attempts!.attempt.history_kind = "preparing";
+    // Ready parse identities alone do not prove that AttemptInput was frozen.
+    value.review_attempts!.attempt.parsed_document_ids = ["parse-1"];
+    value.review_attempts!.attempt.outcome = { reason: "cancelled_by_user", agent_stage: "unknown", retry_cause: "none" };
+    const item = detail();
+    item.latest_run!.state = "cancelled";
+    const start = vi.fn();
+    expect(canReadmitCancelledPreparation(value)).toBe(true);
+    expect(canRestartUserCancelled(value)).toBe(false);
+    const view = render(<CaseNextStep {...props({ caseDetail: item, latestWorkspace: value, readiness: readiness(false), onStartReview: start })} />);
+    expect(screen.getByText(/尚未冻结审查输入/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新发起新审查" })).not.toBeInTheDocument();
+    view.rerender(<CaseNextStep {...props({ caseDetail: item, latestWorkspace: value, onStartReview: start })} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "重新发起新审查" }));
+    expect(start).toHaveBeenCalledTimes(1);
+    view.rerender(<CaseNextStep {...props({ caseDetail: item, latestWorkspace: value, actorRole: "viewer" })} />);
+    expect(screen.queryByRole("button", { name: "重新发起新审查" })).not.toBeInTheDocument();
+    value.review_attempts!.attempt.outcome!.reason = "authorization_revoked";
+    expect(canReadmitCancelledPreparation(value)).toBe(false);
+    value.review_attempts!.attempt.outcome!.reason = "cancelled_by_user";
+    value.review_attempts!.attempts.push({ ...value.review_attempts!.attempt, id: "newer", ordinal: 2 });
+    expect(canReadmitCancelledPreparation(value)).toBe(false);
   });
 });

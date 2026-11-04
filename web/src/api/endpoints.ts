@@ -469,7 +469,13 @@ export function reparseDocument(caseId: string, documentId: string) {
   );
 }
 
-export function startReview(caseId: string, input: { business_at?: string; scope?: "full_review" | "single_contract_precheck" } = {}, idempotencyKey?: string) {
+export interface StartReviewInput {
+  business_at?: string;
+  scope?: "full_review" | "single_contract_precheck";
+  readmit_cancelled?: { run_id: string; attempt_id: string };
+}
+
+export function startReview(caseId: string, input: StartReviewInput = {}, idempotencyKey?: string) {
   return requestJson(
     paths.reviews(caseId),
     jsonInit("POST", input, idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined),
