@@ -23,6 +23,7 @@ import {
   type ComponentProps,
 } from "react";
 import { Link } from "react-router";
+import { TechnicalDetail } from "./technical-detail";
 import type {
   CaseRelationInput,
   EvidenceAnchor,
@@ -357,6 +358,7 @@ function FailedParseBody({
         <strong>{document.filename}</strong>
         <StatusText tone="bad">解析失败</StatusText>
       </header>
+      <TechnicalDetail label="材料状态技术详情" value={JSON.stringify({ role: document.role, parse_status: document.parse_status })} />
       <DiagnosticsCollapse document={document} showDiagnostics={showDiagnostics} />
       <p className="callout">这份材料解析失败，不能据此给出无风险结论。</p>
       {document.parse_error ? <p>{document.parse_error}</p> : null}
@@ -400,6 +402,7 @@ function HighlightBody({
         <span>{roleLabel(document.role)}</span>
         {pages.map((page) => <span key={page}>第 {page} 页</span>)}
       </header>
+      <TechnicalDetail label="材料状态技术详情" value={JSON.stringify({ role: document.role, parse_status: document.parse_status })} />
       <DiagnosticsCollapse document={document} showDiagnostics={showDiagnostics} />
       {activeSource ? (
         <EvidenceAnchorSwitch
@@ -489,6 +492,7 @@ function PlainBody({
           {parseLabel(document.parse_status)}
         </StatusText>
       </header>
+      <TechnicalDetail label="材料状态技术详情" value={JSON.stringify({ role: document.role, parse_status: document.parse_status })} />
       <DiagnosticsCollapse document={document} showDiagnostics={showDiagnostics} />
       <EvidenceNotes resolved={resolved} />
       <EmptyOrText

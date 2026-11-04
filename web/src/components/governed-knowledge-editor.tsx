@@ -15,7 +15,10 @@ import { ApiError, errorMessage, statusLabel } from "../api/http";
 import { listGovernedKnowledge, type KnowledgeCondition, type KnowledgeContent, type KnowledgeKind, type KnowledgeRef, type KnowledgeSpan, type KnowledgeSummary } from "../api/governed-knowledge";
 import { useRulePack, useRulePacks } from "../api/queries";
 import type { RulePackSummary } from "../api/rulepacks";
+import { businessCapabilityLabel, businessScopeLabel, businessSourceTypeLabel } from "../domain/business-labels";
+import { contractTypeLabel } from "../domain/review";
 import { toLocalInputValue, toUtcInstant } from "./local-datetime";
+import { TechnicalDetail } from "./technical-detail";
 
 export interface KnowledgeFormIssue { id: string; message: string }
 const kinds: { value: KnowledgeKind; label: string }[] = [
@@ -206,10 +209,13 @@ function packOptions(
 function ruleOptions(
   rules: { rule_id: string; capability_id: string; business_scope: { business_line: string; scenario: string; contract_type: string } }[] | undefined,
   spans: KnowledgeSpan[] | null | undefined,
-): { value: string; label: string }[] {
-  const options = (rules ?? []).map((rule) => ({ value: rule.rule_id, label: `${rule.rule_id} · ${rule.capability_id} · ${rule.business_scope.business_line} / ${rule.business_scope.scenario} / ${rule.business_scope.contract_type}` }));
+): { value: string; label: string; searchText: string }[] {
+  const options = (rules ?? []).map((rule) => {
+    const label = `${businessCapabilityLabel(rule.capability_id)} · ${businessScopeLabel(rule.business_scope.business_line, rule.business_scope.scenario)} / ${contractTypeLabel(rule.business_scope.contract_type)} · 规则标识 ${rule.rule_id}`;
+    return { value: rule.rule_id, label, searchText: `${label} ${rule.capability_id} ${rule.business_scope.business_line} ${rule.business_scope.scenario} ${rule.business_scope.contract_type}` };
+  });
   for (const span of spans ?? []) {
-    if (span.rule_id && !options.some((rule) => rule.value === span.rule_id)) options.push({ value: span.rule_id, label: span.rule_id });
+    if (span.rule_id && !options.some((rule) => rule.value === span.rule_id)) options.push({ value: span.rule_id, label: `审查项目待核对 · 规则标识 ${span.rule_id}（原绑定）`, searchText: span.rule_id });
   }
   return options;
 }
@@ -247,7 +253,7 @@ function BasicSection({ value, onChange, issues, disabled, lockedIdentity }: Sec
       <Field id="knowledge-version" label="版本号" issues={issues}><Input id="knowledge-version" {...errorProps("knowledge-version", issues)} value={value.version} disabled={disabled} onChange={(event) => set({ version: event.target.value })} /></Field>
       <Field id="knowledge-kind" label="知识类型" issues={issues}><Select id="knowledge-kind" style={{ width: "100%" }} value={value.kind} options={kinds} disabled={disabled || lockedIdentity} onChange={(kind: KnowledgeKind) => set({ kind, source_type: kindSourceType(kind) })} /></Field>
       <Field id="knowledge-title" label="标题" issues={issues}><Input id="knowledge-title" {...errorProps("knowledge-title", issues)} value={value.title} disabled={disabled} onChange={(event) => set({ title: event.target.value })} /></Field>
-      <Field id="knowledge-source-type" label="来源类型" issues={issues}><Select id="knowledge-source-type" style={{ width: "100%" }} value={value.source_type} disabled={disabled || value.kind === "experience"} options={[{ value: "reference", label: "参考制度" }, { value: "synthetic_policy", label: "合成制度" }, ...(value.kind === "experience" ? [{ value: "human_feedback", label: "人工反馈" }] : [])]} onChange={(source_type: string) => set({ source_type })} /></Field>
+      <Field id="knowledge-source-type" label="来源类型" issues={issues}><Select id="knowledge-source-type" style={{ width: "100%" }} value={value.source_type} disabled={disabled || value.kind === "experience"} options={[{ value: "reference", label: businessSourceTypeLabel("reference") }, { value: "synthetic_policy", label: businessSourceTypeLabel("synthetic_policy") }, ...(value.kind === "experience" ? [{ value: "human_feedback", label: businessSourceTypeLabel("human_feedback") }] : [])]} onChange={(source_type: string) => set({ source_type })} /></Field>
       <Field id="knowledge-source-reference" label="来源说明" issues={issues}><Input id="knowledge-source-reference" {...errorProps("knowledge-source-reference", issues)} value={value.source_reference} disabled={disabled} onChange={(event) => set({ source_reference: event.target.value })} /></Field>
       <Field id="knowledge-source-case" label="来源案件 ID（如有）" issues={issues}><Input id="knowledge-source-case" {...errorProps("knowledge-source-case", issues)} value={value.source_case_id ?? ""} disabled={disabled} onChange={(event) => set({ source_case_id: event.target.value })} /></Field>
     </div>
@@ -289,13 +295,13 @@ function ScopeSection({ value, onChange, issues, disabled }: SectionProps) {
   </section>;
 }
 
-function SpanSection({ value, onChange, issues, disabled, ruleOptions: options }: SectionProps & { ruleOptions: { value: string; label: string }[] }) {
+function SpanSection({ value, onChange, issues, disabled, ruleOptions: options }: SectionProps & { ruleOptions: { value: string; label: string; searchText: string }[] }) {
   const spans = value.binding.source_spans ?? [];
   const setSpans = (next: KnowledgeSpan[]) => onChange(withSpans(value, next));
   const changeSpan = (index: number, patch: Partial<KnowledgeSpan>) => setSpans(replaceAt(spans, index, patch));
   return <>
     {(spans).map((span, index) => <div className="rulepack-fields" key={index}>
-      <Field id={`span-rule-${index}`} label={`引用 ${index + 1} 的规则`} issues={issues}><Select id={`span-rule-${index}`} {...errorProps(`span-rule-${index}`, issues)} style={{ width: "100%" }} value={span.rule_id || undefined} options={options} disabled={disabled} onChange={(rule_id: string) => changeSpan(index, { rule_id })} /></Field>
+      <Field id={`span-rule-${index}`} label={`引用 ${index + 1} 的规则`} issues={issues}><Select id={`span-rule-${index}`} {...errorProps(`span-rule-${index}`, issues)} style={{ width: "100%" }} value={span.rule_id || undefined} options={options} showSearch={{ optionFilterProp: "searchText" }} disabled={disabled} onChange={(rule_id: string) => changeSpan(index, { rule_id })} /></Field>
       <Field id={`span-quote-${index}`} label="正文中的原文" issues={issues}><Input id={`span-quote-${index}`} {...errorProps(`span-quote-${index}`, issues)} value={span.quote} disabled={disabled} onChange={(event) => changeSpan(index, placeQuote(value.body, event.target.value, span.start))} /></Field>
       <Field id={`span-start-${index}`} label="起始字符位置（从 0 开始）" issues={issues}><Input id={`span-start-${index}`} type="number" min={0} value={span.start} disabled={disabled} onChange={(event) => { const start = Number(event.target.value); changeSpan(index, { start, end: start + Array.from(span.quote).length }); }} /></Field>
       <Button htmlType="button" disabled={disabled} onClick={() => setSpans(removeAt(spans, index))}>删除引用 {index + 1}</Button>
@@ -324,6 +330,7 @@ function BindingSection({ value, onChange, issues, disabled }: SectionProps) {
     {selectedPack.data && <p className="meta">规则包有效期：{selectedPack.data.pack.effective_from} 至 {selectedPack.data.pack.effective_until}；内容摘要 {selectedPack.data.pack.content_hash}</p>}
     <SectionIssue id="knowledge-spans" issues={issues} />
     <SpanSection value={value} onChange={onChange} issues={issues} disabled={disabled} ruleOptions={options2} />
+    <TechnicalDetail label="所选规则技术详情" value={value.binding.source_spans?.length ? JSON.stringify((selectedPack.data?.manifest.rules ?? []).filter((rule) => (value.binding.rule_ids ?? []).includes(rule.rule_id))) : null} />
     <p className="meta">输入原文后会定位首次出现的位置；若原文出现多次，可修改起始字符位置。位置按 Unicode 字符计算。</p>
     <Field id="knowledge-diff" label="候选规则差异说明" issues={issues}><Input.TextArea id="knowledge-diff" {...errorProps("knowledge-diff", issues)} value={value.binding.candidate_diff} rows={2} disabled={disabled} onChange={(event) => setBinding({ candidate_diff: event.target.value })} /></Field>
     <Field id="knowledge-evidence" label="验证依据" issues={issues}><Input.TextArea id="knowledge-evidence" {...errorProps("knowledge-evidence", issues)} value={value.binding.validation_evidence} rows={2} disabled={disabled} onChange={(event) => setBinding({ validation_evidence: event.target.value })} /></Field>

@@ -177,7 +177,7 @@ export function labelOf(
 ): string {
   if (value === "") return fallback;
   const label = Object.hasOwn(table, value) ? table[value] : undefined;
-  return label ?? `${fallback}（${value}）`;
+  return label ?? fallback;
 }
 
 export function runLabel(state: string): string {
@@ -207,11 +207,11 @@ export function parseLabel(status: string): string {
 }
 
 export function roleLabel(role: string): string {
-  return labelOf(ROLE_LABELS, role, "其他材料");
+  return labelOf(ROLE_LABELS, role, "材料角色待核对");
 }
 
 export function originLabel(origin: string): string {
-  return labelOf(ORIGIN_LABELS, origin, "其他来源");
+  return labelOf(ORIGIN_LABELS, origin, "来源待核对");
 }
 
 export function relationLabel(relation: string): string {
@@ -232,12 +232,12 @@ export function modelStatusLabel(status: string): string {
 }
 
 export function contractTypeLabel(value: string): string {
-  return labelOf(CONTRACT_LABELS, value, "合同类型");
+  return labelOf(CONTRACT_LABELS, value, "合同类型待核对");
 }
 
 export function businessStatusLabel(value: string): string {
   if (value === "") return "业务状态未提供";
-  return BUSINESS_STATUS_LABELS[value] ?? "业务状态待核对";
+  return Object.hasOwn(BUSINESS_STATUS_LABELS, value) ? BUSINESS_STATUS_LABELS[value]! : "业务状态待核对";
 }
 
 export function businessStatusTone(value: string): StatusTone {
@@ -248,14 +248,13 @@ export function businessStatusTone(value: string): StatusTone {
 
 export function taskKindLabel(value: string): string {
   if (value === "") return "任务";
-  return TASK_KIND_LABELS[value] ?? "任务";
+  return Object.hasOwn(TASK_KIND_LABELS, value) ? TASK_KIND_LABELS[value]! : "任务类型待核对";
 }
 
 export function decisionLabel(action: string): string {
   const known = DECISION_ACTIONS.find((item) => item.action === action);
   if (known) return known.label;
-  if (action === "") return "决定未识别";
-  return `决定未识别（${action}）`;
+  return "决定未识别";
 }
 
 export type StatusTone = "neutral" | "attention" | "good" | "bad" | "progress";

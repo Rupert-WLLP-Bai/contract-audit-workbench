@@ -48,7 +48,7 @@ describe("review preparation business and rule matching", () => {
     expect(within(panel).getByRole("link", { name: "核对法律依据与制度" })).toHaveAttribute("href", "/cases/case-1/legal-knowledge");
     expect(within(panel).getByRole("link", { name: "联系规则治理人员核对规则包" })).toHaveAttribute("href", "/admin/rulepacks");
     expect(within(panel).getByRole("link", { name: "重新登记并选择业务场景" })).toHaveAttribute("href", "/#intake-primary-contract");
-    expect(within(panel).getByText("machine-rule / minimum_bandwidth / legal_authority:law-id@v1 / material_role:procurement")).not.toBeVisible();
+    expect(within(panel).getByText(/machine-rule \/ minimum_bandwidth \/ legal_authority:law-id@v1/)).not.toBeVisible();
     expect(within(panel).getByText("所选范围需要先补齐以下事项")).toBeInTheDocument();
   });
 
@@ -84,5 +84,20 @@ describe("review preparation business and rule matching", () => {
     const invalid = { ...value, scopes: [{ ...value.scopes[0]!, rule_pack: { ...value.scopes[0]!.rule_pack,
       applicable_scopes: [{ ...cloud, scenario: 123 }] } }] };
     expect(() => parseReviewReadiness(invalid, "case-1")).toThrow();
+  });
+
+  it("keeps mixed unknown codes in technical details and retains a known service message", () => {
+    const value = response();
+    const check = value.scopes[0]!.checks[0]!;
+    show({ ...value, scopes: [{ ...value.scopes[0]!, checks: [
+      { ...check, rule_id: "unknown-rule", comparator: "minimum_bandwidth（旧）", status: "ready·", next_action: "start_review（测试）" },
+      { ...check, rule_id: "rule-2", next_action: "本范围不执行正式治理规则；补齐材料后发起完整审查" },
+    ] }] }, { ...cloud, business_line: "ENT（测试）", scenario: "telecom_dedicated_line（旧）" });
+    expect(screen.getByText(/案件登记业务：业务条线待核对 \/ 业务场景待核对/)).toBeInTheDocument();
+    expect(screen.getByText("状态待核对")).toBeInTheDocument();
+    expect(screen.getByText("请联系审查人员核对处理方式")).toBeInTheDocument();
+    expect(screen.getByText("本范围不执行正式治理规则；补齐材料后发起完整审查")).toBeVisible();
+    expect(screen.getByText(/unknown-rule \/ minimum_bandwidth（旧）/)).not.toBeVisible();
+    expect(screen.getByText(/ENT（测试） \/ telecom_dedicated_line（旧）/)).not.toBeVisible();
   });
 });

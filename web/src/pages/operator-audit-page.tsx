@@ -16,6 +16,7 @@ import { getReview } from "../api/endpoints";
 import { errorMessage } from "../api/http";
 import { useCaseDetail, useSettings } from "../api/queries";
 import { PageStatus } from "../components/page-status";
+import { suppliedBusinessName } from "../domain/business-labels";
 import { defaultOperatorAuditClient } from "../features/operator-audit/api";
 import { CapabilityPackPanel } from "../features/operator-audit/capability-pack-panel";
 import { ExternalEvidencePanel } from "../features/operator-audit/external-evidence-panel";
@@ -125,20 +126,22 @@ export function OperatorAuditPage() {
         (connector.allowed_objects ?? []).map((objectId) => ({
           connectorId: connector.connector_id,
           externalObjectId: objectId,
-          label: `${connector.connector_id} · ${objectId}`,
+          sourceSystem: connector.source_system,
+          label: "外部对象名称未提供",
         })),
       ),
     [connectors],
   );
   const bindingOptions = useMemo(
     () =>
-      bindings.map((binding) => ({
-        value: binding.version ?? binding.id,
-        label: `${binding.contractObject.objectId ?? "合同对象"} → ${
-          binding.externalObject.externalObjectId ?? "外部对象"
-        }`,
-      })),
-    [bindings],
+      bindings.map((binding) => {
+        const external = externalObjects.find((object) => object.connectorId === binding.externalObject.connectorId && object.externalObjectId === binding.externalObject.externalObjectId);
+        return {
+          value: binding.version ?? binding.id,
+          label: `${suppliedBusinessName(binding.contractObject.label, "合同对象名称未提供")} → ${suppliedBusinessName(external?.label, "外部对象名称未提供")} · 合同对象标识 ${binding.contractObject.objectId ?? "未报告"} · 连接器标识 ${binding.externalObject.connectorId ?? "未报告"} · 外部对象标识 ${binding.externalObject.externalObjectId ?? "未报告"} · 来源系统标识 ${external?.sourceSystem || "未提供"} · 映射版本 ${binding.version ?? binding.id}`,
+        };
+      }),
+    [bindings, externalObjects],
   );
   const packOptions = useMemo(
     () =>
@@ -146,7 +149,7 @@ export function OperatorAuditPage() {
         .filter((pack) => pack.scenario === "telecom_dedicated_line")
         .map((pack) => ({
           value: `${pack.packId}@${pack.version ?? ""}`,
-          label: `${pack.displayName ?? pack.packId} @ ${pack.version ?? "版本未报告"}`,
+          label: `${suppliedBusinessName(pack.displayName, "能力包名称未提供")} · 版本 ${pack.version ?? "未报告"} · 能力包标识 ${pack.packId}`,
         })),
     [packs.data],
   );
@@ -344,6 +347,7 @@ export function OperatorAuditPage() {
             placeholder="选择已确认的对象映射"
             value={selectedBinding || undefined}
             options={bindingOptions}
+            showSearch={{ optionFilterProp: "label" }}
             onChange={setSelectedBinding}
             style={{ maxWidth: 560 }}
           />
@@ -385,6 +389,7 @@ export function OperatorAuditPage() {
             placeholder="选择能力包与版本"
             value={selectedPack || undefined}
             options={packOptions}
+            showSearch={{ optionFilterProp: "label" }}
             onChange={setSelectedPack}
             style={{ maxWidth: 560 }}
           />

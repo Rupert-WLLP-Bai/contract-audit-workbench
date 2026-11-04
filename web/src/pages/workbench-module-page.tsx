@@ -33,7 +33,7 @@ import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
 import { TechnicalDetail } from "../components/technical-detail";
 import { caseHref, formatDateTime } from "../domain/review";
-import { businessActionLabel } from "../domain/business-labels";
+import { businessActionLabel, businessSourceTypeLabel, remediationStatusLabel } from "../domain/business-labels";
 import { SettingsPage } from "./settings-page";
 import "./workbench-module-page.css";
 
@@ -155,10 +155,12 @@ const STATUS_LABELS: Record<string, string> = {
   error: "异常",
   degraded: "降级",
   unavailable: "不可用",
+  "已生成": "已生成", "当前身份可见": "当前身份可见", "状态未提供": "状态未提供",
+  "已记录": "已记录", "未报告": "未报告",
 };
 
 function statusLabel(status: string) {
-  return STATUS_LABELS[status] ?? status;
+  return Object.hasOwn(STATUS_LABELS, status) ? STATUS_LABELS[status]! : "状态待核对";
 }
 
 function field(label: string, value: string | number | null): DetailField {
@@ -195,7 +197,8 @@ function knowledgePanels(
       [
         field("知识条目", item.id),
         field("版本", item.version),
-        field("来源", item.source_type),
+        field("来源", businessSourceTypeLabel(item.source_type)),
+        technicalField("来源类型编码", item.source_type),
         field("生效时间", item.effective_at),
         field("维护人", memberById.get(item.created_by) ?? item.created_by),
       ],
@@ -205,13 +208,15 @@ function knowledgePanels(
       [
         field("条目 ID", item.id),
         field("版本", item.version),
-        field("来源类型", item.source_type),
+        field("来源类型", businessSourceTypeLabel(item.source_type)),
+        technicalField("来源类型编码", item.source_type),
       ],
       item.body,
     ),
     适用范围: panel(
       [
-        field("来源类型", item.source_type),
+        field("来源类型", businessSourceTypeLabel(item.source_type)),
+        technicalField("来源类型编码", item.source_type),
         field("生效时间", item.effective_at),
       ],
       "没有获取到其他适用范围信息。",
@@ -352,7 +357,8 @@ function buildRecords(
       const panels: Record<string, DetailPanel> = {
         整改详情: panel([
           technicalField("整改 ID", item.id),
-          field("状态", item.status),
+          field("状态", remediationStatusLabel(item.status)),
+          technicalField("状态编码", item.status),
           field("责任人", memberById.get(item.assignee_id) ?? item.assignee_id),
           field("截止时间", item.due_at),
           field("整改措施", item.measure),
@@ -641,7 +647,7 @@ function buildRecords(
         knowledgeId: item.id,
         knowledgeVersion: item.version,
         title: item.title,
-        subtitle: `${item.source_type}，${item.version}`,
+        subtitle: `${businessSourceTypeLabel(item.source_type)}，${item.version}`,
         status: item.source_type,
         updatedAt: item.created_at,
         caseId: null,
@@ -1079,8 +1085,8 @@ function KnowledgeCreateForm({ onClose }: { onClose: () => void }) {
             )
           }
           options={[
-            { value: "synthetic_policy", label: "合成制度" },
-            { value: "reference", label: "参考资料" },
+            { value: "synthetic_policy", label: businessSourceTypeLabel("synthetic_policy") },
+            { value: "reference", label: businessSourceTypeLabel("reference") },
           ]}
         />
       </label>
@@ -1547,7 +1553,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                   key: "status",
                   render: (_, record) => (
                     <StatusText tone={statusTone(record.status)}>
-                      {statusLabel(record.status)}
+                      {module === "remediation" ? remediationStatusLabel(record.status) : module === "knowledge" ? businessSourceTypeLabel(record.status) : statusLabel(record.status)}
                     </StatusText>
                   ),
                 },

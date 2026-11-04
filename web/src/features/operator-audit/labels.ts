@@ -11,6 +11,7 @@
 /** Display vocabulary for the operator-audit panels. Unknown stays unknown. */
 
 import { formatDateTime, type StatusTone } from "../../domain/review";
+import { scenarioLabel as sharedScenarioLabel } from "../../domain/business-labels";
 import type {
   Availability,
   BindingStatus,
@@ -34,10 +35,8 @@ function labelMap<T extends string>(
 ) {
   return (value: T | null): string => {
     if (value === null) return fallback;
-    return (
-      (vocabulary as Record<string, string | undefined>)[value] ??
-      (keepUnknown ? value : fallback)
-    );
+    const label = Object.hasOwn(vocabulary, value) ? (vocabulary as Record<string, string | undefined>)[value] : undefined;
+    return label ?? (keepUnknown ? value : fallback);
   };
 }
 
@@ -45,19 +44,12 @@ function toneMap<T extends string>(vocabulary: Partial<Record<T, StatusTone>>) {
   return (value: T | null): StatusTone => {
     if (value === null) return "neutral";
     return (
-      (vocabulary as Record<string, StatusTone | undefined>)[value] ?? "neutral"
+      (Object.hasOwn(vocabulary, value) ? (vocabulary as Record<string, StatusTone | undefined>)[value] : undefined) ?? "neutral"
     );
   };
 }
 
-export const scenarioLabel = labelMap<string>(
-  {
-    telecom_dedicated_line: "政企专线",
-    cloud_services: "云服务",
-  },
-  "场景未报告",
-  true,
-);
+export const scenarioLabel = sharedScenarioLabel;
 
 export const packStatusLabel = labelMap<string>(
   {
@@ -69,8 +61,7 @@ export const packStatusLabel = labelMap<string>(
     disabled: "已停用",
     retired: "已停用",
   },
-  "状态未报告",
-  true,
+  "状态待核对",
 );
 
 export const packStatusTone = toneMap<string>({

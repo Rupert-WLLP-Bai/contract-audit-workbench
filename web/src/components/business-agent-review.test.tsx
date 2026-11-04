@@ -121,7 +121,7 @@ describe("business agent review statuses and edge cases", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/范围中的项目：/)).not.toBeInTheDocument();
     expect(screen.getByText("是否必查：未知。")).toBeInTheDocument();
-    expect(screen.getByText("未识别审查项目")).toBeInTheDocument();
+    expect(screen.getByText("审查项目待核对")).toBeInTheDocument();
     expect(screen.getByText("缺少必要材料或字段。")).toBeInTheDocument();
     expect(
       screen.getByText("部分项目没有原文依据，不能确认这些项目已经核验。"),
@@ -283,7 +283,7 @@ describe("business agent review", () => {
     expect(screen.getByText("该领域已列入范围，检查结果和必查状态未知。")).toBeInTheDocument();
     expect(screen.getAllByText("是否必查：未知。")).toHaveLength(2);
     expect(screen.getByText("授权依据")).toBeInTheDocument();
-    expect(screen.getByText("未识别审查项目")).toBeInTheDocument();
+    expect(screen.getByText("审查项目待核对")).toBeInTheDocument();
     expect(screen.queryByText(/internal.secret_code|private-hash/)).not.toBeInTheDocument();
     expect(screen.getByText("暂无缺口资料；这不等于不存在风险。")).toBeInTheDocument();
     expect(screen.queryByText("已通过")).not.toBeInTheDocument();

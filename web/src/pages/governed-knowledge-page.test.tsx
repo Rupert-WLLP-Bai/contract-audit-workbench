@@ -26,6 +26,10 @@ const id = "operator-policy";
 const versionId = "a".repeat(64);
 const digest = "b".repeat(64);
 const versionPath = `${root}/${id}/versions/${versionId}`;
+const adminActor = { id: "admin", role: "admin", audience: "admin", tenant_id: "tenant", org_id: "org", principal_id: "principal-admin", active_context: { context_version: "1" }, csrf_token: "a".repeat(32) };
+function adminSession(role: string) {
+  return { audience: "admin", actor: { id: role === "admin" ? "admin" : "reviewer", display_name: role === "admin" ? "管理员" : "审查员", role, tenant_id: "tenant", org_id: "org" }, principal_id: "principal-admin", active_context: { membership_id: "membership", tenant_id: "tenant", tenant_name: "租户", org_id: "org", org_name: "组织", context_version: "1" }, csrf_token: adminActor.csrf_token, context_switch_enabled: false };
+}
 const initial: KnowledgeVersion = {
   ref: { knowledge_id: id, version_id: versionId, content_sha256: digest },
   content: {
@@ -45,6 +49,7 @@ function json(value: unknown, status = 200): Response {
 function Destination() { return <output aria-label="目标路径">{useLocation().pathname}</output>; }
 function show(path: string, client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } })) {
   clients.push(client);
+  setSessionIdentity(adminActor);
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><Routes>
     <Route path="/admin/governed-knowledge" element={<GovernedKnowledgeListPage />} />
     <Route path="/admin/governed-knowledge/new" element={<GovernedKnowledgeCreatePage />} />
@@ -55,6 +60,20 @@ function show(path: string, client = new QueryClient({ defaultOptions: { queries
 afterEach(() => { cleanup(); for (const client of clients.splice(0)) client.clear(); setSessionIdentity(null); vi.unstubAllGlobals(); vi.useRealTimers(); onlineManager.setOnline(true); });
 
 describe("knowledge governance administration", () => {
+  it("keeps unknown comparison codes in technical details while preserving the policy quote", async () => {
+    const unknown = { ...preview, comparisons: [{ ...preview.comparisons[0]!, comparator: "minimum_bandwidth（旧）", status: "different·" }] };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === versionPath) return json(initial);
+      if (path === `${root}/${id}/history`) return json({ items: [] });
+      if (path === `${versionPath}/preview`) return json(unknown);
+      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+    }));
+    show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
+    expect(await screen.findByText("比较类型待核对 · 比较状态待核对")).toBeVisible();
+    expect(screen.getByText(/政策原文：带宽不低于100 Mbit\/s/)).toBeVisible();
+    expect(screen.getByText(/minimum_bandwidth（旧）/)).not.toBeVisible();
+  });
   it("validates source offsets as Unicode characters", () => {
     const content = { ...initial.content, body: "\u{20000}带宽不低于100 Mbit/s。", binding: { ...initial.content.binding, source_spans: [{ rule_id: "BW", start: 1, end: 16, quote: "带宽不低于100 Mbit/s" }] } };
     expect(validateKnowledgeDraft(content)).toEqual([]);
@@ -66,7 +85,7 @@ describe("knowledge governance administration", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
       paths.push(path);
-      if (path === "/api/session?audience=admin") return json({ audience: "admin", actor: { id: "admin", display_name: "管理员", role: "admin", tenant_id: "tenant", org_id: "org" } });
+      if (path === "/api/session?audience=admin") return json(adminSession("admin"));
       if (path === root) return json({ items: [] });
       return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
     }));
@@ -82,7 +101,7 @@ describe("knowledge governance administration", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
       paths.push(path);
-      if (path === "/api/session?audience=admin") return json({ audience: "admin", actor: { id: "reviewer", display_name: "审查员", role: "reviewer", tenant_id: "tenant", org_id: "org" } });
+      if (path === "/api/session?audience=admin") return json(adminSession("reviewer"));
       return json({ error: { code: "forbidden", message: "无权访问", retryable: false } }, 403);
     }));
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
@@ -109,7 +128,7 @@ describe("knowledge governance administration", () => {
     }));
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
-    expect(await screen.findByText("BW · 存在差异")).toBeInTheDocument();
+    expect(await screen.findByText("最低保障带宽对照 · 存在差异")).toBeInTheDocument();
     expect(screen.getByText(/^规则阈值：200 Mbit\/s$/)).toBeInTheDocument();
     expect(screen.getByText(/特殊情况下/)).toBeInTheDocument();
     expect(screen.queryByText("提取或绑定问题")).not.toBeInTheDocument();
@@ -124,6 +143,8 @@ describe("knowledge governance administration", () => {
     expect(JSON.parse(String(requests[0]?.body))).toEqual({ action: "validate", expected_revision: 2, expected_content_sha256: digest, expected_pointer_revision: 7, reason: "已核对规则与制度", cross_case_reviewed: false });
     expect(requests[1]?.body).toBe(requests[0]?.body);
     expect(new Headers(requests[1]?.headers).get("Idempotency-Key")).toBe(new Headers(requests[0]?.headers).get("Idempotency-Key"));
+    expect(new Headers(requests[0]?.headers).get("X-Context-Version")).toBe("1");
+    expect(new Headers(requests[0]?.headers).get("X-CSRF-Token")).toBe(adminActor.csrf_token);
     expect(await screen.findByRole("button", { name: "批准" })).toBeInTheDocument();
   });
   it.each([
@@ -279,17 +300,17 @@ describe("knowledge governance administration", () => {
     expect(screen.getByText("kb-1 · v1")).toBeInTheDocument();
     expect(screen.getByText("已发布")).toBeInTheDocument();
     expect(screen.getByText("当前生效")).toBeInTheDocument();
-    expect(screen.getByText("ENT / line / service")).toBeInTheDocument();
+    expect(screen.getAllByText(/政企业务 \/ 业务场景待核对 \/ 服务合同/).length).toBeGreaterThan(0);
     expect(screen.getByText("操作指引")).toBeInTheDocument();
     expect(screen.getByText("草稿")).toBeInTheDocument();
-    expect(screen.getByText(/组织 org-1 · 案件 case-1/)).toBeInTheDocument();
+    expect(screen.getByText(/"org_id":"org-1"/)).not.toBeVisible();
     const firstRow = screen.getByRole("link", { name: "专线制度" }).closest("tr")!;
     const draftRow = screen.getByRole("link", { name: "操作手册" }).closest("tr")!;
     expect(within(firstRow).getByText("已发布").closest(".ant-tag")).toHaveClass("ant-tag-success");
     expect(within(draftRow).getByText("草稿").closest(".ant-tag")).toHaveClass("ant-tag-default");
     expect(within(firstRow).queryByText(/组织/)).not.toBeInTheDocument();
     const orgOnlyRow = screen.getByRole("link", { name: "工程制度" }).closest("tr")!;
-    expect(within(orgOnlyRow).getByText(/组织 org-2/)).toBeInTheDocument();
+    expect(within(orgOnlyRow).getByText(/"org_id":"org-2"/)).not.toBeVisible();
     expect(within(orgOnlyRow).queryByText(/案件/)).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("查找知识"), "不存在");
     expect(screen.queryByRole("link", { name: "专线制度" })).not.toBeInTheDocument();
@@ -488,12 +509,13 @@ describe("knowledge governance administration", () => {
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByText(/预览：规则关联和可以提取的数值已通过检查。/)).toBeInTheDocument();
     expect(screen.getByText(/规则关联和可以提取的数值已通过检查/)).toBeInTheDocument();
-    expect(screen.getByText(/BW · 无法唯一确认/)).toBeInTheDocument();
+    expect(screen.getByText(/自然月服务可用率对照 · 无法唯一确认/)).toBeInTheDocument();
     expect(screen.getByText(/未提取到候选/)).toBeInTheDocument();
     expect(screen.getByText(/规则阈值：99.9 %，月/)).toBeInTheDocument();
     expect(screen.queryByText(/原因：/)).not.toBeInTheDocument();
     expect(screen.getByText("提取或绑定问题")).toBeInTheDocument();
-    expect(screen.getByText(/missing_value：带宽（0–4）/)).toBeInTheDocument();
+    expect(screen.getByText(/原因待核对：带宽/)).toBeVisible();
+    expect(screen.getByText(/missing_value/)).not.toBeVisible();
     expect(screen.queryByText("仍需人工核对含义")).not.toBeInTheDocument();
   });
 
@@ -533,7 +555,7 @@ describe("knowledge governance administration", () => {
     await waitFor(() =>
       expect(calls.filter((path) => path === `${versionPath}/preview`)).toHaveLength(2),
     );
-    expect(await screen.findByText(/BW · 存在差异/)).toBeInTheDocument();
+    expect(await screen.findByText(/最低保障带宽对照 · 存在差异/)).toBeInTheDocument();
   });
 
   it("requires an action reason and keeps terminal versions read-only", async () => {
@@ -800,8 +822,8 @@ describe("knowledge governance administration", () => {
       return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
     }));
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
-    expect(await screen.findByText("来源：reference · 制度文件")).toBeInTheDocument();
-    expect(screen.getByText("范围：ENT / line / service")).toBeInTheDocument();
+    expect(await screen.findByText("来源：参考资料 · 制度文件")).toBeInTheDocument();
+    expect(screen.getByText("范围：政企业务 / 业务场景待核对 / 服务合同")).toBeInTheDocument();
     expect(screen.getByText("规则包与正文引用")).toBeInTheDocument();
     expect(screen.queryByText(/政策提取器/)).not.toBeInTheDocument();
     expect(screen.queryByText(/例外依据/)).not.toBeInTheDocument();

@@ -41,7 +41,9 @@ import {
   validateDecisionReason,
 } from "../domain/review";
 import { evidenceSourceMatches, resolveAnchor } from "../domain/text";
+import { businessDomainLabel } from "../domain/business-labels";
 import { FindingBatchControls } from "./finding-batch-controls";
+import { TechnicalDetail } from "./technical-detail";
 const FILTERS: { id: FindingFilter; label: string }[] = [
   { id: "all", label: "全部" },
   { id: "conflict", label: "冲突" },
@@ -238,6 +240,7 @@ function ContractInfoTab({
               </>
             ) : null}
           </dl>
+          <TechnicalDetail label="材料状态技术详情" value={JSON.stringify({ role: document.role, parse_status: document.parse_status })} />
         </section>
       ))}
     </div>
@@ -254,6 +257,7 @@ function ConclusionTab({ findings }: { findings: Finding[] }) {
           <p>
             {originLabel(item.origin)}，{relationLabel(item.relation)}
           </p>
+          <TechnicalDetail label="发现类型技术详情" value={JSON.stringify({ origin: item.origin, relation: item.relation, domain: item.domain })} />
           {item.decisions.length === 0 ? (
             <p>尚未记录审查判断。</p>
           ) : (
@@ -261,6 +265,7 @@ function ConclusionTab({ findings }: { findings: Finding[] }) {
               <article key={decision.id}>
                 <strong>{decisionLabel(decision.action)}</strong>
                 <p>{decision.reason}</p>
+                <TechnicalDetail label="决定类型技术详情" value={decision.action} />
                 <small>
                   {decision.actor}，{formatDateTime(decision.decided_at)}
                 </small>
@@ -334,8 +339,9 @@ function FindingDetailHeader({
       <p className="meta">
         {originLabel(finding.origin)}，{relationLabel(finding.relation)}
         {confidence ? `，${confidence}` : ""}
-        {finding.domain ? `，${finding.domain}` : ""}
+        {finding.domain ? `，${businessDomainLabel(finding.domain)}` : ""}
       </p>
+      <TechnicalDetail label="发现类型技术详情" value={JSON.stringify({ domain: finding.domain, origin: finding.origin, relation: finding.relation, confidence: finding.confidence })} />
       <FindingCircuit finding={finding} />
       {finding.severity_source ? (
         <p className="finding-grade-source">
@@ -535,6 +541,7 @@ function DecisionHistory({ decisions }: { decisions: HumanDecision[] }) {
               </time>
             </p>
             <p>{decision.reason}</p>
+            <TechnicalDetail label="决定类型技术详情" value={decision.action} />
           </li>
         ))}
       </ol>

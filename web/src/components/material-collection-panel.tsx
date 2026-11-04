@@ -21,6 +21,7 @@ import type { CaseDetail, MaterialProjection, MaterialPurpose } from "../api/typ
 import { formatDateTime, parseLabel, parseTone, roleLabel } from "../domain/review";
 import { ParsedDocumentSummary } from "./parsed-document-summary";
 import { StatusText } from "./status-text";
+import { TechnicalDetail } from "./technical-detail";
 
 const roles: Array<{ value: MaterialProjection["role"]; label: string }> = [
   { value: "procurement", label: "采购文件" },
@@ -278,6 +279,7 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
                     {roleLabel(material.role)} · {purposeLabels[material.purpose]} · 当前版本 v{material.current_version}
                   </p>
                   <p className="meta">{legacyStatusLabel(material)}；{selectedIds.has(material.current_document_id) ? "已选入本次审查" : selection.status === "pending_confirmation" ? "尚未确认选中集合" : "未选入本次审查"}</p>
+                  <TechnicalDetail label="材料状态技术详情" value={JSON.stringify({ role: material.role, parse_status: document?.parse_status ?? null })} />
                   {document ? <ParsedDocumentSummary document={document} /> : <p className="meta">当前材料元数据尚未返回，请刷新重试或联系管理员。</p>}
                   {document?.parse_status === "failed" && document.parse_error ? <p>{document.parse_error}</p> : null}
                 </div>

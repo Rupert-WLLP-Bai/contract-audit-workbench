@@ -10,7 +10,8 @@
 
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setSessionIdentity } from "../api/http";
 import type { CaseDetail, DocumentVersion, MaterialProjection, MaterialVersionProjection } from "../api/types";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { MaterialCollectionPanel } from "./material-collection-panel";
@@ -109,12 +110,14 @@ function renderPanel(caseDetail = emptyDetail) {
 }
 
 beforeEach(() => {
+  setSessionIdentity({ id: "actor-1", role: "clerk", audience: "client", tenant_id: "tenant", org_id: "org", active_context: { context_version: "1" }, csrf_token: "c".repeat(32) });
   sessionStorage.clear();
   mocks.idempotencyCounter = 0;
   mocks.useUploadDocument.mockReturnValue(state());
   mocks.useReparse.mockReturnValue(state());
   mocks.useConfirmLegacyMaterialSelection.mockReturnValue(state());
 });
+afterEach(() => { setSessionIdentity(null); });
 
 describe("material collection behavior", () => {
   it("keeps upload success copy usable without exposing random identities", () => {

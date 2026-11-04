@@ -1039,7 +1039,7 @@ describe("ComparePage unavailable data", () => {
     expect(
       screen.getByText("此运行没有返回发现；不代表合同已批准。"),
     ).toBeInTheDocument();
-    expect(service.requests).toEqual(["/api/workbench?period=week"]);
+    expect(service.requests).toEqual(["/api/workbench?period=week&task_capabilities=1"]);
   });
 
   it("shows initial loading, retries snapshot errors and then renders the comparison", async () => {
@@ -1059,7 +1059,7 @@ describe("ComparePage unavailable data", () => {
       await screen.findByLabelText("当前版本材料解析正文"),
     ).toHaveTextContent("质保期为24个月。");
     expect(
-      service.requests.filter((path) => path === "/api/workbench?period=week"),
+      service.requests.filter((path) => path === "/api/workbench?period=week&task_capabilities=1"),
     ).toHaveLength(2);
   });
 

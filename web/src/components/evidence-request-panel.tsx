@@ -33,6 +33,7 @@ import { ErrorNotice } from "./error-notice";
 import { queryKeys, useCreateWorkbenchTask, useStartReview } from "../api/queries";
 import type { Actor, CaseDetail, ConstraintEvaluation, ReviewDocument, ReviewWorkspace, WorkbenchTask } from "../api/types";
 import { caseHref, formatDateTime, relationLabel, roleLabel } from "../domain/review";
+import { businessCapabilityLabel, businessDomainLabel } from "../domain/business-labels";
 import { beijingInputToUtc } from "./beijing-datetime";
 import {
   createFrozenQuoteSelection,
@@ -41,6 +42,7 @@ import {
   type FrozenQuoteSelection,
 } from "../domain/frozen-quote";
 import { StatusText } from "./status-text";
+import { TechnicalDetail } from "./technical-detail";
 
 const materialRoles = [
   { value: "procurement", label: "采购文件" },
@@ -49,19 +51,6 @@ const materialRoles = [
   { value: "attachment", label: "技术附件" },
 ];
 
-const domainLabels: Record<string, string> = {
-  compliance: "合规与授权", commercial: "商务与财务", technical: "技术与服务",
-  fulfillment: "履约与变更", counterparty: "主体与关联",
-};
-const capabilityLabels: Record<string, string> = {
-  authorization_basis: "授权依据", commercial_baseline: "商务条款", warranty_months: "质保期限",
-  acceptance_schedule: "交付与验收时间", counterparty_record: "主体登记信息", amount: "金额",
-  party: "合同主体", approval_authority: "审批或授权", approval_validity: "审批有效期",
-  effective_scope: "服务范围", scope: "技术与服务范围", milestone: "履约里程碑",
-  explicit_start_event: "启动时间", subject_id: "主体标识", signing_party: "签署方",
-  payee: "收款方", responsibility: "责任与义务", "dedicated_line.minimum_bandwidth": "最低保障带宽",
-  "dedicated_line.monthly_availability": "月可用率", "payment.advance_ratio.ceiling": "预付款比例上限",
-};
 const conditionLabels: Record<string, string> = { compatible: "检查结果一致", conflict: "检查结果存在冲突", resolved: "缺口已解决" };
 const statusLabels: Record<string, string> = { open: "待提交", received: "已提交，待复核", verified: "已核验" };
 const eventLabels: Record<string, string> = { created: "创建请求", received: "提交回执", verified: "完成核验" };
@@ -89,8 +78,10 @@ function sameObjects(before: string[], after: string[]): boolean {
 }
 
 function displayGap(domain: string, capability: string): string {
-  return `${domainLabels[domain] ?? "其他领域"}：${capabilityLabels[capability] ?? "其他审查项目"}`;
+  return `${businessDomainLabel(domain)}：${businessCapabilityLabel(capability)}`;
 }
+const knownLabel = (table: Record<string, string>, value: string, fallback: string) =>
+  Object.hasOwn(table, value) ? table[value]! : fallback;
 
 function roleHasPermission(role: string | undefined, allowed: readonly string[]): boolean {
   return allowed.includes(role ?? "");
@@ -255,7 +246,7 @@ function requestMatchDescription(
   matchingEvaluations: ConstraintEvaluation[],
   gap: BusinessAgentGap | undefined,
 ): string {
-  if (source) return conditionLabels[matchingEvaluations[0]?.relation ?? ""] ?? "";
+  if (source) return knownLabel(conditionLabels, matchingEvaluations[0]?.relation ?? "", "");
   return gap ? `${displayGap(gap.domain, gap.capability_id)}，缺口已解决` : "";
 }
 
@@ -417,13 +408,14 @@ function RequestCardHeading({
           </p>
         </div>
         <StatusText tone={requestStatusTone(item.status)}>
-          {statusLabels[item.status] ?? item.status}
+          {knownLabel(statusLabels, item.status, "状态待核对")}
         </StatusText>
       </header>
       <p>
         要求材料：{item.material_role ? roleLabel(item.material_role) : "不限材料类型"}；核验条件：
-        {conditionLabels[item.verification_condition] ?? item.verification_condition}
+        {knownLabel(conditionLabels, item.verification_condition, "核验条件待核对")}
       </p>
+      <TechnicalDetail label="补件状态技术详情" value={[item.status, item.verification_condition, item.material_role].filter(Boolean).join(" / ")} />
       <p>
         来源：{requestSourceDescription(item)}。{" "}
         <Link to={caseHref(caseId, item.source_run_id, item.source_attempt_id)}>
@@ -453,10 +445,11 @@ function RequestCardVerifiedOutcome({
   if (item.status !== "verified" || !item.verification) return null;
   const verification = item.verification;
   const relation = verification.relation ?? verification.gap_status ?? "";
-  const result = conditionLabels[relation] ?? verification.relation ?? verification.gap_status ?? "未报告";
+  const result = relation ? knownLabel(conditionLabels, relation, "核验结果待核对") : "未报告";
   return (
     <div>
       <p>核验结果：{result}；{verification.reason}</p>
+      <TechnicalDetail label="核验结果技术详情" value={relation} />
       {verification.evidence.map((entry, index) => (
         <blockquote key={`${entry.document_id}-${entry.start}-${index}`}>
           {entry.quote}
@@ -548,7 +541,8 @@ function RequestCardHistoryEvent({
   const filename = historyReceiptFilename(event, documents);
   return (
     <li>
-      {eventLabels[event.type] ?? event.type} · {historyActorName(event, context)} · {formatDateTime(event.occurred_at)}
+      {knownLabel(eventLabels, event.type, "处理类型待核对")} · {historyActorName(event, context)} · {formatDateTime(event.occurred_at)}
+      <TechnicalDetail label="处理类型技术详情" value={event.type} />
       {event.receipt?.document_id ? <p>提交材料：{filename}</p> : null}
       {event.receipt?.answer ? <p>提交答复：{event.receipt.answer}</p> : null}
     </li>

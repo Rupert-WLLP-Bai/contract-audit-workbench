@@ -33,7 +33,7 @@ import (
 
 const (
 	businessReportSchema = "case-report/v1"
-	businessReportHTML   = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{.CaseTitle}}</title><style>body{font-family:system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;color:#17212b}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6f8;padding:1rem;border-radius:.5rem}</style></head><body><h1>{{.CaseTitle}}</h1><p>本报告记录本次技术审查的内容，不构成法律意见或业务审批。</p><pre>{{.ReportJSON}}</pre></body></html>`
+	businessReportHTML   = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{.CaseTitle}}</title><style>body{font-family:system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;color:#17212b}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6f8;padding:1rem;border-radius:.5rem}</style></head><body><h1>{{.CaseTitle}}</h1><p>本报告记录本次技术审查的内容，不构成法律意见或业务审批。模型建议仍需人工核对。</p><h2>案件与审查范围</h2><p>{{.BusinessLine}} / {{.Scenario}} / {{.ContractType}}</p><p>{{.Scope}}</p>{{if .CoverageNotice}}<p>{{.CoverageNotice}}</p>{{end}}<h2>已返回的规则检查</h2>{{if .Evaluations}}<ul>{{range .Evaluations}}<li><strong>{{.Name}}</strong>：{{.Relation}}{{if .Reason}}；{{.Reason}}{{end}}</li>{{end}}</ul>{{else}}<p>未返回规则检查，不能推断已经检查。</p>{{end}}<h2>审查发现</h2>{{if .Findings}}<ul>{{range .Findings}}<li><strong>{{.Origin}}</strong>：{{.Claim}}（{{.Relation}}）{{if .UnverifiedReason}}；尚未核验：{{.UnverifiedReason}}{{end}}</li>{{end}}</ul>{{else}}<p>未返回审查发现，不能据此判断风险已消除。</p>{{end}}<h2>人工决定历史</h2>{{if .Decisions}}<ul>{{range .Decisions}}<li>{{.Action}} · {{.Actor}}{{if .Reason}}：{{.Reason}}{{end}}</li>{{end}}</ul>{{else}}<p>未返回人工决定。</p>{{end}}<details><summary>完整技术详情</summary><pre>{{.ReportJSON}}</pre></details></body></html>`
 )
 
 // CreateReport appends immutable JSON and escaped HTML for one exact terminal
@@ -489,15 +489,110 @@ func manifestSnapshot(raw []byte) (json.RawMessage, error) {
 }
 
 func renderBusinessReportHTML(caseTitle string, reportJSON []byte) ([]byte, error) {
+	var envelope reportEnvelope
+	if err := json.Unmarshal(reportJSON, &envelope); err != nil {
+		return nil, err
+	}
+	model := reportHTMLModel{
+		CaseTitle: caseTitle, ReportJSON: string(reportJSON),
+		BusinessLine: reportLabel("business_line", envelope.Case.BusinessLine),
+		Scenario:     reportLabel("scenario", envelope.Case.Scenario),
+		ContractType: reportLabel("contract_type", envelope.Case.ContractType),
+		Scope:        reportLabel("review_scope", ""), CoverageNotice: envelope.CoverageNotice,
+	}
+	if envelope.RunSnapshot.ReviewScope != nil {
+		model.Scope = reportLabel("review_scope", envelope.RunSnapshot.ReviewScope.ID)
+	}
+	for _, item := range envelope.Evaluations {
+		model.Evaluations = append(model.Evaluations, reportHTMLCheck{
+			Name: reportLabel("capability", item.CapabilityID), Relation: reportLabel("relation", item.Relation), Reason: item.Reason,
+		})
+	}
+	for _, item := range envelope.Findings {
+		model.Findings = append(model.Findings, reportHTMLFinding{
+			Origin: reportLabel("origin", item.Origin), Claim: item.Claim, Relation: reportLabel("relation", item.Relation), UnverifiedReason: item.UnverifiedReason,
+		})
+	}
+	for _, item := range envelope.Decisions {
+		actor := item.ActorName
+		if strings.TrimSpace(actor) == "" {
+			actor = "姓名未报告"
+		}
+		model.Decisions = append(model.Decisions, reportHTMLDecision{Action: reportLabel("decision", item.Action), Actor: actor, Reason: item.Reason})
+	}
 	tpl, err := template.New("business-report").Parse(businessReportHTML)
 	if err != nil {
 		return nil, err
 	}
 	var output bytes.Buffer
-	if err := tpl.Execute(&output, reportHTMLModel{CaseTitle: caseTitle, ReportJSON: string(reportJSON)}); err != nil {
+	if err := tpl.Execute(&output, model); err != nil {
 		return nil, err
 	}
 	return output.Bytes(), nil
+}
+
+// The UI/export contract fixture checks these presentation values against the web labels.
+var reportLabelTables = map[string]map[string]string{
+	"business_line": {"ENT": "政企业务", "政企业务": "政企业务"},
+	"scenario": {"telecom_dedicated_line": "政企专线", "cloud_services": "云服务采购",
+		"政企专线": "政企专线", "云服务采购": "云服务采购"},
+	"contract_type": {"procurement_ict": "采购 / ICT", "network_engineering": "网络工程",
+		"framework": "框架协议", "service": "服务合同", "unspecified": "未分类"},
+	"review_scope": {"full_review": "完整审查", "single_contract_precheck": "单合同预审"},
+	"capability": {
+		"authorization_basis": "授权依据", "commercial_baseline": "商务条款",
+		"warranty_months": "质保期限", "acceptance_schedule": "交付与验收时间",
+		"counterparty_record": "主体登记信息", "amount": "金额", "party": "合同主体",
+		"approval_authority": "审批或授权", "approval_validity": "审批有效期",
+		"effective_scope": "服务范围", "scope": "技术与服务范围", "milestone": "履约里程碑",
+		"explicit_start_event": "启动时间", "subject_id": "主体标识", "signing_party": "签署方",
+		"payee": "收款方", "responsibility": "责任与义务",
+		"dedicated_line.minimum_bandwidth": "最低保障带宽", "dedicated_line.monthly_availability": "月可用率",
+		"payment.advance_ratio.ceiling": "预付款比例上限", "cloud_services.minimum_bandwidth": "最低保障带宽",
+		"cloud_services.monthly_availability": "月可用率", "single_contract.payment_sum": "主合同中可识别的付款比例合计",
+	},
+	"relation": {"compatible": "一致", "conflict": "冲突", "insufficient": "信息不足"},
+	"origin":   {"rule": "规则", "ai": "模型建议", "model": "模型建议", "manual": "人工"},
+	"decision": {"confirm_risk": "确认风险", "false_positive": "误报", "insufficient_evidence": "证据不足", "accept_residual": "接受残余风险"},
+}
+
+// reportLabel is presentation only. These codes never change the frozen JSON.
+func reportLabel(field, value string) string {
+	if label, ok := reportLabelTables[field][value]; ok {
+		return label
+	}
+	switch field {
+	case "business_line":
+		if value == "" || value == "unspecified" {
+			return "业务条线未设置"
+		}
+		return "业务条线待核对"
+	case "scenario":
+		if value == "" || value == "unspecified" {
+			return "业务场景未设置"
+		}
+		return "业务场景待核对"
+	case "review_scope":
+		if value == "" {
+			return "审查范围身份未返回"
+		}
+		return "审查范围待核对"
+	case "capability":
+		if value == "" {
+			return "审查项目未报告"
+		}
+		return "审查项目待核对"
+	case "contract_type":
+		return "合同类型待核对"
+	case "relation":
+		return "关系未识别"
+	case "origin":
+		return "来源待核对"
+	case "decision":
+		return "决定类型待核对"
+	default:
+		return "信息待核对"
+	}
 }
 
 func reportDigest(jsonBytes, htmlBytes []byte) string {

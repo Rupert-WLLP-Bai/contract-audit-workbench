@@ -14,6 +14,8 @@ import type { ColumnsType } from "antd/es/table";
 import { errorMessage, isForbidden } from "../../api/http";
 import { PageStatus } from "../../components/page-status";
 import { StatusText } from "../../components/status-text";
+import { TechnicalDetail } from "../../components/technical-detail";
+import { suppliedBusinessName } from "../../domain/business-labels";
 import { defaultOperatorAuditClient, type OperatorAuditClient } from "./api";
 import {
   DEFAULT_OPERATOR_AUDIT_FLAGS,
@@ -111,7 +113,7 @@ function CapabilityPackPanelContent({
       key: "pack",
       render: (_, pack) => (
         <>
-          <strong>{pack.displayName ?? pack.packId}</strong>
+          <strong>{suppliedBusinessName(pack.displayName, "能力包名称未提供")}</strong>
           <div className="meta">
             <span className="digest">{pack.packId}</span>
           </div>
@@ -128,16 +130,17 @@ function CapabilityPackPanelContent({
     {
       title: "场景",
       key: "scenario",
-      render: (_, pack) => scenarioLabel(pack.scenario),
+      render: (_, pack) => <>{scenarioLabel(pack.scenario)}<TechnicalDetail label="场景技术详情" value={pack.scenario} /></>,
     },
     {
       title: "状态",
       key: "status",
-      render: (_, pack) => (
+      render: (_, pack) => (<>
         <StatusText tone={packStatusTone(pack.status)}>
           {packStatusLabel(pack.status)}
         </StatusText>
-      ),
+        <TechnicalDetail label="状态技术详情" value={pack.status} />
+      </>),
     },
     {
       title: "数据分类",

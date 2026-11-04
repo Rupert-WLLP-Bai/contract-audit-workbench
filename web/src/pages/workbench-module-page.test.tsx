@@ -1449,7 +1449,7 @@ describe("workbench knowledge", () => {
       rows.queryByRole("button", { name: /外部参考资料/ }),
     ).not.toBeInTheDocument();
     await detailTab(user, "适用范围");
-    await waitFor(() => expectField("来源类型", "synthetic_policy"));
+    await waitFor(() => expectField("来源类型", "合成制度"));
     expect(
       details().getByText("没有获取到其他适用范围信息。"),
     ).toBeInTheDocument();
@@ -1498,7 +1498,7 @@ describe("workbench knowledge", () => {
     await selectRecord(user, /新签约依据/);
     await waitFor(() => expectField("知识条目", "knowledge/reference-3"));
     expectField("版本", "3.1.0");
-    expectField("来源", "reference");
+    expectField("来源", "参考资料");
     expect(
       details().getByText("合同签约前应取得审查意见。"),
     ).toBeInTheDocument();
@@ -1559,7 +1559,7 @@ describe("workbench knowledge", () => {
     );
     await selectRecord(user, /新增合成制度/);
     await waitFor(() => expectField("知识条目", "knowledge-server-generated"));
-    expectField("来源", "synthetic_policy");
+    expectField("来源", "合成制度");
     expectField("生效时间", "未报告");
     expect(
       service.requests
@@ -1678,6 +1678,7 @@ describe("workbench remediation and frozen artifacts", () => {
     const { user } = open("reports");
     const rows = await list("报告中心");
     expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(3);
+    expect(within(rows.getByRole("table")).getAllByText("已生成")).toHaveLength(3);
     expect(details().queryByText("报告 ID")).not.toBeInTheDocument();
     expect(details().queryByText("report/frozen-2")).not.toBeInTheDocument();
     expect(details().getByText("审查报告 v2")).toBeInTheDocument();
@@ -1986,6 +1987,18 @@ describe("workbench public directory, templates and audit", () => {
     ).toBeInTheDocument();
     expect(details().queryByRole("definition")).not.toBeInTheDocument();
     expect(details().queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("keeps an unknown event code in technical context while presenting an actionable label", async () => {
+    const service = new WorkbenchService();
+    service.snapshot.audit[0]!.action = "case.relation.created·";
+    const { user } = open("audit", service);
+    const rows = await list("审计日志");
+    expect(rows.getByRole("button", { name: /已记录一项操作，类型待核对/ })).toBeInTheDocument();
+    await selectRecord(user, /已记录一项操作，类型待核对/);
+    await detailTab(user, "来源上下文");
+    expectField("操作编码", "case.relation.created·");
+    expect(details().getByText("case.relation.created·")).not.toBeVisible();
   });
 
   it("separates case, platform and current-actor audit projections and never treats them as access logs", async () => {

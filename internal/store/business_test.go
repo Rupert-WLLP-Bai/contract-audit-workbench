@@ -17,6 +17,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"html/template"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -97,6 +99,56 @@ func TestBusinessReportHTMLEscapesFrozenJSONAndHasNoScriptPolicy(t *testing.T) {
 	if !bytes.Contains(htmlBytes, []byte("default-src 'none'")) {
 		t.Fatal("report HTML is missing its restrictive content policy")
 	}
+}
+
+func TestBusinessLabelContract(t *testing.T) {
+	data, err := os.ReadFile("../../web/src/domain/business-labels.contract.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct{ Field, Value, Label string }
+	if err := json.Unmarshal(data, &cases); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range cases {
+		if got := reportLabel(item.Field, item.Value); got != item.Label {
+			t.Errorf("%s %q = %q; want %q", item.Field, item.Value, got, item.Label)
+		}
+	}
+}
+
+func TestBusinessReportHTMLBusinessProjection(t *testing.T) {
+	envelope := reportEnvelope{
+		Case:        reportCase{Title: "示例合同", BusinessLine: "ENT（测试）", Scenario: "telecom_dedicated_line", ContractType: "service"},
+		RunSnapshot: RunSnapshot{ReviewScope: &ReviewScopeIdentity{ID: "full_review"}},
+		Evaluations: []ConstraintEval{{CapabilityID: "dedicated_line.minimum_bandwidth", Relation: "insufficient", Reason: "缺少采购文件"}},
+		Findings:    []Finding{{Origin: "model", Claim: "供应商名称为甲方有限公司 <script>", Relation: "unknown", UnverifiedReason: "引用尚未核验"}},
+		Decisions:   []Decision{{Action: "confirm_risk", ActorName: "李四", Reason: "已人工核对原文"}},
+	}
+	raw, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := append([]byte(nil), raw...)
+	page, err := renderBusinessReportHTML("示例合同", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(raw, original) {
+		t.Fatal("render changed the machine JSON")
+	}
+	for _, want := range []string{"业务条线待核对 / 政企专线 / 服务合同", "完整审查", "最低保障带宽", "信息不足", "模型建议", "甲方有限公司", "尚未核验", "人工决定历史", "确认风险", "李四", "完整技术详情", "ENT（测试）"} {
+		if !bytes.Contains(page, []byte(want)) {
+			t.Errorf("HTML is missing %q: %s", want, page)
+		}
+	}
+	if bytes.Contains(page, []byte("<script>")) {
+		t.Fatal("HTML contains unescaped user text")
+	}
+	if !bytes.Contains(page, []byte("<details><summary>完整技术详情</summary>")) {
+		t.Fatal("raw JSON is not behind a disclosure")
+	}
+	t.Logf("HTML_SAMPLE=%s", page)
 }
 
 func TestFrozenReportDigestCoversJSONAndHTMLBytes(t *testing.T) {
@@ -428,6 +480,55 @@ func TestBusinessGenerationAndArchivedReportConsumers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Seed a separate report with the pre-projection template, as though its
+	// bytes had been frozen before the HTML presentation changed.
+	legacyRecord := report
+	legacyRecord.ID += "-legacy"
+	legacyRecord.Version++
+	var legacyEnvelope reportEnvelope
+	if err := json.Unmarshal(jsonBytes, &legacyEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	legacyEnvelope.ReportID, legacyEnvelope.ReportVersion = legacyRecord.ID, legacyRecord.Version
+	legacyJSON, err := json.Marshal(legacyEnvelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const legacyTemplate = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{.CaseTitle}}</title><style>body{font-family:system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;color:#17212b}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6f8;padding:1rem;border-radius:.5rem}</style></head><body><h1>{{.CaseTitle}}</h1><p>本报告记录本次技术审查的内容，不构成法律意见或业务审批。</p><pre>{{.ReportJSON}}</pre></body></html>`
+	legacyTpl, err := template.New("legacy-report").Parse(legacyTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var legacyHTML bytes.Buffer
+	if err := legacyTpl.Execute(&legacyHTML, reportHTMLModel{CaseTitle: legacyEnvelope.Case.Title, ReportJSON: string(legacyJSON)}); err != nil {
+		t.Fatal(err)
+	}
+	legacyRecord.Digest = reportDigest(legacyJSON, legacyHTML.Bytes())
+	ctx := context.Background()
+	tx, err := st.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, userScope(admin)); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncBusinessReports(ctx, tx, []frozenReport{{Record: legacyRecord, TenantID: admin.TenantID, OrgID: admin.OrgID, CaseID: caseID, JSONBytes: legacyJSON, HTMLBytes: legacyHTML.Bytes()}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertLegacyReport := func() {
+		t.Helper()
+		for format, expected := range map[string][]byte{"json": legacyJSON, "html": legacyHTML.Bytes()} {
+			gotRecord, got, err := st.ReadReport(admin, caseID, legacyRecord.ID, format)
+			if err != nil || gotRecord != legacyRecord || !bytes.Equal(got, expected) {
+				t.Fatalf("legacy %s report changed: record=%+v err=%v", format, gotRecord, err)
+			}
+		}
+	}
+	assertLegacyReport()
 	archive, err := st.Archive(admin, caseID, reportID, "完成留档")
 	if err != nil {
 		t.Fatal(err)
@@ -454,6 +555,7 @@ func TestBusinessGenerationAndArchivedReportConsumers(t *testing.T) {
 	if err != nil || !bytes.Equal(frozenHTML, htmlBytes) {
 		t.Fatalf("archived report HTML was not readable byte-for-byte: %q err=%v", frozenHTML, err)
 	}
+	assertLegacyReport()
 	assertArchivedWrite := func(name string, err error) {
 		t.Helper()
 		var apiErr *fault.Error

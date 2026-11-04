@@ -39,6 +39,7 @@ import { SingleContractScopeCoverage } from "./single-contract-scope-coverage";
 import { ReviewOutcomeSummary } from "./review-outcome-summary";
 import { canRestartUserCancelled, hasTransientRetryCause } from "../features/review/review-outcome";
 import { StatusText } from "./status-text";
+import { TechnicalDetail } from "./technical-detail";
 import "./review-workspace-layout.css";
 
 const STREAM_LABEL: Record<StreamStatus, string> = {
@@ -156,6 +157,7 @@ function WorkspaceBanner({
   return (
     <div className="workspace-banner">
       <StatusText tone={runTone(run.state)}>{runLabel(run.state)}</StatusText>
+      <TechnicalDetail label="运行状态技术详情" value={run.state} />
       <span>{STREAM_LABEL[streamStatus]}</span>
       {run.model_ref ? <span>模型 {run.model_ref}</span> : null}
       <TraceLink
@@ -283,6 +285,7 @@ function MissingExecution({
               options={attemptOptions(attempts)}
             />
           </label>
+          <TechnicalDetail label="执行状态技术详情" value={selected.state} />
           {selected.history_kind === "legacy_unfrozen" ? (
             <p className="callout">
               较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。

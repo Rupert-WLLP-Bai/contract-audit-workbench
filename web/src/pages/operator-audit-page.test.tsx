@@ -10,6 +10,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithAntd as render } from "../test/antd";
@@ -148,6 +149,24 @@ describe("OperatorAuditPage", () => {
       "case-1",
       expect.anything(),
     );
+  });
+
+  it("searches packs by their exact ID while preserving provided names and submission identity", async () => {
+    const user = userEvent.setup();
+    mocks.useSettings.mockReturnValue({ data: { operator_audit: { enabled: true, connectors: [] } }, isLoading: false, isError: false, error: null });
+    mocks.listCapabilityPacks.mockResolvedValue([
+      { ...pack, packId: "pack-unnamed", displayName: null },
+      { ...pack, packId: "pack-named", displayName: "ENT（测试）股份有限公司" },
+    ]);
+    mocks.createFulfillmentEvaluation.mockResolvedValue({ evaluationId: "evaluation-1" });
+    renderPage();
+    expect(await screen.findByText("ENT（测试）股份有限公司")).toBeInTheDocument();
+    const select = screen.getByRole("combobox", { name: "选择能力包" });
+    await user.click(select);
+    await user.type(select, "pack-unnamed");
+    await user.click(await screen.findByRole("option", { name: /能力包名称未提供.*能力包标识 pack-unnamed/ }));
+    await user.click(screen.getByRole("button", { name: "受理确定性核验" }));
+    expect(mocks.createFulfillmentEvaluation).toHaveBeenCalledWith("case-1", expect.objectContaining({ pack_id: "pack-unnamed", pack_version: "1.0.0" }), expect.any(String));
   });
 
   it("does not expose a write surface when disabled", async () => {

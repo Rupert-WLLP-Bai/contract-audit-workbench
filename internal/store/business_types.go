@@ -489,6 +489,18 @@ type workbenchAuditRecord struct {
 }
 
 type reportHTMLModel struct {
-	CaseTitle  string
-	ReportJSON string
+	CaseTitle      string
+	ReportJSON     string
+	BusinessLine   string
+	Scenario       string
+	ContractType   string
+	Scope          string
+	CoverageNotice string
+	Evaluations    []reportHTMLCheck
+	Findings       []reportHTMLFinding
+	Decisions      []reportHTMLDecision
 }
+
+type reportHTMLCheck struct{ Name, Relation, Reason string }
+type reportHTMLFinding struct{ Origin, Claim, Relation, UnverifiedReason string }
+type reportHTMLDecision struct{ Action, Actor, Reason string }

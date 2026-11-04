@@ -50,7 +50,7 @@ describe("capability pack panel", () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText("1.0.0")).toHaveLength(2);
     expect(screen.getByText("政企专线")).toBeInTheDocument();
-    expect(screen.getByText("云服务")).toBeInTheDocument();
+    expect(screen.getByText("云服务采购")).toBeInTheDocument();
     expect(screen.getAllByText("已发布")).toHaveLength(2);
     expect(screen.getAllByText("合成数据（fixture）")).toHaveLength(2);
     expect(

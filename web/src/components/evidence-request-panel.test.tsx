@@ -28,7 +28,7 @@ const beijingAt = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
 }).format(new Date(at));
 const clients: QueryClient[] = [];
-const actor: Actor = { id: "owner", display_name: "审查人", role: "admin", tenant_id: "tenant", org_id: "org", audience: "client", principal_id: "principal-owner", active_context: { membership_id: "member", tenant_id: "tenant", tenant_name: "租户", org_id: "org", org_name: "组织", context_version: "1" }, csrf_token: "test-csrf", context_switch_enabled: false };
+const actor: Actor = { id: "owner", display_name: "审查人", role: "admin", tenant_id: "tenant", org_id: "org", audience: "client", principal_id: "principal-owner", active_context: { membership_id: "member", tenant_id: "tenant", tenant_name: "租户", org_id: "org", org_name: "组织", context_version: "1" }, csrf_token: "c".repeat(32), context_switch_enabled: false };
 const document: ReviewDocument = {
   id: "doc-2", role: "draft_contract", filename: "补充合同.txt", media_type: "text/plain", digest: "digest",
   size: 20, parse_status: "ready", parse_error: null, created_at: at, parsed_document: null,
@@ -122,6 +122,7 @@ function open({
   }));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
   clients.push(client);
+  setSessionIdentity(sessionActor);
   if (caseDetail !== null) client.setQueryData(queryKeys.case("case-1"), caseDetail);
   if (sessionActor !== null) client.setQueryData(queryKeys.session, sessionActor);
   if (workspace !== null) client.setQueryData(queryKeys.review("case-1", runId, urlAttempt), workspace ?? makeWorkspace(runId, attemptId ?? "attempt-old", evaluations));
@@ -157,6 +158,20 @@ afterEach(() => {
 });
 
 describe("补充材料请求", () => {
+  it("shows unknown status, condition and event as prompts with the exact codes in details", async () => {
+    const request = { ...rawRequest("open·", 1), verification_condition: "compatible（旧）" };
+    open({ canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received·", actor_id: "owner", occurred_at: at, request }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    expect(await screen.findByText("状态待核对")).toBeVisible();
+    expect(screen.getByText(/核验条件待核对/)).toBeVisible();
+    expect(await screen.findByText(/处理类型待核对/)).not.toBeVisible();
+    expect(screen.getByText(/open· \/ compatible（旧）/)).not.toBeVisible();
+    expect(screen.getByText("received·")).not.toBeVisible();
+    expect(screen.queryByRole("button", { name: "提交核验" })).not.toBeInTheDocument();
+  });
   it("creates a task from an observed missing evaluation and retries a failed request without duplicating the task", async () => {
     let creates = 0;
     const { calls, user } = open({ urlAttempt: null, respond(call) {
@@ -192,6 +207,8 @@ describe("补充材料请求", () => {
     expect(JSON.parse(String(requestCalls[0]?.init?.body))).toMatchObject({ task_id: "task-1", task_version: 1, source_run_id: "run-old", source_attempt_id: "attempt-old", source_evaluation_id: "eval-old" });
     expect(JSON.parse(String(requestCalls[0]?.init?.body))).not.toHaveProperty("source_gap_id");
     expect(new Headers(requestCalls[0]?.init?.headers).get("Idempotency-Key")).toBe(new Headers(requestCalls[1]?.init?.headers).get("Idempotency-Key"));
+    expect(new Headers(requestCalls[0]?.init?.headers).get("X-Context-Version")).toBe("1");
+    expect(new Headers(requestCalls[0]?.init?.headers).get("X-CSRF-Token")).toBe(actor.csrf_token);
     expect(calls.some((call) => call.pathname.includes("/reviews/"))).toBe(false);
   });
 
@@ -257,7 +274,7 @@ describe("补充材料请求", () => {
     const sourceOptions = await openActiveListbox(user, screen.getByRole("combobox", { name: "缺失检查" }));
     expect(within(sourceOptions).getAllByRole("option").map((option) => option.textContent?.trim())).toEqual([
       "规则检查 1：商务与财务：质保期限，唯一缺失检查（信息不足）",
-      "规则检查 2：技术与服务：金额，未知检查（关系未识别（unknown））",
+      "规则检查 2：技术与服务：金额，未知检查（关系未识别）",
       "审查缺口 1：商务与财务：质保期限",
     ]);
   });
@@ -1448,7 +1465,8 @@ describe("补充材料请求", () => {
       return Response.json({ error: { message: "unexpected" } }, { status: 404 });
     } });
 
-    await screen.findByText("archived");
+    await screen.findByText("状态待核对");
+    expect(screen.getByText(/archived \/ compatible/)).not.toBeVisible();
     expect(screen.queryByText(/核验结果：/)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "查看核验审查" })).not.toBeInTheDocument();
   });
@@ -1509,7 +1527,8 @@ describe("补充材料请求", () => {
     await user.click(screen.getByText("处理记录"));
     expect(screen.getByText(/创建请求 · 系统/)).toBeInTheDocument();
     expect(screen.getByText(/提交回执 · 姓名未报告/)).toBeInTheDocument();
-    expect(screen.getByText(/custom_event · 审查人/)).toBeInTheDocument();
+    expect(screen.getByText(/处理类型待核对 · 审查人/)).toBeInTheDocument();
+    expect(screen.getByText("custom_event")).not.toBeVisible();
     expect(screen.getByText("提交材料：材料名称未报告")).toBeInTheDocument();
     expect(screen.getByText("提交答复：质保36个月")).toBeInTheDocument();
   });

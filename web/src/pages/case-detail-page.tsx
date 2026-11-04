@@ -371,7 +371,7 @@ export function CaseDetailPage() {
             </dd>
           </div>
         </dl>
-        <TechnicalDetail label="业务范围编码" value={[item.business_line, item.scenario].filter(Boolean).join(" / ")} />
+        <TechnicalDetail label="业务范围编码" value={[item.business_line, item.scenario, item.contract_type, item.business_status].filter(Boolean).join(" / ")} />
       </section>
       <CollapsibleSection id="case-template-generation" title="模板生成" summaryLabel="展开模板生成">
         <TemplateGenerationPanel

@@ -18,6 +18,7 @@ import { renderWithAntd as render } from "../test/antd";
 import { CaseNextStep } from "./case-next-step";
 import { ReviewOutcomeSummary } from "./review-outcome-summary";
 import { canReadmitCancelledPreparation, canRestartUserCancelled, hasTransientRetryCause } from "../features/review/review-outcome";
+import { reviewScopeDescription } from "../domain/review-diff";
 
 const scope = { id: "single_contract_precheck", rule_set_id: "single-contract-precheck", rule_set_version: "1", rule_set_hash: "51676a95611b6e1bf4c30fc50be82e1d493528f34b89f3ece9dbb5aa6c291596" };
 
@@ -59,6 +60,24 @@ function props(overrides: Partial<ComponentProps<typeof CaseNextStep>> = {}): Co
 }
 
 describe("selected review outcome", () => {
+  it("describes scope by known fields without promoting source identities to names", () => {
+    const value = workspace();
+    value.snapshot!.review_scope = { ...scope, id: "full_review" };
+    value.agent_review = { attempt_id: "attempt-1", status: "partial", rulepack: null,
+      scope: [{ domain: "technical", capability_ids: ["dedicated_line.minimum_bandwidth", "unknown·"], source_ids: ["evidence-1"] }],
+      domains: null, evidence: null, observations: null, unresolved_gap_ids: [], gaps: [] };
+    expect(reviewScopeDescription(value)).toBe("完整审查；技术与服务：最低保障带宽、审查项目待核对；来源 1 项");
+    expect(reviewScopeDescription(value)).not.toContain("evidence-1");
+  });
+
+  it("keeps unknown run status available for diagnosis without authorizing an action", () => {
+    const item = detail();
+    item.latest_run!.state = "future.state·";
+    render(<CaseNextStep {...props({ caseDetail: item })} />);
+    expect(screen.getByText(/服务端返回了未识别的运行状态/)).toBeVisible();
+    expect(screen.getByText(/future.state·/)).not.toBeVisible();
+    expect(screen.queryByRole("button", { name: "开始完整审查" })).not.toBeInTheDocument();
+  });
   it("separates a finished limited precheck, excluded work, and human progress", () => {
     render(<ReviewOutcomeSummary workspace={workspace()} />);
     const summary = screen.getByRole("region", { name: "审查结果、范围与人工进度" });

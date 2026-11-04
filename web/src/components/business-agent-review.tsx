@@ -18,6 +18,7 @@ import type {
   BusinessAgentReview,
   BusinessAgentScope,
 } from "../api/business-agent-review";
+import { businessCapabilityLabel as capabilityLabel, businessDomainLabel as domainLabel } from "../domain/business-labels";
 import { FrozenContractCitationReader } from "./contract-citation-reader";
 import { StatusText } from "./status-text";
 import { CollapsibleSection, SectionAnchorNav, type SectionAnchor } from "./collapsible-section";
@@ -31,37 +32,6 @@ interface CitationTarget {
 }
 
 const CitationTargetContext = createContext<CitationTarget | null>(null);
-
-const DOMAIN_LABELS: Record<string, string> = {
-  compliance: "合规与授权",
-  commercial: "商务与财务",
-  technical: "技术与服务",
-  fulfillment: "履约与变更",
-  counterparty: "主体与关联",
-};
-
-const CAPABILITY_LABELS: Record<string, string> = {
-  authorization_basis: "授权依据",
-  commercial_baseline: "商务条款",
-  warranty_months: "质保期限",
-  acceptance_schedule: "交付与验收时间",
-  counterparty_record: "主体登记信息",
-  amount: "金额",
-  party: "合同主体",
-  approval_authority: "审批或授权",
-  approval_validity: "审批有效期",
-  effective_scope: "服务范围",
-  scope: "技术与服务范围",
-  milestone: "履约里程碑",
-  explicit_start_event: "启动时间",
-  subject_id: "主体标识",
-  signing_party: "签署方",
-  payee: "收款方",
-  responsibility: "责任与义务",
-  "dedicated_line.minimum_bandwidth": "最低保障带宽",
-  "dedicated_line.monthly_availability": "月可用率",
-  "payment.advance_ratio.ceiling": "预付款比例上限",
-};
 
 const STATUS_LABELS: Record<string, string> = {
   queued: "等待执行",
@@ -163,14 +133,6 @@ function gapGuidance(gaps: BusinessAgentGap[]): string {
     ? `本次 ${gaps.length} 项缺口中，${ranked.join("、")}。`
     : `本次共 ${gaps.length} 项缺口。`;
   return `${lead}未解决或证据不足表示尚未确认，不等于已通过；按每条缺口给出的下一步处理。`;
-}
-
-function domainLabel(value: string): string {
-  return label(DOMAIN_LABELS, value, "未识别领域");
-}
-
-function capabilityLabel(value: string): string {
-  return label(CAPABILITY_LABELS, value, "未识别审查项目");
 }
 
 function statusLabel(value: string | null): string {
