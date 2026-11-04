@@ -240,6 +240,8 @@ export interface ExecutionAttempt {
   review_scope?: ReviewScopeIdentity;
   history_kind: string;
   frozen_result_available?: boolean;
+  /** Describes this selected attempt; never grants permission to retry. */
+  outcome?: { reason: string; agent_stage: string; retry_cause: string };
 }
 
 export interface ExecutionUsageSubtotals {

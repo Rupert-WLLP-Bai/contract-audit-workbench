@@ -73,6 +73,7 @@ export function WorkbenchCaseNextStep({ caseId }: { caseId: string }) {
       validBusinessAt={false}
       historyLoading={history.isFetching}
       historyError={history.isError ? history.error : null}
+      latestWorkspace={!history.isFetching && !history.isError ? history.data?.find((entry) => entry.runId === detail.data?.latest_run?.id)?.workspace : undefined}
       startPending={false}
       startError={null}
       onRetrySession={() => void session.refetch()}

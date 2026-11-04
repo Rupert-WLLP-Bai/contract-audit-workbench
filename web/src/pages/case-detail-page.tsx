@@ -158,7 +158,6 @@ export function CaseDetailPage() {
   const run = item.latest_run;
   const archived = item.archived_at !== null;
   const subjectContextUnknown = run !== null && item.subject_context_changed_after_latest_run === undefined;
-  const needsNewReview = item.revision_pending || item.configuration_pending || item.subject_context_changed_after_latest_run === true;
   const actorRole = session.data?.role ?? "";
   const canUpload =
     !archived && (actorRole === "admin" || actorRole === "clerk");
@@ -223,6 +222,7 @@ export function CaseDetailPage() {
         validBusinessAt={validBusinessAt}
         historyLoading={history.isLoading}
         historyError={history.isError ? history.error : null}
+        latestWorkspace={!history.isFetching && !history.isError ? history.data?.find((entry) => entry.runId === item.latest_run?.id)?.workspace : undefined}
         startPending={start.isPending}
         startError={start.isError ? start.error : null}
         onRetrySession={() => void session.refetch()}
@@ -309,13 +309,6 @@ export function CaseDetailPage() {
       ) : null}
       {!hasMaterialProjection ? (
         <p className="callout">服务未提供材料集合与版本信息，当前不能启动新审查。</p>
-      ) : null}
-      {run &&
-      !needsNewReview &&
-      (run.state === "failed" || run.state === "partial") ? (
-        <p className="meta">
-          失败或部分完成时，在工作区里重试同一次运行，避免另开一条运行把已有决定拆开。
-        </p>
       ) : null}
       {run && run.state !== "queued" && run.state !== "running" ? (
         <p className="meta">新上传的材料不会自动进入已经开始的审查。</p>

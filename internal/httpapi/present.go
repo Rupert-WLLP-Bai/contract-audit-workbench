@@ -17,6 +17,7 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/agentflow"
 	"contractaudit/internal/docir"
+	"contractaudit/internal/reviewstatus"
 	"contractaudit/internal/store"
 )
 
@@ -262,7 +263,7 @@ func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) ma
 	}
 	var attempts, review any
 	if ws.Execution != nil {
-		attempts = businessAttemptsJSON(ws.Execution)
+		attempts = businessAttemptsJSON(ws.View.Run.ID, ws.Execution)
 		review = businessAgentReviewJSON(ws.Execution.AgentReview)
 	}
 	out := map[string]any{
@@ -299,10 +300,25 @@ func snapshotBusinessAt(snapshot *store.RunSnapshot) any {
 	return nil
 }
 
-func businessAttemptsJSON(execution *store.Execution) map[string]any {
+func businessAttemptsJSON(runID string, execution *store.Execution) map[string]any {
 	var selected any
 	if execution.Attempt != nil {
-		selected = businessAttemptJSON(*execution.Attempt)
+		selectedAttempt := businessAttemptJSON(*execution.Attempt)
+		attempt := execution.Attempt
+		events := make([]reviewstatus.Event, 0, len(execution.Events))
+		for _, event := range execution.Events {
+			code := ""
+			if event.ErrorCode != nil {
+				code = *event.ErrorCode
+			}
+			events = append(events, reviewstatus.Event{AttemptID: event.AttemptID, Seq: event.Seq, NodeKind: event.NodeKind, Phase: event.Phase, Type: event.EventType, Status: event.Status, ErrorCode: code})
+		}
+		code := ""
+		if attempt.ErrorCode != nil {
+			code = *attempt.ErrorCode
+		}
+		selectedAttempt["outcome"] = reviewstatus.Project(reviewstatus.Input{RunID: runID, AttemptID: attempt.ID, AttemptRunID: attempt.RunID, HistoryKind: attempt.HistoryKind, State: attempt.State, ErrorCode: code, Events: events})
+		selected = selectedAttempt
 	}
 	attempts := make([]any, len(execution.Attempts))
 	for i, attempt := range execution.Attempts {

@@ -73,6 +73,7 @@ import {
 import { useReviewLayout } from "../hooks/use-viewport-layout";
 import { actorReadContextKey } from "../domain/actor-read-context";
 import { OriginalSourceContext } from "../components/original-document-reader";
+import { canRestartUserCancelled, hasTransientRetryCause } from "../features/review/review-outcome";
 
 export function ReviewPage() {
   const { caseId = "", runId = "" } = useParams();
@@ -187,9 +188,9 @@ export function ReviewPage() {
     terminal;
   const retryableState =
     review.data !== undefined &&
-    ["partial", "failed", "cancelled", "interrupted"].includes(
-      review.data.run.state,
-    );
+    review.data.run.id === runId && review.data.run.case_id === caseId &&
+    (selectedAttemptId === null || selectedAttempt?.id === selectedAttemptId) &&
+    (hasTransientRetryCause(review.data) || canRestartUserCancelled(review.data));
   const canRetry =
     caseDetailReady &&
     !caseArchived &&

@@ -3166,18 +3166,24 @@ type AdoptedTenantConfigIdentity struct {
 	Digest     string `json:"digest" openapi:"{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"}"`
 }
 type BusinessAttempt struct {
-	Id                      string              `json:"id" openapi:"{\"type\":\"string\"}"`
-	Run_id                  string              `json:"run_id" openapi:"{\"type\":\"string\"}"`
-	Ordinal                 int64               `json:"ordinal" openapi:"{\"type\":\"integer\"}"`
-	Retry_of_attempt_id     any                 `json:"retry_of_attempt_id" openapi:"{\"type\":[\"string\",\"null\"]}"`
-	State                   string              `json:"state" openapi:"{\"type\":\"string\"}"`
-	Accepted_at             string              `json:"accepted_at" openapi:"{\"type\":\"string\"}"`
-	Started_at              any                 `json:"started_at" openapi:"{\"type\":[\"string\",\"null\"]}"`
-	Finished_at             any                 `json:"finished_at" openapi:"{\"type\":[\"string\",\"null\"]}"`
-	History_kind            string              `json:"history_kind" openapi:"{\"type\":\"string\"}"`
-	Parsed_document_ids     []string            `json:"parsed_document_ids" openapi:"{\"type\":[\"array\",\"null\"]}" openapi_items:"{\"type\":\"string\"}"`
-	Review_scope            ReviewScopeIdentity `json:"review_scope,omitempty" openapi:"{\"$ref\":\"#/components/schemas/ReviewScopeIdentity\"}"`
-	Frozen_result_available bool                `json:"frozen_result_available" openapi:"{\"type\":\"boolean\",\"description\":\"冻结输入和结果均已保存，可继续校验来源后参与复审对照。\"}"`
+	Id                      string                  `json:"id" openapi:"{\"type\":\"string\"}"`
+	Run_id                  string                  `json:"run_id" openapi:"{\"type\":\"string\"}"`
+	Ordinal                 int64                   `json:"ordinal" openapi:"{\"type\":\"integer\"}"`
+	Retry_of_attempt_id     any                     `json:"retry_of_attempt_id" openapi:"{\"type\":[\"string\",\"null\"]}"`
+	State                   string                  `json:"state" openapi:"{\"type\":\"string\"}"`
+	Accepted_at             string                  `json:"accepted_at" openapi:"{\"type\":\"string\"}"`
+	Started_at              any                     `json:"started_at" openapi:"{\"type\":[\"string\",\"null\"]}"`
+	Finished_at             any                     `json:"finished_at" openapi:"{\"type\":[\"string\",\"null\"]}"`
+	History_kind            string                  `json:"history_kind" openapi:"{\"type\":\"string\"}"`
+	Parsed_document_ids     []string                `json:"parsed_document_ids" openapi:"{\"type\":[\"array\",\"null\"]}" openapi_items:"{\"type\":\"string\"}"`
+	Review_scope            ReviewScopeIdentity     `json:"review_scope,omitempty" openapi:"{\"$ref\":\"#/components/schemas/ReviewScopeIdentity\"}"`
+	Frozen_result_available bool                    `json:"frozen_result_available" openapi:"{\"type\":\"boolean\",\"description\":\"冻结输入和结果均已保存，可继续校验来源后参与复审对照。\"}"`
+	Outcome                 *BusinessAttemptOutcome `json:"outcome,omitempty" openapi:"{\"$ref\":\"#/components/schemas/BusinessAttemptOutcome\"}"`
+}
+type BusinessAttemptOutcome struct {
+	Reason      string `json:"reason" openapi:"{\"type\":\"string\",\"enum\":[\"unknown\",\"scope_limited\",\"material_unavailable\",\"transient_failure\",\"dependency_unavailable\",\"review_incomplete\",\"execution_failed\",\"cancelled\",\"cancelled_by_user\",\"authorization_revoked\"]}"`
+	Agent_stage string `json:"agent_stage" openapi:"{\"type\":\"string\",\"enum\":[\"unknown\",\"completed\",\"skipped\",\"partial\",\"failed\"]}"`
+	Retry_cause string `json:"retry_cause" openapi:"{\"type\":\"string\",\"enum\":[\"none\",\"model_timeout\"],\"description\":\"仅描述已记录的原因；重试仍由服务端核验。\"}"`
 }
 type BusinessAttempts struct {
 	Attempt  any               `json:"attempt" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/BusinessAttempt\"},{\"type\":\"null\"}]}"`
@@ -4466,6 +4472,7 @@ var SchemaRules = map[string]string{
 	"BusinessSnapshot":                       "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"document_ids\",\"adopted_tenant_config\"]}",
 	"AdoptedTenantConfigIdentity":            "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"version_id\",\"digest\"]}",
 	"BusinessAttempt":                        "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"id\",\"run_id\",\"ordinal\",\"retry_of_attempt_id\",\"state\",\"accepted_at\",\"started_at\",\"finished_at\",\"history_kind\",\"parsed_document_ids\",\"frozen_result_available\"]}",
+	"BusinessAttemptOutcome":                 "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"reason\",\"agent_stage\",\"retry_cause\"]}",
 	"BusinessAttempts":                       "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"attempt\",\"attempts\"]}",
 	"BusinessAuditEvent":                     "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"event_id\",\"run_id\",\"actor\",\"seq\",\"event_type\",\"correlation_ids\"]}",
 	"BusinessAgentScope":                     "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"domain\",\"capability_ids\",\"source_ids\"]}",
@@ -4905,6 +4912,7 @@ func Types() map[string]reflect.Type {
 		"BusinessSnapshot":                       reflect.TypeOf((*BusinessSnapshot)(nil)).Elem(),
 		"AdoptedTenantConfigIdentity":            reflect.TypeOf((*AdoptedTenantConfigIdentity)(nil)).Elem(),
 		"BusinessAttempt":                        reflect.TypeOf((*BusinessAttempt)(nil)).Elem(),
+		"BusinessAttemptOutcome":                 reflect.TypeOf((*BusinessAttemptOutcome)(nil)).Elem(),
 		"BusinessAttempts":                       reflect.TypeOf((*BusinessAttempts)(nil)).Elem(),
 		"BusinessAuditEvent":                     reflect.TypeOf((*BusinessAuditEvent)(nil)).Elem(),
 		"BusinessAgentScope":                     reflect.TypeOf((*BusinessAgentScope)(nil)).Elem(),

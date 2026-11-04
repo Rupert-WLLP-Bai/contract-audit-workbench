@@ -3173,6 +3173,9 @@
           "ordinal": {
             "type": "integer"
           },
+          "outcome": {
+            "$ref": "#/components/schemas/BusinessAttemptOutcome"
+          },
           "parsed_document_ids": {
             "type": [
               "array",
@@ -3216,6 +3219,50 @@
           "history_kind",
           "parsed_document_ids",
           "frozen_result_available"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessAttemptOutcome": {
+        "type": "object",
+        "properties": {
+          "agent_stage": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "completed",
+              "skipped",
+              "partial",
+              "failed"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "scope_limited",
+              "material_unavailable",
+              "transient_failure",
+              "dependency_unavailable",
+              "review_incomplete",
+              "execution_failed",
+              "cancelled",
+              "cancelled_by_user",
+              "authorization_revoked"
+            ]
+          },
+          "retry_cause": {
+            "description": "仅描述已记录的原因；重试仍由服务端核验。",
+            "type": "string",
+            "enum": [
+              "none",
+              "model_timeout"
+            ]
+          }
+        },
+        "required": [
+          "reason",
+          "agent_stage",
+          "retry_cause"
         ],
         "additionalProperties": false
       },

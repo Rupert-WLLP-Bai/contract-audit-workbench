@@ -121,6 +121,35 @@ func TestBusinessWorkspaceProjectsOnlyBusinessData(t *testing.T) {
 	}
 }
 
+func TestBusinessWorkspaceProjectsSelectedAttemptOutcomeWithoutDiagnostics(t *testing.T) {
+	limited := "precheck_scope_limited"
+	agentFailed := "agent_review_failed"
+	attempt := store.Attempt{ID: "selected", RunID: "run", State: "partial", HistoryKind: "frozen", ErrorCode: &limited}
+	ws := store.Workspace{
+		Case: store.Case{ID: "case"}, View: store.RunView{Run: store.Run{ID: "run", State: "partial"}, State: "partial"},
+		Execution: &store.Execution{Attempt: &attempt, Attempts: []store.Attempt{attempt}, Events: []store.ExecutionEvent{
+			{AttemptID: "other", Seq: 20, NodeKind: "agent_review", Phase: "agent_review_result", EventType: "agent_review_event", Status: "completed"},
+			{AttemptID: "selected", Seq: 3, NodeKind: "agent_review", Phase: "agent_review_result", EventType: "agent_review_event", Status: "partial", ErrorCode: &agentFailed},
+		}},
+	}
+	body := diagnosticTestObject(t, workspaceJSON(nil, ws))
+	assertNoDiagnosticKeys(t, body)
+	selected := body["review_attempts"].(map[string]any)["attempt"].(map[string]any)
+	got := selected["outcome"].(map[string]any)
+	if got["reason"] != "scope_limited" || got["agent_stage"] != "failed" || got["retry_cause"] != "none" {
+		t.Fatalf("selected attempt outcome = %v", got)
+	}
+	if body["execution"] != nil {
+		t.Fatal("business response exposed execution events")
+	}
+	ws.View.Run.ID = "other-run"
+	body = diagnosticTestObject(t, workspaceJSON(nil, ws))
+	got = body["review_attempts"].(map[string]any)["attempt"].(map[string]any)["outcome"].(map[string]any)
+	if got["reason"] != "unknown" || got["agent_stage"] != "unknown" {
+		t.Fatalf("mismatched run outcome = %v", got)
+	}
+}
+
 func TestDiagnosticsPreservesFrozenGovernedKnowledge(t *testing.T) {
 	policy := store.KnowledgeRef{KnowledgeID: "policy", VersionID: "policy-version", ContentSHA256: "policy-hash"}
 	optional := store.KnowledgeRef{KnowledgeID: "experience", VersionID: "experience-version", ContentSHA256: "experience-hash"}

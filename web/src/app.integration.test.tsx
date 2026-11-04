@@ -41,6 +41,25 @@ import type {
 // database/rule correctness and real browser behavior are separate test layers.
 const at = "2026-10-21T06:00:00Z";
 const text = "质保期为36个月。";
+const singleContractScope = { id: "single_contract_precheck", rule_set_id: "single-contract-precheck", rule_set_version: "1", rule_set_hash: "51676a95611b6e1bf4c30fc50be82e1d493528f34b89f3ece9dbb5aa6c291596" };
+function prepareFrozenInputs(review: ReviewWorkspace) {
+  for (const document of review.documents) document.parsed_document_id = `parse-${document.id}`;
+  review.execution!.attempt.parsed_document_ids = review.documents.map((document) => document.parsed_document_id!);
+}
+function markModelTimeout(review: ReviewWorkspace) {
+  prepareFrozenInputs(review);
+  review.execution!.attempt.outcome = { reason: "transient_failure", agent_stage: "unknown", retry_cause: "model_timeout" };
+}
+function markLimitedPrecheck(review: ReviewWorkspace, agentStage = "skipped") {
+  const attempt = review.execution!.attempt;
+  const primary = review.documents.find((item) => item.role === "draft_contract")!;
+  primary.parsed_document_id = "parse-contract";
+  attempt.parsed_document_ids = ["parse-contract"];
+  attempt.review_scope = singleContractScope;
+  attempt.outcome = { reason: "scope_limited", agent_stage: agentStage, retry_cause: "none" };
+  review.snapshot!.review_scope = singleContractScope;
+  review.evaluations = [evaluation({ domain: "payment_sum", relation: "insufficient", rule_id: "single-payment-sum-v1", rule_version: "single-payment-sum-v1", capability_id: "single_contract.payment_sum", reason: "需人工核对付款原文" })];
+}
 type Audience = "client" | "admin";
 type Membership = Omit<WireSchemas["MembershipChoice"], "role"> & { role: WireSchemas["Actor"]["role"] };
 const defaultMembershipId = "11111111-1111-4111-8111-111111111111";
@@ -730,7 +749,8 @@ class Service {
         if (
           ["accepted", "queued", "started", "running"].includes(current.state)
         ) {
-          const cancelled = { ...current, state: "cancelled", finished_at: at };
+          const cancelled = { ...current, state: "cancelled", finished_at: at,
+            outcome: { reason: "cancelled_by_user", agent_stage: "unknown", retry_cause: "none" } };
           review.execution = {
             ...execution,
             attempt: cancelled,
@@ -815,6 +835,8 @@ class Service {
         finished_at: attempt.finished_at,
         parsed_document_ids: attempt.parsed_document_ids,
         history_kind: attempt.history_kind,
+        review_scope: attempt.review_scope,
+        outcome: attempt.outcome,
       });
       const publicPayload = {
         ...payload,
@@ -823,7 +845,7 @@ class Service {
           attempt: businessAttempt(selectedAttempt),
           attempts: attempts.map(businessAttempt),
         } : null,
-        snapshot: payload.snapshot ? { document_ids: payload.snapshot.document_ids } : null,
+        snapshot: payload.snapshot ? { document_ids: payload.snapshot.document_ids, review_scope: payload.snapshot.review_scope } : null,
         audit_events: [],
         business_events: payload.business_events ?? [],
       };
@@ -935,6 +957,35 @@ async function selectBusinessTime() {
 }
 
 describe("application routes and API contract", () => {
+  it("shows a limited precheck in the case and starts a full review only after readiness", async () => {
+    const api = new Service();
+    const prior = api.addReview("partial");
+    markLimitedPrecheck(prior);
+    const { user } = open(api, "/cases/c1");
+    const summary = await screen.findByRole("region", { name: "审查结果、范围与人工进度" });
+    expect(summary).toHaveTextContent("单合同预审已结束");
+    expect(summary).toHaveTextContent("范围，未执行");
+    expect(summary).toHaveTextContent("1 项尚无人工判断");
+    expect(screen.queryByRole("button", { name: "开始完整审查" })).not.toBeInTheDocument();
+    await selectBusinessTime();
+    await user.click(await screen.findByRole("button", { name: "开始完整审查" }));
+    await screen.findByRole("heading", { name: "审查工作区" });
+    expect(api.requests.find((entry) => entry.key === "POST /api/cases/c1/reviews")?.input).toEqual({ business_at: "2026-10-21T00:00:00.000Z" });
+    expect(api.reviews.get("r1")!.execution!.attempt.outcome?.reason).toBe("scope_limited");
+  });
+
+  it("preserves a limited precheck's agent failure without offering a generic retry", async () => {
+    const api = new Service();
+    markLimitedPrecheck(api.addReview("partial"), "failed");
+    open(api, "/cases/c1/reviews/r1");
+    const summary = await screen.findByRole("region", { name: "审查结果、范围与人工进度" });
+    expect(summary).toHaveTextContent("单合同预审已结束");
+    expect(summary).toHaveTextContent("智能审查执行失败");
+    expect(summary).toHaveTextContent("其他风险不在本次单合同预审范围，未执行");
+    expect(screen.queryByRole("button", { name: "重新执行未完成的审查" })).not.toBeInTheDocument();
+    expect(within(summary).getByRole("link", { name: "查看完整审查准备" })).toHaveAttribute("href", "/cases/c1#review-readiness");
+  });
+
   it("confirms the server-provided legacy material candidates before opening a new review", async () => {
     const api = new Service();
     const item = api.cases.get("c1")!;
@@ -1371,6 +1422,7 @@ describe("application routes and API contract", () => {
   it("shows model failure, retries, and displays ordinary decision errors separately from conflict", async () => {
     const api = new Service();
     const review = api.addReview("failed");
+    markModelTimeout(review);
     review.run.failure_message = "模型调用超时";
     const firstAttempt = review.execution!.attempt;
     review.execution!.events = [
@@ -1555,9 +1607,10 @@ describe("application routes and API contract", () => {
     expect(screen.getByRole("button", { name: /#12/ })).toBeInTheDocument();
   });
 
-  it("blocks decisions during execution and preserves cancellation as a terminal state", async () => {
+  it.each(["queued", "running"])("lets an authorized user restart a cancelled %s attempt with frozen inputs and no frozen result", async (state) => {
     const api = new Service();
-    const review = api.addReview("running");
+    const review = api.addReview(state);
+    prepareFrozenInputs(review);
     const { user } = open(api, "/cases/c1/reviews/r1");
     expect(
       await screen.findByText("本次审查仍在执行，完成后才能提交审查判断。"),
@@ -1577,8 +1630,45 @@ describe("application routes and API contract", () => {
       screen.queryByRole("button", { name: "取消本次执行" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "重新执行未完成的审查" }),
-    ).toBeEnabled();
+      screen.queryByRole("button", { name: "重新执行未完成的审查" }),
+    ).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "重新发起已取消审查" }));
+    await waitFor(() => expect(review.execution!.attempts).toHaveLength(2));
+    expect(review.execution!.attempts[0]!.state).toBe("cancelled");
+    expect(review.execution!.attempts[0]!.output_hash).toBeNull();
+    expect(review.execution!.attempt.retry_of_attempt_id).toBe(review.execution!.attempts[0]!.id);
+  });
+
+  it("does not restart a cancellation when frozen input identity is unavailable", async () => {
+    const api = new Service();
+    api.addReview("running");
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    await user.click(await screen.findByRole("button", { name: "取消本次执行" }));
+    expect(await screen.findByText(/冻结输入尚不能核对/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新发起已取消审查" })).not.toBeInTheDocument();
+  });
+
+  it("does not offer a user restart for a cancellation caused by revoked authorization", async () => {
+    const api = new Service();
+    const review = api.addReview("cancelled");
+    prepareFrozenInputs(review);
+    review.execution!.attempt.outcome = { reason: "authorization_revoked", agent_stage: "unknown", retry_cause: "none" };
+    open(api, "/cases/c1/reviews/r1");
+    expect(await screen.findByText(/审查已取消。取消前保存的规则发现/)).toBeInTheDocument();
+    expect(screen.getByText("本次执行因授权变化而取消，请联系案件管理员核对权限。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新发起已取消审查" })).not.toBeInTheDocument();
+  });
+
+  it.each(["viewer", "archived"])("keeps user cancellation restart disabled for %s", async (availability) => {
+    const api = new Service();
+    const review = api.addReview("cancelled");
+    prepareFrozenInputs(review);
+    review.execution!.attempt.outcome = { reason: "cancelled_by_user", agent_stage: "unknown", retry_cause: "none" };
+    if (availability === "viewer") api.role = "viewer";
+    else api.cases.get("c1")!.archived_at = at;
+    open(api, "/cases/c1/reviews/r1");
+    expect(await screen.findByRole("button", { name: "重新发起已取消审查" })).toBeDisabled();
+    expect(api.requests.filter((entry) => entry.key.endsWith("/retry"))).toHaveLength(0);
   });
   it.each([
     { availability: "archived", state: "awaiting_human", action: "decision" },
@@ -1595,7 +1685,8 @@ describe("application routes and API contract", () => {
     "keeps direct review history readable and disables $action when case state is $availability",
     async ({ availability, state, action }) => {
       const api = new Service();
-      api.addReview(state);
+      const review = api.addReview(state);
+      if (action === "retry") markModelTimeout(review);
       if (availability === "archived") api.cases.get("c1")!.archived_at = at;
       else api.fail("GET /api/cases/c1", 503);
 
@@ -1993,7 +2084,7 @@ describe("application routes and API contract", () => {
   it("disables retry and decisions for a read-only reviewer without hiding evidence", async () => {
     const api = new Service();
     api.role = "viewer";
-    api.addReview("partial");
+    markModelTimeout(api.addReview("partial"));
     open(api, "/cases/c1/reviews/r1");
     expect(
       await screen.findByText("当前角色不能提交审查判断。"),
@@ -2012,7 +2103,7 @@ describe("application routes and API contract", () => {
   it("allows a clerk to recover execution while keeping human decisions unavailable", async () => {
     const api = new Service();
     api.role = "clerk";
-    api.addReview("partial");
+    markModelTimeout(api.addReview("partial"));
     open(api, "/cases/c1/reviews/r1");
     await screen.findByRole("heading", { name: "审查工作区" });
     expect(
@@ -2025,9 +2116,9 @@ describe("application routes and API contract", () => {
     ).toHaveLength(0);
   });
 
-  it("offers a manual new attempt after interruption without replacing the original attempt", async () => {
+  it("offers a manual new attempt after a recorded timeout without replacing the original attempt", async () => {
     const api = new Service();
-    api.addReview("interrupted");
+    markModelTimeout(api.addReview("interrupted"));
     const { user } = open(api, "/cases/c1/reviews/r1");
     await user.click(
       await screen.findByRole("button", { name: "重新执行未完成的审查" }),
