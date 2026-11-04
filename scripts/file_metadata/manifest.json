@@ -23,6 +23,7 @@
       "docs/architecture/overview.md",
       "docs/architecture/store-ownership.csv",
       "docs/engineering/community-guide.md",
+      "docs/engineering/interface-conventions.md",
       "docs/engineering/local-development.md",
       "docs/engineering/verification.md",
       "docs/glossary/concepts.json",
@@ -7164,12 +7165,12 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "eac4f387e19fd85fcedc86c11e4dbe7cd8cc750b",
+          "commit": "8f9bdc6891fd5e65325e7fa32dc7a42878f0dab4",
           "path": "docs-site/sidebars.js",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -7982,12 +7983,12 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "eac4f387e19fd85fcedc86c11e4dbe7cd8cc750b",
+          "commit": "8f9bdc6891fd5e65325e7fa32dc7a42878f0dab4",
           "path": "docs/index.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -50175,7 +50176,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r37",
+      "revision": "r38",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -73173,6 +73174,54 @@
           "kind": "git-last-content-change",
           "commit": "907ed754a95355ad19c1dd469e403d7687d7db4d",
           "path": "web/src/test/antd.test.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "docs/engineering/interface-conventions.md": {
+      "purpose": "Defines incremental interface conventions for readable business labels, stable identities, accurate times, task navigation, frozen evidence and user exports, distinguishing existing implementations from open functional acceptance.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "8f9bdc6891fd5e65325e7fa32dc7a42878f0dab4",
+          "path": "docs/engineering/interface-conventions.md",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "8f9bdc6891fd5e65325e7fa32dc7a42878f0dab4",
+          "path": "docs/engineering/interface-conventions.md",
           "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },

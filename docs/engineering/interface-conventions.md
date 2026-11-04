@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: Defines incremental interface conventions for readable business labels, stable identities, accurate times, task navigation, frozen evidence and user exports, distinguishing existing implementations from open functional acceptance. -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-11-04 -->
+<!-- Updated: 2026-11-04 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # 业务界面工程约定
 
 本文面向新增或修改业务界面的贡献者，说明应沿用的边界和增量采用的要求。下文的“已有”指仓库中的相应实现，并不表示所有页面、部署环境或用户旅程均已完成；“增量”适用于后续变更，功能和验收进度以各自 Issue 为准。本文不定义新的接口字段或术语词典；概念以 [concepts.json](../glossary/concepts.json) 为唯一机器可读来源，业务和系统含义参见[术语页面](../index.md#术语)。
