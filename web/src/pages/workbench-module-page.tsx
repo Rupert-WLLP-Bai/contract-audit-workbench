@@ -987,6 +987,7 @@ function tabMatches(
 }
 
 function statusTone(status: string, module: WorkbenchModuleKey): "good" | "attention" | "bad" | "neutral" | "progress" {
+  if (module === "knowledge") return "neutral";
   if (module === "evidence") return parseTone(status);
   if (module === "executions") return runTone(status);
   if (module === "tools") {
@@ -1635,7 +1636,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                   ),
                 },
                 {
-                  title: "状态",
+                  title: module === "knowledge" ? "来源类型" : "状态",
                   key: "status",
                   render: (_, record) => (
                     <StatusText tone={statusTone(record.status, module)}>

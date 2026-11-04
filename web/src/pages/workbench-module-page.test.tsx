@@ -23,6 +23,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setSessionIdentity } from "../api/http";
 import { queryKeys } from "../api/queries";
+import * as statusText from "../components/status-text";
 import type {
   KnowledgeInput,
   WorkbenchDocument,
@@ -1273,6 +1274,42 @@ describe("workbench tasks", () => {
 });
 
 describe("workbench knowledge", () => {
+  it("keeps known and constructed unknown knowledge source categories neutral", async () => {
+    const statusSpy = vi.spyOn(statusText, "StatusText");
+    try {
+      const { client, user } = open("knowledge");
+      const rows = await list("知识库");
+      expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeVisible();
+      const query = client.getQueryCache().findAll({ queryKey: queryKeys.workbenchPrefix }).find((entry) => entry.state.data !== undefined);
+      const original = query && client.getQueryData<WorkbenchSnapshot>(query.queryKey);
+      if (!query || !original) throw new Error("workbench fixture is missing");
+      const first = original.knowledge[0]!;
+      expect(within(rows.getByRole("row", { name: /外部参考资料/ })).getByText("参考资料", { exact: true })).toBeVisible();
+      expect(within(rows.getByRole("row", { name: /采购安全制度/ })).getByText("合成制度", { exact: true })).toBeVisible();
+      expect(rows.getByRole("columnheader", { name: "来源类型" })).toBeVisible();
+      const lastTone = (label: string) => statusSpy.mock.calls.filter((call) => call[0].children === label).at(-1)?.[0].tone;
+      expect(lastTone("参考资料")).toBe("neutral");
+      expect(lastTone("合成制度")).toBe("neutral");
+
+      // Display-only constructions: the real workbench wire parser rejects
+      // these values before a network response can enter this query cache.
+      for (const [value, label] of [["ready", "来源类型待核对"], ["closed", "来源类型待核对"], ["human_feedback", "人工反馈"]] as const) {
+        const constructed = { ...first, source_type: value } as unknown as WorkbenchSnapshot["knowledge"][number];
+        act(() => {
+          client.setQueryData(query.queryKey, { ...original, knowledge: [constructed, ...original.knowledge.slice(1)] });
+          client.setQueryData(["knowledge", constructed.id, constructed.version_id], constructed);
+        });
+        await waitFor(() => expectField("来源类型编码", value));
+        const badge = await within(rows.getByRole("row", { name: /采购安全制度/ })).findByText(label, { exact: true });
+        expect(badge).toBeVisible();
+        await expectTechnicalField(user, "来源类型编码", value);
+        expect(lastTone(label)).toBe("neutral");
+      }
+    } finally {
+      statusSpy.mockRestore();
+    }
+  });
+
   it("selects exact versions through deep links, history and refresh", async () => {
     const service = new WorkbenchService();
     addPolicyV1(service);
@@ -1810,7 +1847,8 @@ describe("workbench remediation and frozen artifacts", () => {
 
   it("links evidence originals, parser identity and citations to actual document and run IDs", async () => {
     const { user } = open("evidence");
-    await list("证据中心");
+    const rows = await list("证据中心");
+    expect(rows.getByRole("columnheader", { name: "状态" })).toBeVisible();
     expectField("文件名", "采购原件.pdf");
     expectDisplayField("已记录文件类型", "PDF 文档");
     await expectTechnicalField(user, "文件类型标识", "application/pdf");
