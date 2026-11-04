@@ -4,11 +4,11 @@
 // Contact: +86 13617696321
 // Created: 2026-10-30
 // Updated: 2026-10-30
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
-import { Button, Input } from "antd";
+import { Button, Input, Segmented } from "antd";
 import { useMemo, useState } from "react";
 import type { Execution } from "../api/types";
 import { elapsed, instant, tokenCount } from "../domain/execution-labels";
@@ -18,6 +18,7 @@ import {
   type TrajectoryKind,
   type TrajectorySection,
 } from "../domain/trajectory";
+import { AgentPathSwimlane } from "./agent-path-swimlane";
 import { StatusText } from "./status-text";
 
 const KIND_LABELS: Record<TrajectoryKind, string> = {
@@ -133,6 +134,7 @@ function Entry({
 
 export function TrajectoryView({ execution }: { execution: Execution }) {
   const trajectory = useMemo(() => buildTrajectory(execution), [execution]);
+  const [view, setView] = useState<"swimlane" | "list">("swimlane");
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const needle = query.trim().toLocaleLowerCase("zh-CN");
@@ -196,6 +198,15 @@ export function TrajectoryView({ execution }: { execution: Execution }) {
       </dl>
 
       <div className="trajectory-controls">
+        <Segmented
+          aria-label="轨迹展示方式"
+          value={view}
+          onChange={(value) => setView(value as "swimlane" | "list")}
+          options={[
+            { label: "泳道图", value: "swimlane" },
+            { label: "列表", value: "list" },
+          ]}
+        />
         <Input.Search
           allowClear
           aria-label="搜索轨迹"
@@ -203,21 +214,23 @@ export function TrajectoryView({ execution }: { execution: Execution }) {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <Button type="text" onClick={expandAll}>
+        <Button type="text" onClick={expandAll} disabled={view !== "list"}>
           展开全部
         </Button>
-        <Button type="text" onClick={collapseAll}>
+        <Button type="text" onClick={collapseAll} disabled={view !== "list"}>
           收起全部
         </Button>
       </div>
 
-      {needle !== "" ? (
+      {view === "swimlane" ? <AgentPathSwimlane execution={execution} /> : null}
+
+      {needle !== "" && view === "list" ? (
         <p className="trajectory-filter" role="status">
           已按“{query.trim()}”筛选出 {entries.length} 条记录。
         </p>
       ) : null}
 
-      {entries.length === 0 ? (
+      {view === "list" ? (entries.length === 0 ? (
         <p className="trajectory-empty">
           {trajectory.entries.length === 0
             ? "本次执行没有保存可展示的轨迹记录。"
@@ -235,7 +248,7 @@ export function TrajectoryView({ execution }: { execution: Execution }) {
             />
           ))}
         </ol>
-      )}
+      )) : null}
     </section>
   );
 }

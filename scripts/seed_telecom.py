@@ -5,7 +5,7 @@
 # Contact: +86 13617696321
 # Created: 2026-10-25
 # Updated: 2026-10-31
-# Revision: r1
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -109,10 +109,17 @@ class API:
         self.origin = f"{parsed.scheme}://{parsed.netloc}"
         cookies = http.cookiejar.CookieJar()
         self.client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
+        self.context_version = ""
+        self.csrf = ""
 
     def request(self, method: str, path: str, payload=None, content_type=None, timeout=30):
         raw = None
         headers = {"Accept": "application/json", "Origin": self.origin}
+        if method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+            if self.context_version:
+                headers["X-Context-Version"] = self.context_version
+            if self.csrf:
+                headers["X-CSRF-Token"] = self.csrf
         if isinstance(payload, bytes):
             raw = payload
         elif payload is not None:
@@ -268,6 +275,11 @@ def main() -> int:
         _, session = api.request("POST", "/api/session", {"username": username, "password": password})
         if not session or not session.get("actor", {}).get("id"):
             raise SeedError("login response did not contain a trusted actor")
+        active = session.get("active_context") or {}
+        api.context_version = active.get("context_version", "")
+        api.csrf = session.get("csrf_token", "")
+        if not api.context_version or len(api.csrf) < 32:
+            raise SeedError("login response did not contain an original context version and CSRF token")
         _, templates = api.request("GET", "/api/templates")
         matches = [item for item in templates.get("items", []) if item.get("id") == template_id]
         if len(matches) != 1:

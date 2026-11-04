@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: unknown
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -22,6 +22,8 @@ import {
   runTone,
 } from "../domain/review";
 import { StatusText } from "./status-text";
+import { TechnicalDetail } from "./technical-detail";
+import { businessScopeLabel } from "../domain/business-labels";
 
 const SORT_FIELDS: readonly CaseSortField[] = [
   "title",
@@ -72,17 +74,16 @@ function CaseTitleCell({
       >
         {item.title}
       </Link>
-      <div className="meta">
-        {item.id}，{contractTypeLabel(item.contract_type)}
+      <div className="meta caw-wrap">
+        {contractTypeLabel(item.contract_type)}
+        <TechnicalDetail value={item.id} label="案件标识" />
       </div>
     </>
   );
 }
 
 function businessSummary(item: CaseSummary): string {
-  return (
-    [item.business_line, item.scenario].filter(Boolean).join("，") || "未提供"
-  );
+  return businessScopeLabel(item.business_line, item.scenario);
 }
 
 function CaseStatusCell({ item }: { item: CaseSummary }) {

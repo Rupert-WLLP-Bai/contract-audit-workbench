@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-10-31
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -21,6 +21,7 @@ import { legalApplicabilityControlledValues } from "../domain/legal-applicabilit
 import { formatDateTime } from "../domain/review";
 import { beijingInputToUtc, toBeijingInputValue } from "./beijing-datetime";
 import { StatusText } from "./status-text";
+import { CollapsibleSection, SectionAnchorNav, type SectionAnchor } from "./collapsible-section";
 
 const labels: Record<LegalApplicabilityDimension, string> = {
   buyer_kind: "采购方主体类型", seller_kind: "供应方主体类型",
@@ -259,7 +260,13 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
         {anchor ? <div className="subject-anchor-selected" data-material-id={anchor.material_id} data-document-id={anchor.document_id} data-parsed-document-id={anchor.parsed_document_id}><strong>{anchor.filename} · v{anchor.material_version} · {anchor.start}–{anchor.end}</strong><blockquote>{anchor.quote}</blockquote><Button onClick={() => setAnchor(null)}>清除所选依据</Button></div> : null}
       </section>
 
-      {factQuery.data ? <div className="legal-applicability-fact-list">
+      {factQuery.data ? <>
+        <SectionAnchorNav items={legalApplicabilityDimensions.map((dimension, index): SectionAnchor => ({
+          id: `legal-fact-${dimension}`,
+          label: labels[dimension],
+          count: (histories[index]?.data?.items.length ?? 0) || undefined,
+        }))} />
+        <div className="legal-applicability-fact-list">
         {legalApplicabilityDimensions.map((dimension, dimensionIndex) => {
           const row = factQuery.data.facts.find((item) => item.dimension === dimension);
           if (!row) return null;
@@ -268,9 +275,20 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
           const draft = drafts[dimension] ?? initialDraft();
           const side = partySide(dimension);
           const bindings = partyDimension(dimension) ? eligiblePartyBindings(subjects.data?.items ?? [], side) : [];
-          return <section className="case-subject-add" key={dimension} aria-label={labels[dimension]}>
+          const statusLabel = row.status === "established"
+            ? values[dimension].find((item) => item.value === row.value)?.label ?? row.value
+            : unknownReasons.find((item) => item.value === row.unknown_reason)?.label ?? "未知";
+          const statusTone = row.status === "established" ? "good" : "attention";
+          return <CollapsibleSection
+            key={dimension}
+            id={`legal-fact-${dimension}`}
+            title={labels[dimension]}
+            meta={<StatusText tone={statusTone}>{statusLabel}</StatusText>}
+            defaultOpen={dimensionIndex === 0}
+          >
+          <section className="case-subject-add caw-wrap" aria-label={labels[dimension]}>
             <h3>{labels[dimension]}</h3>
-            <p>该时点结果：<StatusText tone={row.status === "established" ? "good" : "attention"}>{row.status === "established" ? values[dimension].find((item) => item.value === row.value)?.label ?? row.value : unknownReasons.find((item) => item.value === row.unknown_reason)?.label ?? "未知"}</StatusText>{row.fact ? ` · 已记录第 ${row.fact.version} 版 · ${row.fact.basis_note}` : " · 尚无已记录事实"}</p>
+            <p>该时点结果：<StatusText tone={statusTone}>{statusLabel}</StatusText>{row.fact ? ` · 已记录第 ${row.fact.version} 版 · ${row.fact.basis_note}` : " · 尚无已记录事实"}</p>
             {row.fact ? <p>事实时间：{row.fact.temporal_basis === "current_state" ? "当前观察" : `${formatDateTime(row.fact.valid_from)} 至 ${row.fact.valid_until ? formatDateTime(row.fact.valid_until) : "未设截止"}`} · 记录于 {formatDateTime(row.fact.created_at)}</p> : null}
             {row.fact?.party ? <p>主体范围：{row.fact.party.side === "buyer" ? "采购方" : "供应方"} · {row.fact.party.scope_note} · 绑定 v{row.fact.party.binding_version} / 身份 v{row.fact.party.subject_version}</p> : null}
             {row.fact?.basis_refs.map((ref, index) => <div className="subject-anchor-selected" key={`${ref.material_id}:${ref.material_version}:${ref.start}:${index}`}><p>依据：{ref.filename} · 材料 v{ref.material_version} · {ref.start}–{ref.end}</p><blockquote>{ref.quote}</blockquote></div>)}
@@ -315,9 +333,11 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
               <Input.TextArea aria-label={`${labels[dimension]}依据说明`} value={draft.basis_note} onChange={(event) => updateDraft(dimension, { basis_note: event.target.value })} placeholder="说明事实依据；该说明不能替代材料原文" maxLength={2000} rows={2} />
               <Button type="primary" disabled={!history || !history.can_manage || historyQuery?.isError || (!row.fact && row.status === "unknown" && !draft.basis_note.trim() && draft.unknown_reason !== "insufficient_evidence")} loading={savingDimension === dimension} onClick={() => void saveFact(dimension)}>追加事实版本</Button>
             </> : null}
-          </section>;
+          </section>
+          </CollapsibleSection>;
         })}
-      </div> : null}
+        </div>
+      </> : null}
       {saveError ? <Alert type="error" showIcon title={saveError} /> : null}
       {saveNote ? <Alert type="success" showIcon title={saveNote} /> : null}
     </Card>

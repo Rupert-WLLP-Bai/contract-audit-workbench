@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-02
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -30,6 +30,7 @@ import type {
 } from "../api/types";
 import { formatDateTime } from "../domain/review";
 import type { UseQueryResult } from "@tanstack/react-query";
+import { TechnicalDetail } from "./technical-detail";
 
 function templateControlType(fieldType: string): {
   inputType: string;
@@ -238,10 +239,11 @@ function TemplateForm({
           options={options}
         />
       </label>
-      <p className="meta">
-        模板 ID：{template.id}，版本：{template.version}，
-        摘要：<code className="digest">{template.digest}</code>
-      </p>
+      <div className="meta">
+        模板 {template.name}，版本 {template.version} ·{" "}
+        <TechnicalDetail value={template.id} label="模板标识" /> ·{" "}
+        <TechnicalDetail value={template.digest} label="模板摘要" />
+      </div>
       <label className="field">
         草稿操作
         <Select
@@ -453,28 +455,26 @@ function GenerationHistory({ records }: { records: GenerationRecord[] }) {
         <ul className="workflow-record-list">
           {records.map((record) => (
             <li key={record.id}>
-              <strong>
-                {record.template_id}，{record.template_version}
-              </strong>
+              <strong>模板版本 {record.template_version}</strong>
               <dl className="execution-dl">
                 <div>
                   <dt>生成记录</dt>
-                  <dd>{record.id}</dd>
+                  <dd><TechnicalDetail value={record.id} label="查看编号" /></dd>
                 </div>
                 <div>
                   <dt>草稿文档</dt>
-                  <dd>{record.document_id}</dd>
+                  <dd><TechnicalDetail value={record.document_id} label="查看标识" /></dd>
                 </div>
                 {record.material_id ? (
                   <div>
                     <dt>材料版本</dt>
-                    <dd>{record.material_id}，v{record.version ?? "?"}</dd>
+                    <dd>v{record.version ?? "?"} · <TechnicalDetail value={record.material_id} label="材料标识" /></dd>
                   </div>
                 ) : null}
                 <div>
                   <dt>摘要</dt>
                   <dd>
-                    <code className="digest">{record.digest}</code>
+                    <TechnicalDetail value={record.digest} label="查看摘要" />
                   </dd>
                 </div>
                 <div>

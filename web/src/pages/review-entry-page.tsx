@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: unknown
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,6 +14,8 @@ import { useWorkbench } from "../api/queries";
 import type { WorkbenchCase, WorkbenchRun, WorkbenchSnapshot } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
+import { TechnicalDetail } from "../components/technical-detail";
+import { businessLineLabel } from "../domain/business-labels";
 import {
   businessStatusLabel,
   businessStatusTone,
@@ -46,7 +48,7 @@ function ReviewEntryCaseCell({ item }: { item: WorkbenchCase }) {
     <div className="review-entry-case">
       <strong>{item.title}</strong>
       <span>
-        {item.profile?.customer ?? item.business_line ?? "业务信息未报告"}
+        {item.profile?.customer || businessLineLabel(item.business_line)}
       </span>
     </div>
   );
@@ -58,7 +60,7 @@ function ReviewEntryStatusCell({ item }: { item: WorkbenchCase }) {
       <StatusText tone={businessStatusTone(item.business_status ?? "")}>
         {businessStatusLabel(item.business_status ?? "")}
       </StatusText>
-      <code>{item.id}</code>
+      <TechnicalDetail value={item.id} label="案件标识" />
     </div>
   );
 }
@@ -67,11 +69,13 @@ function ReviewEntryRunCell({ run }: { run: WorkbenchRun | null }) {
   if (!run) return <span className="review-entry-muted">尚无审查运行</span>;
   return (
     <div className="review-entry-run-cell">
-      <code>{run.id}</code>
       <StatusText tone={runTone(run.state)}>{runLabel(run.state)}</StatusText>
+      <time dateTime={run.updated_at}>{formatDateTime(run.updated_at)}</time>
       <span className="review-entry-muted">
-        {run.attempt_id ? `尝试 ${run.attempt_id}` : "未提供执行记录"}
+        {run.state === "partial" ? "请打开审查查看未完成原因并核对已有结果" : "最新审查记录"}
       </span>
+      <TechnicalDetail value={run.id} label="审查标识" />
+      <TechnicalDetail value={run.attempt_id} label="执行标识" />
     </div>
   );
 }
