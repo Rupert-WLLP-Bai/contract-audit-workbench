@@ -12,6 +12,7 @@ import type { ReviewChoice } from "../domain/workflow";
 import { reviewChoiceForKey, reviewChoiceLabel, reviewChoiceShortLabel } from "../domain/workflow";
 import { preciseTime } from "../domain/time";
 import { TechnicalDetail } from "./technical-detail";
+import { InvalidTimeDetail } from "./invalid-time-detail";
 import { Select } from "antd";
 
 export function ReviewChoiceSelect({
@@ -50,6 +51,10 @@ export function ReviewChoiceSelect({
       </label>
       {selected ? <div className="meta caw-wrap">
         执行开始 {preciseTime(selected.attempt.started_at)} · 完成时间 {preciseTime(selected.attempt.finished_at)} · 审查更新时间 {preciseTime(selected.workspace.run.updated_at)}
+        <InvalidTimeDetail value={selected.attempt.accepted_at} label="受理时间" />
+        <InvalidTimeDetail value={selected.attempt.started_at} label="执行开始时间" />
+        <InvalidTimeDetail value={selected.attempt.finished_at} label="完成时间" />
+        <InvalidTimeDetail value={selected.workspace.run.updated_at} label="审查更新时间" />
         <TechnicalDetail value={selected.runId} label="审查标识" />
         <TechnicalDetail value={selected.attempt.id} label="执行标识" />
       </div> : null}

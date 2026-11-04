@@ -22,6 +22,7 @@ import {
 } from "../domain/review";
 import { StatusText } from "./status-text";
 import { TechnicalDetail } from "./technical-detail";
+import { InvalidTimeDetail } from "./invalid-time-detail";
 import { businessScopeLabel } from "../domain/business-labels";
 import { caseIdentityDetails } from "../domain/case-identity";
 
@@ -76,6 +77,7 @@ function CaseTitleCell({
       </Link>
       <div className="meta caw-wrap">
         {caseIdentityDetails(item)}
+        <InvalidTimeDetail value={item.updated_at} label="案件更新时间" />
         <TechnicalDetail value={item.id} label="案件标识" />
       </div>
     </>

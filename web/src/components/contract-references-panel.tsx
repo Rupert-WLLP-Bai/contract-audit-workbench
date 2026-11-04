@@ -9,14 +9,15 @@
 // End file metadata.
 
 import { Alert, Button, Select, Tag } from "antd";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   checkContractReferences,
   type ContractReferenceCheck,
   type DraftContent,
 } from "../api/contracts";
 import { errorMessage } from "../api/http";
-import { useCases, useSession } from "../api/queries";
+import { queryKeys, useCases, useSession } from "../api/queries";
 import { actorReadContextKey } from "../domain/actor-read-context";
 import { caseOptionLabel } from "../domain/case-identity";
 import { caseSelectPresentation } from "./case-select-presentation";
@@ -38,13 +39,28 @@ export function ContractReferencesPanel({
 }) {
   const cases = useCases();
   const session = useSession();
+  const cache = useQueryClient().getQueryCache();
+  const listGeneration = useRef(0);
+  const subscribeList = useCallback((notify: () => void) => cache.subscribe((event) => {
+    if (event.query.queryKey.length !== queryKeys.cases.length || event.query.queryKey[0] !== queryKeys.cases[0]) return;
+    if (event.type === "added" || event.type === "removed" ||
+        (event.type === "updated" && (event.action.type === "fetch" || event.action.type === "invalidate"))) listGeneration.current += 1;
+    notify();
+  }), [cache]);
+  const listVersion = useCallback(() => {
+    const state = cache.find({ queryKey: queryKeys.cases, exact: true })?.state;
+    return `${listGeneration.current}:${state?.dataUpdateCount ?? 0}:${state?.errorUpdateCount ?? 0}:${state?.fetchStatus ?? "missing"}:${state?.status ?? "missing"}:${state?.isInvalidated ?? true}`;
+  }, [cache]);
+  const listRevision = useSyncExternalStore(subscribeList, listVersion, listVersion);
   const [caseID, setCaseID] = useState<string | null>(null);
   const actorScope = actorReadContextKey(session.data ?? null);
   const sessionReady = session.isSuccess && !session.isError && !session.isFetching && actorScope !== "";
-  const listReady = sessionReady && cases.isSuccess && !cases.isError;
+  const listState = cache.find({ queryKey: queryKeys.cases, exact: true })?.state;
+  const listReady = sessionReady && cases.isSuccess && !cases.isError && !cases.isFetching &&
+    !!listState && listState.status === "success" && listState.fetchStatus === "idle" && !listState.isInvalidated;
   const caseVisible = listReady && (caseID === null || cases.data.some((item) => item.id === caseID));
   // A refreshed authorization list also starts a new context, even if it contains the same case IDs.
-  const context = useRef({ contractID, caseID, caseVisible, casesData: cases.data, actorScope, generation: 0 });
+  const context = useRef({ contractID, caseID, caseVisible, casesData: cases.data, actorScope, listRevision, generation: 0 });
   const request = useRef(0);
   const mounted = useRef(false);
   const [verification, setVerification] = useState<{
@@ -54,7 +70,7 @@ export function ContractReferencesPanel({
     error: string | null;
   } | null>(null);
   const matchesContext = context.current.contractID === contractID && context.current.caseID === caseID &&
-    context.current.caseVisible === caseVisible && context.current.casesData === cases.data && context.current.actorScope === actorScope;
+    context.current.caseVisible === caseVisible && context.current.casesData === cases.data && context.current.actorScope === actorScope && context.current.listRevision === listRevision;
   const visible = matchesContext && verification?.generation === context.current.generation ? verification : null;
   const check = visible?.check ?? null;
   const error = visible?.error ?? null;
@@ -70,12 +86,12 @@ export function ContractReferencesPanel({
   // Invalidate before old promises can publish into the newly committed context.
   useLayoutEffect(() => {
     if (context.current.contractID !== contractID || context.current.caseID !== caseID ||
-        context.current.caseVisible !== caseVisible || context.current.casesData !== cases.data || context.current.actorScope !== actorScope) {
-      context.current = { contractID, caseID, caseVisible, casesData: cases.data, actorScope, generation: context.current.generation + 1 };
+        context.current.caseVisible !== caseVisible || context.current.casesData !== cases.data || context.current.actorScope !== actorScope || context.current.listRevision !== listRevision) {
+      context.current = { contractID, caseID, caseVisible, casesData: cases.data, actorScope, listRevision, generation: context.current.generation + 1 };
       request.current += 1;
       setVerification(null);
     }
-  }, [contractID, caseID, caseVisible, cases.data, actorScope]);
+  }, [contractID, caseID, caseVisible, cases.data, actorScope, listRevision]);
   useEffect(() => {
     if (caseID && (cases.isError || (cases.isSuccess && !cases.data.some((item) => item.id === caseID)))) {
       setCaseID(null);
@@ -90,17 +106,18 @@ export function ContractReferencesPanel({
   async function run() {
     if (contractID === null || !caseVisible || context.current.contractID !== contractID ||
         context.current.caseID !== caseID || context.current.caseVisible !== caseVisible ||
-        context.current.casesData !== cases.data || context.current.actorScope !== actorScope) return;
+        context.current.casesData !== cases.data || context.current.actorScope !== actorScope ||
+        context.current.listRevision !== listVersion()) return;
     const generation = context.current.generation;
     const sequence = ++request.current;
     setVerification({ generation, busy: true, check: null, error: null });
     try {
       const result = await checkContractReferences(contractID, caseID ?? undefined);
-      if (mounted.current && request.current === sequence && context.current.generation === generation) {
+      if (mounted.current && request.current === sequence && context.current.generation === generation && context.current.listRevision === listVersion()) {
         setVerification({ generation, busy: false, check: result, error: null });
       }
     } catch (caught) {
-      if (mounted.current && request.current === sequence && context.current.generation === generation) {
+      if (mounted.current && request.current === sequence && context.current.generation === generation && context.current.listRevision === listVersion()) {
         setVerification({ generation, busy: false, check: null, error: errorMessage(caught) });
       }
     }

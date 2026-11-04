@@ -12,21 +12,23 @@ import { Tabs } from "antd";
 import { Collapse } from "antd";
 import { Select } from "antd";
 import { Button } from "antd";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
+import { useQuery } from "@tanstack/react-query";
 import { errorMessage } from "../api/http";
+import { getReview } from "../api/endpoints";
 import { paths } from "../api/paths";
 import { useReview, useWorkbench } from "../api/queries";
 import type { Finding, ReviewDocument, WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { TechnicalDetail } from "../components/technical-detail";
+import { InvalidTimeDetail } from "../components/invalid-time-detail";
 import { businessCapabilityLabel, businessDomainLabel } from "../domain/business-labels";
 import { caseIdentityDetails } from "../domain/case-identity";
 import { preciseTime } from "../domain/time";
 import {
   caseHref,
   decisionLabel,
-  formatDateTime,
   originLabel,
   parseLabel,
   relationLabel,
@@ -44,6 +46,30 @@ function latestFirst(left: WorkbenchRun, right: WorkbenchRun): number {
     right.updated_at.localeCompare(left.updated_at) ||
     right.id.localeCompare(left.id)
   );
+}
+
+// A missing attempt is resolved once from the authorized workspace. Exact
+// attempts keep the normal review polling; legacy run-only reads never follow
+// a later retry implicitly.
+function useCompareReview(caseId: string, runId: string, attemptId: string | null, invalid: boolean) {
+  const exact = useReview(caseId, !invalid && attemptId ? runId : "", attemptId);
+  const runOnly = useQuery({
+    queryKey: ["cases", caseId, "compare-run-only", runId],
+    queryFn: ({ signal }) => getReview(caseId, runId, null, signal),
+    enabled: !!caseId && !!runId && !attemptId && !invalid,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+  return attemptId && !invalid ? {
+    ...exact,
+    data: exact.isError || !exact.isFetchedAfterMount ? undefined : exact.data,
+  } : {
+    ...runOnly,
+    data: runOnly.isFetching || runOnly.isError ? undefined : runOnly.data,
+  };
 }
 
 function primaryContract(documents: ReviewDocument[]): ReviewDocument | null {
@@ -104,6 +130,7 @@ function RunSelect({
       />
       </label>
       {value ? <div className="meta caw-wrap">
+        <InvalidTimeDetail label="审查更新时间" value={value.updated_at} />
         <TechnicalDetail label="审查标识" value={value.id} />
         <TechnicalDetail label="执行标识" value={attemptId} />
         <TechnicalDetail label="审查状态编码" value={value.state} />
@@ -209,7 +236,7 @@ function MaterialPane({
                       </div>
                       <div>
                         <dt>上传时间</dt>
-                        <dd>{formatDateTime(selected.created_at)}</dd>
+                        <dd>{preciseTime(selected.created_at)}<InvalidTimeDetail value={selected.created_at} label="上传时间" /></dd>
                       </div>
                     </dl>
                     <TechnicalDetail
@@ -282,13 +309,19 @@ export function ComparePage() {
   const rightRunSelection = params.get("right_run_id") ?? "";
   const leftAttemptSelection = params.get("left_attempt_id");
   const rightAttemptSelection = params.get("right_attempt_id");
+  const leftLegacy = params.get("left_run_only") === "1";
+  const rightLegacy = params.get("right_run_only") === "1";
+  const leftInvalid = (params.has("left_run_id") && !leftRunSelection) || (params.has("left_attempt_id") && !leftAttemptSelection) ||
+    (params.has("left_run_only") && !leftLegacy) || (leftLegacy && params.has("left_attempt_id"));
+  const rightInvalid = (params.has("right_run_id") && !rightRunSelection) || (params.has("right_attempt_id") && !rightAttemptSelection) ||
+    (params.has("right_run_only") && !rightLegacy) || (rightLegacy && params.has("right_attempt_id"));
   const [leftDocumentSelection, setLeftDocumentSelection] = useState("");
   const [rightDocumentSelection, setRightDocumentSelection] = useState("");
   const [bottomTab, setBottomTab] = useState("修订证据");
   const [findingSelection, setFindingSelection] = useState("");
 
   const snapshot = snapshotQuery.data;
-  const selectedCase = caseSelection
+  const selectedCase = params.has("case_id")
     ? snapshot?.cases.find((item) => item.id === caseSelection) ?? null
     : snapshot?.cases.find((item) => snapshot.runs.filter((run) => run.case_id === item.id).length > 1) ?? snapshot?.cases[0] ?? null;
   const caseRuns =
@@ -297,20 +330,48 @@ export function ComparePage() {
           .filter((run) => run.case_id === selectedCase.id)
           .sort(latestFirst)
       : [];
-  const leftRun = leftRunSelection ? caseRuns.find((run) => run.id === leftRunSelection) ?? null : caseRuns[0] ?? null;
-  const rightRun = rightRunSelection ? caseRuns.find((run) => run.id === rightRunSelection) ?? null : caseRuns[1] ?? caseRuns[0] ?? null;
-  const leftAttemptId = leftAttemptSelection ?? leftRun?.attempt_id ?? null;
-  const rightAttemptId = rightAttemptSelection ?? rightRun?.attempt_id ?? null;
-  const leftReview = useReview(
+  const leftRun = params.has("left_run_id") ? caseRuns.find((run) => run.id === leftRunSelection) ?? null : caseRuns[0] ?? null;
+  const rightRun = params.has("right_run_id") ? caseRuns.find((run) => run.id === rightRunSelection) ?? null : caseRuns[1] ?? caseRuns[0] ?? null;
+  const leftAttemptId = leftAttemptSelection ?? (leftLegacy ? null : leftRun?.attempt_id ?? null);
+  const rightAttemptId = rightAttemptSelection ?? (rightLegacy ? null : rightRun?.attempt_id ?? null);
+  const leftReview = useCompareReview(
     selectedCase?.id ?? "",
     leftRun?.id ?? "",
     leftAttemptId,
+    leftInvalid,
   );
-  const rightReview = useReview(
+  const rightReview = useCompareReview(
     selectedCase?.id ?? "",
     rightRun?.id ?? "",
     rightAttemptId,
+    rightInvalid,
   );
+  useEffect(() => {
+    if (!snapshot || snapshotQuery.isError) return;
+    const next = new URLSearchParams(params);
+    if (!next.has("case_id") && selectedCase) next.set("case_id", selectedCase.id);
+    for (const side of [
+      { prefix: "left", run: leftRun, result: leftReview, invalid: leftInvalid },
+      { prefix: "right", run: rightRun, result: rightReview, invalid: rightInvalid },
+    ] as const) {
+      const runKey = `${side.prefix}_run_id`;
+      const attemptKey = `${side.prefix}_attempt_id`;
+      const legacyKey = `${side.prefix}_run_only`;
+      if (!side.run || side.invalid) continue;
+      if (!next.has(runKey)) next.set(runKey, side.run.id);
+      if (next.has(attemptKey) || next.has(legacyKey)) continue;
+      if (side.run.attempt_id) {
+        next.set(attemptKey, side.run.attempt_id);
+        continue;
+      }
+      const workspace = side.result.data;
+      if (!side.result.isSuccess || !workspace || workspace.run.id !== side.run.id || workspace.run.case_id !== selectedCase?.id) continue;
+      const attempt = workspace.review_attempts?.attempt;
+      if (attempt && attempt.id && attempt.run_id === side.run.id) next.set(attemptKey, attempt.id);
+      else if (workspace.review_attempts === null && workspace.review_attempts_reported) next.set(legacyKey, "1");
+    }
+    if (next.toString() !== params.toString()) setParams(next, { replace: true });
+  }, [snapshot, snapshotQuery.isError, params, setParams, selectedCase, leftRun, rightRun, leftReview.data, leftReview.isSuccess, rightReview.data, rightReview.isSuccess, leftInvalid, rightInvalid]);
   if (snapshotQuery.isLoading)
     return <PageStatus kind="loading" title="正在读取可比较的真实审查记录" />;
   if (snapshotQuery.isError || !snapshot)
@@ -332,20 +393,44 @@ export function ComparePage() {
       />
     );
 
-  const leftDocuments = leftReview.data?.documents ?? [];
-  const rightDocuments = rightReview.data?.documents ?? [];
+  const leftLegacyChanged = leftLegacy && !!leftReview.data?.review_attempts;
+  const rightLegacyChanged = rightLegacy && !!rightReview.data?.review_attempts;
+  function identityMismatch(workspace: typeof leftReview.data, run: WorkbenchRun | null, attemptId: string | null) {
+    if (!workspace) return false;
+    const attempt = workspace.review_attempts?.attempt;
+    return !run || workspace.run.id !== run.id || workspace.run.case_id !== selectedCase?.id ||
+      (!!attempt && (attempt.run_id !== run.id || (!!attemptId && attempt.id !== attemptId)));
+  }
+  const leftMismatch = identityMismatch(leftReview.data, leftRun, leftAttemptId);
+  const rightMismatch = identityMismatch(rightReview.data, rightRun, rightAttemptId);
+  const leftData = leftInvalid || leftLegacyChanged || leftMismatch ? undefined : leftReview.data;
+  const rightData = rightInvalid || rightLegacyChanged || rightMismatch ? undefined : rightReview.data;
+  const leftHref = selectedCase && leftRun && leftAttemptId && !leftInvalid && !leftMismatch && !leftLegacyChanged
+    ? `/cases/${selectedCase.id}/reviews/${leftRun.id}?attempt_id=${encodeURIComponent(leftAttemptId)}` : null;
+  const leftUnavailable = leftInvalid || leftMismatch || leftLegacy || (params.has("left_run_id") && !leftRun) || (!!leftRun && !leftAttemptId);
+  const leftDocuments = leftData?.documents ?? [];
+  const rightDocuments = rightData?.documents ?? [];
   const leftDocument =
     leftDocuments.find((item) => item.id === leftDocumentSelection) ??
     primaryContract(leftDocuments);
   const rightDocument =
     rightDocuments.find((item) => item.id === rightDocumentSelection) ??
     primaryContract(rightDocuments);
-  const revisions = leftReview.data?.revisions ?? [];
+  const revisions = leftData?.revisions ?? [];
+  const source = leftData?.revision_comparison_source;
   const comparisonsLinked = Boolean(
-    rightRun && leftReview.data?.previous_run_id === rightRun.id,
+    selectedCase && leftRun && rightRun && leftAttemptId && rightAttemptId && source &&
+    leftData?.run.id === leftRun.id && leftData.run.case_id === selectedCase.id &&
+    rightData?.run.id === rightRun.id && rightData.run.case_id === selectedCase.id &&
+    leftData.review_attempts?.attempt.id === leftAttemptId &&
+    leftData.review_attempts.attempt.run_id === leftRun.id &&
+    rightData.review_attempts?.attempt.id === rightAttemptId && rightData.review_attempts.attempt.run_id === rightRun.id &&
+    source.current.case_id === selectedCase.id && source.current.run_id === leftRun.id && source.current.attempt_id === leftAttemptId &&
+    source.previous.case_id === selectedCase.id && source.previous.run_id === rightRun.id && source.previous.attempt_id === rightAttemptId &&
+    leftData.previous_run_id === rightRun.id,
   );
   const bottomTabs = ["修订证据", "规则依据", "执行记录", "模型用量"];
-  const findings = leftReview.data?.findings ?? [];
+  const findings = leftData?.findings ?? [];
   const finding = findings.find((item) => item.id === findingSelection) ?? null;
   const decidedCount = findings.filter(
     (item) => item.decisions.length > 0,
@@ -354,6 +439,8 @@ export function ComparePage() {
     const next = new URLSearchParams(params);
     next.set(side, id);
     const attemptKey = side === "left_run_id" ? "left_attempt_id" : "right_attempt_id";
+    const legacyKey = side === "left_run_id" ? "left_run_only" : "right_run_only";
+    next.delete(legacyKey);
     const attempt = caseRuns.find((run) => run.id === id)?.attempt_id;
     if (attempt) next.set(attemptKey, attempt);
     else next.delete(attemptKey);
@@ -384,6 +471,7 @@ export function ComparePage() {
         <div>
           <strong>{selectedCase?.title ?? "版本对照"}</strong>
           <span>{selectedCase ? caseIdentityDetails(selectedCase, snapshot.members) : "案件不可用"}</span>
+          <InvalidTimeDetail value={selectedCase?.updated_at} label="案件更新时间" />
         </div>
         <nav className="compare-page-links" aria-label="版本对照导航">
           <Link to="/compare">全部合同</Link>
@@ -453,11 +541,9 @@ export function ComparePage() {
                       label="发现技术详情"
                       value={JSON.stringify({ finding_id: item.id, origin: item.origin, domain: item.domain, relation: item.relation })}
                     />
-                    <Link
-                      to={`/cases/${selectedCase?.id}/reviews/${leftRun?.id}?${new URLSearchParams({ ...(leftAttemptId ? { attempt_id: leftAttemptId } : {}), finding: item.id }).toString()}`}
-                    >
+                    {leftHref ? <Link to={`${leftHref}&finding=${encodeURIComponent(item.id)}`}>
                       打开原文与审查判断
-                    </Link>
+                    </Link> : <span>无法固定到这条执行记录。</span>}
                   </div>
                 ) : null}
               </article>
@@ -473,15 +559,8 @@ export function ComparePage() {
           <div className="compare-reading-tabs">
             <strong>文档审查</strong>
             <span>双栏对比</span>
-            <Link
-              to={
-                selectedCase && leftRun
-                  ? `/cases/${selectedCase.id}/reviews/${leftRun.id}${leftAttemptId ? `?attempt_id=${encodeURIComponent(leftAttemptId)}` : ""}`
-                  : "/review"
-              }
-            >
-              打开审查与决定
-            </Link>
+            {leftUnavailable ? <span>无法固定到这条执行记录。</span> :
+              <Link to={leftHref ?? "/review"}>打开审查与决定</Link>}
           </div>
           <div className="compare-selectors">
             <RunSelect
@@ -499,6 +578,10 @@ export function ComparePage() {
               onChange={(id) => chooseRun("right_run_id", id)}
             />
           </div>
+          {leftInvalid || rightInvalid ? <p role="alert">所选执行身份为空或相互冲突，无法读取该侧记录。</p> : null}
+          {leftMismatch || rightMismatch ? <p role="alert">返回的审查或执行身份与所选记录不一致，无法读取该侧记录。</p> : null}
+          {leftLegacyChanged || rightLegacyChanged ? <p role="alert">所选历史记录原无执行身份，当前返回了不同执行记录，无法确认是同一版本。</p> : null}
+          {(leftLegacy && !leftLegacyChanged) || (rightLegacy && !rightLegacyChanged) ? <p>部分历史记录仅有审查身份，没有可固定的执行身份；派生对照无法验证。</p> : null}
           <ol className="compare-chain" aria-label="对照链路">
             <li data-state={leftRun ? "filled" : "open"}>
               <span className="compare-chain-mark" aria-hidden="true" />
@@ -574,12 +657,12 @@ export function ComparePage() {
           <div className="compare-result-body">
             {!comparisonsLinked ? (
               <p className="compare-unavailable">
-                当前运行未将所选历史运行声明为前序；两份材料仍可阅读，不能据此推断风险变化。
+                当前选择与修订来源不一致或没有来源身份，无法验证修订对照；两侧原文和发现仍可查看。
               </p>
-            ) : leftReview.data?.revision_comparison_reason ? (
+            ) : leftData?.revision_comparison_reason ? (
               <p className="compare-unavailable">
                 服务端没有生成修订对照：
-                {leftReview.data.revision_comparison_reason}
+                {leftData.revision_comparison_reason}
               </p>
             ) : revisions.length === 0 ? (
               <p className="compare-unavailable">
@@ -626,11 +709,11 @@ export function ComparePage() {
             {[
               {
                 label: "左侧运行",
-                evaluations: leftReview.data?.evaluations ?? [],
+                evaluations: leftData?.evaluations ?? [],
               },
               {
                 label: "右侧运行",
-                evaluations: rightReview.data?.evaluations ?? [],
+                evaluations: rightData?.evaluations ?? [],
               },
             ].map((side) => (
               <section key={side.label}>
@@ -675,8 +758,8 @@ export function ComparePage() {
         ) : bottomTab === "执行记录" ? (
           <div className="compare-result-columns">
             {[
-              { label: "左侧运行", review: leftReview.data },
-              { label: "右侧运行", review: rightReview.data },
+              { label: "左侧运行", review: leftData },
+              { label: "右侧运行", review: rightData },
             ].map((side) => (
               <section key={side.label}>
                 <h3>{side.label}</h3>
@@ -696,8 +779,9 @@ export function ComparePage() {
                           第 {attempt.ordinal} 次，
                           {runLabel(attempt.state)}，
                           {attempt.finished_at
-                            ? formatDateTime(attempt.finished_at)
+                            ? preciseTime(attempt.finished_at)
                             : "结束时间未报告"}
+                          <InvalidTimeDetail value={attempt.finished_at} label="执行结束时间" />
                         </li>
                       ))}
                     </ol>
@@ -722,8 +806,8 @@ export function ComparePage() {
         ) : (
           <div className="compare-result-columns">
             {[
-              { label: "左侧运行", review: leftReview.data },
-              { label: "右侧运行", review: rightReview.data },
+              { label: "左侧运行", review: leftData },
+              { label: "右侧运行", review: rightData },
             ].map((side) => (
               <section key={side.label}>
                 <h3>{side.label}</h3>

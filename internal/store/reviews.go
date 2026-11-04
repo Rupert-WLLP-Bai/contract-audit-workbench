@@ -238,6 +238,7 @@ type Workspace struct {
 	PreviousRunID            string
 	Revisions                []Revision
 	RevisionComparisonReason string
+	RevisionComparisonSource *RevisionComparisonSource
 	Execution                *Execution `json:"execution"`
 }
 
@@ -302,7 +303,12 @@ func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAtte
 		}
 	}
 	docs := st.documentsForAttempt(run, attemptID)
-	prevID, revisions, extra, comparisonReason := s.compareRun(&st, run, docs, attemptID)
+	comparisonSource := RevisionComparisonSource{}
+	prevID, revisions, extra, comparisonReason := s.compareRunWithSource(&st, run, docs, &comparisonSource, attemptID)
+	var source *RevisionComparisonSource
+	if comparisonSource.Current.AttemptID != "" && comparisonSource.Previous.AttemptID != "" {
+		source = &comparisonSource
+	}
 	if len(extra) > 0 {
 		docs = append(append([]Interpreted{}, docs...), extra...)
 	}
@@ -341,6 +347,7 @@ func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAtte
 		PreviousRunID:            prevID,
 		Revisions:                revisions,
 		RevisionComparisonReason: comparisonReason,
+		RevisionComparisonSource: source,
 		Execution:                executionView,
 	}, nil
 }

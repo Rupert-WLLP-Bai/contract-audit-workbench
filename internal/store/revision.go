@@ -62,14 +62,28 @@ type boundConstraint struct {
 }
 
 func (s *Store) compareRun(st *state, run Run, current []Interpreted, selectedAttemptID ...string) (string, []Revision, []Interpreted, string) {
+	return s.compareRunWithSource(st, run, current, nil, selectedAttemptID...)
+}
+
+// RevisionComparisonSource identifies the attempts actually used to derive a comparison.
+type RevisionComparisonSource struct {
+	Current  RevisionComparisonSide `json:"current"`
+	Previous RevisionComparisonSide `json:"previous"`
+}
+
+type RevisionComparisonSide struct {
+	CaseID    string `json:"case_id"`
+	RunID     string `json:"run_id"`
+	AttemptID string `json:"attempt_id"`
+}
+
+func (s *Store) compareRunWithSource(st *state, run Run, current []Interpreted, source *RevisionComparisonSource, selectedAttemptID ...string) (string, []Revision, []Interpreted, string) {
+	if source != nil {
+		*source = RevisionComparisonSource{}
+	}
 	prev, ok := st.previousRun(run)
 	if !ok {
 		return "", []Revision{}, nil, ""
-	}
-	previousSnapshot, currentSnapshot := st.snapshotOf(prev.ID), st.snapshotOf(run.ID)
-	if !sameRunConfiguration(previousSnapshot, currentSnapshot) ||
-		!sameRunConfiguration(currentSnapshot, withFrozenGovernance(s.comparisonSignature(st, run), currentSnapshot)) {
-		return prev.ID, []Revision{}, nil, "两次审查的规则或模型配置与当前版本不一致，无法自动判断修改稿差异的原因；请查看两次记录并人工比较。"
 	}
 	currentAttemptID := ""
 	if len(selectedAttemptID) > 0 {
@@ -83,6 +97,17 @@ func (s *Store) compareRun(st *state, run Run, current []Interpreted, selectedAt
 	previousAttemptID := ""
 	if attempt, ok := st.latestAttempt(prev.ID); ok {
 		previousAttemptID = attempt.ID
+	}
+	if source != nil && currentAttemptID != "" && previousAttemptID != "" {
+		*source = RevisionComparisonSource{
+			Current:  RevisionComparisonSide{CaseID: run.CaseID, RunID: run.ID, AttemptID: currentAttemptID},
+			Previous: RevisionComparisonSide{CaseID: prev.CaseID, RunID: prev.ID, AttemptID: previousAttemptID},
+		}
+	}
+	previousSnapshot, currentSnapshot := st.snapshotOf(prev.ID), st.snapshotOf(run.ID)
+	if !sameRunConfiguration(previousSnapshot, currentSnapshot) ||
+		!sameRunConfiguration(currentSnapshot, withFrozenGovernance(s.comparisonSignature(st, run), currentSnapshot)) {
+		return prev.ID, []Revision{}, nil, "两次审查的规则或模型配置与当前版本不一致，无法自动判断修改稿差异的原因；请查看两次记录并人工比较。"
 	}
 	if !ruleResultsCommitted(st, previousAttemptID) || !ruleResultsCommitted(st, currentAttemptID) {
 		return prev.ID, []Revision{}, nil, "两次执行尚未都保存完整的规则结果，无法判断修改稿的风险是否消除；请查看原始证据。"

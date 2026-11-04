@@ -17,6 +17,7 @@ import type { WorkbenchCase, WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
 import { TechnicalDetail } from "../components/technical-detail";
+import { InvalidTimeDetail } from "../components/invalid-time-detail";
 import { caseIdentityDetails, caseSearchText } from "../domain/case-identity";
 import {
   businessStatusLabel,
@@ -117,9 +118,9 @@ export function CompareEntryPage() {
       key: "updated",
       width: 165,
       render: (_, item) => (
-        <time dateTime={item.updated_at}>
-          {formatDateTime(item.updated_at)}
-        </time>
+        <div><time dateTime={item.updated_at}>{formatDateTime(item.updated_at)}</time>
+          <InvalidTimeDetail value={item.updated_at} label="案件更新时间" />
+        </div>
       ),
     },
     {

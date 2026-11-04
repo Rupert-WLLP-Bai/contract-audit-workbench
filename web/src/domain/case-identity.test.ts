@@ -27,7 +27,7 @@ describe("case identity", () => {
     expect(caseOptionLabel(second)).toContain("09:02:04");
     expect(caseOptionLabel(legacy)).toContain("业务编号未登记");
     expect(caseOptionLabel(legacy)).toContain("案件标识 case-full-legacy");
-    expect(caseIdentityDetails({ ...legacy, updated_at: "invalid" })).toContain("更新时间 未记录");
+    expect(caseIdentityDetails({ ...legacy, updated_at: "invalid" })).toContain("更新时间 时间格式异常");
     expect(caseSearchText(first)).toContain("政企专线");
   });
 

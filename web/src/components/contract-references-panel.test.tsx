@@ -8,19 +8,21 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render as rtlRender, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import type { ReactElement, ReactNode } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { emptyDraft } from "../api/contracts";
 import { ApiError } from "../api/http";
 import { ContractReferencesPanel } from "./contract-references-panel";
 
 const mock = vi.hoisted(() => ({
-  cases: { isError: false, isSuccess: true, isLoading: false, data: [] as unknown[] },
+  cases: { isError: false, isSuccess: true, isLoading: false, data: [] } as { isError: boolean; isSuccess: boolean; isLoading: boolean; isFetching?: boolean; dataUpdatedAt?: number; data: unknown[] },
   session: { isError: false, isSuccess: true, isFetching: false, data: { id: "actor-a", display_name: "只读成员甲", role: "viewer", audience: "client", tenant_id: "tenant-a", org_id: "org-a", principal_id: "principal-a", csrf_token: "a".repeat(32), context_switch_enabled: false, active_context: { membership_id: "membership-a", context_version: "1", tenant_id: "tenant-a", tenant_name: "租户甲", org_id: "org-a", org_name: "组织甲" } } },
   check: vi.fn(),
 }));
-vi.mock("../api/queries", () => ({ useCases: () => mock.cases, useSession: () => mock.session }));
+vi.mock("../api/queries", async (importOriginal) => ({ ...await importOriginal<typeof import("../api/queries")>(), useCases: () => mock.cases, useSession: () => mock.session }));
 vi.mock("../api/contracts", async (importOriginal) => ({
   ...await importOriginal<typeof import("../api/contracts")>(),
   checkContractReferences: mock.check,
@@ -28,6 +30,53 @@ vi.mock("../api/contracts", async (importOriginal) => ({
 
 const record = { id: "case-full-1", title: "同名来源", contract_type: "service", document_count: 0,
   pending_decisions: 0, latest_run: null, updated_at: "2026-11-05T01:02:03Z", case_number: "BUS-1" };
+
+function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(["cases"], [record]);
+  return rtlRender(ui, { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+}
+
+it("invalidates checks across a same-reference authorization refetch, including a batched cycle", async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(["cases"], [record], { updatedAt: 42 });
+  const sameData = client.getQueryData(["cases"]);
+  const draft = emptyDraft();
+  function ObservedPanel() {
+    const result = useQuery({ queryKey: ["cases"], queryFn: async () => [record], enabled: false });
+    mock.cases = { isError: result.isError, isSuccess: result.isSuccess, isLoading: result.isLoading,
+      isFetching: result.isFetching, dataUpdatedAt: result.dataUpdatedAt, data: result.data ?? [] };
+    return <ContractReferencesPanel contractID="contract-A" draft={draft} />;
+  }
+  mock.check.mockResolvedValueOnce({ source_case_id: record.id, source: "draft", checked_at: "重验前结果", subjects: [], materials: [], warnings: [] });
+  const view = render(<QueryClientProvider client={client}><ObservedPanel /></QueryClientProvider>);
+  const user = userEvent.setup();
+  const button = screen.getByRole("button", { name: "核对引用" });
+  await user.click(button);
+  expect(await screen.findByText(/重验前结果/)).toBeVisible();
+  const deferred = Promise.withResolvers<typeof record[]>();
+  const now = vi.spyOn(Date, "now").mockReturnValue(42);
+  let fetching!: Promise<unknown>;
+  act(() => { fetching = client.fetchQuery({ queryKey: ["cases"], queryFn: () => deferred.promise, staleTime: 0 }); });
+  await waitFor(() => expect(button).toBeDisabled());
+  expect(screen.queryByText(/重验前结果/)).not.toBeInTheDocument();
+  await act(async () => { deferred.resolve([{ ...record }]); await fetching; });
+  expect(client.getQueryData(["cases"])).toBe(sameData);
+  expect(client.getQueryState(["cases"])?.dataUpdatedAt).toBe(42);
+  expect(screen.queryByText(/重验前结果/)).not.toBeInTheDocument();
+  now.mockRestore();
+
+  const delayedCheck = Promise.withResolvers<unknown>();
+  mock.check.mockReturnValueOnce(delayedCheck.promise);
+  await user.click(button);
+  await act(async () => { await client.fetchQuery({ queryKey: ["cases"], queryFn: async () => [{ ...record }], staleTime: 0 }); });
+  await act(async () => delayedCheck.resolve({ source_case_id: record.id, source: "draft", checked_at: "重验前的迟到结果", subjects: [], materials: [], warnings: [] }));
+  expect(screen.queryByText(/重验前的迟到结果/)).not.toBeInTheDocument();
+  await act(async () => { await client.invalidateQueries({ queryKey: ["cases"], refetchType: "none" }); });
+  expect(button).toBeDisabled();
+  view.unmount();
+  client.clear();
+});
 
 beforeEach(() => {
   mock.cases = { isError: false, isSuccess: true, isLoading: false, data: [record] };

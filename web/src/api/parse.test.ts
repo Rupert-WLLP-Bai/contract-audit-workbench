@@ -305,6 +305,19 @@ describe("response parsers", () => {
     });
   });
 
+  it("accepts an absent revision source and strictly parses complete attempt identities when present", () => {
+    const workspace = { run: { id: "current", case_id: "case", state: "completed" }, audit_events: [] };
+    const source = { current: { case_id: "case", run_id: "current", attempt_id: "current-attempt" },
+      previous: { case_id: "case", run_id: "previous", attempt_id: "previous-attempt" } };
+    expect(parseReviewWorkspace(workspace).revision_comparison_source).toBeUndefined();
+    expect(parseReviewWorkspace({ ...workspace, revision_comparison_source: source }).revision_comparison_source).toEqual(source);
+    for (const invalid of [null, {}, { ...source, extra: true },
+      { ...source, previous: { ...source.previous, attempt_id: "" } },
+      { ...source, previous: { ...source.previous, extra: true } }]) {
+      expect(() => parseReviewWorkspace({ ...workspace, revision_comparison_source: invalid })).toThrow();
+    }
+  });
+
   it("reads public attempts and frozen document identity without privileged diagnostics", () => {
     const attempt = {
       id: "a1", run_id: "r1", ordinal: 1, retry_of_attempt_id: null,

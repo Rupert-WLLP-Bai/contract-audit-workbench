@@ -42,6 +42,12 @@ function LocationState() {
 }
 
 describe("cases table", () => {
+  it("reports malformed update times and preserves the precise raw value for diagnostics", async () => {
+    render(<MemoryRouter><CasesTable items={[{ ...item, updated_at: "bad-case-time" }]} {...tableProps} /></MemoryRouter>);
+    expect(screen.getAllByText(/时间格式异常/).length).toBeGreaterThan(0);
+    await userEvent.setup().click(screen.getByText("案件更新时间原始值"));
+    expect(screen.getByText("bad-case-time")).toBeVisible();
+  });
   it("opens a case from the row title and shows the run in words", () => {
     render(
       <MemoryRouter initialEntries={["/cases?q=network&run=needs_human"]}>

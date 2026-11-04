@@ -8,7 +8,7 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { parseReviewWorkspace } from "../api/parse";
@@ -40,4 +40,17 @@ it("shows attempt times and stable identities without changing selection after h
   const option = screen.getByRole("option", { name: /审查标识 run-new.*执行标识 att-new/ });
   await user.click(option);
   expect(onChange).toHaveBeenCalledWith(reviewChoiceKey("run-new", "att-new"), expect.anything());
+});
+
+it("distinguishes invalid timestamps and exposes their exact raw values for copying", async () => {
+  const original = history("run-invalid", "att-invalid", "invalid-accepted-原值");
+  original.workspace.review_attempts!.attempt.started_at = "invalid-start-原值";
+  const choice = reviewChoices([original]);
+  render(<ReviewChoiceSelect label="选择审查" choices={choice} value={choice[0]!.key} onChange={() => {}} />);
+  expect(screen.getAllByText(/时间格式异常/).length).toBeGreaterThan(0);
+  const user = userEvent.setup();
+  const detail = screen.getByText("受理时间原始值").closest("details")!;
+  await user.click(screen.getByText("受理时间原始值"));
+  expect(screen.getByText("invalid-accepted-原值")).toBeVisible();
+  expect(within(detail).getByRole("button", { name: "复制完整值" })).toBeVisible();
 });

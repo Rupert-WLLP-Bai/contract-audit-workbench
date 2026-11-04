@@ -718,6 +718,8 @@ export interface ReviewWorkspace {
   documents: ReviewDocument[];
   findings: Finding[];
   review_attempts: ReviewAttempts | null;
+  /** Client-side presence indicator; absence on older responses is not proof of a legacy run. */
+  review_attempts_reported?: boolean;
   agent_review?: BusinessAgentReview | null;
   execution: Execution | null;
   snapshot?: RunSnapshot | null;
@@ -727,6 +729,10 @@ export interface ReviewWorkspace {
   previous_run_id?: string | null;
   revisions?: RevisionComparison[];
   revision_comparison_reason?: string | null;
+  revision_comparison_source?: {
+    current: { case_id: string; run_id: string; attempt_id: string };
+    previous: { case_id: string; run_id: string; attempt_id: string };
+  };
   legal_authorities?: FrozenLegalReviewProjection;
 }
 

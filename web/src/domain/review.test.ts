@@ -151,7 +151,7 @@ describe("layout and events", () => {
 describe("business display time", () => {
   it("formats UTC timestamps in the fixed Asia/Shanghai zone", () => {
     expect(formatDateTime("2026-01-15T01:00:00.000Z")).toContain("2026/01/15 09:00");
-    expect(formatDateTime("invalid-date")).toBe("时间未记录");
+    expect(formatDateTime("invalid-date")).toBe("时间格式异常");
     expect(formatDateTime("")).toBe("时间未记录");
   });
 });

@@ -311,3 +311,22 @@ func TestBusinessSnapshotIncludesOnlyFrozenConfigIdentity(t *testing.T) {
 		t.Fatalf("rule details leaked: %v", result)
 	}
 }
+
+func TestBusinessWorkspaceRevisionSourceIsOptionalAndExact(t *testing.T) {
+	ws := store.Workspace{Case: store.Case{ID: "case"}, View: store.RunView{Run: store.Run{ID: "current"}}}
+	if _, ok := workspaceJSON(nil, ws)["revision_comparison_source"]; ok {
+		t.Fatal("unavailable source was invented")
+	}
+	ws.RevisionComparisonSource = &store.RevisionComparisonSource{
+		Current:  store.RevisionComparisonSide{CaseID: "case", RunID: "current", AttemptID: "current-attempt"},
+		Previous: store.RevisionComparisonSide{CaseID: "case", RunID: "previous", AttemptID: "previous-retry"},
+	}
+	body := diagnosticTestObject(t, workspaceJSON(nil, ws))
+	source := body["revision_comparison_source"].(map[string]any)
+	current := source["current"].(map[string]any)
+	previous := source["previous"].(map[string]any)
+	if current["case_id"] != "case" || current["run_id"] != "current" || current["attempt_id"] != "current-attempt" ||
+		previous["case_id"] != "case" || previous["run_id"] != "previous" || previous["attempt_id"] != "previous-retry" {
+		t.Fatalf("unexpected source: %v", source)
+	}
+}

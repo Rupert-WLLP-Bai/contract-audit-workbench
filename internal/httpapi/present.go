@@ -294,6 +294,9 @@ func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) ma
 	if ws.LegalAuthorities != nil {
 		out["legal_authorities"] = ws.LegalAuthorities
 	}
+	if ws.RevisionComparisonSource != nil {
+		out["revision_comparison_source"] = ws.RevisionComparisonSource
+	}
 	return out
 }
 

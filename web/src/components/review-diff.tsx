@@ -15,7 +15,7 @@ import { Link } from "react-router";
 import { getReview, getReviewHistory } from "../api/endpoints";
 import { errorMessage } from "../api/http";
 import type { EvidenceAnchor, ReviewWorkspace } from "../api/types";
-import { decisionLabel, formatDateTime, originLabel, relationLabel, runLabel } from "../domain/review";
+import { decisionLabel, originLabel, relationLabel, runLabel } from "../domain/review";
 import {
   compareReviewWorkspaces,
   frozenDocument,
@@ -35,6 +35,7 @@ import { reviewChoiceForKey, reviewChoiceLabel, reviewChoiceShortLabel, reviewCh
 import { preciseTime } from "../domain/time";
 import { businessCapabilityLabel } from "../domain/business-labels";
 import { TechnicalDetail } from "./technical-detail";
+import { InvalidTimeDetail } from "./invalid-time-detail";
 import "./review-diff.css";
 
 interface ReviewDiffProps {
@@ -90,6 +91,10 @@ function Choice({ label, choices, value, onChange }: {
     </label>
     {selected ? <div className="meta caw-wrap">
       执行开始 {preciseTime(selected.attempt.started_at)} · 完成时间 {preciseTime(selected.attempt.finished_at)} · 审查更新时间 {preciseTime(selected.workspace.run.updated_at)}
+      <InvalidTimeDetail value={selected.attempt.accepted_at} label="受理时间" />
+      <InvalidTimeDetail value={selected.attempt.started_at} label="执行开始时间" />
+      <InvalidTimeDetail value={selected.attempt.finished_at} label="完成时间" />
+      <InvalidTimeDetail value={selected.workspace.run.updated_at} label="审查更新时间" />
       <TechnicalDetail label="审查标识" value={selected.runId} />
       <TechnicalDetail label="执行标识" value={selected.attempt.id} />
     </div> : null}
@@ -219,7 +224,7 @@ function DiffSide({ label, side }: { label: string; side: ReviewDiffSide | null 
     {anchors.length ? <ul className="review-diff-citations">{anchors.map((anchor, index) => <Citation key={`${anchor.id}-${index}`} workspace={side.workspace} anchor={anchor} />)}</ul> : <p className="meta">未返回可定位的引用，不能从本侧定位原文。</p>}
     {finding?.decisions.length ? <details>
       <summary>人工决定历史（独立追加）</summary>
-      <ul>{finding.decisions.map((decision) => <li key={decision.id}>{decisionLabel(decision.action)} · {decision.actor} · {formatDateTime(decision.decided_at)}：{decision.reason}<TechnicalDetail label="决定类型技术详情" value={decision.action} /></li>)}</ul>
+      <ul>{finding.decisions.map((decision) => <li key={decision.id}>{decisionLabel(decision.action)} · {decision.actor} · {preciseTime(decision.decided_at)}：{decision.reason}<InvalidTimeDetail value={decision.decided_at} label="决定时间" /><TechnicalDetail label="决定类型技术详情" value={decision.action} /></li>)}</ul>
     </details> : null}
   </section>;
 }
