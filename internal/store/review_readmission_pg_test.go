@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Verifies explicit new admission after user-cancelled scan preparation, exact command replay, concurrent requests, current authorization and tenant epoch, and fresh frozen inputs using restricted PostgreSQL roles.
+// Purpose: Verifies new admissions after cancelled preparation, exact command replay across sessions, concurrent requests, current identity and tenant epochs, fresh frozen inputs and migration preservation using restricted PostgreSQL roles.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04

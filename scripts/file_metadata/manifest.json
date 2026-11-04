@@ -174,6 +174,7 @@
       "internal/store/migrations/0039_jurisdiction_operations_projection.sql",
       "internal/store/migrations/0040_case_context_shared_fence.sql",
       "internal/store/migrations/0041_intake_session_recovery.sql",
+      "internal/store/migrations/0042_review_receipt_session_recovery.sql",
       "internal/store/offline_migrator_provision.go",
       "internal/store/offline_migrator_provision_pg_test.go",
       "internal/store/operation_authority.go",
@@ -8010,7 +8011,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "96e305417c39466a8282c237209a17e6acfa285a",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "docs/operations/deployment.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -8346,7 +8347,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "96e305417c39466a8282c237209a17e6acfa285a",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "docs/operations/tenant-restore.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -23173,7 +23174,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "378e1664957acb57d12b136cf67a6f4dee853eb8",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "internal/httpapi/pending_image_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -31149,7 +31150,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "96e305417c39466a8282c237209a17e6acfa285a",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "internal/store/case_context_migration_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -34873,7 +34874,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "378e1664957acb57d12b136cf67a6f4dee853eb8",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "internal/store/execution.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -37955,7 +37956,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "96e305417c39466a8282c237209a17e6acfa285a",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "internal/store/migrations.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -40520,15 +40521,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "internal/store/offline_migrator_provision_pg_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -43561,7 +43562,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "96e305417c39466a8282c237209a17e6acfa285a",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "internal/store/service_roles.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -44700,7 +44701,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "96e305417c39466a8282c237209a17e6acfa285a",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "internal/store/table_catalog.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -45182,7 +45183,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "96e305417c39466a8282c237209a17e6acfa285a",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "internal/store/tenant_identity_pg_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -45227,15 +45228,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "5bc7aa15307b8eaf8b86787d3d16078a7263cf37",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "internal/store/tenant_identity_role_provision.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -46323,15 +46324,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "internal/store/write_idempotency.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -49673,7 +49674,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "378e1664957acb57d12b136cf67a6f4dee853eb8",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "scripts/check_fast.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -50302,7 +50303,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "96e305417c39466a8282c237209a17e6acfa285a",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "scripts/file_metadata/policy.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -51328,7 +51329,7 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "378e1664957acb57d12b136cf67a6f4dee853eb8",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "scripts/test_check_fast.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -72118,8 +72119,61 @@
         "reason": "internal/store/migrations/0041_intake_session_recovery.sql: Versioned migration bytes are integrity-checked after application and must not be altered by a metadata header."
       }
     },
+    "internal/store/migrations/0042_review_receipt_session_recovery.sql": {
+      "purpose": "Adds narrowly scoped recovery of original review admission receipts across valid sessions without changing command stamps or insertion fences.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "User-confirmed #115 project-author instruction; not inferred from Git author metadata."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
+          "path": "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-04",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
+          "path": "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE identifies Bai Junhao as rights holder for project-owned materials; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "manifest-only",
+      "header_state": "manifest-only",
+      "exception": {
+        "rule_id": "review-receipt-session-recovery-migration",
+        "source": "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+        "reason": "internal/store/migrations/0042_review_receipt_session_recovery.sql: Versioned migration bytes are integrity-checked after application and must not be altered by a metadata header."
+      }
+    },
     "internal/store/review_readmission_pg_test.go": {
-      "purpose": "Verifies explicit new admission after user-cancelled scan preparation, exact command replay, concurrent requests, current authorization and tenant epoch, and fresh frozen inputs using restricted PostgreSQL roles.",
+      "purpose": "Verifies new admissions after cancelled preparation, exact command replay across sessions, concurrent requests, current identity and tenant epochs, fresh frozen inputs and migration preservation using restricted PostgreSQL roles.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -72149,9 +72203,9 @@
         "value": "2026-11-04",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "378e1664957acb57d12b136cf67a6f4dee853eb8",
+          "commit": "ef030605fe0197f38569b0e279c22840c1dc9c53",
           "path": "internal/store/review_readmission_pg_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
