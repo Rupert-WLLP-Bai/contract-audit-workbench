@@ -11,19 +11,173 @@
 package modelgateway
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"contractaudit/internal/model"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type frozenBarrier struct {
 	*gatewayBarrierModels
 	identity string
+}
+
+func TestStructuredReviewRejectsFrozenLegacySnapshot(t *testing.T) {
+	t.Setenv("CAW_STRUCTURED_OUTPUT_ENABLED", "")
+	st, admin := openGatewayTestStore(t)
+	var calls atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { calls.Add(1); w.WriteHeader(http.StatusOK) }))
+	defer provider.Close()
+	config := gatewayTestConfig("openai-compatible", provider.URL+"/v1")
+	legacy := model.ConfigurationIDFor(config.UpstreamBaseURL, config.ChatModel, config.OCRModel)
+	release := make(chan struct{})
+	models := &frozenBarrier{gatewayBarrierModels: &gatewayBarrierModels{entered: make(chan model.DelegatedScope, 1), release: release}, identity: legacy}
+	st.UseModels(models)
+	caseID, _ := createGatewayCase(t, st, admin, "legacy frozen review")
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	acceptance, err := st.StartReviewAsync(ctx, admin, caseID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, err := st.ClaimNextJob(ctx, "legacy-structured-worker", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() { defer close(done); _ = st.RunClaimedJob(ctx, claim) }()
+	defer func() { close(release); <-done }()
+	var scope model.DelegatedScope
+	select {
+	case scope = <-models.entered:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	pool, err := pgxpool.New(ctx, os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	query := `SELECT model_configuration_id, row_to_json(s)::text FROM ` + pgx.Identifier{st.SchemaName(), "review_run_snapshots"}.Sanitize() + ` s WHERE run_id=$1`
+	var beforeID, before string
+	if err := pool.QueryRow(ctx, query, acceptance.RunID).Scan(&beforeID, &before); err != nil || beforeID != legacy {
+		t.Fatalf("legacy snapshot %q: %v", beforeID, err)
+	}
+	t.Setenv("CAW_STRUCTURED_OUTPUT_ENABLED", "true")
+	t.Setenv("CAW_STRUCTURED_OUTPUT_PROVIDER_URL", config.UpstreamBaseURL)
+	t.Setenv("CAW_STRUCTURED_OUTPUT_REVIEW_MODEL", config.ChatModel)
+	v4, _, err := model.StructuredConfigurationIDFor(config.UpstreamBaseURL, config.ChatModel, config.OCRModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, gateway := startGatewayServer(t, st, config)
+	scope.ConfigurationID, scope.ProviderURL = v4, config.UpstreamBaseURL
+	client := model.New(model.Config{BaseURL: gateway.URL + "/v1", ProviderURL: config.UpstreamBaseURL, Gateway: true, APIKey: config.WorkerCredential, ChatModel: config.ChatModel, OCRModel: config.OCRModel})
+	if _, err := client.Warranty(model.WithDelegatedScope(ctx, scope), nil); err == nil {
+		t.Fatal("legacy snapshot accepted new structured configuration")
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("legacy snapshot reached provider: %d", calls.Load())
+	}
+	var afterID, after string
+	if err := pool.QueryRow(ctx, query, acceptance.RunID).Scan(&afterID, &after); err != nil || afterID != beforeID || after != before {
+		t.Fatalf("legacy snapshot changed: %v", err)
+	}
+}
+
+func TestStructuredReviewUsesFrozenIdentityAndSettles(t *testing.T) {
+	st, admin := openGatewayTestStore(t)
+	var calls atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		var payload struct {
+			ResponseFormat json.RawMessage `json:"response_format"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || !bytes.Equal(payload.ResponseFormat, model.StructuredResponseFormat("warranty")) {
+			t.Errorf("provider schema mismatch: %s %v", payload.ResponseFormat, err)
+		}
+		_, _ = io.WriteString(w, `{"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18},"choices":[{"message":{"content":"{\"claim\":\"\",\"relation\":\"compatible\",\"disposition\":\"false_positive\",\"quotes\":[]}"},"finish_reason":"stop"}]}`)
+	}))
+	defer provider.Close()
+	config := gatewayTestConfig("openai-compatible", provider.URL+"/v1")
+	t.Setenv("CAW_STRUCTURED_OUTPUT_ENABLED", "true")
+	t.Setenv("CAW_STRUCTURED_OUTPUT_PROVIDER_URL", config.UpstreamBaseURL)
+	t.Setenv("CAW_STRUCTURED_OUTPUT_REVIEW_MODEL", config.ChatModel)
+	id, _, err := model.StructuredConfigurationIDFor(config.UpstreamBaseURL, config.ChatModel, config.OCRModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, gateway := startGatewayServer(t, st, config)
+	release := make(chan struct{})
+	models := &frozenBarrier{gatewayBarrierModels: &gatewayBarrierModels{entered: make(chan model.DelegatedScope, 1), release: release}, identity: id}
+	st.UseModels(models)
+	caseID, _ := createGatewayCase(t, st, admin, "structured frozen review")
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	if _, err := st.StartReviewAsync(ctx, admin, caseID); err != nil {
+		t.Fatal(err)
+	}
+	claim, err := st.ClaimNextJob(ctx, "structured-worker", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() { defer close(done); _ = st.RunClaimedJob(ctx, claim) }()
+	defer func() { close(release); <-done }()
+	var scope model.DelegatedScope
+	select {
+	case scope = <-models.entered:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	scope.ConfigurationID = id
+	scope.ProviderURL = config.UpstreamBaseURL
+	client := model.New(model.Config{BaseURL: gateway.URL + "/v1", ProviderURL: config.UpstreamBaseURL, Gateway: true, APIKey: config.WorkerCredential, ChatModel: config.ChatModel, OCRModel: config.OCRModel})
+	if _, err := client.Warranty(model.WithDelegatedScope(ctx, scope), nil); err != nil {
+		t.Fatal(err)
+	}
+	post := func(declared model.DelegatedScope, format json.RawMessage) int {
+		payload, _ := json.Marshal(map[string]any{"model": config.ChatModel, "max_tokens": 8, "messages": []map[string]string{{"role": "user", "content": "test"}}, "response_format": format})
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, gateway.URL+"/v1/chat/completions", bytes.NewReader(payload))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("X-Contract-Service-Key", config.WorkerCredential)
+		req.Header.Set("X-Audit-Execution-Scope", encodedGatewayScope(t, declared))
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		_, _ = io.Copy(io.Discard, res.Body)
+		return res.StatusCode
+	}
+	old := scope
+	old.ConfigurationID = model.ConfigurationIDFor(config.UpstreamBaseURL, config.ChatModel, config.OCRModel)
+	if status := post(old, model.StructuredResponseFormat("warranty")); status < 400 {
+		t.Fatalf("old identity accepted: %d", status)
+	}
+	if status := post(scope, json.RawMessage(`{"type":"json_schema"}`)); status < 400 {
+		t.Fatalf("arbitrary schema accepted: %d", status)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("provider calls=%d", calls.Load())
+	}
+	usage, active := readGatewayAccounting(t, caseID)
+	if len(usage) != 1 || usage[0].Status != "completed" || !usage[0].TotalTokens.Valid || usage[0].TotalTokens.Int64 != 18 {
+		t.Fatalf("settlement %+v", usage)
+	}
+	assertNoActiveGatewayLeases(t, active)
 }
 
 func (m *frozenBarrier) ConfigurationID() string { return m.identity }

@@ -213,3 +213,74 @@ func TestModelChangeRequiresNewRunAndPreservesHistory(t *testing.T) {
 		t.Fatalf("replacement run did not use its configured model: %+v", configured.Snapshot)
 	}
 }
+
+func TestInvalidStructuredConfigurationCannotSelectOCR(t *testing.T) {
+	t.Setenv("CAW_STRUCTURED_OUTPUT_ENABLED", "true")
+	t.Setenv("CAW_STRUCTURED_OUTPUT_PROVIDER_URL", "https://provider.example/v1")
+	t.Setenv("CAW_STRUCTURED_OUTPUT_REVIEW_MODEL", "review")
+	configured := model.New(model.Config{BaseURL: "https://other.example/v1", ChatModel: "review", OCRModel: "ocr"})
+	if err := validateReviewModelConfiguration(configured); err == nil {
+		t.Fatal("invalid configuration accepted for review")
+	}
+	if _, err := (&Store{}).newParseSelection(context.Background(), Document{Filename: "image.png", MediaType: "image/png"}, configured); err == nil {
+		t.Fatal("invalid OCR identity accepted")
+	}
+	if err := validateReviewModelConfiguration(nil); err != nil {
+		t.Fatalf("nil model no longer allowed: %v", err)
+	}
+	if err := validateReviewModelConfiguration(&countingModel{name: "fixture"}); err != nil {
+		t.Fatalf("fixture no longer allowed: %v", err)
+	}
+}
+
+func TestStartReviewRejectsInvalidStructuredConfiguration(t *testing.T) {
+	t.Setenv("CAW_STRUCTURED_OUTPUT_ENABLED", "true")
+	t.Setenv("CAW_STRUCTURED_OUTPUT_PROVIDER_URL", "https://approved.example/v1")
+	t.Setenv("CAW_STRUCTURED_OUTPUT_REVIEW_MODEL", "review")
+	st, err := OpenTest(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	admin := revisionAdmin(t)
+	caseID := createExecutionCase(t, st, admin)
+	st.UseModels(model.New(model.Config{BaseURL: "https://other.example/v1", ChatModel: "review", OCRModel: "ocr"}))
+	before, err := st.snapshotAs(admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID, err := st.StartReview(context.Background(), admin, caseID)
+	var unavailable *fault.Error
+	if runID != "" || !errors.As(err, &unavailable) || unavailable.Status != 503 || unavailable.Code != "model_configuration_unavailable" {
+		t.Fatalf("invalid model accepted: run=%q err=%v", runID, err)
+	}
+	after, err := st.snapshotAs(admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Runs) != len(before.Runs) || len(after.Snapshots) != len(before.Snapshots) {
+		t.Fatalf("failed admission created review or snapshot: runs %d -> %d, snapshots %d -> %d", len(before.Runs), len(after.Runs), len(before.Snapshots), len(after.Snapshots))
+	}
+	for _, tt := range []struct {
+		name  string
+		model Models
+		want  string
+	}{{"nil", nil, "models-disabled/v1"}, {"fixture", &countingModel{name: "fixture-config"}, "fixture-config"}} {
+		t.Run(tt.name, func(t *testing.T) {
+			st.UseModels(tt.model)
+			id, err := st.StartReview(context.Background(), admin, caseID)
+			if err != nil || id == "" {
+				t.Fatalf("admission: id=%q err=%v", id, err)
+			}
+			state, err := st.snapshotAs(admin)
+			if err != nil {
+				t.Fatal(err)
+			}
+			snapshot := state.snapshotOf(id)
+			if snapshot.ModelConfigurationID != tt.want {
+				t.Fatalf("identity=%q want %q", snapshot.ModelConfigurationID, tt.want)
+			}
+			waitTerminalReview(t, st, admin, caseID, id)
+		})
+	}
+}

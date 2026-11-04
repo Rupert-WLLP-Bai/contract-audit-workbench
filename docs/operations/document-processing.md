@@ -20,6 +20,18 @@
 
 常用预算变量：`MODEL_MAX_INPUT_TOKEN_RESERVATION`、`MODEL_TENANT_TOKENS_PER_MINUTE`、`MODEL_GLOBAL_TOKENS_PER_MINUTE`。预算还受模型调用次数、并发、租约及未知用量结算规则约束。
 
+## 可选结构化输出
+
+结构化输出默认关闭。只有管理员确认供应商支持系统使用的固定 JSON Schema 后，才设置 `CAW_STRUCTURED_OUTPUT_ENABLED=true`，并同时填写 `CAW_STRUCTURED_OUTPUT_PROVIDER_URL` 与 `CAW_STRUCTURED_OUTPUT_REVIEW_MODEL`。两项必须分别与最终生效的 provider 地址和审查模型完全匹配；未确认支持或不匹配时保持关闭。此配置不表示某个本地供应商已具备该能力。
+
+Compose 部署时，`CAW_STRUCTURED_OUTPUT_PROVIDER_URL` 必须绑定容器用于冻结身份并访问供应商的最终 provider 地址。若部署把宿主机上的 `localhost` 地址改为容器可达的 `host.docker.internal`，绑定值也必须使用容器最终看到的地址；审查模型必须与最终生效的 `LLM_MODEL` 完全一致。
+
+所有参与该审查路径的 Core、Document、Execution、Worker 和 Model Gateway 进程，都必须使用相同的开关、provider 地址和审查模型配置。启用或调整配置时，按受控部署流程更新所有参与方，再接收新审查。不支持此能力的服务保持关闭，不能接收该启用配置的请求。fixture 与手动 Compose 配置必须显式关闭结构化输出，并将 provider 地址和审查模型绑定值留空。
+
+启用或更改这些值会生成新的冻结模型身份和价格键。开始使用新身份前，按现有价格配置流程为新身份配置价格；不能用旧身份的价格代替。已冻结尝试保留受理时的身份和历史记录；当前配置与冻结身份不一致时，不能按新配置继续调用，应重新发起审查。旧身份和历史价格记录不得覆盖。
+
+该 schema 只用于审查模型请求，不用于 OCR 或路由请求。供应商拒绝请求时保留上游状态类别；拒答、截断和格式错误沿用现有诊断。HTTP 400 或 422 只能说明请求被拒，不能据此认定供应商不支持 schema；系统不会自动降级为无约束输出。模型建议仍须通过现有冻结原文引用核验；结构化输出本身不构成审查结论或人工决定。
+
 ## 单图 token 上界
 
 只有模型服务对单图输入明确保证 token 上界时，才可同时设置 `MODEL_OCR_IMAGE_PROVIDER_URL`、`MODEL_OCR_IMAGE_MODEL` 和 `MODEL_OCR_IMAGE_TOKEN_UPPER_BOUND`。仅当运行时 provider 地址与规范化后的 OCR 模型身份完全匹配、请求是服务生成的单张内嵌 PNG/JPEG OCR 请求且通过图像校验时，输入预留才按“非图像 JSON 字节数 + 配置的单图上界”计算。PNG 不得有动画帧或尾随拼接内容。其他请求仍按完整请求体字节保守预留。配置值应来自对应服务的明确保证。

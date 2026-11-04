@@ -25,15 +25,25 @@ class FixtureModelRoutingTests(unittest.TestCase):
     def test_fixture_startup_routes_workers_to_the_fixture_gateway(self):
         commands = []
         environment_at_start = []
+        structured_at_start = []
 
         def record_run(command, **kwargs):
             commands.append(command)
             environment_at_start.append(local.os.environ.get("MODEL_GATEWAY_URL"))
+            structured_at_start.append(tuple(local.os.environ.get(key) for key in (
+                "CAW_STRUCTURED_OUTPUT_ENABLED", "CAW_STRUCTURED_OUTPUT_PROVIDER_URL",
+                "CAW_STRUCTURED_OUTPUT_REVIEW_MODEL",
+            )))
             if len(commands) == 5:
                 self.assertNotIn("CORE_MODEL_AUTHORITY_TOKEN", kwargs.get("environment", {}))
 
         with (
-            patch.dict(local.os.environ, {"MODEL_GATEWAY_URL": "http://model-gateway:8084/v1"}, clear=True),
+            patch.dict(local.os.environ, {
+                "MODEL_GATEWAY_URL": "http://model-gateway:8084/v1",
+                "CAW_STRUCTURED_OUTPUT_ENABLED": "true",
+                "CAW_STRUCTURED_OUTPUT_PROVIDER_URL": "https://provider.example/v1",
+                "CAW_STRUCTURED_OUTPUT_REVIEW_MODEL": "fixture-chat",
+            }, clear=True),
             patch.object(local, "read_env", side_effect=[{"APP_ENV": "development"}, {}]),
             patch.object(local, "compose_prefix", return_value=["docker", "compose"]),
             patch.object(local, "run", side_effect=record_run),
@@ -46,6 +56,7 @@ class FixtureModelRoutingTests(unittest.TestCase):
         ])
         app_start = commands[4]
         self.assertEqual(environment_at_start, [local.FIXTURE_MODEL_GATEWAY_URL] * 5)
+        self.assertEqual(structured_at_start, [("false", "", "")] * 5)
         self.assertIn("--profile", app_start)
         profile_index = app_start.index("--profile")
         self.assertEqual(app_start[profile_index + 1], "model-fixture")

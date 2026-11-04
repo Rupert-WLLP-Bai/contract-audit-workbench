@@ -329,6 +329,9 @@ func (s *Store) RequestExperienceDistillation(ctx context.Context, user accounts
 		return ExperienceDistillReceipt{}, err
 	}
 	models := s.currentModels()
+	if err := validateReviewModelConfiguration(models); err != nil {
+		return ExperienceDistillReceipt{}, err
+	}
 	// The model must exist; a provider-backed client also has to expose the
 	// identity the distill job will be compared against when it runs.
 	if models == nil || strings.TrimSpace(models.ConfigurationID()) == "" {

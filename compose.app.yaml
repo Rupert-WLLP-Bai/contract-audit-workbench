@@ -176,6 +176,9 @@ services:
       CORE_DOCUMENT_TOKEN: ${CORE_DOCUMENT_TOKEN:?Run make app-bootstrap}
       # Workspace revision comparisons use the same frozen model identity as the worker.
       LLM_BASE_URL: ${LLM_BASE_URL:-}
+      CAW_STRUCTURED_OUTPUT_ENABLED: ${CAW_STRUCTURED_OUTPUT_ENABLED:-}
+      CAW_STRUCTURED_OUTPUT_PROVIDER_URL: ${CAW_STRUCTURED_OUTPUT_PROVIDER_URL:-}
+      CAW_STRUCTURED_OUTPUT_REVIEW_MODEL: ${CAW_STRUCTURED_OUTPUT_REVIEW_MODEL:-}
       LLM_MODEL: ${LLM_MODEL:-}
       OCR_MODEL: ${OCR_MODEL:-}
       LLM_CONFIG_KEY: ${LLM_CONFIG_KEY:-}
@@ -240,6 +243,9 @@ services:
       # The endpoint and model identifiers are part of the run signature
       # identity: the execution service, the worker, and this service must agree.
       LLM_BASE_URL: ${LLM_BASE_URL:-}
+      CAW_STRUCTURED_OUTPUT_ENABLED: ${CAW_STRUCTURED_OUTPUT_ENABLED:-}
+      CAW_STRUCTURED_OUTPUT_PROVIDER_URL: ${CAW_STRUCTURED_OUTPUT_PROVIDER_URL:-}
+      CAW_STRUCTURED_OUTPUT_REVIEW_MODEL: ${CAW_STRUCTURED_OUTPUT_REVIEW_MODEL:-}
       LLM_MODEL: ${LLM_MODEL:-}
       OCR_MODEL: ${OCR_MODEL:-}
       DOCUMENT_MODEL_TOKEN: ${DOCUMENT_MODEL_TOKEN:?Run make app-bootstrap}
@@ -297,6 +303,9 @@ services:
       # The execution service never calls a model. It computes the run signature
       # from the same endpoint and model identifiers as the worker.
       LLM_BASE_URL: ${LLM_BASE_URL:-}
+      CAW_STRUCTURED_OUTPUT_ENABLED: ${CAW_STRUCTURED_OUTPUT_ENABLED:-}
+      CAW_STRUCTURED_OUTPUT_PROVIDER_URL: ${CAW_STRUCTURED_OUTPUT_PROVIDER_URL:-}
+      CAW_STRUCTURED_OUTPUT_REVIEW_MODEL: ${CAW_STRUCTURED_OUTPUT_REVIEW_MODEL:-}
       LLM_MODEL: ${LLM_MODEL:-}
       OCR_MODEL: ${OCR_MODEL:-}
       AGENT_PLANNER_MODE: ${AGENT_PLANNER_MODE:-deterministic}
@@ -342,6 +351,9 @@ services:
       DOCUMENT_SERVICE_URL: ${DOCUMENT_SERVICE_URL:-http://document-service:8082}
       MODEL_GATEWAY_URL: ${MODEL_GATEWAY_URL:-http://model-gateway:8084/v1}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
+      CAW_STRUCTURED_OUTPUT_ENABLED: ${CAW_STRUCTURED_OUTPUT_ENABLED:-}
+      CAW_STRUCTURED_OUTPUT_PROVIDER_URL: ${CAW_STRUCTURED_OUTPUT_PROVIDER_URL:-}
+      CAW_STRUCTURED_OUTPUT_REVIEW_MODEL: ${CAW_STRUCTURED_OUTPUT_REVIEW_MODEL:-}
       LLM_MODEL: ${LLM_MODEL:-}
       OCR_MODEL: ${OCR_MODEL:-}
       AGENT_PLANNER_MODE: ${AGENT_PLANNER_MODE:-deterministic}
@@ -391,6 +403,9 @@ services:
       DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
       ADDR: 0.0.0.0:8084
       LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:3425/v1}
+      CAW_STRUCTURED_OUTPUT_ENABLED: ${CAW_STRUCTURED_OUTPUT_ENABLED:-}
+      CAW_STRUCTURED_OUTPUT_PROVIDER_URL: ${CAW_STRUCTURED_OUTPUT_PROVIDER_URL:-}
+      CAW_STRUCTURED_OUTPUT_REVIEW_MODEL: ${CAW_STRUCTURED_OUTPUT_REVIEW_MODEL:-}
       LLM_MODEL: ${LLM_MODEL:-}
       OCR_MODEL: ${OCR_MODEL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
@@ -454,6 +469,10 @@ services:
       # Distinct identifiers: the fixture answers a chat review prompt with the
       # material spans that prompt embeds, and returns an explicit OCR
       # transcription for the OCR model.
+      # Manual fixture users must also disable the binding on callers.
+      CAW_STRUCTURED_OUTPUT_ENABLED: "false"
+      CAW_STRUCTURED_OUTPUT_PROVIDER_URL: ""
+      CAW_STRUCTURED_OUTPUT_REVIEW_MODEL: ""
       LLM_MODEL: ${LLM_MODEL:-fixture-chat}
       OCR_MODEL: ${OCR_MODEL:-fixture-ocr}
       # The caller names LLM_BASE_URL inside the frozen model configuration id;

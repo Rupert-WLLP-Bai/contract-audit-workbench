@@ -139,6 +139,11 @@ func (s *Store) ensureParsed(ctx context.Context, user accounts.User, doc Docume
 
 func (s *Store) ensureParsedWithModels(ctx context.Context, user accounts.User, doc Document, force bool, models Models) (ParsedDocument, error) {
 	ctx = commandContext(ctx, user)
+	if DocumentParseKind(doc.Filename, doc.MediaType) == "ocr" {
+		if err := validateReviewModelConfiguration(models); err != nil {
+			return ParsedDocument{}, err
+		}
+	}
 	if err := s.acquireParseLock(ctx); err != nil {
 		return ParsedDocument{}, err
 	}
@@ -215,6 +220,11 @@ func (s *Store) reserveSelectionOrder(ctx context.Context) (int64, error) {
 }
 
 func (s *Store) newParseSelection(ctx context.Context, doc Document, models Models) (AttemptParseSelection, error) {
+	if DocumentParseKind(doc.Filename, doc.MediaType) == "ocr" {
+		if err := validateReviewModelConfiguration(models); err != nil {
+			return AttemptParseSelection{}, err
+		}
+	}
 	id, err := newID("parsed_")
 	if err != nil {
 		return AttemptParseSelection{}, err
