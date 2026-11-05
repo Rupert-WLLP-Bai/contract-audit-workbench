@@ -3,24 +3,27 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-05
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { Button } from "antd";
 import { useQueryClient } from "@tanstack/react-query";
 import { Navigate, Outlet, useLocation } from "react-router";
 import {
   errorMessage,
   isUnauthenticated,
+  isForbidden,
   setSessionIdentity,
 } from "../api/http";
 import { clearIdentityQueries, queryKeys, useSession } from "../api/queries";
 import type { SessionAudience } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { clearAllDecisionDrafts } from "../hooks/decision-drafts";
+import { clearAllEvidenceDrafts } from "../features/review/evidence-request-drafts";
+import { actorReadContextKey } from "../domain/actor-read-context";
 
 export function SessionGate({
   audience = "client",
@@ -33,15 +36,25 @@ export function SessionGate({
   const session = useSession(audience);
   const queryClient = useQueryClient();
   const actor = session.data;
+  const previousReadScope = useRef<string | null>(null);
 
   useLayoutEffect(() => {
     if (!actor) return;
+    const readScope = actorReadContextKey(actor);
+    if (previousReadScope.current && previousReadScope.current !== readScope) clearAllEvidenceDrafts();
+    previousReadScope.current = readScope;
     if (setSessionIdentity(actor)) {
       clearAllDecisionDrafts();
+      clearAllEvidenceDrafts();
       clearIdentityQueries(queryClient);
       queryClient.setQueryData(queryKeys.sessionFor(audience), actor);
     }
   }, [actor, audience, queryClient]);
+
+  useLayoutEffect(() => {
+    if ((session.isError && (isUnauthenticated(session.error) || isForbidden(session.error))) ||
+        (actor && actor.audience !== audience)) clearAllEvidenceDrafts();
+  }, [session.isError, session.error, actor, audience]);
 
   if (session.isLoading) {
     return <PageStatus kind="loading" title="正在确认登录状态" />;

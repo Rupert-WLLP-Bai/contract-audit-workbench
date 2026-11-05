@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-05
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -827,6 +827,8 @@ export function FindingPanel({
   saveError,
   onDecide,
   onBatchDecide,
+  requestedFindingId = null,
+  navigationSerial = 0,
 }: {
   findings: Finding[];
   evaluations?: ConstraintEvaluation[];
@@ -846,9 +848,15 @@ export function FindingPanel({
     expectedVersion: number;
   }) => Promise<boolean>;
   onBatchDecide?: (input: FindingDecisionInput) => Promise<FindingDecisionOutcome>;
+  requestedFindingId?: string | null;
+  navigationSerial?: number;
 }) {
   const [filter, setFilter] = useState<FindingFilter>("all");
   const [panel, setPanel] = useState("风险审查");
+  useEffect(() => {
+    if (requestedFindingId && findings.filter((finding) => finding.id === requestedFindingId).length === 1)
+      setPanel("风险审查");
+  }, [requestedFindingId, navigationSerial, findings]);
   const visible = findingQueue(findings, filter);
   const batch = useBatchDecisionDraft();
   const [busyScope, setBusyScope] = useState<{ key: string | null } | null>(null);

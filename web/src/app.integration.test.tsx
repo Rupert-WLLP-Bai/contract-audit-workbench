@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-05
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -22,6 +22,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { clearAllDecisionDrafts } from "./hooks/decision-drafts";
+import { clearAllEvidenceDrafts, evidenceDraftScope, hasEvidenceDraft, readEvidenceDraft } from "./features/review/evidence-request-drafts";
+import { actorReadContextKey } from "./domain/actor-read-context";
+import { queryKeys } from "./api/queries";
 import { AdminApp } from "./admin-app";
 import { App } from "./app";
 import type { WireSchemas } from "./api/wire.generated";
@@ -35,6 +38,7 @@ import type {
   ReviewDocument,
   ReviewWorkspace,
   RevisionComparison,
+  WorkbenchTask,
 } from "./api/types";
 // These tests exercise actual routing, fetch adapters, response parsing, query
 // invalidation and page interactions. The HTTP service is a stateful fixture;
@@ -228,6 +232,11 @@ class Service {
   identity = "u1";
   holdNextWorkspaceRead = false;
   releaseHeldWorkspace: (() => void) | null = null;
+  evidenceWorkbench = false;
+  holdNextTaskResponse = false;
+  holdNextEvidenceResponse: "success" | "failure" | "denied-401" | "denied-403" | null = null;
+  releaseHeldEvidence: (() => void) | null = null;
+  releaseHeldTask: (() => void) | null = null;
   role: WireSchemas["Actor"]["role"] = "admin";
   tenant = "tenant-test";
   org = "org-test";
@@ -240,6 +249,8 @@ class Service {
   private uploadedTexts = new Map<string, string>();
   cases = new Map<string, CaseDetail>([["c1", caseOf()]]);
   reviews = new Map<string, ReviewWorkspace>();
+  evidenceRequests: unknown[] = [];
+  evidenceTasks: WorkbenchTask[] = [];
   requests: {
     key: string;
     input: unknown;
@@ -247,6 +258,7 @@ class Service {
     signal: AbortSignal | null;
   }[] = [];
   failures = new Map<string, number[]>();
+  networkFailures = new Set<string>();
   settings = {
     model: { status: "disabled", label: "规则模式" },
     queue: { depth: null, oldest_wait_ms: null },
@@ -435,6 +447,7 @@ class Service {
       headers,
       signal: init?.signal ?? null,
     });
+    if (this.networkFailures.delete(key)) throw new TypeError("模拟网络中断");
     const credentials = body as {
       username?: string;
       password?: string;
@@ -550,6 +563,14 @@ class Service {
       return this.json({ items: [] });
     if (path === "/api/admin/rulepacks" && method === "GET")
       return this.json({ items: [] });
+    if (path === "/api/workbench" && method === "GET" && this.evidenceWorkbench) return this.json({
+      schema_version: "workbench/v1", generated_at: at, period: "week",
+      dashboard: { visible_cases: 0, my_pending_tasks: 0, overdue_tasks: 0, pending_review_cases: 0,
+        remediation_cases: 0, completed_reviews: 0, average_duration_ms: null, progress: [], risks: [] },
+      cases: [], profiles: [], tasks: this.evidenceTasks, relations: [], knowledge: [], members: [],
+      remediations: [], reports: [], documents: [], runs: [], audit: [], templates: [],
+      model: { name: "", ocr_name: "", status: "unconfigured", label: "" }, tools: [],
+    });
     if (path === "/api/cases") {
       if (method === "GET")
         return this.json({
@@ -659,8 +680,47 @@ class Service {
       item.materials!.forEach((material) => { material.selected = submitted.document_ids.includes(material.current_document_id); });
       return this.json(item.material_selection);
     }
+    if (parts[4] === "tasks" && parts.length === 5 && method === "POST") {
+      const input = body as Pick<WorkbenchTask, "title" | "kind" | "assignee_id" | "due_at" | "status" | "priority" | "finding_id">;
+      const task: WorkbenchTask = { ...input, id: `task-${this.evidenceTasks.length + 1}`, case_id: caseId,
+        version: 1, created_by: this.identity, created_at: at, updated_at: at };
+      this.evidenceTasks.push(task);
+      if (this.holdNextTaskResponse) {
+        this.holdNextTaskResponse = false;
+        const held = Promise.withResolvers<Response>();
+        this.releaseHeldTask = () => held.resolve(this.json(task, 201));
+        return held.promise;
+      }
+      return this.json(task, 201);
+    }
+    if (parts[4] === "evidence-requests" && parts.length === 5 && method === "POST") {
+      const input = body as { task_id: string; task_version: number; source_run_id: string; source_attempt_id: string;
+        source_evaluation_id: string; question: string; material_role?: string; verification_condition: string };
+      const task = this.evidenceTasks.find((entry) => entry.id === input.task_id);
+      const evaluation = this.reviews.get(input.source_run_id)?.evaluations?.find((entry) => entry.id === input.source_evaluation_id);
+      if (!task || !evaluation) return this.json({ error: { message: "来源不可用" } }, 409);
+      const request = { id: `request-${this.evidenceRequests.length + 1}`, case_id: caseId, task_id: task.id, task_version: task.version,
+        assignee_id: task.assignee_id, due_at: task.due_at, source_run_id: input.source_run_id, source_attempt_id: input.source_attempt_id,
+        source_evaluation: evaluation, question: input.question, material_role: input.material_role ?? null,
+        verification_condition: input.verification_condition, status: "open", version: 1, created_by: this.identity, created_at: at, updated_at: at };
+      const heldMode = this.holdNextEvidenceResponse;
+      this.holdNextEvidenceResponse = null;
+      if (heldMode === "failure" || heldMode === "denied-401" || heldMode === "denied-403") {
+        const held = Promise.withResolvers<Response>();
+        const responseStatus = heldMode === "denied-401" ? 401 : heldMode === "denied-403" ? 403 : 503;
+        this.releaseHeldEvidence = () => held.resolve(this.json({ error: { message: "来源 A 延迟失败", code: "temporary" } }, responseStatus));
+        return held.promise;
+      }
+      this.evidenceRequests.push(request);
+      if (heldMode === "success") {
+        const held = Promise.withResolvers<Response>();
+        this.releaseHeldEvidence = () => held.resolve(this.json(request, 201));
+        return held.promise;
+      }
+      return this.json(request, 201);
+    }
     if (parts[4] === "evidence-requests" && method === "GET")
-      return this.json({ items: [] });
+      return this.json({ items: parts[6] === "history" ? [] : this.evidenceRequests });
     if (parts[4] === "remediations" && parts.length === 5 && method === "POST") {
       const submitted = body as Pick<Remediation, "run_id" | "attempt_id" | "finding_ids" | "assignee_id" | "due_at" | "measure">;
       const remediation: Remediation = {
@@ -938,7 +998,7 @@ function open(
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  return { ...view, user: userEvent.setup(), client };
+  return { ...view, user: userEvent.setup(), client, router };
 }
 afterEach(() => {
   cleanup();
@@ -948,6 +1008,7 @@ afterEach(() => {
   Stream.latest = null;
   Stream.instances = [];
   clearAllDecisionDrafts();
+  clearAllEvidenceDrafts();
 });
 
 async function selectBusinessTime() {
@@ -956,7 +1017,569 @@ async function selectBusinessTime() {
   });
 }
 
+async function prepareSupplementDraft(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByText("补充材料与人工处理"));
+  await chooseOption(user, await screen.findByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+  await user.type(screen.getByLabelText("任务名称"), "补充质保资料");
+  await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /周审查/);
+  fireEvent.change(screen.getByLabelText("完成期限（本地时间）"), { target: { value: "2026-11-06T10:00" } });
+  await user.type(screen.getByLabelText("需要补充的问题"), "请提供质保期限依据");
+}
+
+function prepareSupplementReview(api: Service) {
+  api.evidenceWorkbench = true;
+  const review = api.addReview("completed");
+  review.evaluations = [evaluation({ relation: "insufficient", reason: "缺少质保期限" })];
+}
+
+function prepareTwoSupplementSources(api: Service) {
+  prepareSupplementReview(api);
+  api.reviews.get("r1")!.evaluations = [
+    evaluation({ id: "source-a", relation: "insufficient", reason: "来源 A 的质保事项" }),
+    evaluation({ id: "source-b", relation: "insufficient", reason: "来源 B 的付款事项" }),
+  ];
+}
+
+async function selectSupplementSource(user: ReturnType<typeof userEvent.setup>, label: "A" | "B") {
+  const queue = await screen.findByRole("region", { name: "人工办理" });
+  const filter = await within(queue).findByRole("button", { name: /待补件/ });
+  if (filter.getAttribute("aria-pressed") !== "true") await user.click(filter);
+  const source = await within(queue).findByText(new RegExp(`来源 ${label} 的`));
+  const item = source.closest("li");
+  expect(item).not.toBeNull();
+  await user.click(within(item!).getByRole("button", { name: "查看补件来源" }));
+  await screen.findByRole("heading", { name: "发起补充材料请求" });
+}
+
+async function fillSupplementSource(user: ReturnType<typeof userEvent.setup>, label: "A" | "B") {
+  await user.type(screen.getByLabelText("任务名称"), `任务 ${label}`);
+  await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /周审查/);
+  fireEvent.change(screen.getByLabelText("完成期限（本地时间）"), { target: { value: "2026-11-06T10:00" } });
+  await user.type(screen.getByLabelText("需要补充的问题"), `问题 ${label}`);
+}
+
 describe("application routes and API contract", () => {
+  it("keeps both source drafts and the linked task when the form selector changes sources", async () => {
+    const api = new Service();
+    prepareTwoSupplementSources(api);
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    await selectSupplementSource(user, "A");
+    await user.type(screen.getByLabelText("任务名称"), "任务 A");
+    await user.type(screen.getByLabelText("需要补充的问题"), "问题 A");
+    await selectSupplementSource(user, "B");
+    await fillSupplementSource(user, "B");
+    api.fail("POST /api/cases/c1/evidence-requests", 503);
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    expect(await screen.findByText(/已关联任务“任务 B”/)).toBeVisible();
+    await selectSupplementSource(user, "A");
+    expect(screen.getByLabelText("任务名称")).toHaveValue("任务 A");
+    expect(screen.getByLabelText("需要补充的问题")).toHaveValue("问题 A");
+    await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /来源 B 的付款事项/);
+    expect(screen.getByLabelText("任务名称")).toHaveValue("任务 B");
+    expect(screen.getByLabelText("需要补充的问题")).toHaveValue("问题 B");
+    expect(await screen.findByText(/已关联任务“任务 B”/)).toBeVisible();
+    expect(api.evidenceTasks).toHaveLength(1);
+    await selectSupplementSource(user, "A");
+    expect(screen.getByLabelText("任务名称")).toHaveValue("任务 A");
+    expect(screen.getByLabelText("需要补充的问题")).toHaveValue("问题 A");
+  });
+
+  it("does not display source A success after switching to source B", async () => {
+    const api = new Service();
+    prepareTwoSupplementSources(api);
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    await selectSupplementSource(user, "A");
+    await fillSupplementSource(user, "A");
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
+    await selectSupplementSource(user, "B");
+    expect(screen.queryByText("补充材料请求已创建。")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("任务名称")).toHaveValue("");
+  });
+
+  it.each(["success", "failure"] as const)("does not publish late source A %s into source B", async (outcome) => {
+    const api = new Service();
+    prepareTwoSupplementSources(api);
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    await selectSupplementSource(user, "B");
+    await fillSupplementSource(user, "B");
+    api.fail("POST /api/cases/c1/evidence-requests", 503);
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    expect(await screen.findByText(/已关联任务“任务 B”/)).toBeVisible();
+    await selectSupplementSource(user, "A");
+    await fillSupplementSource(user, "A");
+    api.holdNextEvidenceResponse = outcome;
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await waitFor(() => expect(api.releaseHeldEvidence).toBeTypeOf("function"));
+    try {
+      await selectSupplementSource(user, "B");
+      expect(screen.getByLabelText("需要补充的问题")).toHaveValue("问题 B");
+      act(() => api.releaseHeldEvidence?.());
+      const retry = await screen.findByRole("button", { name: "重试创建补充请求" });
+      await waitFor(() => expect(retry).toBeEnabled());
+      expect(screen.getByLabelText("需要补充的问题")).toHaveValue("问题 B");
+      expect(await screen.findByText(/已关联任务“任务 B”/)).toBeVisible();
+      expect(screen.queryByText("补充材料请求已创建。")).not.toBeInTheDocument();
+      expect(screen.queryByText("来源 A 延迟失败")).not.toBeInTheDocument();
+      expect(api.evidenceTasks).toHaveLength(2);
+      await user.click(retry);
+      expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
+      expect(api.evidenceTasks).toHaveLength(2);
+      const requests = api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests");
+      expect(requests).toHaveLength(3);
+      expect(requests[2]?.input).toMatchObject({ task_id: api.evidenceTasks[0]?.id, source_evaluation_id: "source-b" });
+      expect(api.evidenceRequests).toHaveLength(outcome === "success" ? 2 : 1);
+    } finally {
+      api.releaseHeldEvidence?.();
+    }
+  });
+
+  it.each([401, 403] as const)("clears only source A after a delayed %s rejection while editing source B", async (status) => {
+    const api = new Service();
+    prepareTwoSupplementSources(api);
+    const { user, client } = open(api, "/cases/c1/reviews/r1");
+    const actor = await waitFor(() => {
+      const value = client.getQueryData<import("./api/types").Actor>(queryKeys.session);
+      expect(value).toBeDefined();
+      return value!;
+    });
+    const scope = evidenceDraftScope(actorReadContextKey(actor), "c1", "r1", "attempt-r1-1")!;
+    await selectSupplementSource(user, "A");
+    await fillSupplementSource(user, "A");
+    api.holdNextEvidenceResponse = status === 401 ? "denied-401" : "denied-403";
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await waitFor(() => expect(api.releaseHeldEvidence).toBeTypeOf("function"));
+    try {
+      const deniedKey = readEvidenceDraft(scope, "evaluation:source-a").requestKey;
+      expect(deniedKey).toBeTruthy();
+      await selectSupplementSource(user, "B");
+      await fillSupplementSource(user, "B");
+      api.fail("POST /api/cases/c1/evidence-requests", 503);
+      await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+      expect(await screen.findByText(/已关联任务“任务 B”/)).toBeVisible();
+      const otherKey = readEvidenceDraft(scope, "evaluation:source-b").requestKey;
+      expect(otherKey).toBeTruthy();
+      act(() => api.releaseHeldEvidence?.());
+      await waitFor(() => expect(readEvidenceDraft(scope, "evaluation:source-a").question).toBe(""));
+      expect(readEvidenceDraft(scope, "evaluation:source-a")).toMatchObject({ requestKey: null, task: null, operation: 0 });
+      expect(screen.getByLabelText("任务名称")).toHaveValue("任务 B");
+      expect(screen.getByLabelText("需要补充的问题")).toHaveValue("问题 B");
+      expect(readEvidenceDraft(scope, "evaluation:source-b")).toMatchObject({ question: "问题 B", requestKey: otherKey });
+      await selectSupplementSource(user, "A");
+      expect(screen.getByLabelText("任务名称")).toHaveValue("");
+      expect(screen.getByLabelText("需要补充的问题")).toHaveValue("");
+      expect(screen.queryByText(/已关联任务“任务 A”/)).not.toBeInTheDocument();
+      await selectSupplementSource(user, "B");
+      const retry = await screen.findByRole("button", { name: "重试创建补充请求" });
+      await waitFor(() => expect(retry).toBeEnabled());
+      await user.click(retry);
+      expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
+      expect(api.evidenceTasks).toHaveLength(2);
+      const posts = api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests");
+      expect(posts).toHaveLength(3);
+      expect(posts[1]?.headers.get("Idempotency-Key")).toBe(otherKey);
+      expect(posts[2]?.headers.get("Idempotency-Key")).toBe(otherKey);
+      expect(posts[2]?.input).toMatchObject({ task_id: api.evidenceTasks[1]?.id, source_evaluation_id: "source-b" });
+    } finally {
+      api.releaseHeldEvidence?.();
+    }
+  });
+
+  it("keeps source B when the active source A request is forbidden", async () => {
+    const api = new Service();
+    prepareTwoSupplementSources(api);
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    await selectSupplementSource(user, "B");
+    await fillSupplementSource(user, "B");
+    await selectSupplementSource(user, "A");
+    await fillSupplementSource(user, "A");
+    api.fail("POST /api/cases/c1/evidence-requests", 403);
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    expect(await screen.findByText(/补件办理访问受限/)).toBeVisible();
+    await selectSupplementSource(user, "B");
+    expect(screen.getByLabelText("任务名称")).toHaveValue("任务 B");
+    expect(screen.getByLabelText("需要补充的问题")).toHaveValue("问题 B");
+    expect(api.evidenceTasks).toHaveLength(1);
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests")).toHaveLength(1);
+  });
+
+  it.each(["503", "network"] as const)("retains the supplement draft after task failure and temporary session %s", async (failure) => {
+    const api = new Service();
+    prepareSupplementReview(api);
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    await prepareSupplementDraft(user);
+    const originalForm = screen.getByLabelText("任务名称").closest("form")!;
+    api.fail("POST /api/cases/c1/tasks", 503);
+    if (failure === "503") api.fail("GET /api/session", 503);
+    else api.networkFailures.add("GET /api/session");
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    expect(await screen.findByRole("heading", { name: "无法连接审查服务" })).toBeVisible();
+    expect(originalForm.isConnected).toBe(false);
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/tasks")).toHaveLength(1);
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests")).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    await screen.findByRole("heading", { name: "审查工作区" });
+    await user.click(await screen.findByText("补充材料与人工处理"));
+    expect.soft(await screen.findByLabelText("任务名称")).toHaveValue("补充质保资料");
+    expect.soft(screen.getByLabelText("需要补充的问题")).toHaveValue("请提供质保期限依据");
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/tasks")).toHaveLength(1);
+  });
+
+  it("retains the created task and retries only the request after temporary session 503", async () => {
+    const api = new Service();
+    prepareSupplementReview(api);
+    api.fail("POST /api/cases/c1/evidence-requests", 503);
+    const { user, client } = open(api, "/cases/c1/reviews/r1");
+    await prepareSupplementDraft(user);
+    const caseReads = api.requests.filter((entry) => entry.key === "GET /api/cases/c1").length;
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    expect(await screen.findByText(/已关联任务/)).toBeVisible();
+    expect(api.requests.filter((entry) => entry.key === "GET /api/cases/c1").length).toBeGreaterThan(caseReads);
+    const originalForm = screen.getByLabelText("任务名称").closest("form")!;
+    expect(api.evidenceTasks).toHaveLength(1);
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests")).toHaveLength(1);
+    api.fail("GET /api/session", 503);
+    act(() => { void client.invalidateQueries({ queryKey: queryKeys.session }); });
+    expect(await screen.findByRole("heading", { name: "无法连接审查服务" })).toBeVisible();
+    expect(originalForm.isConnected).toBe(false);
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/tasks")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    await screen.findByRole("heading", { name: "审查工作区" });
+    await user.click(await screen.findByText("补充材料与人工处理"));
+    await screen.findByRole("heading", { name: "发起补充材料请求" });
+    const restoredTask = screen.queryByText(/已关联任务/);
+    expect.soft(restoredTask).toBeInTheDocument();
+    expect.soft(screen.getByLabelText("需要补充的问题")).toHaveValue("请提供质保期限依据");
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/tasks")).toHaveLength(1);
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests")).toHaveLength(1);
+    if (restoredTask) {
+      await user.click(screen.getByRole("button", { name: "重试创建补充请求" }));
+      expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
+      expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/tasks")).toHaveLength(1);
+      const requestCalls = api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests");
+      expect(requestCalls).toHaveLength(2);
+      expect(requestCalls[1]?.input).toEqual(requestCalls[0]?.input);
+      expect(requestCalls[1]?.headers.get("Idempotency-Key")).toBe(requestCalls[0]?.headers.get("Idempotency-Key"));
+    }
+  });
+
+  it("does not continue an old task-to-request command after a session failure and recovery", async () => {
+    const api = new Service();
+    prepareSupplementReview(api);
+    api.holdNextTaskResponse = true;
+    const { user, client } = open(api, "/cases/c1/reviews/r1");
+    await prepareSupplementDraft(user);
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await waitFor(() => expect(api.evidenceTasks).toHaveLength(1));
+    try {
+      api.fail("GET /api/session", 503);
+      act(() => { void client.invalidateQueries({ queryKey: queryKeys.session }); });
+      expect(await screen.findByRole("heading", { name: "无法连接审查服务" })).toBeVisible();
+      expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests")).toHaveLength(0);
+      await user.click(screen.getByRole("button", { name: "重试" }));
+      await screen.findByRole("heading", { name: "审查工作区" });
+      act(() => api.releaseHeldTask?.());
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+      expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests")).toHaveLength(0);
+      await user.click(await screen.findByText("补充材料与人工处理"));
+      const retry = await screen.findByRole("button", { name: "重试创建补充请求" });
+      await waitFor(() => expect(retry).toBeEnabled());
+      await user.click(retry);
+      expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
+      expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/tasks")).toHaveLength(1);
+      const requests = api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests");
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.input).toMatchObject({ task_id: api.evidenceTasks[0]?.id, task_version: api.evidenceTasks[0]?.version });
+    } finally {
+      api.releaseHeldTask?.();
+    }
+  });
+
+  it("finishes the same-context task and request without an interruption", async () => {
+    const api = new Service();
+    prepareSupplementReview(api);
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    await prepareSupplementDraft(user);
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    expect(await screen.findByText("补充材料请求已创建。", {}, { timeout: 5000 })).toBeVisible();
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/tasks")).toHaveLength(1);
+    const requests = api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests");
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.input).toMatchObject({ task_id: api.evidenceTasks[0]?.id, task_version: api.evidenceTasks[0]?.version });
+  });
+
+  it("leaves normally after opening a preselected source without editing", async () => {
+    const api = new Service();
+    prepareSupplementReview(api);
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    const queue = await screen.findByRole("region", { name: "人工办理" });
+    await user.click(await within(queue).findByRole("button", { name: /待补件/ }));
+    await user.click(await within(queue).findByRole("button", { name: "查看补件来源" }));
+    expect(await screen.findByRole("heading", { name: "发起补充材料请求" })).toBeVisible();
+    await user.click(within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件管理" }));
+    expect(await screen.findByRole("heading", { name: "案件" })).toBeVisible();
+    expect(screen.queryByText("有未提交的草稿")).not.toBeInTheDocument();
+  });
+
+  it("protects an edited supplement draft when leaving the review", async () => {
+    const api = new Service();
+    prepareSupplementReview(api);
+    const { user, client, router } = open(api, "/cases/c1/reviews/r1");
+    await prepareSupplementDraft(user);
+    const actor = client.getQueryData<import("./api/types").Actor>(queryKeys.session)!;
+    expect(hasEvidenceDraft(evidenceDraftScope(actorReadContextKey(actor), "c1", "r1", "attempt-r1-1"))).toBe(true);
+    const beforeUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(beforeUnload);
+    expect(beforeUnload.defaultPrevented).toBe(true);
+    await user.click(within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件管理" }));
+    expect([...router.state.blockers.values()].some((blocker) => blocker.state === "blocked")).toBe(true);
+    expect(await screen.findByText("有未提交的草稿")).toBeVisible();
+    expect(screen.getByRole("dialog")).toContainElement(screen.getByText("有未提交的草稿"));
+    await user.click(screen.getByRole("button", { name: "留在本页" }));
+    expect(screen.getByLabelText("需要补充的问题")).toHaveValue("请提供质保期限依据");
+  });
+
+  it("leaves normally after a successful request while retained defaults remain", async () => {
+    const api = new Service();
+    prepareSupplementReview(api);
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    await prepareSupplementDraft(user);
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
+    expect(screen.getByLabelText("完成期限（本地时间）")).toHaveValue("2026-11-06T10:00");
+    await user.click(within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件管理" }));
+    expect(await screen.findByRole("heading", { name: "案件" })).toBeVisible();
+    expect(screen.queryByText("有未提交的草稿")).not.toBeInTheDocument();
+  });
+
+  it("does not continue when the selected source disappears while task creation is pending", async () => {
+    const api = new Service();
+    prepareSupplementReview(api);
+    api.holdNextTaskResponse = true;
+    const { user, client } = open(api, "/cases/c1/reviews/r1");
+    await prepareSupplementDraft(user);
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await waitFor(() => expect(api.evidenceTasks).toHaveLength(1));
+    try {
+      api.reviews.get("r1")!.evaluations = [];
+      await act(async () => { await client.invalidateQueries({ queryKey: queryKeys.review("c1", "r1", null) }); });
+      await waitFor(() => expect(client.getQueryData<ReviewWorkspace>(queryKeys.review("c1", "r1", null))?.evaluations).toEqual([]));
+      act(() => api.releaseHeldTask?.());
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+      expect(api.evidenceTasks).toHaveLength(1);
+      expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests")).toHaveLength(0);
+    } finally {
+      api.releaseHeldTask?.();
+    }
+  });
+
+  it("does not continue with a task whose server version changed during recovery", async () => {
+    const api = new Service();
+    prepareSupplementReview(api);
+    api.fail("POST /api/cases/c1/evidence-requests", 503);
+    const { user, client } = open(api, "/cases/c1/reviews/r1");
+    await prepareSupplementDraft(user);
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    expect(await screen.findByText(/已关联任务/)).toBeVisible();
+    api.fail("GET /api/session", 503);
+    act(() => { void client.invalidateQueries({ queryKey: queryKeys.session }); });
+    expect(await screen.findByRole("heading", { name: "无法连接审查服务" })).toBeVisible();
+    api.evidenceTasks[0]!.version += 1;
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    await screen.findByRole("heading", { name: "审查工作区" });
+    await user.click(await screen.findByText("补充材料与人工处理"));
+    expect(await screen.findByText(/已关联任务待核对/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "重试创建补充请求" })).toBeDisabled();
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/tasks")).toHaveLength(1);
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests")).toHaveLength(1);
+  });
+
+  it("does not revive a late task result after session access is denied", async () => {
+    const api = new Service();
+    prepareSupplementReview(api);
+    api.holdNextTaskResponse = true;
+    const { user, client } = open(api, "/cases/c1/reviews/r1");
+    await prepareSupplementDraft(user);
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await waitFor(() => expect(api.evidenceTasks).toHaveLength(1));
+    try {
+      api.fail("GET /api/session", 403);
+      act(() => { void client.invalidateQueries({ queryKey: queryKeys.session }); });
+      expect(await screen.findByRole("heading", { name: "无法连接审查服务" })).toBeVisible();
+      act(() => api.releaseHeldTask?.());
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+      await user.click(screen.getByRole("button", { name: "重试" }));
+      await screen.findByRole("heading", { name: "审查工作区" });
+      await user.click(await screen.findByText("补充材料与人工处理"));
+      expect(await screen.findByLabelText("任务名称")).toHaveValue("");
+      expect(screen.getByLabelText("需要补充的问题")).toHaveValue("");
+      expect(screen.queryByText(/已关联任务/)).not.toBeInTheDocument();
+      expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests")).toHaveLength(0);
+    } finally {
+      api.releaseHeldTask?.();
+    }
+  });
+
+  it.each(["task", "request"] as const)("clears the draft when the %s POST itself is forbidden", async (target) => {
+    const api = new Service();
+    prepareSupplementReview(api);
+    const endpoint = target === "task" ? "POST /api/cases/c1/tasks" : "POST /api/cases/c1/evidence-requests";
+    api.fail(endpoint, 403);
+    const { user, client } = open(api, "/cases/c1/reviews/r1");
+    await prepareSupplementDraft(user);
+    const actor = client.getQueryData<import("./api/types").Actor>(queryKeys.session)!;
+    const scope = evidenceDraftScope(actorReadContextKey(actor), "c1", "r1", "attempt-r1-1");
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    expect(await screen.findByText(/补件办理访问受限/)).toBeVisible();
+    expect(hasEvidenceDraft(scope)).toBe(false);
+    expect(screen.queryByLabelText("需要补充的问题")).not.toBeInTheDocument();
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/tasks")).toHaveLength(1);
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests")).toHaveLength(target === "task" ? 0 : 1);
+  });
+
+  it("clears a pending checkpoint when task-list access is forbidden", async () => {
+    const api = new Service();
+    prepareSupplementReview(api);
+    api.holdNextTaskResponse = true;
+    const { user, client } = open(api, "/cases/c1/reviews/r1");
+    await prepareSupplementDraft(user);
+    const actor = client.getQueryData<import("./api/types").Actor>(queryKeys.session)!;
+    const scope = evidenceDraftScope(actorReadContextKey(actor), "c1", "r1", "attempt-r1-1");
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await waitFor(() => expect(api.evidenceTasks).toHaveLength(1));
+    try {
+      api.fail("GET /api/workbench?period=week&task_capabilities=1", 403);
+      act(() => { void client.invalidateQueries({ queryKey: queryKeys.workbench("week") }); });
+      expect(await screen.findByText("无法确认案件任务的访问权限，暂不恢复补件创建草稿。")).toBeVisible();
+      expect(hasEvidenceDraft(scope)).toBe(false);
+      act(() => api.releaseHeldTask?.());
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+      expect(hasEvidenceDraft(scope)).toBe(false);
+      expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests")).toHaveLength(0);
+    } finally {
+      api.releaseHeldTask?.();
+    }
+  });
+
+  it.each(["case", "review"] as const)("clears the checkpoint and ignores late task responses after %s access is denied", async (target) => {
+    const api = new Service();
+    prepareSupplementReview(api);
+    api.holdNextTaskResponse = true;
+    const { user, client } = open(api, "/cases/c1/reviews/r1");
+    await prepareSupplementDraft(user);
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await waitFor(() => expect(api.evidenceTasks).toHaveLength(1));
+    try {
+      const request = target === "case" ? "GET /api/cases/c1" : "GET /api/cases/c1/reviews/r1";
+      const query = target === "case" ? queryKeys.case("c1") : queryKeys.review("c1", "r1", null);
+      api.fail(request, 403);
+      act(() => { void client.invalidateQueries({ queryKey: query }); });
+      const heading = target === "case" ? "没有权限查看这个案件" : "没有权限查看这次审查";
+      expect(await screen.findByRole("heading", { name: heading })).toBeVisible();
+      act(() => api.releaseHeldTask?.());
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+      act(() => { void client.invalidateQueries({ queryKey: query }); });
+      await screen.findByRole("heading", { name: "审查工作区" });
+      await user.click(await screen.findByText("补充材料与人工处理"));
+      expect(await screen.findByLabelText("任务名称")).toHaveValue("");
+      expect(screen.getByLabelText("需要补充的问题")).toHaveValue("");
+      expect(screen.queryByText(/已关联任务/)).not.toBeInTheDocument();
+      expect(api.evidenceTasks).toHaveLength(1);
+      expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests")).toHaveLength(0);
+    } finally {
+      api.releaseHeldTask?.();
+    }
+  });
+
+  it.each([401, 403] as const)("hides the supplement draft and writes when session revalidation returns %s", async (status) => {
+    const api = new Service();
+    prepareSupplementReview(api);
+    const { user, client } = open(api, "/cases/c1/reviews/r1");
+    await prepareSupplementDraft(user);
+    if (status === 401) api.signedIn = false;
+    else api.fail("GET /api/session", 403);
+    act(() => { void client.invalidateQueries({ queryKey: queryKeys.session }); });
+    if (status === 401) expect(await screen.findByRole("heading", { name: "登录合同审查" })).toBeVisible();
+    else expect(await screen.findByRole("heading", { name: "无法连接审查服务" })).toBeVisible();
+    expect(screen.queryByLabelText("需要补充的问题")).not.toBeInTheDocument();
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/tasks")).toHaveLength(0);
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests")).toHaveLength(0);
+  });
+
+  it("does not restore the former actor's supplement draft after the session identity changes", async () => {
+    const api = new Service();
+    prepareSupplementReview(api);
+    const { user, client } = open(api, "/cases/c1/reviews/r1");
+    await prepareSupplementDraft(user);
+    api.identity = "u2";
+    act(() => { void client.invalidateQueries({ queryKey: queryKeys.session }); });
+    expect((await screen.findAllByText("乙账号的专属线索")).length).toBeGreaterThan(0);
+    await user.click(await screen.findByText("补充材料与人工处理"));
+    expect(await screen.findByLabelText("任务名称")).toHaveValue("");
+    expect(screen.getByLabelText("需要补充的问题")).toHaveValue("");
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/tasks")).toHaveLength(0);
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests")).toHaveLength(0);
+  });
+
+  it("keeps a failed decision in the work queue until the server refresh confirms a decision", async () => {
+    const api = new Service();
+    api.addReview("awaiting_human");
+    api.fail("POST /api/cases/c1/reviews/r1/findings/f1/decisions", 503);
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    const queue = await screen.findByRole("region", { name: "人工办理" });
+    await within(queue).findByRole("button", { name: "待判断：1" });
+    await user.click(within(queue).getByRole("button", { name: "查看判断与原文" }));
+    await user.click(screen.getByRole("radio", { name: "误报" }));
+    await user.type(screen.getByLabelText("理由"), "核对原文后判断误报");
+    await user.click(screen.getByRole("button", { name: "保存决定" }));
+    await screen.findByText("受控失败 503");
+    expect(await within(queue).findByRole("button", { name: "待判断：1" })).toBeVisible();
+    expect(screen.getByLabelText("理由")).toHaveValue("核对原文后判断误报");
+    await user.click(screen.getByRole("button", { name: "保存决定" }));
+    expect(await within(queue).findByRole("button", { name: "待判断：0" })).toBeVisible();
+  });
+
+  it("opens the exact old-source remediation and returns to the same work filter", async () => {
+    const api = new Service();
+    addSubmittedRemediation(api, [evaluation()]);
+    const { user } = open(api, "/cases/c1/reviews/r2");
+    const queue = await screen.findByRole("region", { name: "人工办理" });
+    await user.click(await within(queue).findByRole("button", { name: "待整改：1" }));
+    expect(within(queue).getByText("其他来源执行", { exact: false })).toBeVisible();
+    await user.click(within(queue).getByRole("button", { name: "查看整改记录" }));
+    expect(await screen.findByRole("link", { name: "返回人工办理" })).toBeVisible();
+    expect(document.getElementById("case-remediation")).toHaveAttribute("open");
+    expect(await screen.findByText("修订合同带宽")).toBeVisible();
+    await user.click(screen.getByRole("link", { name: "返回人工办理" }));
+    const restored = await screen.findByRole("region", { name: "人工办理" });
+    expect(await within(restored).findByRole("button", { name: "待整改：1" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(restored).getByText("修订合同带宽")).toBeVisible();
+    expect(within(restored).getByText("修订合同带宽").closest("li")).toHaveAttribute("aria-current", "true");
+  });
+
+  it("opens the second selected evidence request in the existing panel", async () => {
+    const api = new Service();
+    api.addReview("awaiting_human");
+    api.evidenceRequests = ["first", "second"].map((id) => ({
+      id: `request-${id}`, case_id: "c1", task_id: `task-${id}`, task_version: 1, assignee_id: "u1", due_at: at,
+      source_run_id: "r1", source_attempt_id: "attempt-r1-1", question: `补件${id}`, material_role: null,
+      source_gap: { gap_id: `gap-${id}`, domain: "commercial", capability_id: "payment", status: "insufficient", reason_code: "required_source_or_field_missing" },
+      verification_condition: "resolved", status: "open", version: 1, created_by: "u1", created_at: at, updated_at: at,
+    }));
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    const queue = await screen.findByRole("region", { name: "人工办理" });
+    await user.click(await within(queue).findByRole("button", { name: /待补件/ }));
+    const item = within(queue).getByText("补件second").closest("li");
+    expect(item).not.toBeNull();
+    await user.click(within(item!).getByRole("button", { name: "查看补件请求" }));
+    const requestHeading = await screen.findByRole("heading", { name: "补件second" });
+    const requestCard = requestHeading.closest("li");
+    expect(requestCard).not.toBeNull();
+    expect(requestCard!.closest("details")).toHaveAttribute("open");
+    await waitFor(() => expect(document.activeElement).toBe(requestCard));
+  });
+
   it("shows a limited precheck in the case and starts a full review only after readiness", async () => {
     const api = new Service();
     const prior = api.addReview("partial");

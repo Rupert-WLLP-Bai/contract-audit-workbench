@@ -3,15 +3,15 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r6
+// Updated: 2026-11-05
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Button } from "antd";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   errorMessage,
   isConflict,
@@ -37,11 +37,13 @@ import {
   useWorkbench,
 } from "../api/queries";
 import { paths } from "../api/paths";
+import { evidenceRequestsKey, listEvidenceRequests } from "../api/evidence-workflow";
 import { caseOptionLabel } from "../domain/case-identity";
 import type { CaseRelationInput, DecisionAction } from "../api/types";
 import type { FrozenQuoteScope, FrozenQuoteSelection } from "../domain/frozen-quote";
 import { PageStatus } from "../components/page-status";
 import { ReviewWorkspaceView } from "../components/review-workspace";
+import { ReviewWorkItems } from "../components/review-work-items";
 import { DirtyLeaveGuard } from "../components/dirty-leave-guard";
 import { ReviewDiff } from "../components/review-diff";
 import type { ReviewCaseContext } from "../components/document-stage";
@@ -49,6 +51,8 @@ import { RunProvenance } from "../components/run-provenance";
 import { FrozenLegalAuthorities } from "../components/frozen-legal-authorities";
 import { AuditProjection } from "../components/audit-projection";
 import { EvidenceRequestPanel } from "../components/evidence-request-panel";
+import { clearAllEvidenceDrafts, evidenceDraftScope, useEvidenceDraftDirty } from "../features/review/evidence-request-drafts";
+import { actorReadContextKey } from "../domain/actor-read-context";
 import { EvidenceSLADashboard } from "../components/evidence-sla-dashboard";
 import { ExperienceFeedbackPanel } from "../components/experience-feedback-panel";
 import { ManualFindingsPanel } from "../features/review/manual-findings";
@@ -56,6 +60,7 @@ import { ExperienceUsagePanel } from "../components/experience-usage-panel";
 import { OperatorAuditEntry } from "../features/operator-audit/operator-audit-entry";
 import {
   contractTypeLabel,
+  caseHref,
   isActiveAttemptState,
   isTerminalAttemptState,
   selectedFindingId,
@@ -72,12 +77,14 @@ import {
   useDecisionDraftsDirty,
 } from "../hooks/decision-drafts";
 import { useReviewLayout } from "../hooks/use-viewport-layout";
-import { actorReadContextKey } from "../domain/actor-read-context";
 import { OriginalSourceContext } from "../components/original-document-reader";
 import { canRestartUserCancelled, hasTransientRetryCause } from "../features/review/review-outcome";
+import { projectReviewWork, readWorkReturn, workReturnState, type WorkFilter, type WorkTarget, type WorkTargetKind } from "../features/review/work-items";
 
 export function ReviewPage() {
   const { caseId = "", runId = "" } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const selectedAttemptId = params.get("attempt_id");
   const selectedCitation = params.get("citation");
@@ -89,6 +96,31 @@ export function ReviewPage() {
   const deleteRelation = useDeleteCaseRelation(caseId);
   const caseDetail = useCaseDetail(caseId);
   const session = useSession();
+  const requests = useQuery({
+    queryKey: evidenceRequestsKey(caseId),
+    queryFn: ({ signal }) => listEvidenceRequests(caseId, signal),
+    enabled: Boolean(caseId) && session.isSuccess && !session.isFetching && caseDetail.isSuccess && !caseDetail.isFetching,
+    retry: false,
+  });
+  const [supplementOpen, setSupplementOpen] = useState(false);
+  const [navigationSerial, setNavigationSerial] = useState(0);
+  const actorScope = session.isSuccess && !session.isFetching ? actorReadContextKey(session.data) : "";
+  const locationState = location.state && typeof location.state === "object" ? location.state as { workActorScope?: unknown; workReturn?: { actorScope?: unknown } } : null;
+  const savedScope = locationState?.workActorScope ?? locationState?.workReturn?.actorScope;
+  const scopeMismatch = Boolean(actorScope && typeof savedScope === "string" && savedScope !== actorScope);
+  useEffect(() => {
+    if (!scopeMismatch) return;
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      for (const key of ["work_kind", "work_item", "work_filter", "finding", "citation"]) next.delete(key);
+      return next;
+    }, { replace: true, state: null });
+  }, [scopeMismatch, setParams]);
+  const requestedKind = scopeMismatch ? null : params.get("work_kind");
+  const requestedItem = scopeMismatch ? null : params.get("work_item");
+  useEffect(() => {
+    if (requestedItem && ["request", "evaluation", "request-source"].includes(requestedKind ?? "")) setSupplementOpen(true);
+  }, [requestedItem, requestedKind, navigationSerial]);
   const [diagnosticScope, setDiagnosticScope] = useState<string | null>(null);
   const currentDiagnosticScope = session.data?.role === "admin"
     ? [caseId, runId, session.data.id, session.data.tenant_id, session.data.org_id].join("\u0000")
@@ -157,6 +189,9 @@ export function ReviewPage() {
       ? null
       : decisionDraftUserPrefix(session.data.id, session.data.active_context?.context_version),
   );
+  const evidenceDraftDirty = useEvidenceDraftDirty(evidenceDraftScope(
+    session.data ? actorReadContextKey(session.data) : null, caseId, runId, selectedAttempt?.id ?? null,
+  ));
   const latestAttempt = execution
     ? execution.attempts.reduce(
         (latest, attempt) =>
@@ -180,12 +215,16 @@ export function ReviewPage() {
   const decisionState =
     selectedAttempt?.state ?? review.data?.run.state ?? "unknown";
   const terminal = isTerminalAttemptState(decisionState);
+  const currentWorkContext = session.isSuccess && !session.isFetching && caseDetailReady && !caseArchived && latestRun &&
+    review.isSuccess && !review.isFetching && review.data.run.id === runId && review.data.run.case_id === caseId &&
+    Boolean(caseId && runId) && selectedAttempt !== null && Boolean(selectedAttempt.id) && selectedAttempt.run_id === runId && selectedAttemptIsLatest &&
+    (selectedAttemptId === null || selectedAttempt.id === selectedAttemptId) &&
+    selectedAttempt.history_kind === "frozen" &&
+    (isTerminalAttemptState(selectedAttempt.state) || isActiveAttemptState(selectedAttempt.state));
   const canDecide =
-    caseDetailReady &&
-    !caseArchived &&
-    latestRun &&
+    currentWorkContext &&
     roleCanDecide &&
-    selectedAttemptIsLatest &&
+    selectedAttempt?.history_kind === "frozen" &&
     terminal;
   const retryableState =
     review.data !== undefined &&
@@ -322,6 +361,18 @@ export function ReviewPage() {
     };
   }, [caseId, queryClient, runId, selectedAttemptId, streamStatus]);
 
+  useLayoutEffect(() => {
+    if (isForbidden(review.error) || isUnauthenticated(review.error) ||
+        isForbidden(caseDetail.error) || isUnauthenticated(caseDetail.error) ||
+        isForbidden(requests.error) || isUnauthenticated(requests.error) ||
+        (review.isSuccess && (review.data.run.id !== runId || review.data.run.case_id !== caseId ||
+          (selectedAttemptId !== null && selectedAttempt?.id !== selectedAttemptId))) ||
+        (caseDetail.isSuccess && caseDetail.data.id !== caseId)) clearAllEvidenceDrafts();
+  }, [review.error, review.isSuccess, review.data, caseDetail.error, caseDetail.isSuccess, caseDetail.data,
+    requests.error, caseId, runId, selectedAttemptId, selectedAttempt?.id]);
+
+  if (session.isLoading) return <PageStatus kind="loading" title="正在确认登录状态" />;
+  if (!session.isSuccess) return <PageStatus kind="denied" title="无法确认当前登录身份" />;
   if (review.isLoading)
     return <PageStatus kind="loading" title="正在加载审查工作区" />;
   if (review.isError) {
@@ -362,6 +413,13 @@ export function ReviewPage() {
     );
   }
   if (!review.data) return <PageStatus kind="empty" title="没有审查数据" />;
+  if (review.data.run.id !== runId || review.data.run.case_id !== caseId ||
+      (selectedAttemptId !== null && selectedAttempt?.id !== selectedAttemptId)) {
+    return <PageStatus kind="error" title="审查身份无法确认" detail="服务端返回的审查或执行记录与当前页面不一致，请返回案件重新选择。" />;
+  }
+  if (caseDetail.isError && (isForbidden(caseDetail.error) || isUnauthenticated(caseDetail.error))) {
+    return <PageStatus kind="denied" title="没有权限查看这个案件" detail={errorMessage(caseDetail.error)} />;
+  }
 
   const diagnosticData = currentDiagnosticScope !== null && diagnosticScope === currentDiagnosticScope && diagnostics.isSuccess && !diagnostics.isFetching &&
     (!diagnostics.data.execution || diagnostics.data.execution.attempt.id === selectedAttempt?.id)
@@ -376,8 +434,74 @@ export function ReviewPage() {
 
   const selectedId = selectedFindingId(
     review.data.findings,
-    params.get("finding"),
+    params.get("finding") ?? (requestedKind === "finding" ? requestedItem : null),
   );
+  const workFilter: WorkFilter = params.get("work_filter") === "evidence" ? "evidence"
+    : params.get("work_filter") === "remediation" ? "remediation" : "judgment";
+  const deniedRequests = isForbidden(requests.error) || isUnauthenticated(requests.error);
+  const activeReturn = readWorkReturn(location.state, caseId, actorScope);
+  const navigationState = {
+    ...(activeReturn ? workReturnState(activeReturn, caseId, actorScope) : null),
+    workActorScope: actorScope,
+  };
+  const selectedFrozen = Boolean(caseId && runId && selectedAttempt?.id && selectedAttempt.history_kind === "frozen" && selectedAttempt.run_id === runId);
+  const targetKinds: WorkTargetKind[] = ["finding", "gap", "evaluation", "request-source", "request"];
+  const targetKind = targetKinds.find((kind) => kind === requestedKind);
+  const matchingTarget = requestedItem && targetKind && !scopeMismatch && !deniedRequests && session.isSuccess && !session.isFetching
+    ? targetKind === "finding" ? selectedFrozen && workspace.findings.filter((item) => item.id === requestedItem).length === 1
+      : targetKind === "gap" ? selectedFrozen && workspace.agent_review?.attempt_id === selectedAttempt?.id &&
+        (workspace.agent_review?.gaps ?? []).filter((item) => item.gap_id === requestedItem).length === 1
+        : targetKind === "evaluation" ? selectedFrozen && (workspace.evaluations ?? []).filter((item) => item.id === requestedItem).length === 1
+          : targetKind === "request" ? requests.data?.filter((item) => item.case_id === caseId && item.id === requestedItem).length === 1
+            : selectedFrozen && requestedItem.startsWith("gap:") && workspace.agent_review?.attempt_id === selectedAttempt?.id &&
+              (workspace.agent_review?.gaps ?? []).filter((item) => item.gap_id === requestedItem.slice(4)).length === 1
+    : false;
+  const workTarget: WorkTarget | null = matchingTarget && requestedItem && targetKind
+    ? { kind: targetKind, id: requestedItem, runId, attemptId: selectedAttempt?.id ?? "" } : null;
+  const workProjection = projectReviewWork(workspace, caseDetail.isSuccess ? caseDetail.data : undefined, deniedRequests ? undefined : requests.data);
+  const workError = requests.isError && !deniedRequests ? `补件请求读取失败：${errorMessage(requests.error)}`
+    : caseDetail.isError ? `案件状态读取失败：${errorMessage(caseDetail.error)}` : null;
+  const canPrepareRequest = currentWorkContext && roleCanManageRun && !deniedRequests;
+  const canContinueRequest = session.isSuccess && !session.isFetching && caseDetailReady && !caseArchived &&
+    roleCanManageRun && Boolean(caseDetail.data.latest_run) && (!latestRun || !selectedAttemptIsLatest);
+
+  function savedReturn(target: WorkTarget) {
+    const next = new URLSearchParams(params);
+    next.set("work_kind", target.kind);
+    next.set("work_item", target.id);
+    if (target.kind === "finding") next.set("finding", target.id);
+    return workReturnState(`${location.pathname}?${next}`, caseId, actorScope);
+  }
+
+  function openWork(target: WorkTarget) {
+    if (!actorScope || scopeMismatch) return;
+    if (target.kind === "remediation") {
+      const next = new URLSearchParams({ work_kind: "remediation", work_item: target.id });
+      void navigate(`/cases/${encodeURIComponent(caseId)}?${next}`, { state: savedReturn(target) });
+      return;
+    }
+    if (target.kind !== "request" && (target.runId !== runId || target.attemptId !== selectedAttempt?.id)) {
+      const next = new URLSearchParams({ attempt_id: target.attemptId, work_filter: "evidence", work_kind: target.kind, work_item: target.id });
+      void navigate(`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(target.runId)}?${next}`, { state: savedReturn(target) });
+      return;
+    }
+    if (target.kind === "request" || target.kind === "evaluation" || target.kind === "request-source") setSupplementOpen(true);
+    setNavigationSerial((value) => value + 1);
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("work_kind", target.kind);
+      next.set("work_item", target.id);
+      if (target.kind === "finding") next.set("finding", target.id);
+      return next;
+    }, { state: navigationState });
+  }
+
+  function continueRequest(target: WorkTarget) {
+    const latest = caseDetail.data?.latest_run;
+    if (!canContinueRequest || !latest) return;
+    const next = new URLSearchParams({ work_filter: "evidence", work_kind: "request", work_item: target.id });
+    void navigate(`${caseHref(caseId, latest.id)}?${next}`, { state: savedReturn(target) });
+  }
   const snapshot = workbench.data;
   const contextCase = snapshot?.cases.find((item) => item.id === caseId);
   const profile =
@@ -473,7 +597,7 @@ export function ReviewPage() {
           .map((item) => ({ id: item.id, title: caseOptionLabel(item, snapshot.members) })),
       }
     : null;
-  const canEditRelations = caseDetailReady && !caseArchived && roleCanManageRun;
+  const canEditRelations = currentWorkContext && roleCanManageRun;
   const relationPending = createRelation.isPending || deleteRelation.isPending;
   const relationError = createRelation.isError
     ? errorMessage(createRelation.error)
@@ -542,11 +666,14 @@ export function ReviewPage() {
 
   return (
     <section className="page page-review">
+      {session.isFetching ? <p role="status">正在重新确认登录状态，办理暂不可用。</p> : null}
+      <div hidden={session.isFetching}>
       <header className="page-head">
         <div>
           <h1>审查工作区</h1>
           <p>{caseDetail.data?.title ?? "案件"}</p>
         </div>
+        {activeReturn ? <Link to={activeReturn}>返回人工办理</Link> : null}
         <Button
           aria-label={"返回案件"}
           href={`/cases/${encodeURIComponent(caseId)}`}
@@ -582,6 +709,29 @@ export function ReviewPage() {
           actorScope={JSON.stringify([session.data.id, session.data.active_context?.tenant_id, session.data.active_context?.org_id, session.data.role, session.data.audience, session.data.active_context?.context_version])}
         />
       ) : null}
+      {session.isSuccess && !session.isFetching && !scopeMismatch && !deniedRequests ? (
+        <ReviewWorkItems
+          projection={workProjection}
+          filter={workFilter}
+          onFilter={(filter) => setParams((current) => {
+            const next = new URLSearchParams(current);
+            next.set("work_filter", filter);
+            return next;
+          }, { state: navigationState })}
+          onOpen={openWork}
+          onContinueRequest={canContinueRequest ? continueRequest : undefined}
+          refreshing={requests.isFetching || caseDetail.isFetching || review.isFetching}
+          error={workError}
+          canPrepareRequest={canPrepareRequest}
+          currentRunId={runId}
+          currentAttemptId={selectedAttempt?.id ?? null}
+          currentOrdinal={selectedAttempt?.ordinal ?? null}
+          selectedKind={requestedKind}
+          selectedId={requestedItem}
+        />
+      ) : deniedRequests ? <p role="alert">无法读取补件请求，办理导航暂不可用。</p> : null}
+      {requestedItem && targetKind && !workTarget && !requests.isFetching && !scopeMismatch && !deniedRequests ?
+        <p role="alert">所选办理事项不属于当前执行或身份不唯一，请返回办理列表核对。</p> : null}
       <DecisionDraftScopeProvider scope={decisionDraftScope}>
         <OriginalSourceContext.Provider value={caseDetailReady && session.isSuccess && !session.isFetching ? {
           caseId,
@@ -595,6 +745,8 @@ export function ReviewPage() {
           quoteScope={quoteScope}
           onQuoteSelectionChange={setQuoteSelection}
           selectedId={selectedId}
+          workTarget={workTarget}
+          navigationSerial={navigationSerial}
           caseContext={caseContext}
           canEditRelations={canEditRelations}
           relationPending={relationPending}
@@ -616,8 +768,9 @@ export function ReviewPage() {
             setParams((current) => {
               const next = new URLSearchParams(current);
               next.set("finding", findingId);
+              if (next.get("work_kind") === "finding") next.set("work_item", findingId);
               return next;
-            });
+            }, { state: navigationState });
           }}
           onSelectAttempt={(attemptId) => {
             const next = new URLSearchParams(params);
@@ -625,7 +778,10 @@ export function ReviewPage() {
             // A citation belongs to its own attempt; never show the previous
             // attempt's evidence after switching.
             next.delete("citation");
-            setParams(next);
+            next.delete("finding");
+            next.delete("work_kind");
+            next.delete("work_item");
+            setParams(next, { state: navigationState });
           }}
           selectedEvidenceId={selectedCitation}
           onSelectEvidence={(evidenceId) => {
@@ -636,7 +792,7 @@ export function ReviewPage() {
             } else {
               next.set("citation", evidenceId);
             }
-            setParams(next);
+            setParams(next, { state: navigationState });
           }}
           onDecide={onDecide}
           onBatchDecide={onBatchDecide}
@@ -647,7 +803,9 @@ export function ReviewPage() {
                 const next = new URLSearchParams(params);
                 next.set("attempt_id", accepted.attempt_id);
                 next.delete("citation");
-                setParams(next);
+                next.delete("work_kind");
+                next.delete("work_item");
+                setParams(next, { state: navigationState });
               },
             });
           }}
@@ -665,8 +823,8 @@ export function ReviewPage() {
         />
         </OriginalSourceContext.Provider>
       </DecisionDraftScopeProvider>
-      <DirtyLeaveGuard dirty={decisionDraftsDirty} />
-      <details className="review-secondary-section">
+      <DirtyLeaveGuard dirty={decisionDraftsDirty || evidenceDraftDirty} />
+      <details className="review-secondary-section" open={supplementOpen} onToggle={(event) => setSupplementOpen(event.currentTarget.open)}>
         <summary>补充材料与人工处理</summary>
         <ManualFindingsPanel
           key={`${caseId}:${runId}:${selectedAttempt?.id ?? "none"}:${session.data?.tenant_id ?? ""}:${session.data?.org_id ?? ""}:${session.data?.id ?? ""}:${session.data?.role ?? ""}`}
@@ -678,7 +836,7 @@ export function ReviewPage() {
           selection={quoteSelection}
           documents={review.data.documents}
           actor={session.data ?? null}
-          canCreate={caseDetailReady && !caseArchived && roleCanDecide && selectedAttempt?.history_kind === "frozen"}
+          canCreate={currentWorkContext && roleCanDecide && selectedAttempt?.history_kind === "frozen"}
         />
         <EvidenceSLADashboard
           mode="reminder"
@@ -688,7 +846,12 @@ export function ReviewPage() {
           caseId={caseId}
           runId={runId}
           attemptId={selectedAttempt?.id ?? null}
-          canManage={caseDetailReady && !caseArchived && roleCanManageRun}
+          canManage={canPrepareRequest}
+          readOnly={!currentWorkContext}
+          selectedRequestId={workTarget?.kind === "request" ? workTarget.id : null}
+          selectedSource={workTarget?.kind === "evaluation" ? `evaluation:${workTarget.id}` : workTarget?.kind === "request-source" ? workTarget.id : null}
+          navigationSerial={navigationSerial}
+          expanded={supplementOpen}
           evaluations={review.data.evaluations ?? []}
           agentReview={review.data.agent_review ?? null}
           documents={caseDetail.data?.documents ?? []}
@@ -709,7 +872,7 @@ export function ReviewPage() {
           attemptId={selectedAttempt?.id ?? null}
           finding={review.data.findings.find((item) => item.id === selectedId) ?? null}
           documents={review.data.documents}
-          canSubmit={roleCanDecide && selectedAttempt?.history_kind === "frozen"}
+          canSubmit={currentWorkContext && roleCanDecide && selectedAttempt?.history_kind === "frozen"}
           contextScope={streamCommandContext?.contextVersion}
           quoteScope={quoteScope}
           quoteSelection={quoteSelection}
@@ -739,6 +902,7 @@ export function ReviewPage() {
         <p role="status">审查诊断不可用：{errorMessage(diagnostics.error)}</p>
       ) : null}
       {retry.isError ? <p role="alert">{errorMessage(retry.error)}</p> : null}
+      </div>
     </section>
   );
 }

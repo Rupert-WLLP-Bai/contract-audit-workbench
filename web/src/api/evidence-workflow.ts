@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-05
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -86,6 +86,8 @@ export interface EvidenceRequestEvent {
   request: EvidenceRequest;
   receipt: EvidenceReceipt | null;
 }
+
+export const evidenceRequestsKey = (caseId: string) => ["evidence-requests", caseId] as const;
 
 // Identity comes from the URL and the idempotency key from the header.
 export type CreateEvidenceRequestInput = Omit<

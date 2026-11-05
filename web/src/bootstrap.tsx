@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-05
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -18,6 +18,7 @@ import { createBrowserRouter, RouterProvider } from "react-router";
 import { invalidateSessionIdentity, queryRetryDelay, shouldRetryQuery } from "./api/http";
 import { clearIdentityQueries } from "./api/queries";
 import { installContextInvalidation } from "./api/context-sync";
+import { clearAllEvidenceDrafts } from "./features/review/evidence-request-drafts";
 import "./styles.css";
 
 const rootStyle = getComputedStyle(document.documentElement);
@@ -107,6 +108,7 @@ const queryClient = new QueryClient({
 
 installContextInvalidation(() => {
   invalidateSessionIdentity();
+  clearAllEvidenceDrafts();
   clearIdentityQueries(queryClient);
   void queryClient.resetQueries({ queryKey: ["session"] });
 });

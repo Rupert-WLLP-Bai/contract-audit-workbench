@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-05
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,6 +16,7 @@ import { MemoryRouter } from "react-router";
 import type { ReviewDocument, ReviewWorkspace } from "../api/types";
 import { ReviewWorkspaceView } from "./review-workspace";
 import { DocumentStage } from "./document-stage";
+import type { WorkTarget } from "../features/review/work-items";
 
 const procurementText = "质保期为三十六个月，自验收合格之日起算。";
 const contractText = "质保期为二十四个月。";
@@ -157,11 +158,15 @@ function WorkspaceHarness({
   onDecide,
   workspaceValue,
   showDiagnostics = false,
+  workTarget = null,
+  navigationSerial = 0,
 }: {
   layout: "split" | "switch";
   onDecide: Decide;
   workspaceValue: ReviewWorkspace;
   showDiagnostics?: boolean;
+  workTarget?: WorkTarget | null;
+  navigationSerial?: number;
 }) {
   const [selectedId, setSelectedId] = useState("f1");
   return (
@@ -184,6 +189,8 @@ function WorkspaceHarness({
       onRetry={vi.fn()}
       onSelectAttempt={vi.fn()}
       onCancel={vi.fn()}
+      workTarget={workTarget}
+      navigationSerial={navigationSerial}
     />
   );
 }
@@ -206,6 +213,18 @@ function renderWorkspace(
 }
 
 describe("review workspace", () => {
+  it("opens the existing judgment tab when a queue target is selected", async () => {
+    const user = userEvent.setup();
+    const value = workspace();
+    const decide = vi.fn().mockResolvedValue(true);
+    const view = render(<WorkspaceHarness layout="split" onDecide={decide} workspaceValue={value} />);
+    await user.click(screen.getByRole("tab", { name: "合同信息" }));
+    expect(screen.getByRole("tab", { name: "合同信息" })).toHaveAttribute("aria-selected", "true");
+    view.rerender(<WorkspaceHarness layout="split" onDecide={decide} workspaceValue={value}
+      workTarget={{ kind: "finding", id: "f1", runId: "r1", attemptId: "a1" }} navigationSerial={1} />);
+    expect(screen.getByRole("tab", { name: "风险审查" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "保存决定" })).toBeVisible();
+  });
   it.each([
     {
       scenario: "no citations",

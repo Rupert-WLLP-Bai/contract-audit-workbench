@@ -1,0 +1,20 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles manual-work records and selection with existing semantic tokens, white record surfaces, transparent summaries and neutral counts. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-05 */
+/* Updated: 2026-11-05 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+.review-work-items .review-work-items-list > li {
+  background: var(--surface-raised);
+}
+
+.review-work-items-filter[aria-pressed="true"] {
+  border-color: var(--action-primary);
+  box-shadow: inset 0 -2px var(--action-primary);
+  color: var(--text-primary);
+  font-weight: 600;
+}

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-05
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -238,6 +238,16 @@ describe("business agent review statuses and edge cases", () => {
 });
 
 describe("business agent review", () => {
+  it("opens the exact gap in the selected frozen attempt and refuses an ambiguous target", () => {
+    const review = parseBusinessAgentReview(projection);
+    const view = render(<BusinessAgentReviewView review={review} caseId="case-1" runId="run-1" attemptId="attempt-1" selectedGapId="gap-1" />);
+    expect(document.getElementById("agent-review-gaps")).toHaveAttribute("open");
+    expect(screen.getByText("下一步：补充包含该字段的采购、合同或审批材料后重新审查。")).toBeVisible();
+    const duplicate = parseBusinessAgentReview({ ...projection, gaps: [...projection.gaps, projection.gaps[0]] });
+    view.rerender(<BusinessAgentReviewView review={duplicate} caseId="case-1" runId="run-1" attemptId="attempt-1" selectedGapId="gap-1" />);
+    expect(screen.getByRole("alert")).toHaveTextContent("身份不唯一");
+  });
+
   it("shows required checks, gaps and verified quotations without treating location as confirmation", () => {
     render(<BusinessAgentReviewView review={parseBusinessAgentReview(projection)} />);
     expect(screen.getAllByText("技术与服务").length).toBeGreaterThan(0);

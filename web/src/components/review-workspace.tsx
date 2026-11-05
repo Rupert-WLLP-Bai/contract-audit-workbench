@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r4
+// Updated: 2026-11-05
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -28,6 +28,7 @@ import type {
 } from "../api/types";
 import type { FindingDecisionInput, FindingDecisionOutcome, ReviewLayout } from "../domain/review";
 import type { FrozenQuoteScope, FrozenQuoteSelection } from "../domain/frozen-quote";
+import type { WorkTarget } from "../features/review/work-items";
 import { runLabel, runTone } from "../domain/review";
 import type { StreamStatus } from "../hooks/use-review-events";
 import { DocumentStage, type ReviewCaseContext } from "./document-stage";
@@ -488,6 +489,8 @@ export function ReviewWorkspaceView({
   onQuoteSelectionChange,
   selectedEvidenceId = null,
   onSelectEvidence,
+  workTarget = null,
+  navigationSerial = 0,
 }: {
   workspace: ReviewWorkspace;
   layout: ReviewLayout;
@@ -527,6 +530,8 @@ export function ReviewWorkspaceView({
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
   selectedEvidenceId?: string | null;
   onSelectEvidence?: (evidenceId: string | null) => void;
+  workTarget?: WorkTarget | null;
+  navigationSerial?: number;
 }) {
   const { run } = workspace;
   const { selected, attempts } = attemptsOf(workspace);
@@ -540,6 +545,9 @@ export function ReviewWorkspaceView({
       evidenceViewButton.current?.focus();
     }
   }, [workspaceView]);
+  useEffect(() => {
+    if (workTarget?.kind === "finding") setWorkspaceView("evidence");
+  }, [workTarget?.kind, workTarget?.id, navigationSerial]);
   function selectFinding(findingId: string) {
     onSelect(findingId);
     if (workspaceView !== "evidence") {
@@ -625,6 +633,8 @@ export function ReviewWorkspaceView({
           saveError={saveError}
           onDecide={onDecide}
           onBatchDecide={onBatchDecide}
+          requestedFindingId={workTarget?.kind === "finding" ? workTarget.id : null}
+          navigationSerial={navigationSerial}
         />
       </div>
       <BusinessAgentReviewView
@@ -634,6 +644,8 @@ export function ReviewWorkspaceView({
         attemptId={selected?.history_kind === "frozen" ? selected.id : null}
         selectedEvidenceId={selectedEvidenceId}
         onSelectEvidence={onSelectEvidence}
+        selectedGapId={workTarget?.kind === "gap" ? workTarget.id : null}
+        navigationSerial={navigationSerial}
       />
       {workspace.execution ? (
         <TrajectoryView execution={workspace.execution} />

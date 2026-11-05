@@ -3,19 +3,21 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-05
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setSessionIdentity } from "../api/http";
+import { clearAllEvidenceDrafts } from "../features/review/evidence-request-drafts";
 import { queryKeys } from "../api/queries";
+import { getCase, getSession } from "../api/endpoints";
 import type { EvidenceQuote } from "../api/evidence-workflow";
 import type { BusinessAgentReview } from "../api/business-agent-review";
 import type { Actor, CaseDetail, ConstraintEvaluation, ExecutionAttempt, ReviewDocument, ReviewWorkspace, WorkbenchTask } from "../api/types";
@@ -37,7 +39,7 @@ const document: ReviewDocument = {
 const detail: CaseDetail = {
   id: "case-1", title: "测试案件", contract_type: "service", created_at: at, updated_at: at,
   documents: [document], members: [{ id: "owner", display_name: "审查人", role: "admin", tenant_id: "tenant", org_id: "org" }],
-  latest_run: null, finding_counts: null, activity: [], business_line: "ENT", scenario: "telecom_dedicated_line",
+  latest_run: { id: "run-old", state: "completed", updated_at: at }, finding_counts: null, activity: [], business_line: "ENT", scenario: "telecom_dedicated_line",
   business_status: "active", generations: [], remediations: [], reports: [], archives: [], archived_at: null,
 };
 const missing: ConstraintEvaluation = {
@@ -97,10 +99,16 @@ function Location() {
   return <output aria-label="当前位置">{location.pathname}{location.search}</output>;
 }
 
+function ActiveContextQueries() {
+  useQuery({ queryKey: queryKeys.case("case-1"), queryFn: ({ signal }) => getCase("case-1", signal), staleTime: Infinity });
+  useQuery({ queryKey: queryKeys.session, queryFn: ({ signal }) => getSession("client", signal), staleTime: Infinity });
+  return null;
+}
+
 function open({
   runId = "run-old", attemptId = "attempt-old", urlAttempt = attemptId, evaluations = [missing], agentReview = null,
   respond, canManage = true, tasks, sessionActor = actor, caseDetail = detail,
-  workspace,
+  workspace, readOnly = false, observeContext = false,
 }: {
   runId?: string;
   attemptId?: string | null;
@@ -113,6 +121,8 @@ function open({
   sessionActor?: Actor | null;
   caseDetail?: CaseDetail | null;
   workspace?: ReviewWorkspace | null;
+  readOnly?: boolean;
+  observeContext?: boolean;
 }) {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -125,11 +135,15 @@ function open({
   setSessionIdentity(sessionActor);
   if (caseDetail !== null) client.setQueryData(queryKeys.case("case-1"), caseDetail);
   if (sessionActor !== null) client.setQueryData(queryKeys.session, sessionActor);
-  if (workspace !== null) client.setQueryData(queryKeys.review("case-1", runId, urlAttempt), workspace ?? makeWorkspace(runId, attemptId ?? "attempt-old", evaluations));
+  if (workspace !== null) {
+    const selectedWorkspace = workspace ?? makeWorkspace(runId, attemptId ?? "attempt-old", evaluations);
+    client.setQueryData(queryKeys.review("case-1", runId, urlAttempt), agentReview ? { ...selectedWorkspace, agent_review: agentReview } : selectedWorkspace);
+  }
   if (tasks) client.setQueryData(queryKeys.workbench("week"), { tasks });
   const path = `/cases/case-1/reviews/${runId}${urlAttempt ? `?attempt_id=${urlAttempt}` : ""}`;
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}>
-    <EvidenceRequestPanel caseId="case-1" runId={runId} attemptId={attemptId} canManage={canManage}
+    {observeContext ? <ActiveContextQueries /> : null}
+    <EvidenceRequestPanel caseId="case-1" runId={runId} attemptId={attemptId} canManage={canManage} readOnly={readOnly}
       evaluations={evaluations} agentReview={agentReview} documents={caseDetail?.documents ?? []} />
     <Location />
   </MemoryRouter></QueryClientProvider>);
@@ -154,10 +168,79 @@ afterEach(() => {
   cleanup();
   for (const client of clients.splice(0)) client.clear();
   setSessionIdentity(null);
+  clearAllEvidenceDrafts();
   vi.unstubAllGlobals();
 });
 
 describe("补充材料请求", () => {
+  it("does not submit stale visible fields after the in-memory draft expires", async () => {
+    const { user, calls } = open({ urlAttempt: null, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      return Response.json({}, { status: 404 });
+    } });
+    await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+    await user.type(screen.getByLabelText("任务名称"), "补充质保");
+    await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /审查人/);
+    fireEvent.change(screen.getByLabelText("完成期限（本地时间）"), { target: { value: "2026-11-01T10:00" } });
+    await user.type(screen.getByLabelText("需要补充的问题"), "请补充质保期限");
+    const form = screen.getByRole("button", { name: "创建任务并发起请求" }).closest("form")!;
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now + 60 * 60 * 1000 + 1);
+    try {
+      fireEvent.submit(form);
+      expect(screen.getByText("草稿已过期或发生变化，请核对后重新填写。")).toBeVisible();
+      expect(calls.some((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toBe(false);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("keeps a historical workspace read-only without hiding the original source", async () => {
+    open({ readOnly: true, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest("received", 2)] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({}, { status: 404 });
+    } });
+    expect(await screen.findByRole("link", { name: "查看来源审查" })).toHaveAttribute("href", "/cases/case-1/reviews/run-old?attempt_id=attempt-old");
+    expect(screen.queryByRole("button", { name: "提交回执" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "提交核验" })).not.toBeInTheDocument();
+    expect(screen.queryByText("发起后续审查")).not.toBeInTheDocument();
+  });
+
+  it("allows the existing clerk receipt flow for an old-source request in the current workspace", async () => {
+    let received = false;
+    const { user, calls } = open({ runId: "run-new", attemptId: "attempt-new", sessionActor: { ...actor, role: "clerk" }, respond(call) {
+      if (call.pathname.endsWith("/receipts") && call.method === "POST") {
+        received = true;
+        return Response.json({ request: rawRequest("received", 2), receipt: { ...rawReceipt, document_id: undefined, answer: "已核对" } });
+      }
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest(received ? "received" : "open", received ? 2 : 1)] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({}, { status: 404 });
+    } });
+    expect(await screen.findByRole("button", { name: "提交回执" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看来源审查" })).toHaveAttribute("href", "/cases/case-1/reviews/run-old?attempt_id=attempt-old");
+    await chooseOption(user, screen.getByRole("combobox", { name: "提交方式" }), "文字答复");
+    await user.type(screen.getByLabelText("文字答复"), "已核对");
+    await user.click(screen.getByRole("button", { name: "提交回执" }));
+    await screen.findByText("已提交，待复核");
+    expect(JSON.parse(String(calls.find((call) => call.pathname.endsWith("/receipts"))?.init?.body))).toEqual({ answer: "已核对", expected_version: 1 });
+  });
+
+  it("removes previously visible request data after the server revokes access", async () => {
+    let revoked = false;
+    const { client } = open({ respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return revoked ? Response.json({ error: { message: "forbidden" } }, { status: 403 }) : Response.json({ items: [rawRequest("open", 1)] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({}, { status: 404 });
+    } });
+    expect(await screen.findByRole("heading", { name: "请补充质保期限" })).toBeVisible();
+    revoked = true;
+    await act(async () => { await client.invalidateQueries({ queryKey: ["evidence-requests", "case-1"] }); });
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "请补充质保期限" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "提交回执" })).not.toBeInTheDocument();
+  });
+
   it("shows unknown status, condition and event as prompts with the exact codes in details", async () => {
     const request = { ...rawRequest("open·", 1), verification_condition: "compatible（旧）" };
     open({ canManage: false, respond(call) {
@@ -210,6 +293,128 @@ describe("补充材料请求", () => {
     expect(new Headers(requestCalls[0]?.init?.headers).get("X-Context-Version")).toBe("1");
     expect(new Headers(requestCalls[0]?.init?.headers).get("X-CSRF-Token")).toBe(actor.csrf_token);
     expect(calls.some((call) => call.pathname.includes("/reviews/"))).toBe(false);
+  });
+
+  it("preserves the linked task across a same-identity case refetch and retries only the failed request", async () => {
+    const caseResponse = Promise.withResolvers<Response>();
+    let creates = 0;
+    const { calls, user } = open({ urlAttempt: null, observeContext: true, respond(call) {
+      if (call.pathname.endsWith("/tasks") && call.method === "POST") return Response.json({
+        id: "task-1", case_id: "case-1", title: "补充质保", kind: "review", assignee_id: "owner", due_at: at,
+        status: "open", priority: "high", finding_id: null, version: 1, created_by: "owner", created_at: at, updated_at: at,
+      });
+      if (call.pathname.endsWith("/cases/case-1") && call.method === "GET") return caseResponse.promise;
+      if (call.pathname.endsWith("/evidence-requests") && call.method === "POST") {
+        creates++;
+        return creates === 1 ? Response.json({ error: { message: "请求暂时不可用" } }, { status: 503 }) : Response.json(rawRequest("open", 1));
+      }
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: creates > 1 ? [rawRequest("open", 1)] : [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({}, { status: 404 });
+    } });
+    await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+    await user.type(screen.getByLabelText("任务名称"), "补充质保");
+    await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /审查人/);
+    fireEvent.change(screen.getByLabelText("完成期限（本地时间）"), { target: { value: "2026-11-01T10:00" } });
+    await user.type(screen.getByLabelText("需要补充的问题"), "请补充质保期限");
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await screen.findByText("正在重新确认登录或案件状态，办理暂不可用。");
+    expect(screen.queryByRole("button", { name: "创建任务并发起请求" })).not.toBeInTheDocument();
+    await act(async () => caseResponse.resolve(Response.json(detail)));
+    expect(await screen.findByText("请求暂时不可用")).toBeVisible();
+    expect(screen.getByText(/已关联任务/)).toBeVisible();
+    expect(screen.getByLabelText("需要补充的问题")).toHaveValue("请补充质保期限");
+    await user.click(screen.getByRole("button", { name: "重试创建补充请求" }));
+    expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
+    expect(calls.filter((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toHaveLength(1);
+    expect(calls.filter((call) => call.pathname.endsWith("/evidence-requests") && call.method === "POST")).toHaveLength(2);
+  });
+
+  it("preserves the draft when a task failure triggers same-identity session revalidation", async () => {
+    const sessionResponse = Promise.withResolvers<Response>();
+    const { user } = open({ urlAttempt: null, observeContext: true, respond(call) {
+      if (call.pathname.endsWith("/tasks") && call.method === "POST") return Response.json({ error: { message: "任务暂不可用" } }, { status: 503 });
+      if (call.pathname.endsWith("/session")) return sessionResponse.promise;
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      return Response.json({}, { status: 404 });
+    } });
+    await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+    await user.type(screen.getByLabelText("任务名称"), "保留名称");
+    await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /审查人/);
+    fireEvent.change(screen.getByLabelText("完成期限（本地时间）"), { target: { value: "2026-11-01T10:00" } });
+    await user.type(screen.getByLabelText("需要补充的问题"), "保留补充问题");
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await screen.findByText("正在重新确认登录或案件状态，办理暂不可用。");
+    await act(async () => sessionResponse.resolve(Response.json(actor)));
+    expect(await screen.findByText("任务暂不可用")).toBeVisible();
+    expect(screen.getByLabelText("任务名称")).toHaveValue("保留名称");
+    expect(screen.getByLabelText("需要补充的问题")).toHaveValue("保留补充问题");
+  });
+
+  it("keeps the linked task and pauses the request after case revalidation fails", async () => {
+    let reads = 0;
+    const task: WorkbenchTask = { id: "task-1", case_id: "case-1", title: "补充质保", kind: "review", assignee_id: "owner", due_at: at,
+      status: "open", priority: "high", finding_id: null, version: 1, created_by: "owner", created_at: at, updated_at: at };
+    const { calls, user } = open({ urlAttempt: null, observeContext: true, respond(call) {
+      if (call.pathname.endsWith("/tasks") && call.method === "POST") return Response.json(task);
+      if (call.pathname.endsWith("/reviews/run-old")) return Response.json(makeWorkspace("run-old", "attempt-old", [missing]));
+      if (call.pathname.endsWith("/workbench")) return Response.json({
+        schema_version: "workbench/v1", generated_at: at, period: "week",
+        dashboard: { visible_cases: 0, my_pending_tasks: 0, overdue_tasks: 0, pending_review_cases: 0,
+          remediation_cases: 0, completed_reviews: 0, average_duration_ms: null, progress: [], risks: [] },
+        cases: [], profiles: [], tasks: [task], relations: [], knowledge: [], members: [], remediations: [],
+        reports: [], documents: [], runs: [], audit: [], templates: [], model: { name: "", ocr_name: "", status: "unconfigured", label: "" }, tools: [],
+      });
+      if (call.pathname.endsWith("/cases/case-1")) {
+        reads++;
+        return reads === 1 ? Response.json({ error: { message: "暂时不可用" } }, { status: 503 }) : Response.json(detail);
+      }
+      if (call.pathname.endsWith("/evidence-requests") && call.method === "POST") return Response.json(rawRequest("open", 1));
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      return Response.json({}, { status: 404 });
+    } });
+    await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+    await user.type(screen.getByLabelText("任务名称"), "补充质保");
+    await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /审查人/);
+    fireEvent.change(screen.getByLabelText("完成期限（本地时间）"), { target: { value: "2026-11-01T10:00" } });
+    await user.type(screen.getByLabelText("需要补充的问题"), "请补充质保期限");
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await user.click(await screen.findByRole("button", { name: "重试确认状态" }));
+    expect(await screen.findByText(/关联任务已保留/)).toBeVisible();
+    expect(screen.getByLabelText("需要补充的问题")).toHaveValue("请补充质保期限");
+    expect(calls.filter((call) => call.pathname.endsWith("/evidence-requests") && call.method === "POST")).toHaveLength(0);
+    const retry = screen.getByRole("button", { name: "重试创建补充请求" });
+    await waitFor(() => expect(retry).toBeEnabled());
+    await user.click(retry);
+    expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
+    expect(calls.filter((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toHaveLength(1);
+  });
+
+  it("does not create a request under a different identity after task creation", async () => {
+    const caseResponse = Promise.withResolvers<Response>();
+    const { calls, client, user } = open({ urlAttempt: null, observeContext: true, respond(call) {
+      if (call.pathname.endsWith("/tasks") && call.method === "POST") return Response.json({
+        id: "task-1", case_id: "case-1", title: "补充质保", kind: "review", assignee_id: "owner", due_at: at,
+        status: "open", priority: "high", finding_id: null, version: 1, created_by: "owner", created_at: at, updated_at: at,
+      });
+      if (call.pathname.endsWith("/cases/case-1")) return caseResponse.promise;
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      return Response.json({}, { status: 404 });
+    } });
+    await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+    await user.type(screen.getByLabelText("任务名称"), "补充质保");
+    await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /审查人/);
+    fireEvent.change(screen.getByLabelText("完成期限（本地时间）"), { target: { value: "2026-11-01T10:00" } });
+    await user.type(screen.getByLabelText("需要补充的问题"), "请补充质保期限");
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await screen.findByText("正在重新确认登录或案件状态，办理暂不可用。");
+    const other = { ...actor, id: "other", active_context: { ...actor.active_context, context_version: "2" } };
+    act(() => { setSessionIdentity(other); client.setQueryData(queryKeys.session, other); });
+    await act(async () => caseResponse.resolve(Response.json(detail)));
+    await waitFor(() => expect(client.isMutating()).toBe(0));
+    expect(screen.getByText("无法确认登录或案件状态，暂不显示补件记录。")).toBeVisible();
+    expect(screen.queryByLabelText("需要补充的问题")).not.toBeInTheDocument();
+    expect(calls.filter((call) => call.pathname.endsWith("/evidence-requests") && call.method === "POST")).toHaveLength(0);
   });
 
   it("binds an observed agent gap to an existing case task", async () => {
@@ -425,19 +630,16 @@ describe("补充材料请求", () => {
     const task: WorkbenchTask = { id: "task-hidden", case_id: "case-1", title: "现有任务", kind: "review",
       assignee_id: "owner", due_at: at, status: "open", priority: "high", finding_id: null, version: 1,
       created_at: at, created_by: "owner", updated_at: at };
-    const { user } = open({ caseDetail: null, tasks: [task], respond(call) {
+    open({ caseDetail: null, tasks: [task], respond(call) {
       if (call.pathname.endsWith("/cases/case-1")) return Response.json({ error: { message: "case unavailable" } }, { status: 404 });
       if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
       if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
       return Response.json({ error: { message: "unexpected" } }, { status: 404 });
     } });
 
-    await screen.findByText("发起补充材料请求");
-    expect(screen.getByRole("combobox", { name: "责任人" })).toBeDisabled();
-    await chooseOption(user, screen.getByRole("combobox", { name: "关联任务" }), "选择已有任务");
-    const taskOptions = await openActiveListbox(user, screen.getByRole("combobox", { name: "选择已有任务" }));
-    expect(within(taskOptions).queryByRole("option", { name: /现有任务/ })).not.toBeInTheDocument();
-    expect(screen.getByText("暂无包含责任人和期限的未完成案件任务。")).toBeInTheDocument();
+    expect(await screen.findByText("无法确认登录或案件状态，暂不显示补件记录。")).toBeVisible();
+    expect(screen.queryByText("发起补充材料请求")).not.toBeInTheDocument();
+    expect(screen.queryByText("现有任务")).not.toBeInTheDocument();
   });
 
   it("preserves empty member names in existing-task options and restores selection after mode changes", async () => {
@@ -1058,7 +1260,7 @@ describe("补充材料请求", () => {
   it("uses a selected frozen quotation and actual later check, and preserves a server refusal", async () => {
     let verified = false;
     let verificationAttempts = 0;
-    const { calls, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], canManage: false, respond(call) {
+    const { calls, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], canManage: false, sessionActor: { ...actor, role: "reviewer" }, respond(call) {
       if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [verified ? {
         ...rawRequest("verified", 3), verification: { run_id: "run-new", attempt_id: "attempt-new", receipt_id: "receipt-1", evaluation_id: "eval-new",
           relation: "compatible", evidence: [{ document_id: "doc-2", parsed_document_id: "parse-2", quote: "质保36个月", start: 1, end: 7 }],
@@ -1346,15 +1548,16 @@ describe("补充材料请求", () => {
       },
     });
 
-    await screen.findByText("已提交，待复核");
+    expect(await screen.findByText("无法确认登录或案件状态，暂不显示补件记录。")).toBeVisible();
+    expect(screen.queryByText("已提交，待复核")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "提交回执" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("上传补充文件")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "提交核验" })).not.toBeInTheDocument();
   });
 
   it("keeps case actions unavailable when case details cannot be loaded", async () => {
     const request = rawRequest("received", 2);
-    const { user } = open({
+    open({
       canManage: false,
       caseDetail: null,
       respond(call) {
@@ -1365,12 +1568,11 @@ describe("补充材料请求", () => {
       },
     });
 
-    await screen.findByText("已提交，待复核");
-    await user.click(screen.getByText("处理记录"));
-    expect(await screen.findByText(/提交回执 · 姓名未报告/)).toBeInTheDocument();
+    expect(await screen.findByText("无法确认登录或案件状态，暂不显示补件记录。")).toBeVisible();
+    expect(screen.queryByText("已提交，待复核")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "提交回执" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("上传补充文件")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "提交核验" })).not.toBeInTheDocument();
   });
 
   it("lets a reviewer submit a receipt without exposing upload controls", async () => {
