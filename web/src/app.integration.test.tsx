@@ -240,6 +240,7 @@ class Service {
   private uploadedTexts = new Map<string, string>();
   cases = new Map<string, CaseDetail>([["c1", caseOf()]]);
   reviews = new Map<string, ReviewWorkspace>();
+  evidenceRequests: unknown[] = [];
   requests: {
     key: string;
     input: unknown;
@@ -660,7 +661,7 @@ class Service {
       return this.json(item.material_selection);
     }
     if (parts[4] === "evidence-requests" && method === "GET")
-      return this.json({ items: [] });
+      return this.json({ items: parts[6] === "history" ? [] : this.evidenceRequests });
     if (parts[4] === "remediations" && parts.length === 5 && method === "POST") {
       const submitted = body as Pick<Remediation, "run_id" | "attempt_id" | "finding_ids" | "assignee_id" | "due_at" | "measure">;
       const remediation: Remediation = {
@@ -957,6 +958,64 @@ async function selectBusinessTime() {
 }
 
 describe("application routes and API contract", () => {
+  it("keeps a failed decision in the work queue until the server refresh confirms a decision", async () => {
+    const api = new Service();
+    api.addReview("awaiting_human");
+    api.fail("POST /api/cases/c1/reviews/r1/findings/f1/decisions", 503);
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    const queue = await screen.findByRole("region", { name: "人工办理" });
+    await within(queue).findByRole("button", { name: "待判断：1" });
+    await user.click(within(queue).getByRole("button", { name: "查看判断与原文" }));
+    await user.click(screen.getByRole("radio", { name: "误报" }));
+    await user.type(screen.getByLabelText("理由"), "核对原文后判断误报");
+    await user.click(screen.getByRole("button", { name: "保存决定" }));
+    await screen.findByText("受控失败 503");
+    expect(await within(queue).findByRole("button", { name: "待判断：1" })).toBeVisible();
+    expect(screen.getByLabelText("理由")).toHaveValue("核对原文后判断误报");
+    await user.click(screen.getByRole("button", { name: "保存决定" }));
+    expect(await within(queue).findByRole("button", { name: "待判断：0" })).toBeVisible();
+  });
+
+  it("opens the exact old-source remediation and returns to the same work filter", async () => {
+    const api = new Service();
+    addSubmittedRemediation(api, [evaluation()]);
+    const { user } = open(api, "/cases/c1/reviews/r2");
+    const queue = await screen.findByRole("region", { name: "人工办理" });
+    await user.click(await within(queue).findByRole("button", { name: "待整改：1" }));
+    expect(within(queue).getByText("其他来源执行", { exact: false })).toBeVisible();
+    await user.click(within(queue).getByRole("button", { name: "查看整改记录" }));
+    expect(await screen.findByRole("link", { name: "返回人工办理" })).toBeVisible();
+    expect(document.getElementById("case-remediation")).toHaveAttribute("open");
+    expect(await screen.findByText("修订合同带宽")).toBeVisible();
+    await user.click(screen.getByRole("link", { name: "返回人工办理" }));
+    const restored = await screen.findByRole("region", { name: "人工办理" });
+    expect(await within(restored).findByRole("button", { name: "待整改：1" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(restored).getByText("修订合同带宽")).toBeVisible();
+    expect(within(restored).getByText("修订合同带宽").closest("li")).toHaveAttribute("aria-current", "true");
+  });
+
+  it("opens the second selected evidence request in the existing panel", async () => {
+    const api = new Service();
+    api.addReview("awaiting_human");
+    api.evidenceRequests = ["first", "second"].map((id) => ({
+      id: `request-${id}`, case_id: "c1", task_id: `task-${id}`, task_version: 1, assignee_id: "u1", due_at: at,
+      source_run_id: "r1", source_attempt_id: "attempt-r1-1", question: `补件${id}`, material_role: null,
+      source_gap: { gap_id: `gap-${id}`, domain: "commercial", capability_id: "payment", status: "insufficient", reason_code: "required_source_or_field_missing" },
+      verification_condition: "resolved", status: "open", version: 1, created_by: "u1", created_at: at, updated_at: at,
+    }));
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    const queue = await screen.findByRole("region", { name: "人工办理" });
+    await user.click(await within(queue).findByRole("button", { name: /待补件/ }));
+    const item = within(queue).getByText("补件second").closest("li");
+    expect(item).not.toBeNull();
+    await user.click(within(item!).getByRole("button", { name: "查看补件请求" }));
+    const requestHeading = await screen.findByRole("heading", { name: "补件second" });
+    const requestCard = requestHeading.closest("li");
+    expect(requestCard).not.toBeNull();
+    expect(requestCard!.closest("details")).toHaveAttribute("open");
+    await waitFor(() => expect(document.activeElement).toBe(requestCard));
+  });
+
   it("shows a limited precheck in the case and starts a full review only after readiness", async () => {
     const api = new Service();
     const prior = api.addReview("partial");

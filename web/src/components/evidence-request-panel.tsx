@@ -14,11 +14,13 @@ import { useEffect, useRef, useState, type FormEvent, type SyntheticEvent } from
 import { Link, useNavigate, useSearchParams } from "react-router";
 import type { BusinessAgentCapability, BusinessAgentGap, BusinessAgentReview } from "../api/business-agent-review";
 import { getCase, getReview, getSession, getWorkbench } from "../api/endpoints";
-import { assertCommandContextCurrent, captureCommandContext } from "../api/http";
+import { assertCommandContextCurrent, captureCommandContext, isForbidden, isUnauthenticated } from "../api/http";
 import { clearPendingMutationKey, fileSha256, idempotencyActorScope, newIdempotencyKey, pendingMutationKey } from "../api/idempotency";
+import { actorReadContextKey } from "../domain/actor-read-context";
 import {
   createEvidenceReceipt,
   createEvidenceRequest,
+  evidenceRequestsKey,
   listEvidenceHistory,
   listEvidenceRequests,
   uploadEvidenceDocument,
@@ -54,7 +56,7 @@ const materialRoles = [
 const conditionLabels: Record<string, string> = { compatible: "检查结果一致", conflict: "检查结果存在冲突", resolved: "缺口已解决" };
 const statusLabels: Record<string, string> = { open: "待提交", received: "已提交，待复核", verified: "已核验" };
 const eventLabels: Record<string, string> = { created: "创建请求", received: "提交回执", verified: "完成核验" };
-const requestKey = (caseId: string) => ["evidence-requests", caseId] as const;
+const requestKey = evidenceRequestsKey;
 
 function useOperationKeys() {
   const keys = useRef(new Map<string, string>());
@@ -89,7 +91,7 @@ function roleHasPermission(role: string | undefined, allowed: readonly string[])
 
 function requestPermissions(context: PanelContext) {
   const role = context.actor?.role;
-  const available = context.detailReady && context.detail?.archived_at === null;
+  const available = context.allowWrites && context.detailReady && context.detail?.archived_at === null;
   return {
     canSubmit: available && roleHasPermission(role, ["admin", "reviewer", "clerk"]),
     canUpload: available && roleHasPermission(role, ["admin", "clerk"]),
@@ -940,6 +942,11 @@ type EvidencePanelProps = {
   documents: CaseDetail["documents"];
   quoteSelection?: FrozenQuoteSelection | null;
   quoteScope?: FrozenQuoteScope | null;
+  readOnly?: boolean;
+  selectedRequestId?: string | null;
+  selectedSource?: string | null;
+  navigationSerial?: number;
+  expanded?: boolean;
 };
 
 type PanelContext = {
@@ -952,6 +959,7 @@ type PanelContext = {
   tasksError: unknown;
   tasksLoading: boolean;
   refreshTasks: () => void;
+  allowWrites: boolean;
 };
 
 type RequestSourceOption = { value: string; label: string };
@@ -1291,12 +1299,12 @@ function CreateRequestLinkedTaskFooter({ task, pending, onReplace }: {
   );
 }
 
-function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, canManage, context }: Omit<EvidencePanelProps, "documents"> & { context: PanelContext }) {
+function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, canManage, context, selectedSource, navigationSerial = 0, expanded = true }: Omit<EvidencePanelProps, "documents"> & { context: PanelContext }) {
   const createTask = useCreateWorkbenchTask(caseId);
   const client = useQueryClient();
   const keyFor = useOperationKeys();
   const createGeneration = useRef(0);
-  const [source, setSource] = useState("");
+  const [source, setSource] = useState(selectedSource ?? "");
   const [title, setTitle] = useState("");
   const [assignee, setAssignee] = useState("");
   const [due, setDue] = useState("");
@@ -1307,9 +1315,17 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
   const [taskMode, setTaskMode] = useState<"new" | "existing">("new");
   const [existingTaskId, setExistingTaskId] = useState("");
   const [error, setError] = useState<unknown>(null);
+  const [confirmationError, setConfirmationError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [created, setCreated] = useState(false);
-  if (!canManage) return null;
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (!selectedSource || !expanded) return;
+    setSource(selectedSource);
+    formRef.current?.focus();
+    formRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [selectedSource, navigationSerial, expanded]);
+  if (!canManage || !context.allowWrites) return null;
 
   const frozen = isFrozenRequestSourceAttempt(context.workspace?.review_attempts?.attempt, attemptId, runId);
   const missingEvaluations = eligibleRequestEvaluations(evaluations);
@@ -1325,9 +1341,12 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
     event.preventDefault();
     if (!canSubmitRequest(canManage, frozen, attemptId, validSource, question, taskReady, pending)) return;
     setError(null);
+    setConfirmationError(null);
     setCreated(false);
     setPending(true);
     try {
+      if (!context.actor) throw new Error("登录状态不可用，请刷新后重试");
+      const commandContext = captureCommandContext(context.actor);
       let linkedTask = resolveRequestTask(task, taskMode, existingTask);
       if (!linkedTask) {
         linkedTask = await createTask.mutateAsync({
@@ -1336,6 +1355,17 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
         });
       }
       setTask(linkedTask);
+      assertCommandContextCurrent(commandContext);
+      const caseState = client.getQueryState(queryKeys.case(caseId));
+      const currentCase = client.getQueryData<CaseDetail>(queryKeys.case(caseId));
+      const sessionState = client.getQueryState(queryKeys.session);
+      const currentActor = client.getQueryData<Actor>(queryKeys.session);
+      if (caseState?.status !== "success" || caseState.fetchStatus !== "idle" ||
+          sessionState?.status !== "success" || sessionState.fetchStatus !== "idle" || currentCase?.id !== caseId || !currentActor) {
+        setConfirmationError("关联任务已保留，但案件或登录状态尚未确认；请重试确认后继续。");
+        return;
+      }
+      captureCommandContext(currentActor);
       const input = createEvidenceRequestInput(linkedTask, source, runId, attemptId, question, role, condition);
       await createEvidenceRequest(caseId, input, keyFor(`create:${createGeneration.current}`, input));
       createGeneration.current += 1;
@@ -1362,10 +1392,11 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
   const submitDisabled = isCreateRequestButtonDisabled(frozen, validSource, question, taskReady);
 
   return (
-    <form className="workflow-form" onSubmit={(event) => void submit(event)}>
+    <form ref={formRef} tabIndex={-1} className="workflow-form" onSubmit={(event) => void submit(event)}>
       <h3>发起补充材料请求</h3>
       <p className="meta">选择本次审查中需要补充材料的检查，再关联一项有责任人和截止时间的案件任务。</p>
-      <CreateRequestSourceFields frozen={frozen} options={options} source={source} pending={pending} onSourceChange={setSource} />
+      {selectedSource && !options.some((option) => option.value === selectedSource) ? <p role="alert">所选来源不属于当前执行或身份不唯一，请返回办理列表核对。</p> : null}
+      <CreateRequestSourceFields frozen={frozen} options={options} source={validSource ? source : ""} pending={pending} onSourceChange={setSource} />
       <CreateRequestTaskFields
         taskMode={taskMode} onTaskModeChange={setTaskMode} task={task} pending={pending}
         existingTaskId={existingTaskId} onExistingTaskChange={setExistingTaskId} context={context} eligibleTasks={eligibleTasks}
@@ -1378,6 +1409,7 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
         source={source} condition={condition} onConditionChange={setCondition} pending={pending}
       />
       <CreateRequestLinkedTaskFooter task={task} pending={pending} onReplace={replaceLinkedTask} />
+      {confirmationError ? <p className="workflow-error" role="alert">{confirmationError}</p> : null}
       <ErrorNotice error={error} />
       {created ? <p role="status">补充材料请求已创建。</p> : null}
       <Button aria-label={submitLabel} type="primary" htmlType="submit" loading={pending} disabled={submitDisabled}>
@@ -1398,6 +1430,9 @@ function RequestCard({
   quoteSelection,
   quoteScope,
   context,
+  selectedRequestId,
+  navigationSerial = 0,
+  expanded = true,
 }: EvidencePanelProps & { item: EvidenceRequest; context: PanelContext }) {
   const client = useQueryClient();
   const navigate = useNavigate();
@@ -1419,6 +1454,12 @@ function RequestCard({
   const [quote, setQuote] = useState<FrozenQuoteSelection | null>(null);
   const [reason, setReason] = useState("");
   const [businessAt, setBusinessAt] = useState("");
+  const targetRef = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (!expanded || selectedRequestId !== item.id) return;
+    targetRef.current?.focus();
+    targetRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [selectedRequestId, item.id, navigationSerial, expanded]);
   const { canSubmit, canUpload, canVerify } = requestPermissions(context);
   const receipts = (history.data ?? []).flatMap((event) => event.receipt ? [event.receipt] : []);
   const receipt = receipts.find((entry) => entry.id === receiptId);
@@ -1540,7 +1581,7 @@ function RequestCard({
   );
 
   return (
-    <li>
+    <li ref={targetRef} tabIndex={selectedRequestId === item.id ? -1 : undefined}>
       <RequestCardHeading item={item} caseId={caseId} context={context} />
       <RequestCardNextStep item={item} />
       <RequestCardVerifiedOutcome item={item} caseId={caseId} />
@@ -1561,7 +1602,7 @@ function RequestCard({
         receiptPending={submitReceipt.isPending} receiptError={submitReceipt.error}
         onSubmit={(event) => submitRequestForm(event, receiptInput, submitReceipt.mutate)}
       />
-      {item.status === "received" ? (
+      {item.status === "received" && context.allowWrites ? (
         <>
           <FollowupReview canSubmit={canSubmit} requiresBusinessAt={requiresBusinessAt} businessAt={businessAt}
             setBusinessAt={setBusinessAt} startPending={start.isPending} startError={start.error}
@@ -1603,6 +1644,11 @@ export function EvidenceRequestPanel(props: EvidencePanelProps) {
     queryFn: ({ signal }) => getSession("client", signal),
     enabled: false,
   });
+  const initialScope = useRef<string | null>(null);
+  const scopeInvalidated = useRef(false);
+  const currentScope = session.data ? actorReadContextKey(session.data) : null;
+  if (currentScope && initialScope.current === null) initialScope.current = currentScope;
+  if (currentScope && initialScope.current && currentScope !== initialScope.current) scopeInvalidated.current = true;
   const workbench = useQuery({
     queryKey: queryKeys.workbench("week"),
     queryFn: ({ signal }) => getWorkbench("week", signal),
@@ -1610,10 +1656,11 @@ export function EvidenceRequestPanel(props: EvidencePanelProps) {
   });
   const context: PanelContext = {
     workspace: workspace.data, detail: detail.data, detailError: detail.error,
-    detailReady: detail.isSuccess && !detail.isFetching, actor: session.isSuccess ? session.data : undefined,
+    detailReady: detail.isSuccess && !detail.isFetching, actor: session.isSuccess && !session.isFetching ? session.data : undefined,
     tasks: workbench.isSuccess && !workbench.isFetching ? workbench.data.tasks : undefined,
     tasksError: workbench.error, tasksLoading: workbench.isFetching,
     refreshTasks: () => { void workbench.refetch(); },
+    allowWrites: !props.readOnly && session.isSuccess && !session.isFetching && detail.isSuccess && !detail.isFetching,
   };
   const requests = useQuery({
     queryKey: requestKey(props.caseId),
@@ -1621,20 +1668,42 @@ export function EvidenceRequestPanel(props: EvidencePanelProps) {
     enabled: !!props.caseId,
     retry: false,
   });
+  const denied = scopeInvalidated.current || !session.data || !detail.data ||
+    isForbidden(requests.error) || isUnauthenticated(requests.error) ||
+    isForbidden(detail.error) || isUnauthenticated(detail.error) ||
+    isForbidden(session.error) || isUnauthenticated(session.error);
+  const revalidationFailed = !denied && (session.isError || detail.isError);
+  const revalidating = !denied && (session.isFetching || detail.isFetching || revalidationFailed);
+  const visibleRequests = denied ? undefined : requests.data;
+  const selectedMatches = visibleRequests?.filter((item) => item.id === props.selectedRequestId) ?? [];
+  const selectedRequestId = selectedMatches.length === 1 ? props.selectedRequestId : null;
+  const selectedEvaluation = props.selectedSource?.startsWith("evaluation:")
+    ? props.evaluations.filter((item) => item.id === props.selectedSource?.slice("evaluation:".length)) : [];
   return (
     <section className="workflow-panel" aria-label="补充材料请求">
       <header className="workflow-panel-head">
         <div><h2>补充材料请求</h2><p className="meta">跟踪缺失检查、材料回执与后续审查核验。</p></div>
         <Button htmlType="button" loading={requests.isFetching} onClick={() => void client.invalidateQueries({ queryKey: requestKey(props.caseId) })}>刷新请求</Button>
       </header>
-      <CreateRequest key={`${props.caseId}:${props.runId}:${props.attemptId ?? ""}`} {...props} context={context} />
+      {denied ? <p role="status">无法确认登录或案件状态，暂不显示补件记录。</p> : null}
+      {revalidating && !revalidationFailed ? <p role="status">正在重新确认登录或案件状态，办理暂不可用。</p> : null}
+      {revalidationFailed ? <p role="alert">登录或案件状态重新确认失败，办理暂不可用。<Button htmlType="button" onClick={() => {
+        if (session.isError) void session.refetch();
+        if (detail.isError) void detail.refetch();
+      }}>重试确认状态</Button></p> : null}
+      <div hidden={revalidating}>
+      {props.readOnly ? <p>当前工作区只读；案件级请求可在当前合法办理环境继续处理。</p> : null}
+      {props.selectedSource?.startsWith("evaluation:") && selectedEvaluation.length === 1 ? <p>所选规则来源：{selectedEvaluation[0]?.reason || "检查原因待核对"}</p> : null}
+      {!denied ? <CreateRequest key={`${props.caseId}:${props.runId}:${props.attemptId ?? ""}`} {...props} context={context} /> : null}
       {requests.isLoading ? <p role="status">正在读取补充材料请求。</p> : null}
       <ErrorNotice error={requests.error} />
       {requests.isError ? <Button htmlType="button" onClick={() => void requests.refetch()}>重试读取请求</Button> : null}
-      {requests.data?.length === 0 ? <p>当前案件没有补充材料请求。</p> : null}
-      {requests.data && requests.data.length > 0 ? <ul className="workflow-record-list">{requests.data.map((item) =>
-        <RequestCard key={`${props.caseId}:${item.id}`} item={item} {...props} context={context} />
+      {props.selectedRequestId && requests.isSuccess && selectedMatches.length !== 1 ? <p role="alert">所选补件请求不存在或身份不唯一，请返回办理列表核对。</p> : null}
+      {visibleRequests?.length === 0 && requests.isSuccess && !requests.isFetching ? <p>当前案件没有补充材料请求。</p> : null}
+      {visibleRequests && visibleRequests.length > 0 ? <ul className="workflow-record-list">{visibleRequests.map((item) =>
+        <RequestCard key={`${props.caseId}:${item.id}`} item={item} {...props} selectedRequestId={selectedRequestId} context={context} />
       )}</ul> : null}
+      </div>
     </section>
   );
 }

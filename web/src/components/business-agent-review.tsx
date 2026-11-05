@@ -9,7 +9,7 @@
 // End file metadata.
 
 import { Alert, Button } from "antd";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useRef } from "react";
 import type {
   BusinessAgentCapability,
   BusinessAgentDomain,
@@ -327,14 +327,24 @@ function GapRow({
   gap,
   unresolved,
   evidence,
+  selected,
+  navigationSerial,
 }: {
   gap: BusinessAgentGap;
   unresolved: Set<string>;
   evidence: BusinessAgentEvidence[] | null;
+  selected: boolean;
+  navigationSerial: number;
 }) {
   const reportedUnresolved = unresolved.has(gap.gap_id);
+  const targetRef = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (!selected) return;
+    targetRef.current?.focus();
+    targetRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [selected, navigationSerial]);
   return (
-    <li>
+    <li ref={targetRef} tabIndex={selected ? -1 : undefined}>
       <header>
         <strong>{domainLabel(gap.domain)}：{capabilityLabel(gap.capability_id)}</strong>
         <StatusText tone={gapTone(gap, reportedUnresolved)}>{gapLabel(gap, reportedUnresolved)}</StatusText>
@@ -383,15 +393,20 @@ function GapList({
   gaps,
   unresolved,
   evidence,
+  selectedGapId,
+  navigationSerial,
 }: {
   gaps: BusinessAgentGap[];
   unresolved: Set<string>;
   evidence: BusinessAgentEvidence[] | null;
+  selectedGapId: string | null;
+  navigationSerial: number;
 }) {
   return (
     <ul className="agent-review-list">
       {gaps.map((gap, index) => (
-        <GapRow key={`${gap.gap_id}-${index}`} gap={gap} unresolved={unresolved} evidence={evidence} />
+        <GapRow key={`${gap.gap_id}-${index}`} gap={gap} unresolved={unresolved} evidence={evidence}
+          selected={gap.gap_id === selectedGapId} navigationSerial={navigationSerial} />
       ))}
     </ul>
   );
@@ -525,11 +540,15 @@ function GapsSection({
   unresolved,
   gaps,
   missingGaps,
+  selectedGapId,
+  navigationSerial,
 }: {
   review: BusinessAgentReview;
   unresolved: Set<string>;
   gaps: BusinessAgentGap[];
   missingGaps: string[];
+  selectedGapId: string | null;
+  navigationSerial: number;
 }) {
   return (
     <section className="agent-review-section" aria-label="审查缺口">
@@ -537,7 +556,7 @@ function GapsSection({
       {gaps.length === 0 ? (
         <p>暂无缺口资料；这不等于不存在风险。</p>
       ) : (
-        <GapList gaps={gaps} unresolved={unresolved} evidence={review.evidence} />
+        <GapList gaps={gaps} unresolved={unresolved} evidence={review.evidence} selectedGapId={selectedGapId} navigationSerial={navigationSerial} />
       )}
       {review.unresolved_gap_ids === null && gaps.length ? <p>缺口的解决清单不可用，请核对。</p> : null}
       {missingGaps.length > 0 ? <p>有 {missingGaps.length} 项未解决缺口缺少详情，请进一步核对。</p> : null}
@@ -549,10 +568,14 @@ function ReviewSections({
   review,
   domains,
   scopesWithoutResults,
+  selectedGapId,
+  navigationSerial,
 }: {
   review: BusinessAgentReview;
   domains: BusinessAgentDomain[];
   scopesWithoutResults: BusinessAgentScope[];
+  selectedGapId: string | null;
+  navigationSerial: number;
 }) {
   const facts = reviewFacts(review, domains);
   const observations = arrayOr(review.observations);
@@ -592,12 +615,14 @@ function ReviewSections({
           <ObservationsSection observations={review.observations} />
         </CollapsibleSection>
       ) : null}
-      <CollapsibleSection id="agent-review-gaps" title="审查缺口" summaryLabel="展开审查缺口" count={facts.gaps.length}>
+      <CollapsibleSection key={`${selectedGapId ?? ""}:${navigationSerial}`} id="agent-review-gaps" title="审查缺口" summaryLabel="展开审查缺口" count={facts.gaps.length} defaultOpen={selectedGapId !== null}>
         <GapsSection
           review={review}
           unresolved={facts.unresolved}
           gaps={facts.gaps}
           missingGaps={facts.missingGaps}
+          selectedGapId={selectedGapId}
+          navigationSerial={navigationSerial}
         />
       </CollapsibleSection>
       {facts.otherEvidence.length > 0 ? (
@@ -609,7 +634,7 @@ function ReviewSections({
   );
 }
 
-function BusinessAgentReviewBody({ review }: { review: BusinessAgentReview | null }) {
+function BusinessAgentReviewBody({ review, selectedGapId, navigationSerial }: { review: BusinessAgentReview | null; selectedGapId: string | null; navigationSerial: number }) {
   if (!review) return <EmptyReview />;
   const domains = arrayOr(review.domains);
   const scopesWithoutResults = scopesWithoutResultsOf(review.scope, domains);
@@ -621,6 +646,8 @@ function BusinessAgentReviewBody({ review }: { review: BusinessAgentReview | nul
       review={review}
       domains={domains}
       scopesWithoutResults={scopesWithoutResults}
+      selectedGapId={selectedGapId}
+      navigationSerial={navigationSerial}
     />
   );
 }
@@ -637,6 +664,8 @@ export function BusinessAgentReviewView({
   attemptId,
   selectedEvidenceId = null,
   onSelectEvidence,
+  selectedGapId = null,
+  navigationSerial = 0,
 }: {
   review: BusinessAgentReview | null;
   caseId?: string;
@@ -644,6 +673,8 @@ export function BusinessAgentReviewView({
   attemptId?: string | null;
   selectedEvidenceId?: string | null;
   onSelectEvidence?: (evidenceId: string | null) => void;
+  selectedGapId?: string | null;
+  navigationSerial?: number;
 }) {
   const target: CitationTarget | null =
     caseId && runId && attemptId && onSelectEvidence
@@ -651,6 +682,8 @@ export function BusinessAgentReviewView({
       : null;
   const citationUnknown = target !== null && selectedEvidenceId !== null && review !== null &&
     !arrayOr(review.evidence).some((item) => item.evidence_id === selectedEvidenceId);
+  const selectedGapValid = Boolean(selectedGapId && attemptId && review?.attempt_id === attemptId &&
+    arrayOr(review.gaps).filter((gap) => gap.gap_id === selectedGapId).length === 1);
   return (
     <CitationTargetContext.Provider value={target}>
       {citationUnknown ? (
@@ -661,7 +694,8 @@ export function BusinessAgentReviewView({
           description="未显示其他执行记录的原文；请从当前执行记录的引用重新打开。"
         />
       ) : null}
-      <BusinessAgentReviewBody review={review} />
+      {selectedGapId && !selectedGapValid ? <p role="alert">所选缺口不属于当前执行或身份不唯一，请返回办理列表核对。</p> : null}
+      <BusinessAgentReviewBody review={review} selectedGapId={selectedGapValid ? selectedGapId : null} navigationSerial={navigationSerial} />
     </CitationTargetContext.Provider>
   );
 }

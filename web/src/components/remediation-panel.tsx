@@ -100,6 +100,7 @@ function RemediationCard({
   archived,
   canWrite,
   choices,
+  selected = false,
 }: {
   caseId: string;
   item: Remediation;
@@ -109,6 +110,7 @@ function RemediationCard({
   archived: boolean;
   canWrite: boolean;
   choices: ReviewChoice[];
+  selected?: boolean;
 }) {
   const navigate = useNavigate();
   const source = useReview(caseId, item.run_id, item.attempt_id);
@@ -126,6 +128,17 @@ function RemediationCard({
   const submitErrorRef = useRef<HTMLParagraphElement>(null);
   const startReviewErrorRef = useRef<HTMLParagraphElement>(null);
   const verifyErrorRef = useRef<HTMLParagraphElement>(null);
+  const targetRef = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (!selected) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      targetRef.current?.focus();
+      targetRef.current?.scrollIntoView?.({ block: "nearest" });
+    });
+    return () => { active = false; };
+  }, [selected]);
   const candidate = reviewChoiceForKey(choices, candidateKey);
   const candidateWorkspace = useReview(
     caseId,
@@ -306,7 +319,7 @@ function RemediationCard({
   }
 
   return (
-    <li className="workflow-record">
+    <li ref={targetRef} tabIndex={selected ? -1 : undefined} className="workflow-record">
       <header className="workflow-panel-head">
         <div>
           <h4>整改记录</h4>
@@ -612,6 +625,7 @@ export function RemediationPanel({
   historyError,
   canWrite,
   archived,
+  selectedRemediationId = null,
 }: {
   caseId: string;
   detail: CaseDetail;
@@ -620,6 +634,7 @@ export function RemediationPanel({
   historyError: unknown;
   canWrite: boolean;
   archived: boolean;
+  selectedRemediationId?: string | null;
 }) {
   const create = useCreateRemediation(caseId);
   const choices = reviewChoices(history);
@@ -635,6 +650,7 @@ export function RemediationPanel({
     selectedChoice?.runId ?? "",
     selectedChoice?.attempt.id ?? null,
   );
+  const selectedMatches = detail.remediations.filter((item) => item.id === selectedRemediationId);
 
   useEffect(() => {
     if (!choiceKey && choices.length > 0) setChoiceKey(choices[0]?.key ?? "");
@@ -813,6 +829,7 @@ export function RemediationPanel({
       ) : null}
       <section aria-labelledby="remediation-history-title">
         <h3 id="remediation-history-title">整改历史</h3>
+        {selectedRemediationId && selectedMatches.length !== 1 ? <p role="alert">所选整改不存在或身份不唯一，请返回办理列表核对。</p> : null}
         {detail.remediations.length === 0 ? (
           <p>没有已返回的整改记录。</p>
         ) : (
@@ -828,6 +845,7 @@ export function RemediationPanel({
                 latestRun={detail.latest_run}
                 canWrite={canWrite}
                 choices={choices}
+                selected={selectedMatches.length === 1 && item.id === selectedRemediationId}
               />
             ))}
           </ul>

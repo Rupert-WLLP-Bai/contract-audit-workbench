@@ -827,6 +827,8 @@ export function FindingPanel({
   saveError,
   onDecide,
   onBatchDecide,
+  requestedFindingId = null,
+  navigationSerial = 0,
 }: {
   findings: Finding[];
   evaluations?: ConstraintEvaluation[];
@@ -846,9 +848,15 @@ export function FindingPanel({
     expectedVersion: number;
   }) => Promise<boolean>;
   onBatchDecide?: (input: FindingDecisionInput) => Promise<FindingDecisionOutcome>;
+  requestedFindingId?: string | null;
+  navigationSerial?: number;
 }) {
   const [filter, setFilter] = useState<FindingFilter>("all");
   const [panel, setPanel] = useState("风险审查");
+  useEffect(() => {
+    if (requestedFindingId && findings.filter((finding) => finding.id === requestedFindingId).length === 1)
+      setPanel("风险审查");
+  }, [requestedFindingId, navigationSerial, findings]);
   const visible = findingQueue(findings, filter);
   const batch = useBatchDecisionDraft();
   const [busyScope, setBusyScope] = useState<{ key: string | null } | null>(null);

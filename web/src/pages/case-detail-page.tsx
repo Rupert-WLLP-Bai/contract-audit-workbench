@@ -38,6 +38,8 @@ import { TechnicalDetail } from "../components/technical-detail";
 import { businessLineLabel, businessScopeLabel, scenarioLabel } from "../domain/business-labels";
 import { CaseSupportGrantPanel } from "./support-grant-pages";
 import { canReadmitCancelledPreparation } from "../features/review/review-outcome";
+import { readWorkReturn } from "../features/review/work-items";
+import { actorReadContextKey } from "../domain/actor-read-context";
 import {
   businessStatusLabel,
   contractTypeLabel,
@@ -65,6 +67,27 @@ export function CaseDetailPage() {
     typeof returnState?.scrollY === "number" ? returnState.scrollY : 0;
   const detail = useCaseDetail(caseId);
   const session = useSession();
+  const workActorScope = session.isSuccess && !session.isFetching ? actorReadContextKey(session.data) : "";
+  const incomingWork = location.state && typeof location.state === "object" && "workReturn" in location.state
+    ? location.state.workReturn : null;
+  const incomingScope = incomingWork && typeof incomingWork === "object" && "actorScope" in incomingWork ? incomingWork.actorScope : null;
+  const workScopeMismatch = Boolean(workActorScope && typeof incomingScope === "string" && incomingScope !== workActorScope);
+  const selectedRemediationId = !workScopeMismatch && searchParams.get("work_kind") === "remediation" ? searchParams.get("work_item") : null;
+  const workReturn = readWorkReturn(location.state, caseId, workActorScope);
+  useEffect(() => {
+    if (!workScopeMismatch) return;
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("work_kind");
+      next.delete("work_item");
+      return next;
+    }, { replace: true, state: null });
+  }, [workScopeMismatch, setSearchParams]);
+  useEffect(() => {
+    if (!selectedRemediationId || !session.isSuccess || session.isFetching || !detail.isSuccess || detail.isFetching) return;
+    const section = document.getElementById("case-remediation");
+    if (section instanceof HTMLDetailsElement) section.open = true;
+  }, [selectedRemediationId, session.isSuccess, session.isFetching, detail.isSuccess, detail.isFetching]);
   const actorScope = [session.data?.id ?? "", session.data?.tenant_id ?? "", session.data?.org_id ?? "", session.data?.audience ?? ""].join(":");
   const previousActorScope = useRef(actorScope);
   const sourceCaseParam = searchParams.get("source_case");
@@ -162,7 +185,7 @@ export function CaseDetailPage() {
   const actorRole = session.data?.role ?? "";
   const canUpload =
     !archived && (actorRole === "admin" || actorRole === "clerk");
-  const canWriteRemediation = actorRole === "admin" || actorRole === "reviewer";
+  const canWriteRemediation = session.isSuccess && !session.isFetching && !detail.isFetching && (actorRole === "admin" || actorRole === "reviewer");
   const canCreateReport = actorRole === "admin" || actorRole === "clerk";
   const canArchive = actorRole === "admin";
   const requiresBusinessAt = businessAt !== "" ||
@@ -192,6 +215,7 @@ export function CaseDetailPage() {
   return (
     <section className="page">
       <nav className="page-back" aria-label="案件导航">
+        {workReturn ? <Link to={workReturn}>返回人工办理</Link> : null}
         <Link to={returnTo} state={{ restoreScrollY: returnScrollY }}>
           返回案件列表
         </Link>
@@ -386,7 +410,7 @@ export function CaseDetailPage() {
           archived={archived}
         />
       </CollapsibleSection>
-      <CollapsibleSection id="case-remediation" title="整改与复核" summaryLabel="展开整改与复核">
+      <CollapsibleSection id="case-remediation" title="整改与复核" summaryLabel="展开整改与复核" defaultOpen={Boolean(selectedRemediationId)}>
         <RemediationPanel
           caseId={caseId}
           detail={item}
@@ -395,6 +419,7 @@ export function CaseDetailPage() {
           historyError={history.isError ? history.error : null}
           canWrite={canWriteRemediation}
           archived={archived}
+          selectedRemediationId={session.isSuccess && !session.isFetching && !detail.isFetching ? selectedRemediationId : null}
         />
       </CollapsibleSection>
       <CollapsibleSection id="case-report-archive" title="审查报告与归档" summaryLabel="展开审查报告与归档">

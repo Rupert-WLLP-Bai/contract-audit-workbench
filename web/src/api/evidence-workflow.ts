@@ -87,6 +87,8 @@ export interface EvidenceRequestEvent {
   receipt: EvidenceReceipt | null;
 }
 
+export const evidenceRequestsKey = (caseId: string) => ["evidence-requests", caseId] as const;
+
 // Identity comes from the URL and the idempotency key from the header.
 export type CreateEvidenceRequestInput = Omit<
   WireSchemas["EvidenceRequestCreate"], "case_id" | "idempotency_key"
