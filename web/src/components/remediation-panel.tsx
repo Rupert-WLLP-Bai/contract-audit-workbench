@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-05
-// Revision: r3
+// Updated: 2026-11-06
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -623,6 +623,7 @@ export function RemediationPanel({
   history,
   historyLoading,
   historyError,
+  historyHasOlder = false,
   canWrite,
   archived,
   selectedRemediationId = null,
@@ -632,6 +633,7 @@ export function RemediationPanel({
   history: ReviewHistoryEntry[];
   historyLoading: boolean;
   historyError: unknown;
+  historyHasOlder?: boolean;
   canWrite: boolean;
   archived: boolean;
   selectedRemediationId?: string | null;
@@ -777,7 +779,11 @@ export function RemediationPanel({
             <p>所选尝试没有返回可绑定的发现。</p>
           ) : null}
           {choices.length === 0 && !historyLoading && !historyError ? (
-            <p>没有可用于新建整改的执行记录。较早的审查如果没有保存当时使用的材料版本记录，不能用于新建整改。</p>
+            <p>
+              {historyHasOlder
+                ? "当前已加载的审查中没有可用于新建整改的执行记录。请先读取更早审查记录；较早的审查如果没有保存当时使用的材料版本记录，不能用于新建整改。"
+                : "没有可用于新建整改的执行记录。较早的审查如果没有保存当时使用的材料版本记录，不能用于新建整改。"}
+            </p>
           ) : null}
           <label className="field">
             负责人 ID

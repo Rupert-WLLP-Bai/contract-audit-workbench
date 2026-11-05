@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-04
-// Revision: r1
+// Updated: 2026-11-06
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,7 +16,7 @@ import { parseReviewWorkspace } from "../api/parse";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { ReviewDiff } from "./review-diff";
 
-const api = vi.hoisted(() => ({ getReview: vi.fn(), getReviewHistory: vi.fn() }));
+const api = vi.hoisted(() => ({ getReview: vi.fn(), getReviewHistoryPage: vi.fn() }));
 vi.mock("../api/endpoints", () => api);
 
 function workspace(runId: string) {
@@ -40,12 +40,18 @@ function workspace(runId: string) {
 it("shows frozen scope and business names with exact identities behind technical details", async () => {
   const source = workspace("run-a");
   const target = workspace("run-b");
-  api.getReviewHistory.mockResolvedValue([{ runId: "run-a", workspace: source }, { runId: "run-b", workspace: target }]);
+  api.getReviewHistoryPage.mockImplementation(async (_caseId: string, runId: string) => runId === "run-b"
+    ? { entry: { runId, workspace: target }, nextRunId: "run-a", cycleDetected: false }
+    : { entry: { runId, workspace: source }, nextRunId: null, cycleDetected: false });
   api.getReview.mockImplementation(async (_caseId: string, runId: string) => runId === "run-a" ? source : target);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><MemoryRouter><ReviewDiff caseId="case-1" latestRunId="run-b" actorScope="test" /></MemoryRouter></QueryClientProvider>);
   const user = userEvent.setup();
   await user.click(screen.getByText("复审差异：选择两个冻结执行记录"));
+  expect(await screen.findByText(/默认先读取最新审查记录/)).toBeInTheDocument();
+  expect(api.getReviewHistoryPage).toHaveBeenCalledTimes(1);
+  await user.click(await screen.findByRole("button", { name: "读取更早审查记录" }));
+  expect(api.getReviewHistoryPage).toHaveBeenCalledTimes(2);
   await chooseOption(user, await screen.findByRole("combobox", { name: "来源审查与执行" }), /审查标识 run-a/);
   const previousListboxes = new Set(screen.queryAllByRole("listbox", { hidden: true }));
   await user.click(screen.getByRole("combobox", { name: "目标审查与执行" }));

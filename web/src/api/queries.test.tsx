@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-05
-// Revision: r2
+// Updated: 2026-11-06
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -268,27 +268,158 @@ describe("query hook gates", () => {
     client.clear();
   });
 
-  it("loads review history only with a case and latest run", async () => {
-    const getReviewHistory = vi
-      .spyOn(api, "getReviewHistory")
-      .mockResolvedValue({} as never);
+  it("loads the latest review first and older records only on demand", async () => {
+    const getHistoryPage = vi
+      .spyOn(api, "getReviewHistoryPage")
+      .mockImplementation(async (_caseId, runId) => ({
+        entry: { runId, workspace: workspace("completed") },
+        nextRunId: runId === "r1" ? "r0" : null,
+        cycleDetected: false,
+      }));
     const client = testClient();
-    const { rerender, unmount } = renderHook(
+    const { result, rerender, unmount } = renderHook(
       ({ caseId, latestRunId }) => useCaseReviewHistory(caseId, latestRunId),
       {
         wrapper: testWrapper(client),
         initialProps: { caseId: "c1", latestRunId: "r1" as string | null },
       },
     );
-    await waitFor(() => expect(getReviewHistory).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getHistoryPage).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(result.current.data).toHaveLength(1));
+    expect(result.current.data?.map((entry) => entry.runId)).toEqual(["r1"]);
+    expect(result.current.hasOlder).toBe(true);
+    expect(result.current.isFetching).toBe(false);
+    expect(getHistoryPage).toHaveBeenCalledWith("c1", "r1", [], expect.any(AbortSignal));
+
+    await act(async () => { await result.current.fetchOlder(); });
+    expect(getHistoryPage).toHaveBeenCalledTimes(2);
+    expect(getHistoryPage).toHaveBeenLastCalledWith(
+      "c1",
+      "r0",
+      ["r1"],
+      expect.any(AbortSignal),
+    );
+    await waitFor(() =>
+      expect(result.current.data?.map((entry) => entry.runId)).toEqual([
+        "r1",
+        "r0",
+      ]),
+    );
+    expect(result.current.hasOlder).toBe(false);
+    expect(result.current.cycleDetected).toBe(false);
+
     rerender({ caseId: "", latestRunId: "r1" });
     await act(async () => { await Promise.resolve(); });
-    expect(getReviewHistory).toHaveBeenCalledTimes(1);
+    expect(getHistoryPage).toHaveBeenCalledTimes(2);
     rerender({ caseId: "c1", latestRunId: null });
     await act(async () => { await Promise.resolve(); });
-    expect(getReviewHistory).toHaveBeenCalledTimes(1);
+    expect(getHistoryPage).toHaveBeenCalledTimes(2);
     unmount();
     client.clear();
+  });
+
+  it("stops paging at a cycle and keeps the loaded records", async () => {
+    const getHistoryPage = vi
+      .spyOn(api, "getReviewHistoryPage")
+      .mockResolvedValue({
+        entry: { runId: "r1", workspace: workspace("completed") },
+        nextRunId: "r1",
+        cycleDetected: true,
+      });
+    const client = testClient();
+    const { result, unmount } = renderHook(
+      () => useCaseReviewHistory("c1", "r1"),
+      { wrapper: testWrapper(client) },
+    );
+    await waitFor(() => expect(result.current.data).toHaveLength(1));
+    expect(result.current.cycleDetected).toBe(true);
+    expect(result.current.hasOlder).toBe(false);
+    await act(async () => { await result.current.fetchOlder(); });
+    expect(getHistoryPage).toHaveBeenCalledTimes(1);
+    unmount();
+    client.clear();
+  });
+
+  it("keeps the latest record when an older page fails", async () => {
+    const getHistoryPage = vi
+      .spyOn(api, "getReviewHistoryPage")
+      .mockResolvedValueOnce({
+        entry: { runId: "r1", workspace: workspace("completed") },
+        nextRunId: "r0",
+        cycleDetected: false,
+      })
+      .mockRejectedValueOnce(
+        new ApiError("更早的审查记录不可读取", 500, "unavailable", true, null),
+      );
+    const client = testClient();
+    const { result, unmount } = renderHook(
+      () => useCaseReviewHistory("c1", "r1"),
+      { wrapper: testWrapper(client) },
+    );
+    await waitFor(() => expect(result.current.data).toHaveLength(1));
+    await act(async () => {
+      await result.current.fetchOlder().catch(() => undefined);
+    });
+    await waitFor(() => expect(result.current.olderError).not.toBeNull());
+    expect(result.current.data?.map((entry) => entry.runId)).toEqual(["r1"]);
+    expect(result.current.hasOlder).toBe(true);
+    expect(result.current.isLoadingOlder).toBe(false);
+    expect(getHistoryPage).toHaveBeenCalledTimes(2);
+    unmount();
+    client.clear();
+  });
+
+  it("validates page identity and detects a self-referencing history", async () => {
+    const bodies: Record<string, unknown> = {
+      r1: {
+        run: { id: "r1", case_id: "c1" },
+        audit_events: [],
+        previous_run_id: "r0",
+      },
+      r0: {
+        run: { id: "r0", case_id: "c1" },
+        audit_events: [],
+        previous_run_id: null,
+      },
+      rc: {
+        run: { id: "rc", case_id: "c1" },
+        audit_events: [],
+        previous_run_id: "rc",
+      },
+      bad: {
+        run: { id: "bad", case_id: "other" },
+        audit_events: [],
+        previous_run_id: null,
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const runId = new URL(String(input), "http://workflow.test").pathname
+          .split("/")
+          .at(-1)!;
+        return Response.json(bodies[runId]);
+      }),
+    );
+    try {
+      const latest = await api.getReviewHistoryPage("c1", "r1", []);
+      expect(latest.nextRunId).toBe("r0");
+      expect(latest.cycleDetected).toBe(false);
+      const older = await api.getReviewHistoryPage("c1", "r0", ["r1"]);
+      expect(older.nextRunId).toBeNull();
+      expect(older.cycleDetected).toBe(false);
+      const cycle = await api.getReviewHistoryPage("c1", "rc", []);
+      expect(cycle.cycleDetected).toBe(true);
+      expect(cycle.nextRunId).toBeNull();
+      await expect(api.getReviewHistoryPage("c1", "bad", [])).rejects.toThrow(
+        "审查历史中的案件或审查身份不一致",
+      );
+      await expect(api.getReviewHistory("c1", "rc")).rejects.toThrow(
+        "运行历史包含循环引用",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("does not load a review without both ids", async () => {

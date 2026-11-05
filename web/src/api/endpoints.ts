@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r4
+// Updated: 2026-11-06
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -514,6 +514,49 @@ export async function getReviewDiagnostics(
   return diagnostics;
 }
 
+export interface ReviewHistoryPage {
+  entry: ReviewHistoryEntry;
+  nextRunId: string | null;
+  cycleDetected: boolean;
+}
+
+/**
+ * Reads one review-history record, starting from the latest run and moving to
+ * its predecessor only when the caller asks for another page. The returned
+ * workspace remains the frozen record for this run; it is not current
+ * authorization for any later action.
+ */
+export async function getReviewHistoryPage(
+  caseId: string,
+  runId: string,
+  seenRunIds: readonly string[],
+  signal?: AbortSignal,
+): Promise<ReviewHistoryPage> {
+  const workspace = await getReview(caseId, runId, null, signal);
+  if (workspace.run.id !== runId || workspace.run.case_id !== caseId)
+    throw new ApiError(
+      "审查历史中的案件或审查身份不一致",
+      500,
+      "invalid_response",
+      false,
+      null,
+    );
+  const previousRunId = workspace.previous_run_id ?? null;
+  const cycleDetected =
+    previousRunId !== null &&
+    (previousRunId === runId || seenRunIds.includes(previousRunId));
+  return {
+    entry: { runId, workspace },
+    nextRunId: cycleDetected ? null : previousRunId,
+    cycleDetected,
+  };
+}
+
+/**
+ * Serial compatibility reader for callers that need the full chain at once.
+ * Progressive surfaces should use getReviewHistoryPage so the latest record
+ * does not wait for every predecessor.
+ */
 export async function getReviewHistory(
   caseId: string,
   latestRunId: string,
@@ -532,9 +575,17 @@ export async function getReviewHistory(
         null,
       );
     seen.add(runId);
-    const workspace = await getReview(caseId, runId, null, signal);
-    entries.push({ runId, workspace });
-    runId = workspace.previous_run_id ?? null;
+    const page = await getReviewHistoryPage(caseId, runId, [...seen], signal);
+    entries.push(page.entry);
+    if (page.cycleDetected)
+      throw new ApiError(
+        "运行历史包含循环引用",
+        500,
+        "invalid_response",
+        false,
+        null,
+      );
+    runId = page.nextRunId;
   }
   return entries;
 }

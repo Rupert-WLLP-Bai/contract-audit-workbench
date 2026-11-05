@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-05
-// Revision: r8
+// Updated: 2026-11-06
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -326,6 +326,30 @@ export function CaseDetailPage() {
         onStartReview={onStartReview}
         onNavigateReview={(href) => void navigate(href, { state: reviewNavigationState() })}
       />
+      {item.latest_run ? (
+        <section className="workflow-panel" aria-label="审查历史加载范围">
+          <p className="meta">
+            默认先读取最新审查记录；更早记录按需读取，未读取的旧记录不会出现在整改或报告选择中。
+          </p>
+          {history.cycleDetected ? (
+            <p role="alert">审查历史存在循环引用，已保留当前可读取记录，不能继续读取更早记录。</p>
+          ) : null}
+          {history.olderError ? (
+            <p className="workflow-error" role="alert">
+              更早的审查记录没有加载：{errorMessage(history.olderError)}
+            </p>
+          ) : null}
+          {history.hasOlder ? (
+            <Button
+              htmlType="button"
+              loading={history.isLoadingOlder}
+              onClick={() => void history.fetchOlder()}
+            >
+              读取更早审查记录
+            </Button>
+          ) : null}
+        </section>
+      ) : null}
       <SectionAnchorNav items={[
         { id: "review-readiness", label: "审查准备" },
         { id: "case-materials", label: "案件材料" },
@@ -488,6 +512,7 @@ export function CaseDetailPage() {
           history={history.data ?? []}
           historyLoading={history.isLoading}
           historyError={history.isError ? history.error : null}
+          historyHasOlder={history.hasOlder}
           canWrite={canWriteRemediation}
           archived={archived}
           selectedRemediationId={session.isSuccess && !session.isFetching && !detail.isFetching ? selectedRemediationId : null}
@@ -500,6 +525,7 @@ export function CaseDetailPage() {
           history={history.data ?? []}
           historyLoading={history.isLoading}
           historyError={history.isError ? history.error : null}
+          historyHasOlder={history.hasOlder}
           canCreateReport={canCreateReport}
           canArchive={canArchive}
           canReadReports={canCreateReport}

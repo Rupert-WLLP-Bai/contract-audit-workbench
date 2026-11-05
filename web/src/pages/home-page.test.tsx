@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r7
+// Updated: 2026-11-06
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -779,7 +779,7 @@ describe("HomePage snapshot consumers", () => {
     service.caseDetail = detail;
     service.reviewGate = Promise.withResolvers<void>();
     const { user, client } = open(service);
-    client.setQueryData(["cases", "case-1", "review-history", "run-1"], []);
+    client.setQueryData(["cases", "case-1", "review-history", "run-1"], { pages: [], pageParams: [] });
     const caseWork = await screen.findByRole("region", { name: "按案件处理" });
     const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
     await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
