@@ -3,18 +3,20 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-05
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Select } from "antd";
 import { Button, Input, Modal, Pagination } from "antd";
-import { useId, useLayoutEffect, useState, type FormEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { errorMessage, isForbidden } from "../api/http";
 import { useCases, useCreateCase, useSession } from "../api/queries";
 import { CasesTable } from "../components/cases-table";
+import { isReadingInteraction } from "../components/section-navigation";
+import { actorReadContextKey } from "../domain/actor-read-context";
 import { PageStatus } from "../components/page-status";
 import {
   businessStatusLabel,
@@ -42,7 +44,7 @@ const collator = new Intl.Collator("zh-CN", {
   numeric: true,
   sensitivity: "base",
 });
-const scrollPositions = new Map<string, number>();
+const scrollPositions = new Map<string, { actorScope: string; scrollY: number }>();
 
 export function CasesPage() {
   const cases = useCases();
@@ -76,6 +78,19 @@ export function CasesPage() {
     ? requestedSize
     : 10;
   const selectedId = params.get("selected");
+  const actorScope = session.data ? actorReadContextKey(session.data) : "";
+  const confirmedActorScope = session.isSuccess && session.fetchStatus === "idle" ? actorScope : "";
+  const confirmedCases = cases.isSuccess && cases.fetchStatus === "idle";
+  const routeState = location.state && typeof location.state === "object"
+    ? location.state as { restoreScrollY?: unknown; actorScope?: unknown } : null;
+  const returnScope = typeof routeState?.actorScope === "string" && routeState.actorScope ? routeState.actorScope : "";
+  const verifiedReturn = useRef("");
+  const consumedVisit = useRef("");
+  const readingContent = useRef<HTMLElement>(null);
+  const returnMismatch = Boolean(returnScope && confirmedActorScope && returnScope !== confirmedActorScope);
+  const returnPending = Boolean(returnScope && verifiedReturn.current !== location.key && !cases.isError &&
+    (!confirmedActorScope || !confirmedCases));
+  const previousActorScope = useRef(actorScope);
   const [open, setOpen] = useState(false);
   const titleId = useId();
   const [title, setTitle] = useState("");
@@ -86,16 +101,51 @@ export function CasesPage() {
   const [titleError, setTitleError] = useState<string | null>(null);
 
   useLayoutEffect(() => {
-    const routeState = location.state as { restoreScrollY?: unknown } | null;
-    const requested =
-      typeof routeState?.restoreScrollY === "number"
-        ? routeState.restoreScrollY
-        : scrollPositions.get(location.key);
-    if (requested !== undefined) window.scrollTo(0, requested);
-    return () => {
-      scrollPositions.set(location.key, window.scrollY);
+    if (returnMismatch) {
+      void navigate("/cases", { replace: true, state: null });
+      return;
+    }
+    if (returnScope && !returnPending && confirmedActorScope && !cases.isError) verifiedReturn.current = location.key;
+  }, [returnMismatch, returnPending, returnScope, confirmedActorScope, cases.isError, location.key, navigate]);
+
+  useLayoutEffect(() => {
+    const visit = JSON.stringify([location.key, actorScope]);
+    const cancelRestore = (event: Event) => {
+      if (isReadingInteraction(event, readingContent.current)) consumedVisit.current = visit;
     };
-  }, [location.key, location.state]);
+    document.addEventListener("pointerdown", cancelRestore, true);
+    document.addEventListener("keydown", cancelRestore, true);
+    document.addEventListener("wheel", cancelRestore, true);
+    document.addEventListener("touchstart", cancelRestore, true);
+    return () => {
+      document.removeEventListener("pointerdown", cancelRestore, true);
+      document.removeEventListener("keydown", cancelRestore, true);
+      document.removeEventListener("wheel", cancelRestore, true);
+      document.removeEventListener("touchstart", cancelRestore, true);
+      if (actorScope && consumedVisit.current === visit) {
+        scrollPositions.set(location.key, { actorScope, scrollY: window.scrollY });
+      }
+    };
+  }, [location.key, actorScope]);
+
+  useLayoutEffect(() => {
+    if (previousActorScope.current && previousActorScope.current !== actorScope) scrollPositions.clear();
+    previousActorScope.current = actorScope;
+    if (!confirmedActorScope || !confirmedCases || returnPending || returnMismatch) return;
+    const saved = scrollPositions.get(location.key);
+    const visit = JSON.stringify([location.key, actorScope]);
+    const declared = routeState?.actorScope === actorScope && typeof routeState.restoreScrollY === "number" && Number.isFinite(routeState.restoreScrollY) && routeState.restoreScrollY >= 0
+      ? routeState.restoreScrollY : undefined;
+    const requested = saved?.actorScope === actorScope ? saved.scrollY : declared;
+    const needsRestore = consumedVisit.current !== visit && requested !== undefined;
+    const frame = needsRestore ? requestAnimationFrame(() => {
+      if (consumedVisit.current === visit) return;
+      consumedVisit.current = visit;
+      window.scrollTo(0, requested);
+    }) : 0;
+    if (!needsRestore) consumedVisit.current = visit;
+    return () => { cancelAnimationFrame(frame); };
+  }, [location.key, location.state, actorScope, confirmedActorScope, confirmedCases, returnPending, returnMismatch]);
 
   function updateParam(
     key: string,
@@ -174,9 +224,17 @@ export function CasesPage() {
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
   const page = Math.min(validatedPage, pageCount);
   const pageItems = sorted.slice((page - 1) * pageSize, page * pageSize);
+  useEffect(() => {
+    if (!confirmedActorScope || !confirmedCases || returnPending || returnMismatch || !selectedId || sorted.some((item) => item.id === selectedId)) return;
+    const next = new URLSearchParams(params);
+    next.delete("selected");
+    setParams(next, { replace: true });
+  }, [confirmedActorScope, confirmedCases, returnPending, returnMismatch, selectedId, sorted, params, setParams]);
   const canCreate =
     session.data?.role === "admin" || session.data?.role === "clerk";
 
+  if (returnPending || returnMismatch)
+    return <PageStatus kind="loading" title="正在确认案件列表" />;
   if (cases.isLoading)
     return <PageStatus kind="loading" title="正在加载案件" />;
   if (cases.isError) {
@@ -209,7 +267,7 @@ export function CasesPage() {
   }
 
   return (
-    <section className="page cases-page">
+    <section ref={readingContent} className="page cases-page">
       <header className="page-head">
         <div>
           <h1>案件</h1>
@@ -303,6 +361,7 @@ export function CasesPage() {
             sort={sort}
             direction={direction}
             selectedId={selectedId}
+            actorScope={actorScope}
             onSort={sortBy}
           />
           <Pagination

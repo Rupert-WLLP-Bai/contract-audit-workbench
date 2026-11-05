@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-05
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -18,7 +18,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { chooseOption, renderWithAntd as render } from "./test/antd";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { clearAllDecisionDrafts } from "./hooks/decision-drafts";
@@ -979,12 +979,13 @@ function open(
   service: Service,
   path = "/cases",
   application: ReactNode = <App />,
+  gcTime = 0,
 ) {
   vi.stubGlobal("fetch", service.handle);
   vi.stubGlobal("EventSource", Stream);
   const client = new QueryClient({
     defaultOptions: {
-      queries: { retry: false, gcTime: 0 },
+      queries: { retry: false, gcTime },
       mutations: { retry: false },
     },
   });
@@ -1003,6 +1004,7 @@ function open(
 afterEach(() => {
   cleanup();
   for (const client of clients.splice(0)) client.clear();
+  onlineManager.setOnline(true);
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   Stream.latest = null;
@@ -1059,6 +1061,617 @@ async function fillSupplementSource(user: ReturnType<typeof userEvent.setup>, la
 }
 
 describe("application routes and API contract", () => {
+  it("opens the returned run's hash when the cached workspace reuses its provider", async () => {
+    const api = new Service();
+    api.addReview("completed", "r1");
+    const current = api.addReview("awaiting_human", "r2");
+    current.previous_run_id = "r1";
+    current.agent_review = {
+      attempt_id: "attempt-r2-1", status: "partial", rulepack: null, scope: null, domains: null,
+      gaps: [{ gap_id: "gap-1", domain: "technical", capability_id: "warranty", mandatory: true,
+        status: "open", reason_code: "required_source_or_field_missing", evidence_ids: [] }],
+      evidence: [], unresolved_gap_ids: ["gap-1"], observations: null,
+    };
+    const { user, router, client } = open(api, "/cases/c1/reviews/r2#agent-review-gaps", <App />, 60_000);
+    await waitFor(() => expect(document.getElementById("agent-review-gaps")).toHaveAttribute("open"));
+    await user.click(screen.getByText("经验、审查依据与历史"));
+    await user.click(screen.getByText("修改稿对照"));
+    await user.click(await screen.findByRole("link", { name: "查看上一轮审查" }));
+    await screen.findByText("本次没有返回五个方面的审查结果，不能因此认为已经全部检查。");
+    expect(client.getQueryData(queryKeys.review("c1", "r2", null))).toBeDefined();
+    const previousProvider = document.querySelector(".page-review")?.parentElement;
+    expect(previousProvider).toBeTruthy();
+    await act(async () => { await router.navigate(-1); });
+    await waitFor(() => expect(router.state.location.pathname).toBe("/cases/c1/reviews/r2"));
+    await waitFor(() => expect(document.querySelector(".page-review")?.parentElement).toBe(previousProvider));
+    await waitFor(() => expect(document.getElementById("agent-review-gaps")).toHaveAttribute("open"));
+    expect(document.querySelector("#agent-review-gaps > summary")).toHaveFocus();
+  });
+
+  it.each(["wheel", "keyboard"] as const)("keeps %s-adjusted reading positions when cached review revalidation finishes", async (interaction) => {
+    const api = new Service();
+    api.addReview();
+    const { user, router, client } = open(api, "/cases/c1/reviews/r1", <App />, 60_000);
+    await screen.findByRole("heading", { name: "审查工作区" });
+    const reviewKey = queryKeys.review("c1", "r1", null);
+    await waitFor(() => expect(client.getQueryState(reviewKey)?.fetchStatus).toBe("idle"));
+    const pane = document.querySelector<HTMLElement>(".page-review .col-doc")!;
+    const findings = document.querySelector<HTMLElement>(".page-review .col-findings")!;
+    expect(pane && findings).toBeTruthy();
+    pane.scrollTop = 600;
+    findings.scrollTop = 200;
+    const queue = await screen.findByRole("region", { name: "人工办理" });
+    await user.click(within(queue).getByRole("button", { name: /待补件/ }));
+    await waitFor(() => expect(router.state.location.search).toContain("work_filter=evidence"));
+    api.holdNextWorkspaceRead = true;
+    const pending = client.invalidateQueries({ queryKey: reviewKey, exact: true });
+    await waitFor(() => expect(api.releaseHeldWorkspace).not.toBeNull());
+    await act(async () => { await router.navigate(-1); });
+    await waitFor(() => expect(router.state.location.search).toBe(""));
+    expect(client.getQueryState(reviewKey)?.fetchStatus).toBe("fetching");
+    if (interaction === "wheel") fireEvent.wheel(pane, { deltaY: 250 });
+    else fireEvent.keyDown(document.body, { key: "PageDown" });
+    pane.scrollTop = 175;
+    findings.scrollTop = 80;
+    await act(async () => {
+      api.releaseHeldWorkspace!();
+      await pending;
+      await new Promise((resolve) => window.setTimeout(resolve, 150));
+    });
+    expect(pane.scrollTop).toBe(175);
+    expect(findings.scrollTop).toBe(80);
+  });
+
+  it.each([
+    { name: "keeps the wheel-adjusted case position when a cached return finishes revalidating", mode: "wheel", expected: 175 },
+    { name: "keeps the keyboard-adjusted case position when a cached return finishes revalidating", mode: "keyboard", expected: 175 },
+    { name: "keeps the header wheel-adjusted case position when a cached return finishes revalidating", mode: "header-wheel", expected: 175 },
+    { name: "keeps the header keyboard-adjusted case position when a cached return finishes revalidating", mode: "header-keyboard", expected: 175 },
+    { name: "restores the case position after an uninterrupted cached return revalidates", mode: "uninterrupted", expected: 600 },
+    { name: "does not restore the previous tenant's case position on a cached return", mode: "tenant", expected: 175 },
+  ] as const)("case cached return: $name", async ({ mode, expected }) => {
+    const api = new Service();
+    const initialScrollY = window.scrollY;
+    api.addReview();
+    const { user, router, client } = open(api, "/cases/c1", <App />, 60_000);
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    const caseKey = queryKeys.case("c1");
+    await waitFor(() => expect(client.getQueryState(caseKey)?.fetchStatus).toBe("idle"));
+    window.scrollTo(0, 600);
+    await user.click(await screen.findByRole("link", { name: "核对原文并处理决定" }));
+    await screen.findByRole("heading", { name: "审查工作区" });
+    expect(router.state.location.state.caseReadingPosition.scrollY).toBe(600);
+    if (mode === "tenant") {
+      api.tenant = "tenant-other";
+      await client.invalidateQueries({ queryKey: queryKeys.session });
+      await waitFor(() => expect(client.getQueryData<{ tenant_id: string }>(queryKeys.session)?.tenant_id).toBe("tenant-other"));
+      await waitFor(() => expect(client.getQueryState(caseKey)?.fetchStatus).toBe("idle"));
+    }
+
+    const held = Promise.withResolvers<Response>();
+    let requested = false;
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/cases/c1" && !requested) {
+        requested = true;
+        return held.promise;
+      }
+      return api.handle(input, init);
+    });
+    const pending = client.invalidateQueries({ queryKey: caseKey, exact: true });
+    try {
+      await waitFor(() => expect(requested).toBe(true));
+      await user.click(screen.getByRole("link", { name: /^返回案件$/ }));
+      await screen.findByRole("heading", { name: "接入设备采购" });
+      expect(client.getQueryData(caseKey)).toBeDefined();
+      expect(client.getQueryState(caseKey)?.fetchStatus).toBe("fetching");
+      if (mode === "tenant") expect(router.state.location.state.caseReadingPosition).toBeUndefined();
+      else expect(router.state.location.state.caseReadingPosition.scrollY).toBe(600);
+      if (mode === "wheel") fireEvent.wheel(document, { deltaY: 250 });
+      if (mode === "keyboard") fireEvent.keyDown(document.body, { key: "PageDown" });
+      if (mode === "header-wheel") {
+        const header = screen.getByRole("button", { name: "退出" }).closest("header");
+        expect(header).not.toBeNull();
+        fireEvent.wheel(header!, { deltaY: 250 });
+      }
+      if (mode === "header-keyboard") {
+        const button = screen.getByRole("button", { name: "退出" });
+        act(() => button.focus());
+        fireEvent.keyDown(button, { key: "PageDown" });
+      }
+      window.scrollTo(0, 175);
+      await act(async () => {
+        held.resolve(api.json(api.cases.get("c1")));
+        await pending;
+        await new Promise((resolve) => window.setTimeout(resolve, 150));
+      });
+      expect(window.scrollY).toBe(expected);
+    } finally {
+      held.resolve(api.json(api.cases.get("c1")));
+      await pending;
+      window.scrollTo(0, initialScrollY);
+    }
+  });
+
+  it.each([
+    ["list", "same"], ["review", "same"], ["list", "changed"], ["review", "changed"],
+  ] as const)("session-pending case navigation %s with %s identity", async (entry, identity) => {
+    const api = new Service();
+    const initialScrollY = window.scrollY;
+    api.addReview();
+    const { user, router, client } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1&page_size=10", <App />, 60_000);
+    await screen.findByRole("link", { name: "接入设备采购" });
+    window.scrollTo(0, 430);
+    await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    await waitFor(() => expect(client.getQueryState(queryKeys.session)?.fetchStatus).toBe("idle"));
+    window.scrollTo(0, 240);
+    const held = Promise.withResolvers<Response>();
+    let requested = false;
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/session" && !requested) {
+        requested = true;
+        return held.promise;
+      }
+      return api.handle(input, init);
+    });
+    const pending = client.invalidateQueries({ queryKey: queryKeys.session, exact: true });
+    try {
+      await waitFor(() => expect(requested && client.getQueryState(queryKeys.session)?.fetchStatus === "fetching").toBe(true));
+      if (entry === "list") {
+        await user.click(screen.getByRole("link", { name: "返回案件列表" }));
+        expect(await screen.findByRole("heading", { name: "正在确认案件列表" })).toBeInTheDocument();
+        if (identity === "same") fireEvent.keyDown(document.body, { key: "PageDown" });
+        window.scrollTo(0, 65);
+      } else {
+        await user.click(screen.getByRole("link", { name: "核对原文并处理决定" }));
+        expect(router.state.location.pathname).toBe("/cases/c1/reviews/r1");
+        expect(router.state.location.state.caseReadingPosition.scrollY).toBe(240);
+      }
+      if (identity === "changed") api.identity = "u2";
+      await act(async () => { held.resolve(api.json(api.session())); await pending; });
+      if (entry === "review") {
+        await screen.findByRole("heading", { name: "审查工作区" });
+        window.scrollTo(0, 65);
+        await user.click(screen.getByRole("link", { name: /^返回案件$/ }));
+        await screen.findByRole("heading", { name: "接入设备采购" });
+        if (identity === "same") await waitFor(() => expect(window.scrollY).toBe(240));
+        else {
+          expect(router.state.location.state.caseReadingPosition).toBeUndefined();
+          expect(window.scrollY).toBe(65);
+        }
+        await user.click(screen.getByRole("link", { name: "返回案件列表" }));
+      }
+      await screen.findByRole("heading", { name: "案件", level: 1 });
+      const params = new URLSearchParams(router.state.location.search);
+      if (identity === "same") {
+        expect(params.get("q")).toBe("接入");
+        expect(params.get("page")).toBe("1");
+        expect(params.get("selected")).toBe("c1");
+        await waitFor(() => expect(window.scrollY).toBe(430));
+      } else {
+        expect(router.state.location.search).toBe("");
+        expect(window.scrollY).not.toBe(430);
+      }
+    } finally {
+      held.resolve(api.json(api.session()));
+      await pending;
+      window.scrollTo(0, initialScrollY);
+    }
+  });
+
+  it.each([
+    ["uncached", "same"], ["cached", "same"], ["cached", "changed"],
+  ] as const)("paused case return %s with %s identity", async (cache, identity) => {
+    const api = new Service();
+    const initialScrollY = window.scrollY;
+    api.addReview();
+    const { user, router, client } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1&page_size=10", <App />, cache === "cached" ? 60_000 : 0);
+    await screen.findByRole("link", { name: "接入设备采购" });
+    window.scrollTo(0, 430);
+    await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    if (cache === "uncached") await waitFor(() => expect(client.getQueryData(queryKeys.cases)).toBeUndefined());
+    else expect(client.getQueryData(queryKeys.cases)).toBeDefined();
+    await waitFor(() => expect(client.getQueryState(queryKeys.session)?.fetchStatus).toBe("idle"));
+
+    const held = Promise.withResolvers<Response>();
+    let sessionStarted = false;
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/session" && !sessionStarted) {
+        sessionStarted = true;
+        return held.promise;
+      }
+      return api.handle(input, init);
+    });
+    act(() => onlineManager.setOnline(false));
+    const pending = client.invalidateQueries({ queryKey: queryKeys.session, exact: true });
+    const caseReads = api.requests.filter((entry) => entry.key === "GET /api/cases").length;
+    try {
+      await waitFor(() => expect(client.getQueryState(queryKeys.session)?.fetchStatus).toBe("paused"));
+      await user.click(screen.getByRole("link", { name: "返回案件列表" }));
+      await waitFor(() => expect(client.getQueryState(queryKeys.cases)?.fetchStatus).toBe("paused"));
+      expect(client.getQueryState(queryKeys.cases)?.status).toBe(cache === "cached" ? "success" : "pending");
+      expect(api.requests.filter((entry) => entry.key === "GET /api/cases")).toHaveLength(caseReads);
+      expect(new URLSearchParams(router.state.location.search).get("selected")).toBe("c1");
+      expect(screen.getByRole("heading", { name: "正在确认案件列表" })).toBeInTheDocument();
+      window.scrollTo(0, 65);
+      if (identity === "changed") api.identity = "u2";
+      act(() => onlineManager.setOnline(true));
+      await waitFor(() => expect(sessionStarted).toBe(true));
+      await waitFor(() => expect(client.getQueryState(queryKeys.cases)?.fetchStatus).toBe("idle"));
+      expect(screen.getByRole("heading", { name: "正在确认案件列表" })).toBeInTheDocument();
+      await act(async () => { held.resolve(api.json(api.session())); await pending; });
+      await screen.findByRole("heading", { name: "案件", level: 1 });
+      const params = new URLSearchParams(router.state.location.search);
+      if (identity === "same") {
+        expect(params.get("q")).toBe("接入");
+        expect(params.get("page")).toBe("1");
+        expect(params.get("selected")).toBe("c1");
+        await waitFor(() => expect(window.scrollY).toBe(430));
+      } else {
+        expect(router.state.location.search).toBe("");
+        expect(window.scrollY).not.toBe(430);
+      }
+    } finally {
+      held.resolve(api.json(api.session()));
+      act(() => onlineManager.setOnline(true));
+      await pending;
+      window.scrollTo(0, initialScrollY);
+    }
+  });
+
+  it("preserves a direct case selection while its list query is paused", async () => {
+    const api = new Service();
+    const { router, client } = open(api, "/cases/c1");
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    expect(client.getQueryData(queryKeys.cases)).toBeUndefined();
+    try {
+      act(() => onlineManager.setOnline(false));
+      await act(async () => { await router.navigate("/cases?q=%E6%8E%A5%E5%85%A5&selected=c1"); });
+      await waitFor(() => expect(client.getQueryState(queryKeys.cases)?.fetchStatus).toBe("paused"));
+      await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 100)); });
+      expect(new URLSearchParams(router.state.location.search).get("selected")).toBe("c1");
+      act(() => onlineManager.setOnline(true));
+      await waitFor(() => expect(client.getQueryState(queryKeys.cases)?.status).toBe("success"));
+      expect(new URLSearchParams(router.state.location.search).get("selected")).toBe("c1");
+    } finally {
+      act(() => onlineManager.setOnline(true));
+    }
+  });
+
+  it.each([403, 503] as const)("case return error %s remains visible instead of loading", async (status) => {
+    const api = new Service();
+    const { user, client } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5");
+    await user.click(await screen.findByRole("link", { name: "接入设备采购" }));
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    await waitFor(() => expect(client.getQueryData(queryKeys.cases)).toBeUndefined());
+    api.fail("GET /api/cases", status);
+    await user.click(screen.getByRole("link", { name: "返回案件列表" }));
+    const title = status === 403 ? "没有权限查看案件列表" : "案件列表没有加载";
+    expect(await screen.findByRole("heading", { name: title })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "正在确认案件列表" })).not.toBeInTheDocument();
+  });
+
+  it.each(["cases", "session"] as const)("list position survives a background %s refresh", async (refresh) => {
+    const api = new Service();
+    const initialScrollY = window.scrollY;
+    api.addReview();
+    const { user, client } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1", <App />, 60_000);
+    await screen.findByRole("link", { name: "接入设备采购" });
+    window.scrollTo(0, 430);
+    await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    window.scrollTo(0, 0);
+    await user.click(screen.getByRole("link", { name: "返回案件列表" }));
+    await screen.findByRole("heading", { name: "案件", level: 1 });
+    await waitFor(() => expect(window.scrollY).toBe(430));
+    window.scrollTo(0, 800);
+
+    const held = Promise.withResolvers<void>();
+    const endpoint = refresh === "cases" ? "/api/cases" : "/api/session";
+    const key = refresh === "cases" ? queryKeys.cases : queryKeys.session;
+    let requested = false;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === endpoint && !requested) {
+        requested = true;
+        await held.promise;
+      }
+      return api.handle(input, init);
+    });
+    const pending = client.invalidateQueries({ queryKey: key, exact: true });
+    try {
+      await waitFor(() => expect(requested && client.getQueryState(key)?.fetchStatus === "fetching").toBe(true));
+      await act(async () => {
+        held.resolve();
+        await pending;
+        await new Promise((resolve) => window.setTimeout(resolve, 150));
+      });
+      expect(window.scrollY).toBe(800);
+    } finally {
+      held.resolve();
+      await pending;
+      window.scrollTo(0, initialScrollY);
+    }
+  });
+
+  it("uses the latest list position when returning to the same history entry", async () => {
+    const api = new Service();
+    const initialScrollY = window.scrollY;
+    api.addReview();
+    const { user, router } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1", <App />, 60_000);
+    try {
+      await screen.findByRole("link", { name: "接入设备采购" });
+      window.scrollTo(0, 430);
+      await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+      await screen.findByRole("heading", { name: "接入设备采购" });
+      window.scrollTo(0, 0);
+      await user.click(screen.getByRole("link", { name: "返回案件列表" }));
+      await screen.findByRole("heading", { name: "案件", level: 1 });
+      await waitFor(() => expect(window.scrollY).toBe(430));
+      const entry = router.state.location.key;
+      window.scrollTo(0, 800);
+      await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+      await screen.findByRole("heading", { name: "接入设备采购" });
+      window.scrollTo(0, 0);
+      await act(async () => { await router.navigate(-1); });
+      await screen.findByRole("heading", { name: "案件", level: 1 });
+      expect(router.state.location.key).toBe(entry);
+      await waitFor(() => expect(window.scrollY).toBe(800));
+    } finally {
+      window.scrollTo(0, initialScrollY);
+    }
+  });
+
+  it.each(["none", "wheel", "keyboard", "queued", "leavePending"] as const)("initial declared list position after %s during refresh", async (interaction) => {
+    const api = new Service();
+    const initialScrollY = window.scrollY;
+    api.addReview();
+    const { user, client, router } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1", <App />, 60_000);
+    await screen.findByRole("link", { name: "接入设备采购" });
+    window.scrollTo(0, 430);
+    await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    window.scrollTo(0, 0);
+    const frames = new Map<number, FrameRequestCallback>();
+    let frameId = 1_000_000;
+    const cancelFrame = window.cancelAnimationFrame.bind(window);
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frameId += 1;
+      frames.set(frameId, callback);
+      return frameId;
+    });
+    const cancel = vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      if (frames.has(id)) frames.delete(id);
+      else cancelFrame(id);
+    });
+    const held = Promise.withResolvers<void>();
+    let requested = false;
+    try {
+      await user.click(screen.getByRole("link", { name: "返回案件列表" }));
+      await screen.findByRole("heading", { name: "案件", level: 1 });
+      expect(window.scrollY).toBe(0);
+      expect(frames.size).toBeGreaterThan(0);
+      vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === "/api/cases" && !requested) {
+          requested = true;
+          await held.promise;
+        }
+        return api.handle(input, init);
+      });
+      const pending = client.invalidateQueries({ queryKey: queryKeys.cases, exact: true });
+      await waitFor(() => expect(requested && client.getQueryState(queryKeys.cases)?.fetchStatus === "fetching").toBe(true));
+      await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 50)); });
+      if (interaction === "wheel" || interaction === "keyboard" || interaction === "leavePending") {
+        if (interaction === "keyboard") {
+          const search = screen.getByRole("searchbox", { name: "搜索案件" });
+          act(() => search.focus());
+          fireEvent.keyDown(search, { key: "PageDown" });
+        } else fireEvent.wheel(document, { deltaY: 400 });
+        window.scrollTo(0, 800);
+      }
+      if (interaction === "leavePending") {
+        raf.mockRestore();
+        cancel.mockRestore();
+        frames.clear();
+        const entry = router.state.location.key;
+        await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+        await screen.findByRole("heading", { name: "接入设备采购" });
+        window.scrollTo(0, 0);
+        await act(async () => { held.resolve(); await pending; });
+        await act(async () => { await router.navigate(-1); });
+        await screen.findByRole("heading", { name: "案件", level: 1 });
+        expect(router.state.location.key).toBe(entry);
+        await waitFor(() => expect(window.scrollY).toBe(800));
+        return;
+      }
+      await act(async () => { held.resolve(); await pending; });
+      if (interaction !== "wheel" && interaction !== "keyboard") await waitFor(() => expect(frames.size).toBeGreaterThan(0));
+      else await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 50)); });
+      if (interaction === "queued") {
+        fireEvent.wheel(document, { deltaY: 400 });
+        window.scrollTo(0, 800);
+      }
+      await act(async () => {
+        for (let pass = 0; pass < 10 && frames.size; pass += 1) {
+          const callbacks = [...frames.values()];
+          frames.clear();
+          for (const callback of callbacks) callback(performance.now());
+        }
+      });
+      expect(window.scrollY).toBe(interaction === "none" ? 430 : 800);
+      if (interaction !== "none") {
+        raf.mockRestore();
+        cancel.mockRestore();
+        frames.clear();
+        const entry = router.state.location.key;
+        await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+        await screen.findByRole("heading", { name: "接入设备采购" });
+        window.scrollTo(0, 0);
+        await act(async () => { await router.navigate(-1); });
+        await screen.findByRole("heading", { name: "案件", level: 1 });
+        expect(router.state.location.key).toBe(entry);
+        await waitFor(() => expect(window.scrollY).toBe(800));
+      }
+    } finally {
+      held.resolve();
+      raf.mockRestore();
+      cancel.mockRestore();
+      frames.clear();
+      window.scrollTo(0, initialScrollY);
+    }
+  });
+
+  it.each(["pointer", "keyboard"] as const)("retry preserves the list return position after a 503 with %s", async (input) => {
+    const api = new Service();
+    const initialScrollY = window.scrollY;
+    const { user, client } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1");
+    try {
+      await screen.findByRole("link", { name: "接入设备采购" });
+      window.scrollTo(0, 430);
+      await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+      await screen.findByRole("heading", { name: "接入设备采购" });
+      await waitFor(() => expect(client.getQueryData(queryKeys.cases)).toBeUndefined());
+      api.fail("GET /api/cases", 503);
+      window.scrollTo(0, 0);
+      await user.click(screen.getByRole("link", { name: "返回案件列表" }));
+      await screen.findByRole("heading", { name: "案件列表没有加载" });
+      const retry = screen.getByRole("button", { name: "重试" });
+      if (input === "keyboard") {
+        act(() => retry.focus());
+        await user.keyboard("{Enter}");
+      } else await user.click(retry);
+      await screen.findByRole("heading", { name: "案件", level: 1 });
+      await waitFor(() => expect(window.scrollY).toBe(430));
+    } finally {
+      window.scrollTo(0, initialScrollY);
+    }
+  });
+
+  it("retry preserves the case return position after a 503", async () => {
+    const api = new Service();
+    const initialScrollY = window.scrollY;
+    api.addReview();
+    const { user, client } = open(api, "/cases/c1", <App />, 60_000);
+    try {
+      await screen.findByRole("heading", { name: "接入设备采购" });
+      window.scrollTo(0, 600);
+      await user.click(await screen.findByRole("link", { name: "核对原文并处理决定" }));
+      await screen.findByRole("heading", { name: "审查工作区" });
+      await waitFor(() => expect(client.getQueryState(queryKeys.case("c1"))?.fetchStatus).toBe("idle"));
+      api.fail("GET /api/cases/c1", 503);
+      window.scrollTo(0, 0);
+      await user.click(screen.getByRole("link", { name: /^返回案件$/ }));
+      await screen.findByRole("heading", { name: "案件没有加载" });
+      await user.click(screen.getByRole("button", { name: "重试" }));
+      await screen.findByRole("heading", { name: "接入设备采购" });
+      await waitFor(() => expect(window.scrollY).toBe(600));
+    } finally {
+      window.scrollTo(0, initialScrollY);
+    }
+  });
+
+  it("retry preserves the review pane positions after a 503", async () => {
+    const api = new Service();
+    api.addReview();
+    const { user, router, client } = open(api, "/cases/c1/reviews/r1", <App />, 60_000);
+    await screen.findByRole("heading", { name: "审查工作区" });
+    const key = queryKeys.review("c1", "r1", null);
+    await waitFor(() => expect(client.getQueryState(key)?.fetchStatus).toBe("idle"));
+    const pane = document.querySelector<HTMLElement>(".page-review .col-doc")!;
+    const findings = document.querySelector<HTMLElement>(".page-review .col-findings")!;
+    expect(pane && findings).toBeTruthy();
+    pane.scrollTop = 600;
+    findings.scrollTop = 200;
+    await user.click(screen.getByRole("link", { name: /^返回案件$/ }));
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    api.fail("GET /api/cases/c1/reviews/r1", 503);
+    await act(async () => { await router.navigate(-1); });
+    await screen.findByRole("heading", { name: "审查工作区没有加载" });
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    await screen.findByRole("heading", { name: "审查工作区" });
+    const restoredPane = document.querySelector<HTMLElement>(".page-review .col-doc")!;
+    const restoredFindings = document.querySelector<HTMLElement>(".page-review .col-findings")!;
+    await waitFor(() => expect(restoredPane.scrollTop).toBe(600));
+    expect(restoredFindings.scrollTop).toBe(200);
+  });
+
+  it("retry preserves the remediation return review position after a 503", async () => {
+    const api = new Service();
+    addSubmittedRemediation(api, [evaluation()]);
+    const { user, router } = open(api, "/cases/c1/reviews/r2", <App />, 60_000);
+    const queue = await screen.findByRole("region", { name: "人工办理" });
+    await user.click(await within(queue).findByRole("button", { name: "待整改：1" }));
+    const pane = document.querySelector<HTMLElement>(".page-review .col-doc")!;
+    const findings = document.querySelector<HTMLElement>(".page-review .col-findings")!;
+    expect(pane && findings).toBeTruthy();
+    pane.scrollTop = 600;
+    findings.scrollTop = 200;
+    await user.click(within(queue).getByRole("button", { name: "查看整改记录" }));
+    const back = await screen.findByRole("link", { name: "返回人工办理" });
+    expect(back.getAttribute("href")).toContain("attempt_id=attempt-r2-1");
+    expect(router.state.location.state.reviewReadingPosition).toMatchObject({
+      caseId: "c1", runId: "r2", attemptId: "attempt-r2-1", documentScroll: 600, findingScroll: 200,
+    });
+    api.fail("GET /api/cases/c1/reviews/r2?attempt_id=attempt-r2-1", 503);
+    await user.click(back);
+    await screen.findByRole("heading", { name: "审查工作区没有加载" });
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    await screen.findByRole("heading", { name: "审查工作区" });
+    const restoredPane = document.querySelector<HTMLElement>(".page-review .col-doc")!;
+    const restoredFindings = document.querySelector<HTMLElement>(".page-review .col-findings")!;
+    await waitFor(() => expect(restoredPane.scrollTop).toBe(600));
+    expect(restoredFindings.scrollTop).toBe(200);
+  });
+
+  it("preserves the authorized case list route through the review and back", async () => {
+    const api = new Service();
+    api.addReview();
+    const { user, router } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1&page_size=10");
+    await user.click(await screen.findByRole("link", { name: "接入设备采购" }));
+    await user.click(await screen.findByRole("link", { name: "核对原文并处理决定" }));
+    expect(await screen.findByRole("heading", { name: "审查工作区" })).toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: /^返回案件$/ }));
+    await user.click(await screen.findByRole("link", { name: "返回案件列表" }));
+    await screen.findByRole("heading", { name: "案件", level: 1 });
+    const params = new URLSearchParams(router.state.location.search);
+    expect(params.get("q")).toBe("接入");
+    expect(params.get("page")).toBe("1");
+    expect(params.get("selected")).toBe("c1");
+  });
+
+  it("preserves the case list return through the workspace case-details link", async () => {
+    const api = new Service();
+    api.evidenceWorkbench = true;
+    api.addReview();
+    const { user, router } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1&page_size=10");
+    await user.click(await screen.findByRole("link", { name: "接入设备采购" }));
+    await user.click(await screen.findByRole("link", { name: "核对原文并处理决定" }));
+    await user.click(await screen.findByRole("button", { name: "案件与材料" }));
+    await user.click(await screen.findByRole("link", { name: "案件详情" }));
+    await user.click(await screen.findByRole("link", { name: "返回案件列表" }));
+    await screen.findByRole("heading", { name: "案件", level: 1 });
+    const params = new URLSearchParams(router.state.location.search);
+    expect(params.get("q")).toBe("接入");
+    expect(params.get("page")).toBe("1");
+    expect(params.get("selected")).toBe("c1");
+  });
+
+  it("does not return to a former tenant's list state after the session changes", async () => {
+    const api = new Service();
+    api.addReview();
+    const { user, router, client } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1");
+    await user.click(await screen.findByRole("link", { name: "接入设备采购" }));
+    await user.click(await screen.findByRole("link", { name: "核对原文并处理决定" }));
+    await screen.findByRole("heading", { name: "审查工作区" });
+    api.tenant = "tenant-other";
+    await client.invalidateQueries({ queryKey: ["session"] });
+    await waitFor(() => expect(client.getQueryData<{ tenant_id: string }>(queryKeys.session)?.tenant_id).toBe("tenant-other"));
+    await user.click(await screen.findByRole("link", { name: /^返回案件$/ }));
+    await user.click(await screen.findByRole("link", { name: "返回案件列表" }));
+    await screen.findByRole("heading", { name: "案件", level: 1 });
+    expect(router.state.location.search).toBe("");
+  });
+
   it("keeps both source drafts and the linked task when the form selector changes sources", async () => {
     const api = new Service();
     prepareTwoSupplementSources(api);

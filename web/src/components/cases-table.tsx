@@ -3,12 +3,12 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-05
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { Empty, Table } from "antd";
 import type { ColumnsType, TableProps } from "antd/es/table";
 import { useMemo } from "react";
@@ -57,20 +57,31 @@ export function sortFieldOf(
 function CaseTitleCell({
   item,
   location,
+  actorScope,
 }: {
   item: CaseSummary;
   location: ReturnType<typeof useLocation>;
+  actorScope: string;
 }) {
+  const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   params.set("selected", item.id);
+  const href = `/cases/${encodeURIComponent(item.id)}`;
+  const returnTo = `${location.pathname}?${params.toString()}`;
   return (
     <>
       <Link
-        to={`/cases/${encodeURIComponent(item.id)}`}
+        to={href}
         state={{
-          returnTo: `${location.pathname}?${params.toString()}`,
+          returnTo,
           scrollY: window.scrollY,
           selectedId: item.id,
+          actorScope,
+        }}
+        onClick={(event) => {
+          if (event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+          event.preventDefault();
+          void navigate(href, { state: { returnTo, scrollY: window.scrollY, selectedId: item.id, actorScope } });
         }}
       >
         {item.title}
@@ -112,6 +123,7 @@ function caseColumns(
   location: ReturnType<typeof useLocation>,
   sort: CaseSortField,
   direction: SortDirection,
+  actorScope: string,
 ): ColumnsType<CaseSummary> {
   return [
     {
@@ -119,7 +131,7 @@ function caseColumns(
       key: "title",
       sorter: true,
       sortOrder: sortOrderFor("title", sort, direction),
-      render: (_, item) => <CaseTitleCell item={item} location={location} />,
+      render: (_, item) => <CaseTitleCell item={item} location={location} actorScope={actorScope} />,
     },
     {
       title: "材料",
@@ -167,17 +179,19 @@ export function CasesTable({
   direction,
   selectedId,
   onSort,
+  actorScope = "",
 }: {
   items: CaseSummary[];
   sort: CaseSortField;
   direction: SortDirection;
   selectedId: string | null;
   onSort: (field: CaseSortField) => void;
+  actorScope?: string;
 }) {
   const location = useLocation();
   const columns = useMemo(
-    () => caseColumns(location, sort, direction),
-    [location, sort, direction],
+    () => caseColumns(location, sort, direction, actorScope),
+    [location, sort, direction, actorScope],
   );
   if (items.length === 0) return <Empty description="没有符合条件的案件。" />;
   const onChange: NonNullable<TableProps<CaseSummary>["onChange"]> = (

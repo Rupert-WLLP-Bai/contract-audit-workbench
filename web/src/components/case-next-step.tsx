@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-04
-// Revision: r5
+// Updated: 2026-11-05
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -41,6 +41,7 @@ interface Props {
   onRefreshHistory: () => void;
   onStartReview: () => void;
   suppressWriteAction?: boolean;
+  onNavigateReview?: (href: string) => void;
 }
 
 type ActionKind =
@@ -664,7 +665,12 @@ export function CaseNextStep(props: Props) {
 
   let mainAction;
   if (action.kind === "link") {
-    mainAction = <Button {...actionProps} href={actionHref}>{action.label}</Button>;
+    mainAction = <Button {...actionProps} href={actionHref} onClick={(event) => {
+      if (!props.onNavigateReview || !actionHref?.startsWith(`/cases/${encodeURIComponent(props.caseDetail.id)}/reviews/`) ||
+          event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      event.preventDefault();
+      props.onNavigateReview(actionHref);
+    }}>{action.label}</Button>;
   } else if (action.kind === "start") {
     mainAction = props.suppressWriteAction ? (
       <Button {...actionProps} href={`/cases/${encodeURIComponent(props.caseDetail.id)}#case-next-step-title`}>

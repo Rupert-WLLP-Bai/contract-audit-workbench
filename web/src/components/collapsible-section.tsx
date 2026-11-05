@@ -3,12 +3,13 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-04
-// Revision: r1
+// Updated: 2026-11-05
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
-import { useId, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useNavigableSection, useSectionNavigationAvailable } from "./section-navigation";
 
 export interface SectionAnchor {
   id: string;
@@ -26,6 +27,7 @@ export function CollapsibleSection({
   count,
   meta,
   defaultOpen = false,
+  openRequest,
   summaryLabel,
   children,
 }: {
@@ -36,6 +38,8 @@ export function CollapsibleSection({
    *  state stays visible even when the detail body is collapsed. */
   meta?: ReactNode;
   defaultOpen?: boolean;
+  /** A changed request opens this section without remounting its contents. */
+  openRequest?: string | number;
   /** Used when the inner content already has a heading with `title`, to avoid
    *  duplicate text matches in assistive technology and tests. */
   summaryLabel?: string;
@@ -44,8 +48,13 @@ export function CollapsibleSection({
   const generatedId = useId();
   const panelId = `${id}-${generatedId}`;
   const [open, setOpen] = useState(defaultOpen);
+  const sectionRef = useRef<HTMLDetailsElement>(null);
+  const openSection = useCallback(() => setOpen(true), []);
+  useNavigableSection(sectionRef, openSection);
+  useEffect(() => { if (openRequest !== undefined) setOpen(true); }, [openRequest]);
   return (
     <details
+      ref={sectionRef}
       className="caw-section"
       id={id}
       open={open}
@@ -75,6 +84,7 @@ export function CollapsibleSection({
  *  browsers do not consistently reveal a closed <details> from a fragment
  *  navigation. Keyboard activation uses the same click path. */
 export function SectionAnchorNav({ items }: { items: SectionAnchor[] }) {
+  const coordinated = useSectionNavigationAvailable();
   if (items.length < 2) return null;
   return (
     <nav className="caw-section-nav" aria-label="页面分区">
@@ -84,6 +94,7 @@ export function SectionAnchorNav({ items }: { items: SectionAnchor[] }) {
           href={`#${item.id}`}
           aria-label={`跳转到${item.label}`}
           onClick={() => {
+            if (coordinated) return;
             const target = document.getElementById(item.id);
             if (target instanceof HTMLDetailsElement) target.open = true;
           }}

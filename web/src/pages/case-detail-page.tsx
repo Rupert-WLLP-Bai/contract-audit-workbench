@@ -4,18 +4,18 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-05
-// Revision: r7
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Button, Input } from "antd";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getReviewReadiness, type ReviewScope } from "../api/review-readiness";
 import { beijingInputToUtc } from "../components/beijing-datetime";
 import { ReviewReadinessPanel } from "../components/review-readiness-panel";
-import { errorMessage, isForbidden } from "../api/http";
+import { errorMessage, isForbidden, isUnauthenticated } from "../api/http";
 import {
   useCaseDetail,
   useCaseReviewHistory,
@@ -23,7 +23,8 @@ import {
   useStartReview,
 } from "../api/queries";
 import { PageStatus } from "../components/page-status";
-import { CollapsibleSection } from "../components/collapsible-section";
+import { CollapsibleSection, SectionAnchorNav } from "../components/collapsible-section";
+import { isReadingInteraction, readCaseListReturn, readCaseReadingPosition, reviewPositionForPath, SectionNavigationProvider, type CaseReadingPosition } from "../components/section-navigation";
 import { CaseNextStep } from "../components/case-next-step";
 import { MaterialCollectionPanel } from "../components/material-collection-panel";
 import { CaseSubjectRolesPanel } from "../components/case-subject-roles-panel";
@@ -49,31 +50,41 @@ import {
   runTone,
 } from "../domain/review";
 
+const casePositions = new Map<string, CaseReadingPosition>();
+let previousCaseActor = "";
+
 export function CaseDetailPage() {
   const { caseId = "" } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const returnState = location.state as {
-    returnTo?: unknown;
-    scrollY?: unknown;
-  } | null;
-  const returnTo =
-    typeof returnState?.returnTo === "string" &&
-    returnState.returnTo.startsWith("/cases")
-      ? returnState.returnTo
-      : "/cases";
-  const returnScrollY =
-    typeof returnState?.scrollY === "number" ? returnState.scrollY : 0;
   const detail = useCaseDetail(caseId);
   const session = useSession();
   const workActorScope = session.isSuccess && !session.isFetching ? actorReadContextKey(session.data) : "";
+  const navigationScope = session.data ? actorReadContextKey(session.data) : "";
+  const restoredCaseVisit = useRef("");
+  const readingContent = useRef<HTMLElement>(null);
+  const readingInteraction = useRef(0);
+  const readingVisit = useRef<{ key: string; interaction: number }>({ key: "", interaction: 0 });
+  const readingVisitKey = JSON.stringify([location.key, caseId]);
+  const previousNavigationScope = useRef(navigationScope);
+  const navigationActorChanged = Boolean(workActorScope && previousNavigationScope.current && previousNavigationScope.current !== workActorScope);
+  useEffect(() => { if (workActorScope) previousNavigationScope.current = workActorScope; }, [workActorScope]);
+  const listReturn = readCaseListReturn(location.state, caseId, workActorScope);
+  const navigationListReturn = readCaseListReturn(location.state, caseId, navigationScope);
+  const caseReadingPosition = readCaseReadingPosition(location.state, caseId, workActorScope);
+  const queryClient = useQueryClient();
+  const legalFetching = useIsFetching({ queryKey: ["cases", caseId, "legal-applicability-facts"] });
+  const targetPending = useCallback((id: string) => id.startsWith("legal-fact-") &&
+    (legalFetching > 0 || queryClient.getQueryCache().findAll({ queryKey: ["cases", caseId, "legal-applicability-facts"] }).length === 0),
+  [caseId, legalFetching, queryClient]);
   const incomingWork = location.state && typeof location.state === "object" && "workReturn" in location.state
     ? location.state.workReturn : null;
   const incomingScope = incomingWork && typeof incomingWork === "object" && "actorScope" in incomingWork ? incomingWork.actorScope : null;
-  const workScopeMismatch = Boolean(workActorScope && typeof incomingScope === "string" && incomingScope !== workActorScope);
+  const workScopeMismatch = navigationActorChanged || Boolean(workActorScope && typeof incomingScope === "string" && incomingScope !== workActorScope);
   const selectedRemediationId = !workScopeMismatch && searchParams.get("work_kind") === "remediation" ? searchParams.get("work_item") : null;
   const workReturn = readWorkReturn(location.state, caseId, workActorScope);
+  const reviewReadingPosition = workReturn ? reviewPositionForPath(location.state, workReturn, caseId, workActorScope) : null;
   useEffect(() => {
     if (!workScopeMismatch) return;
     setSearchParams((current) => {
@@ -88,7 +99,7 @@ export function CaseDetailPage() {
     const section = document.getElementById("case-remediation");
     if (section instanceof HTMLDetailsElement) section.open = true;
   }, [selectedRemediationId, session.isSuccess, session.isFetching, detail.isSuccess, detail.isFetching]);
-  const actorScope = [session.data?.id ?? "", session.data?.tenant_id ?? "", session.data?.org_id ?? "", session.data?.audience ?? ""].join(":");
+  const actorScope = navigationScope;
   const previousActorScope = useRef(actorScope);
   const sourceCaseParam = searchParams.get("source_case");
   useEffect(() => {
@@ -101,6 +112,47 @@ export function CaseDetailPage() {
     next.delete("source_snapshot");
     setSearchParams(next, { replace: true });
   }, [actorScope, caseId, searchParams, setSearchParams, sourceCaseParam]);
+  useLayoutEffect(() => {
+    const stopRestoring = (event: Event) => {
+      if (isReadingInteraction(event, readingContent.current)) readingInteraction.current += 1;
+    };
+    document.addEventListener("pointerdown", stopRestoring, true);
+    document.addEventListener("keydown", stopRestoring, true);
+    document.addEventListener("wheel", stopRestoring, true);
+    document.addEventListener("touchstart", stopRestoring, true);
+    return () => {
+      document.removeEventListener("pointerdown", stopRestoring, true);
+      document.removeEventListener("keydown", stopRestoring, true);
+      document.removeEventListener("wheel", stopRestoring, true);
+      document.removeEventListener("touchstart", stopRestoring, true);
+    };
+  }, []);
+  useLayoutEffect(() => {
+    if (readingVisit.current.key !== readingVisitKey) {
+      readingVisit.current = { key: readingVisitKey, interaction: readingInteraction.current };
+    }
+  }, [readingVisitKey]);
+  useLayoutEffect(() => {
+    if ((previousCaseActor && previousCaseActor !== navigationScope) || isForbidden(detail.error) || isUnauthenticated(detail.error)) casePositions.clear();
+    previousCaseActor = navigationScope;
+    if (!detail.isSuccess || detail.isFetching || !workActorScope || detail.data.id !== caseId) return;
+    const remembered = casePositions.get(location.key);
+    const position = caseReadingPosition ?? (remembered?.caseId === caseId && remembered.actorScope === workActorScope ? remembered : null);
+    const visit = JSON.stringify([location.key, caseId, workActorScope]);
+    const uninterrupted = readingVisit.current.key === readingVisitKey && readingVisit.current.interaction === readingInteraction.current;
+    const frame = restoredCaseVisit.current !== visit && position && !location.hash && !selectedRemediationId && uninterrupted
+      ? requestAnimationFrame(() => {
+        if (readingVisit.current.key !== readingVisitKey || readingVisit.current.interaction !== readingInteraction.current) return;
+        restoredCaseVisit.current = visit;
+        window.scrollTo(0, position.scrollY);
+      }) : 0;
+    if (!position || location.hash || selectedRemediationId || !uninterrupted) restoredCaseVisit.current = visit;
+    return () => {
+      cancelAnimationFrame(frame);
+      casePositions.set(location.key, { caseId, actorScope: workActorScope, scrollY: window.scrollY });
+      if (casePositions.size > 30) casePositions.delete(casePositions.keys().next().value!);
+    };
+  }, [location.key, location.hash, caseReadingPosition?.scrollY, selectedRemediationId, detail.isSuccess, detail.isFetching, detail.data, detail.error, workActorScope, navigationScope, caseId, readingVisitKey]);
   const history = useCaseReviewHistory(
     caseId,
     detail.data?.latest_run?.id ?? null,
@@ -206,17 +258,25 @@ export function CaseDetailPage() {
       {
         onSuccess: (accepted) => {
           const query = new URLSearchParams({ attempt_id: accepted.attempt_id });
-          void navigate(`/cases/${item.id}/reviews/${accepted.id}?${query}`);
+          void navigate(`/cases/${item.id}/reviews/${accepted.id}?${query}`, { state: reviewNavigationState() });
         },
       },
     );
   }
 
+  function reviewNavigationState() {
+    return {
+      ...(navigationListReturn ?? {}),
+      caseReadingPosition: { caseId, actorScope: navigationScope, scrollY: window.scrollY },
+    };
+  }
+
   return (
-    <section className="page">
+    <SectionNavigationProvider scope={`${caseId}:${navigationScope}`} actorScope={navigationScope} ready={Boolean(workActorScope && detail.isSuccess && !detail.isFetching && detail.data.id === caseId)} targetPending={targetPending}>
+    <section ref={readingContent} className="page">
       <nav className="page-back" aria-label="案件导航">
-        {workReturn ? <Link to={workReturn}>返回人工办理</Link> : null}
-        <Link to={returnTo} state={{ restoreScrollY: returnScrollY }}>
+        {workReturn ? <Link to={workReturn} state={{ ...(listReturn ?? {}), caseReadingPosition, reviewReadingPosition }}>返回人工办理</Link> : null}
+        <Link to={navigationListReturn?.returnTo ?? "/cases"} state={{ restoreScrollY: navigationListReturn?.scrollY ?? 0, actorScope: navigationScope }}>
           返回案件列表
         </Link>
       </nav>
@@ -264,7 +324,18 @@ export function CaseDetailPage() {
         }}
         onRefreshHistory={() => void history.refetch()}
         onStartReview={onStartReview}
+        onNavigateReview={(href) => void navigate(href, { state: reviewNavigationState() })}
       />
+      <SectionAnchorNav items={[
+        { id: "review-readiness", label: "审查准备" },
+        { id: "case-materials", label: "案件材料" },
+        { id: "case-subjects", label: "案件主体" },
+        { id: "case-legal-applicability", label: "法律适用事实" },
+        { id: "case-business-title", label: "业务信息" },
+        { id: "remediation-title", label: "整改与复核" },
+        { id: "report-archive-title", label: "审查报告与归档" },
+        { id: "case-recent-activity", label: "最近活动", count: item.activity.length },
+      ]} />
       <CaseSupportGrantPanel caseId={item.id} />
       {requiresBusinessAt ? (
         <label className="field" id="review-business-time">
@@ -366,7 +437,7 @@ export function CaseDetailPage() {
           <CaseSubjectCorrectionsPanel key={`subject-corrections:${item.id}:${actorScope}`} caseId={item.id} />
         </CollapsibleSection>
       </div>
-      <CaseLegalApplicabilityPanel key={`legal-applicability:${item.id}:${actorScope}`} caseId={item.id} />
+      <div id="case-legal-applicability"><CaseLegalApplicabilityPanel key={`legal-applicability:${item.id}:${actorScope}`} caseId={item.id} /></div>
 
       <section
         className="case-business-overview"
@@ -475,5 +546,6 @@ export function CaseDetailPage() {
         </ol>
       </CollapsibleSection>
     </section>
+    </SectionNavigationProvider>
   );
 }
