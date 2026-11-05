@@ -11,12 +11,15 @@
 import type { Page, Route } from "playwright/test";
 
 const contractId = "0f7d5c1e-4a2b-4c3d-8e9f-0123456789ab";
+const caseId = "80000000-0000-4000-8000-000000000001";
 const at = "2026-11-05T01:00:00Z";
 export const longName = `合成合同${"LongContractName".repeat(10)}`;
 export const longNumber = `SYNTHETIC-${"1234567890".repeat(8)}`;
 export const longBank = `合成银行${"LongBankBranch".repeat(8)}`;
 export const longSupplier = `合成供应方${"LongSupplierName".repeat(8)}`;
 export const longUrl = `https://example.invalid/${"long-unbroken-path".repeat(14)}`;
+export const longSubjectName = "M".repeat(100);
+export const longMaterialName = `${"W".repeat(100)}.pdf`;
 
 const summary = {
   contract_id: contractId, authority_mode: "native", name: longName, number: longNumber, amount: "123456.00",
@@ -24,7 +27,10 @@ const summary = {
 };
 
 const draft = {
-  contract: { name: longName, number: longNumber, remark: longUrl },
+  contract: { name: longName, number: longNumber, remark: longUrl, related_parties: [{
+    party_id: "90000000-0000-4000-8000-000000000001", role: "buyer", name_snapshot: longSubjectName,
+    binding_id: "a0000000-0000-4000-8000-000000000001",
+  }] },
   supplier: { name: longSupplier, bank_name: longBank },
   items: Array.from({ length: 3 }, (_, index) => ({
     item_id: `00000000-0000-4000-8000-00000000000${index + 1}`, name: `合成标的${index + 1}`, quantity: "123.000000", unit: "套",
@@ -41,9 +47,10 @@ const draft = {
 export type FixtureMode = "empty" | "editable" | "readonly";
 
 /** Answer only explicitly enumerated read endpoints, and never send writes to the server. */
-export async function installContractFixture(page: Page, mode: FixtureMode) {
+export async function installContractFixture(page: Page, mode: FixtureMode, references = false) {
   const unmatched: string[] = [];
   const blocked: string[] = [];
+  const referenceRequests: string[] = [];
   const origin = new URL(process.env.E2E_WEB ?? "http://127.0.0.1:5173").origin;
   const json = (route: Route, value: unknown, status = 200) =>
     route.fulfill({ status, contentType: "application/json", body: JSON.stringify(value) });
@@ -77,7 +84,11 @@ export async function installContractFixture(page: Page, mode: FixtureMode) {
     if (url.pathname === "/api/contracts") return json(route, { items: [], next_cursor: null, has_more: false });
     if (url.pathname === "/api/auth/contexts") return json(route, { memberships: [], context_switch_enabled: false });
     if (url.pathname === "/api/contracts/drafts") return json(route, { items: mode === "empty" ? [] : [summary] });
-    if (url.pathname === "/api/contracts/ledger/views" || url.pathname === "/api/cases") return json(route, { items: [] });
+    if (url.pathname === "/api/contracts/ledger/views") return json(route, { items: [] });
+    if (url.pathname === "/api/cases") return json(route, { items: references ? [{
+      id: caseId, title: "合成来源案件", case_number: "SYNTHETIC-CASE", contract_type: "service", document_count: 3,
+      pending_decisions: 0, latest_run: null, updated_at: at,
+    }] : [] });
     if (url.pathname === `/api/contracts/${contractId}` && mode !== "empty") return json(route, {
       summary, current_revision_id: null, active_round_id: null,
       allowed_commands: mode === "editable" ? ["replace_draft"] : [], warnings: [],
@@ -93,8 +104,24 @@ export async function installContractFixture(page: Page, mode: FixtureMode) {
     });
     if (url.pathname === `/api/contracts/${contractId}/registrations`) return json(route, { items: [] });
     if (url.pathname === `/api/contracts/${contractId}/supplements`) return json(route, { items: [], parent: null });
+    if (references && url.pathname === `/api/contracts/${contractId}/reference-checks` &&
+        url.searchParams.size === 1 && url.searchParams.get("case_id") === caseId) {
+      referenceRequests.push(`${method} ${url.pathname}?case_id=${caseId}`);
+      return json(route, {
+        contract_id: contractId, source: "draft", contract_revision_id: null, source_case_id: caseId, checked_at: at,
+        subjects: [{ party_id: draft.contract.related_parties[0]!.party_id, role: "buyer", name_snapshot: longSubjectName,
+          binding_id: draft.contract.related_parties[0]!.binding_id, binding_version: 1, case_role: "customer",
+          binding_state: "active", subject_version: 1, subject_payload_hash: "a".repeat(64),
+          verification_state: "verified", frozen: false }],
+        materials: draft.materials.map((material, index) => ({ ...material, material_version: index + 1,
+          material_role: "award", filename: index === 0 ? longMaterialName : `合成材料${index + 1}.pdf`,
+          media_type: "application/pdf", frozen: false,
+          original_path: `/api/cases/${caseId}/documents/${material.material_version_id}/original` })),
+        warnings: [],
+      });
+    }
     unmatched.push(`${method} ${url.pathname}`);
     return json(route, { error: "unmatched synthetic endpoint" }, 404);
   });
-  return { unmatched, blocked };
+  return { unmatched, blocked, referenceRequests };
 }

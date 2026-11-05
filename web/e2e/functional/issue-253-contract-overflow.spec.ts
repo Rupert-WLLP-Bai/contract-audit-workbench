@@ -11,12 +11,12 @@
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { test, expect, type Page, type TestInfo } from "playwright/test";
-import { installContractFixture, longBank, longName, longNumber, longSupplier, longUrl, type FixtureMode } from "./issue-253-fixtures";
+import { installContractFixture, longBank, longMaterialName, longName, longNumber, longSubjectName, longSupplier, longUrl, type FixtureMode } from "./issue-253-fixtures";
 
 const web = process.env.E2E_WEB ?? "http://127.0.0.1:5173";
 
-async function openEditor(page: Page, mode: FixtureMode) {
-  const fixture = await installContractFixture(page, mode);
+async function openEditor(page: Page, mode: FixtureMode, references = false) {
+  const fixture = await installContractFixture(page, mode, references);
   await page.goto(`${web}/contracts`);
   await expect(page.locator("fieldset.contracts-page-section")).toHaveCount(4);
   if (mode !== "empty") {
@@ -191,4 +191,121 @@ test("masked read-only draft stays masked and cannot be edited", async ({ page }
   expect(fixture.unmatched).toEqual([]);
   expect(fixture.blocked).toEqual([]);
   expect(result.issues).toEqual([]);
+});
+
+async function openReferenceResults(page: Page) {
+  const fixture = await openEditor(page, "editable", true);
+  const panel = page.locator(".contracts-page-references");
+  await panel.getByRole("combobox").click();
+  await page.getByRole("option", { name: /合成来源案件/ }).click();
+  const check = panel.getByRole("button", { name: "核对引用" });
+  await expect(check).toBeEnabled();
+  await check.click();
+  await expect(panel.getByText(longSubjectName, { exact: true })).toHaveText(longSubjectName);
+  await expect(panel.getByText(longMaterialName, { exact: true })).toHaveText(longMaterialName);
+  await expect(panel.getByText(longSubjectName, { exact: true })).toBeVisible();
+  await expect(panel.getByText(longMaterialName, { exact: true })).toBeVisible();
+  await expect(panel.getByRole("link", { name: "预览/下载" })).toHaveCount(3);
+  expect(fixture.referenceRequests).toHaveLength(1);
+  return fixture;
+}
+
+async function referenceGeometry(page: Page, info: TestInfo, label: string) {
+  const result = await page.evaluate(({ subject, material }) => {
+    const section = document.querySelectorAll<HTMLElement>("fieldset.contracts-page-section")[3]!;
+    const editor = document.querySelector<HTMLElement>(".contracts-page-editor")!;
+    const reference = section.querySelector<HTMLElement>(".contracts-page-reference-result")!;
+    const rect = (element: Element) => {
+      const bounds = element.getBoundingClientRect();
+      return { left: bounds.left, right: bounds.right, width: bounds.width };
+    };
+    const size = (element: HTMLElement) => ({ rect: rect(element), clientWidth: element.clientWidth, scrollWidth: element.scrollWidth });
+    const names = [subject, material].map((text) => {
+      const element = Array.from(reference.querySelectorAll<HTMLElement>("strong")).find((candidate) => candidate.textContent === text)!;
+      const row = element.closest<HTMLElement>("li")!;
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const fragments = Array.from(range.getClientRects(), (fragment) => ({ left: fragment.left, right: fragment.right, width: fragment.width }));
+      return { length: text.length, element: size(element), row: size(row), fragments,
+        overflowWrap: getComputedStyle(element).overflowWrap, minWidth: getComputedStyle(element).minWidth };
+    });
+    const issues: string[] = [];
+    const sectionRect = rect(section);
+    for (const [index, name] of names.entries()) {
+      if (name.fragments.length === 0) issues.push(`name ${index + 1} has no visible text fragments`);
+      if (name.row.scrollWidth > name.row.clientWidth + 1) issues.push(`row ${index + 1} scroll ${name.row.scrollWidth} > ${name.row.clientWidth}`);
+      if (name.element.rect.left < sectionRect.left - 1 || name.element.rect.right > sectionRect.right + 1)
+        issues.push(`name ${index + 1} box outside fieldset`);
+      for (const fragment of name.fragments) {
+        if (fragment.left < name.row.rect.left - 1 || fragment.right > name.row.rect.right + 1 ||
+            fragment.left < sectionRect.left - 1 || fragment.right > sectionRect.right + 1)
+          issues.push(`name ${index + 1} text outside fieldset or row`);
+      }
+    }
+    return { viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio, scale: visualViewport?.scale },
+      document: { clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth },
+      editor: size(editor), section: size(section), reference: size(reference), names, issues };
+  }, { subject: longSubjectName, material: longMaterialName });
+  writeFileSync(info.outputPath(`${label}.json`), JSON.stringify(result, null, 2));
+  console.log(`EVIDENCE ${label} ${JSON.stringify(result)}`);
+  return result;
+}
+
+test("reference results wrap long subject and material names at responsive widths", async ({ page }, info) => {
+  const fixture = await openReferenceResults(page);
+  const issues: string[] = [];
+  for (const width of [1440, 1280, 1024, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const layout = await geometry(page, info, `references-layout-${width}`);
+    const result = await referenceGeometry(page, info, `references-${width}`);
+    issues.push(...layout.issues.map((issue) => `${width}: ${issue}`), ...result.issues.map((issue) => `${width}: ${issue}`));
+    if (width === 1280 || width === 390)
+      await page.locator("fieldset.contracts-page-section").nth(3).screenshot({ path: info.outputPath(`references-${width}.png`) });
+  }
+  expect(fixture.unmatched).toEqual([]);
+  expect(fixture.blocked).toEqual([]);
+  expect(issues).toEqual([]);
+});
+
+test("reference results wrap long names at native 200 percent browser zoom", async ({ page }, info) => {
+  test.skip(process.env.E2E_NATIVE_ZOOM !== "1", "Native zoom requires a headed browser and xdotool");
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const fixture = await openReferenceResults(page);
+  const title = `CAW-253-REFERENCES-${process.pid}-${Date.now()}`;
+  await page.evaluate((value) => { document.title = value; }, title);
+  await page.bringToFront();
+  let windows: string[] = [];
+  await expect.poll(() => {
+    try { windows = execFileSync("xdotool", ["search", "--onlyvisible", "--name", title], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().split(/\s+/); }
+    catch { windows = []; }
+    return windows.length;
+  }).toBe(1);
+  execFileSync("xdotool", ["windowfocus", "--sync", windows[0]!]);
+  const windowName = execFileSync("xdotool", ["getwindowname", windows[0]!], { encoding: "utf8" }).trim();
+  let focusedWindow = "unavailable";
+  try { focusedWindow = execFileSync("xdotool", ["getwindowfocus"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); }
+  catch { /* Some display sessions do not expose an input focus window. */ }
+  let before = await page.evaluate(() => ({ width: innerWidth, dpr: devicePixelRatio }));
+  let zoomSent = false;
+  try {
+    if (focusedWindow === "unavailable" || !(await page.evaluate(() => document.hasFocus())))
+      throw new Error("Native zoom cannot verify browser window input focus");
+    execFileSync("xdotool", ["key", "--clearmodifiers", "ctrl+0"]);
+    before = await page.evaluate(() => ({ width: innerWidth, dpr: devicePixelRatio }));
+    zoomSent = true;
+    for (let index = 0; index < 5; index += 1) execFileSync("xdotool", ["key", "--clearmodifiers", "ctrl+plus"]);
+    await expect.poll(() => page.evaluate(() => devicePixelRatio)).toBe(before.dpr * 2);
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(before.width / 2);
+    const layout = await geometry(page, info, "references-layout-native-200");
+    const result = await referenceGeometry(page, info, "references-native-200");
+    await page.locator("fieldset.contracts-page-section").nth(3).screenshot({ path: info.outputPath("references-native-200.png") });
+    expect(fixture.unmatched).toEqual([]);
+    expect(fixture.blocked).toEqual([]);
+    expect(layout.issues).toEqual([]);
+    expect(result.issues).toEqual([]);
+  } finally {
+    const after = await page.evaluate(() => ({ width: innerWidth, dpr: devicePixelRatio, documentFocused: document.hasFocus() }));
+    console.log(`EVIDENCE reference-zoom-window ${JSON.stringify({ window: windows[0], windowName, focusedWindow, before, after })}`);
+    if (zoomSent) execFileSync("xdotool", ["key", "--clearmodifiers", "ctrl+0"]);
+  }
 });

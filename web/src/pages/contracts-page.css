@@ -172,6 +172,11 @@ fieldset.contracts-page-section {
   font-size: 13px;
 }
 
+.contracts-page-materials li > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .contracts-page-hash {
   font-family: var(--font-mono);
   font-size: 12px;
