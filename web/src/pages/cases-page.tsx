@@ -84,7 +84,7 @@ export function CasesPage() {
     ? location.state as { restoreScrollY?: unknown; actorScope?: unknown } : null;
   const returnScope = typeof routeState?.actorScope === "string" && routeState.actorScope ? routeState.actorScope : "";
   const verifiedReturn = useRef("");
-  const restoredVisit = useRef("");
+  const consumedVisit = useRef("");
   const returnMismatch = Boolean(returnScope && confirmedActorScope && returnScope !== confirmedActorScope);
   const returnPending = Boolean(returnScope && verifiedReturn.current !== location.key && !cases.isError &&
     (!confirmedActorScope || !confirmedCases));
@@ -107,6 +107,24 @@ export function CasesPage() {
   }, [returnMismatch, returnPending, returnScope, confirmedActorScope, cases.isError, location.key, navigate]);
 
   useLayoutEffect(() => {
+    const visit = JSON.stringify([location.key, actorScope]);
+    const cancelRestore = () => { consumedVisit.current = visit; };
+    document.addEventListener("pointerdown", cancelRestore, true);
+    document.addEventListener("keydown", cancelRestore, true);
+    document.addEventListener("wheel", cancelRestore, true);
+    document.addEventListener("touchstart", cancelRestore, true);
+    return () => {
+      document.removeEventListener("pointerdown", cancelRestore, true);
+      document.removeEventListener("keydown", cancelRestore, true);
+      document.removeEventListener("wheel", cancelRestore, true);
+      document.removeEventListener("touchstart", cancelRestore, true);
+      if (actorScope && consumedVisit.current === visit) {
+        scrollPositions.set(location.key, { actorScope, scrollY: window.scrollY });
+      }
+    };
+  }, [location.key, actorScope]);
+
+  useLayoutEffect(() => {
     if (previousActorScope.current && previousActorScope.current !== actorScope) scrollPositions.clear();
     previousActorScope.current = actorScope;
     if (!confirmedActorScope || !confirmedCases || returnPending || returnMismatch) return;
@@ -115,18 +133,14 @@ export function CasesPage() {
     const declared = routeState?.actorScope === actorScope && typeof routeState.restoreScrollY === "number" && Number.isFinite(routeState.restoreScrollY) && routeState.restoreScrollY >= 0
       ? routeState.restoreScrollY : undefined;
     const requested = saved?.actorScope === actorScope ? saved.scrollY : declared;
-    const needsRestore = restoredVisit.current !== visit && requested !== undefined;
+    const needsRestore = consumedVisit.current !== visit && requested !== undefined;
     const frame = needsRestore ? requestAnimationFrame(() => {
-      restoredVisit.current = visit;
+      if (consumedVisit.current === visit) return;
+      consumedVisit.current = visit;
       window.scrollTo(0, requested);
     }) : 0;
-    if (!needsRestore) restoredVisit.current = visit;
-    return () => {
-      cancelAnimationFrame(frame);
-      // A cancelled first frame must not replace the intended position with its temporary value.
-      if (restoredVisit.current !== visit) return;
-      scrollPositions.set(location.key, { actorScope, scrollY: window.scrollY });
-    };
+    if (!needsRestore) consumedVisit.current = visit;
+    return () => { cancelAnimationFrame(frame); };
   }, [location.key, location.state, actorScope, confirmedActorScope, confirmedCases, returnPending, returnMismatch]);
 
   function updateParam(

@@ -1406,11 +1406,11 @@ describe("application routes and API contract", () => {
     }
   });
 
-  it("keeps the initial declared list position if refresh interrupts its first frame", async () => {
+  it.each(["none", "wheel", "queued", "leavePending"] as const)("initial declared list position after %s during refresh", async (interaction) => {
     const api = new Service();
     const initialScrollY = window.scrollY;
     api.addReview();
-    const { user, client } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1", <App />, 60_000);
+    const { user, client, router } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1", <App />, 60_000);
     await screen.findByRole("link", { name: "接入设备采购" });
     window.scrollTo(0, 430);
     await user.click(screen.getByRole("link", { name: "接入设备采购" }));
@@ -1445,8 +1445,32 @@ describe("application routes and API contract", () => {
       const pending = client.invalidateQueries({ queryKey: queryKeys.cases, exact: true });
       await waitFor(() => expect(requested && client.getQueryState(queryKeys.cases)?.fetchStatus === "fetching").toBe(true));
       await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 50)); });
+      if (interaction === "wheel" || interaction === "leavePending") {
+        fireEvent.wheel(document, { deltaY: 400 });
+        window.scrollTo(0, 800);
+      }
+      if (interaction === "leavePending") {
+        raf.mockRestore();
+        cancel.mockRestore();
+        frames.clear();
+        const entry = router.state.location.key;
+        await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+        await screen.findByRole("heading", { name: "接入设备采购" });
+        window.scrollTo(0, 0);
+        await act(async () => { held.resolve(); await pending; });
+        await act(async () => { await router.navigate(-1); });
+        await screen.findByRole("heading", { name: "案件", level: 1 });
+        expect(router.state.location.key).toBe(entry);
+        await waitFor(() => expect(window.scrollY).toBe(800));
+        return;
+      }
       await act(async () => { held.resolve(); await pending; });
-      await waitFor(() => expect(frames.size).toBeGreaterThan(0));
+      if (interaction !== "wheel") await waitFor(() => expect(frames.size).toBeGreaterThan(0));
+      else await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 50)); });
+      if (interaction === "queued") {
+        fireEvent.wheel(document, { deltaY: 400 });
+        window.scrollTo(0, 800);
+      }
       await act(async () => {
         for (let pass = 0; pass < 10 && frames.size; pass += 1) {
           const callbacks = [...frames.values()];
@@ -1454,7 +1478,20 @@ describe("application routes and API contract", () => {
           for (const callback of callbacks) callback(performance.now());
         }
       });
-      expect(window.scrollY).toBe(430);
+      expect(window.scrollY).toBe(interaction === "none" ? 430 : 800);
+      if (interaction !== "none") {
+        raf.mockRestore();
+        cancel.mockRestore();
+        frames.clear();
+        const entry = router.state.location.key;
+        await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+        await screen.findByRole("heading", { name: "接入设备采购" });
+        window.scrollTo(0, 0);
+        await act(async () => { await router.navigate(-1); });
+        await screen.findByRole("heading", { name: "案件", level: 1 });
+        expect(router.state.location.key).toBe(entry);
+        await waitFor(() => expect(window.scrollY).toBe(800));
+      }
     } finally {
       held.resolve();
       raf.mockRestore();
