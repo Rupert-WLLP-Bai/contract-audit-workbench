@@ -9,7 +9,7 @@
 // End file metadata.
 
 import type { EvidenceRequest } from "../../api/evidence-workflow";
-import type { CaseDetail, ExecutionAttempt, Finding, Remediation, ReviewWorkspace } from "../../api/types";
+import type { CaseDetail, ConstraintEvaluation, ExecutionAttempt, Finding, Remediation, ReviewWorkspace } from "../../api/types";
 import { projectReviewWork, readWorkReturn, reviewReturnPath, workReturnState } from "./work-items";
 
 const time = "2026-11-05T00:00:00Z";
@@ -102,6 +102,62 @@ describe("人工办理投影", () => {
     input.agent_review!.attempt_id = "other";
     expect(projectReviewWork(input, detail(), []).sourcesKnown).toBe(false);
     expect(projectReviewWork(workspace(), { ...detail(), id: "other" }, []).caseKnown).toBe(false);
+  });
+
+  it.each([
+    ["gap status", { status: "unknown" }],
+    ["gap reason", { reason_code: "max_calls_reached" }],
+  ])("keeps contradictory %s snapshots as independent items requiring review", (_label, change) => {
+    const conflicting = request("different", "g1");
+    conflicting.source_gap = { ...conflicting.source_gap!, ...change };
+    const result = projectReviewWork(workspace(), detail(), [conflicting]);
+    expect(result.items.find((item) => item.target?.id === "different")).toMatchObject({ needsCheck: true, sourceTarget: null });
+    expect(result.items.find((item) => item.target?.kind === "gap" && item.target.id === "g1")).toMatchObject({ needsCheck: true });
+  });
+
+  it.each([
+    ["relation", { relation: "unknown" }],
+    ["reason", { reason: "另一检查原因" }],
+    ["objects", { object_refs: ["object-b"] }],
+    ["missing objects", { object_refs: [] }],
+    ["ambiguous objects", { object_refs: ["object-a", "object-a"] }],
+  ])("keeps contradictory evaluation %s snapshots as independent items requiring review", (_label, change) => {
+    const input = workspace();
+    const evaluation: ConstraintEvaluation = { id: "eval-1", domain: "commercial", relation: "insufficient", rule_version: "1",
+      reason: "需要核对金额", rule_id: "rule-1", capability_id: "payment", object_refs: ["object-a"], finding_id: null, reason_code: "missing", fact_ids: [] };
+    input.evaluations = [evaluation];
+    const conflicting: EvidenceRequest = { ...request("different", "g1"), source_gap: null, source_evaluation: { ...evaluation, ...change } };
+    const result = projectReviewWork(input, detail(), [conflicting]);
+    expect(result.items.find((item) => item.target?.id === "different")).toMatchObject({ needsCheck: true, sourceTarget: null });
+    expect(result.items.find((item) => item.target?.kind === "evaluation" && item.target.id === "eval-1")).toMatchObject({ needsCheck: true });
+  });
+
+  it("retains independent source and conflicting request even when another request matches", () => {
+    const conflicting = request("conflict", "g1");
+    conflicting.source_gap!.status = "unknown";
+    const result = projectReviewWork(workspace(), detail(), [request("matching", "g1"), conflicting]);
+    expect(result.items.find((item) => item.target?.id === "matching")?.sourceTarget?.id).toBe("g1");
+    expect(result.items.find((item) => item.target?.id === "conflict")).toMatchObject({ needsCheck: true, sourceTarget: null });
+    expect(result.items.find((item) => item.target?.kind === "gap" && item.target.id === "g1")).toMatchObject({ needsCheck: true });
+  });
+
+  it("still groups matching evaluation snapshots with an empty object set, including a verified request", () => {
+    const input = workspace();
+    const evaluation: ConstraintEvaluation = { id: "eval-empty", domain: "commercial", relation: "insufficient", rule_version: "1",
+      reason: "需要核对", rule_id: "rule-1", capability_id: "payment", object_refs: [], finding_id: null, reason_code: "missing", fact_ids: [] };
+    input.evaluations = [evaluation];
+    const matching: EvidenceRequest = { ...request("matching", "g1"), source_gap: null, source_evaluation: evaluation };
+    const open = projectReviewWork(input, detail(), [matching]);
+    expect(open.items.find((item) => item.target?.id === "matching")?.sourceTarget?.id).toBe("eval-empty");
+    expect(open.items.some((item) => item.target?.kind === "evaluation" && item.target.id === "eval-empty")).toBe(false);
+    const optional = { ...evaluation, id: "eval-optional", rule_id: "", capability_id: "" };
+    input.evaluations = [optional];
+    const optionalRequest = { ...matching, source_evaluation: optional };
+    expect(projectReviewWork(input, detail(), [optionalRequest]).items.find((item) => item.target?.id === "matching")?.sourceTarget?.id).toBe("eval-optional");
+    input.evaluations = [evaluation];
+    const verified = { ...matching, status: "verified", verification: { run_id: "run-new", attempt_id: "attempt-new", receipt_id: "receipt",
+      evaluation_id: "eval-empty", relation: "compatible", gap_id: null, gap_status: null, evidence: [], reason: "核对", verified_by: "person", verified_at: time } };
+    expect(projectReviewWork(input, detail(), [verified]).items.some((item) => item.target?.id === "matching" || item.target?.id === "eval-empty")).toBe(false);
   });
 
   it("preserves the actual reason for budget, unsupported capability, and manual source reconciliation", () => {

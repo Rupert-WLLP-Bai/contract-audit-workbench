@@ -96,6 +96,13 @@ function requestSource(item: EvidenceRequest): { kind: "gap" | "evaluation"; id:
   return null;
 }
 
+function sameObjectRefs(left: string[], right: string[]): boolean {
+  if (left.length !== right.length || left.some((id) => !id.trim()) || right.some((id) => !id.trim())) return false;
+  const leftIds = new Set(left);
+  const rightIds = new Set(right);
+  return leftIds.size === left.length && rightIds.size === right.length && left.every((id) => rightIds.has(id));
+}
+
 function citationStatus(verification: string, count: number): string {
   if (!count) return "未提供引用，不能确认";
   const label = verification === "verified" ? "服务端报告已核验" : verification === "unverified" ? "尚未核验" : "核验状态待核对";
@@ -138,6 +145,7 @@ export function projectReviewWork(
   const candidates = new Map<string, WorkItem>();
   const sourceMatches = new Map<string, (request: EvidenceRequest) => boolean>();
   const linkedSources = new Set<string>();
+  const conflictingSources = new Set<string>();
 
   if (frozenScope) {
     const findingCounts = counts(workspace.findings.map((item) => item.id));
@@ -169,10 +177,11 @@ export function projectReviewWork(
       if (unique) {
         const identity = sourceKey(caseId, runId, attemptId, "evaluation", evaluation.id);
         candidates.set(identity, item);
-        sourceMatches.set(identity, (request) => Boolean(request.source_evaluation &&
+        sourceMatches.set(identity, (request) => Boolean(request.source_evaluation && evaluation.relation && evaluation.reason &&
           request.source_evaluation.domain === evaluation.domain && request.source_evaluation.rule_version === evaluation.rule_version &&
-          (!request.source_evaluation.rule_id || request.source_evaluation.rule_id === evaluation.rule_id) &&
-          (!request.source_evaluation.capability_id || request.source_evaluation.capability_id === evaluation.capability_id)));
+          request.source_evaluation.rule_id === evaluation.rule_id && request.source_evaluation.capability_id === evaluation.capability_id &&
+          request.source_evaluation.relation === evaluation.relation && request.source_evaluation.reason === evaluation.reason &&
+          sameObjectRefs(request.source_evaluation.object_refs, evaluation.object_refs)));
       }
       else items.push(item);
     });
@@ -198,8 +207,9 @@ export function projectReviewWork(
         if (unique) {
           const identity = sourceKey(caseId, runId, attemptId, "gap", gap.gap_id);
           candidates.set(identity, item);
-          sourceMatches.set(identity, (request) => Boolean(request.source_gap &&
-            request.source_gap.domain === gap.domain && request.source_gap.capability_id === gap.capability_id));
+          sourceMatches.set(identity, (request) => Boolean(request.source_gap && gap.status && gap.reason_code &&
+            request.source_gap.domain === gap.domain && request.source_gap.capability_id === gap.capability_id &&
+            request.source_gap.status === gap.status && request.source_gap.reason_code === gap.reason_code));
         }
         else items.push(item);
       });
@@ -221,6 +231,7 @@ export function projectReviewWork(
     const unique = Boolean(request.id) && requestCounts.get(request.id) === 1;
     const sourceCandidate = identity ? candidates.get(identity) : undefined;
     const sourceMismatch = Boolean(sourceCandidate && identity && !sourceMatches.get(identity)?.(request));
+    if (sourceMismatch && identity) conflictingSources.add(identity);
     const linked = sourceMismatch ? undefined : sourceCandidate;
     if (unique && linked && identity) linkedSources.add(identity);
     const sourceKnown = Boolean(source && request.source_run_id && request.source_attempt_id && source.id);
@@ -241,8 +252,9 @@ export function projectReviewWork(
     });
   }
   for (const [identity, candidate] of candidates) {
-    if (linkedSources.has(identity)) continue;
-    items.push(!requestsKnown ? { ...candidate, status: "请求状态待核对", needsCheck: true } : candidate);
+    if (linkedSources.has(identity) && !conflictingSources.has(identity)) continue;
+    items.push(conflictingSources.has(identity) ? { ...candidate, status: "来源与请求快照不一致，待核对", needsCheck: true } :
+      !requestsKnown ? { ...candidate, status: "请求状态待核对", needsCheck: true } : candidate);
   }
 
   const remediationCounts = counts((validDetail?.remediations ?? []).map((item) => item.id));
