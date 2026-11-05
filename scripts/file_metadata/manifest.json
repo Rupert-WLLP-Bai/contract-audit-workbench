@@ -59557,7 +59557,7 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "76fefc7f6bd168d6bf82f2485df87e622dd4ba62",
+          "commit": "412aa67c940296228b8e2b64f8f1ee9f9fa31b3c",
           "path": "web/src/app.integration.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -67906,7 +67906,7 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "76fefc7f6bd168d6bf82f2485df87e622dd4ba62",
+          "commit": "412aa67c940296228b8e2b64f8f1ee9f9fa31b3c",
           "path": "web/src/pages/case-detail-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -69192,7 +69192,7 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "76fefc7f6bd168d6bf82f2485df87e622dd4ba62",
+          "commit": "412aa67c940296228b8e2b64f8f1ee9f9fa31b3c",
           "path": "web/src/pages/review-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -73815,9 +73815,9 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "76fefc7f6bd168d6bf82f2485df87e622dd4ba62",
+          "commit": "412aa67c940296228b8e2b64f8f1ee9f9fa31b3c",
           "path": "web/e2e/functional/issue-233-navigation.spec.ts",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -73863,9 +73863,9 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "76fefc7f6bd168d6bf82f2485df87e622dd4ba62",
+          "commit": "412aa67c940296228b8e2b64f8f1ee9f9fa31b3c",
           "path": "web/src/components/section-navigation.test.tsx",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -73911,9 +73911,9 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "76fefc7f6bd168d6bf82f2485df87e622dd4ba62",
+          "commit": "412aa67c940296228b8e2b64f8f1ee9f9fa31b3c",
           "path": "web/src/components/section-navigation.tsx",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
