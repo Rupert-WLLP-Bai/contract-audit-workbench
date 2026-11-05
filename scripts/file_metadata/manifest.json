@@ -68242,7 +68242,7 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "1265c813e46ba641be90b881a92da680f8a68c33",
+          "commit": "d2f2d32821f8e41f4d8f955528f716a661489561",
           "path": "web/src/pages/contracts-page.css",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -73962,9 +73962,9 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "1265c813e46ba641be90b881a92da680f8a68c33",
+          "commit": "d2f2d32821f8e41f4d8f955528f716a661489561",
           "path": "web/e2e/functional/issue-253-contract-overflow.spec.ts",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -74010,9 +74010,9 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "1265c813e46ba641be90b881a92da680f8a68c33",
+          "commit": "d2f2d32821f8e41f4d8f955528f716a661489561",
           "path": "web/e2e/functional/issue-253-fixtures.ts",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
