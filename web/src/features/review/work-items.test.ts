@@ -160,6 +160,42 @@ describe("人工办理投影", () => {
     expect(projectReviewWork(input, detail(), [verified]).items.some((item) => item.target?.id === "matching" || item.target?.id === "eval-empty")).toBe(false);
   });
 
+  it("groups empty matching gap reasons and keeps a nonempty conflicting reason separate", () => {
+    const input = workspace();
+    input.agent_review!.gaps = [gap("g1", "")];
+    input.agent_review!.unresolved_gap_ids = ["g1"];
+    const matching = request("matching", "g1");
+    matching.source_gap!.reason_code = "";
+    const open = projectReviewWork(input, detail(), [matching]);
+    expect(open.items.find((item) => item.target?.id === "matching")?.sourceTarget?.id).toBe("g1");
+    expect(open.items.some((item) => item.target?.kind === "gap" && item.target.id === "g1")).toBe(false);
+    const verified = { ...matching, status: "verified", verification: { run_id: "run-new", attempt_id: "attempt-new", receipt_id: "receipt",
+      evaluation_id: null, relation: null, gap_id: "g1", gap_status: "resolved", evidence: [], reason: "核对", verified_by: "person", verified_at: time } };
+    expect(projectReviewWork(input, detail(), [verified]).items.some((item) => item.target?.id === "matching" || item.target?.id === "g1")).toBe(false);
+    const different = { ...matching, source_gap: { ...matching.source_gap!, reason_code: "max_calls_reached" } };
+    const conflicting = projectReviewWork(input, detail(), [different]);
+    expect(conflicting.items.find((item) => item.target?.id === "matching")).toMatchObject({ needsCheck: true, sourceTarget: null });
+    expect(conflicting.items.find((item) => item.target?.kind === "gap" && item.target.id === "g1")).toMatchObject({ needsCheck: true });
+  });
+
+  it("groups empty matching evaluation reasons and keeps a nonempty conflicting reason separate", () => {
+    const input = workspace();
+    const evaluation: ConstraintEvaluation = { id: "eval-empty-reason", domain: "commercial", relation: "insufficient", rule_version: "1",
+      reason: "", rule_id: "rule-1", capability_id: "payment", object_refs: [], finding_id: null, reason_code: "missing", fact_ids: [] };
+    input.evaluations = [evaluation];
+    const matching: EvidenceRequest = { ...request("matching", "g1"), source_gap: null, source_evaluation: evaluation };
+    const open = projectReviewWork(input, detail(), [matching]);
+    expect(open.items.find((item) => item.target?.id === "matching")?.sourceTarget?.id).toBe("eval-empty-reason");
+    expect(open.items.some((item) => item.target?.kind === "evaluation" && item.target.id === "eval-empty-reason")).toBe(false);
+    const verified = { ...matching, status: "verified", verification: { run_id: "run-new", attempt_id: "attempt-new", receipt_id: "receipt",
+      evaluation_id: "eval-empty-reason", relation: "compatible", gap_id: null, gap_status: null, evidence: [], reason: "核对", verified_by: "person", verified_at: time } };
+    expect(projectReviewWork(input, detail(), [verified]).items.some((item) => item.target?.id === "matching" || item.target?.id === "eval-empty-reason")).toBe(false);
+    const different = { ...matching, source_evaluation: { ...evaluation, reason: "其他原因" } };
+    const conflicting = projectReviewWork(input, detail(), [different]);
+    expect(conflicting.items.find((item) => item.target?.id === "matching")).toMatchObject({ needsCheck: true, sourceTarget: null });
+    expect(conflicting.items.find((item) => item.target?.kind === "evaluation" && item.target.id === "eval-empty-reason")).toMatchObject({ needsCheck: true });
+  });
+
   it("preserves the actual reason for budget, unsupported capability, and manual source reconciliation", () => {
     const input = workspace();
     input.agent_review!.gaps = [gap("budget", "max_calls_reached", "unknown"), gap("capability", "capability_not_registered", "unsupported"),

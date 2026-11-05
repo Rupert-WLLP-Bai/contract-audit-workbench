@@ -177,7 +177,7 @@ export function projectReviewWork(
       if (unique) {
         const identity = sourceKey(caseId, runId, attemptId, "evaluation", evaluation.id);
         candidates.set(identity, item);
-        sourceMatches.set(identity, (request) => Boolean(request.source_evaluation && evaluation.relation && evaluation.reason &&
+        sourceMatches.set(identity, (request) => Boolean(request.source_evaluation && evaluation.relation &&
           request.source_evaluation.domain === evaluation.domain && request.source_evaluation.rule_version === evaluation.rule_version &&
           request.source_evaluation.rule_id === evaluation.rule_id && request.source_evaluation.capability_id === evaluation.capability_id &&
           request.source_evaluation.relation === evaluation.relation && request.source_evaluation.reason === evaluation.reason &&
@@ -207,7 +207,7 @@ export function projectReviewWork(
         if (unique) {
           const identity = sourceKey(caseId, runId, attemptId, "gap", gap.gap_id);
           candidates.set(identity, item);
-          sourceMatches.set(identity, (request) => Boolean(request.source_gap && gap.status && gap.reason_code &&
+          sourceMatches.set(identity, (request) => Boolean(request.source_gap && gap.status &&
             request.source_gap.domain === gap.domain && request.source_gap.capability_id === gap.capability_id &&
             request.source_gap.status === gap.status && request.source_gap.reason_code === gap.reason_code));
         }
