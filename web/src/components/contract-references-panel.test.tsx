@@ -388,6 +388,7 @@ it("uses honest fallbacks when the source is absent or its name and number were 
 
 it.each([
   ["not-a-time", "时间格式异常"],
+  ["2026-02-30T01:02:03Z", "时间格式异常"],
   ["", "未记录"],
 ])("distinguishes a defensive checked_at value %j from a missing value", async (checkedAt, expected) => {
   mock.check.mockResolvedValueOnce({ ...checkWithFile("时间示例"), checked_at: checkedAt });
@@ -405,6 +406,40 @@ it.each([
   } else {
     expect(invalidDetail).not.toBeInTheDocument();
   }
+});
+
+it.each([
+  "2026-11-05",
+  "2026-11-05T12:34:56",
+  "2026-11-05T12:34Z",
+  "2026-11-05T12:34:56+0800",
+  "2026-11-05T24:00:00Z",
+  "2026-11-05 12:34:56Z",
+])("rejects incomplete or non-contract checked_at %s and preserves its raw value", async (checkedAt) => {
+  mock.check.mockResolvedValueOnce({ ...checkWithFile("异常时间"), checked_at: checkedAt });
+  render(<ContractReferencesPanel contractID="contract-1" draft={emptyDraft()} />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "核对引用" }));
+  expect(await screen.findByText(/核对时间：/)).toHaveTextContent("核对时间：时间格式异常");
+  const raw = screen.getByText("核对时间原始值");
+  await user.click(raw);
+  const details = raw.closest("details")!;
+  expect(details.querySelector("code")).toHaveTextContent(checkedAt);
+  await user.click(within(details).getByRole("button", { name: "复制完整值" }));
+  expect(await navigator.clipboard.readText()).toBe(checkedAt);
+});
+
+it.each([
+  "2026-11-05T01:02:03Z",
+  "2026-11-05t01:02:03z",
+  "2026-11-05T09:02:03.123456789+08:00",
+  "2026-11-04T19:32:03-05:30",
+])("formats a complete zoned checked_at %s in Beijing time", async (checkedAt) => {
+  mock.check.mockResolvedValueOnce({ ...checkWithFile("合法时间"), checked_at: checkedAt });
+  render(<ContractReferencesPanel contractID="contract-1" draft={emptyDraft()} />);
+  await userEvent.setup().click(screen.getByRole("button", { name: "核对引用" }));
+  expect(await screen.findByText(/核对时间：/)).toHaveTextContent("2026/11/05 09:02:03（北京时间 UTC+08:00）");
+  expect(screen.queryByText("核对时间原始值")).not.toBeInTheDocument();
 });
 
 it("shows contract and case roles, binding states, verification states, and material purposes in their own domains", async () => {

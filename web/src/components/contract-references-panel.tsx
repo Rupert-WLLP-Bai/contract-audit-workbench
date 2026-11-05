@@ -82,6 +82,11 @@ function warningLabel(warning: string): string {
   return warning === "" ? "未记录" : "待核对";
 }
 
+// This field is a date-time, so a date or local time alone cannot identify the check instant.
+function isCompleteCheckedAt(value: string): boolean {
+  return value.trim() === value && /^\d{4}-\d{2}-\d{2}[Tt](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:[Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value);
+}
+
 /**
  * Read-only view of the contract reference chain.
  *
@@ -164,6 +169,7 @@ export function ContractReferencesPanel({
     draft.contract.procurement_result_package !== undefined;
 
   const sourceCase = check === null ? undefined : cases.data?.find((item) => item.id === check.source_case_id);
+  const incompleteCheckedAt = check !== null && check.checked_at !== "" && !isCompleteCheckedAt(check.checked_at);
   const procurement = check?.procurement_result;
   const procurementMaterial = procurement === undefined ? undefined : check?.materials.find((material) =>
     material.material_id === procurement.material_id && material.material_version_id === procurement.material_version_id &&
@@ -227,13 +233,15 @@ export function ContractReferencesPanel({
                 <strong>来源案件：{sourceCase ? (sourceCase.title.trim() ? sourceCase.title : "名称未记录") : "名称未在当前授权列表中"}</strong>
                 {" · "}案件业务编号：{sourceCase ? (sourceCase.case_number?.trim() ? sourceCase.case_number : "未登记") : "未在当前授权列表中"}
                 {" · "}{check.source === "revision" ? "冻结版本" : "当前草稿"}
-                {" · "}核对时间：{preciseTime(check.checked_at)}
+                {" · "}核对时间：{incompleteCheckedAt ? "时间格式异常" : preciseTime(check.checked_at)}
               </p>
               <TechnicalDetail label="来源与合同版本技术详情" value={JSON.stringify({
                 contract_id: check.contract_id, source_case_id: check.source_case_id, source: check.source,
                 contract_revision_id: check.contract_revision_id, checked_at: check.checked_at,
               }, null, 2)} />
-              <InvalidTimeDetail label="核对时间" value={check.checked_at} />
+              {incompleteCheckedAt
+                ? <TechnicalDetail label="核对时间原始值" value={check.checked_at} />
+                : <InvalidTimeDetail label="核对时间" value={check.checked_at} />}
               {check.subjects.length > 0 ? (
                 <>
                   <strong>主体引用</strong>
