@@ -4,11 +4,11 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-05
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import {
   useInfiniteQuery,
   useMutation,
@@ -784,16 +784,60 @@ export function useTemplates(enabled = true) {
   });
 }
 
+export interface ReviewHistoryPageParam {
+  runId: string;
+  seenRunIds: string[];
+}
+
 export function useCaseReviewHistory(
   caseId: string,
   latestRunId: string | null,
 ) {
-  return useQuery({
+  const query = useInfiniteQuery({
     queryKey: queryKeys.reviewHistory(caseId, latestRunId ?? ""),
-    queryFn: ({ signal }) =>
-      api.getReviewHistory(caseId, latestRunId ?? "", signal),
+    queryFn: ({ pageParam, signal }) =>
+      api.getReviewHistoryPage(
+        caseId,
+        pageParam.runId,
+        pageParam.seenRunIds,
+        signal,
+      ),
+    initialPageParam: {
+      runId: latestRunId ?? "",
+      seenRunIds: [],
+    } as ReviewHistoryPageParam,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.nextRunId === null || lastPage.cycleDetected
+        ? undefined
+        : {
+            runId: lastPage.nextRunId,
+            seenRunIds: allPages.map((page) => page.entry.runId),
+          },
     enabled: caseId !== "" && latestRunId !== null,
   });
+  const data = useMemo(
+    () => query.data?.pages.map((page) => page.entry),
+    [query.data],
+  );
+  // React Query marks the whole query as errored when fetchNextPage fails even
+  // though earlier pages remain usable. Only a failure with no loaded page is
+  // a total history error; older-page failures surface through olderError.
+  const initialError = query.isError && query.data === undefined;
+  return {
+    ...query,
+    data,
+    isError: initialError,
+    error: initialError ? query.error : null,
+    // Background refreshes still count as fetching, but loading one older page
+    // must not hide the latest record that is already on screen.
+    isFetching: query.isFetching && !query.isFetchingNextPage,
+    hasOlder: query.hasNextPage,
+    isLoadingOlder: query.isFetchingNextPage,
+    olderError: query.isFetchNextPageError ? query.error : null,
+    cycleDetected:
+      query.data?.pages.some((page) => page.cycleDetected) ?? false,
+    fetchOlder: () => query.fetchNextPage(),
+  };
 }
 
 export function useUploadDocument(caseId: string) {

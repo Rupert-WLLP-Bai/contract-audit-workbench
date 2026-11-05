@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-05
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -161,6 +161,7 @@ function ReviewChoiceSection({
   disabled,
   historyLoading,
   historyError,
+  historyHasOlder,
 }: {
   choices: ReturnType<typeof reviewChoices>;
   choiceKey: string;
@@ -168,6 +169,7 @@ function ReviewChoiceSection({
   disabled: boolean;
   historyLoading: boolean;
   historyError: unknown;
+  historyHasOlder: boolean;
 }) {
   return (
     <>
@@ -180,7 +182,9 @@ function ReviewChoiceSection({
       />
       {choices.length === 0 && !historyLoading && !historyError ? (
         <p>
-          没有可用于生成报告的执行记录。较早的审查如果没有保存当时使用的材料版本记录，不能用于生成报告。
+          {historyHasOlder
+            ? "当前已加载的审查中没有可用于生成报告的执行记录。请先读取更早审查记录；较早的审查如果没有保存当时使用的材料版本记录，不能用于生成报告。"
+            : "没有可用于生成报告的执行记录。较早的审查如果没有保存当时使用的材料版本记录，不能用于生成报告。"}
         </p>
       ) : null}
     </>
@@ -302,6 +306,7 @@ function ReportCreationForm({
   choiceDisabled,
   historyLoading,
   historyError,
+  historyHasOlder,
   review,
   caseId,
   ready,
@@ -317,6 +322,7 @@ function ReportCreationForm({
   choiceDisabled: boolean;
   historyLoading: boolean;
   historyError: unknown;
+  historyHasOlder: boolean;
   review: ReturnType<typeof useReview>;
   caseId: string;
   ready: boolean;
@@ -336,6 +342,7 @@ function ReportCreationForm({
         disabled={choiceDisabled}
         historyLoading={historyLoading}
         historyError={historyError}
+        historyHasOlder={historyHasOlder}
       />
       <SelectedReviewSection review={review} caseId={caseId} />
       {error ? (
@@ -610,6 +617,7 @@ export function ReportArchivePanel({
   history,
   historyLoading,
   historyError,
+  historyHasOlder = false,
   canCreateReport,
   canArchive,
   canReadReports,
@@ -620,6 +628,7 @@ export function ReportArchivePanel({
   history: ReviewHistoryEntry[];
   historyLoading: boolean;
   historyError: unknown;
+  historyHasOlder?: boolean;
   canCreateReport: boolean;
   canArchive: boolean;
   canReadReports: boolean;
@@ -704,6 +713,7 @@ export function ReportArchivePanel({
           choiceDisabled={createReport.isPending}
           historyLoading={historyLoading}
           historyError={historyError}
+          historyHasOlder={historyHasOlder}
           review={selectedReview}
           caseId={caseId}
           ready={reportReady}
