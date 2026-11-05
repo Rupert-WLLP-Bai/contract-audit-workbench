@@ -50241,7 +50241,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r48",
+      "revision": "r49",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -57081,15 +57081,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "378e1664957acb57d12b136cf67a6f4dee853eb8",
+          "commit": "f1edc83f597a40ebe39a982cc97d11f7c4e96c5d",
           "path": "web/src/api/endpoints.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -58599,12 +58599,12 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "22bc06910cc00180d9c131b7d12a60cb29262e30",
+          "commit": "a347e411059365b28925d1544d0791d9467ddccc",
           "path": "web/src/api/queries.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -58647,12 +58647,12 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e76ae26c8a0a94540c5fc0d5b26cae76c88297c5",
+          "commit": "a347e411059365b28925d1544d0791d9467ddccc",
           "path": "web/src/api/queries.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -63032,12 +63032,12 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "7d517e1529ee062c696a5e5da4ba2dec44e08949",
+          "commit": "f1edc83f597a40ebe39a982cc97d11f7c4e96c5d",
           "path": "web/src/components/remediation-panel.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -63125,15 +63125,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "248cdfa9600e9f8076df3f21e60dbec7a8a3ee18",
+          "commit": "f1edc83f597a40ebe39a982cc97d11f7c4e96c5d",
           "path": "web/src/components/report-archive-panel.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -63268,15 +63268,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4f2963e5efaf7214ee3c25ef89e26f942758afab",
+          "commit": "a347e411059365b28925d1544d0791d9467ddccc",
           "path": "web/src/components/review-diff.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -67959,12 +67959,12 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e5cb8656c60cc89610d88949e835a0a68d54dd03",
+          "commit": "f1edc83f597a40ebe39a982cc97d11f7c4e96c5d",
           "path": "web/src/pages/case-detail-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r8",
+      "revision": "r9",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -68577,15 +68577,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "801f4b37c79d457367068e13df7206fa36af4e4d",
+          "commit": "f1edc83f597a40ebe39a982cc97d11f7c4e96c5d",
           "path": "web/src/pages/home-page.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r7",
+      "revision": "r8",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -72752,15 +72752,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "801f4b37c79d457367068e13df7206fa36af4e4d",
+          "commit": "a347e411059365b28925d1544d0791d9467ddccc",
           "path": "web/src/components/review-diff.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
