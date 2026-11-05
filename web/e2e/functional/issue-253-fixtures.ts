@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Provides small synthetic session, ledger and draft data for contract layout checks while refusing unintended API mutations and external service access.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-05
+// Updated: 2026-11-05
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { Page, Route } from "playwright/test";
 
 const contractId = "0f7d5c1e-4a2b-4c3d-8e9f-0123456789ab";

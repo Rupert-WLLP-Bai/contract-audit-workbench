@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks contract registration fieldsets, grids and controls against horizontal overflow at desktop, narrow and native zoom viewports with synthetic authorized data.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-05
+// Updated: 2026-11-05
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { test, expect, type Page, type TestInfo } from "playwright/test";

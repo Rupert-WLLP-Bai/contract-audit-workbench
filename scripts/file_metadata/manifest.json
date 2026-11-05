@@ -249,6 +249,8 @@
       "web/e2e/command-context.ts",
       "web/e2e/functional/issue-233-fixtures.ts",
       "web/e2e/functional/issue-233-navigation.spec.ts",
+      "web/e2e/functional/issue-253-contract-overflow.spec.ts",
+      "web/e2e/functional/issue-253-fixtures.ts",
       "web/e2e/tenant-recovery-smoke.ts",
       "web/src/api/context-sync.ts",
       "web/src/api/contracts-ledger-paths.test.ts",
@@ -50190,7 +50192,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r41",
+      "revision": "r42",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -68237,14 +68239,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "38d0e621639d73933a6361e47311f8c329a6f37c",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "1265c813e46ba641be90b881a92da680f8a68c33",
+          "path": "web/src/pages/contracts-page.css",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -68287,12 +68290,12 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "32353a0fb3365fb56e545a5b8c94ca99ef9502f7",
+          "commit": "1265c813e46ba641be90b881a92da680f8a68c33",
           "path": "web/src/pages/contracts-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -73914,6 +73917,102 @@
           "commit": "989d908b2ae39f776f889bfb9415ce09abdc7530",
           "path": "web/src/components/section-navigation.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/e2e/functional/issue-253-contract-overflow.spec.ts": {
+      "purpose": "Checks contract registration fieldsets, grids and controls against horizontal overflow at desktop, narrow and native zoom viewports with synthetic authorized data.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-05",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "1265c813e46ba641be90b881a92da680f8a68c33",
+          "path": "web/e2e/functional/issue-253-contract-overflow.spec.ts",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-05",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "1265c813e46ba641be90b881a92da680f8a68c33",
+          "path": "web/e2e/functional/issue-253-contract-overflow.spec.ts",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/e2e/functional/issue-253-fixtures.ts": {
+      "purpose": "Provides small synthetic session, ledger and draft data for contract layout checks while refusing unintended API mutations and external service access.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-05",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "1265c813e46ba641be90b881a92da680f8a68c33",
+          "path": "web/e2e/functional/issue-253-fixtures.ts",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-05",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "1265c813e46ba641be90b881a92da680f8a68c33",
+          "path": "web/e2e/functional/issue-253-fixtures.ts",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
