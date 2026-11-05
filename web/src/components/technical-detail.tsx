@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-05
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -79,6 +79,73 @@ export function useCopyTechnicalValue(value: string | null | undefined) {
   return { status: result && result.value === value && result.sequence === request.current ? result.status : "idle", copy };
 }
 
+function TechnicalValue({ value }: { value: string }) {
+  const { status, copy } = useCopyTechnicalValue(value);
+  return (
+    <span className="caw-technical-value">
+      <code className="caw-wrap" title={value}>
+        {value}
+      </code>
+      <button
+        type="button"
+        className="caw-technical-copy"
+        aria-label="复制完整值"
+        onClick={() => void copy()}
+      >
+        复制
+      </button>
+      {status !== "idle" ? (
+        <span role="status" aria-live="polite" className="caw-technical-value-status">
+          {status === "success"
+            ? "已复制完整值"
+            : "复制失败，请选中完整值手动复制。"}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+export interface TechnicalField {
+  label: string;
+  value: string | null | undefined;
+}
+
+/**
+ * Keep the first screen about the business object. All stable identifiers,
+ * hashes and enum codes stay together in one disclosure so they remain
+ * available for audit and support without becoming a second column of prose.
+ */
+export function TechnicalFieldGroup({
+  fields,
+  label = "技术详情 · 完整标识与编码",
+}: {
+  fields: readonly TechnicalField[];
+  label?: string;
+}) {
+  if (fields.length === 0) return null;
+  return (
+    <details className="caw-technical-detail caw-technical-group">
+      <summary>
+        {label}（{fields.length} 项）
+      </summary>
+      <dl className="caw-technical-group-body">
+        {fields.map((field, index) => (
+          <div className="caw-technical-group-row" key={`${field.label}:${index}`}>
+            <dt>{field.label}</dt>
+            <dd>
+              {field.value ? (
+                <TechnicalValue value={field.value} />
+              ) : (
+                <span className="caw-technical-empty">未报告</span>
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  );
+}
+
 /**
  * Primary business surfaces show the human label; the raw id/digest stays in
  * `title`, in the URL/API, and behind an explicit "技术详情" disclosure.
@@ -104,9 +171,11 @@ export function TechnicalDetail({
         <button type="button" className="caw-technical-copy" onClick={() => void copy()}>
           复制完整值
         </button>
-        <span role="status" aria-live="polite">
-          {status === "success" ? "已复制完整值" : status === "failure" ? "复制失败，请选中上方完整值手动复制。" : ""}
-        </span>
+        {status !== "idle" ? (
+          <span role="status" aria-live="polite">
+            {status === "success" ? "已复制完整值" : "复制失败，请选中上方完整值手动复制。"}
+          </span>
+        ) : null}
         {children}
       </div>
     </details>

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r4
+// Updated: 2026-11-05
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -31,7 +31,7 @@ import type {
 } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
-import { TechnicalDetail } from "../components/technical-detail";
+import { TechnicalDetail, TechnicalFieldGroup } from "../components/technical-detail";
 import { caseSelectPresentation } from "../components/case-select-presentation";
 import { actorRoleLabel, caseHref, formatDateTime, parseLabel, parseTone, roleLabel, runLabel, runTone, taskKindLabel } from "../domain/review";
 import { caseOptionLabel } from "../domain/case-identity";
@@ -1719,16 +1719,23 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                       {currentPanel.body}
                     </p>
                   ) : null}
-                  {currentPanel.fields.length > 0 ? (
+                  {currentPanel.fields.some((item) => !item.technical) ? (
                     <dl className="module-detail-fields">
-                      {currentPanel.fields.map((item) => (
-                        <div key={item.label}>
-                          <dt>{item.label}</dt>
-                          <dd>{item.technical ? (item.value ? <TechnicalDetail value={item.value} label="查看" /> : "未报告") : item.value}</dd>
-                        </div>
-                      ))}
+                      {currentPanel.fields
+                        .filter((item) => !item.technical)
+                        .map((item) => (
+                          <div key={item.label}>
+                            <dt>{item.label}</dt>
+                            <dd>{item.value}</dd>
+                          </div>
+                        ))}
                     </dl>
                   ) : null}
+                  <TechnicalFieldGroup
+                    fields={currentPanel.fields
+                      .filter((item) => item.technical)
+                      .map((item) => ({ label: item.label, value: item.value }))}
+                  />
                   {currentPanel.links.length > 0 ? (
                     <div className="module-detail-links">
                       {currentPanel.links.map((item) => (
