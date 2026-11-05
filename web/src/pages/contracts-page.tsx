@@ -10,12 +10,13 @@
 
 import { Alert, Button, Empty, Input, InputNumber, Modal, Select, Table, Tag } from "antd";
 import { actorReadContextKey } from "../domain/actor-read-context";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, assertCommandContextCurrent, captureCommandContext, errorMessage } from "../api/http";
 import {
   CONTRACT_LEDGER_COLUMNS,
   CONTRACT_LEDGER_DEFAULT_COLUMNS,
+  contractLedgerExportColumns,
   createContractDraft,
   createContractExport,
   downloadContractExport,
@@ -27,6 +28,7 @@ import {
   replaceContractDraft,
   type ContractDetail,
   type ContractDraftSummary,
+  type ContractExportRequest,
   type ContractLedgerColumn,
   type ContractLedgerFilter,
   type ContractLedgerItem,
@@ -53,6 +55,7 @@ import {
 } from "../api/idempotency";
 import type { Actor } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { TechnicalDetail } from "../components/technical-detail";
 import { ContractReferencesPanel } from "../components/contract-references-panel";
 import { caseSelectPresentation } from "../components/case-select-presentation";
 import { ContractSigningPanel } from "../components/contract-signing-panel";
@@ -118,6 +121,11 @@ const WORKFLOW_STATE_OPTIONS = [
   { value: "in_review", label: "会签中" },
 ];
 
+const WORKFLOW_DISPLAY_OPTIONS = [
+  ...WORKFLOW_STATE_OPTIONS,
+  { value: "external_observed", label: "外部来源已观测" },
+];
+
 const AUTHORITY_MODE_OPTIONS = [
   { value: "native", label: "本地登记" },
   { value: "external", label: "外部来源" },
@@ -134,22 +142,32 @@ const LEDGER_COLUMN_OPTIONS = CONTRACT_LEDGER_COLUMNS.map((column) => ({
 }));
 
 function stateLabel(state: string): string {
-  return CONTRACT_STATE_OPTIONS.find((option) => option.value === state)?.label ?? state;
+  return enumLabel(state, CONTRACT_STATE_OPTIONS);
 }
 
-function workflowStateLabel(state: string): string {
-  if (state === "external_observed") return "外部来源已观测";
-  return WORKFLOW_STATE_OPTIONS.find((option) => option.value === state)?.label ?? state;
+function enumLabel(value: string, options: { value: string; label: string }[]): string {
+  const known = options.find((option) => option.value === value);
+  if (known) return known.label;
+  return value === "" ? "未记录" : "待核对";
 }
 
-function ledgerCellValue(item: ContractLedgerItem, column: ContractLedgerColumn): string {
+function unknownEnumDetail(value: string, options: { value: string; label: string }[], label: string): ReactNode {
+  if (value === "" || options.some((option) => option.value === value)) return null;
+  return <TechnicalDetail value={value} label={label} />;
+}
+
+function enumPresentation(value: string, options: { value: string; label: string }[], detailLabel: string): ReactNode {
+  return <>{enumLabel(value, options)}{" "}{unknownEnumDetail(value, options, detailLabel)}</>;
+}
+
+function ledgerCellValue(item: ContractLedgerItem, column: ContractLedgerColumn): ReactNode {
   switch (column) {
     case "contract_number":
       return item.number ?? "—";
     case "contract_name":
       return item.name || "未命名合同";
     case "authority_mode":
-      return item.authority_mode === "native" ? "本地登记" : "外部来源";
+      return enumPresentation(item.authority_mode, AUTHORITY_MODE_OPTIONS, "来源类型技术详情");
     case "supplier_name":
       return item.supplier_name ?? "—";
     case "amount":
@@ -163,9 +181,9 @@ function ledgerCellValue(item: ContractLedgerItem, column: ContractLedgerColumn)
     case "procurement_method":
       return item.procurement_method ?? "—";
     case "contract_state":
-      return stateLabel(item.contract_state);
+      return enumPresentation(item.contract_state, CONTRACT_STATE_OPTIONS, "合同状态技术详情");
     case "workflow_state":
-      return workflowStateLabel(item.workflow_state);
+      return enumPresentation(item.workflow_state, WORKFLOW_DISPLAY_OPTIONS, "会签状态技术详情");
     case "signing_date":
       return item.signing_date ?? "—";
     case "source_system":
@@ -537,18 +555,19 @@ export function ContractsPage() {
     setExporting(true);
     setExportMessage(null);
     try {
-      const payload = { filter: ledgerFilter, columns: ledgerColumns };
+      const payload: ContractExportRequest = {
+        filter: ledgerFilter,
+        columns: contractLedgerExportColumns(ledgerColumns),
+        format: "csv",
+      };
       const pending = await pendingMutationKey(
         "clm-contract-export",
         idempotencyActorScope(actor),
         "ledger",
         payload,
+        commandContext,
       );
-      const created = await createContractExport(
-        ledgerFilter,
-        ledgerColumns,
-        pending.key,
-      );
+      const created = await createContractExport(payload, pending.key);
       const blob = await downloadContractExport(created.export_id, commandContext);
       clearPendingMutationKey(pending.storageKey);
       assertCommandContextCurrent(commandContext);
@@ -698,11 +717,11 @@ export function ContractsPage() {
             />
           </label>
           <label className="field">
-            权威模式
+            来源类型
             <Select
               value={ledgerForm.authority_mode ?? undefined}
               allowClear
-              placeholder="全部模式"
+              placeholder="全部来源类型"
               options={AUTHORITY_MODE_OPTIONS}
               onChange={(value) => updateLedgerForm("authority_mode", value ?? "")}
             />
@@ -944,6 +963,7 @@ export function ContractsPage() {
                       更新 {formatDateTime(item.updated_at ?? item.created_at)}
                     </span>
                   </button>
+                  {unknownEnumDetail(item.contract_state, CONTRACT_STATE_OPTIONS, "合同状态技术详情")}
                 </li>
               ))}
             </ul>

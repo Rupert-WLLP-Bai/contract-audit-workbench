@@ -5430,7 +5430,13 @@
                 "signing_date",
                 "source_system",
                 "created_at",
-                "updated_at"
+                "updated_at",
+                "authority_mode_label",
+                "authority_mode_code",
+                "contract_state_label",
+                "contract_state_code",
+                "workflow_state_label",
+                "workflow_state_code"
               ]
             }
           },
@@ -5504,7 +5510,13 @@
                 "signing_date",
                 "source_system",
                 "created_at",
-                "updated_at"
+                "updated_at",
+                "authority_mode_label",
+                "authority_mode_code",
+                "contract_state_label",
+                "contract_state_code",
+                "workflow_state_label",
+                "workflow_state_code"
               ]
             },
             "maxItems": 20

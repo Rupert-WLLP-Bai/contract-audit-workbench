@@ -1,0 +1,11 @@
+[
+  {"name":"native draft","authority":"native","state":"draft","workflow":"not_started","authorityLabel":"本地登记","stateLabel":"草稿","workflowLabel":"当前无进行中会签"},
+  {"name":"ready to sign","authority":"native","state":"ready_to_sign","workflow":"not_started","authorityLabel":"本地登记","stateLabel":"待签署","workflowLabel":"当前无进行中会签"},
+  {"name":"external","authority":"external","state":"external_observed","workflow":"external_observed","authorityLabel":"外部来源","stateLabel":"外部来源已观测","workflowLabel":"外部来源已观测"},
+  {"name":"registered","authority":"native","state":"registered","workflow":"in_review","authorityLabel":"本地登记","stateLabel":"已登记","workflowLabel":"会签中"},
+  {"name":"performing","authority":"native","state":"performing","workflow":"not_started","authorityLabel":"本地登记","stateLabel":"履约中","workflowLabel":"当前无进行中会签"},
+  {"name":"closed","authority":"native","state":"closed","workflow":"not_started","authorityLabel":"本地登记","stateLabel":"已关闭","workflowLabel":"当前无进行中会签"},
+  {"name":"terminated","authority":"native","state":"terminated","workflow":"not_started","authorityLabel":"本地登记","stateLabel":"已终止","workflowLabel":"当前无进行中会签"},
+  {"name":"unknown","authority":"future_source","state":"future_state","workflow":"future_workflow","authorityLabel":"待核对","stateLabel":"待核对","workflowLabel":"待核对"},
+  {"name":"missing","authority":"","state":"","workflow":"","authorityLabel":"未记录","stateLabel":"未记录","workflowLabel":"未记录"}
+]

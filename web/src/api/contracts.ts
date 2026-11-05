@@ -1266,7 +1266,7 @@ function parseMaterialRefForSend(ref: MaterialRef): MaterialRef {
 export const CONTRACT_LEDGER_COLUMNS = [
   { key: "contract_number", label: "合同编号" },
   { key: "contract_name", label: "合同名称" },
-  { key: "authority_mode", label: "权威模式" },
+  { key: "authority_mode", label: "来源类型" },
   { key: "supplier_name", label: "供应商" },
   { key: "amount", label: "金额" },
   { key: "currency", label: "币种" },
@@ -1283,6 +1283,25 @@ export const CONTRACT_LEDGER_COLUMNS = [
 
 export type ContractLedgerColumn =
   (typeof CONTRACT_LEDGER_COLUMNS)[number]["key"];
+
+const CONTRACT_EXPORT_ONLY_COLUMNS = [
+  "authority_mode_label", "authority_mode_code",
+  "contract_state_label", "contract_state_code",
+  "workflow_state_label", "workflow_state_code",
+] as const;
+
+export type ContractExportColumn =
+  ContractLedgerColumn | (typeof CONTRACT_EXPORT_ONLY_COLUMNS)[number];
+
+const READABLE_EXPORT_COLUMNS: Partial<Record<ContractLedgerColumn, readonly ContractExportColumn[]>> = {
+  authority_mode: ["authority_mode_label", "authority_mode_code"],
+  contract_state: ["contract_state_label", "contract_state_code"],
+  workflow_state: ["workflow_state_label", "workflow_state_code"],
+};
+
+export function contractLedgerExportColumns(columns: ContractLedgerColumn[]): ContractExportColumn[] {
+  return columns.flatMap((column) => READABLE_EXPORT_COLUMNS[column] ?? [column]);
+}
 
 export const CONTRACT_LEDGER_DEFAULT_COLUMNS: ContractLedgerColumn[] = [
   "contract_number",
@@ -1355,12 +1374,18 @@ export interface ContractExport {
   export_id: string;
   state: "ready";
   format: "csv";
-  columns: ContractLedgerColumn[];
+  columns: ContractExportColumn[];
   row_count: number;
   created_at: string;
   expires_at: string;
   download_available: boolean;
   replayed: boolean;
+}
+
+export interface ContractExportRequest {
+  filter: ContractLedgerFilter;
+  columns: ContractExportColumn[];
+  format: "csv";
 }
 
 const LEDGER_FILTER_KEYS = [
@@ -1386,6 +1411,14 @@ function ledgerColumn(value: unknown, path: string): ContractLedgerColumn {
   if (!CONTRACT_LEDGER_COLUMNS.some((column) => column.key === candidate))
     throw new Error(`合同响应中的 ${path} 不是支持的台账列`);
   return candidate as ContractLedgerColumn;
+}
+
+function exportColumn(value: unknown, path: string): ContractExportColumn {
+  const candidate = text(value, path);
+  if (!CONTRACT_LEDGER_COLUMNS.some((column) => column.key === candidate) &&
+      !(CONTRACT_EXPORT_ONLY_COLUMNS as readonly string[]).includes(candidate))
+    throw new Error(`合同响应中的 ${path} 不是支持的导出列`);
+  return candidate as ContractExportColumn;
 }
 
 function parseLedgerFilter(value: unknown, path: string): ContractLedgerFilter {
@@ -1519,7 +1552,7 @@ export function parseContractExport(value: unknown): ContractExport {
     export_id: text(item.export_id, "contract.export_id"),
     state,
     format,
-    columns: array(item.columns, "contract.columns", ledgerColumn),
+    columns: array(item.columns, "contract.columns", exportColumn),
     row_count: integer(item.row_count, "contract.row_count", 0),
     created_at: text(item.created_at, "contract.created_at"),
     expires_at: text(item.expires_at, "contract.expires_at"),
@@ -1613,15 +1646,14 @@ export function deleteContractSavedView(
 }
 
 export function createContractExport(
-  filter: ContractLedgerFilter,
-  columns: ContractLedgerColumn[],
+  payload: ContractExportRequest,
   idempotencyKey: string,
 ): Promise<ContractExport> {
   return requestJson(
     `${CONTRACTS_PATH}/exports`,
     jsonInit(
       "POST",
-      { filter, columns, format: "csv" },
+      payload,
       { "Idempotency-Key": idempotencyKey },
     ),
     parseContractExport,
