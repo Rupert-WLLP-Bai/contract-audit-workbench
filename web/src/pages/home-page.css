@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
-/* Updated: 2026-11-04 */
-/* Revision: r4 */
+/* Updated: 2026-11-05 */
+/* Revision: r5 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -1079,25 +1079,31 @@
 .home-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 0;
   margin: 0 0 20px;
   padding: 0;
   border: 0;
+  border-block: 1px solid var(--border-default);
+  background: transparent;
 }
 .home-metric {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
-  min-height: 110px;
-  padding: 16px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-panel);
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-panel);
+  min-height: 0;
+  padding: 14px 20px;
+  border: 0;
+  border-right: 1px solid var(--border-default);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .home-metric:first-child {
-  padding-left: 16px;
-  border-left: 1px solid var(--border-default);
+  padding-left: 0;
+  border-left: 0;
+}
+.home-metric:last-child {
+  border-right: 0;
 }
 .home-metric-icon {
   display: grid;
@@ -1175,13 +1181,19 @@
   .home-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .home-metric:nth-child(2n) {
+    border-right: 0;
+  }
+  .home-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--border-default);
+  }
 }
-@media (max-width: 560px) {
+@media (max-width: 620px) {
   .home-metric,
   .home-metric:first-child {
     gap: 8px;
-    min-height: 100px;
-    padding: 12px;
+    min-height: 0;
+    padding: 12px 10px;
   }
   .home-panel {
     padding: 16px 12px;

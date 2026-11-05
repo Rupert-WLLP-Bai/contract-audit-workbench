@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r4
+// Updated: 2026-11-05
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -740,18 +740,14 @@ function expectDisplayField(label: string, value: string) {
 }
 
 async function expectTechnicalField(user: User, label: string, value: string) {
+  const toggle = details().getByText(/技术详情 · 完整标识与编码/, {
+    selector: "summary",
+  });
+  if (!(toggle.closest("details") as HTMLDetailsElement | null)?.open)
+    await user.click(toggle);
   const content = details().getByText(label, { selector: "dt" }).nextElementSibling;
   if (!content) throw new Error(`missing technical field ${label}`);
-  const scope = within(content as HTMLElement);
-  const raw = scope.getByText(value, { selector: "code" });
-  const toggle = scope.getByText("查看", { selector: "summary" });
-  if (raw.closest("details")?.open) {
-    expect(raw).toBeVisible();
-    await user.click(toggle);
-  }
-  expect(raw).not.toBeVisible();
-  await user.click(toggle);
-  expect(raw).toBeVisible();
+  expect(within(content as HTMLElement).getByText(value, { selector: "code" })).toBeVisible();
 }
 
 async function detailTab(user: User, name: string) {

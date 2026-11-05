@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-05
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -44,7 +44,7 @@ const uiTheme: ThemeConfig = {
     colorBorderSecondary: cssToken("--border-default"),
     colorBgLayout: cssToken("--surface-page"),
     colorBgContainer: cssToken("--surface-raised"),
-    borderRadius: Number.parseFloat(cssToken("--panel-radius")),
+    borderRadius: Number.parseFloat(cssToken("--radius-control")),
     fontFamily: cssToken("--font-ui"),
     fontSize: Number.parseFloat(cssToken("--font-size-ui")),
     controlHeight: 32,

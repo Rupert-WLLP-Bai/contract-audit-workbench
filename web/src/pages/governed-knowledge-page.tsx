@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-05
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -273,7 +273,7 @@ type Replay = { command: KnowledgeCommand; key: string };
 function DetailHeader({ knowledgeId, versionId, content, version }: { knowledgeId: string; versionId: string; content: KnowledgeContent; version: KnowledgeVersion }) {
   return <>
     <nav className="page-back" aria-label="知识治理导航"><Link to={root}>返回知识列表</Link></nav>
-    <header className="page-head"><div><h1>{content.title}</h1><p>{display(content.kind)} · {content.knowledge_id} · v{content.version}</p><ResultStatus status={version.status} active={version.active} /></div>{content.kind !== "legal" && <Button href={`${root}/new?from_knowledge=${encodeURIComponent(knowledgeId)}&from_version=${encodeURIComponent(versionId)}`}>编辑并创建新版本</Button>}</header>
+    <header className="page-head"><div><h1>{content.title}</h1><p>{display(content.kind)} · v{content.version}</p><ResultStatus status={version.status} active={version.active} /><TechnicalDetail label="知识标识与版本技术详情" value={JSON.stringify({ knowledge_id: content.knowledge_id, version_id: versionId, version: content.version })} /></div>{content.kind !== "legal" && <Button href={`${root}/new?from_knowledge=${encodeURIComponent(knowledgeId)}&from_version=${encodeURIComponent(versionId)}`}>编辑并创建新版本</Button>}</header>
   </>;
 }
 

@@ -3,14 +3,18 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-04
-// Revision: r1
+// Updated: 2026-11-05
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TechnicalDetail, technicalLabel } from "./technical-detail";
+import {
+  TechnicalDetail,
+  TechnicalFieldGroup,
+  technicalLabel,
+} from "./technical-detail";
 
 const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
 function clipboard(value: unknown) {
@@ -66,7 +70,7 @@ describe("technical value copy", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("已复制"));
     view.rerender(<TechnicalDetail value="B" />);
     view.rerender(<TechnicalDetail value="A" />);
-    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(technicalLabel("constructor_x")).toBe("记录");
   });
 
@@ -79,5 +83,39 @@ describe("technical value copy", () => {
     view.unmount();
     await act(async () => finish());
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+});
+
+describe("technical field group", () => {
+  it("keeps stable identifiers out of the first screen until requested", () => {
+    render(
+      <TechnicalFieldGroup
+        fields={[
+          { label: "任务 ID", value: "task/server-created" },
+          { label: "状态编码", value: "open" },
+          { label: "责任人标识", value: null },
+        ]}
+      />,
+    );
+    expect(screen.getByText(/技术详情 · 完整标识与编码/)).toBeVisible();
+    expect(screen.getByText("task/server-created")).not.toBeVisible();
+    expect(screen.getByText("未报告")).not.toBeVisible();
+    fireEvent.click(screen.getByText(/技术详情 · 完整标识与编码/));
+    expect(screen.getByText("task/server-created")).toBeVisible();
+    expect(screen.getByText("open")).toBeVisible();
+    expect(screen.getByText("未报告")).toBeVisible();
+  });
+
+  it("copies one full value without collapsing the group", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    clipboard({ writeText });
+    render(
+      <TechnicalFieldGroup fields={[{ label: "案件标识", value: "case/full" }]} />,
+    );
+    fireEvent.click(screen.getByText(/技术详情 · 完整标识与编码/));
+    fireEvent.click(screen.getByRole("button", { name: "复制完整值" }));
+    expect(await screen.findByRole("status", { hidden: true })).toHaveTextContent("已复制完整值");
+    expect(writeText).toHaveBeenCalledWith("case/full");
+    expect(screen.getByText("case/full")).toBeVisible();
   });
 });

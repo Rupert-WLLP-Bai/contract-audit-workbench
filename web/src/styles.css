@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
-/* Updated: 2026-11-04 */
-/* Revision: r3 */
+/* Updated: 2026-11-05 */
+/* Revision: r4 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -91,7 +91,7 @@
     --table-row-selected: var(--action-primary-soft);
     --nav-item-selected: #254272;
     --nav-item-selected-fg: var(--text-inverse);
-    --panel-radius: 6px;
+    --panel-radius: 8px;
     --card-border: var(--border-default);
     --shadow-dialog: 0 16px 40px rgb(0 0 0 / 16%);
     --shadow-navigation: 0 1px 0 rgb(0 0 0 / 8%);
@@ -115,7 +115,7 @@
     --sidebar-collapsed-width: 72px;
     --header-height: 60px;
     --radius-control: 6px;
-    --radius-panel: 6px;
+    --radius-panel: 8px;
     --dur-fast: 120ms;
     --dur-base: 220ms;
     --dur-slow: 420ms;
@@ -296,6 +296,69 @@
 .caw-technical-copy:hover {
   border-color: var(--action-primary);
   color: var(--action-primary);
+}
+
+.caw-technical-group > summary {
+  padding: var(--space-2) 0;
+  font-size: 12px;
+}
+.caw-technical-group-body {
+  display: grid;
+  gap: 0;
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-subtle);
+}
+.caw-technical-group-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 220px) minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  align-items: baseline;
+  padding: var(--space-2) var(--space-1);
+}
+.caw-technical-group-row + .caw-technical-group-row {
+  border-top: 1px solid var(--border-default);
+}
+.caw-technical-group-row dt {
+  color: var(--text-secondary);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.caw-technical-group-row dd {
+  min-width: 0;
+  margin: 0;
+}
+.caw-technical-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+.caw-technical-value > code {
+  flex: 1 1 12ch;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.caw-technical-value-status {
+  flex-basis: 100%;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.caw-technical-empty {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+@media (max-width: 620px) {
+  .caw-technical-group-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
 }
 
 .caw-section {
