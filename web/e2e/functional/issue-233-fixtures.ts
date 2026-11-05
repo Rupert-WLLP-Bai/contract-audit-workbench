@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Supplies small synthetic API fixtures for navigation browser checks, refusing unmatched routes and avoiding real business services.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-05
+// Updated: 2026-11-05
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { Page, Route } from "playwright/test";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";

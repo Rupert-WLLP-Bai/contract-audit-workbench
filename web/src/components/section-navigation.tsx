@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Coordinates page-scoped section registration, controlled ancestor expansion, hash navigation and scoped focus/scroll requests without storing document or form contents.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-05
+// Updated: 2026-11-05
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import {
   createContext,
   useCallback,

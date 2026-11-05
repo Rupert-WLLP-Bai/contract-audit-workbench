@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks section deep links, history, focus, viewports and native browser zoom in Chromium using synthetic authorized API responses.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-05
+// Updated: 2026-11-05
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { execFileSync } from "node:child_process";
 import { test, expect, type Page, type TestInfo } from "playwright/test";
 import { attemptId, caseId, installNavigationFixture, mountNestedNavigation, runId } from "./issue-233-fixtures";
