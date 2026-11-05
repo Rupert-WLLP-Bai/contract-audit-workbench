@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks readable contract ledger cells, saved-view operations and export request identity for name and code columns while preserving session validation and the frozen CSV boundary.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-05
+// Updated: 2026-11-05
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

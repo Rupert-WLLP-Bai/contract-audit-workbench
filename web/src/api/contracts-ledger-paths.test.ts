@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks saved-view and export client requests against the registered ledger route contract, including methods, encoded identities, payloads and valid command contexts.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-05
+// Updated: 2026-11-05
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   checkContractReferences, createContractExport, createContractSavedView, deleteContractSavedView, downloadContractExport,
