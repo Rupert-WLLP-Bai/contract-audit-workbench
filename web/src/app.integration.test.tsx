@@ -1125,6 +1125,8 @@ describe("application routes and API contract", () => {
   it.each([
     { name: "keeps the wheel-adjusted case position when a cached return finishes revalidating", mode: "wheel", expected: 175 },
     { name: "keeps the keyboard-adjusted case position when a cached return finishes revalidating", mode: "keyboard", expected: 175 },
+    { name: "keeps the header wheel-adjusted case position when a cached return finishes revalidating", mode: "header-wheel", expected: 175 },
+    { name: "keeps the header keyboard-adjusted case position when a cached return finishes revalidating", mode: "header-keyboard", expected: 175 },
     { name: "restores the case position after an uninterrupted cached return revalidates", mode: "uninterrupted", expected: 600 },
     { name: "does not restore the previous tenant's case position on a cached return", mode: "tenant", expected: 175 },
   ] as const)("case cached return: $name", async ({ mode, expected }) => {
@@ -1166,6 +1168,16 @@ describe("application routes and API contract", () => {
       else expect(router.state.location.state.caseReadingPosition.scrollY).toBe(600);
       if (mode === "wheel") fireEvent.wheel(document, { deltaY: 250 });
       if (mode === "keyboard") fireEvent.keyDown(document.body, { key: "PageDown" });
+      if (mode === "header-wheel") {
+        const header = screen.getByRole("button", { name: "退出" }).closest("header");
+        expect(header).not.toBeNull();
+        fireEvent.wheel(header!, { deltaY: 250 });
+      }
+      if (mode === "header-keyboard") {
+        const button = screen.getByRole("button", { name: "退出" });
+        act(() => button.focus());
+        fireEvent.keyDown(button, { key: "PageDown" });
+      }
       window.scrollTo(0, 175);
       await act(async () => {
         held.resolve(api.json(api.cases.get("c1")));
