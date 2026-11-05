@@ -18,7 +18,7 @@ import { assertCommandContextCurrent, captureCommandContext, isForbidden, isUnau
 import { clearPendingMutationKey, fileSha256, idempotencyActorScope, newIdempotencyKey, pendingMutationKey } from "../api/idempotency";
 import { actorReadContextKey } from "../domain/actor-read-context";
 import {
-  activateEvidenceDraft, beginEvidenceOperation, clearAllEvidenceDrafts, clearEvidenceDraft,
+  activeEvidenceSource, activateEvidenceDraft, beginEvidenceOperation, clearAllEvidenceDrafts, clearEvidenceDraft,
   evidenceDraftScope, evidenceOperationCurrent, interruptEvidenceDraft, readEvidenceDraft, updateEvidenceDraft,
   updateEvidenceOperation, useEvidenceDraft,
 } from "../features/review/evidence-request-drafts";
@@ -1308,18 +1308,47 @@ function CreateRequestLinkedTaskFooter({ task, pending, onReplace }: {
   );
 }
 
+type CreateRequestView = {
+  key: string;
+  localTask: WorkbenchTask | null;
+  taskRechecked: boolean;
+  error: unknown;
+  deniedMutation: boolean;
+  confirmationError: string | null;
+  pending: boolean;
+  created: boolean;
+};
+function emptyCreateRequestView(key: string): CreateRequestView {
+  return { key, localTask: null, taskRechecked: false, error: null, deniedMutation: false,
+    confirmationError: null, pending: false, created: false };
+}
+
 function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, canManage, context, selectedSource, navigationSerial = 0, expanded = true }: Omit<EvidencePanelProps, "documents"> & { context: PanelContext }) {
   const createTask = useCreateWorkbenchTask(caseId);
   const client = useQueryClient();
   const scope = evidenceDraftScope(context.actorScope, caseId, runId, attemptId);
   const draft = useEvidenceDraft(scope);
-  const [localTask, setLocalTask] = useState<WorkbenchTask | null>(null);
-  const [taskRechecked, setTaskRechecked] = useState(false);
-  const [error, setError] = useState<unknown>(null);
-  const [deniedMutation, setDeniedMutation] = useState(false);
-  const [confirmationError, setConfirmationError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-  const [created, setCreated] = useState(false);
+  const viewKey = JSON.stringify([scope, draft.source]);
+  const activation = useRef({ key: viewKey, generation: 0 });
+  if (activation.current.key !== viewKey) activation.current = { key: viewKey, generation: activation.current.generation + 1 };
+  const generation = activation.current.generation;
+  const [view, setView] = useState<CreateRequestView>(() => emptyCreateRequestView(viewKey));
+  const { localTask, taskRechecked, error, deniedMutation, confirmationError, pending, created } =
+    view.key === viewKey ? view : emptyCreateRequestView(viewKey);
+  function updateView(change: Partial<CreateRequestView>, operation?: number) {
+    setView((previous) => {
+      const current = readEvidenceDraft(scope);
+      if (activation.current.key !== viewKey || activation.current.generation !== generation || current.source !== draft.source ||
+          (operation !== undefined && current.operation !== operation)) return previous;
+      return { ...(previous.key === viewKey ? previous : emptyCreateRequestView(viewKey)), ...change };
+    });
+  }
+  const setLocalTask = (value: WorkbenchTask | null, operation?: number) => updateView({ localTask: value }, operation);
+  const setTaskRechecked = (value: boolean) => updateView({ taskRechecked: value }, draft.operation);
+  const setError = (value: unknown, operation?: number) => updateView({ error: value }, operation);
+  const setConfirmationError = (value: string | null, operation?: number) => updateView({ confirmationError: value }, operation);
+  const setPending = (value: boolean, operation?: number) => updateView({ pending: value }, operation);
+  const setCreated = (value: boolean) => updateView({ created: value });
   const formRef = useRef<HTMLFormElement>(null);
   const recoveryKey = useRef<string | null>(null);
   const setDraft = (change: Partial<typeof draft>) => {
@@ -1346,6 +1375,7 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
       if ((sessionQuery || tasksQuery) && (isForbidden(query.state.error) || isUnauthenticated(query.state.error))) clearAllEvidenceDrafts();
     });
   }, [client, scope]);
+  useEffect(() => { recoveryKey.current = null; }, [scope, draft.source]);
   useEffect(() => {
     if (!scope || !draft.needsVerification || !draft.task || !context.sessionReady || !context.detailReady) return;
     const caseState = client.getQueryState(queryKeys.case(caseId));
@@ -1389,8 +1419,12 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!scope) return;
-    if (readEvidenceDraft(scope) !== draft) {
-      setConfirmationError("草稿已过期或发生变化，请核对后重新填写。");
+    const currentDraft = readEvidenceDraft(scope);
+    if (currentDraft !== draft) {
+      const message = "草稿已过期或发生变化，请核对后重新填写。";
+      if (activeEvidenceSource(scope) === draft.source && currentDraft.source !== draft.source) {
+        setView({ ...emptyCreateRequestView(JSON.stringify([scope, currentDraft.source])), confirmationError: message });
+      } else setConfirmationError(message);
       return;
     }
     if (!canSubmitRequest(canManage, frozen, attemptId, validSource, draft.question, taskReady, pending)) return;
@@ -1410,10 +1444,10 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
           status: "open", priority: "high", finding_id: null,
         });
         const result = linkedTask;
-        const continued = evidenceOperationCurrent(scope, operation);
+        const continued = evidenceOperationCurrent(scope, operation, draft.source);
         if (!updateEvidenceOperation(scope, operation, (current) => ({ ...current, task: {
           id: result.id, version: result.version, caseId: result.case_id, assigneeId: result.assignee_id,
-        }, phase: "linked", needsVerification: current.interrupted || !continued }))) return;
+        }, phase: "linked", needsVerification: current.interrupted || !continued }), draft.source)) return;
         if (!continued) return;
         setLocalTask(linkedTask);
       }
@@ -1424,8 +1458,11 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
       const currentActor = client.getQueryData<Actor>(queryKeys.session);
       const taskState = client.getQueryState(queryKeys.workbench("week"));
       if (isForbidden(taskState?.error) || isUnauthenticated(taskState?.error)) {
-        if (currentActor && actorReadContextKey(currentActor) === context.actorScope) clearAllEvidenceDrafts();
-        setDeniedMutation(true);
+        if (currentActor && actorReadContextKey(currentActor) === context.actorScope &&
+            activation.current.key === viewKey && activation.current.generation === generation) {
+          clearAllEvidenceDrafts();
+          setView({ ...emptyCreateRequestView(JSON.stringify([scope, ""])), deniedMutation: true });
+        }
         return;
       }
       const reviewState = client.getQueryState(context.workspaceKey);
@@ -1435,7 +1472,7 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
       const latest = attempts.reduce<typeof attempt>((value, item) => !value || item.ordinal > value.ordinal ? item : value, attempt);
       const currentSources = requestSourceOptions(eligibleRequestEvaluations(currentWorkspace?.evaluations ?? []),
         eligibleRequestGaps(currentWorkspace?.agent_review ?? null, attemptId));
-      if ((operation && !evidenceOperationCurrent(scope, operation)) ||
+      if ((operation && !evidenceOperationCurrent(scope, operation, draft.source)) ||
           caseState?.status !== "success" || caseState.fetchStatus !== "idle" ||
           sessionState?.status !== "success" || sessionState.fetchStatus !== "idle" || currentCase?.id !== caseId ||
           currentCase.archived_at !== null || currentCase.latest_run?.id !== runId ||
@@ -1445,8 +1482,8 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
           !isFrozenRequestSourceAttempt(attempt, attemptId, runId) || latest?.id !== attemptId ||
           !currentSources.some((item) => item.value === draft.source) ||
           !currentActor || actorReadContextKey(currentActor) !== context.actorScope) {
-        interruptEvidenceDraft(scope);
-        setConfirmationError("关联任务已保留，但案件或登录状态尚未确认；请重试确认后继续。");
+        interruptEvidenceDraft(scope, draft.source);
+        setConfirmationError("关联任务已保留，但案件或登录状态尚未确认；请重试确认后继续。", operation || undefined);
         return;
       }
       captureCommandContext(currentActor);
@@ -1457,32 +1494,34 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
         id: linkedTask!.id, version: linkedTask!.version, caseId: linkedTask!.case_id, assigneeId: linkedTask!.assignee_id,
       } }));
       await createEvidenceRequest(caseId, input, operationKey);
-      if (updateEvidenceOperation(scope, operation, (current) => current)) {
-        clearEvidenceDraft(scope);
-        updateEvidenceDraft(scope, (current) => ({ ...current, assignee: draft.assignee, due: draft.due,
-          role: draft.role, condition: draft.condition }));
+      const active = activation.current.key === viewKey && activation.current.generation === generation &&
+        readEvidenceDraft(scope).source === draft.source && readEvidenceDraft(scope).operation === operation;
+      if (updateEvidenceOperation(scope, operation, (current) => current, draft.source)) {
+        clearEvidenceDraft(scope, draft.source);
+        if (active) {
+          updateEvidenceDraft(scope, (current) => ({ ...current, assignee: draft.assignee, due: draft.due,
+            role: draft.role, condition: draft.condition }));
+          setView({ ...emptyCreateRequestView(JSON.stringify([scope, ""])), created: true });
+        }
       }
-      setLocalTask(null);
-      setCreated(true);
       await client.invalidateQueries({ queryKey: requestKey(caseId) });
     } catch (caught) {
       if (isForbidden(caught) || isUnauthenticated(caught)) {
         const actor = client.getQueryData<Actor>(queryKeys.session);
-        if (operation && readEvidenceDraft(scope).operation === operation &&
+        if (operation && activation.current.key === viewKey && activation.current.generation === generation &&
+            readEvidenceDraft(scope).source === draft.source && readEvidenceDraft(scope).operation === operation &&
             (!actor || actorReadContextKey(actor) === context.actorScope)) {
           clearAllEvidenceDrafts();
-          setLocalTask(null);
-          setDeniedMutation(true);
-          setError(caught);
+          setView({ ...emptyCreateRequestView(JSON.stringify([scope, ""])), deniedMutation: true, error: caught });
         }
         return;
       }
       if (operation) updateEvidenceOperation(scope, operation, (current) => ({ ...current,
         phase: current.phase === "task-pending" ? "task-unknown" : current.phase === "request-pending" ? "request-unknown" : current.phase,
-      }));
-      setError(caught);
+      }), draft.source);
+      setError(caught, operation || undefined);
     } finally {
-      setPending(false);
+      setPending(false, operation || undefined);
     }
   }
 
@@ -1508,7 +1547,7 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
       <h3>发起补充材料请求</h3>
       <p className="meta">选择本次审查中需要补充材料的检查，再关联一项有责任人和截止时间的案件任务。</p>
       {selectedSource && !options.some((option) => option.value === selectedSource) ? <p role="alert">所选来源不属于当前执行或身份不唯一，请返回办理列表核对。</p> : null}
-      <CreateRequestSourceFields frozen={frozen} options={options} source={validSource ? draft.source : ""} pending={pending || !!draft.task || taskUnknown || lockedRequest} onSourceChange={(source) => setDraft({ source })} />
+      <CreateRequestSourceFields frozen={frozen} options={options} source={validSource ? draft.source : ""} pending={pending || !!draft.task || taskUnknown || lockedRequest} onSourceChange={(source) => { if (scope) activateEvidenceDraft(scope, source); }} />
       {taskUnknown ? <p role="alert">任务创建结果待核对。请刷新案件任务并选择已创建的任务，确认前不会重复创建。</p> : null}
       {draft.task && !task ? <p role="status">已关联任务待核对；请确认案件任务的身份、责任人和版本后继续。</p> : null}
       {(taskUnknown || (draft.task && !task)) && !context.tasksLoading ? <Button htmlType="button" onClick={() => {

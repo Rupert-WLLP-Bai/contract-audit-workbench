@@ -234,6 +234,8 @@ class Service {
   releaseHeldWorkspace: (() => void) | null = null;
   evidenceWorkbench = false;
   holdNextTaskResponse = false;
+  holdNextEvidenceResponse: "success" | "failure" | null = null;
+  releaseHeldEvidence: (() => void) | null = null;
   releaseHeldTask: (() => void) | null = null;
   role: WireSchemas["Actor"]["role"] = "admin";
   tenant = "tenant-test";
@@ -701,7 +703,19 @@ class Service {
         assignee_id: task.assignee_id, due_at: task.due_at, source_run_id: input.source_run_id, source_attempt_id: input.source_attempt_id,
         source_evaluation: evaluation, question: input.question, material_role: input.material_role ?? null,
         verification_condition: input.verification_condition, status: "open", version: 1, created_by: this.identity, created_at: at, updated_at: at };
+      const heldMode = this.holdNextEvidenceResponse;
+      this.holdNextEvidenceResponse = null;
+      if (heldMode === "failure") {
+        const held = Promise.withResolvers<Response>();
+        this.releaseHeldEvidence = () => held.resolve(this.json({ error: { message: "来源 A 延迟失败", code: "temporary" } }, 503));
+        return held.promise;
+      }
       this.evidenceRequests.push(request);
+      if (heldMode === "success") {
+        const held = Promise.withResolvers<Response>();
+        this.releaseHeldEvidence = () => held.resolve(this.json(request, 201));
+        return held.promise;
+      }
       return this.json(request, 201);
     }
     if (parts[4] === "evidence-requests" && method === "GET")
@@ -1017,7 +1031,108 @@ function prepareSupplementReview(api: Service) {
   review.evaluations = [evaluation({ relation: "insufficient", reason: "缺少质保期限" })];
 }
 
+function prepareTwoSupplementSources(api: Service) {
+  prepareSupplementReview(api);
+  api.reviews.get("r1")!.evaluations = [
+    evaluation({ id: "source-a", relation: "insufficient", reason: "来源 A 的质保事项" }),
+    evaluation({ id: "source-b", relation: "insufficient", reason: "来源 B 的付款事项" }),
+  ];
+}
+
+async function selectSupplementSource(user: ReturnType<typeof userEvent.setup>, label: "A" | "B") {
+  const queue = await screen.findByRole("region", { name: "人工办理" });
+  const filter = await within(queue).findByRole("button", { name: /待补件/ });
+  if (filter.getAttribute("aria-pressed") !== "true") await user.click(filter);
+  const source = await within(queue).findByText(new RegExp(`来源 ${label} 的`));
+  const item = source.closest("li");
+  expect(item).not.toBeNull();
+  await user.click(within(item!).getByRole("button", { name: "查看补件来源" }));
+  await screen.findByRole("heading", { name: "发起补充材料请求" });
+}
+
+async function fillSupplementSource(user: ReturnType<typeof userEvent.setup>, label: "A" | "B") {
+  await user.type(screen.getByLabelText("任务名称"), `任务 ${label}`);
+  await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /周审查/);
+  fireEvent.change(screen.getByLabelText("完成期限（本地时间）"), { target: { value: "2026-11-06T10:00" } });
+  await user.type(screen.getByLabelText("需要补充的问题"), `问题 ${label}`);
+}
+
 describe("application routes and API contract", () => {
+  it("keeps both source drafts and the linked task when the form selector changes sources", async () => {
+    const api = new Service();
+    prepareTwoSupplementSources(api);
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    await selectSupplementSource(user, "A");
+    await user.type(screen.getByLabelText("任务名称"), "任务 A");
+    await user.type(screen.getByLabelText("需要补充的问题"), "问题 A");
+    await selectSupplementSource(user, "B");
+    await fillSupplementSource(user, "B");
+    api.fail("POST /api/cases/c1/evidence-requests", 503);
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    expect(await screen.findByText(/已关联任务“任务 B”/)).toBeVisible();
+    await selectSupplementSource(user, "A");
+    expect(screen.getByLabelText("任务名称")).toHaveValue("任务 A");
+    expect(screen.getByLabelText("需要补充的问题")).toHaveValue("问题 A");
+    await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /来源 B 的付款事项/);
+    expect(screen.getByLabelText("任务名称")).toHaveValue("任务 B");
+    expect(screen.getByLabelText("需要补充的问题")).toHaveValue("问题 B");
+    expect(await screen.findByText(/已关联任务“任务 B”/)).toBeVisible();
+    expect(api.evidenceTasks).toHaveLength(1);
+    await selectSupplementSource(user, "A");
+    expect(screen.getByLabelText("任务名称")).toHaveValue("任务 A");
+    expect(screen.getByLabelText("需要补充的问题")).toHaveValue("问题 A");
+  });
+
+  it("does not display source A success after switching to source B", async () => {
+    const api = new Service();
+    prepareTwoSupplementSources(api);
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    await selectSupplementSource(user, "A");
+    await fillSupplementSource(user, "A");
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
+    await selectSupplementSource(user, "B");
+    expect(screen.queryByText("补充材料请求已创建。")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("任务名称")).toHaveValue("");
+  });
+
+  it.each(["success", "failure"] as const)("does not publish late source A %s into source B", async (outcome) => {
+    const api = new Service();
+    prepareTwoSupplementSources(api);
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    await selectSupplementSource(user, "B");
+    await fillSupplementSource(user, "B");
+    api.fail("POST /api/cases/c1/evidence-requests", 503);
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    expect(await screen.findByText(/已关联任务“任务 B”/)).toBeVisible();
+    await selectSupplementSource(user, "A");
+    await fillSupplementSource(user, "A");
+    api.holdNextEvidenceResponse = outcome;
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await waitFor(() => expect(api.releaseHeldEvidence).toBeTypeOf("function"));
+    try {
+      await selectSupplementSource(user, "B");
+      expect(screen.getByLabelText("需要补充的问题")).toHaveValue("问题 B");
+      act(() => api.releaseHeldEvidence?.());
+      const retry = await screen.findByRole("button", { name: "重试创建补充请求" });
+      await waitFor(() => expect(retry).toBeEnabled());
+      expect(screen.getByLabelText("需要补充的问题")).toHaveValue("问题 B");
+      expect(await screen.findByText(/已关联任务“任务 B”/)).toBeVisible();
+      expect(screen.queryByText("补充材料请求已创建。")).not.toBeInTheDocument();
+      expect(screen.queryByText("来源 A 延迟失败")).not.toBeInTheDocument();
+      expect(api.evidenceTasks).toHaveLength(2);
+      await user.click(retry);
+      expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
+      expect(api.evidenceTasks).toHaveLength(2);
+      const requests = api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests");
+      expect(requests).toHaveLength(3);
+      expect(requests[2]?.input).toMatchObject({ task_id: api.evidenceTasks[0]?.id, source_evaluation_id: "source-b" });
+      expect(api.evidenceRequests).toHaveLength(outcome === "success" ? 2 : 1);
+    } finally {
+      api.releaseHeldEvidence?.();
+    }
+  });
+
   it.each(["503", "network"] as const)("retains the supplement draft after task failure and temporary session %s", async (failure) => {
     const api = new Service();
     prepareSupplementReview(api);

@@ -20,7 +20,8 @@ afterEach(() => { clearAllEvidenceDrafts(); vi.useRealTimers(); });
 
 describe("supplement creation checkpoints", () => {
   it("isolates actor, case, attempt and explicit source identities", () => {
-    updateEvidenceDraft(scope, (draft) => ({ ...draft, source: "evaluation:one", question: "问题一", dirty: true }));
+    activateEvidenceDraft(scope, "evaluation:one");
+    updateEvidenceDraft(scope, (draft) => ({ ...draft, question: "问题一", dirty: true }));
     activateEvidenceDraft(scope, "evaluation:two");
     expect(readEvidenceDraft(scope).question).toBe("");
     expect(hasEvidenceDraft(scope)).toBe(true);
@@ -35,7 +36,8 @@ describe("supplement creation checkpoints", () => {
   });
 
   it("allows only the original interrupted intent to record a late task without continuing", () => {
-    updateEvidenceDraft(scope, (draft) => ({ ...draft, source: "evaluation:one", question: "待补" }));
+    activateEvidenceDraft(scope, "evaluation:one");
+    updateEvidenceDraft(scope, (draft) => ({ ...draft, question: "待补" }));
     const operation = beginEvidenceOperation(scope, "task-pending");
     interruptEvidenceDraft(scope);
     expect(evidenceOperationCurrent(scope, operation)).toBe(false);
@@ -44,9 +46,22 @@ describe("supplement creation checkpoints", () => {
     expect(readEvidenceDraft(scope)).toMatchObject({ interrupted: true, needsVerification: true, task: { id: "accepted" } });
   });
 
+  it("records the same interrupted source's late accepted task without changing another source", () => {
+    activateEvidenceDraft(scope, "evaluation:one");
+    const operation = beginEvidenceOperation(scope, "task-pending");
+    activateEvidenceDraft(scope, "evaluation:two");
+    updateEvidenceDraft(scope, (draft) => ({ ...draft, question: "来源二" }));
+    expect(evidenceOperationCurrent(scope, operation, "evaluation:one")).toBe(false);
+    expect(updateEvidenceOperation(scope, operation, (draft) => ({ ...draft, phase: "linked", needsVerification: true,
+      task: { id: "accepted", caseId: "case-1", version: 1, assigneeId: "owner" } }), "evaluation:one")).toBe(true);
+    expect(readEvidenceDraft(scope).question).toBe("来源二");
+    activateEvidenceDraft(scope, "evaluation:one");
+    expect(readEvidenceDraft(scope)).toMatchObject({ interrupted: true, needsVerification: true, task: { id: "accepted" } });
+  });
+
   it("cannot revive cleared, replaced or expired operations", () => {
     vi.useFakeTimers();
-    updateEvidenceDraft(scope, (draft) => ({ ...draft, source: "evaluation:one" }));
+    activateEvidenceDraft(scope, "evaluation:one");
     const cleared = beginEvidenceOperation(scope, "task-pending");
     clearAllEvidenceDrafts();
     const replacement = beginEvidenceOperation(scope, "task-pending");

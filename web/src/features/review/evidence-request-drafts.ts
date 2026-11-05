@@ -49,46 +49,53 @@ export function evidenceDraftScope(actorScope: string | null, caseId: string, ru
 }
 function notify() { for (const listener of listeners) listener(); }
 function subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; }
-function entry(scope: string) {
-  const result = entries.get(key(scope, activeSources.get(scope) ?? ""));
+function entry(scope: string, source = activeSources.get(scope) ?? "") {
+  const result = entries.get(key(scope, source));
   return result && Date.now() - result.updatedAt < MAX_AGE_MS ? result : undefined;
 }
-export function readEvidenceDraft(scope: string | null): EvidenceDraft {
-  return scope ? entry(scope)?.draft ?? emptyDraft : emptyDraft;
-}
-export function useEvidenceDraft(scope: string | null): EvidenceDraft {
-  return useSyncExternalStore(subscribe, () => readEvidenceDraft(scope), () => emptyDraft);
-}
-export function updateEvidenceDraft(scope: string, update: (draft: EvidenceDraft) => EvidenceDraft): void {
-  const previousSource = activeSources.get(scope) ?? "";
-  const draft = update(entry(scope)?.draft ?? emptyDraft);
-  const oldKey = key(scope, previousSource);
-  const nextKey = key(scope, draft.source);
-  if (oldKey !== nextKey) entries.delete(oldKey);
-  entries.delete(nextKey);
-  entries.set(nextKey, { scope, draft, updatedAt: Date.now() });
-  activeSources.set(scope, draft.source);
+function save(scope: string, source: string, draft: EvidenceDraft): void {
+  if (draft.source !== source) throw new Error("切换来源时必须选择对应的草稿");
+  const entryKey = key(scope, source);
+  entries.delete(entryKey);
+  entries.set(entryKey, { scope, draft, updatedAt: Date.now() });
   while (entries.size > MAX_DRAFTS) {
     const first = entries.keys().next().value;
     if (!first) break;
     entries.delete(first);
   }
-  // Pointers contain identifiers only and must be bounded with the entries.
-  for (const [owner, source] of activeSources) if (!entries.has(key(owner, source))) activeSources.delete(owner);
+  for (const [owner, active] of activeSources) if (!entries.has(key(owner, active))) activeSources.delete(owner);
   notify();
+}
+export function activeEvidenceSource(scope: string): string | null {
+  return activeSources.get(scope) ?? null;
+}
+export function readEvidenceDraft(scope: string | null, source?: string): EvidenceDraft {
+  return scope ? entry(scope, source)?.draft ?? emptyDraft : emptyDraft;
+}
+export function useEvidenceDraft(scope: string | null): EvidenceDraft {
+  return useSyncExternalStore(subscribe, () => readEvidenceDraft(scope), () => emptyDraft);
+}
+export function updateEvidenceDraft(scope: string, update: (draft: EvidenceDraft) => EvidenceDraft): void {
+  const source = activeSources.get(scope) ?? "";
+  const draft = update(entry(scope, source)?.draft ?? { ...emptyDraft, source });
+  activeSources.set(scope, source);
+  save(scope, source, draft);
 }
 export function activateEvidenceDraft(scope: string, source: string): void {
   if ((activeSources.get(scope) ?? "") === source) return;
+  const previous = entry(scope)?.draft;
   interruptEvidenceDraft(scope);
   activeSources.set(scope, source);
-  if (!entry(scope)) updateEvidenceDraft(scope, (draft) => ({ ...draft, source }));
-  else notify();
+  if (!entry(scope, source)) {
+    const initial = previous?.source === "" ? { ...previous, source } : { ...emptyDraft, source };
+    if (previous?.source === "") entries.delete(key(scope, ""));
+    save(scope, source, initial);
+  } else notify();
 }
-export function clearEvidenceDraft(scope: string): void {
-  const source = activeSources.get(scope);
+export function clearEvidenceDraft(scope: string, source = activeSources.get(scope)): void {
   if (source === undefined) return;
   entries.delete(key(scope, source));
-  activeSources.delete(scope);
+  if (activeSources.get(scope) === source) activeSources.delete(scope);
   notify();
 }
 export function clearAllEvidenceDrafts(): void {
@@ -101,25 +108,25 @@ export function beginEvidenceOperation(scope: string, phase: "task-pending" | "r
   updateEvidenceDraft(scope, (draft) => ({ ...draft, phase, operation, interrupted: false, dirty: true }));
   return operation;
 }
-export function evidenceOperationCurrent(scope: string, operation: number): boolean {
-  const draft = entry(scope)?.draft;
-  return !!draft && draft.operation === operation && !draft.interrupted;
+export function evidenceOperationCurrent(scope: string, operation: number, source = activeSources.get(scope) ?? ""): boolean {
+  const draft = entry(scope, source)?.draft;
+  return activeSources.get(scope) === source && !!draft && draft.operation === operation && !draft.interrupted;
 }
-export function updateEvidenceOperation(scope: string, operation: number, update: (draft: EvidenceDraft) => EvidenceDraft): boolean {
-  const current = entry(scope)?.draft;
+export function updateEvidenceOperation(scope: string, operation: number, update: (draft: EvidenceDraft) => EvidenceDraft, source = activeSources.get(scope) ?? ""): boolean {
+  const current = entry(scope, source)?.draft;
   if (!current || current.operation !== operation) return false;
-  updateEvidenceDraft(scope, update);
+  save(scope, source, update(current));
   return true;
 }
-export function interruptEvidenceDraft(scope: string): void {
-  const current = entry(scope)?.draft;
-  if (!current) return;
-  updateEvidenceDraft(scope, (draft) => ({
+export function interruptEvidenceDraft(scope: string, source = activeSources.get(scope) ?? ""): void {
+  const draft = entry(scope, source)?.draft;
+  if (!draft) return;
+  save(scope, source, {
     ...draft,
     phase: draft.phase === "task-pending" ? "task-unknown" : draft.phase === "request-pending" ? "request-unknown" : draft.phase,
     interrupted: true,
     needsVerification: !!draft.task || draft.phase === "task-pending" || draft.phase === "task-unknown",
-  }));
+  });
 }
 export function hasEvidenceDraft(scope: string | null): boolean {
   if (!scope) return false;
