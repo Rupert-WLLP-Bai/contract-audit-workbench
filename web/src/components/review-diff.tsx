@@ -3,7 +3,7 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-06
+// Updated: 2026-11-05
 // Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
@@ -272,6 +272,10 @@ function ReviewDiffBody({ caseId, latestRunId, actorScope }: ReviewDiffProps) {
   const entries = history.data?.pages.map((page) => page.entry) ?? [];
   const cycleDetected =
     history.data?.pages.some((page) => page.cycleDetected) ?? false;
+  // A failed older page leaves the query status as error while the latest page
+  // is still usable; keep that page visible and report the page failure inline.
+  const initialError =
+    history.isError && history.data === undefined ? history.error : null;
   const olderError = history.isFetchNextPageError ? history.error : null;
   const choices = reviewChoices(entries).filter((choice) => choice.attempt.run_id === choice.runId);
   const sourceChoice = reviewChoiceForKey(choices, sourceKey);
@@ -290,7 +294,7 @@ function ReviewDiffBody({ caseId, latestRunId, actorScope }: ReviewDiffProps) {
   });
 
   if (history.isLoading) return <p role="status">正在读取当前可见的审查历史…</p>;
-  if (history.isError) return <div role="alert"><p>审查历史无法读取：{errorMessage(history.error)}</p><Button onClick={() => void history.refetch()}>重新读取历史</Button></div>;
+  if (initialError) return <div role="alert"><p>审查历史无法读取：{errorMessage(initialError)}</p><Button onClick={() => void history.refetch()}>重新读取历史</Button></div>;
   const unavailableRuns = entries.filter((entry) => !entry.workspace.review_attempts);
   const sameSelection = !!sourceChoice && !!targetChoice && sourceChoice.key === targetChoice.key;
   const sourceProblem = source.isSuccess && sourceChoice && !source.isFetching
@@ -305,7 +309,7 @@ function ReviewDiffBody({ caseId, latestRunId, actorScope }: ReviewDiffProps) {
     <p className="meta">默认先读取最新审查记录；更早记录按需读取，未读取的旧记录不会出现在选择中。</p>
     {cycleDetected ? <p role="alert">审查历史存在循环引用，已保留当前可读取记录，不能继续读取更早记录。</p> : null}
     {olderError ? <div role="alert"><p>更早的审查记录没有加载：{errorMessage(olderError)}</p><Button onClick={() => void history.fetchNextPage()}>重试读取更早记录</Button></div> : null}
-    {history.hasNextPage ? <div>
+    {history.hasNextPage && !olderError ? <div>
       <Button loading={history.isFetchingNextPage} onClick={() => void history.fetchNextPage()}>读取更早审查记录</Button>
     </div> : null}
     {unavailableRuns.length ? <p className="callout">以下审查未返回执行记录，不能比较：{unavailableRuns.map((entry) => entry.runId).join("、")}。</p> : null}

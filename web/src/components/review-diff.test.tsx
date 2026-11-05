@@ -3,7 +3,7 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-06
+// Updated: 2026-11-05
 // Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
@@ -70,4 +70,27 @@ it("shows frozen scope and business names with exact identities behind technical
   expect(within(side).getByText(/input-secret/)).not.toBeVisible();
   expect(api.getReview).toHaveBeenCalledWith("case-1", "run-a", "run-a-attempt", expect.any(AbortSignal));
   expect(api.getReview).toHaveBeenCalledWith("case-1", "run-b", "run-b-attempt", expect.any(AbortSignal));
+});
+
+it("keeps the latest review selectable when an older page fails", async () => {
+  const target = workspace("run-b");
+  api.getReviewHistoryPage.mockReset();
+  api.getReviewHistoryPage
+    .mockResolvedValueOnce({
+      entry: { runId: "run-b", workspace: target },
+      nextRunId: "run-a",
+      cycleDetected: false,
+    })
+    .mockRejectedValueOnce(new Error("更早记录不可读取"));
+  api.getReview.mockReset();
+  api.getReview.mockResolvedValue(target);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><MemoryRouter><ReviewDiff caseId="case-1" latestRunId="run-b" actorScope="test" /></MemoryRouter></QueryClientProvider>);
+  const user = userEvent.setup();
+  await user.click(screen.getByText("复审差异：选择两个冻结执行记录"));
+  await user.click(await screen.findByRole("button", { name: "读取更早审查记录" }));
+  expect(await screen.findByText(/更早的审查记录没有加载/)).toBeInTheDocument();
+  expect(screen.queryByText(/审查历史无法读取/)).not.toBeInTheDocument();
+  expect(screen.getByRole("combobox", { name: "来源审查与执行" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "重试读取更早记录" })).toBeInTheDocument();
 });

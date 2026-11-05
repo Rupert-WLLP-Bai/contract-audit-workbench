@@ -3,7 +3,7 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-06
+// Updated: 2026-11-05
 // Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
@@ -361,6 +361,7 @@ describe("query hook gates", () => {
       await result.current.fetchOlder().catch(() => undefined);
     });
     await waitFor(() => expect(result.current.olderError).not.toBeNull());
+    expect(result.current.isError).toBe(false);
     expect(result.current.data?.map((entry) => entry.runId)).toEqual(["r1"]);
     expect(result.current.hasOlder).toBe(true);
     expect(result.current.isLoadingOlder).toBe(false);

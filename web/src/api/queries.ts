@@ -3,7 +3,7 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-06
+// Updated: 2026-11-05
 // Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
@@ -819,9 +819,15 @@ export function useCaseReviewHistory(
     () => query.data?.pages.map((page) => page.entry),
     [query.data],
   );
+  // React Query marks the whole query as errored when fetchNextPage fails even
+  // though earlier pages remain usable. Only a failure with no loaded page is
+  // a total history error; older-page failures surface through olderError.
+  const initialError = query.isError && query.data === undefined;
   return {
     ...query,
     data,
+    isError: initialError,
+    error: initialError ? query.error : null,
     // Background refreshes still count as fetching, but loading one older page
     // must not hide the latest record that is already on screen.
     isFetching: query.isFetching && !query.isFetchingNextPage,
