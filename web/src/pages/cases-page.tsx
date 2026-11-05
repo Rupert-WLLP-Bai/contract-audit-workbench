@@ -84,6 +84,7 @@ export function CasesPage() {
     ? location.state as { restoreScrollY?: unknown; actorScope?: unknown } : null;
   const returnScope = typeof routeState?.actorScope === "string" && routeState.actorScope ? routeState.actorScope : "";
   const verifiedReturn = useRef("");
+  const restoredVisit = useRef("");
   const returnMismatch = Boolean(returnScope && confirmedActorScope && returnScope !== confirmedActorScope);
   const returnPending = Boolean(returnScope && verifiedReturn.current !== location.key && !cases.isError &&
     (!confirmedActorScope || !confirmedCases));
@@ -110,13 +111,20 @@ export function CasesPage() {
     previousActorScope.current = actorScope;
     if (!confirmedActorScope || !confirmedCases || returnPending || returnMismatch) return;
     const saved = scrollPositions.get(location.key);
-    const requested =
-      routeState?.actorScope === actorScope && typeof routeState.restoreScrollY === "number" && Number.isFinite(routeState.restoreScrollY) && routeState.restoreScrollY >= 0
-        ? routeState.restoreScrollY
-        : saved?.actorScope === actorScope ? saved.scrollY : undefined;
-    const frame = requested === undefined ? 0 : requestAnimationFrame(() => window.scrollTo(0, requested));
+    const visit = JSON.stringify([location.key, actorScope]);
+    const declared = routeState?.actorScope === actorScope && typeof routeState.restoreScrollY === "number" && Number.isFinite(routeState.restoreScrollY) && routeState.restoreScrollY >= 0
+      ? routeState.restoreScrollY : undefined;
+    const requested = saved?.actorScope === actorScope ? saved.scrollY : declared;
+    const needsRestore = restoredVisit.current !== visit && requested !== undefined;
+    const frame = needsRestore ? requestAnimationFrame(() => {
+      restoredVisit.current = visit;
+      window.scrollTo(0, requested);
+    }) : 0;
+    if (!needsRestore) restoredVisit.current = visit;
     return () => {
       cancelAnimationFrame(frame);
+      // A cancelled first frame must not replace the intended position with its temporary value.
+      if (restoredVisit.current !== visit) return;
       scrollPositions.set(location.key, { actorScope, scrollY: window.scrollY });
     };
   }, [location.key, location.state, actorScope, confirmedActorScope, confirmedCases, returnPending, returnMismatch]);

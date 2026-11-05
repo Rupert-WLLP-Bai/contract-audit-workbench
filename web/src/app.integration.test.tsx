@@ -1336,6 +1336,134 @@ describe("application routes and API contract", () => {
     expect(screen.queryByRole("heading", { name: "正在确认案件列表" })).not.toBeInTheDocument();
   });
 
+  it.each(["cases", "session"] as const)("list position survives a background %s refresh", async (refresh) => {
+    const api = new Service();
+    const initialScrollY = window.scrollY;
+    api.addReview();
+    const { user, client } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1", <App />, 60_000);
+    await screen.findByRole("link", { name: "接入设备采购" });
+    window.scrollTo(0, 430);
+    await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    window.scrollTo(0, 0);
+    await user.click(screen.getByRole("link", { name: "返回案件列表" }));
+    await screen.findByRole("heading", { name: "案件", level: 1 });
+    await waitFor(() => expect(window.scrollY).toBe(430));
+    window.scrollTo(0, 800);
+
+    const held = Promise.withResolvers<void>();
+    const endpoint = refresh === "cases" ? "/api/cases" : "/api/session";
+    const key = refresh === "cases" ? queryKeys.cases : queryKeys.session;
+    let requested = false;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === endpoint && !requested) {
+        requested = true;
+        await held.promise;
+      }
+      return api.handle(input, init);
+    });
+    const pending = client.invalidateQueries({ queryKey: key, exact: true });
+    try {
+      await waitFor(() => expect(requested && client.getQueryState(key)?.fetchStatus === "fetching").toBe(true));
+      await act(async () => {
+        held.resolve();
+        await pending;
+        await new Promise((resolve) => window.setTimeout(resolve, 150));
+      });
+      expect(window.scrollY).toBe(800);
+    } finally {
+      held.resolve();
+      await pending;
+      window.scrollTo(0, initialScrollY);
+    }
+  });
+
+  it("uses the latest list position when returning to the same history entry", async () => {
+    const api = new Service();
+    const initialScrollY = window.scrollY;
+    api.addReview();
+    const { user, router } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1", <App />, 60_000);
+    try {
+      await screen.findByRole("link", { name: "接入设备采购" });
+      window.scrollTo(0, 430);
+      await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+      await screen.findByRole("heading", { name: "接入设备采购" });
+      window.scrollTo(0, 0);
+      await user.click(screen.getByRole("link", { name: "返回案件列表" }));
+      await screen.findByRole("heading", { name: "案件", level: 1 });
+      await waitFor(() => expect(window.scrollY).toBe(430));
+      const entry = router.state.location.key;
+      window.scrollTo(0, 800);
+      await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+      await screen.findByRole("heading", { name: "接入设备采购" });
+      window.scrollTo(0, 0);
+      await act(async () => { await router.navigate(-1); });
+      await screen.findByRole("heading", { name: "案件", level: 1 });
+      expect(router.state.location.key).toBe(entry);
+      await waitFor(() => expect(window.scrollY).toBe(800));
+    } finally {
+      window.scrollTo(0, initialScrollY);
+    }
+  });
+
+  it("keeps the initial declared list position if refresh interrupts its first frame", async () => {
+    const api = new Service();
+    const initialScrollY = window.scrollY;
+    api.addReview();
+    const { user, client } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1", <App />, 60_000);
+    await screen.findByRole("link", { name: "接入设备采购" });
+    window.scrollTo(0, 430);
+    await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    window.scrollTo(0, 0);
+    const frames = new Map<number, FrameRequestCallback>();
+    let frameId = 1_000_000;
+    const cancelFrame = window.cancelAnimationFrame.bind(window);
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frameId += 1;
+      frames.set(frameId, callback);
+      return frameId;
+    });
+    const cancel = vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      if (frames.has(id)) frames.delete(id);
+      else cancelFrame(id);
+    });
+    const held = Promise.withResolvers<void>();
+    let requested = false;
+    try {
+      await user.click(screen.getByRole("link", { name: "返回案件列表" }));
+      await screen.findByRole("heading", { name: "案件", level: 1 });
+      expect(window.scrollY).toBe(0);
+      expect(frames.size).toBeGreaterThan(0);
+      vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === "/api/cases" && !requested) {
+          requested = true;
+          await held.promise;
+        }
+        return api.handle(input, init);
+      });
+      const pending = client.invalidateQueries({ queryKey: queryKeys.cases, exact: true });
+      await waitFor(() => expect(requested && client.getQueryState(queryKeys.cases)?.fetchStatus === "fetching").toBe(true));
+      await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 50)); });
+      await act(async () => { held.resolve(); await pending; });
+      await waitFor(() => expect(frames.size).toBeGreaterThan(0));
+      await act(async () => {
+        for (let pass = 0; pass < 10 && frames.size; pass += 1) {
+          const callbacks = [...frames.values()];
+          frames.clear();
+          for (const callback of callbacks) callback(performance.now());
+        }
+      });
+      expect(window.scrollY).toBe(430);
+    } finally {
+      held.resolve();
+      raf.mockRestore();
+      cancel.mockRestore();
+      frames.clear();
+      window.scrollTo(0, initialScrollY);
+    }
+  });
+
   it("preserves the authorized case list route through the review and back", async () => {
     const api = new Service();
     api.addReview();
