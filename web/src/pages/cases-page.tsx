@@ -78,14 +78,15 @@ export function CasesPage() {
     : 10;
   const selectedId = params.get("selected");
   const actorScope = session.data ? actorReadContextKey(session.data) : "";
-  const confirmedActorScope = session.isSuccess && !session.isFetching ? actorScope : "";
+  const confirmedActorScope = session.isSuccess && session.fetchStatus === "idle" ? actorScope : "";
+  const confirmedCases = cases.isSuccess && cases.fetchStatus === "idle";
   const routeState = location.state && typeof location.state === "object"
     ? location.state as { restoreScrollY?: unknown; actorScope?: unknown } : null;
   const returnScope = typeof routeState?.actorScope === "string" && routeState.actorScope ? routeState.actorScope : "";
   const verifiedReturn = useRef("");
   const returnMismatch = Boolean(returnScope && confirmedActorScope && returnScope !== confirmedActorScope);
-  const returnPending = Boolean(returnScope && verifiedReturn.current !== location.key &&
-    (!confirmedActorScope || cases.isLoading || cases.isFetching));
+  const returnPending = Boolean(returnScope && verifiedReturn.current !== location.key && !cases.isError &&
+    (!confirmedActorScope || !confirmedCases));
   const previousActorScope = useRef(actorScope);
   const [open, setOpen] = useState(false);
   const titleId = useId();
@@ -107,7 +108,7 @@ export function CasesPage() {
   useLayoutEffect(() => {
     if (previousActorScope.current && previousActorScope.current !== actorScope) scrollPositions.clear();
     previousActorScope.current = actorScope;
-    if (!actorScope || cases.isLoading || cases.isError || returnPending || returnMismatch) return;
+    if (!confirmedActorScope || !confirmedCases || returnPending || returnMismatch) return;
     const saved = scrollPositions.get(location.key);
     const requested =
       routeState?.actorScope === actorScope && typeof routeState.restoreScrollY === "number" && Number.isFinite(routeState.restoreScrollY) && routeState.restoreScrollY >= 0
@@ -118,7 +119,7 @@ export function CasesPage() {
       cancelAnimationFrame(frame);
       scrollPositions.set(location.key, { actorScope, scrollY: window.scrollY });
     };
-  }, [location.key, location.state, actorScope, cases.isLoading, cases.isError, returnPending, returnMismatch]);
+  }, [location.key, location.state, actorScope, confirmedActorScope, confirmedCases, returnPending, returnMismatch]);
 
   function updateParam(
     key: string,
@@ -198,11 +199,11 @@ export function CasesPage() {
   const page = Math.min(validatedPage, pageCount);
   const pageItems = sorted.slice((page - 1) * pageSize, page * pageSize);
   useEffect(() => {
-    if (!actorScope || cases.isLoading || cases.isError || returnPending || returnMismatch || !selectedId || sorted.some((item) => item.id === selectedId)) return;
+    if (!confirmedActorScope || !confirmedCases || returnPending || returnMismatch || !selectedId || sorted.some((item) => item.id === selectedId)) return;
     const next = new URLSearchParams(params);
     next.delete("selected");
     setParams(next, { replace: true });
-  }, [actorScope, cases.isLoading, cases.isError, returnPending, returnMismatch, selectedId, sorted, params, setParams]);
+  }, [confirmedActorScope, confirmedCases, returnPending, returnMismatch, selectedId, sorted, params, setParams]);
   const canCreate =
     session.data?.role === "admin" || session.data?.role === "clerk";
 

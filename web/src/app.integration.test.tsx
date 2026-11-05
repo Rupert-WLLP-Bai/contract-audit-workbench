@@ -18,7 +18,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { chooseOption, renderWithAntd as render } from "./test/antd";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { clearAllDecisionDrafts } from "./hooks/decision-drafts";
@@ -1004,6 +1004,7 @@ function open(
 afterEach(() => {
   cleanup();
   for (const client of clients.splice(0)) client.clear();
+  onlineManager.setOnline(true);
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   Stream.latest = null;
@@ -1240,6 +1241,99 @@ describe("application routes and API contract", () => {
       await pending;
       window.scrollTo(0, initialScrollY);
     }
+  });
+
+  it.each([
+    ["uncached", "same"], ["cached", "same"], ["cached", "changed"],
+  ] as const)("paused case return %s with %s identity", async (cache, identity) => {
+    const api = new Service();
+    const initialScrollY = window.scrollY;
+    api.addReview();
+    const { user, router, client } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1&page_size=10", <App />, cache === "cached" ? 60_000 : 0);
+    await screen.findByRole("link", { name: "接入设备采购" });
+    window.scrollTo(0, 430);
+    await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    if (cache === "uncached") await waitFor(() => expect(client.getQueryData(queryKeys.cases)).toBeUndefined());
+    else expect(client.getQueryData(queryKeys.cases)).toBeDefined();
+    await waitFor(() => expect(client.getQueryState(queryKeys.session)?.fetchStatus).toBe("idle"));
+
+    const held = Promise.withResolvers<Response>();
+    let sessionStarted = false;
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/session" && !sessionStarted) {
+        sessionStarted = true;
+        return held.promise;
+      }
+      return api.handle(input, init);
+    });
+    act(() => onlineManager.setOnline(false));
+    const pending = client.invalidateQueries({ queryKey: queryKeys.session, exact: true });
+    const caseReads = api.requests.filter((entry) => entry.key === "GET /api/cases").length;
+    try {
+      await waitFor(() => expect(client.getQueryState(queryKeys.session)?.fetchStatus).toBe("paused"));
+      await user.click(screen.getByRole("link", { name: "返回案件列表" }));
+      await waitFor(() => expect(client.getQueryState(queryKeys.cases)?.fetchStatus).toBe("paused"));
+      expect(client.getQueryState(queryKeys.cases)?.status).toBe(cache === "cached" ? "success" : "pending");
+      expect(api.requests.filter((entry) => entry.key === "GET /api/cases")).toHaveLength(caseReads);
+      expect(new URLSearchParams(router.state.location.search).get("selected")).toBe("c1");
+      expect(screen.getByRole("heading", { name: "正在确认案件列表" })).toBeInTheDocument();
+      window.scrollTo(0, 65);
+      if (identity === "changed") api.identity = "u2";
+      act(() => onlineManager.setOnline(true));
+      await waitFor(() => expect(sessionStarted).toBe(true));
+      await waitFor(() => expect(client.getQueryState(queryKeys.cases)?.fetchStatus).toBe("idle"));
+      expect(screen.getByRole("heading", { name: "正在确认案件列表" })).toBeInTheDocument();
+      await act(async () => { held.resolve(api.json(api.session())); await pending; });
+      await screen.findByRole("heading", { name: "案件", level: 1 });
+      const params = new URLSearchParams(router.state.location.search);
+      if (identity === "same") {
+        expect(params.get("q")).toBe("接入");
+        expect(params.get("page")).toBe("1");
+        expect(params.get("selected")).toBe("c1");
+        await waitFor(() => expect(window.scrollY).toBe(430));
+      } else {
+        expect(router.state.location.search).toBe("");
+        expect(window.scrollY).not.toBe(430);
+      }
+    } finally {
+      held.resolve(api.json(api.session()));
+      act(() => onlineManager.setOnline(true));
+      await pending;
+      window.scrollTo(0, initialScrollY);
+    }
+  });
+
+  it("preserves a direct case selection while its list query is paused", async () => {
+    const api = new Service();
+    const { router, client } = open(api, "/cases/c1");
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    expect(client.getQueryData(queryKeys.cases)).toBeUndefined();
+    try {
+      act(() => onlineManager.setOnline(false));
+      await act(async () => { await router.navigate("/cases?q=%E6%8E%A5%E5%85%A5&selected=c1"); });
+      await waitFor(() => expect(client.getQueryState(queryKeys.cases)?.fetchStatus).toBe("paused"));
+      await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 100)); });
+      expect(new URLSearchParams(router.state.location.search).get("selected")).toBe("c1");
+      act(() => onlineManager.setOnline(true));
+      await waitFor(() => expect(client.getQueryState(queryKeys.cases)?.status).toBe("success"));
+      expect(new URLSearchParams(router.state.location.search).get("selected")).toBe("c1");
+    } finally {
+      act(() => onlineManager.setOnline(true));
+    }
+  });
+
+  it.each([403, 503] as const)("case return error %s remains visible instead of loading", async (status) => {
+    const api = new Service();
+    const { user, client } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5");
+    await user.click(await screen.findByRole("link", { name: "接入设备采购" }));
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    await waitFor(() => expect(client.getQueryData(queryKeys.cases)).toBeUndefined());
+    api.fail("GET /api/cases", status);
+    await user.click(screen.getByRole("link", { name: "返回案件列表" }));
+    const title = status === 403 ? "没有权限查看案件列表" : "案件列表没有加载";
+    expect(await screen.findByRole("heading", { name: title })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "正在确认案件列表" })).not.toBeInTheDocument();
   });
 
   it("preserves the authorized case list route through the review and back", async () => {
