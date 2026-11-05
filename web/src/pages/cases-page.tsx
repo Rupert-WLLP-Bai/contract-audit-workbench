@@ -10,11 +10,12 @@
 
 import { Select } from "antd";
 import { Button, Input, Modal, Pagination } from "antd";
-import { useId, useLayoutEffect, useState, type FormEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { errorMessage, isForbidden } from "../api/http";
 import { useCases, useCreateCase, useSession } from "../api/queries";
 import { CasesTable } from "../components/cases-table";
+import { actorReadContextKey } from "../domain/actor-read-context";
 import { PageStatus } from "../components/page-status";
 import {
   businessStatusLabel,
@@ -42,7 +43,7 @@ const collator = new Intl.Collator("zh-CN", {
   numeric: true,
   sensitivity: "base",
 });
-const scrollPositions = new Map<string, number>();
+const scrollPositions = new Map<string, { actorScope: string; scrollY: number }>();
 
 export function CasesPage() {
   const cases = useCases();
@@ -76,6 +77,8 @@ export function CasesPage() {
     ? requestedSize
     : 10;
   const selectedId = params.get("selected");
+  const actorScope = session.data ? actorReadContextKey(session.data) : "";
+  const previousActorScope = useRef(actorScope);
   const [open, setOpen] = useState(false);
   const titleId = useId();
   const [title, setTitle] = useState("");
@@ -86,16 +89,21 @@ export function CasesPage() {
   const [titleError, setTitleError] = useState<string | null>(null);
 
   useLayoutEffect(() => {
-    const routeState = location.state as { restoreScrollY?: unknown } | null;
+    if (previousActorScope.current && previousActorScope.current !== actorScope) scrollPositions.clear();
+    previousActorScope.current = actorScope;
+    if (!actorScope || cases.isLoading || cases.isError) return;
+    const routeState = location.state as { restoreScrollY?: unknown; actorScope?: unknown } | null;
+    const saved = scrollPositions.get(location.key);
     const requested =
-      typeof routeState?.restoreScrollY === "number"
+      routeState?.actorScope === actorScope && typeof routeState.restoreScrollY === "number" && Number.isFinite(routeState.restoreScrollY) && routeState.restoreScrollY >= 0
         ? routeState.restoreScrollY
-        : scrollPositions.get(location.key);
-    if (requested !== undefined) window.scrollTo(0, requested);
+        : saved?.actorScope === actorScope ? saved.scrollY : undefined;
+    const frame = requested === undefined ? 0 : requestAnimationFrame(() => window.scrollTo(0, requested));
     return () => {
-      scrollPositions.set(location.key, window.scrollY);
+      cancelAnimationFrame(frame);
+      scrollPositions.set(location.key, { actorScope, scrollY: window.scrollY });
     };
-  }, [location.key, location.state]);
+  }, [location.key, location.state, actorScope, cases.isLoading, cases.isError]);
 
   function updateParam(
     key: string,
@@ -174,6 +182,12 @@ export function CasesPage() {
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
   const page = Math.min(validatedPage, pageCount);
   const pageItems = sorted.slice((page - 1) * pageSize, page * pageSize);
+  useEffect(() => {
+    if (!actorScope || cases.isLoading || cases.isError || !selectedId || sorted.some((item) => item.id === selectedId)) return;
+    const next = new URLSearchParams(params);
+    next.delete("selected");
+    setParams(next, { replace: true });
+  }, [actorScope, cases.isLoading, cases.isError, selectedId, sorted, params, setParams]);
   const canCreate =
     session.data?.role === "admin" || session.data?.role === "clerk";
 
@@ -303,6 +317,7 @@ export function CasesPage() {
             sort={sort}
             direction={direction}
             selectedId={selectedId}
+            actorScope={actorScope}
             onSort={sortBy}
           />
           <Pagination

@@ -23,6 +23,7 @@ import {
   type ComponentProps,
 } from "react";
 import { Link } from "react-router";
+import type { CaseReturnState } from "./section-navigation";
 import { TechnicalDetail } from "./technical-detail";
 import { caseSelectPresentation } from "./case-select-presentation";
 import type {
@@ -643,7 +644,7 @@ function deadlineLabel(context: ReviewCaseContext): string {
   return `${context.dueAt ? formatDateTime(context.dueAt) : "未设期限"} ，${context.status || "未报告"}`;
 }
 
-function CaseContextHeader({ context }: { context: ReviewCaseContext }) {
+function CaseContextHeader({ context, caseReturnState }: { context: ReviewCaseContext; caseReturnState?: CaseReturnState }) {
   return (
     <>
       <header className="review-case-context-head">
@@ -655,6 +656,7 @@ function CaseContextHeader({ context }: { context: ReviewCaseContext }) {
         <Link
           className="review-case-open"
           to={`/cases/${encodeURIComponent(context.caseId)}`}
+          state={caseReturnState}
         >
           案件详情
         </Link>
@@ -1400,6 +1402,7 @@ function focusAnchorOffset(source: ReviewDocument, offset: number) {
 
 function EvidenceAside({
   caseContext,
+  caseReturnState,
   leftTab,
   onTab,
   materials,
@@ -1407,6 +1410,7 @@ function EvidenceAside({
   relatedCases,
 }: {
   caseContext: ReviewCaseContext | null;
+  caseReturnState?: CaseReturnState;
   leftTab: "材料" | "审查成员" | "相关案件";
   onTab: (tab: "材料" | "审查成员" | "相关案件") => void;
   materials: React.ReactNode;
@@ -1417,7 +1421,7 @@ function EvidenceAside({
     <aside className="col-nav">
       {caseContext ? (
         <>
-          <CaseContextHeader context={caseContext} />
+          <CaseContextHeader context={caseContext} caseReturnState={caseReturnState} />
           <ContextTabs context={caseContext} leftTab={leftTab} onTab={onTab} />
         </>
       ) : null}
@@ -1503,6 +1507,7 @@ export function DocumentStage({
   onSelectFinding,
   showDiagnostics = false,
   caseContext = null,
+  caseReturnState,
   canEditRelations = false,
   relationPending = false,
   relationError = null,
@@ -1519,6 +1524,7 @@ export function DocumentStage({
   showDiagnostics?: boolean;
   onSelectFinding: (findingId: string) => void;
   caseContext?: ReviewCaseContext | null;
+  caseReturnState?: CaseReturnState;
   canEditRelations?: boolean;
   relationPending?: boolean;
   relationError?: string | null;
@@ -1627,6 +1633,7 @@ export function DocumentStage({
     <>
       <EvidenceAside
         caseContext={caseContext}
+        caseReturnState={caseReturnState}
         leftTab={leftTab}
         onTab={setLeftTab}
         collaborators={<CollaboratorsPane context={caseContext!} />}

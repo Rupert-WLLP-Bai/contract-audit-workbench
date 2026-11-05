@@ -1059,6 +1059,55 @@ async function fillSupplementSource(user: ReturnType<typeof userEvent.setup>, la
 }
 
 describe("application routes and API contract", () => {
+  it("preserves the authorized case list route through the review and back", async () => {
+    const api = new Service();
+    api.addReview();
+    const { user, router } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1&page_size=10");
+    await user.click(await screen.findByRole("link", { name: "接入设备采购" }));
+    await user.click(await screen.findByRole("link", { name: "核对原文并处理决定" }));
+    expect(await screen.findByRole("heading", { name: "审查工作区" })).toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: /^返回案件$/ }));
+    await user.click(await screen.findByRole("link", { name: "返回案件列表" }));
+    await screen.findByRole("heading", { name: "案件", level: 1 });
+    const params = new URLSearchParams(router.state.location.search);
+    expect(params.get("q")).toBe("接入");
+    expect(params.get("page")).toBe("1");
+    expect(params.get("selected")).toBe("c1");
+  });
+
+  it("preserves the case list return through the workspace case-details link", async () => {
+    const api = new Service();
+    api.evidenceWorkbench = true;
+    api.addReview();
+    const { user, router } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1&page_size=10");
+    await user.click(await screen.findByRole("link", { name: "接入设备采购" }));
+    await user.click(await screen.findByRole("link", { name: "核对原文并处理决定" }));
+    await user.click(await screen.findByRole("button", { name: "案件与材料" }));
+    await user.click(await screen.findByRole("link", { name: "案件详情" }));
+    await user.click(await screen.findByRole("link", { name: "返回案件列表" }));
+    await screen.findByRole("heading", { name: "案件", level: 1 });
+    const params = new URLSearchParams(router.state.location.search);
+    expect(params.get("q")).toBe("接入");
+    expect(params.get("page")).toBe("1");
+    expect(params.get("selected")).toBe("c1");
+  });
+
+  it("does not return to a former tenant's list state after the session changes", async () => {
+    const api = new Service();
+    api.addReview();
+    const { user, router, client } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1");
+    await user.click(await screen.findByRole("link", { name: "接入设备采购" }));
+    await user.click(await screen.findByRole("link", { name: "核对原文并处理决定" }));
+    await screen.findByRole("heading", { name: "审查工作区" });
+    api.tenant = "tenant-other";
+    await client.invalidateQueries({ queryKey: ["session"] });
+    await waitFor(() => expect(client.getQueryData<{ tenant_id: string }>(queryKeys.session)?.tenant_id).toBe("tenant-other"));
+    await user.click(await screen.findByRole("link", { name: /^返回案件$/ }));
+    await user.click(await screen.findByRole("link", { name: "返回案件列表" }));
+    await screen.findByRole("heading", { name: "案件", level: 1 });
+    expect(router.state.location.search).toBe("");
+  });
+
   it("keeps both source drafts and the linked task when the form selector changes sources", async () => {
     const api = new Service();
     prepareTwoSupplementSources(api);

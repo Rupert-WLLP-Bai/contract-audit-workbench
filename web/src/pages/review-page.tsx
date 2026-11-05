@@ -9,8 +9,8 @@
 // End file metadata.
 
 import { Button } from "antd";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useNavigationType, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   errorMessage,
@@ -45,6 +45,7 @@ import { PageStatus } from "../components/page-status";
 import { ReviewWorkspaceView } from "../components/review-workspace";
 import { ReviewWorkItems } from "../components/review-work-items";
 import { DirtyLeaveGuard } from "../components/dirty-leave-guard";
+import { readCaseListReturn, readCaseReadingPosition, readReviewReadingPosition, reviewPositionForPath, SectionNavigationProvider, type ReviewReadingPosition } from "../components/section-navigation";
 import { ReviewDiff } from "../components/review-diff";
 import type { ReviewCaseContext } from "../components/document-stage";
 import { RunProvenance } from "../components/run-provenance";
@@ -81,13 +82,24 @@ import { OriginalSourceContext } from "../components/original-document-reader";
 import { canRestartUserCancelled, hasTransientRetryCause } from "../features/review/review-outcome";
 import { projectReviewWork, readWorkReturn, workReturnState, type WorkFilter, type WorkTarget, type WorkTargetKind } from "../features/review/work-items";
 
+const readingPositions = new Map<string, ReviewReadingPosition>();
+let previousReviewActor = "";
+
+function captureReviewPosition(caseId: string, runId: string, attemptId: string | null, actorScope: string): ReviewReadingPosition {
+  return {
+    caseId, runId, attemptId, actorScope, scrollY: window.scrollY,
+    documentScroll: document.querySelector<HTMLElement>(".page-review .col-doc")?.scrollTop ?? 0,
+    findingScroll: document.querySelector<HTMLElement>(".page-review .col-findings")?.scrollTop ?? 0,
+  };
+}
+
 export function ReviewPage() {
   const { caseId = "", runId = "" } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const navigationType = useNavigationType();
   const [params, setParams] = useSearchParams();
   const selectedAttemptId = params.get("attempt_id");
-  const selectedCitation = params.get("citation");
   const [streamLive, setStreamLive] = useState(false);
   const [streamReconnectKey, setStreamReconnectKey] = useState(0);
   const review = useReview(caseId, runId, selectedAttemptId, streamLive);
@@ -105,9 +117,19 @@ export function ReviewPage() {
   const [supplementOpen, setSupplementOpen] = useState(false);
   const [navigationSerial, setNavigationSerial] = useState(0);
   const actorScope = session.isSuccess && !session.isFetching ? actorReadContextKey(session.data) : "";
-  const locationState = location.state && typeof location.state === "object" ? location.state as { workActorScope?: unknown; workReturn?: { actorScope?: unknown } } : null;
-  const savedScope = locationState?.workActorScope ?? locationState?.workReturn?.actorScope;
-  const scopeMismatch = Boolean(actorScope && typeof savedScope === "string" && savedScope !== actorScope);
+  const navigationActorScope = session.data ? actorReadContextKey(session.data) : "";
+  const previousNavigationScope = useRef(navigationActorScope);
+  const restoredReviewVisit = useRef("");
+  const savedBeforeNavigation = useRef(new Set<string>());
+  const pendingReviewRestore = useRef<{ visit: string; position: ReviewReadingPosition } | null>(null);
+  const navigationActorChanged = Boolean(actorScope && previousNavigationScope.current && previousNavigationScope.current !== actorScope);
+  useEffect(() => { if (actorScope) previousNavigationScope.current = actorScope; }, [actorScope]);
+  const listReturn = readCaseListReturn(location.state, caseId, actorScope);
+  const caseReadingPosition = readCaseReadingPosition(location.state, caseId, actorScope);
+  const locationState = location.state && typeof location.state === "object" ? location.state as { actorScope?: unknown; workActorScope?: unknown; workReturn?: { actorScope?: unknown } } : null;
+  const savedScope = locationState?.workActorScope ?? locationState?.workReturn?.actorScope ?? locationState?.actorScope;
+  const scopeMismatch = navigationActorChanged || Boolean(actorScope && typeof savedScope === "string" && savedScope !== actorScope);
+  const selectedCitation = scopeMismatch ? null : params.get("citation");
   useEffect(() => {
     if (!scopeMismatch) return;
     setParams((current) => {
@@ -371,6 +393,69 @@ export function ReviewPage() {
   }, [review.error, review.isSuccess, review.data, caseDetail.error, caseDetail.isSuccess, caseDetail.data,
     requests.error, caseId, runId, selectedAttemptId, selectedAttempt?.id]);
 
+  useLayoutEffect(() => {
+    if ((previousReviewActor && previousReviewActor !== navigationActorScope) || isForbidden(review.error) || isUnauthenticated(review.error) ||
+        isForbidden(caseDetail.error) || isUnauthenticated(caseDetail.error) || isForbidden(requests.error) || isUnauthenticated(requests.error)) {
+      readingPositions.clear();
+      savedBeforeNavigation.current.clear();
+      pendingReviewRestore.current = null;
+    }
+    previousReviewActor = navigationActorScope;
+  }, [navigationActorScope, review.error, caseDetail.error, requests.error]);
+
+  useEffect(() => {
+    const stopRestoring = () => { pendingReviewRestore.current = null; };
+    document.addEventListener("pointerdown", stopRestoring, true);
+    document.addEventListener("keydown", stopRestoring, true);
+    document.addEventListener("wheel", stopRestoring, true);
+    document.addEventListener("touchstart", stopRestoring, true);
+    return () => {
+      document.removeEventListener("pointerdown", stopRestoring, true);
+      document.removeEventListener("keydown", stopRestoring, true);
+      document.removeEventListener("wheel", stopRestoring, true);
+      document.removeEventListener("touchstart", stopRestoring, true);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!actorScope || !review.isSuccess || review.isFetching || !caseDetail.isSuccess || caseDetail.isFetching ||
+        review.data.run.id !== runId || review.data.run.case_id !== caseId || caseDetail.data.id !== caseId ||
+        (selectedAttemptId !== null && selectedAttempt?.id !== selectedAttemptId)) return;
+    const attemptId = selectedAttempt?.id ?? null;
+    const remembered = navigationType === "POP" ? readingPositions.get(location.key) : null;
+    const fromState = readReviewReadingPosition(location.state, caseId, runId, attemptId, actorScope);
+    const position = remembered?.actorScope === actorScope && remembered.caseId === caseId && remembered.runId === runId && remembered.attemptId === attemptId
+      ? remembered : fromState;
+    const visit = JSON.stringify([location.key, caseId, runId, attemptId, actorScope]);
+    if (restoredReviewVisit.current !== visit) {
+      restoredReviewVisit.current = visit;
+      pendingReviewRestore.current = position && !location.hash ? { visit, position } : null;
+    }
+    const restore = pendingReviewRestore.current?.visit === visit ? pendingReviewRestore.current : null;
+    let frame = 0;
+    if (restore) {
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          if (pendingReviewRestore.current !== restore) return;
+          window.scrollTo(0, restore.position.scrollY);
+          const documentPane = document.querySelector<HTMLElement>(".page-review .col-doc");
+          const findingPane = document.querySelector<HTMLElement>(".page-review .col-findings");
+          if (documentPane) documentPane.scrollTop = restore.position.documentScroll;
+          if (findingPane) findingPane.scrollTop = restore.position.findingScroll;
+        });
+      });
+    }
+    return () => {
+      cancelAnimationFrame(frame);
+      if (savedBeforeNavigation.current.delete(location.key)) return;
+      if (pendingReviewRestore.current?.visit === visit) return;
+      if (!document.querySelector(".page-review .col-doc")) return;
+      readingPositions.set(location.key, captureReviewPosition(caseId, runId, attemptId, actorScope));
+      if (readingPositions.size > 30) readingPositions.delete(readingPositions.keys().next().value!);
+    };
+  }, [actorScope, caseId, runId, selectedAttemptId, selectedAttempt?.id, location.key, location.hash, location.state, navigationType,
+    review.isSuccess, review.isFetching, review.data, caseDetail.isSuccess, caseDetail.isFetching, caseDetail.data]);
+
   if (session.isLoading) return <PageStatus kind="loading" title="正在确认登录状态" />;
   if (!session.isSuccess) return <PageStatus kind="denied" title="无法确认当前登录身份" />;
   if (review.isLoading)
@@ -434,14 +519,21 @@ export function ReviewPage() {
 
   const selectedId = selectedFindingId(
     review.data.findings,
-    params.get("finding") ?? (requestedKind === "finding" ? requestedItem : null),
+    (scopeMismatch ? null : params.get("finding")) ?? (requestedKind === "finding" ? requestedItem : null),
   );
   const workFilter: WorkFilter = params.get("work_filter") === "evidence" ? "evidence"
     : params.get("work_filter") === "remediation" ? "remediation" : "judgment";
   const deniedRequests = isForbidden(requests.error) || isUnauthenticated(requests.error);
   const activeReturn = readWorkReturn(location.state, caseId, actorScope);
+  const activeReturnPosition = activeReturn ? reviewPositionForPath(location.state, activeReturn, caseId, actorScope) : null;
+  const caseNavigationState = {
+    ...(listReturn ?? {}),
+    ...(caseReadingPosition ? { caseReadingPosition } : {}),
+  };
   const navigationState = {
+    ...caseNavigationState,
     ...(activeReturn ? workReturnState(activeReturn, caseId, actorScope) : null),
+    ...(activeReturnPosition ? { reviewReadingPosition: activeReturnPosition } : null),
     workActorScope: actorScope,
   };
   const selectedFrozen = Boolean(caseId && runId && selectedAttempt?.id && selectedAttempt.history_kind === "frozen" && selectedAttempt.run_id === runId);
@@ -467,10 +559,15 @@ export function ReviewPage() {
 
   function savedReturn(target: WorkTarget) {
     const next = new URLSearchParams(params);
+    if (selectedAttempt?.id) next.set("attempt_id", selectedAttempt.id);
     next.set("work_kind", target.kind);
     next.set("work_item", target.id);
     if (target.kind === "finding") next.set("finding", target.id);
-    return workReturnState(`${location.pathname}?${next}`, caseId, actorScope);
+    return {
+      ...caseNavigationState,
+      ...workReturnState(`${location.pathname}?${next}`, caseId, actorScope),
+      reviewReadingPosition: captureReviewPosition(caseId, runId, selectedAttempt?.id ?? null, actorScope),
+    };
   }
 
   function openWork(target: WorkTarget) {
@@ -665,6 +762,7 @@ export function ReviewPage() {
   }
 
   return (
+    <SectionNavigationProvider scope={`${caseId}:${runId}:${selectedAttempt?.id ?? selectedAttemptId ?? ""}:${navigationActorScope}`} ready={Boolean(actorScope && review.isSuccess && !review.isFetching && caseDetailReady && review.data.run.id === runId && review.data.run.case_id === caseId && caseDetail.data.id === caseId)}>
     <section className="page page-review">
       {session.isFetching ? <p role="status">正在重新确认登录状态，办理暂不可用。</p> : null}
       <div hidden={session.isFetching}>
@@ -673,10 +771,15 @@ export function ReviewPage() {
           <h1>审查工作区</h1>
           <p>{caseDetail.data?.title ?? "案件"}</p>
         </div>
-        {activeReturn ? <Link to={activeReturn}>返回人工办理</Link> : null}
+        {activeReturn ? <Link to={activeReturn} state={{ ...caseNavigationState, reviewReadingPosition: activeReturnPosition }}>返回人工办理</Link> : null}
         <Button
           aria-label={"返回案件"}
           href={`/cases/${encodeURIComponent(caseId)}`}
+          onClick={(event) => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+            event.preventDefault();
+            void navigate(`/cases/${encodeURIComponent(caseId)}`, { state: caseNavigationState });
+          }}
         >
           返回案件
         </Button>
@@ -748,6 +851,7 @@ export function ReviewPage() {
           workTarget={workTarget}
           navigationSerial={navigationSerial}
           caseContext={caseContext}
+          caseReturnState={caseNavigationState}
           canEditRelations={canEditRelations}
           relationPending={relationPending}
           relationError={relationError}
@@ -785,6 +889,10 @@ export function ReviewPage() {
           }}
           selectedEvidenceId={selectedCitation}
           onSelectEvidence={(evidenceId) => {
+            if (actorScope) {
+              readingPositions.set(location.key, captureReviewPosition(caseId, runId, selectedAttempt?.id ?? null, actorScope));
+              savedBeforeNavigation.current.add(location.key);
+            }
             const next = new URLSearchParams(params);
             if (selectedAttempt?.id) next.set("attempt_id", selectedAttempt.id);
             if (evidenceId === null) {
@@ -904,5 +1012,6 @@ export function ReviewPage() {
       {retry.isError ? <p role="alert">{errorMessage(retry.error)}</p> : null}
       </div>
     </section>
+    </SectionNavigationProvider>
   );
 }

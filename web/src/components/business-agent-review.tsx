@@ -340,8 +340,16 @@ function GapRow({
   const targetRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
     if (!selected) return;
-    targetRef.current?.focus();
-    targetRef.current?.scrollIntoView?.({ block: "nearest" });
+    const previousFocus = document.activeElement;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        const target = targetRef.current;
+        if (!target || document.activeElement !== previousFocus || target.closest("details:not([open])")) return;
+        target.focus();
+        target.scrollIntoView?.({ block: "nearest" });
+      });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [selected, navigationSerial]);
   return (
     <li ref={targetRef} tabIndex={selected ? -1 : undefined}>
@@ -615,7 +623,7 @@ function ReviewSections({
           <ObservationsSection observations={review.observations} />
         </CollapsibleSection>
       ) : null}
-      <CollapsibleSection key={`${selectedGapId ?? ""}:${navigationSerial}`} id="agent-review-gaps" title="审查缺口" summaryLabel="展开审查缺口" count={facts.gaps.length} defaultOpen={selectedGapId !== null}>
+      <CollapsibleSection id="agent-review-gaps" title="审查缺口" summaryLabel="展开审查缺口" count={facts.gaps.length} defaultOpen={selectedGapId !== null} openRequest={selectedGapId === null ? undefined : `${selectedGapId}:${navigationSerial}`}>
         <GapsSection
           review={review}
           unresolved={facts.unresolved}

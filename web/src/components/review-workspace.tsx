@@ -32,6 +32,7 @@ import type { WorkTarget } from "../features/review/work-items";
 import { runLabel, runTone } from "../domain/review";
 import type { StreamStatus } from "../hooks/use-review-events";
 import { DocumentStage, type ReviewCaseContext } from "./document-stage";
+import type { CaseReturnState } from "./section-navigation";
 import { ExecutionInspector } from "./execution-inspector";
 import { FindingPanel } from "./finding-panel";
 import { BusinessAgentReviewView } from "./business-agent-review";
@@ -480,6 +481,7 @@ export function ReviewWorkspaceView({
   onRetry,
   onCancel,
   caseContext,
+  caseReturnState,
   canEditRelations = false,
   relationPending = false,
   relationError = null,
@@ -521,6 +523,7 @@ export function ReviewWorkspaceView({
   onRetry: () => void;
   onCancel: () => void;
   caseContext?: ReviewCaseContext | null;
+  caseReturnState?: CaseReturnState;
   canEditRelations?: boolean;
   relationPending?: boolean;
   relationError?: string | null;
@@ -607,6 +610,7 @@ export function ReviewWorkspaceView({
           layout={layout}
           showDiagnostics={showDiagnostics}
           caseContext={caseContext}
+          caseReturnState={caseReturnState}
           canEditRelations={canEditRelations}
           relationPending={relationPending}
           relationError={relationError}

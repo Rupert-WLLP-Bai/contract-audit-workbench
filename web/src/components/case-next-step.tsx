@@ -41,6 +41,7 @@ interface Props {
   onRefreshHistory: () => void;
   onStartReview: () => void;
   suppressWriteAction?: boolean;
+  onNavigateReview?: (href: string) => void;
 }
 
 type ActionKind =
@@ -664,7 +665,12 @@ export function CaseNextStep(props: Props) {
 
   let mainAction;
   if (action.kind === "link") {
-    mainAction = <Button {...actionProps} href={actionHref}>{action.label}</Button>;
+    mainAction = <Button {...actionProps} href={actionHref} onClick={(event) => {
+      if (!props.onNavigateReview || !actionHref?.startsWith(`/cases/${encodeURIComponent(props.caseDetail.id)}/reviews/`) ||
+          event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      event.preventDefault();
+      props.onNavigateReview(actionHref);
+    }}>{action.label}</Button>;
   } else if (action.kind === "start") {
     mainAction = props.suppressWriteAction ? (
       <Button {...actionProps} href={`/cases/${encodeURIComponent(props.caseDetail.id)}#case-next-step-title`}>
