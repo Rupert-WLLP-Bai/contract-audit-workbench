@@ -98,6 +98,12 @@ export function clearEvidenceDraft(scope: string, source = activeSources.get(sco
   if (activeSources.get(scope) === source) activeSources.delete(scope);
   notify();
 }
+export function clearRejectedEvidenceOperation(scope: string, source: string, operation: number): boolean {
+  const draft = entries.get(key(scope, source))?.draft;
+  if (!operation || !draft || draft.operation !== operation) return false;
+  clearEvidenceDraft(scope, source);
+  return true;
+}
 export function clearAllEvidenceDrafts(): void {
   entries.clear();
   activeSources.clear();

@@ -18,7 +18,7 @@ import { assertCommandContextCurrent, captureCommandContext, isForbidden, isUnau
 import { clearPendingMutationKey, fileSha256, idempotencyActorScope, newIdempotencyKey, pendingMutationKey } from "../api/idempotency";
 import { actorReadContextKey } from "../domain/actor-read-context";
 import {
-  activeEvidenceSource, activateEvidenceDraft, beginEvidenceOperation, clearAllEvidenceDrafts, clearEvidenceDraft,
+  activeEvidenceSource, activateEvidenceDraft, beginEvidenceOperation, clearAllEvidenceDrafts, clearEvidenceDraft, clearRejectedEvidenceOperation,
   evidenceDraftScope, evidenceOperationCurrent, interruptEvidenceDraft, readEvidenceDraft, updateEvidenceDraft,
   updateEvidenceOperation, useEvidenceDraft,
 } from "../features/review/evidence-request-drafts";
@@ -1508,12 +1508,11 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
     } catch (caught) {
       if (isForbidden(caught) || isUnauthenticated(caught)) {
         const actor = client.getQueryData<Actor>(queryKeys.session);
-        if (operation && activation.current.key === viewKey && activation.current.generation === generation &&
-            readEvidenceDraft(scope).source === draft.source && readEvidenceDraft(scope).operation === operation &&
-            (!actor || actorReadContextKey(actor) === context.actorScope)) {
-          clearAllEvidenceDrafts();
-          setView({ ...emptyCreateRequestView(JSON.stringify([scope, ""])), deniedMutation: true, error: caught });
-        }
+        const active = operation && activation.current.key === viewKey && activation.current.generation === generation &&
+          readEvidenceDraft(scope).source === draft.source && readEvidenceDraft(scope).operation === operation &&
+          (!actor || actorReadContextKey(actor) === context.actorScope);
+        const cleared = clearRejectedEvidenceOperation(scope, draft.source, operation);
+        if (cleared && active) setView({ ...emptyCreateRequestView(JSON.stringify([scope, ""])), deniedMutation: true, error: caught });
         return;
       }
       if (operation) updateEvidenceOperation(scope, operation, (current) => ({ ...current,

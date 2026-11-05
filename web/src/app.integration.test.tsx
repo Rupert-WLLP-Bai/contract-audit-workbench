@@ -22,7 +22,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { clearAllDecisionDrafts } from "./hooks/decision-drafts";
-import { clearAllEvidenceDrafts, evidenceDraftScope, hasEvidenceDraft } from "./features/review/evidence-request-drafts";
+import { clearAllEvidenceDrafts, evidenceDraftScope, hasEvidenceDraft, readEvidenceDraft } from "./features/review/evidence-request-drafts";
 import { actorReadContextKey } from "./domain/actor-read-context";
 import { queryKeys } from "./api/queries";
 import { AdminApp } from "./admin-app";
@@ -234,7 +234,7 @@ class Service {
   releaseHeldWorkspace: (() => void) | null = null;
   evidenceWorkbench = false;
   holdNextTaskResponse = false;
-  holdNextEvidenceResponse: "success" | "failure" | null = null;
+  holdNextEvidenceResponse: "success" | "failure" | "denied-401" | "denied-403" | null = null;
   releaseHeldEvidence: (() => void) | null = null;
   releaseHeldTask: (() => void) | null = null;
   role: WireSchemas["Actor"]["role"] = "admin";
@@ -705,9 +705,10 @@ class Service {
         verification_condition: input.verification_condition, status: "open", version: 1, created_by: this.identity, created_at: at, updated_at: at };
       const heldMode = this.holdNextEvidenceResponse;
       this.holdNextEvidenceResponse = null;
-      if (heldMode === "failure") {
+      if (heldMode === "failure" || heldMode === "denied-401" || heldMode === "denied-403") {
         const held = Promise.withResolvers<Response>();
-        this.releaseHeldEvidence = () => held.resolve(this.json({ error: { message: "来源 A 延迟失败", code: "temporary" } }, 503));
+        const responseStatus = heldMode === "denied-401" ? 401 : heldMode === "denied-403" ? 403 : 503;
+        this.releaseHeldEvidence = () => held.resolve(this.json({ error: { message: "来源 A 延迟失败", code: "temporary" } }, responseStatus));
         return held.promise;
       }
       this.evidenceRequests.push(request);
@@ -1131,6 +1132,75 @@ describe("application routes and API contract", () => {
     } finally {
       api.releaseHeldEvidence?.();
     }
+  });
+
+  it.each([401, 403] as const)("clears only source A after a delayed %s rejection while editing source B", async (status) => {
+    const api = new Service();
+    prepareTwoSupplementSources(api);
+    const { user, client } = open(api, "/cases/c1/reviews/r1");
+    const actor = await waitFor(() => {
+      const value = client.getQueryData<import("./api/types").Actor>(queryKeys.session);
+      expect(value).toBeDefined();
+      return value!;
+    });
+    const scope = evidenceDraftScope(actorReadContextKey(actor), "c1", "r1", "attempt-r1-1")!;
+    await selectSupplementSource(user, "A");
+    await fillSupplementSource(user, "A");
+    api.holdNextEvidenceResponse = status === 401 ? "denied-401" : "denied-403";
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await waitFor(() => expect(api.releaseHeldEvidence).toBeTypeOf("function"));
+    try {
+      const deniedKey = readEvidenceDraft(scope, "evaluation:source-a").requestKey;
+      expect(deniedKey).toBeTruthy();
+      await selectSupplementSource(user, "B");
+      await fillSupplementSource(user, "B");
+      api.fail("POST /api/cases/c1/evidence-requests", 503);
+      await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+      expect(await screen.findByText(/已关联任务“任务 B”/)).toBeVisible();
+      const otherKey = readEvidenceDraft(scope, "evaluation:source-b").requestKey;
+      expect(otherKey).toBeTruthy();
+      act(() => api.releaseHeldEvidence?.());
+      await waitFor(() => expect(readEvidenceDraft(scope, "evaluation:source-a").question).toBe(""));
+      expect(readEvidenceDraft(scope, "evaluation:source-a")).toMatchObject({ requestKey: null, task: null, operation: 0 });
+      expect(screen.getByLabelText("任务名称")).toHaveValue("任务 B");
+      expect(screen.getByLabelText("需要补充的问题")).toHaveValue("问题 B");
+      expect(readEvidenceDraft(scope, "evaluation:source-b")).toMatchObject({ question: "问题 B", requestKey: otherKey });
+      await selectSupplementSource(user, "A");
+      expect(screen.getByLabelText("任务名称")).toHaveValue("");
+      expect(screen.getByLabelText("需要补充的问题")).toHaveValue("");
+      expect(screen.queryByText(/已关联任务“任务 A”/)).not.toBeInTheDocument();
+      await selectSupplementSource(user, "B");
+      const retry = await screen.findByRole("button", { name: "重试创建补充请求" });
+      await waitFor(() => expect(retry).toBeEnabled());
+      await user.click(retry);
+      expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
+      expect(api.evidenceTasks).toHaveLength(2);
+      const posts = api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests");
+      expect(posts).toHaveLength(3);
+      expect(posts[1]?.headers.get("Idempotency-Key")).toBe(otherKey);
+      expect(posts[2]?.headers.get("Idempotency-Key")).toBe(otherKey);
+      expect(posts[2]?.input).toMatchObject({ task_id: api.evidenceTasks[1]?.id, source_evaluation_id: "source-b" });
+    } finally {
+      api.releaseHeldEvidence?.();
+    }
+  });
+
+  it("keeps source B when the active source A request is forbidden", async () => {
+    const api = new Service();
+    prepareTwoSupplementSources(api);
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    await selectSupplementSource(user, "B");
+    await fillSupplementSource(user, "B");
+    await selectSupplementSource(user, "A");
+    await fillSupplementSource(user, "A");
+    api.fail("POST /api/cases/c1/evidence-requests", 403);
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    expect(await screen.findByText(/补件办理访问受限/)).toBeVisible();
+    await selectSupplementSource(user, "B");
+    expect(screen.getByLabelText("任务名称")).toHaveValue("任务 B");
+    expect(screen.getByLabelText("需要补充的问题")).toHaveValue("问题 B");
+    expect(api.evidenceTasks).toHaveLength(1);
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/evidence-requests")).toHaveLength(1);
   });
 
   it.each(["503", "network"] as const)("retains the supplement draft after task failure and temporary session %s", async (failure) => {
