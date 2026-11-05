@@ -124,6 +124,105 @@ func TestContractDraftHTTPRequiresSessionAndKey(t *testing.T) {
 	}
 }
 
+func TestContractLedgerRoutesSavedViewsAndCSV(t *testing.T) {
+	api := clmDraftAPI(t)
+	api.login(t, "demo-admin", "admin-demo")
+	viewsPath := "/api/contracts/ledger/views"
+	filter := map[string]any{"text": "台账合成"}
+	columns := []string{"contract_name", "contract_state"}
+	payload := map[string]any{"name": "台账视图", "filter": filter, "columns": columns}
+	status, body := clmJSONRequest(t, api, http.MethodPost, viewsPath, map[string]string{"X-Context-Version": "999"}, payload)
+	if status != http.StatusConflict {
+		t.Fatalf("stale session context created view: %d %v", status, body)
+	}
+	status, body = clmJSONRequest(t, api, http.MethodPost, viewsPath, map[string]string{"X-CSRF-Token": "wrong"}, payload)
+	if status != http.StatusForbidden {
+		t.Fatalf("invalid CSRF created view: %d %v", status, body)
+	}
+	status, created := clmJSONRequest(t, api, http.MethodPost, viewsPath, nil, payload)
+	if status != http.StatusCreated || created["row_version"] != float64(1) {
+		t.Fatalf("create saved view: %d %v", status, created)
+	}
+	viewID, ok := created["view_id"].(string)
+	if !ok || viewID == "" {
+		t.Fatalf("missing view id: %v", created)
+	}
+	status, listed := clmJSONRequest(t, api, http.MethodGet, viewsPath, nil, nil)
+	items, ok := listed["items"].([]any)
+	if status != http.StatusOK || !ok || len(items) != 1 || items[0].(map[string]any)["view_id"] != viewID {
+		t.Fatalf("list saved view: %d %v", status, listed)
+	}
+	listedView := items[0].(map[string]any)
+	listedFilter, filterOK := listedView["filter"].(map[string]any)
+	listedColumns, columnsOK := listedView["columns"].([]any)
+	if !filterOK || listedFilter["text"] != "台账合成" || !columnsOK || len(listedColumns) != 2 ||
+		listedColumns[0] != "contract_name" || listedColumns[1] != "contract_state" || listedView["row_version"] != float64(1) {
+		t.Fatalf("saved view cannot be reapplied: %v", listedView)
+	}
+	replace := map[string]any{"expected_row_version": 1, "name": "更新视图", "filter": filter, "columns": columns}
+	status, updated := clmJSONRequest(t, api, http.MethodPost, viewsPath+"/"+viewID, nil, replace)
+	if status != http.StatusOK || updated["row_version"] != float64(2) || updated["name"] != "更新视图" {
+		t.Fatalf("replace saved view: %d %v", status, updated)
+	}
+	status, body = clmJSONRequest(t, api, http.MethodDelete, viewsPath+"/"+viewID+"?expected_row_version=1", nil, nil)
+	if status != http.StatusConflict {
+		t.Fatalf("stale view delete: %d %v", status, body)
+	}
+	status, body = clmJSONRequest(t, api, http.MethodDelete, viewsPath+"/"+viewID+"?expected_row_version=2", nil, nil)
+	if status != http.StatusOK || body["deleted"] != true {
+		t.Fatalf("delete saved view: %d %v", status, body)
+	}
+	status, listed = clmJSONRequest(t, api, http.MethodGet, viewsPath, nil, nil)
+	if status != http.StatusOK || len(listed["items"].([]any)) != 0 {
+		t.Fatalf("deleted view remained: %d %v", status, listed)
+	}
+
+	status, body = clmJSONRequest(t, api, http.MethodPost, "/api/contracts", clmHeaders("issue247-create-contract"), clmCreatePayload("台账合成合同"))
+	if status != http.StatusCreated {
+		t.Fatalf("create synthetic contract: %d %v", status, body)
+	}
+	exportPath := "/api/contracts/ledger/exports"
+	exportInput := map[string]any{"filter": filter, "columns": []string{"contract_name", "contract_state_label", "contract_state_code"}, "format": "csv"}
+	status, createdExport := clmJSONRequest(t, api, http.MethodPost, exportPath, clmHeaders("issue247-create-export"), exportInput)
+	if status != http.StatusCreated || createdExport["row_count"] != float64(1) {
+		t.Fatalf("create export: %d %v", status, createdExport)
+	}
+	exportID, ok := createdExport["export_id"].(string)
+	if !ok || exportID == "" {
+		t.Fatalf("missing export id: %v", createdExport)
+	}
+	status, replayed := clmJSONRequest(t, api, http.MethodPost, exportPath, clmHeaders("issue247-create-export"), exportInput)
+	if status != http.StatusCreated || replayed["export_id"] != exportID || replayed["replayed"] != true {
+		t.Fatalf("same-key export replay: %d %v", status, replayed)
+	}
+	downloadPath := exportPath + "/" + exportID + "/download"
+	req, err := http.NewRequest(http.MethodGet, api.base+downloadPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := api.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(res.Body)
+	res.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "\xef\xbb\xbf合同名称,合同状态名称,合同状态代码\n台账合成合同,草稿,draft\n"
+	if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "text/csv; charset=utf-8" || string(data) != want {
+		t.Fatalf("download CSV: status=%d type=%q body=%q", res.StatusCode, res.Header.Get("Content-Type"), data)
+	}
+	status, _ = clmJSONRequest(t, api, http.MethodDelete, "/api/session", nil, nil)
+	if status != http.StatusNoContent {
+		t.Fatalf("logout: %d", status)
+	}
+	status, data = api.bytes(t, http.MethodGet, downloadPath, nil, "")
+	if status != http.StatusUnauthorized || bytes.HasPrefix(data, []byte{0xef, 0xbb, 0xbf}) {
+		t.Fatalf("revoked session returned file bytes: status=%d body=%q", status, data)
+	}
+}
+
 func TestContractDraftHTTPCreateReadReplaceList(t *testing.T) {
 	api := clmDraftAPI(t)
 	api.login(t, "demo-clerk", "clerk-demo")

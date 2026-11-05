@@ -353,6 +353,7 @@ export function isMaskedRestricted(value: string | undefined): boolean {
 }
 
 const CONTRACTS_PATH = "/api/contracts";
+const CONTRACT_LEDGER_PATH = `${CONTRACTS_PATH}/ledger`;
 
 const { object, record, text, optionalText, nullableText, integer, bool, array } =
   responseReader((path) => `合同响应中的 ${path} 无法识别`);
@@ -1593,7 +1594,7 @@ export function listContractSavedViews(
   signal?: AbortSignal,
 ): Promise<ContractSavedView[]> {
   return requestJson(
-    `${CONTRACTS_PATH}/views`,
+    `${CONTRACT_LEDGER_PATH}/views`,
     { method: "GET", signal },
     parseContractSavedViewList,
   );
@@ -1605,7 +1606,7 @@ export function createContractSavedView(
   columns: ContractLedgerColumn[],
 ): Promise<ContractSavedView> {
   return requestJson(
-    `${CONTRACTS_PATH}/views`,
+    `${CONTRACT_LEDGER_PATH}/views`,
     jsonInit("POST", { name, filter, columns }),
     (value) => parseContractSavedView(value, "contract"),
   );
@@ -1619,7 +1620,7 @@ export function replaceContractSavedView(
   columns: ContractLedgerColumn[],
 ): Promise<ContractSavedView> {
   return requestJson(
-    `${CONTRACTS_PATH}/views/${encodeURIComponent(viewId)}`,
+    `${CONTRACT_LEDGER_PATH}/views/${encodeURIComponent(viewId)}`,
     jsonInit("POST", {
       expected_row_version: expectedRowVersion,
       name,
@@ -1635,7 +1636,7 @@ export function deleteContractSavedView(
   expectedRowVersion: number,
 ): Promise<void> {
   return requestJson(
-    `${CONTRACTS_PATH}/views/${encodeURIComponent(viewId)}?expected_row_version=${expectedRowVersion}`,
+    `${CONTRACT_LEDGER_PATH}/views/${encodeURIComponent(viewId)}?expected_row_version=${expectedRowVersion}`,
     { method: "DELETE" },
     (value) => {
       const result = object(value, "contract");
@@ -1650,7 +1651,7 @@ export function createContractExport(
   idempotencyKey: string,
 ): Promise<ContractExport> {
   return requestJson(
-    `${CONTRACTS_PATH}/exports`,
+    `${CONTRACT_LEDGER_PATH}/exports`,
     jsonInit(
       "POST",
       payload,
@@ -1666,7 +1667,7 @@ export async function downloadContractExport(exportId: string, commandContext: C
   let response: Response;
   try {
     response = await fetch(
-      `${CONTRACTS_PATH}/exports/${encodeURIComponent(exportId)}/download`,
+      `${CONTRACT_LEDGER_PATH}/exports/${encodeURIComponent(exportId)}/download`,
       {
         method: "GET",
         credentials: "include",
