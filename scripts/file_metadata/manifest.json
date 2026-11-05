@@ -50241,7 +50241,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r44",
+      "revision": "r45",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -58596,14 +58596,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-30",
+        "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0d82b02b299acb8119e92f75331724bfca9e21d1",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "207ea3550ee35d0faa7e0dc7ed05c898829f2d15",
+          "path": "web/src/api/queries.test.tsx",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -64691,15 +64692,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ea7ebdb703ae2da175eef84a8bfdfb93163dce64",
+          "commit": "973db4a4ecaf08e5e5331e2086f9cb5076d1b671",
           "path": "web/src/components/trajectory-view.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -64739,15 +64740,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ea7ebdb703ae2da175eef84a8bfdfb93163dce64",
+          "commit": "973db4a4ecaf08e5e5331e2086f9cb5076d1b671",
           "path": "web/src/components/trajectory-view.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -68006,12 +68007,12 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e5cb8656c60cc89610d88949e835a0a68d54dd03",
+          "commit": "3a256d047f6c2ee5a31e8d9f8c5ce192398b0155",
           "path": "web/src/pages/cases-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -73188,15 +73189,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "801f4b37c79d457367068e13df7206fa36af4e4d",
+          "commit": "3a256d047f6c2ee5a31e8d9f8c5ce192398b0155",
           "path": "web/src/pages/cases-page.test.tsx",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
