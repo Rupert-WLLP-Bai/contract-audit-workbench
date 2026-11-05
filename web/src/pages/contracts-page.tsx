@@ -1246,6 +1246,7 @@ export function ContractsPage() {
                   rowKey="item_id"
                   dataSource={draft.items ?? []}
                   pagination={false}
+                  scroll={{ x: 800 }}
                   locale={{ emptyText: "还没有明细行" }}
                   columns={[
                     {
