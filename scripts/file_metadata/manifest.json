@@ -61164,7 +61164,7 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6ac92b5084304cbb501f5729492c6101004bfe1b",
+          "commit": "2b1f914e5d3a3d83420d09fefaf522a6e9e88052",
           "path": "web/src/components/contract-references-panel.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -72546,7 +72546,7 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6ac92b5084304cbb501f5729492c6101004bfe1b",
+          "commit": "2b1f914e5d3a3d83420d09fefaf522a6e9e88052",
           "path": "web/src/components/contract-references-panel.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
