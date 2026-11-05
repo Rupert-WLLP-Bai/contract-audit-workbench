@@ -62,6 +62,7 @@ import type {
 } from "./types";
 import { isActiveAttemptState } from "../domain/review";
 import { clearAllDecisionDrafts } from "../hooks/decision-drafts";
+import { clearAllEvidenceDrafts } from "../features/review/evidence-request-drafts";
 import type { RulePackManifestInput, RulePackTestInput } from "./rulepacks";
 
 export const queryKeys = {
@@ -171,7 +172,7 @@ export function useContextChoices(audience: SessionAudience) {
 
 export async function revalidateSessionContext(queryClient: QueryClient, audience: SessionAudience): Promise<Actor> {
   const session = await api.getSession(audience);
-  setSessionIdentity(session);
+  if (setSessionIdentity(session)) clearAllEvidenceDrafts();
   clearIdentityQueries(queryClient);
   queryClient.setQueryData(queryKeys.sessionFor(audience), session);
   return session;
@@ -189,6 +190,7 @@ export function useSwitchContext(audience: SessionAudience) {
     onMutate: async ({ context }) => {
       assertCommandContextCurrent(context);
       clearAllDecisionDrafts();
+      clearAllEvidenceDrafts();
       await queryClient.cancelQueries();
       clearIdentityQueries(queryClient);
     },
@@ -217,7 +219,10 @@ export function useLogin(audience: SessionAudience = "client") {
     mutationFn: (input: { username: string; password: string }) =>
       api.login(input.username, input.password, audience),
     onSuccess: (actor: Actor) => {
-      if (setSessionIdentity(actor)) clearIdentityQueries(queryClient);
+      if (setSessionIdentity(actor)) {
+        clearAllEvidenceDrafts();
+        clearIdentityQueries(queryClient);
+      }
       queryClient.setQueryData(queryKeys.sessionFor(audience), actor);
     },
   });
@@ -229,6 +234,7 @@ export function useLogout(audience: SessionAudience = "client") {
     mutationFn: () => api.logout(audience),
     onSettled: () => {
       setSessionIdentity(null);
+      clearAllEvidenceDrafts();
       clearIdentityQueries(queryClient);
       void queryClient.resetQueries({
         queryKey: queryKeys.sessionFor(audience),

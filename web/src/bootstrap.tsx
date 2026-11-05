@@ -18,6 +18,7 @@ import { createBrowserRouter, RouterProvider } from "react-router";
 import { invalidateSessionIdentity, queryRetryDelay, shouldRetryQuery } from "./api/http";
 import { clearIdentityQueries } from "./api/queries";
 import { installContextInvalidation } from "./api/context-sync";
+import { clearAllEvidenceDrafts } from "./features/review/evidence-request-drafts";
 import "./styles.css";
 
 const rootStyle = getComputedStyle(document.documentElement);
@@ -107,6 +108,7 @@ const queryClient = new QueryClient({
 
 installContextInvalidation(() => {
   invalidateSessionIdentity();
+  clearAllEvidenceDrafts();
   clearIdentityQueries(queryClient);
   void queryClient.resetQueries({ queryKey: ["session"] });
 });

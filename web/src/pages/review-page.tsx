@@ -9,7 +9,7 @@
 // End file metadata.
 
 import { Button } from "antd";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -51,6 +51,8 @@ import { RunProvenance } from "../components/run-provenance";
 import { FrozenLegalAuthorities } from "../components/frozen-legal-authorities";
 import { AuditProjection } from "../components/audit-projection";
 import { EvidenceRequestPanel } from "../components/evidence-request-panel";
+import { clearAllEvidenceDrafts, evidenceDraftScope, useEvidenceDraftDirty } from "../features/review/evidence-request-drafts";
+import { actorReadContextKey } from "../domain/actor-read-context";
 import { EvidenceSLADashboard } from "../components/evidence-sla-dashboard";
 import { ExperienceFeedbackPanel } from "../components/experience-feedback-panel";
 import { ManualFindingsPanel } from "../features/review/manual-findings";
@@ -75,7 +77,6 @@ import {
   useDecisionDraftsDirty,
 } from "../hooks/decision-drafts";
 import { useReviewLayout } from "../hooks/use-viewport-layout";
-import { actorReadContextKey } from "../domain/actor-read-context";
 import { OriginalSourceContext } from "../components/original-document-reader";
 import { canRestartUserCancelled, hasTransientRetryCause } from "../features/review/review-outcome";
 import { projectReviewWork, readWorkReturn, workReturnState, type WorkFilter, type WorkTarget, type WorkTargetKind } from "../features/review/work-items";
@@ -188,6 +189,9 @@ export function ReviewPage() {
       ? null
       : decisionDraftUserPrefix(session.data.id, session.data.active_context?.context_version),
   );
+  const evidenceDraftDirty = useEvidenceDraftDirty(evidenceDraftScope(
+    session.data ? actorReadContextKey(session.data) : null, caseId, runId, selectedAttempt?.id ?? null,
+  ));
   const latestAttempt = execution
     ? execution.attempts.reduce(
         (latest, attempt) =>
@@ -356,6 +360,16 @@ export function ReviewPage() {
       active = false;
     };
   }, [caseId, queryClient, runId, selectedAttemptId, streamStatus]);
+
+  useLayoutEffect(() => {
+    if (isForbidden(review.error) || isUnauthenticated(review.error) ||
+        isForbidden(caseDetail.error) || isUnauthenticated(caseDetail.error) ||
+        isForbidden(requests.error) || isUnauthenticated(requests.error) ||
+        (review.isSuccess && (review.data.run.id !== runId || review.data.run.case_id !== caseId ||
+          (selectedAttemptId !== null && selectedAttempt?.id !== selectedAttemptId))) ||
+        (caseDetail.isSuccess && caseDetail.data.id !== caseId)) clearAllEvidenceDrafts();
+  }, [review.error, review.isSuccess, review.data, caseDetail.error, caseDetail.isSuccess, caseDetail.data,
+    requests.error, caseId, runId, selectedAttemptId, selectedAttempt?.id]);
 
   if (session.isLoading) return <PageStatus kind="loading" title="正在确认登录状态" />;
   if (!session.isSuccess) return <PageStatus kind="denied" title="无法确认当前登录身份" />;
@@ -809,7 +823,7 @@ export function ReviewPage() {
         />
         </OriginalSourceContext.Provider>
       </DecisionDraftScopeProvider>
-      <DirtyLeaveGuard dirty={decisionDraftsDirty} />
+      <DirtyLeaveGuard dirty={decisionDraftsDirty || evidenceDraftDirty} />
       <details className="review-secondary-section" open={supplementOpen} onToggle={(event) => setSupplementOpen(event.currentTarget.open)}>
         <summary>补充材料与人工处理</summary>
         <ManualFindingsPanel

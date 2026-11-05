@@ -15,6 +15,7 @@ import type { UserEvent } from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setSessionIdentity } from "../api/http";
+import { clearAllEvidenceDrafts } from "../features/review/evidence-request-drafts";
 import { queryKeys } from "../api/queries";
 import { getCase, getSession } from "../api/endpoints";
 import type { EvidenceQuote } from "../api/evidence-workflow";
@@ -38,7 +39,7 @@ const document: ReviewDocument = {
 const detail: CaseDetail = {
   id: "case-1", title: "测试案件", contract_type: "service", created_at: at, updated_at: at,
   documents: [document], members: [{ id: "owner", display_name: "审查人", role: "admin", tenant_id: "tenant", org_id: "org" }],
-  latest_run: null, finding_counts: null, activity: [], business_line: "ENT", scenario: "telecom_dedicated_line",
+  latest_run: { id: "run-old", state: "completed", updated_at: at }, finding_counts: null, activity: [], business_line: "ENT", scenario: "telecom_dedicated_line",
   business_status: "active", generations: [], remediations: [], reports: [], archives: [], archived_at: null,
 };
 const missing: ConstraintEvaluation = {
@@ -134,7 +135,10 @@ function open({
   setSessionIdentity(sessionActor);
   if (caseDetail !== null) client.setQueryData(queryKeys.case("case-1"), caseDetail);
   if (sessionActor !== null) client.setQueryData(queryKeys.session, sessionActor);
-  if (workspace !== null) client.setQueryData(queryKeys.review("case-1", runId, urlAttempt), workspace ?? makeWorkspace(runId, attemptId ?? "attempt-old", evaluations));
+  if (workspace !== null) {
+    const selectedWorkspace = workspace ?? makeWorkspace(runId, attemptId ?? "attempt-old", evaluations);
+    client.setQueryData(queryKeys.review("case-1", runId, urlAttempt), agentReview ? { ...selectedWorkspace, agent_review: agentReview } : selectedWorkspace);
+  }
   if (tasks) client.setQueryData(queryKeys.workbench("week"), { tasks });
   const path = `/cases/case-1/reviews/${runId}${urlAttempt ? `?attempt_id=${urlAttempt}` : ""}`;
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}>
@@ -164,10 +168,33 @@ afterEach(() => {
   cleanup();
   for (const client of clients.splice(0)) client.clear();
   setSessionIdentity(null);
+  clearAllEvidenceDrafts();
   vi.unstubAllGlobals();
 });
 
 describe("补充材料请求", () => {
+  it("does not submit stale visible fields after the in-memory draft expires", async () => {
+    const { user, calls } = open({ urlAttempt: null, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      return Response.json({}, { status: 404 });
+    } });
+    await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+    await user.type(screen.getByLabelText("任务名称"), "补充质保");
+    await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /审查人/);
+    fireEvent.change(screen.getByLabelText("完成期限（本地时间）"), { target: { value: "2026-11-01T10:00" } });
+    await user.type(screen.getByLabelText("需要补充的问题"), "请补充质保期限");
+    const form = screen.getByRole("button", { name: "创建任务并发起请求" }).closest("form")!;
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now + 60 * 60 * 1000 + 1);
+    try {
+      fireEvent.submit(form);
+      expect(screen.getByText("草稿已过期或发生变化，请核对后重新填写。")).toBeVisible();
+      expect(calls.some((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toBe(false);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it("keeps a historical workspace read-only without hiding the original source", async () => {
     open({ readOnly: true, respond(call) {
       if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest("received", 2)] });
@@ -326,10 +353,17 @@ describe("补充材料请求", () => {
 
   it("keeps the linked task and pauses the request after case revalidation fails", async () => {
     let reads = 0;
+    const task: WorkbenchTask = { id: "task-1", case_id: "case-1", title: "补充质保", kind: "review", assignee_id: "owner", due_at: at,
+      status: "open", priority: "high", finding_id: null, version: 1, created_by: "owner", created_at: at, updated_at: at };
     const { calls, user } = open({ urlAttempt: null, observeContext: true, respond(call) {
-      if (call.pathname.endsWith("/tasks") && call.method === "POST") return Response.json({
-        id: "task-1", case_id: "case-1", title: "补充质保", kind: "review", assignee_id: "owner", due_at: at,
-        status: "open", priority: "high", finding_id: null, version: 1, created_by: "owner", created_at: at, updated_at: at,
+      if (call.pathname.endsWith("/tasks") && call.method === "POST") return Response.json(task);
+      if (call.pathname.endsWith("/reviews/run-old")) return Response.json(makeWorkspace("run-old", "attempt-old", [missing]));
+      if (call.pathname.endsWith("/workbench")) return Response.json({
+        schema_version: "workbench/v1", generated_at: at, period: "week",
+        dashboard: { visible_cases: 0, my_pending_tasks: 0, overdue_tasks: 0, pending_review_cases: 0,
+          remediation_cases: 0, completed_reviews: 0, average_duration_ms: null, progress: [], risks: [] },
+        cases: [], profiles: [], tasks: [task], relations: [], knowledge: [], members: [], remediations: [],
+        reports: [], documents: [], runs: [], audit: [], templates: [], model: { name: "", ocr_name: "", status: "unconfigured", label: "" }, tools: [],
       });
       if (call.pathname.endsWith("/cases/case-1")) {
         reads++;
@@ -349,7 +383,9 @@ describe("补充材料请求", () => {
     expect(await screen.findByText(/关联任务已保留/)).toBeVisible();
     expect(screen.getByLabelText("需要补充的问题")).toHaveValue("请补充质保期限");
     expect(calls.filter((call) => call.pathname.endsWith("/evidence-requests") && call.method === "POST")).toHaveLength(0);
-    await user.click(screen.getByRole("button", { name: "重试创建补充请求" }));
+    const retry = screen.getByRole("button", { name: "重试创建补充请求" });
+    await waitFor(() => expect(retry).toBeEnabled());
+    await user.click(retry);
     expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
     expect(calls.filter((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toHaveLength(1);
   });
