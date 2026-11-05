@@ -271,13 +271,17 @@ export function CasesPage() {
       <header className="page-head">
         <div>
           <h1>案件</h1>
-          <p>在当前身份有权查看的全部已加载案件中搜索和筛选；筛选后分页，状态以服务端记录为准。</p>
+          <p>
+            在当前身份有权查看的全部已加载案件中搜索和筛选；筛选后分页，状态以服务端记录为准。
+            {canCreate ? "" : " 当前角色仅可查看案件；新建案件需要管理员或经办人角色。"}
+          </p>
         </div>
         <Button
           aria-label={"新建案件"}
           type="primary"
           htmlType="button"
           disabled={!canCreate}
+          title={canCreate ? undefined : "当前角色仅可查看案件；新建案件需要管理员或经办人角色。"}
           onClick={() => setOpen(true)}
         >
           新建案件
