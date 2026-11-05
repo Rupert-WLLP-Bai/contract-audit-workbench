@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-05
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -184,6 +184,31 @@ var contractLedgerColumnLabels = map[string]string{
 	"updated_at":         "更新时间",
 }
 
+// Export-only keys preserve the original headers and raw values above for
+// already frozen exports. Each key's header is part of its download contract.
+var contractExportColumnLabels = map[string]string{
+	"authority_mode_label": "来源类型名称",
+	"authority_mode_code":  "来源类型代码",
+	"contract_state_label": "合同状态名称",
+	"contract_state_code":  "合同状态代码",
+	"workflow_state_label": "会签状态名称",
+	"workflow_state_code":  "会签状态代码",
+}
+
+// These presentation labels follow the ledger's existing domain values.
+// They are resolved when rows are created, never when a download is rendered.
+var contractLedgerAuthorityLabels = map[string]string{
+	"native": "本地登记", "external": "外部来源",
+}
+var contractLedgerStateLabels = map[string]string{
+	"draft": "草稿", "ready_to_sign": "待签署", "registered": "已登记",
+	"performing": "履约中", "closed": "已关闭", "terminated": "已终止",
+	"external_observed": "外部来源已观测",
+}
+var contractLedgerWorkflowLabels = map[string]string{
+	"not_started": "当前无进行中会签", "in_review": "会签中", "external_observed": "外部来源已观测",
+}
+
 var contractLedgerDefaultColumns = []string{
 	"contract_number", "contract_name", "supplier_name", "amount", "currency",
 	"department_id", "contract_state", "workflow_state", "updated_at",
@@ -333,6 +358,14 @@ func validateContractLedgerFilter(filter *ContractLedgerFilter) error {
 }
 
 func normalizeContractLedgerColumns(columns []string) ([]string, error) {
+	return normalizeContractColumns(columns, false)
+}
+
+func normalizeContractExportColumns(columns []string) ([]string, error) {
+	return normalizeContractColumns(columns, true)
+}
+
+func normalizeContractColumns(columns []string, allowExportOnly bool) ([]string, error) {
 	if len(columns) == 0 {
 		return append([]string(nil), contractLedgerDefaultColumns...), nil
 	}
@@ -343,7 +376,9 @@ func normalizeContractLedgerColumns(columns []string) ([]string, error) {
 	out := make([]string, 0, len(columns))
 	for _, column := range columns {
 		if _, ok := contractLedgerColumnLabels[column]; !ok {
-			return nil, fault.Invalid("不支持的台账列")
+			if _, exportOnly := contractExportColumnLabels[column]; !allowExportOnly || !exportOnly {
+				return nil, fault.Invalid("不支持的台账列")
+			}
 		}
 		if seen[column] {
 			return nil, fault.Invalid("台账列不能重复")
@@ -898,8 +933,10 @@ func contractLedgerRowValues(item ContractLedgerItem, columns []string) map[stri
 			values[column] = ledgerStringValue(item.Number)
 		case "contract_name":
 			values[column] = item.Name
-		case "authority_mode":
+		case "authority_mode", "authority_mode_code":
 			values[column] = item.AuthorityMode
+		case "authority_mode_label":
+			values[column] = contractLedgerDisplayLabel(item.AuthorityMode, contractLedgerAuthorityLabels)
 		case "supplier_name":
 			values[column] = ledgerStringValue(item.SupplierName)
 		case "amount":
@@ -912,10 +949,14 @@ func contractLedgerRowValues(item ContractLedgerItem, columns []string) map[stri
 			values[column] = ledgerStringValue(item.ProjectType)
 		case "procurement_method":
 			values[column] = ledgerStringValue(item.ProcurementMethod)
-		case "contract_state":
+		case "contract_state", "contract_state_code":
 			values[column] = item.ContractState
-		case "workflow_state":
+		case "contract_state_label":
+			values[column] = contractLedgerDisplayLabel(item.ContractState, contractLedgerStateLabels)
+		case "workflow_state", "workflow_state_code":
 			values[column] = item.WorkflowState
+		case "workflow_state_label":
+			values[column] = contractLedgerDisplayLabel(item.WorkflowState, contractLedgerWorkflowLabels)
 		case "signing_date":
 			values[column] = ledgerStringValue(item.SigningDate)
 		case "source_system":
@@ -927,6 +968,16 @@ func contractLedgerRowValues(item ContractLedgerItem, columns []string) map[stri
 		}
 	}
 	return values
+}
+
+func contractLedgerDisplayLabel(value string, labels map[string]string) string {
+	if label, ok := labels[value]; ok {
+		return label
+	}
+	if value == "" {
+		return "未记录"
+	}
+	return "待核对"
 }
 
 func ledgerStringValue(value *string) string {
@@ -954,7 +1005,7 @@ func (s *Store) CreateContractExport(ctx context.Context, user accounts.User, in
 	if err := validateContractLedgerFilter(&input.Filter); err != nil {
 		return ContractExport{}, err
 	}
-	columns, err := normalizeContractLedgerColumns(input.Columns)
+	columns, err := normalizeContractExportColumns(input.Columns)
 	if err != nil {
 		return ContractExport{}, err
 	}
@@ -1160,7 +1211,7 @@ func (s *Store) LoadContractExportForDownload(ctx context.Context, user accounts
 	if err := json.Unmarshal(columnsJSON, &columns); err != nil {
 		return ContractExportDownload{}, fault.Conflict("导出列设置无法读取")
 	}
-	normalizedColumns, err := normalizeContractLedgerColumns(columns)
+	normalizedColumns, err := normalizeContractExportColumns(columns)
 	if err != nil {
 		return ContractExportDownload{}, fault.Conflict("导出列设置无法读取")
 	}
@@ -1229,7 +1280,7 @@ func contractExportAuthorized(ctx context.Context, tx pgx.Tx, records []clmContr
 // RenderContractExportCSV writes a UTF-8 BOM CSV with Chinese headers and a
 // formula-injection guard. Frozen rows are already restricted-field free.
 func RenderContractExportCSV(columns []string, rows []map[string]string) ([]byte, error) {
-	normalized, err := normalizeContractLedgerColumns(columns)
+	normalized, err := normalizeContractExportColumns(columns)
 	if err != nil {
 		return nil, err
 	}
@@ -1238,7 +1289,11 @@ func RenderContractExportCSV(columns []string, rows []map[string]string) ([]byte
 	writer := csv.NewWriter(&buffer)
 	header := make([]string, 0, len(normalized))
 	for _, column := range normalized {
-		header = append(header, contractLedgerColumnLabels[column])
+		label, ok := contractLedgerColumnLabels[column]
+		if !ok {
+			label = contractExportColumnLabels[column]
+		}
+		header = append(header, label)
 	}
 	if err := writer.Write(header); err != nil {
 		return nil, err

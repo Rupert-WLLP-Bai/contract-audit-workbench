@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-05
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -20,7 +20,72 @@ import { errorMessage } from "../api/http";
 import { queryKeys, useCases, useSession } from "../api/queries";
 import { actorReadContextKey } from "../domain/actor-read-context";
 import { caseOptionLabel } from "../domain/case-identity";
+import { roleLabel } from "../domain/review";
+import { subjectBindingStateLabel, subjectRoleLabel, subjectVerificationLabel } from "../domain/subjects";
+import { preciseTime } from "../domain/time";
 import { caseSelectPresentation } from "./case-select-presentation";
+import { InvalidTimeDetail } from "./invalid-time-detail";
+import { TechnicalDetail } from "./technical-detail";
+
+function contractPartyRoleLabel(role: string): string {
+  switch (role) {
+    case "buyer": return "采购方";
+    case "supplier": return "供应商";
+    case "guarantor": return "担保方";
+    case "consortium_member": return "联合体成员";
+    case "other": return "其他角色";
+    case "": return "未记录";
+    default: return "待核对";
+  }
+}
+
+function caseRoleLabel(role: string): string {
+  switch (role) {
+    case "customer": case "supplier": case "contractor": case "service_provider": case "other":
+      return subjectRoleLabel(role);
+    case "": return "未记录";
+    default: return "待核对";
+  }
+}
+
+function bindingStateLabel(state: string): string {
+  switch (state) {
+    case "active": case "inactive": case "pending_confirmation": return subjectBindingStateLabel(state);
+    case "": return "绑定状态未记录";
+    default: return "绑定状态待核对";
+  }
+}
+
+function verificationStateLabel(state: string): string {
+  switch (state) {
+    case "pending_verification": case "verified": return subjectVerificationLabel(state, undefined);
+    case "": return "未记录";
+    default: return "待核对";
+  }
+}
+
+function contractMaterialPurposeLabel(purpose: string): string {
+  switch (purpose) {
+    case "draft": return "合同草稿";
+    case "signed_contract": return "已签合同";
+    case "supporting": return "佐证材料";
+    case "acceptance": return "验收材料";
+    case "payment": return "付款材料";
+    case "other": return "其他用途";
+    case "": return "未记录";
+    default: return "待核对";
+  }
+}
+
+function warningLabel(warning: string): string {
+  if (warning === "subject_pending_verification") return "存在尚未核验的主体";
+  return warning === "" ? "未记录" : "待核对";
+}
+
+// This field is a date-time, so a date or local time alone cannot identify the check instant.
+function isCompleteCheckedAt(value: string): boolean {
+  return value.trim() === value && /^\d{4}-\d{2}-\d{2}[Tt](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:[Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value);
+}
 
 /**
  * Read-only view of the contract reference chain.
@@ -103,6 +168,15 @@ export function ContractReferencesPanel({
     (draft.materials?.length ?? 0) > 0 ||
     draft.contract.procurement_result_package !== undefined;
 
+  const sourceCase = check === null ? undefined : cases.data?.find((item) => item.id === check.source_case_id);
+  const incompleteCheckedAt = check !== null && check.checked_at !== "" && !isCompleteCheckedAt(check.checked_at);
+  const procurement = check?.procurement_result;
+  const procurementMaterial = procurement === undefined ? undefined : check?.materials.find((material) =>
+    material.material_id === procurement.material_id && material.material_version_id === procurement.material_version_id &&
+    material.material_version === procurement.material_version && material.sha256 === procurement.sha256 &&
+    material.material_role === procurement.material_role,
+  );
+
   async function run() {
     if (contractID === null || !caseVisible || context.current.contractID !== contractID ||
         context.current.caseID !== caseID || context.current.caseVisible !== caseVisible ||
@@ -156,25 +230,32 @@ export function ContractReferencesPanel({
           {check !== null && caseVisible ? (
             <div className="contracts-page-reference-result">
               <p className="meta">
-                来源案件 {check.source_case_id} ·{" "}
-                {check.source === "revision"
-                  ? `冻结版本 ${check.contract_revision_id ?? ""}`
-                  : "当前草稿"}{" "}
-                · 核对时间 {check.checked_at}
+                <strong>来源案件：{sourceCase ? (sourceCase.title.trim() ? sourceCase.title : "名称未记录") : "名称未在当前授权列表中"}</strong>
+                {" · "}案件业务编号：{sourceCase ? (sourceCase.case_number?.trim() ? sourceCase.case_number : "未登记") : "未在当前授权列表中"}
+                {" · "}{check.source === "revision" ? "冻结版本" : "当前草稿"}
+                {" · "}核对时间：{incompleteCheckedAt ? "时间格式异常" : preciseTime(check.checked_at)}
               </p>
+              <TechnicalDetail label="来源与合同版本技术详情" value={JSON.stringify({
+                contract_id: check.contract_id, source_case_id: check.source_case_id, source: check.source,
+                contract_revision_id: check.contract_revision_id, checked_at: check.checked_at,
+              }, null, 2)} />
+              {incompleteCheckedAt
+                ? <TechnicalDetail label="核对时间原始值" value={check.checked_at} />
+                : <InvalidTimeDetail label="核对时间" value={check.checked_at} />}
               {check.subjects.length > 0 ? (
                 <>
                   <strong>主体引用</strong>
                   <ul className="contracts-page-materials">
                     {check.subjects.map((subject) => (
                       <li key={`${subject.binding_id}-${subject.binding_version}`}>
-                        <Tag>{subject.role}</Tag>
-                        <span>{subject.name_snapshot}</span>
+                        <strong>{subject.name_snapshot.trim() ? subject.name_snapshot : "主体名称未记录"}</strong>
+                        <Tag>合同角色：{contractPartyRoleLabel(subject.role)}</Tag>
                         <span className="meta">
-                          绑定 {subject.binding_id} v{subject.binding_version} · 主体 v
-                          {subject.subject_version} · {subject.verification_state}
-                          {subject.frozen ? " · 冻结" : ""}
+                          案件角色：{caseRoleLabel(subject.case_role)} · {bindingStateLabel(subject.binding_state)}
+                          {" · "}登记核验状态：{verificationStateLabel(subject.verification_state)} · 核验范围未提供
+                          {subject.frozen ? " · 冻结引用" : " · 当前引用"}
                         </span>
+                        <TechnicalDetail label="主体引用技术详情" value={JSON.stringify(subject, null, 2)} />
                       </li>
                     ))}
                   </ul>
@@ -186,32 +267,38 @@ export function ContractReferencesPanel({
                   <ul className="contracts-page-materials">
                     {check.materials.map((material) => (
                       <li key={`${material.material_id}-${material.material_version_id}`}>
-                        <Tag>{material.material_role}</Tag>
-                        <span>{material.filename}</span>
-                        <span className="contracts-page-hash">{material.sha256}</span>
+                        <strong>{material.filename.trim() ? material.filename : "材料文件名未记录"}</strong>
+                        <Tag>{material.material_role === "" ? "材料角色未记录" : roleLabel(material.material_role)}</Tag>
+                        <span className="meta">用途：{contractMaterialPurposeLabel(material.purpose)} · 材料第 {material.material_version} 版</span>
                         <a href={material.original_path} target="_blank" rel="noreferrer">
                           预览/下载
                         </a>
-                        {material.frozen ? <span className="meta">冻结</span> : null}
+                        {material.frozen ? <span className="meta">冻结引用</span> : <span className="meta">当前引用</span>}
+                        <TechnicalDetail label="材料引用技术详情" value={JSON.stringify(material, null, 2)} />
                       </li>
                     ))}
                   </ul>
                 </>
               ) : null}
-              {check.procurement_result !== undefined ? (
+              {procurement !== undefined ? (
                 <>
                   <strong>采购结果来源</strong>
                   <p className="meta">
-                    {check.procurement_result.system} / {check.procurement_result.result_id} /{" "}
-                    {check.procurement_result.package_id} · 材料{" "}
-                    {check.procurement_result.material_id} v
-                    {check.procurement_result.material_version} ·{" "}
-                    {check.procurement_result.material_role}
+                    来源材料：{procurementMaterial?.filename.trim() ? procurementMaterial.filename : "文件名暂不可用"}
+                    {" · "}{roleLabel(procurement.material_role)} · 材料第 {procurement.material_version} 版
                   </p>
+                  <TechnicalDetail label="采购来源技术详情" value={JSON.stringify(procurement, null, 2)} />
                 </>
               ) : null}
               {check.warnings.length > 0 ? (
-                <p className="meta">提示：{check.warnings.join("、")}</p>
+                <ul className="contracts-page-materials">
+                  {check.warnings.map((warning, index) => (
+                    <li key={`${warning}-${index}`}>
+                      <span>提示：{warningLabel(warning)}</span>
+                      <TechnicalDetail label="提示代码技术详情" value={warning} />
+                    </li>
+                  ))}
+                </ul>
               ) : null}
             </div>
           ) : null}

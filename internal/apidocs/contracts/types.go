@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-04
-// Revision: r7
+// Updated: 2026-11-05
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -290,14 +290,14 @@ type ContractSavedViewDeleteResult struct {
 }
 type ContractExportRequest struct {
 	Filter  ContractLedgerFilter `json:"filter" openapi:"{\"$ref\":\"#/components/schemas/ContractLedgerFilter\"}"`
-	Columns []string             `json:"columns,omitempty" openapi:"{\"type\":\"array\",\"maxItems\":20}" openapi_items:"{\"type\":\"string\",\"enum\":[\"contract_number\",\"contract_name\",\"authority_mode\",\"supplier_name\",\"amount\",\"currency\",\"department_id\",\"project_type\",\"procurement_method\",\"contract_state\",\"workflow_state\",\"signing_date\",\"source_system\",\"created_at\",\"updated_at\"]}"`
+	Columns []string             `json:"columns,omitempty" openapi:"{\"type\":\"array\",\"maxItems\":20}" openapi_items:"{\"type\":\"string\",\"enum\":[\"contract_number\",\"contract_name\",\"authority_mode\",\"supplier_name\",\"amount\",\"currency\",\"department_id\",\"project_type\",\"procurement_method\",\"contract_state\",\"workflow_state\",\"signing_date\",\"source_system\",\"created_at\",\"updated_at\",\"authority_mode_label\",\"authority_mode_code\",\"contract_state_label\",\"contract_state_code\",\"workflow_state_label\",\"workflow_state_code\"]}"`
 	Format  string               `json:"format,omitempty" openapi:"{\"type\":\"string\",\"enum\":[\"csv\"],\"default\":\"csv\"}"`
 }
 type ContractExport struct {
 	Export_id          string   `json:"export_id" openapi:"{\"type\":\"string\",\"format\":\"uuid\"}"`
 	State              string   `json:"state" openapi:"{\"type\":\"string\",\"enum\":[\"ready\"]}"`
 	Format             string   `json:"format" openapi:"{\"type\":\"string\",\"enum\":[\"csv\"]}"`
-	Columns            []string `json:"columns" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\",\"enum\":[\"contract_number\",\"contract_name\",\"authority_mode\",\"supplier_name\",\"amount\",\"currency\",\"department_id\",\"project_type\",\"procurement_method\",\"contract_state\",\"workflow_state\",\"signing_date\",\"source_system\",\"created_at\",\"updated_at\"]}"`
+	Columns            []string `json:"columns" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\",\"enum\":[\"contract_number\",\"contract_name\",\"authority_mode\",\"supplier_name\",\"amount\",\"currency\",\"department_id\",\"project_type\",\"procurement_method\",\"contract_state\",\"workflow_state\",\"signing_date\",\"source_system\",\"created_at\",\"updated_at\",\"authority_mode_label\",\"authority_mode_code\",\"contract_state_label\",\"contract_state_code\",\"workflow_state_label\",\"workflow_state_code\"]}"`
 	Row_count          int64    `json:"row_count" openapi:"{\"type\":\"integer\",\"minimum\":0}"`
 	Created_at         string   `json:"created_at" openapi:"{\"type\":\"string\",\"format\":\"date-time\"}"`
 	Expires_at         string   `json:"expires_at" openapi:"{\"type\":\"string\",\"format\":\"date-time\"}"`

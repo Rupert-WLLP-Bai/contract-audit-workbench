@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-03
-// Revision: r3
+// Updated: 2026-11-05
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -353,6 +353,7 @@ export function isMaskedRestricted(value: string | undefined): boolean {
 }
 
 const CONTRACTS_PATH = "/api/contracts";
+const CONTRACT_LEDGER_PATH = `${CONTRACTS_PATH}/ledger`;
 
 const { object, record, text, optionalText, nullableText, integer, bool, array } =
   responseReader((path) => `合同响应中的 ${path} 无法识别`);
@@ -1266,7 +1267,7 @@ function parseMaterialRefForSend(ref: MaterialRef): MaterialRef {
 export const CONTRACT_LEDGER_COLUMNS = [
   { key: "contract_number", label: "合同编号" },
   { key: "contract_name", label: "合同名称" },
-  { key: "authority_mode", label: "权威模式" },
+  { key: "authority_mode", label: "来源类型" },
   { key: "supplier_name", label: "供应商" },
   { key: "amount", label: "金额" },
   { key: "currency", label: "币种" },
@@ -1283,6 +1284,25 @@ export const CONTRACT_LEDGER_COLUMNS = [
 
 export type ContractLedgerColumn =
   (typeof CONTRACT_LEDGER_COLUMNS)[number]["key"];
+
+const CONTRACT_EXPORT_ONLY_COLUMNS = [
+  "authority_mode_label", "authority_mode_code",
+  "contract_state_label", "contract_state_code",
+  "workflow_state_label", "workflow_state_code",
+] as const;
+
+export type ContractExportColumn =
+  ContractLedgerColumn | (typeof CONTRACT_EXPORT_ONLY_COLUMNS)[number];
+
+const READABLE_EXPORT_COLUMNS: Partial<Record<ContractLedgerColumn, readonly ContractExportColumn[]>> = {
+  authority_mode: ["authority_mode_label", "authority_mode_code"],
+  contract_state: ["contract_state_label", "contract_state_code"],
+  workflow_state: ["workflow_state_label", "workflow_state_code"],
+};
+
+export function contractLedgerExportColumns(columns: ContractLedgerColumn[]): ContractExportColumn[] {
+  return columns.flatMap((column) => READABLE_EXPORT_COLUMNS[column] ?? [column]);
+}
 
 export const CONTRACT_LEDGER_DEFAULT_COLUMNS: ContractLedgerColumn[] = [
   "contract_number",
@@ -1355,12 +1375,18 @@ export interface ContractExport {
   export_id: string;
   state: "ready";
   format: "csv";
-  columns: ContractLedgerColumn[];
+  columns: ContractExportColumn[];
   row_count: number;
   created_at: string;
   expires_at: string;
   download_available: boolean;
   replayed: boolean;
+}
+
+export interface ContractExportRequest {
+  filter: ContractLedgerFilter;
+  columns: ContractExportColumn[];
+  format: "csv";
 }
 
 const LEDGER_FILTER_KEYS = [
@@ -1386,6 +1412,14 @@ function ledgerColumn(value: unknown, path: string): ContractLedgerColumn {
   if (!CONTRACT_LEDGER_COLUMNS.some((column) => column.key === candidate))
     throw new Error(`合同响应中的 ${path} 不是支持的台账列`);
   return candidate as ContractLedgerColumn;
+}
+
+function exportColumn(value: unknown, path: string): ContractExportColumn {
+  const candidate = text(value, path);
+  if (!CONTRACT_LEDGER_COLUMNS.some((column) => column.key === candidate) &&
+      !(CONTRACT_EXPORT_ONLY_COLUMNS as readonly string[]).includes(candidate))
+    throw new Error(`合同响应中的 ${path} 不是支持的导出列`);
+  return candidate as ContractExportColumn;
 }
 
 function parseLedgerFilter(value: unknown, path: string): ContractLedgerFilter {
@@ -1519,7 +1553,7 @@ export function parseContractExport(value: unknown): ContractExport {
     export_id: text(item.export_id, "contract.export_id"),
     state,
     format,
-    columns: array(item.columns, "contract.columns", ledgerColumn),
+    columns: array(item.columns, "contract.columns", exportColumn),
     row_count: integer(item.row_count, "contract.row_count", 0),
     created_at: text(item.created_at, "contract.created_at"),
     expires_at: text(item.expires_at, "contract.expires_at"),
@@ -1560,7 +1594,7 @@ export function listContractSavedViews(
   signal?: AbortSignal,
 ): Promise<ContractSavedView[]> {
   return requestJson(
-    `${CONTRACTS_PATH}/views`,
+    `${CONTRACT_LEDGER_PATH}/views`,
     { method: "GET", signal },
     parseContractSavedViewList,
   );
@@ -1572,7 +1606,7 @@ export function createContractSavedView(
   columns: ContractLedgerColumn[],
 ): Promise<ContractSavedView> {
   return requestJson(
-    `${CONTRACTS_PATH}/views`,
+    `${CONTRACT_LEDGER_PATH}/views`,
     jsonInit("POST", { name, filter, columns }),
     (value) => parseContractSavedView(value, "contract"),
   );
@@ -1586,7 +1620,7 @@ export function replaceContractSavedView(
   columns: ContractLedgerColumn[],
 ): Promise<ContractSavedView> {
   return requestJson(
-    `${CONTRACTS_PATH}/views/${encodeURIComponent(viewId)}`,
+    `${CONTRACT_LEDGER_PATH}/views/${encodeURIComponent(viewId)}`,
     jsonInit("POST", {
       expected_row_version: expectedRowVersion,
       name,
@@ -1602,7 +1636,7 @@ export function deleteContractSavedView(
   expectedRowVersion: number,
 ): Promise<void> {
   return requestJson(
-    `${CONTRACTS_PATH}/views/${encodeURIComponent(viewId)}?expected_row_version=${expectedRowVersion}`,
+    `${CONTRACT_LEDGER_PATH}/views/${encodeURIComponent(viewId)}?expected_row_version=${expectedRowVersion}`,
     { method: "DELETE" },
     (value) => {
       const result = object(value, "contract");
@@ -1613,15 +1647,14 @@ export function deleteContractSavedView(
 }
 
 export function createContractExport(
-  filter: ContractLedgerFilter,
-  columns: ContractLedgerColumn[],
+  payload: ContractExportRequest,
   idempotencyKey: string,
 ): Promise<ContractExport> {
   return requestJson(
-    `${CONTRACTS_PATH}/exports`,
+    `${CONTRACT_LEDGER_PATH}/exports`,
     jsonInit(
       "POST",
-      { filter, columns, format: "csv" },
+      payload,
       { "Idempotency-Key": idempotencyKey },
     ),
     parseContractExport,
@@ -1634,7 +1667,7 @@ export async function downloadContractExport(exportId: string, commandContext: C
   let response: Response;
   try {
     response = await fetch(
-      `${CONTRACTS_PATH}/exports/${encodeURIComponent(exportId)}/download`,
+      `${CONTRACT_LEDGER_PATH}/exports/${encodeURIComponent(exportId)}/download`,
       {
         method: "GET",
         credentials: "include",
