@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-01
 // Updated: 2026-11-05
-// Revision: r6
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1246,6 +1246,7 @@ export function ContractsPage() {
                   rowKey="item_id"
                   dataSource={draft.items ?? []}
                   pagination={false}
+                  scroll={{ x: 800 }}
                   locale={{ emptyText: "还没有明细行" }}
                   columns={[
                     {

@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-01 */
-/* Updated: 2026-11-01 */
-/* Revision: r1 */
+/* Updated: 2026-11-05 */
+/* Revision: r2 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -39,6 +39,10 @@
   margin: 0 0 var(--space-3);
   font-size: 15px;
   font-weight: 600;
+}
+
+.contracts-page-list {
+  min-width: 0;
 }
 
 .contracts-page-list ul {
@@ -79,6 +83,11 @@
   font-weight: 600;
 }
 
+.contracts-page-list-name,
+.contracts-page-list-meta {
+  overflow-wrap: anywhere;
+}
+
 .contracts-page-list-meta {
   color: var(--text-secondary);
   font-size: 12px;
@@ -97,6 +106,10 @@
   border: 1px solid var(--card-border);
   border-radius: var(--panel-radius);
   background: var(--surface-raised);
+}
+
+fieldset.contracts-page-section {
+  min-inline-size: 0;
 }
 
 .contracts-page-section legend {
@@ -159,6 +172,11 @@
   font-size: 13px;
 }
 
+.contracts-page-materials li > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .contracts-page-hash {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -187,7 +205,7 @@
 
 @media (max-width: 900px) {
   .contracts-page-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
