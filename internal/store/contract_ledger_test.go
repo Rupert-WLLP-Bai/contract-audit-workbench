@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-01
 // Updated: 2026-11-05
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -446,7 +446,7 @@ func TestContractExportCurrentRowPermissionsAndExpiryPostgres(t *testing.T) {
 	}
 	input := ContractExportInput{Columns: []string{"contract_name", "contract_state_label", "contract_state_code"}, Format: "csv", IdempotencyKey: "issue240-two-row-export"}
 	export, err := core.CreateContractExport(ctx, actor, input)
-	if err != nil || export.RowCount != 2 {
+	if err != nil || export.RowCount != 2 || !export.DownloadAvailable || export.Replayed {
 		t.Fatalf("create two-row authorized export: %+v, err=%v", export, err)
 	}
 	// Keep read rights for both contracts while revoking Export on the second.
@@ -461,6 +461,10 @@ func TestContractExportCurrentRowPermissionsAndExpiryPostgres(t *testing.T) {
 	}
 	if _, err := core.LoadContractExportForDownload(ctx, current, export.ExportID); faultStatus(err) != 404 {
 		t.Fatalf("one row lost export permission: got %v, want 404", err)
+	}
+	replayed, err := core.CreateContractExport(ctx, current, input)
+	if err != nil || !replayed.Replayed || replayed.ExportID != export.ExportID || !replayed.DownloadAvailable {
+		t.Fatalf("metadata replay must survive lost export permission: got %+v, err=%v", replayed, err)
 	}
 	denied := input
 	denied.IdempotencyKey = "issue240-denied-new-export"
@@ -495,5 +499,9 @@ func TestContractExportCurrentRowPermissionsAndExpiryPostgres(t *testing.T) {
 	}
 	if _, err := core.LoadContractExportForDownload(ctx, current, export.ExportID); faultStatus(err) != 404 {
 		t.Fatalf("expired export download: got %v, want 404", err)
+	}
+	expiredReplay, err := core.CreateContractExport(ctx, current, input)
+	if err != nil || !expiredReplay.Replayed || expiredReplay.ExportID != export.ExportID || expiredReplay.DownloadAvailable {
+		t.Fatalf("expired metadata replay must report download_available=false: got %+v, err=%v", expiredReplay, err)
 	}
 }

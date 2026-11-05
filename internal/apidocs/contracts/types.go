@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-02
 // Updated: 2026-11-05
-// Revision: r8
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -301,7 +301,7 @@ type ContractExport struct {
 	Row_count          int64    `json:"row_count" openapi:"{\"type\":\"integer\",\"minimum\":0}"`
 	Created_at         string   `json:"created_at" openapi:"{\"type\":\"string\",\"format\":\"date-time\"}"`
 	Expires_at         string   `json:"expires_at" openapi:"{\"type\":\"string\",\"format\":\"date-time\"}"`
-	Download_available bool     `json:"download_available" openapi:"{\"type\":\"boolean\"}"`
+	Download_available bool     `json:"download_available" openapi:"{\"type\":\"boolean\",\"description\":\"仅表示冻结导出记录的 expires_at 尚未到期，不表示当前身份仍有下载授权；下载接口会重新解析会话并逐份合同复核读取/导出权限，失败返回 404 且不返回文件。\"}"`
 	Replayed           bool     `json:"replayed" openapi:"{\"type\":\"boolean\"}"`
 }
 type DraftContent struct {

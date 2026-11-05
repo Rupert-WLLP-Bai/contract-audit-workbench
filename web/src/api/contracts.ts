@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-01
 // Updated: 2026-11-05
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1379,6 +1379,7 @@ export interface ContractExport {
   row_count: number;
   created_at: string;
   expires_at: string;
+  /** 仅表示冻结记录尚未到期；下载接口会重新授权，不能作为权限依据。 */
   download_available: boolean;
   replayed: boolean;
 }

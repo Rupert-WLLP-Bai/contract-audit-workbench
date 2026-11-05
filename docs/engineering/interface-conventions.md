@@ -3,8 +3,8 @@
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-04 -->
-<!-- Updated: 2026-11-04 -->
-<!-- Revision: r1 -->
+<!-- Updated: 2026-11-05 -->
+<!-- Revision: r2 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -58,7 +58,7 @@
 
 **已有：** [审查报告](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/blob/main/internal/store/business_reports.go) 为指定终态执行创建并保存 JSON 和 HTML 字节；[合同台账](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/blob/main/internal/store/contract_ledger.go) 创建时保存导出列和行，下载时生成 CSV 表头和内容，重新检查授权。两类出口的冻结方式不同。
 
-**增量：** 新的用户可读投影在创建时确定，保留准确机器字段及其兼容约定；不能因标签、模板或代码更新重写历史报告、冻结行和原有下载字节。CSV 表头也参与下载字节，仅保留旧行不足以保证旧结果不变；修改时保留旧表头和列顺序的渲染契约或明确版本化，并覆盖旧导出回读。来源类型不等于真实性核验。新的中文 CSV 与旧格式兼容由 [#240](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/issues/240) 验收。
+**增量：** 合同导出的 `download_available` 只表示冻结记录在响应时尚未过期，不是当前读取/导出授权结果；重放元数据不重新检查当前权限，实际下载仍逐份合同重新授权并以 404 拒绝失败请求。新的用户可读投影在创建时确定，保留准确机器字段及其兼容约定；不能因标签、模板或代码更新重写历史报告、冻结行和原有下载字节。CSV 表头也参与下载字节，仅保留旧行不足以保证旧结果不变；修改时保留旧表头和列顺序的渲染契约或明确版本化，并覆盖旧导出回读。来源类型不等于真实性核验。新的中文 CSV 与旧格式兼容由 [#240](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/issues/240) 验收。
 
 ## 贡献检查
 

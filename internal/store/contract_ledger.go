@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-01
 // Updated: 2026-11-05
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -146,15 +146,18 @@ type ContractExportInput struct {
 // ContractExport is the metadata returned when an export is created or
 // replayed. Rows are never returned here.
 type ContractExport struct {
-	ExportID          string    `json:"export_id"`
-	State             string    `json:"state"`
-	Format            string    `json:"format"`
-	Columns           []string  `json:"columns"`
-	RowCount          int       `json:"row_count"`
-	CreatedAt         time.Time `json:"created_at"`
-	ExpiresAt         time.Time `json:"expires_at"`
-	DownloadAvailable bool      `json:"download_available"`
-	Replayed          bool      `json:"replayed"`
+	ExportID  string    `json:"export_id"`
+	State     string    `json:"state"`
+	Format    string    `json:"format"`
+	Columns   []string  `json:"columns"`
+	RowCount  int       `json:"row_count"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+	// DownloadAvailable only reports whether the frozen record has not passed
+	// ExpiresAt at response time. It is not a current authorization result;
+	// LoadContractExportForDownload re-authorizes the identity and every row.
+	DownloadAvailable bool `json:"download_available"`
+	Replayed          bool `json:"replayed"`
 }
 
 // ContractExportDownload is a frozen export re-authorized at download time.
@@ -1077,6 +1080,8 @@ func (s *Store) CreateContractExport(ctx context.Context, user accounts.User, in
 	if err != nil {
 		return ContractExport{}, err
 	}
+	// A fresh record cannot be expired yet. This flag still says nothing
+	// about the caller's current download authorization.
 	item := ContractExport{
 		ExportID: exportID, State: "ready", Format: format, Columns: columns,
 		RowCount: len(rows), DownloadAvailable: true, Replayed: false,
@@ -1125,6 +1130,9 @@ func loadContractExportByKey(ctx context.Context, tx pgx.Tx, current accounts.Us
 		return loadedContractExport{}, false, fault.Conflict("导出列设置无法读取")
 	}
 	loaded.export.State = "ready"
+	// Replay is scoped to the original actor and key, then recomputes expiry
+	// only. It deliberately does not re-check current Read/Export grants;
+	// LoadContractExportForDownload is the download authorization boundary.
 	loaded.export.DownloadAvailable = loaded.export.ExpiresAt.After(time.Now().UTC())
 	loaded.export.Replayed = true
 	return loaded, true, nil
@@ -1174,7 +1182,8 @@ func collectContractExportRows(ctx context.Context, tx pgx.Tx, current accounts.
 
 // LoadContractExportForDownload re-authorizes every frozen contract at pickup.
 // Any lost Read/Export permission, identity change, foreign owner or expiry is
-// answered as the same 404.
+// answered as the same 404. The metadata field DownloadAvailable is expiry-only
+// and must never be treated as this authorization decision.
 func (s *Store) LoadContractExportForDownload(ctx context.Context, user accounts.User, exportID string) (ContractExportDownload, error) {
 	ctx = commandContext(ctx, user)
 	normalized, err := normalizeContractUUID(exportID)
