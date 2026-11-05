@@ -70,6 +70,7 @@ export function CaseDetailPage() {
   const navigationActorChanged = Boolean(workActorScope && previousNavigationScope.current && previousNavigationScope.current !== workActorScope);
   useEffect(() => { if (workActorScope) previousNavigationScope.current = workActorScope; }, [workActorScope]);
   const listReturn = readCaseListReturn(location.state, caseId, workActorScope);
+  const navigationListReturn = readCaseListReturn(location.state, caseId, navigationScope);
   const caseReadingPosition = readCaseReadingPosition(location.state, caseId, workActorScope);
   const queryClient = useQueryClient();
   const legalFetching = useIsFetching({ queryKey: ["cases", caseId, "legal-applicability-facts"] });
@@ -262,8 +263,8 @@ export function CaseDetailPage() {
 
   function reviewNavigationState() {
     return {
-      ...(listReturn ?? {}),
-      caseReadingPosition: { caseId, actorScope: workActorScope, scrollY: window.scrollY },
+      ...(navigationListReturn ?? {}),
+      caseReadingPosition: { caseId, actorScope: navigationScope, scrollY: window.scrollY },
     };
   }
 
@@ -272,7 +273,7 @@ export function CaseDetailPage() {
     <section className="page">
       <nav className="page-back" aria-label="案件导航">
         {workReturn ? <Link to={workReturn} state={{ ...(listReturn ?? {}), caseReadingPosition, reviewReadingPosition }}>返回人工办理</Link> : null}
-        <Link to={listReturn?.returnTo ?? "/cases"} state={{ restoreScrollY: listReturn?.scrollY ?? 0, actorScope: workActorScope }}>
+        <Link to={navigationListReturn?.returnTo ?? "/cases"} state={{ restoreScrollY: navigationListReturn?.scrollY ?? 0, actorScope: navigationScope }}>
           返回案件列表
         </Link>
       </nav>
