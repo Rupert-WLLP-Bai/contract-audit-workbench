@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-05
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,7 +12,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import * as api from "./endpoints";
-import { ApiError } from "./http";
+import { ApiError, setSessionIdentity } from "./http";
 import {
   clearIdentityQueries,
   queryKeys,
@@ -150,6 +150,13 @@ function testClient(): QueryClient {
   });
 }
 
+function jsonResponse(value: unknown): Response {
+  return new Response(JSON.stringify(value), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 function testWrapper(client: QueryClient) {
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -190,6 +197,7 @@ describe("query hook gates", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
+    setSessionIdentity(null);
   });
 
   it("does not retry the session query and keys it by audience", async () => {
@@ -394,9 +402,120 @@ describe("query hook gates", () => {
   });
 
   it("does not retry rule pack mutations", async () => {
+    const actor = {
+      id: "rulepack-admin",
+      role: "admin",
+      audience: "admin",
+      tenant_id: "tenant-1",
+      org_id: "org-1",
+      active_context: { context_version: "7" },
+      csrf_token: "rulepack-csrf-token",
+    };
+    setSessionIdentity(actor);
+
+    const created = {
+      pack: {
+        id: "pack-1",
+        version: "v1",
+        tenant_id: "tenant-1",
+        status: "draft",
+        revision: 1,
+        content_hash: "a".repeat(64),
+        snapshot_sha256: "b".repeat(64),
+        effective_from: "2026-01-01",
+        effective_until: "2026-12-31",
+        authority_sources: [],
+        is_active: false,
+        active_pointer_revision: 0,
+      },
+      manifest: {
+        schema_version: "rulepack/v1",
+        id: "pack-1",
+        version: "v1",
+        tenant_id: "tenant-1",
+        effective_from: "2026-01-01",
+        effective_until: "2026-12-31",
+        rules: [],
+        lifecycle: { state: "draft" },
+      },
+    };
+    const tested = {
+      revision: 1,
+      content_hash: "c".repeat(64),
+      report: {
+        pack_id: "pack-1",
+        pack_version: "v1",
+        pack_hash: "pack-hash",
+        relations: [],
+        results: [],
+      },
+    };
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValue(new Response("{}", { status: 200 }));
+      .mockResolvedValueOnce(jsonResponse(created))
+      .mockResolvedValueOnce(jsonResponse(tested));
+    const client = testClient();
+
+    const create = renderHook(() => useCreateRulePack(), {
+      wrapper: testWrapper(client),
+    });
+    act(() => {
+      create.result.current.mutate({} as never);
+    });
+    await waitFor(() => expect(create.result.current.isSuccess).toBe(true));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [createUrl, createInit] = fetchMock.mock.calls[0]!;
+    expect(String(createUrl)).toBe("/api/admin/rulepacks");
+    expect(createInit?.method).toBe("POST");
+    const createHeaders = new Headers(createInit?.headers);
+    expect(createHeaders.get("X-Context-Version")).toBe(
+      actor.active_context.context_version,
+    );
+    expect(createHeaders.get("X-CSRF-Token")).toBe(actor.csrf_token);
+    const createEntry = client.getMutationCache().getAll()[0];
+    expect(createEntry?.options.retry).toBe(false);
+    create.unmount();
+    client.clear();
+
+    const test = renderHook(() => useTestRulePack("pack-1", "v1"), {
+      wrapper: testWrapper(client),
+    });
+    act(() => {
+      test.result.current.mutate({} as never);
+    });
+    await waitFor(() => expect(test.result.current.isSuccess).toBe(true));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [testUrl, testInit] = fetchMock.mock.calls[1]!;
+    expect(String(testUrl)).toBe("/api/admin/rulepacks/pack-1/versions/v1/test");
+    expect(testInit?.method).toBe("POST");
+    const testHeaders = new Headers(testInit?.headers);
+    expect(testHeaders.get("X-Context-Version")).toBe(
+      actor.active_context.context_version,
+    );
+    expect(testHeaders.get("X-CSRF-Token")).toBe(actor.csrf_token);
+    const testEntry = client.getMutationCache().getAll()[0];
+    expect(testEntry?.options.retry).toBe(false);
+    test.unmount();
+    client.clear();
+  });
+
+  it("sends an expected failing rule pack mutation exactly once", async () => {
+    const actor = {
+      id: "rulepack-admin",
+      role: "admin",
+      audience: "admin",
+      tenant_id: "tenant-1",
+      org_id: "org-1",
+      active_context: { context_version: "7" },
+      csrf_token: "rulepack-csrf-token",
+    };
+    setSessionIdentity(actor);
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ code: "conflict", message: "版本已变化" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
     const client = testClient();
     const create = renderHook(() => useCreateRulePack(), {
       wrapper: testWrapper(client),
@@ -404,23 +523,22 @@ describe("query hook gates", () => {
     act(() => {
       create.result.current.mutate({} as never);
     });
-    const createEntry = client.getMutationCache().getAll()[0];
-    client.clear();
-    expect(createEntry?.options.retry).toBe(false);
+    await waitFor(() => expect(create.result.current.isError).toBe(true));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toBe("/api/admin/rulepacks");
+    expect(init?.method).toBe("POST");
+    const headers = new Headers(init?.headers);
+    expect(headers.get("X-Context-Version")).toBe(
+      actor.active_context.context_version,
+    );
+    expect(headers.get("X-CSRF-Token")).toBe(actor.csrf_token);
+    expect(create.result.current.error).toBeInstanceOf(ApiError);
+    expect((create.result.current.error as ApiError).status).toBe(409);
+    const entry = client.getMutationCache().getAll()[0];
+    expect(entry?.options.retry).toBe(false);
     create.unmount();
-
-    const test = renderHook(() => useTestRulePack("p1", "v1"), {
-      wrapper: testWrapper(client),
-    });
-    act(() => {
-      test.result.current.mutate({} as never);
-    });
-    const testEntry = client.getMutationCache().getAll()[0];
     client.clear();
-    expect(testEntry?.options.retry).toBe(false);
-    test.unmount();
-    await act(async () => { await Promise.resolve(); });
-    expect(fetchMock).toHaveBeenCalled();
   });
 });
 

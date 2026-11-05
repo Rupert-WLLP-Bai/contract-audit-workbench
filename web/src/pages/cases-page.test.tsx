@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-04
-// Revision: r1
+// Updated: 2026-11-05
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -32,6 +32,12 @@ it("filters the authorized loaded set before paging and keeps links on case ID a
   source.items.push({ ...source.items[0]!, id: "case-other", title: "其他案件", case_number: "OTHER", scenario: "cloud_services" });
   const view = render(<MemoryRouter initialEntries={["/cases"]}><CasesPage /></MemoryRouter>);
   const user = userEvent.setup();
+  expect(screen.getByRole("button", { name: "新建案件" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "新建案件" })).toHaveAttribute(
+    "title",
+    "当前角色仅可查看案件；新建案件需要管理员或经办人角色。",
+  );
+  expect(screen.getByText(/当前角色仅可查看案件/)).toBeVisible();
   const search = screen.getByRole("searchbox", { name: "搜索案件" });
   await user.type(search, "政企专线");
   expect(screen.getByText("显示 1–10 条，共 13 条")).toBeInTheDocument();
