@@ -45,7 +45,7 @@ import { PageStatus } from "../components/page-status";
 import { ReviewWorkspaceView } from "../components/review-workspace";
 import { ReviewWorkItems } from "../components/review-work-items";
 import { DirtyLeaveGuard } from "../components/dirty-leave-guard";
-import { readCaseListReturn, readCaseReadingPosition, readReviewReadingPosition, reviewPositionForPath, SectionNavigationProvider, type ReviewReadingPosition } from "../components/section-navigation";
+import { isReadingInteraction, readCaseListReturn, readCaseReadingPosition, readReviewReadingPosition, reviewPositionForPath, SectionNavigationProvider, type ReviewReadingPosition } from "../components/section-navigation";
 import { ReviewDiff } from "../components/review-diff";
 import type { ReviewCaseContext } from "../components/document-stage";
 import { RunProvenance } from "../components/run-provenance";
@@ -120,6 +120,7 @@ export function ReviewPage() {
   const navigationActorScope = session.data ? actorReadContextKey(session.data) : "";
   const previousNavigationScope = useRef(navigationActorScope);
   const restoredReviewVisit = useRef("");
+  const readingContent = useRef<HTMLDivElement>(null);
   const savedBeforeNavigation = useRef(new Set<string>());
   const pendingReviewRestore = useRef<{ visit: string; position: ReviewReadingPosition } | null>(null);
   const readingInteraction = useRef(0);
@@ -407,7 +408,11 @@ export function ReviewPage() {
   }, [navigationActorScope, review.error, caseDetail.error, requests.error]);
 
   useEffect(() => {
-    const stopRestoring = () => { readingInteraction.current += 1; pendingReviewRestore.current = null; };
+    const stopRestoring = (event: Event) => {
+      if (!isReadingInteraction(event, readingContent.current)) return;
+      readingInteraction.current += 1;
+      pendingReviewRestore.current = null;
+    };
     document.addEventListener("pointerdown", stopRestoring, true);
     document.addEventListener("keydown", stopRestoring, true);
     document.addEventListener("wheel", stopRestoring, true);
@@ -775,7 +780,7 @@ export function ReviewPage() {
     <SectionNavigationProvider scope={`${caseId}:${runId}:${selectedAttempt?.id ?? selectedAttemptId ?? ""}:${navigationActorScope}`} actorScope={navigationActorScope} ready={Boolean(actorScope && review.isSuccess && !review.isFetching && caseDetailReady && review.data.run.id === runId && review.data.run.case_id === caseId && caseDetail.data.id === caseId)}>
     <section className="page page-review">
       {session.isFetching ? <p role="status">正在重新确认登录状态，办理暂不可用。</p> : null}
-      <div hidden={session.isFetching}>
+      <div ref={readingContent} hidden={session.isFetching}>
       <header className="page-head">
         <div>
           <h1>审查工作区</h1>

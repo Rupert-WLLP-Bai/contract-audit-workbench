@@ -15,6 +15,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { errorMessage, isForbidden } from "../api/http";
 import { useCases, useCreateCase, useSession } from "../api/queries";
 import { CasesTable } from "../components/cases-table";
+import { isReadingInteraction } from "../components/section-navigation";
 import { actorReadContextKey } from "../domain/actor-read-context";
 import { PageStatus } from "../components/page-status";
 import {
@@ -85,6 +86,7 @@ export function CasesPage() {
   const returnScope = typeof routeState?.actorScope === "string" && routeState.actorScope ? routeState.actorScope : "";
   const verifiedReturn = useRef("");
   const consumedVisit = useRef("");
+  const readingContent = useRef<HTMLElement>(null);
   const returnMismatch = Boolean(returnScope && confirmedActorScope && returnScope !== confirmedActorScope);
   const returnPending = Boolean(returnScope && verifiedReturn.current !== location.key && !cases.isError &&
     (!confirmedActorScope || !confirmedCases));
@@ -108,7 +110,9 @@ export function CasesPage() {
 
   useLayoutEffect(() => {
     const visit = JSON.stringify([location.key, actorScope]);
-    const cancelRestore = () => { consumedVisit.current = visit; };
+    const cancelRestore = (event: Event) => {
+      if (isReadingInteraction(event, readingContent.current)) consumedVisit.current = visit;
+    };
     document.addEventListener("pointerdown", cancelRestore, true);
     document.addEventListener("keydown", cancelRestore, true);
     document.addEventListener("wheel", cancelRestore, true);
@@ -263,7 +267,7 @@ export function CasesPage() {
   }
 
   return (
-    <section className="page cases-page">
+    <section ref={readingContent} className="page cases-page">
       <header className="page-head">
         <div>
           <h1>案件</h1>

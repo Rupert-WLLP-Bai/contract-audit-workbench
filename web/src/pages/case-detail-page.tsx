@@ -24,7 +24,7 @@ import {
 } from "../api/queries";
 import { PageStatus } from "../components/page-status";
 import { CollapsibleSection, SectionAnchorNav } from "../components/collapsible-section";
-import { readCaseListReturn, readCaseReadingPosition, reviewPositionForPath, SectionNavigationProvider, type CaseReadingPosition } from "../components/section-navigation";
+import { isReadingInteraction, readCaseListReturn, readCaseReadingPosition, reviewPositionForPath, SectionNavigationProvider, type CaseReadingPosition } from "../components/section-navigation";
 import { CaseNextStep } from "../components/case-next-step";
 import { MaterialCollectionPanel } from "../components/material-collection-panel";
 import { CaseSubjectRolesPanel } from "../components/case-subject-roles-panel";
@@ -63,6 +63,7 @@ export function CaseDetailPage() {
   const workActorScope = session.isSuccess && !session.isFetching ? actorReadContextKey(session.data) : "";
   const navigationScope = session.data ? actorReadContextKey(session.data) : "";
   const restoredCaseVisit = useRef("");
+  const readingContent = useRef<HTMLElement>(null);
   const readingInteraction = useRef(0);
   const readingVisit = useRef<{ key: string; interaction: number }>({ key: "", interaction: 0 });
   const readingVisitKey = JSON.stringify([location.key, caseId]);
@@ -112,7 +113,9 @@ export function CaseDetailPage() {
     setSearchParams(next, { replace: true });
   }, [actorScope, caseId, searchParams, setSearchParams, sourceCaseParam]);
   useLayoutEffect(() => {
-    const stopRestoring = () => { readingInteraction.current += 1; };
+    const stopRestoring = (event: Event) => {
+      if (isReadingInteraction(event, readingContent.current)) readingInteraction.current += 1;
+    };
     document.addEventListener("pointerdown", stopRestoring, true);
     document.addEventListener("keydown", stopRestoring, true);
     document.addEventListener("wheel", stopRestoring, true);
@@ -270,7 +273,7 @@ export function CaseDetailPage() {
 
   return (
     <SectionNavigationProvider scope={`${caseId}:${navigationScope}`} actorScope={navigationScope} ready={Boolean(workActorScope && detail.isSuccess && !detail.isFetching && detail.data.id === caseId)} targetPending={targetPending}>
-    <section className="page">
+    <section ref={readingContent} className="page">
       <nav className="page-back" aria-label="案件导航">
         {workReturn ? <Link to={workReturn} state={{ ...(listReturn ?? {}), caseReadingPosition, reviewReadingPosition }}>返回人工办理</Link> : null}
         <Link to={navigationListReturn?.returnTo ?? "/cases"} state={{ restoreScrollY: navigationListReturn?.scrollY ?? 0, actorScope: navigationScope }}>

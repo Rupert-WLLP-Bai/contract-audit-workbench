@@ -1088,7 +1088,7 @@ describe("application routes and API contract", () => {
     expect(document.querySelector("#agent-review-gaps > summary")).toHaveFocus();
   });
 
-  it("keeps wheel-adjusted reading positions when cached review revalidation finishes", async () => {
+  it.each(["wheel", "keyboard"] as const)("keeps %s-adjusted reading positions when cached review revalidation finishes", async (interaction) => {
     const api = new Service();
     api.addReview();
     const { user, router, client } = open(api, "/cases/c1/reviews/r1", <App />, 60_000);
@@ -1109,7 +1109,8 @@ describe("application routes and API contract", () => {
     await act(async () => { await router.navigate(-1); });
     await waitFor(() => expect(router.state.location.search).toBe(""));
     expect(client.getQueryState(reviewKey)?.fetchStatus).toBe("fetching");
-    fireEvent.wheel(pane, { deltaY: 250 });
+    if (interaction === "wheel") fireEvent.wheel(pane, { deltaY: 250 });
+    else fireEvent.keyDown(document.body, { key: "PageDown" });
     pane.scrollTop = 175;
     findings.scrollTop = 80;
     await act(async () => {
@@ -1123,6 +1124,7 @@ describe("application routes and API contract", () => {
 
   it.each([
     { name: "keeps the wheel-adjusted case position when a cached return finishes revalidating", mode: "wheel", expected: 175 },
+    { name: "keeps the keyboard-adjusted case position when a cached return finishes revalidating", mode: "keyboard", expected: 175 },
     { name: "restores the case position after an uninterrupted cached return revalidates", mode: "uninterrupted", expected: 600 },
     { name: "does not restore the previous tenant's case position on a cached return", mode: "tenant", expected: 175 },
   ] as const)("case cached return: $name", async ({ mode, expected }) => {
@@ -1163,6 +1165,7 @@ describe("application routes and API contract", () => {
       if (mode === "tenant") expect(router.state.location.state.caseReadingPosition).toBeUndefined();
       else expect(router.state.location.state.caseReadingPosition.scrollY).toBe(600);
       if (mode === "wheel") fireEvent.wheel(document, { deltaY: 250 });
+      if (mode === "keyboard") fireEvent.keyDown(document.body, { key: "PageDown" });
       window.scrollTo(0, 175);
       await act(async () => {
         held.resolve(api.json(api.cases.get("c1")));
@@ -1205,6 +1208,7 @@ describe("application routes and API contract", () => {
       if (entry === "list") {
         await user.click(screen.getByRole("link", { name: "返回案件列表" }));
         expect(await screen.findByRole("heading", { name: "正在确认案件列表" })).toBeInTheDocument();
+        if (identity === "same") fireEvent.keyDown(document.body, { key: "PageDown" });
         window.scrollTo(0, 65);
       } else {
         await user.click(screen.getByRole("link", { name: "核对原文并处理决定" }));
@@ -1406,7 +1410,7 @@ describe("application routes and API contract", () => {
     }
   });
 
-  it.each(["none", "wheel", "queued", "leavePending"] as const)("initial declared list position after %s during refresh", async (interaction) => {
+  it.each(["none", "wheel", "keyboard", "queued", "leavePending"] as const)("initial declared list position after %s during refresh", async (interaction) => {
     const api = new Service();
     const initialScrollY = window.scrollY;
     api.addReview();
@@ -1445,8 +1449,12 @@ describe("application routes and API contract", () => {
       const pending = client.invalidateQueries({ queryKey: queryKeys.cases, exact: true });
       await waitFor(() => expect(requested && client.getQueryState(queryKeys.cases)?.fetchStatus === "fetching").toBe(true));
       await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 50)); });
-      if (interaction === "wheel" || interaction === "leavePending") {
-        fireEvent.wheel(document, { deltaY: 400 });
+      if (interaction === "wheel" || interaction === "keyboard" || interaction === "leavePending") {
+        if (interaction === "keyboard") {
+          const search = screen.getByRole("searchbox", { name: "搜索案件" });
+          act(() => search.focus());
+          fireEvent.keyDown(search, { key: "PageDown" });
+        } else fireEvent.wheel(document, { deltaY: 400 });
         window.scrollTo(0, 800);
       }
       if (interaction === "leavePending") {
@@ -1465,7 +1473,7 @@ describe("application routes and API contract", () => {
         return;
       }
       await act(async () => { held.resolve(); await pending; });
-      if (interaction !== "wheel") await waitFor(() => expect(frames.size).toBeGreaterThan(0));
+      if (interaction !== "wheel" && interaction !== "keyboard") await waitFor(() => expect(frames.size).toBeGreaterThan(0));
       else await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 50)); });
       if (interaction === "queued") {
         fireEvent.wheel(document, { deltaY: 400 });
@@ -1499,6 +1507,108 @@ describe("application routes and API contract", () => {
       frames.clear();
       window.scrollTo(0, initialScrollY);
     }
+  });
+
+  it.each(["pointer", "keyboard"] as const)("retry preserves the list return position after a 503 with %s", async (input) => {
+    const api = new Service();
+    const initialScrollY = window.scrollY;
+    const { user, client } = open(api, "/cases?q=%E6%8E%A5%E5%85%A5&page=1");
+    try {
+      await screen.findByRole("link", { name: "接入设备采购" });
+      window.scrollTo(0, 430);
+      await user.click(screen.getByRole("link", { name: "接入设备采购" }));
+      await screen.findByRole("heading", { name: "接入设备采购" });
+      await waitFor(() => expect(client.getQueryData(queryKeys.cases)).toBeUndefined());
+      api.fail("GET /api/cases", 503);
+      window.scrollTo(0, 0);
+      await user.click(screen.getByRole("link", { name: "返回案件列表" }));
+      await screen.findByRole("heading", { name: "案件列表没有加载" });
+      const retry = screen.getByRole("button", { name: "重试" });
+      if (input === "keyboard") {
+        act(() => retry.focus());
+        await user.keyboard("{Enter}");
+      } else await user.click(retry);
+      await screen.findByRole("heading", { name: "案件", level: 1 });
+      await waitFor(() => expect(window.scrollY).toBe(430));
+    } finally {
+      window.scrollTo(0, initialScrollY);
+    }
+  });
+
+  it("retry preserves the case return position after a 503", async () => {
+    const api = new Service();
+    const initialScrollY = window.scrollY;
+    api.addReview();
+    const { user, client } = open(api, "/cases/c1", <App />, 60_000);
+    try {
+      await screen.findByRole("heading", { name: "接入设备采购" });
+      window.scrollTo(0, 600);
+      await user.click(await screen.findByRole("link", { name: "核对原文并处理决定" }));
+      await screen.findByRole("heading", { name: "审查工作区" });
+      await waitFor(() => expect(client.getQueryState(queryKeys.case("c1"))?.fetchStatus).toBe("idle"));
+      api.fail("GET /api/cases/c1", 503);
+      window.scrollTo(0, 0);
+      await user.click(screen.getByRole("link", { name: /^返回案件$/ }));
+      await screen.findByRole("heading", { name: "案件没有加载" });
+      await user.click(screen.getByRole("button", { name: "重试" }));
+      await screen.findByRole("heading", { name: "接入设备采购" });
+      await waitFor(() => expect(window.scrollY).toBe(600));
+    } finally {
+      window.scrollTo(0, initialScrollY);
+    }
+  });
+
+  it("retry preserves the review pane positions after a 503", async () => {
+    const api = new Service();
+    api.addReview();
+    const { user, router, client } = open(api, "/cases/c1/reviews/r1", <App />, 60_000);
+    await screen.findByRole("heading", { name: "审查工作区" });
+    const key = queryKeys.review("c1", "r1", null);
+    await waitFor(() => expect(client.getQueryState(key)?.fetchStatus).toBe("idle"));
+    const pane = document.querySelector<HTMLElement>(".page-review .col-doc")!;
+    const findings = document.querySelector<HTMLElement>(".page-review .col-findings")!;
+    expect(pane && findings).toBeTruthy();
+    pane.scrollTop = 600;
+    findings.scrollTop = 200;
+    await user.click(screen.getByRole("link", { name: /^返回案件$/ }));
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    api.fail("GET /api/cases/c1/reviews/r1", 503);
+    await act(async () => { await router.navigate(-1); });
+    await screen.findByRole("heading", { name: "审查工作区没有加载" });
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    await screen.findByRole("heading", { name: "审查工作区" });
+    const restoredPane = document.querySelector<HTMLElement>(".page-review .col-doc")!;
+    const restoredFindings = document.querySelector<HTMLElement>(".page-review .col-findings")!;
+    await waitFor(() => expect(restoredPane.scrollTop).toBe(600));
+    expect(restoredFindings.scrollTop).toBe(200);
+  });
+
+  it("retry preserves the remediation return review position after a 503", async () => {
+    const api = new Service();
+    addSubmittedRemediation(api, [evaluation()]);
+    const { user, router } = open(api, "/cases/c1/reviews/r2", <App />, 60_000);
+    const queue = await screen.findByRole("region", { name: "人工办理" });
+    await user.click(await within(queue).findByRole("button", { name: "待整改：1" }));
+    const pane = document.querySelector<HTMLElement>(".page-review .col-doc")!;
+    const findings = document.querySelector<HTMLElement>(".page-review .col-findings")!;
+    expect(pane && findings).toBeTruthy();
+    pane.scrollTop = 600;
+    findings.scrollTop = 200;
+    await user.click(within(queue).getByRole("button", { name: "查看整改记录" }));
+    const back = await screen.findByRole("link", { name: "返回人工办理" });
+    expect(back.getAttribute("href")).toContain("attempt_id=attempt-r2-1");
+    expect(router.state.location.state.reviewReadingPosition).toMatchObject({
+      caseId: "c1", runId: "r2", attemptId: "attempt-r2-1", documentScroll: 600, findingScroll: 200,
+    });
+    api.fail("GET /api/cases/c1/reviews/r2?attempt_id=attempt-r2-1", 503);
+    await user.click(back);
+    await screen.findByRole("heading", { name: "审查工作区没有加载" });
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    await screen.findByRole("heading", { name: "审查工作区" });
+    const restoredPane = document.querySelector<HTMLElement>(".page-review .col-doc")!;
+    const restoredFindings = document.querySelector<HTMLElement>(".page-review .col-findings")!;
+    await waitFor(() => expect(restoredPane.scrollTop).toBe(600));
+    expect(restoredFindings.scrollTop).toBe(200);
   });
 
   it("preserves the authorized case list route through the review and back", async () => {

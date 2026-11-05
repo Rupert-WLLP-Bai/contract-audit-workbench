@@ -34,6 +34,16 @@ export function useSectionNavigationAvailable(): boolean {
   return useContext(SectionNavigationContext) !== null;
 }
 
+/** Ignore retry/loading controls outside the currently readable page content. */
+export function isReadingInteraction(event: Event, root: HTMLElement | null): boolean {
+  if (!root?.isConnected || root.closest("[hidden], [aria-hidden='true']")) return false;
+  const target = event.target;
+  if (target === window || target === document || target === document.body || target === document.documentElement) return true;
+  if (!(target instanceof Node) || !root.contains(target)) return false;
+  const element = target instanceof Element ? target : target.parentElement;
+  return !element?.closest(".page-status");
+}
+
 export interface CaseListReturn {
   returnTo: string;
   scrollY: number;
