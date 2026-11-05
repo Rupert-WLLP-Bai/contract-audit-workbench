@@ -8,9 +8,10 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { parseAgentReview } from "../api/agent-review";
 import type {
   Execution,
   ExecutionAttempt,
@@ -135,6 +136,79 @@ const events = [
   }),
 ];
 
+function duplicateToolReview() {
+  const call = (id: string, gap: string) => ({
+    call_id: id,
+    tool_id: "evidence.lookup",
+    tool_version: "tool-v1",
+    domain: "commercial",
+    capability_id: "amount",
+    gap_id: gap,
+    status: "completed",
+    reason_code: "verified_result",
+    evidence_ids: [],
+  });
+  const toolEvent = (
+    sequence: number,
+    event_id: string,
+    kind: "tool_started" | "tool_completed",
+    callId: string,
+    gap: string,
+    at: string,
+  ) => ({
+    event_id,
+    sequence,
+    round: 1,
+    kind,
+    tool_id: "evidence.lookup",
+    gap_id: gap,
+    call_id: callId,
+    domain: "commercial",
+    code: kind === "tool_started" ? "read_action_started" : "validated_tool_result",
+    occurred_at: at,
+    duration_ms: kind === "tool_started" ? 0 : 100,
+  });
+  return parseAgentReview({
+    schema_version: "five-domain-review/v1",
+    attempt_id: "attempt-1",
+    status: "partial",
+    mode: "deterministic_planner",
+    source_snapshot: null,
+    rulepack: null,
+    planner: {
+      identity: "planner",
+      configuration_id: "planner-config",
+      model_configuration_id: null,
+      prompt_version: "prompt-v1",
+      prompt_sha256: "prompt-digest",
+      schema_version: "plan-v1",
+      runtime_version: "runtime-v1",
+      tool_catalog_version: "tools-v1",
+      fallback_used: false,
+      fallback_code: null,
+      limits: { max_rounds: 2, max_calls: 5, max_duration_ms: 1000, max_evidence_bytes: 4096 },
+    },
+    scope: [],
+    domains: [],
+    gaps: [],
+    plan: {
+      status: "completed",
+      rejection_code: null,
+      calls: [call("call-1", "gap-1"), call("call-2", "gap-2")],
+      rounds: [],
+    },
+    evidence: [],
+    usage: { planner_calls: 1, input_tokens: null, output_tokens: null, total_tokens: null },
+    unresolved_gap_ids: [],
+    events: [
+      toolEvent(1, "tool-1-start", "tool_started", "call-1", "gap-1", "2026-10-30T00:00:01.000Z"),
+      toolEvent(2, "tool-1-done", "tool_completed", "call-1", "gap-1", "2026-10-30T00:00:01.100Z"),
+      toolEvent(3, "tool-2-start", "tool_started", "call-2", "gap-2", "2026-10-30T00:00:02.000Z"),
+      toolEvent(4, "tool-2-done", "tool_completed", "call-2", "gap-2", "2026-10-30T00:00:02.100Z"),
+    ],
+  });
+}
+
 describe("TrajectoryView", () => {
   async function showList() {
     const radio = screen.queryByRole("radio", { name: "列表" });
@@ -251,6 +325,28 @@ describe("TrajectoryView", () => {
 
     expect(search).toHaveValue("模型");
     expect(screen.getByText("已按“模型”筛选出 1 条记录。")).toBeInTheDocument();
+  });
+
+  it("keeps duplicate tool steps distinct and read-only when filtering", () => {
+    render(
+      <TrajectoryView
+        execution={{ ...execution([]), agent_review: duplicateToolReview() }}
+      />,
+    );
+    const summary = screen.getByLabelText("轨迹汇总");
+    expect(within(summary).getByText("2")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("搜索轨迹"), {
+      target: { value: "evidence.lookup" },
+    });
+
+    expect(screen.getByText("已按“evidence.lookup”筛选出 4 条记录。")).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: /evidence\.lookup/ }),
+    ).toHaveLength(4);
+    expect(
+      screen.queryByRole("button", { name: /保存|编辑|删除/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("filters entries and reports when nothing matches", async () => {
