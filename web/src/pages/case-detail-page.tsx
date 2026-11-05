@@ -242,7 +242,7 @@ export function CaseDetailPage() {
   }
 
   return (
-    <SectionNavigationProvider scope={`${caseId}:${navigationScope}`} ready={Boolean(workActorScope && detail.isSuccess && !detail.isFetching && detail.data.id === caseId)} targetPending={targetPending}>
+    <SectionNavigationProvider scope={`${caseId}:${navigationScope}`} actorScope={navigationScope} ready={Boolean(workActorScope && detail.isSuccess && !detail.isFetching && detail.data.id === caseId)} targetPending={targetPending}>
     <section className="page">
       <nav className="page-back" aria-label="案件导航">
         {workReturn ? <Link to={workReturn} state={{ ...(listReturn ?? {}), caseReadingPosition, reviewReadingPosition }}>返回人工办理</Link> : null}

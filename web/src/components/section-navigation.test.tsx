@@ -8,7 +8,7 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -17,14 +17,15 @@ import { actorReadContextKey } from "../domain/actor-read-context";
 import { CollapsibleSection, SectionAnchorNav } from "./collapsible-section";
 import { readCaseListReturn, readReviewReadingPosition, SectionNavigationProvider } from "./section-navigation";
 
-function Sections({ scope = "actor-a:case-a", ready = true, waiting = false, showTarget = true }: {
+function Sections({ scope = "actor-a:case-a", actorScope, ready = true, waiting = false, showTarget = true }: {
   scope?: string;
+  actorScope?: string;
   ready?: boolean;
   waiting?: boolean;
   showTarget?: boolean;
 }) {
   return (
-    <SectionNavigationProvider scope={scope} ready={ready} targetPending={() => waiting}>
+    <SectionNavigationProvider scope={scope} actorScope={actorScope} ready={ready} targetPending={() => waiting}>
       <SectionAnchorNav items={[{ id: "inside-title", label: "目标" }, { id: "outer", label: "外层" }]} />
       <button type="button">继续其他工作</button>
       <CollapsibleSection id="outer" title="外层">
@@ -87,6 +88,64 @@ describe("page section navigation", () => {
     other.focus();
     view.rerender(<MemoryRouter initialEntries={["/cases/c#inside-title"]}><Sections ready /></MemoryRouter>);
     await waitFor(() => expect(other).toHaveFocus());
+    expect((document.getElementById("outer") as HTMLDetailsElement).open).toBe(false);
+  });
+
+  it("does not replay a pending hash when only the explicit actor context changes", async () => {
+    const view = render(<MemoryRouter initialEntries={["/cases/c#inside-title"]}>
+      <Sections scope="case-c:actor-a" actorScope="actor-a" waiting showTarget={false} />
+    </MemoryRouter>);
+    const previousFocus = document.activeElement;
+    await act(async () => {
+      view.rerender(<MemoryRouter initialEntries={["/cases/c#inside-title"]}>
+        <Sections scope="case-c:actor-b" actorScope="actor-b" />
+      </MemoryRouter>);
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
+    });
+    expect((document.getElementById("outer") as HTMLDetailsElement).open).toBe(false);
+    expect(document.activeElement).toBe(previousFocus);
+  });
+
+  it("preserves cancellation while the initial actor context is being confirmed", async () => {
+    const view = render(<MemoryRouter initialEntries={["/cases/c#inside-title"]}>
+      <Sections scope="case-c:" actorScope="" ready={false} />
+    </MemoryRouter>);
+    fireEvent.wheel(document, { deltaY: 400 });
+    const previousFocus = document.activeElement;
+    await act(async () => {
+      view.rerender(<MemoryRouter initialEntries={["/cases/c#inside-title"]}>
+        <Sections scope="case-c:actor-a" actorScope="actor-a" />
+      </MemoryRouter>);
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
+    });
+    expect((document.getElementById("outer") as HTMLDetailsElement).open).toBe(false);
+    expect(document.activeElement).toBe(previousFocus);
+    view.unmount();
+
+    const uninterrupted = render(<MemoryRouter initialEntries={["/cases/c#inside-title"]}>
+      <Sections scope="case-c:" actorScope="" ready={false} />
+    </MemoryRouter>);
+    uninterrupted.rerender(<MemoryRouter initialEntries={["/cases/c#inside-title"]}>
+      <Sections scope="case-c:actor-a" actorScope="actor-a" />
+    </MemoryRouter>);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "内部标题" })).toHaveFocus());
+  });
+
+  it("does not navigate to an asynchronous target after the user wheels to continue reading", async () => {
+    const view = render(<MemoryRouter initialEntries={["/cases/c#inside-title"]}><Sections waiting showTarget={false} /></MemoryRouter>);
+    const previousFocus = document.activeElement;
+    fireEvent.wheel(document, { deltaY: 400 });
+    await act(async () => {
+      view.rerender(<MemoryRouter initialEntries={["/cases/c#inside-title"]}><Sections waiting={false} /></MemoryRouter>);
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
+    });
+    expect((document.getElementById("outer") as HTMLDetailsElement).open).toBe(false);
+    expect(document.activeElement).toBe(previousFocus);
+  });
+
+  it("reports a malformed fragment instead of silently dropping it", async () => {
+    render(<MemoryRouter initialEntries={["/cases/c#%ZZ"]}><Sections /></MemoryRouter>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("无法找到或读取所选分区");
     expect((document.getElementById("outer") as HTMLDetailsElement).open).toBe(false);
   });
 });

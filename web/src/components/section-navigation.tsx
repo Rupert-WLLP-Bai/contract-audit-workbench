@@ -158,11 +158,13 @@ function focusAndScroll(target: HTMLElement) {
 export function SectionNavigationProvider({
   children,
   scope,
+  actorScope = scope,
   ready,
   targetPending,
 }: {
   children: ReactNode;
   scope: string;
+  actorScope?: string;
   ready: boolean;
   targetPending?: (id: string) => boolean;
 }) {
@@ -172,7 +174,8 @@ export function SectionNavigationProvider({
   const root = useRef<HTMLDivElement>(null);
   const sections = useRef(new Map<HTMLDetailsElement, OpenSection>());
   const previousScope = useRef(scope);
-  const previousLocation = useRef<{ hash: string; pathname: string } | null>(null);
+  const previousActorScope = useRef(actorScope);
+  const previousLocation = useRef<{ hash: string; pathname: string; search: string } | null>(null);
   const serial = useRef(0);
   const [request, setRequest] = useState<{ id: string; serial: number } | null>(null);
   const [missing, setMissing] = useState(false);
@@ -186,20 +189,36 @@ export function SectionNavigationProvider({
     setMissing(false);
     setRequest(id ? { id, serial: serial.current } : null);
   }, []);
+  const requestHash = useCallback((hash: string) => {
+    const id = fragment(hash);
+    requestId(id);
+    if (hash.length > 1 && id === null) setMissing(true);
+  }, [requestId]);
 
   useEffect(() => {
     const changedScope = previousScope.current !== scope;
+    const oldActorScope = previousActorScope.current;
+    const changedActor = oldActorScope !== actorScope;
     previousScope.current = scope;
+    previousActorScope.current = actorScope;
     const previous = previousLocation.current;
-    previousLocation.current = { hash: location.hash, pathname: location.pathname };
-    if (changedScope) {
+    previousLocation.current = { hash: location.hash, pathname: location.pathname, search: location.search };
+    const changedLocation = previous !== null && (previous.pathname !== location.pathname || previous.search !== location.search || previous.hash !== location.hash);
+    if (changedActor && oldActorScope) {
       requestId(null);
       return;
     }
-    if (!previous || previous.hash !== location.hash || previous.pathname !== location.pathname || navigationType === "POP") {
-      requestId(fragment(location.hash));
+    if (changedScope || changedActor) {
+      // Keep an initial request (or its cancellation) when only identity finishes loading.
+      if (!oldActorScope && actorScope && !changedLocation) return;
+      if (actorScope && changedLocation) requestHash(location.hash);
+      else requestId(null);
+      return;
     }
-  }, [location.hash, location.key, location.pathname, navigationType, requestId, scope]);
+    if (!previous || previous.hash !== location.hash || previous.pathname !== location.pathname || navigationType === "POP") {
+      requestHash(location.hash);
+    }
+  }, [actorScope, location.hash, location.key, location.pathname, location.search, navigationType, requestHash, requestId, scope]);
 
   useEffect(() => {
     if (!request || !scope) return;
@@ -215,6 +234,7 @@ export function SectionNavigationProvider({
     document.addEventListener("pointerdown", cancel, true);
     document.addEventListener("keydown", cancel, true);
     document.addEventListener("focusin", cancel, true);
+    document.addEventListener("wheel", cancel, true);
     const resolve = () => {
       if (!ready || cancelled || running || serial.current !== request.serial) return;
       const target = document.getElementById(request.id);
@@ -259,6 +279,7 @@ export function SectionNavigationProvider({
       document.removeEventListener("pointerdown", cancel, true);
       document.removeEventListener("keydown", cancel, true);
       document.removeEventListener("focusin", cancel, true);
+      document.removeEventListener("wheel", cancel, true);
     };
   }, [ready, request, scope, targetPending]);
 

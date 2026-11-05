@@ -979,12 +979,13 @@ function open(
   service: Service,
   path = "/cases",
   application: ReactNode = <App />,
+  gcTime = 0,
 ) {
   vi.stubGlobal("fetch", service.handle);
   vi.stubGlobal("EventSource", Stream);
   const client = new QueryClient({
     defaultOptions: {
-      queries: { retry: false, gcTime: 0 },
+      queries: { retry: false, gcTime },
       mutations: { retry: false },
     },
   });
@@ -1059,6 +1060,66 @@ async function fillSupplementSource(user: ReturnType<typeof userEvent.setup>, la
 }
 
 describe("application routes and API contract", () => {
+  it("opens the returned run's hash when the cached workspace reuses its provider", async () => {
+    const api = new Service();
+    api.addReview("completed", "r1");
+    const current = api.addReview("awaiting_human", "r2");
+    current.previous_run_id = "r1";
+    current.agent_review = {
+      attempt_id: "attempt-r2-1", status: "partial", rulepack: null, scope: null, domains: null,
+      gaps: [{ gap_id: "gap-1", domain: "technical", capability_id: "warranty", mandatory: true,
+        status: "open", reason_code: "required_source_or_field_missing", evidence_ids: [] }],
+      evidence: [], unresolved_gap_ids: ["gap-1"], observations: null,
+    };
+    const { user, router, client } = open(api, "/cases/c1/reviews/r2#agent-review-gaps", <App />, 60_000);
+    await waitFor(() => expect(document.getElementById("agent-review-gaps")).toHaveAttribute("open"));
+    await user.click(screen.getByText("经验、审查依据与历史"));
+    await user.click(screen.getByText("修改稿对照"));
+    await user.click(await screen.findByRole("link", { name: "查看上一轮审查" }));
+    await screen.findByText("本次没有返回五个方面的审查结果，不能因此认为已经全部检查。");
+    expect(client.getQueryData(queryKeys.review("c1", "r2", null))).toBeDefined();
+    const previousProvider = document.querySelector(".page-review")?.parentElement;
+    expect(previousProvider).toBeTruthy();
+    await act(async () => { await router.navigate(-1); });
+    await waitFor(() => expect(router.state.location.pathname).toBe("/cases/c1/reviews/r2"));
+    await waitFor(() => expect(document.querySelector(".page-review")?.parentElement).toBe(previousProvider));
+    await waitFor(() => expect(document.getElementById("agent-review-gaps")).toHaveAttribute("open"));
+    expect(document.querySelector("#agent-review-gaps > summary")).toHaveFocus();
+  });
+
+  it("keeps wheel-adjusted reading positions when cached review revalidation finishes", async () => {
+    const api = new Service();
+    api.addReview();
+    const { user, router, client } = open(api, "/cases/c1/reviews/r1", <App />, 60_000);
+    await screen.findByRole("heading", { name: "审查工作区" });
+    const reviewKey = queryKeys.review("c1", "r1", null);
+    await waitFor(() => expect(client.getQueryState(reviewKey)?.fetchStatus).toBe("idle"));
+    const pane = document.querySelector<HTMLElement>(".page-review .col-doc")!;
+    const findings = document.querySelector<HTMLElement>(".page-review .col-findings")!;
+    expect(pane && findings).toBeTruthy();
+    pane.scrollTop = 600;
+    findings.scrollTop = 200;
+    const queue = await screen.findByRole("region", { name: "人工办理" });
+    await user.click(within(queue).getByRole("button", { name: /待补件/ }));
+    await waitFor(() => expect(router.state.location.search).toContain("work_filter=evidence"));
+    api.holdNextWorkspaceRead = true;
+    const pending = client.invalidateQueries({ queryKey: reviewKey, exact: true });
+    await waitFor(() => expect(api.releaseHeldWorkspace).not.toBeNull());
+    await act(async () => { await router.navigate(-1); });
+    await waitFor(() => expect(router.state.location.search).toBe(""));
+    expect(client.getQueryState(reviewKey)?.fetchStatus).toBe("fetching");
+    fireEvent.wheel(pane, { deltaY: 250 });
+    pane.scrollTop = 175;
+    findings.scrollTop = 80;
+    await act(async () => {
+      api.releaseHeldWorkspace!();
+      await pending;
+      await new Promise((resolve) => window.setTimeout(resolve, 150));
+    });
+    expect(pane.scrollTop).toBe(175);
+    expect(findings.scrollTop).toBe(80);
+  });
+
   it("preserves the authorized case list route through the review and back", async () => {
     const api = new Service();
     api.addReview();

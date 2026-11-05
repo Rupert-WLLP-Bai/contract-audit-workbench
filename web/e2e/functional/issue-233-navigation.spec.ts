@@ -97,6 +97,33 @@ test("controlled nested sections open and a legal target waits for its data", as
   }
 });
 
+test("wheel while a legal target loads leaves the reader in control", async ({ page }) => {
+  const fixture = await installNavigationFixture(page);
+  fixture.holdLegal = true;
+  try {
+    await page.goto(`${web}${casePath}#legal-fact-seller_kind`);
+    await expect(page.getByRole("heading", { name: "导航样本 37" })).toBeVisible();
+    await expect(page.locator("#legal-fact-seller_kind")).toHaveCount(0);
+    await page.mouse.move(700, 500);
+    const before = await page.evaluate(() => scrollY);
+    await page.mouse.wheel(0, 500);
+    await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(before);
+    const after = await page.evaluate(() => ({ scroll: scrollY, active: (document.activeElement as HTMLElement | null)?.id }));
+    fixture.releaseLegal();
+    const seller = page.locator("#legal-fact-seller_kind");
+    await expect(seller).toHaveCount(1);
+    await page.waitForTimeout(300);
+    await expect(seller).not.toHaveAttribute("open", "");
+    await expect(seller.locator(":scope > summary")).not.toBeFocused();
+    const result = await page.evaluate(() => ({ scroll: scrollY, active: (document.activeElement as HTMLElement | null)?.id }));
+    console.log(`EVIDENCE wheel-cancel ${JSON.stringify({ before, after, result, browser: page.context().browser()?.version(), unmatched: fixture.unmatched })}`);
+    expect(result.active).toBe(after.active);
+    expect(result.scroll).toBe(after.scroll);
+  } finally {
+    fixture.releaseLegal();
+  }
+});
+
 test("the next step opens its collapsed report target by keyboard", async ({ page }, info) => {
   const fixture = await installNavigationFixture(page);
   fixture.archived = true;

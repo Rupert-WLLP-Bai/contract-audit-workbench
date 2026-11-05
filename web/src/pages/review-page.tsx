@@ -122,6 +122,9 @@ export function ReviewPage() {
   const restoredReviewVisit = useRef("");
   const savedBeforeNavigation = useRef(new Set<string>());
   const pendingReviewRestore = useRef<{ visit: string; position: ReviewReadingPosition } | null>(null);
+  const readingInteraction = useRef(0);
+  const readingVisit = useRef<{ key: string; interaction: number }>({ key: "", interaction: 0 });
+  const readingVisitKey = JSON.stringify([location.key, caseId, runId, selectedAttemptId, navigationActorScope]);
   const navigationActorChanged = Boolean(actorScope && previousNavigationScope.current && previousNavigationScope.current !== actorScope);
   useEffect(() => { if (actorScope) previousNavigationScope.current = actorScope; }, [actorScope]);
   const listReturn = readCaseListReturn(location.state, caseId, actorScope);
@@ -404,7 +407,7 @@ export function ReviewPage() {
   }, [navigationActorScope, review.error, caseDetail.error, requests.error]);
 
   useEffect(() => {
-    const stopRestoring = () => { pendingReviewRestore.current = null; };
+    const stopRestoring = () => { readingInteraction.current += 1; pendingReviewRestore.current = null; };
     document.addEventListener("pointerdown", stopRestoring, true);
     document.addEventListener("keydown", stopRestoring, true);
     document.addEventListener("wheel", stopRestoring, true);
@@ -418,6 +421,12 @@ export function ReviewPage() {
   }, []);
 
   useLayoutEffect(() => {
+    if (readingVisit.current.key !== readingVisitKey) {
+      readingVisit.current = { key: readingVisitKey, interaction: readingInteraction.current };
+    }
+  }, [readingVisitKey]);
+
+  useLayoutEffect(() => {
     if (!actorScope || !review.isSuccess || review.isFetching || !caseDetail.isSuccess || caseDetail.isFetching ||
         review.data.run.id !== runId || review.data.run.case_id !== caseId || caseDetail.data.id !== caseId ||
         (selectedAttemptId !== null && selectedAttempt?.id !== selectedAttemptId)) return;
@@ -429,7 +438,8 @@ export function ReviewPage() {
     const visit = JSON.stringify([location.key, caseId, runId, attemptId, actorScope]);
     if (restoredReviewVisit.current !== visit) {
       restoredReviewVisit.current = visit;
-      pendingReviewRestore.current = position && !location.hash ? { visit, position } : null;
+      const uninterrupted = readingVisit.current.key === readingVisitKey && readingVisit.current.interaction === readingInteraction.current;
+      pendingReviewRestore.current = position && !location.hash && uninterrupted ? { visit, position } : null;
     }
     const restore = pendingReviewRestore.current?.visit === visit ? pendingReviewRestore.current : null;
     let frame = 0;
@@ -453,7 +463,7 @@ export function ReviewPage() {
       readingPositions.set(location.key, captureReviewPosition(caseId, runId, attemptId, actorScope));
       if (readingPositions.size > 30) readingPositions.delete(readingPositions.keys().next().value!);
     };
-  }, [actorScope, caseId, runId, selectedAttemptId, selectedAttempt?.id, location.key, location.hash, location.state, navigationType,
+  }, [actorScope, caseId, runId, selectedAttemptId, selectedAttempt?.id, location.key, location.hash, location.state, navigationType, readingVisitKey,
     review.isSuccess, review.isFetching, review.data, caseDetail.isSuccess, caseDetail.isFetching, caseDetail.data]);
 
   if (session.isLoading) return <PageStatus kind="loading" title="正在确认登录状态" />;
@@ -762,7 +772,7 @@ export function ReviewPage() {
   }
 
   return (
-    <SectionNavigationProvider scope={`${caseId}:${runId}:${selectedAttempt?.id ?? selectedAttemptId ?? ""}:${navigationActorScope}`} ready={Boolean(actorScope && review.isSuccess && !review.isFetching && caseDetailReady && review.data.run.id === runId && review.data.run.case_id === caseId && caseDetail.data.id === caseId)}>
+    <SectionNavigationProvider scope={`${caseId}:${runId}:${selectedAttempt?.id ?? selectedAttemptId ?? ""}:${navigationActorScope}`} actorScope={navigationActorScope} ready={Boolean(actorScope && review.isSuccess && !review.isFetching && caseDetailReady && review.data.run.id === runId && review.data.run.case_id === caseId && caseDetail.data.id === caseId)}>
     <section className="page page-review">
       {session.isFetching ? <p role="status">正在重新确认登录状态，办理暂不可用。</p> : null}
       <div hidden={session.isFetching}>
