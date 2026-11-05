@@ -185,6 +185,74 @@ describe("TrajectoryView", () => {
     expect(screen.getByText("模型输出内容")).not.toBeVisible();
   });
 
+  it("switches from the swimlane to the list when a search starts", () => {
+    render(<TrajectoryView execution={execution(events)} />);
+    expect(screen.getByRole("region", { name: "Agent 执行路径泳道图" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "泳道图" })).toBeChecked();
+    expect(
+      screen.getByText(/泳道图始终展示全部步骤；搜索只筛选列表/),
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("搜索轨迹"), { target: { value: "模型" } });
+
+    expect(screen.getByRole("radio", { name: "列表" })).toBeChecked();
+    expect(screen.queryByRole("region", { name: "Agent 执行路径泳道图" })).not.toBeInTheDocument();
+    expect(screen.getByText("已按“模型”筛选出 1 条记录。")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /模型调用 · codex\/gpt-6-luna/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /输入准备/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps the list view and all entries after the search is cleared", () => {
+    render(<TrajectoryView execution={execution(events)} />);
+    const search = screen.getByLabelText("搜索轨迹");
+    fireEvent.change(search, { target: { value: "模型" } });
+    expect(screen.getByText("已按“模型”筛选出 1 条记录。")).toBeInTheDocument();
+
+    fireEvent.change(search, { target: { value: "" } });
+
+    expect(screen.getByRole("radio", { name: "列表" })).toBeChecked();
+    expect(screen.queryByRole("region", { name: "Agent 执行路径泳道图" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/筛选出/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /输入准备/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /模型调用 · codex\/gpt-6-luna/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the existing empty message when a search from the swimlane matches nothing", () => {
+    render(<TrajectoryView execution={execution(events)} />);
+    fireEvent.change(screen.getByLabelText("搜索轨迹"), {
+      target: { value: "不存在的内容" },
+    });
+
+    expect(screen.getByRole("radio", { name: "列表" })).toBeChecked();
+    expect(screen.getByText("已按“不存在的内容”筛选出 0 条记录。")).toBeInTheDocument();
+    expect(screen.getByText("没有匹配的轨迹记录。")).toBeInTheDocument();
+  });
+
+  it("keeps the search input when switching between the swimlane and the list", async () => {
+    render(<TrajectoryView execution={execution(events)} />);
+    const search = screen.getByLabelText("搜索轨迹");
+    fireEvent.change(search, { target: { value: "模型" } });
+    expect(screen.getByRole("radio", { name: "列表" })).toBeChecked();
+
+    await userEvent.click(screen.getByRole("radio", { name: "泳道图" }));
+
+    expect(search).toHaveValue("模型");
+    expect(screen.getByRole("region", { name: "Agent 执行路径泳道图" })).toBeInTheDocument();
+    expect(
+      screen.getByText(/当前搜索“模型”仍保留，切回列表可查看匹配记录/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/已按“模型”筛选出/)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("radio", { name: "列表" }));
+
+    expect(search).toHaveValue("模型");
+    expect(screen.getByText("已按“模型”筛选出 1 条记录。")).toBeInTheDocument();
+  });
+
   it("filters entries and reports when nothing matches", async () => {
     render(<TrajectoryView execution={execution(events)} />);
     await showList();

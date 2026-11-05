@@ -141,6 +141,11 @@ export function TrajectoryView({ execution }: { execution: Execution }) {
   const entries = needle === ""
     ? trajectory.entries
     : trajectory.entries.filter((entry) => entry.search.includes(needle));
+  const changeQuery = (value: string) => {
+    setQuery(value);
+    // 搜索只筛选列表；在泳道图输入关键词时直接切到列表，避免输入后没有任何可见反馈。
+    if (value.trim() !== "" && view === "swimlane") setView("list");
+  };
   const toggle = (id: string) => {
     setExpanded((current) => {
       const next = new Set(current);
@@ -210,9 +215,10 @@ export function TrajectoryView({ execution }: { execution: Execution }) {
         <Input.Search
           allowClear
           aria-label="搜索轨迹"
-          placeholder="搜索工具、模型、知识、摘要或标识"
+          aria-describedby={view === "swimlane" ? "trajectory-search-hint" : undefined}
+          placeholder="搜索并切到列表：工具、模型、知识、摘要或标识"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => changeQuery(event.target.value)}
         />
         <Button type="text" onClick={expandAll} disabled={view !== "list"}>
           展开全部
@@ -221,6 +227,15 @@ export function TrajectoryView({ execution }: { execution: Execution }) {
           收起全部
         </Button>
       </div>
+
+      {view === "swimlane" ? (
+        <p className="trajectory-filter" id="trajectory-search-hint">
+          泳道图始终展示全部步骤；搜索只筛选列表，输入搜索词会自动切换到列表。
+          {needle !== ""
+            ? ` 当前搜索“${query.trim()}”仍保留，切回列表可查看匹配记录。`
+            : ""}
+        </p>
+      ) : null}
 
       {view === "swimlane" ? <AgentPathSwimlane execution={execution} /> : null}
 
