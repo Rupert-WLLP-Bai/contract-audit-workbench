@@ -63,6 +63,9 @@ export function CaseDetailPage() {
   const workActorScope = session.isSuccess && !session.isFetching ? actorReadContextKey(session.data) : "";
   const navigationScope = session.data ? actorReadContextKey(session.data) : "";
   const restoredCaseVisit = useRef("");
+  const readingInteraction = useRef(0);
+  const readingVisit = useRef<{ key: string; interaction: number }>({ key: "", interaction: 0 });
+  const readingVisitKey = JSON.stringify([location.key, caseId]);
   const previousNavigationScope = useRef(navigationScope);
   const navigationActorChanged = Boolean(workActorScope && previousNavigationScope.current && previousNavigationScope.current !== workActorScope);
   useEffect(() => { if (workActorScope) previousNavigationScope.current = workActorScope; }, [workActorScope]);
@@ -108,21 +111,44 @@ export function CaseDetailPage() {
     setSearchParams(next, { replace: true });
   }, [actorScope, caseId, searchParams, setSearchParams, sourceCaseParam]);
   useLayoutEffect(() => {
+    const stopRestoring = () => { readingInteraction.current += 1; };
+    document.addEventListener("pointerdown", stopRestoring, true);
+    document.addEventListener("keydown", stopRestoring, true);
+    document.addEventListener("wheel", stopRestoring, true);
+    document.addEventListener("touchstart", stopRestoring, true);
+    return () => {
+      document.removeEventListener("pointerdown", stopRestoring, true);
+      document.removeEventListener("keydown", stopRestoring, true);
+      document.removeEventListener("wheel", stopRestoring, true);
+      document.removeEventListener("touchstart", stopRestoring, true);
+    };
+  }, []);
+  useLayoutEffect(() => {
+    if (readingVisit.current.key !== readingVisitKey) {
+      readingVisit.current = { key: readingVisitKey, interaction: readingInteraction.current };
+    }
+  }, [readingVisitKey]);
+  useLayoutEffect(() => {
     if ((previousCaseActor && previousCaseActor !== navigationScope) || isForbidden(detail.error) || isUnauthenticated(detail.error)) casePositions.clear();
     previousCaseActor = navigationScope;
     if (!detail.isSuccess || detail.isFetching || !workActorScope || detail.data.id !== caseId) return;
     const remembered = casePositions.get(location.key);
     const position = caseReadingPosition ?? (remembered?.caseId === caseId && remembered.actorScope === workActorScope ? remembered : null);
     const visit = JSON.stringify([location.key, caseId, workActorScope]);
-    const frame = restoredCaseVisit.current !== visit && position && !location.hash && !selectedRemediationId
-      ? requestAnimationFrame(() => { restoredCaseVisit.current = visit; window.scrollTo(0, position.scrollY); }) : 0;
-    if (!position || location.hash || selectedRemediationId) restoredCaseVisit.current = visit;
+    const uninterrupted = readingVisit.current.key === readingVisitKey && readingVisit.current.interaction === readingInteraction.current;
+    const frame = restoredCaseVisit.current !== visit && position && !location.hash && !selectedRemediationId && uninterrupted
+      ? requestAnimationFrame(() => {
+        if (readingVisit.current.key !== readingVisitKey || readingVisit.current.interaction !== readingInteraction.current) return;
+        restoredCaseVisit.current = visit;
+        window.scrollTo(0, position.scrollY);
+      }) : 0;
+    if (!position || location.hash || selectedRemediationId || !uninterrupted) restoredCaseVisit.current = visit;
     return () => {
       cancelAnimationFrame(frame);
       casePositions.set(location.key, { caseId, actorScope: workActorScope, scrollY: window.scrollY });
       if (casePositions.size > 30) casePositions.delete(casePositions.keys().next().value!);
     };
-  }, [location.key, location.hash, caseReadingPosition?.scrollY, selectedRemediationId, detail.isSuccess, detail.isFetching, detail.data, detail.error, workActorScope, navigationScope, caseId]);
+  }, [location.key, location.hash, caseReadingPosition?.scrollY, selectedRemediationId, detail.isSuccess, detail.isFetching, detail.data, detail.error, workActorScope, navigationScope, caseId, readingVisitKey]);
   const history = useCaseReviewHistory(
     caseId,
     detail.data?.latest_run?.id ?? null,

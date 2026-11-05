@@ -1120,6 +1120,62 @@ describe("application routes and API contract", () => {
     expect(findings.scrollTop).toBe(80);
   });
 
+  it.each([
+    { name: "keeps the wheel-adjusted case position when a cached return finishes revalidating", mode: "wheel", expected: 175 },
+    { name: "restores the case position after an uninterrupted cached return revalidates", mode: "uninterrupted", expected: 600 },
+    { name: "does not restore the previous tenant's case position on a cached return", mode: "tenant", expected: 175 },
+  ] as const)("case cached return: $name", async ({ mode, expected }) => {
+    const api = new Service();
+    const initialScrollY = window.scrollY;
+    api.addReview();
+    const { user, router, client } = open(api, "/cases/c1", <App />, 60_000);
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    const caseKey = queryKeys.case("c1");
+    await waitFor(() => expect(client.getQueryState(caseKey)?.fetchStatus).toBe("idle"));
+    window.scrollTo(0, 600);
+    await user.click(await screen.findByRole("link", { name: "核对原文并处理决定" }));
+    await screen.findByRole("heading", { name: "审查工作区" });
+    expect(router.state.location.state.caseReadingPosition.scrollY).toBe(600);
+    if (mode === "tenant") {
+      api.tenant = "tenant-other";
+      await client.invalidateQueries({ queryKey: queryKeys.session });
+      await waitFor(() => expect(client.getQueryData<{ tenant_id: string }>(queryKeys.session)?.tenant_id).toBe("tenant-other"));
+      await waitFor(() => expect(client.getQueryState(caseKey)?.fetchStatus).toBe("idle"));
+    }
+
+    const held = Promise.withResolvers<Response>();
+    let requested = false;
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/cases/c1" && !requested) {
+        requested = true;
+        return held.promise;
+      }
+      return api.handle(input, init);
+    });
+    const pending = client.invalidateQueries({ queryKey: caseKey, exact: true });
+    try {
+      await waitFor(() => expect(requested).toBe(true));
+      await user.click(screen.getByRole("link", { name: /^返回案件$/ }));
+      await screen.findByRole("heading", { name: "接入设备采购" });
+      expect(client.getQueryData(caseKey)).toBeDefined();
+      expect(client.getQueryState(caseKey)?.fetchStatus).toBe("fetching");
+      if (mode === "tenant") expect(router.state.location.state.caseReadingPosition).toBeUndefined();
+      else expect(router.state.location.state.caseReadingPosition.scrollY).toBe(600);
+      if (mode === "wheel") fireEvent.wheel(document, { deltaY: 250 });
+      window.scrollTo(0, 175);
+      await act(async () => {
+        held.resolve(api.json(api.cases.get("c1")));
+        await pending;
+        await new Promise((resolve) => window.setTimeout(resolve, 150));
+      });
+      expect(window.scrollY).toBe(expected);
+    } finally {
+      held.resolve(api.json(api.cases.get("c1")));
+      await pending;
+      window.scrollTo(0, initialScrollY);
+    }
+  });
+
   it("preserves the authorized case list route through the review and back", async () => {
     const api = new Service();
     api.addReview();
