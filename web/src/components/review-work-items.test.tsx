@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks manual-work filters, exact navigation callbacks and unknown or refreshing count feedback without asserting business completion.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-05
+// Updated: 2026-11-05
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useState } from "react";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

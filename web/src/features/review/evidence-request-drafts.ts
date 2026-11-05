@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Keeps bounded, actor-scoped evidence-request creation drafts and revocable operation checkpoints in tab memory without storing credentials or creating task authority.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-05
+// Updated: 2026-11-05
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useSyncExternalStore } from "react";
 
 // Only the supplement creation flow uses this bounded, tab-local store. Scope

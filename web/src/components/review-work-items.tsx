@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Renders the manual-work navigation, server-derived category counts, readable provenance and links to existing finding, evidence and remediation controls.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-05
+// Updated: 2026-11-05
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button } from "antd";
 import type { WorkFilter, WorkItem, WorkProjection, WorkTarget } from "../features/review/work-items";
 import { TechnicalDetail } from "./technical-detail";

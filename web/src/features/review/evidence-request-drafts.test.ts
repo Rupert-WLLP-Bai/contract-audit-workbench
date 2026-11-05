@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Verifies evidence creation draft isolation, bounded retention and invalidation so late operations cannot revive cleared or replaced checkpoints.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-05
+// Updated: 2026-11-05
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   activateEvidenceDraft, beginEvidenceOperation, clearAllEvidenceDrafts, evidenceDraftScope,

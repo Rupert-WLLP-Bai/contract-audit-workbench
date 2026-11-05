@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Verifies work-item source identity, independent facts, incomplete states, explicit skipped review stages and actor-scoped local return-path validation.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-05
+// Updated: 2026-11-05
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { EvidenceRequest } from "../../api/evidence-workflow";
 import type { CaseDetail, ExecutionAttempt, Finding, Remediation, ReviewWorkspace } from "../../api/types";
 import { projectReviewWork, readWorkReturn, reviewReturnPath, workReturnState } from "./work-items";
