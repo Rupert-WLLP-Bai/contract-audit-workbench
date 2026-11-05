@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-05
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -691,9 +691,6 @@ func TestSubmitRemediationPinsExactDraftAndVersion(t *testing.T) {
 	}
 }
 
-// insertLegacyTelecomReportAttempt reconstructs a pending pre-governance run.
-// Its empty policy and RulePack identities are inserted at creation; no frozen
-// snapshot or input is rewritten to simulate historical evidence.
 func TestGenerationIdempotencySeparatesUploadOperation(t *testing.T) {
 	ctx := context.Background()
 	st, err := OpenTest(t.TempDir(), "")
@@ -731,6 +728,9 @@ func TestGenerationIdempotencySeparatesUploadOperation(t *testing.T) {
 	}
 }
 
+// insertLegacyTelecomReportAttempt reconstructs a pending pre-governance run.
+// Its empty policy and RulePack identities are inserted at creation; no frozen
+// snapshot or input is rewritten to simulate historical evidence.
 func insertLegacyTelecomReportAttempt(t *testing.T, st *Store, user accounts.User, caseID string) string {
 	t.Helper()
 	ctx := context.Background()
@@ -746,6 +746,14 @@ func insertLegacyTelecomReportAttempt(t *testing.T, st *Store, user accounts.Use
 	if len(documents) < 2 {
 		t.Fatal("historical telecom fixture needs two documents")
 	}
+	control, err := st.ReadTenantRuntimeControl(ctx, caseItem.TenantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	epoch, ok := canonicalEpoch(control.LiveEpoch)
+	if !ok {
+		t.Fatalf("tenant runtime epoch is invalid: %q", control.LiveEpoch)
+	}
 	frozen, selections, err := st.acceptanceParsePlan(ctx, seen, documents, st.models)
 	if err != nil {
 		t.Fatal(err)
@@ -760,10 +768,16 @@ func insertLegacyTelecomReportAttempt(t *testing.T, st *Store, user accounts.Use
 		t.Fatal(err)
 	}
 	acceptedAt := stamp()
-	attempt := Attempt{ID: attemptID, RunID: runID, Ordinal: 1, ActorID: user.ID, State: "accepted", AcceptedAt: acceptedAt, HistoryKind: "preparing"}
+	attempt := Attempt{ID: attemptID, RunID: runID, Ordinal: 1, ActorID: user.ID, State: "accepted", AcceptedAt: acceptedAt, HistoryKind: "preparing", TenantLiveEpoch: &epoch}
 	if !st.reserveExecution() {
 		t.Fatal("could not reserve historical fixture execution")
 	}
+	launched := false
+	defer func() {
+		if !launched {
+			st.releaseExecution()
+		}
+	}()
 	err = st.updateCaseAs(user, caseID, func(next *state) error {
 		if !sameDocumentSet(documentIDs(currentDocuments(next.documents(caseID))), signature.DocumentIDs) {
 			return errors.New("historical fixture documents changed")
@@ -782,12 +796,12 @@ func insertLegacyTelecomReportAttempt(t *testing.T, st *Store, user accounts.Use
 		return appendAudit(next, runID, user.ID, "review_started", []string{caseID})
 	})
 	if err != nil {
-		st.releaseExecution()
 		t.Fatal(err)
 	}
 	if err := st.launchAttempt(context.Background(), runID, attemptID, st.models, caseItem, user); err != nil {
 		t.Fatal(err)
 	}
+	launched = true
 	return runID
 }
 
