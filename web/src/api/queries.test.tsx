@@ -498,6 +498,48 @@ describe("query hook gates", () => {
     test.unmount();
     client.clear();
   });
+
+  it("sends an expected failing rule pack mutation exactly once", async () => {
+    const actor = {
+      id: "rulepack-admin",
+      role: "admin",
+      audience: "admin",
+      tenant_id: "tenant-1",
+      org_id: "org-1",
+      active_context: { context_version: "7" },
+      csrf_token: "rulepack-csrf-token",
+    };
+    setSessionIdentity(actor);
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ code: "conflict", message: "版本已变化" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const client = testClient();
+    const create = renderHook(() => useCreateRulePack(), {
+      wrapper: testWrapper(client),
+    });
+    act(() => {
+      create.result.current.mutate({} as never);
+    });
+    await waitFor(() => expect(create.result.current.isError).toBe(true));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toBe("/api/admin/rulepacks");
+    expect(init?.method).toBe("POST");
+    const headers = new Headers(init?.headers);
+    expect(headers.get("X-Context-Version")).toBe(
+      actor.active_context.context_version,
+    );
+    expect(headers.get("X-CSRF-Token")).toBe(actor.csrf_token);
+    expect(create.result.current.error).toBeInstanceOf(ApiError);
+    expect((create.result.current.error as ApiError).status).toBe(409);
+    const entry = client.getMutationCache().getAll()[0];
+    expect(entry?.options.retry).toBe(false);
+    create.unmount();
+    client.clear();
+  });
 });
 
 describe("review state polling", () => {
