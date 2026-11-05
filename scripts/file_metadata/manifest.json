@@ -7781,12 +7781,12 @@
         "value": "2026-11-05",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "86ccd2edb19575f72be806d291f15ef4fd323d98",
+          "commit": "e46c9ef92d987ba30003696d96b0dff4bae7529d",
           "path": "docs/engineering/ui-foundation-inventory.md",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -50241,7 +50241,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r47",
+      "revision": "r48",
       "copyright": [
         {
           "holder": "Bai Junhao",

@@ -4,7 +4,7 @@
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-05 -->
 <!-- Updated: 2026-11-05 -->
-<!-- Revision: r1 -->
+<!-- Revision: r2 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -63,10 +63,12 @@
 | 工作台列表内详情 | `bunx vitest run src/pages/workbench-module-page.test.tsx` | PASS |
 | 首页 | `bunx vitest run src/pages/home-page.test.tsx` | PASS |
 | 快速门禁 | `make check-fast`（PR 实际目标基线） | 见 PR 检查结果；未运行前记 `NOT_RUN` |
-| 浏览器 computed style / 键盘 / 四宽度 | 固定候选或本批定点浏览器检查 | `NOT_RUN`；由 #97 固定候选执行完整验收 |
+| 浏览器定点检查（客户端案件页 Modal、焦点、720px 窄屏；管理端设置页；门户） | 仓外 `contract-audit-delivery/ui2/audit/verify-m1-closeout.js` 与 `m1-closeout.json` | `PASS`：列表白底、页面 `#f3f6fb`、Modal 白底/8px/同字体、焦点轮廓 3px、无横向溢出 |
+| 浏览器 computed style / 四宽度 / 原生 200% / 全站 54 视图 | 固定候选 | `NOT_RUN`；由 #97 执行完整验收 |
 
 ## 已知边界
 
 - 本盘点不声称 54 个设计视图已全部完成；逐页状态以 #261 覆盖矩阵和各里程碑 Issue 为准。
 - 颜色、字体和汇总透明度可以在组件层验证；真实浏览器滚动、原生 200% 缩放、权限和异步返回仍需要浏览器与固定候选证据。
 - 工作台技术字段聚合只改变呈现，不改变服务端字段、授权、冻结记录或人工历史。
+- 当前 `web/src` 未调用 Ant Design `message`/`notification`，Message 主题核对为 `NOT_APPLICABLE`；`bootstrap.tsx` 已挂载 `AntdApp`，后续使用会继承同一 `ConfigProvider`。Modal 已在客户端案件页做 computed style 定点核对，管理端与门户共用 `mountApplication`，管理端设置页与门户外层壳已核对。
