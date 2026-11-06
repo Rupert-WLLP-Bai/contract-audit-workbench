@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-06
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -71,6 +71,11 @@ const NotFoundPage = lazy(() =>
 const ReviewPage = lazy(() =>
   import("./pages/review-page").then((module) => ({
     default: module.ReviewPage,
+  })),
+);
+const AgentStudioPage = lazy(() =>
+  import("./pages/agent-studio-page").then((module) => ({
+    default: module.AgentStudioPage,
   })),
 );
 const ComparePage = lazy(() =>
@@ -151,6 +156,10 @@ export function App() {
             <Route
               path="/cases/:caseId/reviews/:runId"
               element={<ReviewPage />}
+            />
+            <Route
+              path="/cases/:caseId/reviews/:runId/agent"
+              element={<AgentStudioPage />}
             />
             <Route
               path="/cases/:caseId/subject-changes/:requestId"

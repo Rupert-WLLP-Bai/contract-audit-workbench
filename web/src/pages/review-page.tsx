@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-05
-// Revision: r8
+// Updated: 2026-11-06
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -787,6 +787,18 @@ export function ReviewPage() {
           <p>{caseDetail.data?.title ?? "案件"}</p>
         </div>
         {activeReturn ? <Link to={activeReturn} state={{ ...caseNavigationState, reviewReadingPosition: activeReturnPosition }}>返回人工办理</Link> : null}
+        <Button
+          aria-label={"Agent Studio"}
+          href={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(runId)}/agent${
+            selectedAttempt?.id
+              ? `?attempt=${encodeURIComponent(selectedAttempt.id)}`
+              : selectedAttemptId
+                ? `?attempt=${encodeURIComponent(selectedAttemptId)}`
+                : ""
+          }`}
+        >
+          Agent Studio
+        </Button>
         <Button
           aria-label={"返回案件"}
           href={`/cases/${encodeURIComponent(caseId)}`}

@@ -3,13 +3,14 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-06
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 const PHASE_LABELS: Record<string, string> = {
   acceptance: "受理",
+  execution: "执行",
   audit_review_execution_v1: "审查执行",
   input_preparation: "输入准备",
   deterministic_rules: "确定性规则审查",
@@ -22,10 +23,17 @@ const PHASE_LABELS: Record<string, string> = {
   restart_recovery: "重启恢复",
   evidence_tool: "证据工具",
   agent_review_result: "智能体审查结果",
+  authorized_input: "授权输入",
+  fact_extraction: "事实提取",
+  tool_evidence: "工具证据",
+  rulepack: "规则包核验",
+  evidence_guard: "证据守卫",
+  persistence: "结果持久化",
 };
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   attempt_accepted: "执行已受理",
+  attempt_started: "执行开始",
   span_started: "开始",
   span_completed: "完成",
   span_failed: "失败",
