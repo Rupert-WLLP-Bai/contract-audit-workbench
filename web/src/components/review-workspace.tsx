@@ -213,9 +213,14 @@ function RunCallouts({ run }: { run: ReviewRun }) {
   return (
     <>
       {run.state === "partial" ? (
-        <p className="callout">
-          {run.partial_reason ?? "部分结果已保留。"}
-        </p>
+        <>
+          <p className="callout">
+            {run.partial_reason ?? "部分结果已保留。"}
+          </p>
+          <p className="meta">
+            部分完成不等于全部失败；缺证或证据不足不等于解析失败，也不代表合同已合规。
+          </p>
+        </>
       ) : null}
       {run.state === "failed" ? (
         <p className="callout">
