@@ -2,8 +2,8 @@
 // Purpose: Renders the read-only Agent Studio for one fixed review attempt: capability relationships, a saved-event swimlane with node details, and a searchable event ledger, all projected from existing review and diagnostics APIs.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-07
-// Updated: 2026-11-07
+// Created: 2026-11-06
+// Updated: 2026-11-06
 // Revision: r1
 // Copyright: See LICENSE
 // End file metadata.

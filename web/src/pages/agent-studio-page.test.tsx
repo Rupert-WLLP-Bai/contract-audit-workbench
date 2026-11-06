@@ -2,8 +2,8 @@
 // Purpose: Checks the read-only Agent Studio page: unknown diagnostics stay unobserved, the event list filters with exact loaded counts, swimlane node selection shows saved detail, invalid identities fail safely, and phase lanes preserve saved order.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-07
-// Updated: 2026-11-07
+// Created: 2026-11-06
+// Updated: 2026-11-06
 // Revision: r1
 // Copyright: See LICENSE
 // End file metadata.
