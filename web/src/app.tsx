@@ -73,6 +73,11 @@ const ReviewPage = lazy(() =>
     default: module.ReviewPage,
   })),
 );
+const AgentStudioPage = lazy(() =>
+  import("./pages/agent-studio-page").then((module) => ({
+    default: module.AgentStudioPage,
+  })),
+);
 const ComparePage = lazy(() =>
   import("./pages/compare-page").then((module) => ({
     default: module.ComparePage,
@@ -151,6 +156,10 @@ export function App() {
             <Route
               path="/cases/:caseId/reviews/:runId"
               element={<ReviewPage />}
+            />
+            <Route
+              path="/cases/:caseId/reviews/:runId/agent"
+              element={<AgentStudioPage />}
             />
             <Route
               path="/cases/:caseId/subject-changes/:requestId"

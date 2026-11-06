@@ -788,6 +788,18 @@ export function ReviewPage() {
         </div>
         {activeReturn ? <Link to={activeReturn} state={{ ...caseNavigationState, reviewReadingPosition: activeReturnPosition }}>返回人工办理</Link> : null}
         <Button
+          aria-label={"Agent Studio"}
+          href={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(runId)}/agent${
+            selectedAttempt?.id
+              ? `?attempt=${encodeURIComponent(selectedAttempt.id)}`
+              : selectedAttemptId
+                ? `?attempt=${encodeURIComponent(selectedAttemptId)}`
+                : ""
+          }`}
+        >
+          Agent Studio
+        </Button>
+        <Button
           aria-label={"返回案件"}
           href={`/cases/${encodeURIComponent(caseId)}`}
           onClick={(event) => {
