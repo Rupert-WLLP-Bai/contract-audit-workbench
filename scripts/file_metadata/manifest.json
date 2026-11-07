@@ -50244,7 +50244,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r51",
+      "revision": "r52",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -71131,7 +71131,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/original-page-view.test.tsx": {
-      "purpose": "Checks native and scanned-page overlays, immutable-source mismatch refusal, repeated-text handling, pagination and recognition cleanup.",
+      "purpose": "Checks native and scanned-page overlays, per-quote location summary, immutable-source mismatch refusal, repeated-text handling, pagination and recognition cleanup.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -71158,15 +71158,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-07",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "commit": "b4a135c22002abb6f3c86e88e829169194b09634",
           "path": "web/src/components/original-page-view.test.tsx",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -71179,7 +71179,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/original-page-view.tsx": {
-      "purpose": "Reads and verifies immutable originals, renders one page at a time and displays unique frozen quote matches while cancelling obsolete render and recognition tasks.",
+      "purpose": "Reads and verifies immutable originals, renders one page at a time and displays unique frozen quote matches with per-quote location status while cancelling obsolete render and recognition tasks.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -71206,15 +71206,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-07",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "commit": "b4a135c22002abb6f3c86e88e829169194b09634",
           "path": "web/src/components/original-page-view.tsx",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
