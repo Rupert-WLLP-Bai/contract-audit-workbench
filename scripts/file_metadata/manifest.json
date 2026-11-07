@@ -11519,15 +11519,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-05",
+        "value": "2026-11-07",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "cd96895e5ca1e1d11f25f9c2e4ec9ba289365769",
+          "commit": "f0ff50751549637a43f106bb139e12372684337b",
           "path": "internal/apidocs/openapi.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r11",
+      "revision": "r12",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -11620,15 +11620,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-05",
+        "value": "2026-11-07",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "cd96895e5ca1e1d11f25f9c2e4ec9ba289365769",
+          "commit": "f0ff50751549637a43f106bb139e12372684337b",
           "path": "internal/apidocs/route_contract.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r7",
+      "revision": "r8",
       "copyright": [
         {
           "holder": "Bai Junhao",
