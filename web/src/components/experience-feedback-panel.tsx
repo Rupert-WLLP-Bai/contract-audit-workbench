@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-07
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -642,6 +642,65 @@ function CandidateSection({
   );
 }
 
+function feedbackJobStatus(status: ExperienceDistillationStatus | null): string {
+  if (!status) return "状态未读取";
+  return STATUS_LABELS[status.state] ?? `未识别（${status.state}）`;
+}
+
+function FeedbackProgressChain({
+  feedback,
+  status,
+  candidate,
+  jobId,
+}: {
+  feedback: ExperienceFeedback;
+  status: ExperienceDistillationStatus | null;
+  candidate: ExperienceCandidate | null;
+  jobId: string | null;
+}) {
+  const candidateState = candidate
+    ? "已生成，内容已读取"
+    : status?.candidate_id && status.version_id
+      ? "已生成，内容待读取"
+      : "未生成";
+  return (
+    <section aria-label="经验回流进度链">
+      <h4>经验回流进度</h4>
+      <p className="meta">只读状态来自已保存记录；候选生成不等于审批或发布。</p>
+      <ol>
+        <li>
+          <strong>人工决定与冻结证据</strong>
+          <span>{decisionLabel(feedback.decision_action)} · {feedback.evidence_refs.length} 条证据</span>
+        </li>
+        <li>
+          <strong>已提交反馈</strong>
+          <span>已保存，可刷新恢复</span>
+        </li>
+        <li>
+          <strong>提炼任务</strong>
+          <span>{jobId ? feedbackJobStatus(status) : "未请求提炼"}</span>
+        </li>
+        <li>
+          <strong>候选版本</strong>
+          <span>{candidateState}</span>
+        </li>
+        <li>
+          <strong>待审核 / 已批准</strong>
+          <span>{candidate ? "候选已生成，需有权限的治理角色审核" : "未观测"}</span>
+        </li>
+        <li>
+          <strong>已发布 / 已撤回</strong>
+          <span>需在知识治理版本详情核对；候选生成不等于发布</span>
+        </li>
+        <li>
+          <strong>后续审查参考与结果</strong>
+          <a href="#experience-usage-heading">查看本次审查登记的经验参考</a>
+        </li>
+      </ol>
+    </section>
+  );
+}
+
 function FeedbackProgress({
   feedback,
   status,
@@ -676,6 +735,7 @@ function FeedbackProgress({
   return (
     <section aria-label="经验反馈进度" aria-live="polite">
       <h3>反馈已记录</h3>
+      <FeedbackProgressChain feedback={feedback} status={status} candidate={candidate} jobId={jobId} />
       <p>审查判断：{decisionLabel(feedback.decision_action)}。</p>
       <p>建议理由：{feedback.reason}</p>
       {feedback.evidence_refs.map((ref, index) => <blockquote key={`${ref.document_id}:${ref.start}:${index}`}>{ref.quote}</blockquote>)}

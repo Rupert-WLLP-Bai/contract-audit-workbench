@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-07
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,7 +14,7 @@ import { ConfigProvider } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setSessionIdentity } from "../api/http";
 import type { Finding, ReviewDocument } from "../api/types";
 import { chooseOption } from "../test/antd";
@@ -60,7 +60,7 @@ const candidate = {
     check_action: "核对约定期限", minimum_evidence: ["合同原文"], counterexamples: ["无期限条款"],
     valid_from: "2026-01-01", valid_until: "2027-01-01", policy_refs: [{ knowledge_id: "policy-1", version_id: "policy-version-1", content_sha256: "policy-digest" }], review_diff: "复核差异" },
 };
-const trackedKey = `experience-feedback:${JSON.stringify(["case-1", "run-1", "attempt-1", "finding-1"])}`;
+const trackedKey = `experience-feedback:${JSON.stringify(["", "case-1", "run-1", "attempt-1", "finding-1"])}`;
 
 function parsedMetadata() {
   return {
@@ -139,6 +139,14 @@ async function prepareSuggestion(user: UserEvent) {
   await user.type(screen.getByRole("textbox", { name: "经验建议理由" }), "核对期限");
 }
 
+beforeEach(() => {
+  setSessionIdentity({
+    id: "reviewer", role: "reviewer", audience: "client", tenant_id: "tenant",
+    org_id: "org", principal_id: null, active_context: { context_version: "ctx-1" },
+    csrf_token: "csrf-1",
+  });
+});
+
 afterEach(() => {
   cleanup();
   sessionStorage.clear();
@@ -210,6 +218,10 @@ describe("experience feedback panel", () => {
     expect(candidateContent).toHaveTextContent("核对约定期限");
     expect(screen.getByText(/任务状态：提炼完成/)).toBeInTheDocument();
     expect(screen.getByText(/候选仅供后续治理审核，不代表批准或发布/)).toBeInTheDocument();
+    const chain = screen.getByRole("region", { name: "经验回流进度链" });
+    expect(chain).toHaveTextContent("人工决定与冻结证据");
+    expect(chain).toHaveTextContent("提炼完成");
+    expect(chain).toHaveTextContent("已生成，内容已读取");
     const post = requests.find((request) => request.path.endsWith("experience-feedback") && request.init.method === "POST")!;
     expect(JSON.parse(String(post.init.body))).toEqual({
       run_id: "run-1", attempt_id: "attempt-1", finding_id: "finding-1", decision_id: "decision-1", reason: "核对期限",
