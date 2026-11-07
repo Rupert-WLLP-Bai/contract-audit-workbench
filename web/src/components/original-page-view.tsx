@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Reads and verifies immutable originals, renders one page at a time and displays unique frozen quote matches with per-quote location status while cancelling obsolete render and recognition tasks.
+// Purpose: Reads and verifies immutable originals, renders one page at a time, displays per-quote location status and reuses an identity/page scoped bounded OCR word cache while cancelling obsolete render and recognition tasks.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-07
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -30,6 +30,37 @@ function readError(error: unknown): string {
     : "原件暂时无法显示，请切换文字原文或下载原件核对";
 }
 
+const OCR_CACHE_LIMIT = 16;
+const OCR_CACHE = new Map<string, SourceWord[]>();
+
+function ocrCacheKeyOf(scope: OriginalReadScope, documentId: string, digest: string, page: number): string {
+  return JSON.stringify([scope.contextKey, scope.caseId, documentId, digest, page]);
+}
+
+function readOCRCache(key: string): SourceWord[] | null {
+  const value = OCR_CACHE.get(key);
+  if (!value) return null;
+  // Refresh LRU position without changing the immutable cached words.
+  OCR_CACHE.delete(key);
+  OCR_CACHE.set(key, value);
+  return value;
+}
+
+function writeOCRCache(key: string, words: SourceWord[]): void {
+  OCR_CACHE.delete(key);
+  OCR_CACHE.set(key, words);
+  while (OCR_CACHE.size > OCR_CACHE_LIMIT) {
+    const oldest = OCR_CACHE.keys().next().value;
+    if (oldest === undefined) break;
+    OCR_CACHE.delete(oldest);
+  }
+}
+
+/** Test-only reset; production cache remains bounded by OCR_CACHE_LIMIT. */
+export function clearOriginalOCRCache(): void {
+  OCR_CACHE.clear();
+}
+
 export default function OriginalPageView({ scope, documentId, filename, digest, text, quotes }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [source, setSource] = useState<OriginalSource | null>(null);
@@ -45,6 +76,7 @@ export default function OriginalPageView({ scope, documentId, filename, digest, 
   const [manualPage, setManualPage] = useState<number | null>(null);
   const [ocrError, setOCRError] = useState<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
+  const ocrCacheKey = ocrCacheKeyOf(scope, documentId, digest, page);
 
   useEffect(() => { setPage(firstPage); setManualPage(null); }, [firstPage]);
 
@@ -94,12 +126,22 @@ export default function OriginalPageView({ scope, documentId, filename, digest, 
 
   useEffect(() => {
     if (!needOCR || !rendered || rendered.page !== page || !canvas.current || ocr?.page === page) return;
+    const cached = readOCRCache(ocrCacheKey);
+    if (cached) {
+      setOCR({ page, words: cached });
+      setOCRError(null);
+      setRecognizing(false);
+      return;
+    }
     const controller = new AbortController();
     let active = true;
     const timer = window.setTimeout(() => controller.abort(new Error("当前页识别超时，可切换文字原文核对")), 90_000);
     setRecognizing(true); setProgress(0); setOCRError(null);
     void recognizePageWords(canvas.current, controller.signal, setProgress).then((words) => {
-      if (!controller.signal.aborted) setOCR({ page, words });
+      if (!controller.signal.aborted) {
+        setOCR({ page, words });
+        writeOCRCache(ocrCacheKey, words);
+      }
     }).catch((caught: unknown) => {
       if (active && !controller.signal.aborted) setOCRError("当前页文字位置识别失败，请切换文字原文或下载原件核对。");
       else if (active && controller.signal.reason instanceof Error && controller.signal.reason.name !== "AbortError")
@@ -108,7 +150,7 @@ export default function OriginalPageView({ scope, documentId, filename, digest, 
       void caught;
     }).finally(() => { window.clearTimeout(timer); if (active) setRecognizing(false); });
     return () => { active = false; controller.abort(); window.clearTimeout(timer); setRecognizing(false); };
-  }, [needOCR, rendered, page, ocr?.page]);
+  }, [needOCR, rendered, page, ocr?.page, ocrCacheKey]);
 
   const locations = nativeLocations.map((location, index) => location.kind === "not_found" && ocr?.page === page && quotes[index]
     ? locateSourceQuote(text, quotes[index]!, ocr.words, page) : location);
