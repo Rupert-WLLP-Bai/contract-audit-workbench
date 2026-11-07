@@ -26154,6 +26154,58 @@
         }
       }
     },
+    "/api/cases/{caseID}/documents/{docID}/derived-preview": {
+      "get": {
+        "operationId": "getDerivedDocumentPreview",
+        "tags": [
+          "材料"
+        ],
+        "summary": "读取 DOCX 受控派生 PDF 预览",
+        "description": "仅 DOCX 原件；由受控转换服务生成只读派生 PDF，响应绑定原始 SHA-256 与转换版本，不修改原件字节。",
+        "parameters": [
+          {
+            "name": "caseID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "docID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "派生 PDF；X-Derived-From-SHA256 与 X-Derived-Conversion 标明来源与转换身份。",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
     "/api/cases/{caseID}/documents/{docID}/original": {
       "get": {
         "operationId": "getOriginal",
