@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks native and scanned-page overlays, immutable-source mismatch refusal, repeated-text handling, pagination and recognition cleanup.
+// Purpose: Checks native and scanned-page overlays, per-quote location summary, immutable-source mismatch refusal, repeated-text handling, pagination and recognition cleanup.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-04
-// Revision: r1
+// Updated: 2026-11-07
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -47,6 +47,7 @@ describe("original page review", () => {
     expect(mock.verify).toHaveBeenCalledWith(new Uint8Array([1]), props.digest);
     expect(mock.render.mock.calls[0]?.[0]).toBe(2);
     expect(view.container.querySelector(".original-quote-region")).toHaveStyle({ left: "10%", top: "20%" });
+    expect(screen.getByRole("region", { name: "引用定位统计" })).toHaveTextContent("当前页已标注 1 条，待核对 0 条");
     expect(mock.recognize).not.toHaveBeenCalled();
   });
 
@@ -70,6 +71,7 @@ describe("original page review", () => {
     mock.render.mockResolvedValue([...words, ...words]);
     const view = render(<OriginalPageView {...props} />);
     await screen.findByText(/有多处相同文字/);
+    expect(screen.getByRole("region", { name: "引用定位统计" })).toHaveTextContent("当前页已标注 0 条，待核对 1 条");
     expect(mock.recognize).not.toHaveBeenCalled();
     expect(view.container.querySelector(".original-quote-region")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "下一页" }));
