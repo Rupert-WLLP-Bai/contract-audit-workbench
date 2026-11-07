@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-07
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
   const htmlEntry = mode === "admin" ? "admin.html" : mode === "portal" ? "portal.html" : "index.html";
   const base = mode === "admin" ? "/admin/" : mode === "portal" ? "/portal/" : "/";
   return {
-    plugins: [react(), originalReaderAssets(base), {
+    plugins: [react(), ...(mode === "admin" || mode === "portal" ? [] : [originalReaderAssets(base)]), {
       name: "development-html-entry",
       apply: "serve",
       configureServer(server) {
