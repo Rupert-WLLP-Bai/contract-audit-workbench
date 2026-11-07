@@ -57,11 +57,32 @@ USER contractaudit:contractaudit
 ENTRYPOINT ["/app/entrypoint"]
 CMD ["/app/server"]
 
+# The handbook is built from docs/ by docs-site and served under /docs/ on the
+# client origin. Admin/portal origins keep their own shells and do not get a
+# half-working /api-docs cross-link. No extra container or port.
+FROM oven/bun:1.4.3@sha256:ec06c3b6cea04192ae6770c434f668ca41d343ad19fa6472216c7b48be39c598 AS docs-build
+WORKDIR /src/docs-site
+COPY docs-site/package.json docs-site/bun.lock docs-site/docusaurus.config.js docs-site/sidebars.js ./
+COPY docs-site/src/ ./src/
+COPY docs-site/i18n/ ./i18n/
+COPY docs/ /src/docs/
+# Handbook pages link to repository source files (migrations, scripts, env
+# template, web types) and Docusaurus emits those as static assets. The build
+# stage needs the same sibling layout as the repository root; none of these
+# files are copied into the runtime image.
+COPY internal/ /src/internal/
+COPY deployments/ /src/deployments/
+COPY web/src/ /src/web/src/
+COPY .env.example /src/.env.example
+ENV CAW_DOCS_BASE_URL=/docs/
+RUN bun install --frozen-lockfile && bun run build -- --out-dir /out/docs
+
 FROM nginxinc/nginx-unprivileged:1.29-alpine@sha256:0c79d56aee561a1d81c63f00eee5fb5fe29279560cdc55e91425133104c7fbe6 AS client
 COPY deploy/app/nginx/backend-proxy.conf /etc/nginx/snippets/backend-proxy.conf
 COPY deploy/app/nginx/proxy-headers.conf /etc/nginx/snippets/proxy-headers.conf
 COPY deploy/app/nginx/client.conf /etc/nginx/conf.d/default.conf
 COPY --from=web-build /src/web/dist/client/ /usr/share/nginx/html/
+COPY --from=docs-build /out/docs/ /usr/share/nginx/html/docs/
 
 FROM nginxinc/nginx-unprivileged:1.29-alpine@sha256:0c79d56aee561a1d81c63f00eee5fb5fe29279560cdc55e91425133104c7fbe6 AS admin
 COPY deploy/app/nginx/backend-proxy.conf /etc/nginx/snippets/backend-proxy.conf

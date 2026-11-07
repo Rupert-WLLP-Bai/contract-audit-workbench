@@ -11,6 +11,7 @@
   "dependencies": {
     "@docusaurus/core": "3.10.2",
     "@docusaurus/plugin-content-docs": "3.10.2",
+    "@docusaurus/plugin-content-pages": "3.10.2",
     "@docusaurus/theme-classic": "3.10.2",
     "@docusaurus/theme-mermaid": "3.10.2",
     "@mermaid-js/layout-elk": "0.1.9",

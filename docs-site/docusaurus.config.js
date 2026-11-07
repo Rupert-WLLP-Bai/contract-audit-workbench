@@ -1,10 +1,15 @@
 const {themes: prismThemes} = require('prism-react-renderer');
 
+// Local preview serves the landing page at /; the application image serves the
+// same build under /docs/ on the client/admin origins. All cross-links to the
+// application use root-relative plain anchors so they resolve on either origin.
+const baseUrl = process.env.CAW_DOCS_BASE_URL || '/';
+
 const config = {
   title: '合同智能审计工作台',
   tagline: '产品、工程与运维手册',
-  url: 'http://localhost:3000',
-  baseUrl: '/',
+  url: process.env.CAW_DOCS_SITE_URL || 'http://localhost:3000',
+  baseUrl,
   onBrokenLinks: 'throw',
   i18n: {
     defaultLocale: 'zh-Hans',
@@ -35,10 +40,11 @@ const config = {
       {
         id: 'handbook',
         path: '../docs',
-        routeBasePath: '/',
+        routeBasePath: '/handbook',
         sidebarPath: './sidebars.js',
       },
     ],
+    '@docusaurus/plugin-content-pages',
   ],
   themes: [
     ['@docusaurus/theme-classic', {customCss: './src/css/custom.css'}],
@@ -52,12 +58,18 @@ const config = {
     navbar: {
       title: '合同审计工作台',
       items: [
+        { to: '/', label: '首页', position: 'left' },
         {
           type: 'docSidebar',
           sidebarId: 'handbook',
           docsPluginId: 'handbook',
           position: 'left',
           label: '手册',
+        },
+        {
+          type: 'html',
+          className: 'nav-api-docs',
+          value: '<a class="navbar__item navbar__link" href="/api-docs">API 文档</a>',
         },
         {
           href: 'https://github.com/Rupert-WLLP-Bai/contract-audit-workbench',
@@ -67,14 +79,19 @@ const config = {
       ],
     },
     footer: {
+      style: 'light',
       links: [
         {
           title: '手册',
           items: [
-            { label: '产品能力', to: '/product/capabilities' },
-            { label: '本地开发', to: '/engineering/local-development' },
-            { label: '部署模式', to: '/operations/deployment' },
+            { label: '产品能力', to: '/handbook/product/capabilities' },
+            { label: '本地开发', to: '/handbook/engineering/local-development' },
+            { label: '部署模式', to: '/handbook/operations/deployment' },
           ],
+        },
+        {
+          title: '开发者',
+          items: [{ html: '<a class="footer__link-item" href="/api-docs">API 文档</a>' }],
         },
       ],
       copyright: '合同智能审计工作台 · 使用手册',
