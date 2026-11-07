@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-07
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -48,6 +48,7 @@ type NavLinkItem = {
   icon: string;
   end?: boolean;
   external?: boolean;
+  href?: string;
 };
 
 const NAV_GROUPS: {
@@ -108,7 +109,10 @@ const NAV_GROUPS: {
   {
     key: "developer",
     label: "开发者资源",
-    links: [{ to: "/api-docs", label: "API 文档", icon: "api" }],
+    links: [
+      { to: "/docs/", label: "使用手册", icon: "knowledge", external: true, href: "/docs/" },
+      { to: "/api-docs", label: "API 文档", icon: "api" },
+    ],
   },
 ];
 
@@ -439,7 +443,7 @@ function AppSidebar({
             key: item.to,
             icon: NAV_ICONS[item.icon],
             label: item.external ? (
-              <a href={adminRulePacksUrl}>{item.label}</a>
+              <a href={item.href ?? adminRulePacksUrl}>{item.label}</a>
             ) : (
               <NavLink to={item.to} end={item.end}>
                 {item.label}
