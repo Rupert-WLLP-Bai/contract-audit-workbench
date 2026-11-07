@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Reads and verifies immutable originals, renders one page at a time and displays unique frozen quote matches while cancelling obsolete render and recognition tasks.
+// Purpose: Reads and verifies immutable originals, renders one page at a time and displays unique frozen quote matches with per-quote location status while cancelling obsolete render and recognition tasks.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-04
-// Revision: r1
+// Updated: 2026-11-07
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Select } from "antd";
 import { ApiError, requestBytes } from "../api/http";
 import { paths } from "../api/paths";
-import { locateSourceQuote, type SourceQuote, type SourceWord } from "../domain/source-annotation";
+import { locateSourceQuote, type SourceLocation, type SourceQuote, type SourceWord } from "../domain/source-annotation";
 import { openOriginalSource, OriginalReadError, originalKind, recognizePageWords, verifyOriginalDigest, type OriginalSource } from "../features/review/original-source";
 import type { OriginalReadScope } from "./original-document-reader";
 
@@ -113,6 +113,20 @@ export default function OriginalPageView({ scope, documentId, filename, digest, 
   const locations = nativeLocations.map((location, index) => location.kind === "not_found" && ocr?.page === page && quotes[index]
     ? locateSourceQuote(text, quotes[index]!, ocr.words, page) : location);
   const boxes = locations.flatMap((location) => location.kind === "located" ? location.boxes : []);
+  const locatedCount = locations.filter((location) => location.kind === "located").length;
+  const locationLabel = (location: SourceLocation | undefined) => {
+    if (!location) return quotes.length > 0 && quotePageOutsideCurrent() ? "未在当前页" : "等待原件渲染";
+    switch (location.kind) {
+      case "located": return "已标注";
+      case "ambiguous": return "重复文字，需人工核对";
+      case "wrong_page": return "页码不匹配";
+      case "not_found": return "未匹配，需核对原文";
+      case "unavailable": return "文字或定位质量不足，需切换文字原文";
+    }
+  };
+  function quotePageOutsideCurrent(): boolean {
+    return quotes.some((quote) => quote.page !== null && quote.page !== page);
+  }
   const highlightKey = boxes.map((box) => `${box.x}:${box.y}:${box.width}:${box.height}`).join(";");
   useEffect(() => {
     const container = scroll.current;
@@ -135,6 +149,16 @@ export default function OriginalPageView({ scope, documentId, filename, digest, 
           <span>{zoom}%</span>
           <Button aria-label="放大原件" onClick={() => setZoom(Math.min(250, zoom + 25))} disabled={zoom >= 250}>放大</Button>
         </div>
+      ) : null}
+      {rendered && canLocate && quotes.length > 0 ? (
+        <section className="original-locate-summary" aria-label="引用定位统计">
+          <p role="status">当前页已标注 {locatedCount} 条，待核对 {quotes.length - locatedCount} 条</p>
+          <ul>
+            {quotes.map((quote, index) => <li key={quote.id}>
+              第 {index + 1} 处引用 · {quote.page === null ? "未知页码" : `第 ${quote.page} 页`} · {locationLabel(locations[index])}
+            </li>)}
+          </ul>
+        </section>
       ) : null}
       {error ? <div role="alert"><p>{error}</p><Button onClick={() => setRetry((value) => value + 1)}>重新读取原件</Button></div> : null}
       {!source && !error ? <p role="status">正在读取本次审查使用的原件…</p> : null}
