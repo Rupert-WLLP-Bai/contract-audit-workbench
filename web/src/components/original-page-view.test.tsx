@@ -1,17 +1,17 @@
 // File metadata (manifest mirror):
-// Purpose: Checks native and scanned-page overlays, per-quote location summary, immutable-source mismatch refusal, repeated-text handling, pagination and recognition cleanup.
+// Purpose: Checks native and scanned-page overlays, per-quote location summary, bounded OCR cache reuse, immutable-source mismatch refusal, repeated-text handling, pagination and recognition cleanup.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-07
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithAntd as render } from "../test/antd";
-import OriginalPageView from "./original-page-view";
+import OriginalPageView, { clearOriginalOCRCache } from "./original-page-view";
 import type { SourceWord } from "../domain/source-annotation";
 import { OriginalReadError } from "../features/review/original-source";
 
@@ -31,6 +31,7 @@ const props = {
 };
 
 beforeEach(() => {
+  clearOriginalOCRCache();
   vi.clearAllMocks();
   mock.read.mockResolvedValue(new Uint8Array([1]));
   mock.verify.mockResolvedValue(undefined);
@@ -57,6 +58,17 @@ describe("original page review", () => {
     await screen.findByText(/已标出当前页/);
     expect(mock.recognize).toHaveBeenCalledTimes(1);
     expect(view.container.querySelectorAll(".original-quote-region")).toHaveLength(1);
+  });
+
+  it("reuses a bounded OCR result for the same identity and page", async () => {
+    mock.render.mockResolvedValue([]);
+    const first = render(<OriginalPageView {...props} />);
+    await screen.findByText(/已标出当前页/);
+    expect(mock.recognize).toHaveBeenCalledTimes(1);
+    first.unmount();
+    render(<OriginalPageView {...props} />);
+    await screen.findByText(/已标出当前页/);
+    expect(mock.recognize).toHaveBeenCalledTimes(1);
   });
 
   it("refuses another original and does not open a mismatched file", async () => {
