@@ -50244,7 +50244,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r52",
+      "revision": "r53",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -70871,15 +70871,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-07",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "c6ab86f9d92a19f13b53d0db5d7375cc443e791f",
+          "commit": "bef5ffe9e68db7d74b3935418f09b3ad2b42fabd",
           "path": "web/vite.config.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
