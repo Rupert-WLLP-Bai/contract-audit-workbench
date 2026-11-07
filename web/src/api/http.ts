@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-07
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -399,6 +399,27 @@ export async function requestJson<T>(
   assertSessionEpoch(requestEpoch, isSessionRequest);
   if (!response.ok) throw await errorFromResponse(response);
   return readJsonResponse(response, parse, requestEpoch, isSessionRequest);
+}
+
+export interface DerivedPreview {
+  bytes: Uint8Array<ArrayBuffer>;
+  originalDigest: string;
+  conversionRef: string;
+}
+
+/** Read a server-derived PDF and its original identity headers; never trusts a different original. */
+export async function requestDerivedPreview(path: string, signal: AbortSignal, maxBytes = 64 << 20): Promise<DerivedPreview> {
+  const requestEpoch = sessionEpoch;
+  const response = await fetchResponse(path, { method: "GET", signal, headers: { Accept: "application/pdf" } });
+  assertSessionEpoch(requestEpoch, false);
+  if (!response.ok) throw await errorFromResponse(response);
+  const originalDigest = response.headers.get("X-Derived-From-SHA256") ?? "";
+  const conversionRef = response.headers.get("X-Derived-Conversion") ?? "";
+  if (!/^[0-9a-f]{64}$/.test(originalDigest)) throw new ApiError("派生预览缺少原件摘要", 502, "derived_preview_invalid", false, null);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  assertSessionEpoch(requestEpoch, false);
+  if (bytes.length === 0 || bytes.length > maxBytes) throw new ApiError("派生预览不可用", 413, "derived_preview_invalid", false, null);
+  return { bytes, originalDigest, conversionRef };
 }
 
 /** Authorized original reads obey the same session invalidation as JSON reads. */

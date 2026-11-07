@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-07
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,8 +15,8 @@ import OriginalPageView, { clearOriginalOCRCache } from "./original-page-view";
 import type { SourceWord } from "../domain/source-annotation";
 import { OriginalReadError } from "../features/review/original-source";
 
-const mock = vi.hoisted(() => ({ read: vi.fn(), verify: vi.fn(), open: vi.fn(), recognize: vi.fn(), dispose: vi.fn(), render: vi.fn() }));
-vi.mock("../api/http", async (original) => ({ ...await original<typeof import("../api/http")>(), requestBytes: mock.read }));
+const mock = vi.hoisted(() => ({ read: vi.fn(), derived: vi.fn(), verify: vi.fn(), open: vi.fn(), recognize: vi.fn(), dispose: vi.fn(), render: vi.fn() }));
+vi.mock("../api/http", async (original) => ({ ...await original<typeof import("../api/http")>(), requestBytes: mock.read, requestDerivedPreview: mock.derived }));
 vi.mock("../features/review/original-source", async (original) => ({
   ...await original<typeof import("../features/review/original-source")>(),
   originalKind: (name: string) => name.endsWith(".pdf") ? "pdf" : "image",
@@ -34,6 +34,7 @@ beforeEach(() => {
   clearOriginalOCRCache();
   vi.clearAllMocks();
   mock.read.mockResolvedValue(new Uint8Array([1]));
+  mock.derived.mockResolvedValue({ bytes: new Uint8Array([2]), originalDigest: props.digest, conversionRef: "test-converter" });
   mock.verify.mockResolvedValue(undefined);
   mock.render.mockResolvedValue(words);
   mock.recognize.mockResolvedValue(words);
@@ -50,6 +51,16 @@ describe("original page review", () => {
     expect(view.container.querySelector(".original-quote-region")).toHaveStyle({ left: "10%", top: "20%" });
     expect(screen.getByRole("region", { name: "引用定位统计" })).toHaveTextContent("当前页已标注 1 条，待核对 0 条");
     expect(mock.recognize).not.toHaveBeenCalled();
+  });
+
+  it("opens DOCX through the derived PDF endpoint and checks the original digest header", async () => {
+    const view = render(<OriginalPageView {...props} filename="合同.docx" />);
+    await screen.findByText(/已标出当前页/);
+    expect(mock.derived).toHaveBeenCalledWith("/api/cases/case-1/documents/doc-1/derived-preview", expect.any(AbortSignal));
+    expect(mock.read).not.toHaveBeenCalled();
+    expect(mock.verify).not.toHaveBeenCalled();
+    expect(mock.open).toHaveBeenCalledWith(new Uint8Array([2]), "pdf", expect.any(AbortSignal));
+    expect(view.container.querySelector(".original-page-view")).toHaveTextContent("DOCX 版式预览为服务端受控转换的只读 PDF");
   });
 
   it("locates a scanned page using its observed OCR regions", async () => {

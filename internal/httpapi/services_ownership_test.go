@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-01
-// Revision: r2
+// Updated: 2026-11-07
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -101,6 +101,7 @@ func TestOperationOwnedByRouteOwnershipMatrix(t *testing.T) {
 		{"material-version-parses", "/api/cases/c/materials/m/versions/1/parsed-documents", "document", []string{http.MethodGet}},
 		{"material-version-parse-text", "/api/cases/c/materials/m/versions/1/parsed-documents/p", "document", []string{http.MethodGet}},
 		{"document-original", "/api/cases/c/documents/d/original", "document", []string{http.MethodGet}},
+		{"document-derived-preview", "/api/cases/c/documents/d/derived-preview", "document", []string{http.MethodGet}},
 		{"document-parse", "/api/cases/c/documents/d/parse", "document", []string{http.MethodPost}},
 		{"object-binding", "/api/cases/c/object-bindings", "core", []string{http.MethodPost}},
 		{"object-mapping-change-preview", "/api/cases/c/object-bindings/m/changes/preview", "core", []string{http.MethodPost}},

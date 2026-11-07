@@ -4,13 +4,13 @@
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-07
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Select } from "antd";
-import { ApiError, requestBytes } from "../api/http";
+import { ApiError, requestBytes, requestDerivedPreview } from "../api/http";
 import { paths } from "../api/paths";
 import { locateSourceQuote, type SourceLocation, type SourceQuote, type SourceWord } from "../domain/source-annotation";
 import { openOriginalSource, OriginalReadError, originalKind, recognizePageWords, verifyOriginalDigest, type OriginalSource } from "../features/review/original-source";
@@ -86,10 +86,18 @@ export default function OriginalPageView({ scope, documentId, filename, digest, 
     let opened: OriginalSource | null = null;
     setError(null); setSource(null); setRendered(null); setOCR(null); setOCRError(null);
     void (async () => {
-      const bytes = await requestBytes(paths.documentOriginal(scope.caseId, documentId), controller.signal);
-      await verifyOriginalDigest(bytes, digest);
+      const isDOCX = /\.docx$/i.test(filename);
+      let bytes: Uint8Array<ArrayBuffer>;
+      if (isDOCX) {
+        const derived = await requestDerivedPreview(paths.documentDerivedPreview(scope.caseId, documentId), controller.signal);
+        if (derived.originalDigest !== digest) throw new OriginalReadError("派生预览与本次审查冻结原件不一致，未显示标注");
+        bytes = derived.bytes;
+      } else {
+        bytes = await requestBytes(paths.documentOriginal(scope.caseId, documentId), controller.signal);
+        await verifyOriginalDigest(bytes, digest);
+      }
       controller.signal.throwIfAborted();
-      const kind = originalKind(filename);
+      const kind = isDOCX ? "pdf" : originalKind(filename);
       if (!kind) throw new OriginalReadError("该文件暂不支持原件标注，请查看文字原文");
       opened = await openOriginalSource(bytes, kind, controller.signal);
       controller.signal.throwIfAborted();
@@ -181,6 +189,7 @@ export default function OriginalPageView({ scope, documentId, filename, digest, 
   return (
     <div className="original-page-view">
       <p className="original-page-filename"><strong>{filename}</strong></p>
+      {/\.docx$/i.test(filename) ? <p className="meta">DOCX 版式预览为服务端受控转换的只读 PDF；原始合同字节仍以 SHA-256 绑定。</p> : null}
       {source ? (
         <div className="original-reader-toolbar" aria-label="原件翻页与缩放">
           <Button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1}>上一页</Button>

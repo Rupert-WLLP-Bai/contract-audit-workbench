@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-07
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -138,6 +138,8 @@ export const paths = {
     `/api/cases/${id(caseId)}/materials/selection`,
   documentOriginal: (caseId: string, documentId: string) =>
     `/api/cases/${id(caseId)}/documents/${id(documentId)}/original`,
+  documentDerivedPreview: (caseId: string, documentId: string) =>
+    `/api/cases/${id(caseId)}/documents/${id(documentId)}/derived-preview`,
   reparse: (caseId: string, documentId: string) =>
     `/api/cases/${id(caseId)}/documents/${id(documentId)}/parse`,
   reviews: (caseId: string) => `/api/cases/${id(caseId)}/reviews`,
