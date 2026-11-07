@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-04
-// Revision: r1
+// Updated: 2026-11-07
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -22,7 +22,7 @@ export interface OriginalReadScope {
 export const OriginalSourceContext = createContext<OriginalReadScope | null>(null);
 
 export function supportsOriginalPreview(filename: string): boolean {
-  return /\.(?:pdf|png|jpe?g)$/i.test(filename);
+  return /\.(?:pdf|png|jpe?g|docx)$/i.test(filename);
 }
 
 const OriginalPageView = lazy(() => import("./original-page-view"));

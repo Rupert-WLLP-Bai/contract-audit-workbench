@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-07
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,12 +13,17 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"log"
 	"mime"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -206,6 +211,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/cases/{caseID}/documents", h.upload)
 	mux.HandleFunc("POST /api/cases/{caseID}/materials/selection", h.confirmMaterialSelection)
 	mux.HandleFunc("GET /api/cases/{caseID}/documents/{docID}/original", h.original)
+	mux.HandleFunc("GET /api/cases/{caseID}/documents/{docID}/derived-preview", h.documentDerivedPreview)
 	mux.HandleFunc("POST /api/cases/{caseID}/documents/{docID}/parse", h.reparse)
 	mux.HandleFunc("POST /api/cases/{caseID}/object-bindings", h.createObjectBinding)
 	mux.HandleFunc("POST /api/cases/{caseID}/object-bindings/{mappingID}/changes/preview", h.previewOperatorMappingChange)
@@ -600,6 +606,85 @@ func (h *handler) original(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
+}
+
+// documentDerivedPreview converts a DOCX original to a read-only PDF preview
+// inside a server-managed temporary directory. The original bytes are never
+// changed and the response carries the original SHA-256 plus conversion ref.
+func (h *handler) documentDerivedPreview(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	doc, body, err := h.store.Original(user, r.PathValue("caseID"), r.PathValue("docID"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if !strings.EqualFold(filepath.Ext(doc.Filename), ".docx") {
+		writeErr(w, fault.Invalid("仅 DOCX 原件支持派生版式预览"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	pdf, err := convertDOCXPreview(ctx, body, doc.Filename)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	sourceDigest := sha256Bytes(body)
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": strings.TrimSuffix(doc.Filename, filepath.Ext(doc.Filename)) + ".pdf"}))
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Derived-From-SHA256", sourceDigest)
+	w.Header().Set("X-Derived-Conversion", docxConverterRef())
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(pdf)
+}
+
+func sha256Bytes(value []byte) string {
+	digest := sha256.Sum256(value)
+	return hex.EncodeToString(digest[:])
+}
+
+func docxConverterRef() string {
+	if ref := strings.TrimSpace(os.Getenv("DOCX_PREVIEW_CONVERTER_REF")); ref != "" {
+		return ref
+	}
+	return "libreoffice-local"
+}
+
+func convertDOCXPreview(ctx context.Context, source []byte, filename string) ([]byte, error) {
+	binary := strings.TrimSpace(os.Getenv("DOCX_PREVIEW_CONVERTER"))
+	if binary == "" {
+		binary = "libreoffice"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		return nil, fault.New(503, "docx_preview_unavailable", "DOCX 版式预览需要受控转换服务，请使用文字原文或下载原件")
+	}
+	tmp, err := os.MkdirTemp("", "caw-docx-preview-*")
+	if err != nil {
+		return nil, fault.New(503, "docx_preview_unavailable", "DOCX 版式预览暂时不可用，请使用文字原文或下载原件")
+	}
+	defer os.RemoveAll(tmp)
+	input := filepath.Join(tmp, "source.docx")
+	if err := os.WriteFile(input, source, 0o600); err != nil {
+		return nil, fault.New(503, "docx_preview_unavailable", "DOCX 版式预览暂时不可用，请使用文字原文或下载原件")
+	}
+	profile := filepath.ToSlash(filepath.Join(tmp, "profile"))
+	cmd := exec.CommandContext(ctx, binary, "-env:UserInstallation=file://"+profile, "--headless", "--norestore", "--invisible", "--nodefault", "--nolockcheck", "--convert-to", "pdf", "--outdir", tmp, input)
+	cmd.Env = append(os.Environ(), "HOME="+tmp, "TMPDIR="+tmp, "SAL_USE_VCLPLUGIN=svp")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("docx preview conversion failed for %s: %v (%s)", filename, err, strings.TrimSpace(string(output)))
+		return nil, fault.New(503, "docx_preview_failed", "DOCX 版式转换失败，请使用文字原文或下载原件")
+	}
+	pdf, err := os.ReadFile(strings.TrimSuffix(input, ".docx") + ".pdf")
+	if err != nil || len(pdf) == 0 || len(pdf) > 64<<20 {
+		return nil, fault.New(503, "docx_preview_failed", "DOCX 版式转换结果不可用，请使用文字原文或下载原件")
+	}
+	return pdf, nil
 }
 
 func originalMedia(raw string) (string, bool) {

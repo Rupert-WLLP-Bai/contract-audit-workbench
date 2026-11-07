@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r3
+// Updated: 2026-11-07
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -873,7 +873,7 @@ func relationRoute(role string, m routeMethodSet, p []string) bool {
 	return role == "core" && (len(p) == 3 && m.post || len(p) == 4 && m.delete)
 }
 func documentRoute(role string, m routeMethodSet, p []string) bool {
-	return role == "document" && (len(p) == 3 && m.post || len(p) == 5 && (p[4] == "original" && m.read || p[4] == "parse" && m.post))
+	return role == "document" && (len(p) == 3 && m.post || len(p) == 5 && ((p[4] == "original" || p[4] == "derived-preview") && m.read || p[4] == "parse" && m.post))
 }
 func fulfillmentRoute(role string, m routeMethodSet, p []string) bool {
 	return role == "core" && (len(p) == 3 && m.post || len(p) == 4 && m.read || len(p) == 5 && p[4] == "impact" && m.read)
