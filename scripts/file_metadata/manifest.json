@@ -27,6 +27,8 @@
       "docs/engineering/community-guide.md",
       "docs/engineering/interface-conventions.md",
       "docs/engineering/local-development.md",
+      "docs/engineering/ui-coverage-matrix.json",
+      "docs/engineering/ui-coverage-matrix.md",
       "docs/engineering/ui-foundation-inventory.md",
       "docs/engineering/verification.md",
       "docs/glossary/concepts.json",
@@ -250,9 +252,11 @@
       "scripts/test_generate_openapi_types.py",
       "scripts/test_run_python_tests.py",
       "scripts/test_trusted_gate_runner.py",
+      "scripts/test_ui_style_scan.py",
       "scripts/test_ui_terminology.py",
       "scripts/trusted_gate_runner.py",
       "scripts/ui-terminology/policy.json",
+      "scripts/ui_style_scan.py",
       "web/build/original-reader-assets.ts",
       "web/e2e/command-context.ts",
       "web/e2e/functional/issue-233-fixtures.ts",
@@ -7202,15 +7206,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-08",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "8f9bdc6891fd5e65325e7fa32dc7a42878f0dab4",
+          "commit": "d2b3b56aa9fd013635dc9c9ed20eb393fa60176c",
           "path": "docs-site/sidebars.js",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -7801,15 +7805,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-05",
+        "value": "2026-11-08",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e46c9ef92d987ba30003696d96b0dff4bae7529d",
+          "commit": "d2b3b56aa9fd013635dc9c9ed20eb393fa60176c",
           "path": "docs/engineering/ui-foundation-inventory.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -8071,12 +8075,12 @@
         "value": "2026-11-08",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "62ca2e5ca5b9d34ca440f834e46962e725eef7c8",
+          "commit": "d2b3b56aa9fd013635dc9c9ed20eb393fa60176c",
           "path": "docs/index.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -50264,7 +50268,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r57",
+      "revision": "r58",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -75147,6 +75151,203 @@
         "source": "docs-site/src/pages/index.js",
         "reason": "docs-site/src/pages/index.js: Docusaurus JSX 页面入口由插件解析，不插入内嵌元数据注释以保持原始字节。"
       }
+    },
+    "docs/engineering/ui-coverage-matrix.json": {
+      "purpose": "Machine-readable UI2-M5 coverage registry for 54 design views with honest PARTIAL/BLOCKED/NOT_RUN statuses; screenshot binaries remain outside the source repository.",
+      "created": {
+        "value": "2026-11-08",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "d2b3b56aa9fd013635dc9c9ed20eb393fa60176c",
+          "path": "docs/engineering/ui-coverage-matrix.json",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-08",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "d2b3b56aa9fd013635dc9c9ed20eb393fa60176c",
+          "path": "docs/engineering/ui-coverage-matrix.json",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "manifest-only",
+      "header_state": "manifest-only",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "exception": {
+        "rule_id": "strict-json",
+        "source": "docs/engineering/ui-coverage-matrix.json",
+        "reason": "docs/engineering/ui-coverage-matrix.json: Strict JSON is consumed as structured data and has no safe comment syntax; keep the exact data contract."
+      }
+    },
+    "docs/engineering/ui-coverage-matrix.md": {
+      "purpose": "Registers the UI2-M5 in-repo coverage matrix for 54 design views, points to out-of-repo screenshots, and records honest PARTIAL/BLOCKED/NOT_RUN acceptance without claiming fixed-candidate PASS.",
+      "created": {
+        "value": "2026-11-08",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "d2b3b56aa9fd013635dc9c9ed20eb393fa60176c",
+          "path": "docs/engineering/ui-coverage-matrix.md",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-08",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "d2b3b56aa9fd013635dc9c9ed20eb393fa60176c",
+          "path": "docs/engineering/ui-coverage-matrix.md",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ]
+    },
+    "scripts/test_ui_style_scan.py": {
+      "purpose": "Unit tests for the read-only UI style clue scanner and in-repo UI2 coverage matrix schema.",
+      "created": {
+        "value": "2026-11-08",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "d2b3b56aa9fd013635dc9c9ed20eb393fa60176c",
+          "path": "scripts/test_ui_style_scan.py",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-08",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "d2b3b56aa9fd013635dc9c9ed20eb393fa60176c",
+          "path": "scripts/test_ui_style_scan.py",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ]
+    },
+    "scripts/ui_style_scan.py": {
+      "purpose": "Read-only UI style clue scanner for web/src CSS/TSX; reports native controls, hardcoded colors/sizes, !important, and root-ish overflow clipping without auto-fixing.",
+      "created": {
+        "value": "2026-11-08",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "d2b3b56aa9fd013635dc9c9ed20eb393fa60176c",
+          "path": "scripts/ui_style_scan.py",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-08",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "d2b3b56aa9fd013635dc9c9ed20eb393fa60176c",
+          "path": "scripts/ui_style_scan.py",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ]
     }
   }
 }

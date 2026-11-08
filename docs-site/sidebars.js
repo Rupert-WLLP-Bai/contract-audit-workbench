@@ -19,6 +19,8 @@ module.exports = {
       doc('engineering/contributing', '贡献与协作'),
       doc('engineering/file-metadata', '文件元信息规范'),
       doc('engineering/interface-conventions', '业务界面工程约定'),
+      doc('engineering/ui-foundation-inventory', 'UI2 M1 基础盘点'),
+      doc('engineering/ui-coverage-matrix', 'UI2 覆盖矩阵（M5）'),
       doc('engineering/licensing', '许可与贡献'),
       doc('engineering/local-development', '本地开发'),
       doc('engineering/verification', '检查与验收'),
