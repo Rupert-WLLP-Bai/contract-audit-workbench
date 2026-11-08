@@ -3,12 +3,12 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
-import { Alert, Button, Card, Input, Space, Tag, Typography } from "antd";
+import { Alert, Button, Card, Empty, Input, Space, Table, Tabs, Tag, Typography, type TableProps } from "antd";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -154,32 +154,81 @@ export function CaseSupportGrantPanel({ caseId }: { caseId: string }) {
   );
 }
 
+type SupportTab = "approved" | "pending" | "history";
+
 export function SupportGrantsPage() {
   const grants = useSupportGrants();
   const session = useSession();
+  const [activeTab, setActiveTab] = useState<SupportTab>("approved");
   if (grants.isLoading) return <PageStatus kind="loading" title="正在加载支援访问" />;
   if (grants.isError) return <PageStatus kind="error" title="支援访问没有加载" detail={errorMessage(grants.error)} />;
   const mine = session.data?.principal_id === null || session.data?.principal_id === undefined
     ? []
     : (grants.data?.grants ?? []).filter((grant) => grant.principal_id === session.data?.principal_id);
+  const groups: Record<SupportTab, SupportGrant[]> = {
+    approved: mine.filter((grant) => grant.status === "approved"),
+    pending: mine.filter((grant) => grant.status === "pending"),
+    history: mine.filter((grant) => grant.status === "revoked" || grant.status === "expired"),
+  };
+  const visible = groups[activeTab];
+  const columns: TableProps<SupportGrant>["columns"] = [
+    {
+      title: "支援案件",
+      dataIndex: "case_id",
+      key: "case_id",
+      render: (caseId: string, grant) => grant.status === "approved" ? (
+        <Link to={`/support-grants/${encodeURIComponent(grant.id)}`}>{caseId}</Link>
+      ) : caseId,
+    },
+    {
+      title: "权限范围",
+      key: "scope",
+      render: () => "仅案件只读",
+    },
+    {
+      title: "到期时间",
+      dataIndex: "expires_at",
+      key: "expires_at",
+      render: (value: string) => formatTimestamp(value),
+    },
+    {
+      title: "状态",
+      dataIndex: "status",
+      key: "status",
+      render: (status: SupportGrant["status"]) => <Tag color={statusColor(status)}>{statusLabel(status)}</Tag>,
+    },
+    {
+      title: "操作",
+      key: "action",
+      render: (_, grant) => grant.status === "approved"
+        ? <Button type="link" href={`/support-grants/${encodeURIComponent(grant.id)}`}>查看详情</Button>
+        : <span className="support-grants-empty-action">—</span>,
+    },
+  ];
+  const emptyText = activeTab === "approved"
+    ? "目前没有有效的支援授权。"
+    : activeTab === "pending"
+      ? "目前没有待批准的支援授权。"
+      : "目前没有已失效或已撤销的支援授权。";
   return (
-    <section className="page">
+    <section className="page support-grants-page">
       <header className="page-head">
         <div><h1>案件支援访问</h1><p>仅显示授予当前成员的案件级只读支援。当前登录身份与租户不会改变。</p></div>
       </header>
-      {mine.length === 0 ? <Card>目前没有授予当前成员的支援案件。</Card> : null}
-      {mine.map((grant) => (
-        <Card key={grant.id} className="support-grant-card">
-          <Space orientation="vertical" size={8}>
-            <Space wrap><Tag color={statusColor(grant.status)}>{statusLabel(grant.status)}</Tag><span>授权编号 {grant.id}</span></Space>
-            <span>目标租户 / 组织：{grant.tenant_id} / {grant.org_id}</span>
-            <span>案件：{grant.case_id}</span>
-            <span>授权范围：case.read</span>
-            <span>到期：{formatTimestamp(grant.expires_at)}</span>
-            {grant.status === "approved" ? <Button type="primary" href={`/support-grants/${encodeURIComponent(grant.id)}`}>打开只读案件概览</Button> : null}
-          </Space>
-        </Card>
-      ))}
+      <Card className="support-grants-list">
+        <Tabs
+          activeKey={activeTab}
+          onChange={(key) => setActiveTab(key as SupportTab)}
+          items={[
+            { key: "approved", label: "有效授权" },
+            { key: "pending", label: "待批准" },
+            { key: "history", label: "已失效" },
+          ]}
+        />
+        {visible.length === 0
+          ? <Empty description={emptyText} />
+          : <Table<SupportGrant> rowKey="id" columns={columns} dataSource={visible} pagination={false} />}
+      </Card>
     </section>
   );
 }

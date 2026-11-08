@@ -1,0 +1,445 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Scopes the governed-knowledge collection, registration and version-detail information architecture without changing shared global styles. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-08 */
+/* Updated: 2026-11-08 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+/* Page-scoped governed knowledge layout; shared rulepack styles remain unchanged. */
+
+.governed-eyebrow {
+  margin: 0 0 var(--space-1);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.governed-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.page-governed-list .governed-status-tabs .ant-tabs-nav {
+  margin-bottom: var(--space-3);
+}
+
+.governed-status-tabs .ant-tabs-tab {
+  font-size: 13px;
+}
+
+.governed-list-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  align-items: baseline;
+  margin: 0 0 var(--space-2);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.governed-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: var(--space-4) 0 var(--space-5);
+  border-block: 1px solid var(--border-strong);
+}
+
+.governed-facts > div {
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border-left: 1px solid var(--border-default);
+}
+
+.governed-facts > div:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.governed-facts dt {
+  margin-bottom: var(--space-1);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.governed-facts dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.governed-facts dd .meta {
+  display: block;
+  margin-top: 2px;
+}
+
+.governed-status-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+.governed-status-note {
+  flex-basis: 100%;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.governed-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.governed-detail-main {
+  min-width: 0;
+}
+
+.governed-detail-rail {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.governed-rail-card {
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--panel-radius);
+  background: var(--surface-raised);
+}
+
+.governed-rail-card h2 {
+  margin: 0 0 var(--space-3);
+  font-size: 15px;
+}
+
+.governed-rail-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.governed-lifecycle ol {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.governed-lifecycle li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: start;
+  min-width: 0;
+  padding: var(--space-1) 0;
+  color: var(--text-secondary);
+}
+
+.governed-lifecycle-marker {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.governed-lifecycle li[data-state="done"] {
+  color: var(--text-primary);
+}
+
+.governed-lifecycle li[data-state="done"] .governed-lifecycle-marker {
+  border-color: var(--state-compatible);
+  background: var(--state-compatible-bg);
+  color: var(--state-compatible);
+}
+
+.governed-lifecycle li[data-state="current"] {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.governed-lifecycle li[data-state="current"] .governed-lifecycle-marker {
+  border-color: var(--action-primary);
+  background: var(--action-primary);
+  color: var(--text-inverse);
+}
+
+.governed-lifecycle-stage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  align-items: baseline;
+}
+
+.governed-lifecycle-stage small {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.governed-form-note {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.governed-form-layout {
+  display: grid;
+  grid-template-columns: 176px minmax(0, 1fr) 300px;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.governed-steps {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.governed-step-button {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: start;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.governed-step-button:hover {
+  background: var(--surface-subtle);
+}
+
+.governed-step-button[aria-current="step"] {
+  border-color: var(--border-default);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+}
+
+.governed-step-number {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.governed-step-button[aria-current="step"] .governed-step-number {
+  border-color: var(--action-primary);
+  background: var(--action-primary);
+  color: var(--text-inverse);
+}
+
+.governed-step-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.governed-step-hint {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.governed-form-main {
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--border-default);
+  border-radius: var(--panel-radius);
+  background: var(--surface-raised);
+}
+
+.governed-step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.governed-step-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.governed-step-head .meta {
+  margin: 0;
+}
+
+.governed-step-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-default);
+}
+
+.governed-summary-card {
+  position: sticky;
+  top: calc(var(--header-height) + var(--space-4));
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--panel-radius);
+  background: var(--surface-raised);
+}
+
+.governed-summary-card h2 {
+  margin: 0 0 var(--space-3);
+  font-size: 15px;
+}
+
+.governed-summary-card dl {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.governed-summary-card dl > div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.governed-summary-card dl > div:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.governed-summary-card dt {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.governed-summary-card dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.governed-summary-card .meta {
+  margin: var(--space-3) 0 0;
+}
+
+.governed-submit-review {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.governed-submit-review h2 {
+  margin: 0;
+}
+
+.governed-submit-review .rulepack-summary-grid {
+  margin: 0;
+}
+
+.governed-version-meta {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 1200px) {
+  .governed-form-layout {
+    grid-template-columns: 160px minmax(0, 1fr);
+  }
+
+  .governed-summary-card {
+    position: static;
+    grid-column: 1 / -1;
+  }
+
+  .governed-detail-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .governed-detail-rail {
+    grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .governed-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .governed-facts > div {
+    padding: var(--space-2);
+    border-top: 1px solid var(--border-default);
+  }
+
+  .governed-facts > div:nth-child(-n + 2) {
+    border-top: 0;
+  }
+
+  .governed-facts > div:nth-child(odd) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .governed-form-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .governed-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .governed-step-button {
+    grid-template-columns: 22px minmax(0, 1fr);
+    padding: var(--space-2);
+  }
+
+  .governed-step-hint {
+    display: none;
+  }
+
+  .governed-summary-card {
+    grid-column: auto;
+  }
+}
+
+/* Governed knowledge layout remains page-scoped. */

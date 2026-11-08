@@ -1,15 +1,14 @@
 // File metadata (manifest mirror):
-// Purpose: Lists and searches the cases visible to the current session, with server-backed filtering, sorting and pagination before opening a case workspace.
+// Purpose: Lists and searches the cases visible to the current session, with URL-backed all/mine/archived views plus filtering, sorting and pagination before opening a case workspace.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-05
-// Revision: r5
+// Updated: 2026-11-08
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
-import { Select } from "antd";
-import { Button, Input, Modal, Pagination } from "antd";
+import { Button, Input, Modal, Pagination, Select, Tabs } from "antd";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { errorMessage, isForbidden } from "../api/http";
@@ -40,6 +39,12 @@ const FILTERS: { id: RunFilter; label: string }[] = [
 ];
 
 const PAGE_SIZES = [10, 25, 50] as const;
+type CaseView = "all" | "mine" | "archived";
+
+function parseCaseView(value: string | null): CaseView {
+  return value === "mine" || value === "archived" ? value : "all";
+}
+
 const collator = new Intl.Collator("zh-CN", {
   numeric: true,
   sensitivity: "base",
@@ -56,6 +61,7 @@ export function CasesPage() {
   const query = params.get("q") ?? "";
   const run = parseRunFilter(params.get("run"));
   const businessStatus = params.get("business_status") ?? "all";
+  const view = parseCaseView(params.get("view"));
   const requestedSort = params.get("sort");
   const sort: CaseSortField =
     requestedSort === "title" ||
@@ -205,7 +211,16 @@ export function CasesPage() {
         .filter((value): value is string => Boolean(value)),
     ),
   ].sort(collator.compare);
-  const filtered = filterCases(cases.data ?? [], query, run, businessStatus);
+  const visibleCases = cases.data ?? [];
+  const caseViewItems = visibleCases.filter((item) => {
+    if (view === "archived") return Boolean(item.archived_at);
+    if (view === "mine") {
+      const actorName = session.data?.display_name?.trim();
+      return Boolean(actorName && item.owner_name?.trim() === actorName);
+    }
+    return true;
+  });
+  const filtered = filterCases(caseViewItems, query, run, businessStatus);
   const sorted = [...filtered].sort((left, right) => {
     let comparison = 0;
     if (sort === "title")
@@ -272,7 +287,7 @@ export function CasesPage() {
         <div>
           <h1>案件</h1>
           <p>
-            在当前身份有权查看的全部已加载案件中搜索和筛选；筛选后分页，状态以服务端记录为准。
+            案件由服务端按当前身份授权返回；“我负责的”依据服务端责任人名称匹配当前身份，“已归档”依据归档时间筛选。
             {canCreate ? "" : " 当前角色仅可查看案件；新建案件需要管理员或经办人角色。"}
           </p>
         </div>
@@ -289,6 +304,19 @@ export function CasesPage() {
       </header>
 
       <div className="cases-filters" aria-label="案件筛选">
+        <Tabs
+          activeKey={view}
+          style={{ gridColumn: "1 / -1" }}
+          onChange={(key) => {
+            if (key === "all" || key === "mine" || key === "archived")
+              updateParam("view", key === "all" ? "" : key, { clearSelection: true });
+          }}
+          items={[
+            { key: "all", label: "全部案件" },
+            { key: "mine", label: "我负责的" },
+            { key: "archived", label: "已归档" },
+          ]}
+        />
         <label className="field cases-search">
           搜索案件
           <Input

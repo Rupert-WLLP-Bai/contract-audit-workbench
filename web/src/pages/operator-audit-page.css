@@ -1,0 +1,170 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Scopes the operator-audit page to the UI2 audit layout: page facts, tabbed overview table and the preserved configuration/evidence/acceptance sections; it carries no application state. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-08 */
+/* Updated: 2026-11-08 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+.operator-audit-page {
+  max-width: 1680px;
+  margin-inline: auto;
+}
+
+.operator-audit-page .operator-page-head {
+  align-items: flex-start;
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.operator-page-kicker {
+  margin: 0 0 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.operator-audit-page .operator-page-head h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.operator-audit-page .operator-page-head p:last-child {
+  margin-top: 5px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.operator-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 20px 0 12px;
+  padding: 14px 0;
+  border-block: 1px solid var(--border-default);
+}
+
+.operator-facts > div {
+  min-width: 0;
+}
+
+.operator-facts dt {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.operator-facts dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.operator-audit-tabs > .ant-tabs-nav {
+  margin: 0 0 16px;
+}
+
+.operator-audit-tabs > .ant-tabs-nav::before {
+  border-bottom: 1px solid var(--border-default);
+}
+
+.operator-audit-tabs .ant-tabs-tab {
+  padding: 10px 1px;
+  font-size: 14px;
+}
+
+.operator-audit-tabs .ant-tabs-tab + .ant-tabs-tab {
+  margin-left: 24px;
+}
+
+.operator-audit-tabs .ant-tabs-tab-btn {
+  color: var(--text-secondary);
+}
+
+.operator-audit-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--action-primary);
+  font-weight: 600;
+}
+
+.operator-audit-tabs .ant-tabs-ink-bar {
+  height: 2px;
+  background: var(--action-primary);
+}
+
+.operator-audit-tabs .ant-tabs-content-holder {
+  min-width: 0;
+}
+
+.operator-audit-tabs .ant-tabs-tabpane {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.operator-audit-tabs .ant-tabs-tabpane > .ant-alert {
+  margin: 0;
+}
+
+.operator-check-card {
+  background: var(--surface-raised);
+}
+
+.operator-check-card .ant-card-head-title {
+  font-weight: 600;
+}
+
+.operator-check-card .ant-table {
+  background: transparent;
+}
+
+.operator-check-card .ant-table-thead > tr > th {
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.operator-check-card .ant-table-tbody > tr > td {
+  background: transparent;
+}
+
+.operator-check-card .ant-table-tbody > tr:hover > td {
+  background: var(--surface-subtle);
+}
+
+.operator-records {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.operator-records > .meta {
+  margin: 0;
+}
+
+@media (max-width: 1080px) {
+  .operator-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .operator-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .operator-audit-tabs .ant-tabs-tab + .ant-tabs-tab {
+    margin-left: 16px;
+  }
+}

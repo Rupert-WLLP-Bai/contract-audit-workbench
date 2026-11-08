@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -43,7 +43,7 @@ describe("review preparation business and rule matching", () => {
     expect(within(panel).getByText(/仍需人工确认合同内容/)).toBeInTheDocument();
     expect(within(panel).getByText("最低保障带宽对照")).toBeInTheDocument();
     expect(within(panel).getByText(/规则声明的事实材料角色/)).toHaveTextContent("采购");
-    expect(within(panel).getByText(/材料已解析只表示原文可供检查/)).toHaveTextContent("并不表示解析失败");
+    expect(within(panel).getByText(/材料已解析，可打开原文核对/)).toHaveTextContent("缺事实或依据时请继续补充");
     expect(within(panel).getByRole("link", { name: "补充所需材料" })).toHaveAttribute("href", "#case-materials");
     expect(within(panel).getByRole("link", { name: "核对法律依据与制度" })).toHaveAttribute("href", "/cases/case-1/legal-knowledge");
     expect(within(panel).getByRole("link", { name: "联系规则治理人员核对规则包" })).toHaveAttribute("href", "/admin/rulepacks");

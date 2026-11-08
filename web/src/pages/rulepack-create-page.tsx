@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -153,7 +153,7 @@ export function RulePackCreatePage() {
           <p>
             {sourceInitialized
               ? `已复制 ${sourcePack} v${sourceVersion} 的规则内容。填写一个新的版本号后编辑并保存；原版本继续保留。`
-              : "填写规则的适用范围、比较条件、事实来源和依据材料。保存后只会创建草稿，不会自动批准或发布。"}
+              : "填写适用范围、比较条件、事实来源和依据。保存后成为草稿。"}
           </p>
         </div>
       </header>

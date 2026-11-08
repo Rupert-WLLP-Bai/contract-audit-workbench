@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-05
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -141,6 +141,58 @@ describe("page section navigation", () => {
     });
     expect((document.getElementById("outer") as HTMLDetailsElement).open).toBe(false);
     expect(document.activeElement).toBe(previousFocus);
+  });
+
+  it.each(["hidden", "aria-hidden", "inert"])("waits for a committed %s panel before opening and focusing", async (attribute) => {
+    const reveal = vi.fn(() => true);
+    render(<MemoryRouter initialEntries={["/cases/c#panel-target"]}>
+      <SectionNavigationProvider scope="case" ready revealTarget={reveal}>
+        <div data-testid="panel" {...{ [attribute]: attribute === "aria-hidden" ? "true" : true }}>
+          <CollapsibleSection id="panel-details" title="详情"><h2 id="panel-target">目标标题</h2></CollapsibleSection>
+        </div>
+      </SectionNavigationProvider>
+    </MemoryRouter>);
+    const target = document.getElementById("panel-target")!;
+    expect(reveal).toHaveBeenCalledWith("panel-target", target);
+    expect((document.getElementById("panel-details") as HTMLDetailsElement).open).toBe(false);
+    expect(target).not.toHaveFocus();
+    act(() => screen.getByTestId("panel").removeAttribute(attribute));
+    await waitFor(() => expect(target).toHaveFocus());
+    expect((document.getElementById("panel-details") as HTMLDetailsElement).open).toBe(true);
+  });
+
+  it("resolves a dynamic target after the page reports readiness", async () => {
+    const reveal = vi.fn((_id: string, target: HTMLElement | null) => target !== null);
+    const view = render(<MemoryRouter initialEntries={["/cases/c#dynamic"]}>
+      <SectionNavigationProvider scope="case" ready revealTarget={reveal}><div /></SectionNavigationProvider>
+    </MemoryRouter>);
+    expect(reveal).toHaveBeenCalledWith("dynamic", null);
+    view.rerender(<MemoryRouter initialEntries={["/cases/c#dynamic"]}>
+      <SectionNavigationProvider scope="case" ready revealTarget={reveal}><h2 id="dynamic">动态目标</h2></SectionNavigationProvider>
+    </MemoryRouter>);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "动态目标" })).toHaveFocus());
+    expect(reveal).toHaveBeenCalledWith("dynamic", document.getElementById("dynamic"));
+  });
+
+  it("requests reveal for a missing dynamic target and cancels when the user moves on", async () => {
+    const reveal = vi.fn(() => false);
+    const view = render(<MemoryRouter initialEntries={["/cases/c#dynamic"]}>
+      <SectionNavigationProvider scope="case" ready revealTarget={reveal}>
+        <button>其他工作</button>
+      </SectionNavigationProvider>
+    </MemoryRouter>);
+    expect(reveal).toHaveBeenCalledWith("dynamic", null);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "其他工作" }));
+    const calls = reveal.mock.calls.length;
+    view.rerender(<MemoryRouter initialEntries={["/cases/c#dynamic"]}>
+      <SectionNavigationProvider scope="case" ready revealTarget={reveal}>
+        <button>其他工作</button><h2 id="dynamic">动态目标</h2>
+      </SectionNavigationProvider>
+    </MemoryRouter>);
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 50)); });
+    expect(reveal).toHaveBeenCalledTimes(calls);
+    expect(screen.getByRole("heading", { name: "动态目标" })).not.toHaveFocus();
   });
 
   it("reports a malformed fragment instead of silently dropping it", async () => {

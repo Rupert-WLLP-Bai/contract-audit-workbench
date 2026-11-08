@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-01
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -121,7 +121,7 @@ describe("synthetic source verification flow", () => {
     mocks.useVerifySubjectAgainstSourceSnapshot.mockReturnValue({ isPending: false, mutateAsync: verify });
     const user = userEvent.setup();
     renderPanel();
-    expect(screen.getByText(/不代表真实工商或主体身份核验/)).toBeInTheDocument();
+    expect(screen.getByText(/当前对照的是演示数据/)).toBeInTheDocument();
     await begin(user);
     await user.click(screen.getByRole("button", { name: "对照合成来源并发起审批" }));
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/cases/case-1/subject-changes/change-1"));

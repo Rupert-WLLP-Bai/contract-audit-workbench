@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -157,7 +157,7 @@ export function CaseSubjectCorrectionsPanel({ caseId }: { caseId: string }) {
         if (!target) throw new Error("请选择本案在办主体。");
         const normalizedIdentifier = identifierValue.trim().toUpperCase();
         if (identifierAction === "replace" && !usccPattern.test(normalizedIdentifier))
-          throw new Error("请输入18位统一社会信用代码；格式正确不代表身份已核验。");
+          throw new Error("请输入18位统一社会信用代码。");
         const patch = {
           ...(displayName.trim() ? { display_name: displayName.trim() } : {}),
           ...(clearLegalName ? { legal_name: "" } : legalName.trim() ? { legal_name: legalName.trim() } : {}),

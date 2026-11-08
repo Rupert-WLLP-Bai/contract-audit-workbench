@@ -3,15 +3,15 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 import { useEffect, useState } from "react";
 import { Alert, Button, Empty, Table } from "antd";
 import type { TableColumnsType } from "antd";
-import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import {
   listEvidenceHistory,
@@ -105,6 +105,7 @@ export function EvidenceSLADashboard({
   mode?: PanelMode;
 }) {
   const [now, setNow] = useState(() => Date.now());
+  const [selection, setSelection] = useState<{ caseId: string; requestId: string } | null>(null);
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(interval);
@@ -120,7 +121,7 @@ export function EvidenceSLADashboard({
   });
   const requestItems = cases.flatMap((item, index) =>
     (requestQueries[index]?.data ?? []).map((request) => ({
-      key: `${item.id}\u0000${request.id}`,
+      key: JSON.stringify([item.id, request.id]),
       caseId: item.id,
       caseTitle: item.title || item.id,
       request,
@@ -154,8 +155,21 @@ export function EvidenceSLADashboard({
       historyUnavailable: historyQuery?.isError ?? false,
     };
   });
+  const selectedRow = selection && rows.find((row) =>
+    row.caseId === selection.caseId && row.request.id === selection.requestId,
+  );
+  const selectedHistory = useQuery({
+    queryKey: ["evidence-requests", selection?.caseId, selection?.requestId, "history"],
+    queryFn: ({ signal }) => withSLASlot(() =>
+      listEvidenceHistory(selection!.caseId, selection!.requestId, signal)),
+    enabled: mode === "dashboard" && !!selectedRow,
+    retry: false,
+  });
   const requestError = requestQueries.find((query) => query.isError);
   const requestLoading = requestQueries.some((query) => query.isLoading);
+  useEffect(() => {
+    if (selection && !requestLoading && !selectedRow) setSelection(null);
+  }, [selection, requestLoading, selectedRow]);
   const historyLoading = historyQueries.some((query) => query.isLoading);
   const historyUnavailable = historyQueries.some((query) => query.isError);
   const outstanding = rows.filter((row) => isOutstandingEvidenceRequest(row.request.status));
@@ -266,7 +280,15 @@ export function EvidenceSLADashboard({
       width: 280,
       render: (_, row) => (
         <div className="evidence-sla-request">
-          <strong>{row.request.question || "未填写请求说明"}</strong>
+          <button
+            type="button"
+            className="evidence-sla-select"
+            aria-pressed={selectedRow?.key === row.key}
+            aria-label={`查看请求详情：${row.caseTitle}，${row.caseId}，${row.request.id}`}
+            onClick={() => setSelection({ caseId: row.caseId, requestId: row.request.id })}
+          >
+            {row.request.question || "未填写请求说明"}
+          </button>
           <span className="meta">请求 {row.request.id}</span>
         </div>
       ),
@@ -373,12 +395,13 @@ export function EvidenceSLADashboard({
         </div>
       </dl>
       <p className="evidence-sla-method">
-        时长从请求创建到系统首次登记回执计算，不代表对方实际发送时间；未设置期限的请求不计入逾期，
+        时长按请求创建到首次登记回执计算；未设期限的请求不计入逾期，
         无登记回执的请求不计入平均值。已回执仍需人工核验，才会变为已核验。
       </p>
       {rows.length === 0 ? (
         <Empty description="当前授权案件范围内没有补充材料请求。" />
       ) : (
+        <div className="evidence-sla-workspace">
         <Table
           className="evidence-sla-table"
           rowKey="key"
@@ -388,6 +411,41 @@ export function EvidenceSLADashboard({
           scroll={{ x: 1_260 }}
           size="small"
         />
+        <aside className="evidence-sla-detail" aria-labelledby="evidence-sla-detail-title">
+          <h3 id="evidence-sla-detail-title">请求详情</h3>
+          {!selectedRow ? <p>请选择一项请求查看详情。</p> : selectedHistory.isError ? (
+            <p role="alert">请求历史不可用。<button type="button" onClick={() => void selectedHistory.refetch()}>重试</button></p>
+          ) : (
+            <>
+              <h4>{selectedRow.request.question || "未填写请求说明"}</h4>
+              <dl>
+                <div><dt>案件</dt><dd>{selectedRow.caseTitle} · {selectedRow.caseId}</dd></div>
+                <div><dt>请求 ID</dt><dd>{selectedRow.request.id}</dd></div>
+                <div><dt>指派人 ID</dt><dd>{selectedRow.request.assignee_id || "未报告"}</dd></div>
+                <div><dt>状态</dt><dd>{evidenceRequestStatusLabel(selectedRow.request.status)}</dd></div>
+                <div><dt>创建时间</dt><dd>{formatDateTime(selectedRow.request.created_at)}</dd></div>
+                <div><dt>截止时间</dt><dd>{hasEvidenceDeadline(selectedRow.request.due_at) ? formatDateTime(selectedRow.request.due_at) : "未设置期限"}</dd></div>
+                <div><dt>材料用途</dt><dd>{selectedRow.request.material_role || "未报告"}</dd></div>
+                <div><dt>核验条件</dt><dd>{selectedRow.request.verification_condition || "未报告"}</dd></div>
+              </dl>
+              <Link to={caseHref(selectedRow.caseId, selectedRow.request.source_run_id, selectedRow.request.source_attempt_id)}>查看原始审查</Link>
+              <h4>时间记录与关联材料</h4>
+              {selectedHistory.isLoading ? <p role="status">正在读取请求历史…</p> : !selectedHistory.data?.length ? <p>暂无历史记录。</p> : (
+                <ol className="evidence-sla-history">
+                  {selectedHistory.data.map((event, index) => (
+                    <li key={`${event.type}-${event.occurred_at}-${index}`}>
+                      <div>{event.type} · {formatDateTime(event.occurred_at)}</div>
+                      <div>操作人 ID：{event.actor_id || "未报告"}</div>
+                      {event.receipt?.document_id ? <div>材料 ID：{event.receipt.document_id}</div> : null}
+                      {event.receipt?.answer ? <div>回执内容：{event.receipt.answer}</div> : null}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </>
+          )}
+        </aside>
+        </div>
       )}
     </section>
   );

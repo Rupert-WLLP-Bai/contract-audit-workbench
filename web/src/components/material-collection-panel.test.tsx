@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -301,6 +301,47 @@ describe("material collection behavior", () => {
     view.rerender(<MaterialCollectionPanel key="case-2:actor-1" caseDetail={secondDetail} canWrite actorId="actor-1" />);
     expect(screen.getByRole("checkbox", { name: /案件B材料/ })).toBeChecked();
     expect(screen.queryByText("案件A材料.txt")).not.toBeInTheDocument();
+  });
+
+  it("keeps a missing historical filename's exact identity in technical details", async () => {
+    const detail: CaseDetail = {
+      ...emptyDetail,
+      documents: [doc("current", "现有合同.txt", "draft_contract")],
+      materials: [material({ material_id: "mat-1", role: "draft_contract", purpose: "primary_contract", current_document_id: "current", current_version: 2 })],
+      material_versions: [
+        { material_id: "mat-1", version: 1, document_id: "missing-document-id", previous_document_id: null, created_at: at },
+        { material_id: "mat-1", version: 2, document_id: "current", previous_document_id: "missing-document-id", created_at: at },
+      ],
+      material_selection: { version: 1, status: "confirmed", document_ids: ["current"], primary_material_id: "mat-1" },
+    };
+    const user = userEvent.setup();
+    renderPanel(detail);
+    await user.click(screen.getByRole("button", { name: "版本历史" }));
+    expect(screen.getByText(/v1 · 文件名未提供/)).toBeVisible();
+    const technical = screen.getByText("版本文件标识").closest("details");
+    expect(technical).not.toHaveAttribute("open");
+    expect(technical).toHaveTextContent("missing-document-id");
+  });
+
+  it("switches material views while preserving the upload draft", async () => {
+    const detail: CaseDetail = {
+      ...emptyDetail,
+      documents: [doc("doc-1", "合同.txt", "draft_contract")],
+      materials: [material({ material_id: "mat-1", role: "draft_contract", purpose: "primary_contract", current_document_id: "doc-1" })],
+      material_versions: [{ material_id: "mat-1", version: 1, document_id: "doc-1", previous_document_id: null, created_at: at }],
+      material_selection: { version: 1, status: "confirmed", document_ids: ["doc-1"], primary_material_id: "mat-1" },
+    };
+    const user = userEvent.setup();
+    renderPanel(detail);
+    await user.upload(screen.getByLabelText("文件"), new File(["正文"], "草稿.txt", { type: "text/plain" }));
+    await user.click(screen.getByRole("button", { name: "版本历史" }));
+    expect(screen.getByRole("button", { name: "版本历史" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("合同.txt · 主合同版本历史")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "解析记录" }));
+    expect(screen.getByRole("heading", { name: "材料解析状态" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "当前材料" }));
+    expect(screen.getByRole("button", { name: "新增材料" })).toBeEnabled();
+    expect(screen.getByText("草稿.txt")).toBeInTheDocument();
   });
 
   it("does not allow legacy confirmation when the service omits its candidate projection", () => {

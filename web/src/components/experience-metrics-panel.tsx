@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -65,7 +65,7 @@ export function ExperienceMetricsPanel({ version }: { version: KnowledgeVersion 
         <p className="meta">采纳指最新人工决定与登记的明确预期方向一致，推翻指确认风险与误报之间的相反判断。证据不足、接受残余风险及未明确预期方向单独列示；未作决定不计入采纳或推翻。</p>
         {!metrics.data.has_been_published && <p>该版本没有发布记录。</p>}
         <h3>可追溯样本</h3>
-        <p className="meta">显示最近 20 条当前可访问记录。根据样本人工审阅后，可考虑调整适用范围或撤回；指标不会自动改变治理状态。</p>
+        <p className="meta">显示最近 20 条可访问记录。审阅后可调整适用范围或撤回。</p>
         <Table rowKey={(item) => `${item.attempt_id}:${item.finding_id}`} columns={columns} dataSource={metrics.data.samples}
           pagination={false} scroll={{ x: 900 }} locale={{ emptyText: "没有已登记的经验使用记录" }} />
       </>}

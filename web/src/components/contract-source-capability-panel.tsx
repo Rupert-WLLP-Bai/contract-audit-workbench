@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-01
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -141,7 +141,7 @@ export function ContractSourceCapabilityPanel({
         type="info"
         showIcon
         title="合同内容由外部来源管理"
-        description="本页展示本地留存的来源观察事实，不提供本地草稿、会签、签署或状态写回入口。外部来源的配置声明不代表连接已成功。"
+        description="这里显示已留存的来源观察。草稿、会签和签署请到对应页面办理。"
       />
 
       {actor === null ? (
@@ -188,7 +188,7 @@ export function ContractSourceCapabilityPanel({
             {capability.data.can_read_contract
               ? "当前来源通道声明可读取该来源合同"
               : "该来源通道未声明可读取合同"}
-            <span>（此项描述来源配置，不表示当前用户权限）</span>
+            <span></span>
           </Descriptions.Item>
         </Descriptions>
       ) : null}

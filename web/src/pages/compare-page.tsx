@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -557,6 +557,7 @@ export function ComparePage() {
     <section className="page compare-page">
       <header className="compare-page-head">
         <div>
+          <h1>冻结执行对照</h1>
           <strong>{selectedCase?.title ?? "版本对照"}</strong>
           <span>{selectedCase ? caseIdentityDetails(selectedCase, snapshot.members) : "案件不可用"}</span>
           <InvalidTimeDetail value={selectedCase?.updated_at} label="案件更新时间" />
@@ -568,6 +569,12 @@ export function ComparePage() {
           </Link>
         </nav>
       </header>
+      <dl className="compare-facts" aria-label="冻结执行对照摘要">
+        <div><dt>来源执行</dt><dd>{rightRun ? runLabel(rightRun.state) : "未选择"}</dd></div>
+        <div><dt>目标执行</dt><dd>{leftRun ? runLabel(leftRun.state) : "未选择"}</dd></div>
+        <div><dt>可比性</dt><dd>{comparisonsLinked ? "已关联同一案件冻结执行" : "不可比或身份未确认"}</dd></div>
+        <div><dt>变化</dt><dd>{leftData ? `${revisions.length} 项修订` : "未读取"}</dd></div>
+      </dl>
       <div className="compare-workspace">
         <aside className="compare-risk-panel" aria-label="审查结果">
           <header>
@@ -640,7 +647,7 @@ export function ComparePage() {
             ))}
             {findings.length === 0 ? (
               <p className="compare-unavailable">
-                {leftData ? "此运行没有返回发现；不代表合同已批准。" : "审查身份未确认，无法读取发现。"}
+                {leftData ? "这次审查没有返回发现。" : "审查身份未确认，无法读取发现。"}
               </p>
             ) : null}
           </div>

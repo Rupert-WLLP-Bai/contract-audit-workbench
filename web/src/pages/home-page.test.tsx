@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-05
-// Revision: r8
+// Updated: 2026-11-08
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -467,6 +467,17 @@ afterEach(() => {
 });
 
 describe("HomePage snapshot consumers", () => {
+  it("prioritizes current tasks and exposes the existing review entry", async () => {
+    open();
+    const tasks = await screen.findByRole("region", { name: "任务与待办" });
+    const cases = screen.getByRole("region", { name: "按案件处理" });
+    const progress = screen.getByRole("region", { name: "审查进展" });
+    expect(tasks.compareDocumentPosition(cases) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(cases.compareDocumentPosition(progress) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("link", { name: "进入合同审查" })).toHaveAttribute("href", "/review");
+    expect(within(tasks).getByRole("link", { name: "确认质保条款" })).toBeInTheDocument();
+  });
+
   it("uses server metrics, mutually exclusive business states and explicit risk levels", async () => {
     const service = new HomeService();
     open(service);

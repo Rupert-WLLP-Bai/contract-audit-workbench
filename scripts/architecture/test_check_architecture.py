@@ -3,8 +3,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-11-01
-# Updated: 2026-11-02
-# Revision: r2
+# Updated: 2026-11-08
+# Revision: r3
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -66,9 +66,22 @@ class NamedPolicyTests(unittest.TestCase):
             },
         ]
 
-    def inspect(self, records):
+    def with_ratchet(self, records, config=None):
+        cfg = config or self.config
+        completed = list(records)
+        seen = {record["ImportPath"] for record in completed}
+        for domain in cfg["ratchet"]["domains"]:
+            for role in ("app", "transport", "postgres"):
+                for path in domain[role]:
+                    name = cfg["module"] + "/" + path
+                    if name not in seen:
+                        completed.append({"ImportPath": name, "GoFiles": ["fixture.go"], "Imports": []})
+                        seen.add(name)
+        return completed
+
+    def inspect(self, records, config=None):
         report = {"policy_results": [], "violations": []}
-        guard.inspect_policies(records, self.config, report)
+        guard.inspect_policies(self.with_ratchet(records, config), config or self.config, report)
         return report
 
     def test_all_policies_pass_and_store_direct_import_is_allowed(self):
@@ -110,11 +123,14 @@ class NamedPolicyTests(unittest.TestCase):
 
     def test_missing_or_empty_named_target_is_blocked(self):
         records = self.records()
+        without_target = [record for record in records
+                          if record["ImportPath"] != "contractaudit/internal/advisorycontract"]
         with self.assertRaises(guard.Blocked):
-            guard.inspect_package(records[:-1], self.config["module"],
+            guard.inspect_package(without_target, self.config["module"],
                                   self.config["policies"][1]["checks"][1])
         empty = copy.deepcopy(records)
-        empty[-1]["GoFiles"] = []
+        next(record for record in empty
+             if record["ImportPath"] == "contractaudit/internal/advisorycontract")["GoFiles"] = []
         with self.assertRaisesRegex(guard.Blocked, "zero GoFiles"):
             guard.inspect_package(empty, self.config["module"],
                                   self.config["policies"][1]["checks"][1])
@@ -195,7 +211,7 @@ class NamedPolicyTests(unittest.TestCase):
             {"id": "beta", "app": ["internal/beta/app"], "transport": ["internal/beta/transport"], "postgres": ["internal/beta/postgres"]},
         ]
         guard.validate_config(self.config)
-        records = self.records() + [{"ImportPath": "contractaudit/" + path, "GoFiles": ["x.go"], "Imports": []} for domain in self.config["ratchet"]["domains"] for role in ("app", "transport", "postgres") for path in domain[role]]
+        records = self.with_ratchet(self.records())
         by_name = {r["ImportPath"]: r for r in records}
         by_name["contractaudit/internal/alpha/postgres"]["Imports"] = ["contractaudit/internal/beta/postgres/query"]
         by_name["contractaudit/internal/beta/postgres"]["Imports"] = ["contractaudit/internal/alpha/postgres"]
@@ -256,8 +272,7 @@ class NamedPolicyTests(unittest.TestCase):
         candidate["ratchet"]["legacy_store_importers"] = []
         guard.validate_config(candidate)
         guard.validate_base_ratchet(base, candidate)
-        report = {"policy_results": [], "violations": []}
-        guard.inspect_policies(self.records(), candidate, report)
+        report = self.inspect(self.records(), candidate)
         self.assertTrue(any(v["from"] == "contractaudit/internal/modelgateway" and
                             v["check_id"] == "store-no-new-business-import"
                             for v in report["violations"]))

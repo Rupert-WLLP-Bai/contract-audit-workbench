@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-03
-// Updated: 2026-11-03
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -64,8 +64,8 @@ describe("ContractLifecycleOverviewPanel", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<ContractLifecycleOverviewPanel detail={detail} actor={actor()} />);
 
-    expect(await screen.findByText("计划日期依据未知或尚未读取。")).toBeInTheDocument();
-    expect(screen.getByText(/争议状态：未知或未读取/)).toBeInTheDocument();
+    expect(await screen.findByText("还没有计划日期。")).toBeInTheDocument();
+    expect(screen.getByText(/争议状态：暂无/)).toBeInTheDocument();
     expect(screen.getByText(/本次读取时间：2026-11-03T01:02:03Z/)).toBeInTheDocument();
     await waitFor(() => expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
       `/api/contracts/${contractId}/lifecycle-overview`,
@@ -79,9 +79,9 @@ describe("ContractLifecycleOverviewPanel", () => {
     const onAccessDenied = vi.fn();
     render(<ContractLifecycleOverviewPanel detail={detail} actor={actor()} onAccessDenied={onAccessDenied} />);
 
-    expect(await screen.findByText("概览不可用，已清除合同相关显示")).toBeInTheDocument();
+    expect(await screen.findByText("当前无法查看这份概览")).toBeInTheDocument();
     await waitFor(() => expect(onAccessDenied).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText("计划日期依据未知或尚未读取。")).not.toBeInTheDocument();
+    expect(screen.queryByText("还没有计划日期。")).not.toBeInTheDocument();
   });
 
   it("hides all facts when the response contract revision or row version is stale", async () => {
@@ -96,7 +96,7 @@ describe("ContractLifecycleOverviewPanel", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<ContractLifecycleOverviewPanel detail={detail} actor={actor()} />);
 
-    expect(await screen.findByText("合同版本已变化，请刷新合同详情后重新读取")).toBeInTheDocument();
+    expect(await screen.findByText("合同版本已更新，请刷新后再看")).toBeInTheDocument();
     expect(screen.queryByText(/受保护事实/)).not.toBeInTheDocument();
   });
 

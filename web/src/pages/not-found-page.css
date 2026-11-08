@@ -1,0 +1,80 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles the dedicated client and admin unmatched-route cards with existing semantic tokens and no application state. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-08 */
+/* Updated: 2026-11-08 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+.not-found-card {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  max-width: 720px;
+  margin: var(--space-8) auto;
+  padding: var(--space-8) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--panel-radius);
+  background: var(--surface-raised);
+  text-align: center;
+}
+
+.not-found-mark {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--action-primary-soft);
+  color: var(--action-primary);
+  font-weight: 700;
+}
+
+.not-found-card h2 {
+  margin: 0;
+}
+
+.not-found-card p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.not-found-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.not-found-primary,
+.not-found-secondary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-control);
+  text-decoration: none;
+}
+
+.not-found-primary {
+  background: var(--action-primary);
+  color: var(--surface-raised);
+}
+
+.not-found-primary:hover,
+.not-found-secondary:hover {
+  opacity: 0.9;
+}
+
+.not-found-secondary {
+  border: 1px solid var(--border-control);
+  color: var(--text-primary);
+}
+
+.not-found-primary:focus-visible,
+.not-found-secondary:focus-visible {
+  outline: 2px solid var(--action-primary);
+  outline-offset: 2px;
+}

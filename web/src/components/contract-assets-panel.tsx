@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -294,10 +294,10 @@ export function ContractAssetsPanel({ detail, actor, canManage, onRefresh }: {
         <p><Tag>人工移交事实</Tag>{handover.quantity} {handover.unit} · 范围 [{handover.scope_start}, {handover.scope_end}) · {formatDateTime(handover.handed_over_at)} · {handover.location}</p>
         <p>{handover.transfer_note}</p>
         <p>部门归属核验：{handover.department_verification === "verified" ? "已核验" : "未知"}；目录用户核验：{verificationLabel(handover.custodian_verification).text}；整体分配核验：{handover.assignment_verification === "verified" ? "已核验" : "未知"}。</p>
-        {handover.custodian_verification === "verified" ? <p>目录中的当时用户：{handover.custodian_display_name || handover.custodian_user_id} · 组织 ID {handover.custodian_org_id || "未知"} · 来源 {handover.custodian_directory_source || "未知"} · 核验时间 {handover.custodian_directory_checked_at ? formatDateTime(handover.custodian_directory_checked_at) : "未知"}。目录身份不等于部门主数据或移交权限。</p> : <p>目录用户身份未知；不会据此推断部门归属或移交权限。</p>}
+        {handover.custodian_verification === "verified" ? <p>目录中的当时用户：{handover.custodian_display_name || handover.custodian_user_id} · 组织 ID {handover.custodian_org_id || "未知"} · 来源 {handover.custodian_directory_source || "未知"} · 核验时间 {handover.custodian_directory_checked_at ? formatDateTime(handover.custodian_directory_checked_at) : "未知"}。目录身份需与部门主数据、移交权限另行核对。</p> : <p>目录用户身份未知；请补齐后再确认部门归属或移交权限。</p>}
         <p><Tag color={bookingLabel(handover.booking_status).color}>{bookingLabel(handover.booking_status).text}</Tag>入账状态独立于部门和分配核验。</p>
         {handover.evidence_redacted ? <p>部分案件材料摘要因当前授权范围已隐藏。</p> : handover.evidence.length ? <ul>{handover.evidence.map((entry) => <li key={`${entry.material_id}:${entry.material_version_id}`}>{entry.filename} · 版本 {entry.material_version} · SHA-256 {entry.digest}</li>)}</ul> : <p>没有可见的移交证据摘要。</p>}
-        {handover.receipts.length ? <div><strong>可信 ERP 回执与冲正</strong>{handover.receipts.map((receipt) => <p key={receipt.receipt_id}><Tag color={receipt.event_type === "receipt" ? "green" : "orange"}>{receipt.event_type === "receipt" ? "ERP 入账回执" : "ERP 冲正回执"}</Tag>{receipt.quantity} {receipt.unit} · 资产代码 {receipt.asset_code || "未知"} · 来源事件 {receipt.source_event_id} · 发生于 {formatDateTime(receipt.occurred_at)} · 记录于 {formatDateTime(receipt.recorded_at)}</p>)}</div> : <p>尚无可信 ERP 入账回执；人工移交记录不表示已经入账。</p>}
+        {handover.receipts.length ? <div><strong>可信 ERP 回执与冲正</strong>{handover.receipts.map((receipt) => <p key={receipt.receipt_id}><Tag color={receipt.event_type === "receipt" ? "green" : "orange"}>{receipt.event_type === "receipt" ? "ERP 入账回执" : "ERP 冲正回执"}</Tag>{receipt.quantity} {receipt.unit} · 资产代码 {receipt.asset_code || "未知"} · 来源事件 {receipt.source_event_id} · 发生于 {formatDateTime(receipt.occurred_at)} · 记录于 {formatDateTime(receipt.recorded_at)}</p>)}</div> : <p>还没有 ERP 入账回执。</p>}
       </article>)}
     </Card>)}
     {historicalAssets.length ? <details><summary>历史冻结修订资产计划与记录</summary>{historicalAssets.map((item) => <Card size="small" key={`${item.contract_revision_id}:${item.asset_plan_id}`} title={`${item.name || "未命名资产计划"} · 历史修订`} style={{ marginTop: 8 }}>
@@ -311,7 +311,7 @@ export function ContractAssetsPanel({ detail, actor, canManage, onRefresh }: {
     </Card>)}</details> : null}
     {actor && canManage && assets?.fixed_asset_status === "true" && currentAssets.some((item) => item.plan_status === "known") ? <div className="contracts-page-section">
       <h4>追加人工移交事实</h4>
-      <p className="meta">请填写实际人工交接区间；所选验收事实会分别显示验收区间和已通过数量，由服务端确认交接区间位于可交接前缀。范围使用原始十进制文本并按半开区间处理，是逻辑分配位置，不是设备序列号。服务端会重新核验合同管理权限；目录用户身份不代表部门归属或移交授权。提交不会创建 ERP 入账回执。</p>
+      <p className="meta">请填写实际交接区间。提交前会核对权限和可交接数量；这里不会创建 ERP 入账回执。</p>
       <div className="contracts-page-fields">
         <Select placeholder="选择当前修订的已核对资产计划" value={assetPlanId} options={currentAssets.filter((item) => item.fixed_asset_status === "true" && item.plan_status === "known").map((item) => ({ value: item.asset_plan_id, label: `${item.name || "未命名计划"} · ${item.planned_quantity ?? "数量未知"} ${item.unit ?? ""}` }))} onChange={(value) => { setAssetPlanId(value); setDeliveryId(undefined); setAcceptanceId(undefined); setScopeStart(""); setScopeEnd(""); }} />
         <Select placeholder="选择同一修订和商品的实际交付事实" value={deliveryId} disabled={!selectedPlan} options={planDeliveries.map((item) => ({ value: item.delivery_id, label: `${item.batch_reference} · ${item.quantity} ${item.unit} · ${item.location}` }))} onChange={(value) => { setDeliveryId(value); setAcceptanceId(undefined); setScopeStart(""); setScopeEnd(""); }} />

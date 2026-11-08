@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “审查入口”; representative assertions cover opens the newest run with its exact frozen attempt id, shows the empty state when no cases are visible, marks one visible case and one run as filled. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Checks review entry rendering, exact run/attempt navigation, actor-assigned task filtering, recent-run filtering and ordering, URL-backed tabs/search, CTA destination, empty state, summary, and refresh/error states.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,12 +13,12 @@ import {
   QueryClientProvider,
   onlineManager,
 } from "@tanstack/react-query";
-import { cleanup, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import { setSessionIdentity } from "../api/http";
 import { queryKeys } from "../api/queries";
-import type { WorkbenchCase, WorkbenchSnapshot } from "../api/types";
+import type { Actor, WorkbenchCase, WorkbenchSnapshot } from "../api/types";
 import { renderWithAntd as render } from "../test/antd";
 import { ReviewEntryPage } from "./review-entry-page";
 
@@ -29,6 +29,9 @@ function snapshot(): WorkbenchSnapshot {
   const reviewCase: WorkbenchCase = {
     id: "case/alpha",
     title: "专线合同审查",
+    case_number: "BW-2026-09",
+    business_line: "ENT",
+    business_status: "active",
     contract_type: "service",
     document_count: 2,
     pending_decisions: 1,
@@ -42,6 +45,8 @@ function snapshot(): WorkbenchSnapshot {
     ...reviewCase,
     id: "case/without-review",
     title: "暂无运行案件",
+    case_number: undefined,
+    business_status: undefined,
     document_count: 0,
     pending_decisions: 0,
     progress: 0,
@@ -63,7 +68,38 @@ function snapshot(): WorkbenchSnapshot {
     },
     cases: [reviewCase, noRunCase],
     profiles: [],
-    tasks: [],
+    tasks: [
+      {
+        id: "task-1",
+        case_id: reviewCase.id,
+        assignee_id: "actor-1",
+        created_at: at,
+        created_by: "actor-1",
+        due_at: null,
+        finding_id: null,
+        kind: "decision",
+        priority: "medium",
+        status: "open",
+        title: "核对审查决定",
+        updated_at: at,
+        version: 1,
+      },
+      {
+        id: "task-other-actor",
+        case_id: noRunCase.id,
+        assignee_id: "actor-2",
+        created_at: at,
+        created_by: "actor-2",
+        due_at: null,
+        finding_id: null,
+        kind: "decision",
+        priority: "medium",
+        status: "open",
+        title: "其他成员待办",
+        updated_at: at,
+        version: 1,
+      },
+    ],
     relations: [],
     knowledge: [],
     members: [],
@@ -121,6 +157,26 @@ function makeClient(data?: WorkbenchSnapshot, updatedAt?: number) {
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
   clients.push(client);
+  const actor: Actor = {
+    id: "actor-1",
+    display_name: "审查员甲",
+    role: "reviewer",
+    tenant_id: "tenant-1",
+    org_id: "org-1",
+    audience: "client",
+    principal_id: "principal-1",
+    active_context: {
+      membership_id: "membership-1",
+      context_version: "1",
+      tenant_id: "tenant-1",
+      tenant_name: "租户甲",
+      org_id: "org-1",
+      org_name: "组织甲",
+    },
+    csrf_token: "test-token",
+    context_switch_enabled: false,
+  };
+  client.setQueryData(queryKeys.session, actor);
   if (data) {
     client.setQueryData(
       queryKeys.workbench("week"),
@@ -131,11 +187,17 @@ function makeClient(data?: WorkbenchSnapshot, updatedAt?: number) {
   return client;
 }
 
-function renderEntry(client: QueryClient) {
+function LocationSearch() {
+  const location = useLocation();
+  return <output data-testid="location-search">{location.search}</output>;
+}
+
+function renderEntry(client: QueryClient, initialEntry = "/review") {
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/reviews"]}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <ReviewEntryPage />
+        <LocationSearch />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -150,7 +212,13 @@ describe("审查入口", () => {
       "href",
       "/cases/case%2Falpha/reviews/run-new?attempt_id=attempt%2Fnew",
     );
-    expect(screen.getByText("尚无审查运行")).toBeInTheDocument();
+    expect(screen.getByText("尚未发起")).toBeInTheDocument();
+    expect(screen.getByText("业务编号：BW-2026-09")).toBeInTheDocument();
+    expect(screen.getByText("进行中")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "发起审查" })).toHaveAttribute(
+      "href",
+      "/cases",
+    );
     expect(screen.getByRole("link", { name: "进入案件" })).toHaveAttribute(
       "href",
       "/cases/case%2Fwithout-review",
@@ -171,6 +239,50 @@ describe("审查入口", () => {
       "open",
     );
     expect(screen.getByRole("combobox")).toBeInTheDocument();
+  });
+
+  it("filters to tasks assigned to the actor and keeps the selected view in the URL", () => {
+    const client = makeClient(snapshot());
+    renderEntry(client, "/review?view=mine");
+
+    expect(screen.getByRole("tab", { name: "待我处理" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("row", { name: /专线合同审查/ })).toBeInTheDocument();
+    expect(screen.queryByText("暂无运行案件")).not.toBeInTheDocument();
+    expect(screen.getByTestId("location-search")).toHaveTextContent("view=mine");
+  });
+
+  it("filters recent reviews and sorts cases by the newest persisted run", () => {
+    const client = makeClient(snapshot());
+    renderEntry(client, "/review?view=recent");
+
+    expect(screen.getByRole("tab", { name: "最近审查" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("row", { name: /专线合同审查/ })).toBeInTheDocument();
+    expect(screen.queryByText("暂无运行案件")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "打开审查" })).toHaveAttribute(
+      "href",
+      "/cases/case%2Falpha/reviews/run-new?attempt_id=attempt%2Fnew",
+    );
+  });
+
+  it("searches visible cases and updates the URL without dropping the view", () => {
+    const client = makeClient(snapshot());
+    renderEntry(client, "/review?view=all");
+
+    fireEvent.change(screen.getByRole("textbox", { name: "搜索案件" }), {
+      target: { value: "without-review" },
+    });
+
+    expect(screen.getByRole("row", { name: /暂无运行案件/ })).toBeInTheDocument();
+    expect(screen.queryByText("专线合同审查")).not.toBeInTheDocument();
+    expect(screen.getByTestId("location-search")).toHaveTextContent(
+      "view=all&q=without-review",
+    );
   });
 
   it("shows the empty state when no cases are visible", () => {

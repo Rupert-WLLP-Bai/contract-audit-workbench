@@ -1,0 +1,37 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles the review workspace section navigation, keeping all existing review panels accessible with a compact responsive selector. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-08 */
+/* Updated: 2026-11-08 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+.review-section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+}
+
+.review-section-nav button {
+  min-height: 34px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.review-section-nav button[aria-pressed="true"] {
+  border-color: var(--action-primary);
+  color: var(--action-primary);
+  font-weight: 600;
+}
+
+.review-section-nav button:focus-visible {
+  outline: 2px solid var(--action-primary);
+  outline-offset: 2px;
+}

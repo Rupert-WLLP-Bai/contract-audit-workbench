@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-05
-// Revision: r4
+// Updated: 2026-11-08
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -362,7 +362,7 @@ function FailedParseBody({
       </header>
       <TechnicalDetail label="材料状态技术详情" value={JSON.stringify({ role: document.role, parse_status: document.parse_status })} />
       <DiagnosticsCollapse document={document} showDiagnostics={showDiagnostics} />
-      <p className="callout">这份材料解析失败，不能据此给出无风险结论。</p>
+      <p className="callout">这份材料解析失败，请先处理解析问题再继续审查。</p>
       {document.parse_error ? <p>{document.parse_error}</p> : null}
       <EvidenceNotes resolved={resolved} />
     </DocPane>

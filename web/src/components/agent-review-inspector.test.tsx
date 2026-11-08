@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -826,7 +826,7 @@ describe("AgentReview Inspector tones and missing details", () => {
     expect(region.getByText(/候选过多，本次仅评估了部分可选知识/)).toBeInTheDocument();
     expect(region.getByText(/建议概率 未返回/)).toBeInTheDocument();
     expect(region.getByText(/原因 no_signal/)).toBeInTheDocument();
-    expect(region.getByText(/该失败本身不构成审查结论/)).toBeInTheDocument();
+    expect(region.getByText(/建议不可用时，审查按确定性规则继续/)).toBeInTheDocument();
   });
 });
 

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-05
-// Revision: r6
+// Updated: 2026-11-08
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -212,7 +212,7 @@ function planFor(props: Props): CaseNextStepPlan {
       stage: runLabel(run.state),
       title: "最近一次审查正在处理",
       tone: "progress",
-      reason: "新上传的材料不会自动进入这条已受理审查；请在同一工作区查看执行进度与结果。",
+      reason: "新材料不会加入这条已受理审查；请在同一工作区查看进度。",
       missingItems: [],
       owner: "审查员",
       action: { kind: "link", href: reviewHref, label: "打开最近审查" },
@@ -241,7 +241,7 @@ function planFor(props: Props): CaseNextStepPlan {
         stage: "主体状态待确认",
         title: "服务端没有返回主体变化状态",
         tone: "attention",
-        reason: "无法确认当前主体信息是否与最近一次冻结审查一致；不能据此发起新的审查。",
+        reason: "无法确认当前主体信息是否与最近一次冻结审查一致；请先核对主体后再发起新审查。",
         missingItems: ["当前主体与最近一次审查之间的服务端比较结果"],
         owner: "案件管理员",
         action: { kind: "link", href: "#case-subjects", label: "查看案件主体信息" },
@@ -451,7 +451,7 @@ function planFor(props: Props): CaseNextStepPlan {
       stage: "审查尚未开始",
       title: "还没有可查看的审查结果",
       tone: "attention",
-      reason: "没有运行记录时不能据此判断合同无风险。",
+      reason: "还没有运行记录，请先完成审查再判断合同风险。",
       missingItems: ["首次审查运行"],
       owner: "经办或审查员",
       action: { kind: "link", href: "#review-readiness", label: "查看首次审查准备状态" },
@@ -539,7 +539,7 @@ function planFor(props: Props): CaseNextStepPlan {
       stage: "待人工决定",
       title: undecided > 0 ? `还有 ${undecided} 项问题待人工判断` : "运行等待审查员确认",
       tone: "attention",
-      reason: "请逐项核对冻结原文、已有证据和规则结果，再保存人工决定；模型建议不会自动成为决定。",
+      reason: "请核对原文、证据和规则结果后，再保存人工决定。",
       missingItems: undecided > 0 ? [`${undecided} 项问题尚未完成决定`] : ["本次运行的人工确认"],
       owner: "审查员",
       action: { kind: "link", href: reviewHref, label: "核对原文并处理决定" },

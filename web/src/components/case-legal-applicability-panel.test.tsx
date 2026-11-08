@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,6 +15,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseLegalApplicabilityFactVersion } from "../api/legal-applicability";
+import { ApiError } from "../api/http";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { CaseLegalApplicabilityPanel } from "./case-legal-applicability-panel";
 
@@ -48,7 +49,7 @@ function renderPanel() {
 }
 
 beforeEach(() => {
-  mocks.getFacts.mockResolvedValue(fixture("applicability-fact-set.json"));
+  mocks.getFacts.mockImplementation(async (_caseId: string, businessAt: string, cutoff: string) => ({ ...(fixture("applicability-fact-set.json") as object), business_at: businessAt, evidence_cutoff_at: cutoff }));
   mocks.getHistory.mockImplementation(async (caseId: string, dimension: string, cursor?: string | null) => {
     const history = fixture("applicability-history.json") as { case_id: string; dimension: string; items: Array<Record<string, unknown>>; current_version: number; can_manage: boolean; next_cursor: string | null };
     if (dimension === "buyer_kind" && cursor) return {
@@ -70,6 +71,179 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllMocks(); vi.unstubAllEnvs(); });
 
 describe("case legal applicability panel", () => {
+  it("preserves edited facts when a background refetch returns", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    render(<QueryClientProvider client={client}><CaseLegalApplicabilityPanel caseId="case-wire-fixture" /></QueryClientProvider>);
+    const input = await screen.findByLabelText("采购方主体类型依据说明");
+    fireEvent.change(input, { target: { value: "unsaved edit" } });
+    const changed = fixture("applicability-fact-set.json") as { facts: Array<{ fact: { basis_note: string } | null }> };
+    if (changed.facts[0]?.fact) changed.facts[0].fact.basis_note = "server update";
+    mocks.getFacts.mockImplementation(async (_caseId: string, businessAt: string, cutoff: string) => ({ ...changed, business_at: businessAt, evidence_cutoff_at: cutoff }));
+    await client.invalidateQueries({ queryKey: ["cases", "case-wire-fixture", "legal-applicability-facts"] });
+    await waitFor(() => expect(mocks.getFacts.mock.calls.length).toBeGreaterThan(1));
+    expect(input).toHaveValue("unsaved edit");
+  });
+
+  it("restores the initial draft after returning to the displayed times", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    const input = await screen.findByLabelText("采购方主体类型依据说明");
+    const business = screen.getByLabelText("法律判断业务时点（北京时间）") as HTMLInputElement;
+    const cutoff = screen.getByLabelText("法律事实证据截止时点（北京时间）") as HTMLInputElement;
+    const initialBusiness = business.value;
+    const initialCutoff = cutoff.value;
+    fireEvent.change(input, { target: { value: "initial draft" } });
+    fireEvent.change(business, { target: { value: "2025-05-20T20:00" } });
+    await user.click(screen.getByRole("button", { name: "读取该时点的事实" }));
+    await screen.findByLabelText("采购方主体类型依据说明");
+    fireEvent.change(business, { target: { value: initialBusiness } });
+    fireEvent.change(cutoff, { target: { value: initialCutoff } });
+    await user.click(screen.getByRole("button", { name: "读取该时点的事实" }));
+    await waitFor(() => expect(screen.getByLabelText("采购方主体类型依据说明")).toHaveValue("initial draft"));
+  });
+
+  it("restores independent drafts for exact business and evidence time snapshots", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByLabelText("采购方主体类型依据说明");
+    const business = screen.getByLabelText("法律判断业务时点（北京时间）");
+    const cutoff = screen.getByLabelText("法律事实证据截止时点（北京时间）");
+    const selectTime = async (businessAt: string, evidenceAt: string) => {
+      fireEvent.change(business, { target: { value: businessAt } });
+      fireEvent.change(cutoff, { target: { value: evidenceAt } });
+      await user.click(screen.getByRole("button", { name: "读取该时点的事实" }));
+      await waitFor(() => expect(mocks.getFacts).toHaveBeenLastCalledWith("case-wire-fixture", expect.any(String), expect.any(String), expect.any(AbortSignal)));
+      await screen.findByLabelText("采购方主体类型依据说明");
+    };
+    await selectTime("2025-05-20T20:00", "2025-05-21T20:00");
+    fireEvent.change(screen.getByLabelText("采购方主体类型依据说明"), { target: { value: "draft A" } });
+    await selectTime("2025-05-20T20:00", "2025-05-22T20:00");
+    expect(screen.getByLabelText("采购方主体类型依据说明")).not.toHaveValue("draft A");
+    fireEvent.change(screen.getByLabelText("采购方主体类型依据说明"), { target: { value: "draft B" } });
+    await selectTime("2025-05-20T20:00", "2025-05-21T20:00");
+    await waitFor(() => expect(screen.getByLabelText("采购方主体类型依据说明")).toHaveValue("draft A"));
+    await selectTime("2025-05-20T20:00", "2025-05-22T20:00");
+    await waitFor(() => expect(screen.getByLabelText("采购方主体类型依据说明")).toHaveValue("draft B"));
+  });
+
+  it("restores the selected evidence anchor only for its time snapshot", async () => {
+    const user = userEvent.setup();
+    mocks.useMaterialParsedTextPage.mockReturnValue({ data: { material_id: "m1", material_version: 1, document_id: "d1", parsed_document_id: "p1", filename: "evidence.txt", offset: 0, text: "selected evidence", total_runes: 17, next_offset: null }, isError: false });
+    renderPanel();
+    const text = await screen.findByLabelText("法律适用事实依据原文，可选择引用");
+    const range = document.createRange();
+    range.setStart(text.firstChild!, 0);
+    range.setEnd(text.firstChild!, 8);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    fireEvent.mouseUp(text);
+    expect(screen.getByText("selected", { selector: "blockquote" })).toBeInTheDocument();
+    const business = screen.getByLabelText("法律判断业务时点（北京时间）") as HTMLInputElement;
+    const initial = business.value;
+    fireEvent.change(business, { target: { value: "2025-05-20T20:00" } });
+    await user.click(screen.getByRole("button", { name: "读取该时点的事实" }));
+    expect(screen.queryByText("selected", { selector: "blockquote" })).not.toBeInTheDocument();
+    fireEvent.change(business, { target: { value: initial } });
+    await user.click(screen.getByRole("button", { name: "读取该时点的事实" }));
+    expect(screen.getByText("selected", { selector: "blockquote" })).toBeInTheDocument();
+  });
+
+  it("discards drafts when the same actor changes role", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const panel = render(<QueryClientProvider client={client}><CaseLegalApplicabilityPanel caseId="case-wire-fixture" /></QueryClientProvider>);
+    fireEvent.change(await screen.findByLabelText("采购方主体类型依据说明"), { target: { value: "old role draft" } });
+    mocks.useSession.mockReturnValue({ data: { id: "actor-1", tenant_id: "tenant-1", org_id: "org-1", audience: "client", role: "reviewer" } });
+    panel.rerender(<QueryClientProvider client={client}><CaseLegalApplicabilityPanel caseId="case-wire-fixture" /></QueryClientProvider>);
+    await waitFor(() => expect(screen.getByLabelText("采购方主体类型依据说明")).not.toHaveValue("old role draft"));
+  });
+
+  it.each(["session", "case", "subjects", "facts", "history", "parsedDocuments", "parsedPage"])("hides protected data when %s is forbidden", async (source) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const panel = render(<QueryClientProvider client={client}><CaseLegalApplicabilityPanel caseId="case-wire-fixture" /></QueryClientProvider>);
+    expect(await screen.findByLabelText("采购方主体类型依据说明")).toBeInTheDocument();
+    const error = new ApiError("denied", 403, "forbidden", false, null);
+    if (source === "session") mocks.useSession.mockReturnValue({ data: { id: "actor-1" }, error, isError: true });
+    if (source === "case") mocks.useCaseDetail.mockReturnValue({ data: { materials: [], material_versions: [] }, error, isError: true });
+    if (source === "subjects") mocks.useCaseSubjects.mockReturnValue({ data: { items: [], can_manage: true }, error, isError: true });
+    if (source === "parsedDocuments") mocks.useMaterialParsedDocuments.mockReturnValue({ data: { items: [] }, error, isError: true });
+    if (source === "parsedPage") mocks.useMaterialParsedTextPage.mockReturnValue({ data: { text: "stale text" }, error, isError: true });
+    if (source === "facts") mocks.getFacts.mockRejectedValue(error);
+    if (source === "history") mocks.getHistory.mockRejectedValue(error);
+    if (source === "facts") await client.invalidateQueries({ queryKey: ["cases", "case-wire-fixture", "legal-applicability-facts"] });
+    else if (source === "history") await client.invalidateQueries({ queryKey: ["cases", "case-wire-fixture", "actor-1", "legal-applicability-history"] });
+    else panel.rerender(<QueryClientProvider client={client}><CaseLegalApplicabilityPanel caseId="case-wire-fixture" /></QueryClientProvider>);
+    expect(await screen.findByText("当前无权查看法律适用事实")).toBeInTheDocument();
+    expect(screen.queryByLabelText("采购方主体类型依据说明")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "追加事实版本" })).not.toBeInTheDocument();
+  });
+
+  it("clears drafts when a save is forbidden", async () => {
+    const user = userEvent.setup();
+    const facts = fixture("applicability-fact-set.json") as { facts: Array<{ dimension: string; fact: unknown }> };
+    const buyer = facts.facts.find((item) => item.dimension === "buyer_kind");
+    if (buyer) buyer.fact = null;
+    mocks.getFacts.mockImplementation(async (_caseId: string, businessAt: string, cutoff: string) => ({ ...facts, business_at: businessAt, evidence_cutoff_at: cutoff }));
+    mocks.recordFact.mockRejectedValue(new ApiError("denied", 403, "forbidden", false, null));
+    renderPanel();
+    const input = await screen.findByLabelText("采购方主体类型依据说明");
+    fireEvent.change(input, { target: { value: "restricted draft" } });
+    await user.click(within(screen.getByRole("region", { name: "采购方主体类型" })).getByRole("button", { name: "追加事实版本" }));
+    expect(await screen.findByText("当前无权查看法律适用事实")).toBeInTheDocument();
+    expect(screen.queryByLabelText("采购方主体类型依据说明")).not.toBeInTheDocument();
+  });
+
+  it("ignores a save completing after a time change", async () => {
+    const user = userEvent.setup();
+    const facts = fixture("applicability-fact-set.json") as { facts: Array<{ dimension: string; fact: unknown }> };
+    const buyer = facts.facts.find((item) => item.dimension === "buyer_kind");
+    if (buyer) buyer.fact = null;
+    mocks.getFacts.mockImplementation(async (_caseId: string, businessAt: string, cutoff: string) => ({ ...facts, business_at: businessAt, evidence_cutoff_at: cutoff }));
+    let finish!: (value: unknown) => void;
+    mocks.recordFact.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    renderPanel();
+    const input = await screen.findByLabelText("采购方主体类型依据说明");
+    fireEvent.change(input, { target: { value: "draft before save" } });
+    await user.click(within(screen.getByRole("region", { name: "采购方主体类型" })).getByRole("button", { name: "追加事实版本" }));
+    await waitFor(() => expect(mocks.recordFact).toHaveBeenCalled());
+    fireEvent.change(screen.getByLabelText("法律判断业务时点（北京时间）"), { target: { value: "2025-05-20T20:00" } });
+    await user.click(screen.getByRole("button", { name: "读取该时点的事实" }));
+    finish(parseLegalApplicabilityFactVersion(fixture("applicability-record-success.json")));
+    await waitFor(() => expect(screen.getByLabelText("采购方主体类型依据说明")).not.toHaveValue("draft before save"));
+    expect(screen.queryByText(/已追加为第/)).not.toBeInTheDocument();
+    await waitFor(() => expect(mocks.clearPendingMutationKey).toHaveBeenCalledWith("safe-slot"));
+    await waitFor(() => expect(mocks.getHistory.mock.calls.length).toBeGreaterThan(9));
+  });
+
+  it("settles a completed save without invalidating a replacement actor's caches", async () => {
+    const user = userEvent.setup();
+    const facts = fixture("applicability-fact-set.json") as { facts: Array<{ dimension: string; fact: unknown }> };
+    const buyer = facts.facts.find((item) => item.dimension === "buyer_kind");
+    if (buyer) buyer.fact = null;
+    mocks.getFacts.mockImplementation(async (_caseId: string, businessAt: string, cutoff: string) => ({ ...facts, business_at: businessAt, evidence_cutoff_at: cutoff }));
+    let finish!: (value: unknown) => void;
+    mocks.recordFact.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    const panel = render(<QueryClientProvider client={client}><CaseLegalApplicabilityPanel caseId="case-wire-fixture" /></QueryClientProvider>);
+    fireEvent.change(await screen.findByLabelText("采购方主体类型依据说明"), { target: { value: "old actor draft" } });
+    await user.click(within(screen.getByRole("region", { name: "采购方主体类型" })).getByRole("button", { name: "追加事实版本" }));
+    await waitFor(() => expect(mocks.recordFact).toHaveBeenCalled());
+    mocks.useSession.mockReturnValue({ data: { id: "actor-2", tenant_id: "tenant-1", org_id: "org-1", audience: "client" } });
+    panel.rerender(<QueryClientProvider client={client}><CaseLegalApplicabilityPanel caseId="case-wire-fixture" /></QueryClientProvider>);
+    finish(parseLegalApplicabilityFactVersion(fixture("applicability-record-success.json")));
+    await waitFor(() => expect(mocks.clearPendingMutationKey).toHaveBeenCalledWith("safe-slot"));
+    expect(invalidate).not.toHaveBeenCalled();
+    expect(screen.queryByText(/已追加为第/)).not.toBeInTheDocument();
+  });
+
+  it("rejects fact responses for a different time", async () => {
+    mocks.getFacts.mockResolvedValue(fixture("applicability-fact-set.json"));
+    renderPanel();
+    expect(await screen.findByText("法律适用事实暂不可用")).toBeInTheDocument();
+    expect(screen.queryByLabelText("采购方主体类型依据说明")).not.toBeInTheDocument();
+  });
+
   it("sends the chosen business and evidence times as UTC from explicit Beijing inputs", async () => {
     vi.stubEnv("TZ", "America/Los_Angeles");
     const user = userEvent.setup();
@@ -98,7 +272,7 @@ describe("case legal applicability panel", () => {
     const facts = fixture("applicability-fact-set.json") as { facts: Array<{ dimension: string; status: string; value: string; unknown_reason?: string; fact: unknown }> };
     const buyer = facts.facts.find((item) => item.dimension === "buyer_kind");
     if (buyer) Object.assign(buyer, { status: "unknown", value: "", unknown_reason: "missing_fact", fact: null });
-    mocks.getFacts.mockResolvedValue(facts);
+    mocks.getFacts.mockImplementation(async (_caseId: string, businessAt: string, cutoff: string) => ({ ...facts, business_at: businessAt, evidence_cutoff_at: cutoff }));
     renderPanel();
     expect(await screen.findByText("版本历史（当前写入头 v3）")).toBeInTheDocument();
     expect(await screen.findByText(/第 2 版 · 企业/)).toBeInTheDocument();

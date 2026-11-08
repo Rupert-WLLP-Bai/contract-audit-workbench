@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -267,7 +267,7 @@ export function compareReviewWorkspaces(source: ReviewWorkspace, target: ReviewW
     const targetPartial = target.review_attempts?.attempt.state === "partial";
     const canDescribeAbsence = !targetPartial && sameScope && !!key && leftCount === 1 && !!base && !afterIndex.bases.has(base) && !!left.finding;
     rows.push({ kind: canDescribeAbsence ? "disappeared" : "unmatched", source: left, target: null,
-      reason: canDescribeAbsence ? "目标未返回相同规则检查；不代表已执行或风险消除。" : targetPartial ? "目标为部分审查，未返回检查项不能视为风险消除。" : "范围、规则、对象或条款缺失或不唯一，不能自动对应。" });
+      reason: canDescribeAbsence ? "目标审查没有返回相同检查。" : targetPartial ? "目标是部分审查，未返回的检查项还不能下结论。" : "范围、规则、对象或条款缺失或不唯一，不能自动对应。" });
   });
 
   after.forEach((right, position) => {

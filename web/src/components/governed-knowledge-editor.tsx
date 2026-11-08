@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -242,13 +242,17 @@ interface SectionProps {
   disabled: boolean;
 }
 
-function BasicSection({ value, onChange, issues, disabled, lockedIdentity }: SectionProps & { lockedIdentity: boolean }) {
+type BasicSectionMode = "all" | "source" | "content";
+
+function BasicSection({ value, onChange, issues, disabled, lockedIdentity, mode = "all" }: SectionProps & { lockedIdentity: boolean; mode?: BasicSectionMode }) {
   const set = (patch: Partial<KnowledgeContent>) => onChange({ ...value, ...patch });
+  const showSource = mode !== "content";
+  const showContent = mode !== "source";
   const kindSourceType = (kind: KnowledgeKind) =>
     kind === "experience" ? "human_feedback" : value.source_type === "human_feedback" ? "reference" : value.source_type;
   return <section className="rulepack-editor-section" aria-labelledby="knowledge-basic-heading">
-    <h2 id="knowledge-basic-heading">知识内容与来源</h2>
-    <div className="rulepack-fields">
+    <h2 id="knowledge-basic-heading">{mode === "source" ? "依据来源与标识" : mode === "content" ? "摘要与正文" : "知识内容与来源"}</h2>
+    {showSource && <div className="rulepack-fields">
       <Field id="knowledge-id" label="知识 ID" issues={issues}><Input id="knowledge-id" {...errorProps("knowledge-id", issues)} value={value.knowledge_id} readOnly={lockedIdentity} disabled={disabled} onChange={(event) => set({ knowledge_id: event.target.value })} /></Field>
       <Field id="knowledge-version" label="版本号" issues={issues}><Input id="knowledge-version" {...errorProps("knowledge-version", issues)} value={value.version} disabled={disabled} onChange={(event) => set({ version: event.target.value })} /></Field>
       <Field id="knowledge-kind" label="知识类型" issues={issues}><Select id="knowledge-kind" style={{ width: "100%" }} value={value.kind} options={kinds} disabled={disabled || lockedIdentity} onChange={(kind: KnowledgeKind) => set({ kind, source_type: kindSourceType(kind) })} /></Field>
@@ -256,10 +260,11 @@ function BasicSection({ value, onChange, issues, disabled, lockedIdentity }: Sec
       <Field id="knowledge-source-type" label="来源类型" issues={issues}><Select id="knowledge-source-type" style={{ width: "100%" }} value={value.source_type} disabled={disabled || value.kind === "experience"} options={[{ value: "reference", label: businessSourceTypeLabel("reference") }, { value: "synthetic_policy", label: businessSourceTypeLabel("synthetic_policy") }, ...(value.kind === "experience" ? [{ value: "human_feedback", label: businessSourceTypeLabel("human_feedback") }] : [])]} onChange={(source_type: string) => set({ source_type })} /></Field>
       <Field id="knowledge-source-reference" label="来源说明" issues={issues}><Input id="knowledge-source-reference" {...errorProps("knowledge-source-reference", issues)} value={value.source_reference} disabled={disabled} onChange={(event) => set({ source_reference: event.target.value })} /></Field>
       <Field id="knowledge-source-case" label="来源案件 ID（如有）" issues={issues}><Input id="knowledge-source-case" {...errorProps("knowledge-source-case", issues)} value={value.source_case_id ?? ""} disabled={disabled} onChange={(event) => set({ source_case_id: event.target.value })} /></Field>
-    </div>
-    <Field id="knowledge-summary" label="摘要" issues={issues}><Input.TextArea id="knowledge-summary" {...errorProps("knowledge-summary", issues)} value={value.summary} rows={2} disabled={disabled} onChange={(event) => set({ summary: event.target.value })} /></Field>
-    <Field id="knowledge-body" label="正文" issues={issues}><Input.TextArea id="knowledge-body" {...errorProps("knowledge-body", issues)} value={value.body} rows={6} disabled={disabled} onChange={(event) => set({ body: event.target.value })} /></Field>
-    <p className="meta">案件来源需由当前管理员具有来源案件访问权限；来源组织及反馈由服务端确认。</p>
+    </div>}
+    {showSource && <p className="meta">案件来源需由当前管理员具有来源案件访问权限；来源组织及反馈由服务端确认。</p>}
+    {mode === "content" && value.kind === "experience" && <Field id="knowledge-source-case" label="来源案件 ID（如有）" issues={issues}><Input id="knowledge-source-case" {...errorProps("knowledge-source-case", issues)} value={value.source_case_id ?? ""} disabled={disabled} onChange={(event) => set({ source_case_id: event.target.value })} /></Field>}
+    {showContent && <Field id="knowledge-summary" label="摘要" issues={issues}><Input.TextArea id="knowledge-summary" {...errorProps("knowledge-summary", issues)} value={value.summary} rows={2} disabled={disabled} onChange={(event) => set({ summary: event.target.value })} /></Field>}
+    {showContent && <Field id="knowledge-body" label="正文" issues={issues}><Input.TextArea id="knowledge-body" {...errorProps("knowledge-body", issues)} value={value.body} rows={6} disabled={disabled} onChange={(event) => set({ body: event.target.value })} /></Field>}
   </section>;
 }
 
@@ -277,11 +282,15 @@ function ConditionSection({ group, value, onChange, issues, disabled }: SectionP
   </div>;
 }
 
-function ScopeSection({ value, onChange, issues, disabled }: SectionProps) {
+type ScopeSectionMode = "all" | "scope" | "conditions";
+
+function ScopeSection({ value, onChange, issues, disabled, mode = "all" }: SectionProps & { mode?: ScopeSectionMode }) {
   const setScope = (patch: Partial<KnowledgeContent["scope"]>) => onChange(withSection(value, "scope", patch));
+  const showScope = mode !== "conditions";
+  const showConditions = mode !== "scope";
   return <section className="rulepack-editor-section" aria-labelledby="knowledge-scope-heading">
-    <h2 id="knowledge-scope-heading">适用范围与有效期</h2>
-    <div className="rulepack-fields">
+    <h2 id="knowledge-scope-heading">{mode === "conditions" ? "适用与排除条件" : "适用范围与有效期"}</h2>
+    {showScope && <div className="rulepack-fields">
       <Field id="knowledge-line" label="业务线" issues={issues}><Input id="knowledge-line" {...errorProps("knowledge-line", issues)} value={value.scope.business_line} disabled={disabled} onChange={(event) => setScope({ business_line: event.target.value })} /></Field>
       <Field id="knowledge-scenario" label="业务场景" issues={issues}><Input id="knowledge-scenario" {...errorProps("knowledge-scenario", issues)} value={value.scope.scenario} disabled={disabled} onChange={(event) => setScope({ scenario: event.target.value })} /></Field>
       <Field id="knowledge-contract" label="合同类型" issues={issues}><Input id="knowledge-contract" {...errorProps("knowledge-contract", issues)} value={value.scope.contract_type} disabled={disabled} onChange={(event) => setScope({ contract_type: event.target.value })} /></Field>
@@ -289,9 +298,9 @@ function ScopeSection({ value, onChange, issues, disabled }: SectionProps) {
       <Field id="knowledge-case" label="限定案件 ID（可选）" issues={issues}><Input id="knowledge-case" value={value.scope.case_id ?? ""} disabled={disabled} onChange={(event) => setScope({ case_id: event.target.value })} /></Field>
       <Field id="knowledge-from" label="生效时间（本地时间）" issues={issues}><Input id="knowledge-from" {...errorProps("knowledge-from", issues)} type="datetime-local" step="0.001" value={toLocalInputValue(value.valid_from, "millisecond")} disabled={disabled} onChange={(event) => onChange({ ...value, valid_from: toUtcInstant(event.target.value) })} /></Field>
       <Field id="knowledge-until" label="失效时间（不含，本地时间）" issues={issues}><Input id="knowledge-until" {...errorProps("knowledge-until", issues)} type="datetime-local" step="0.001" value={toLocalInputValue(value.valid_until, "millisecond")} disabled={disabled} onChange={(event) => onChange({ ...value, valid_until: toUtcInstant(event.target.value) })} /></Field>
-    </div>
-    <ConditionSection group="applicability" value={value} onChange={onChange} issues={issues} disabled={disabled} />
-    <ConditionSection group="exclusions" value={value} onChange={onChange} issues={issues} disabled={disabled} />
+    </div>}
+    {showConditions && <ConditionSection group="applicability" value={value} onChange={onChange} issues={issues} disabled={disabled} />}
+    {showConditions && <ConditionSection group="exclusions" value={value} onChange={onChange} issues={issues} disabled={disabled} />}
   </section>;
 }
 
@@ -402,9 +411,24 @@ function PolicyRefsSection({ value, onChange, issues, disabled }: SectionProps) 
   </section>;
 }
 
-export function KnowledgeEditor({ value, onChange, issues, lockedIdentity, disabled }: {
-  value: KnowledgeContent; onChange: (value: KnowledgeContent) => void; issues: KnowledgeFormIssue[]; lockedIdentity: boolean; disabled: boolean;
+export type KnowledgeEditorStep = "source" | "content" | "submit";
+
+export function KnowledgeEditor({ value, onChange, issues, lockedIdentity, disabled, step }: {
+  value: KnowledgeContent; onChange: (value: KnowledgeContent) => void; issues: KnowledgeFormIssue[]; lockedIdentity: boolean; disabled: boolean; step?: KnowledgeEditorStep;
 }) {
+  if (step === "submit") return null;
+  if (step === "source") return <div className="rulepack-editor">
+    <BasicSection value={value} onChange={onChange} issues={issues} lockedIdentity={lockedIdentity} disabled={disabled} mode="source" />
+    <ScopeSection value={value} onChange={onChange} issues={issues} disabled={disabled} mode="scope" />
+  </div>;
+  if (step === "content") return <div className="rulepack-editor">
+    <BasicSection value={value} onChange={onChange} issues={issues} lockedIdentity={lockedIdentity} disabled={disabled} mode="content" />
+    <ScopeSection value={value} onChange={onChange} issues={issues} disabled={disabled} mode="conditions" />
+    <BindingSection value={value} onChange={onChange} issues={issues} disabled={disabled} />
+    {value.kind === "exception" && <ExceptionSection value={value} onChange={onChange} issues={issues} disabled={disabled} />}
+    {value.kind === "experience" && <ExperienceSection value={value} onChange={onChange} issues={issues} disabled={disabled} />}
+    <PolicyRefsSection value={value} onChange={onChange} issues={issues} disabled={disabled} />
+  </div>;
   return <div className="rulepack-editor">
     <BasicSection value={value} onChange={onChange} issues={issues} lockedIdentity={lockedIdentity} disabled={disabled} />
     <ScopeSection value={value} onChange={onChange} issues={issues} disabled={disabled} />

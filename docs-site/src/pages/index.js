@@ -12,7 +12,7 @@ const cards = [
   {
     kicker: '首次使用',
     title: '能力与边界',
-    text: '先看看能做什么、不能做什么。',
+    text: '先看看工作台覆盖哪些能力。',
     to: '/handbook/product/capabilities',
   },
 ];
@@ -24,7 +24,7 @@ export default function Home() {
       description="合同智能审计工作台的产品、工程与运维手册">
       <main id="top" className="caw-home">
         <section className="caw-hero">
-          <span className="caw-eyebrow">使用手册 · USER HANDBOOK</span>
+          <span className="caw-eyebrow">使用手册</span>
           <h1>合同智能审计工作台</h1>
           <div className="caw-actions">
             <a className="caw-btn caw-btn-primary" href="#quick">快速开始</a>

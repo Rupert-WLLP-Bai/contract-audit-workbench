@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -166,7 +166,7 @@ function OperationDetail({ operationId, enabled, actor }: { operationId: string 
     mutationFn: ({ operation, input, context }: { operation: TenantProvisionOperation; input: TenantProvisionStepInput; context: ReturnType<typeof captureCommandContext> }) =>
       recordTenantProvisionStep(operation.operation_id, input, context),
     onSuccess: async (result) => {
-      setNotice("步骤回执已提交。页面会刷新当前 revision；冲突时不会自动重放。 ");
+      setNotice("步骤回执已提交，页面将刷新。");
       setReceipt("");
       await queryClient.setQueryData(["tenant-provision-operation", result.operation.operation_id], result.operation);
       await queryClient.invalidateQueries({ queryKey: ["tenant-provision-operations", "platform"] });
@@ -235,7 +235,7 @@ function OperationDetail({ operationId, enabled, actor }: { operationId: string 
         ? "服务会阻止推进后续步骤。请勿将未知状态当作失败后直接重试。"
         : state === "reconciled"
           ? "请确认这是从外部权威处核对的结果。页面只写回核对回执，不会重新执行外部操作。"
-          : "此操作只记录人工确认的步骤回执；不会自动创建外部资源。",
+          : "此操作只记录人工确认的步骤回执。",
       okText: "确认记录",
       cancelText: "取消",
       onOk: () => submit(state, reconciliationValue),

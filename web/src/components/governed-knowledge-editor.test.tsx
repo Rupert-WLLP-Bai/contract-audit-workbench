@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -151,12 +151,14 @@ function Harness({
   issues = [],
   lockedIdentity = false,
   disabled = false,
+  step,
   onChange,
 }: {
   initial?: KnowledgeContent;
   issues?: KnowledgeFormIssue[];
   lockedIdentity?: boolean;
   disabled?: boolean;
+  step?: "source" | "content" | "submit";
   onChange?: (value: KnowledgeContent) => void;
 }) {
   const [value, setValue] = useState(initial);
@@ -170,6 +172,7 @@ function Harness({
       issues={issues}
       lockedIdentity={lockedIdentity}
       disabled={disabled}
+      step={step}
     />
   );
 }
@@ -460,6 +463,22 @@ describe("KnowledgeEditor", () => {
     expect(screen.getByLabelText("知识 ID")).not.toBeDisabled();
     expect(screen.getByLabelText("知识类型")).toBeDisabled();
     expect(screen.getByLabelText("来源类型")).not.toBeDisabled();
+  });
+
+  it("scopes sections to the source and content registration steps", async () => {
+    installApi();
+    show({ step: "source" });
+    expect(await screen.findByRole("heading", { name: "依据来源与标识" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "适用范围与有效期" })).toBeInTheDocument();
+    expect(screen.getByLabelText("标题")).toBeInTheDocument();
+    expect(screen.queryByLabelText("摘要")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "规则包绑定与正文依据" })).not.toBeInTheDocument();
+    cleanup();
+    show({ step: "content" });
+    expect(await screen.findByRole("heading", { name: "摘要与正文" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "适用与排除条件" })).toBeInTheDocument();
+    expect(screen.getByLabelText("正文")).toBeInTheDocument();
+    expect(screen.queryByLabelText("标题")).not.toBeInTheDocument();
   });
 
   it("switches the source type with the knowledge kind", async () => {

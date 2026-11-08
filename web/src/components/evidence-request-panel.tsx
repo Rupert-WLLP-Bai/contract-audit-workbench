@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-05
-// Revision: r4
+// Updated: 2026-11-08
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -437,7 +437,7 @@ function RequestCardNextStep({ item }: { item: EvidenceRequest }) {
   if (item.status === "open")
     return <p>下一步：责任人或案件管理人提交材料或答复。</p>;
   if (item.status === "received")
-    return <p>下一步：提交回执后发起新审查，再根据新审查的检查结果和原文核验。上传或提交材料本身不代表已核验。</p>;
+    return <p>下一步：提交回执后发起新审查，再按新结果核对原文。</p>;
   if (item.status === "verified") return <p>下一步：查看核验审查与处理记录。</p>;
   return null;
 }

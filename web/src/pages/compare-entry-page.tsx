@@ -3,15 +3,15 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-08
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Button, Input, Table, type TableColumnsType } from "antd";
 import { useState } from "react";
 import { Link } from "react-router";
-import { errorMessage } from "../api/http";
+import { errorMessage, isForbidden, isUnauthenticated } from "../api/http";
 import { useWorkbench } from "../api/queries";
 import type { WorkbenchCase, WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
@@ -33,12 +33,12 @@ export function CompareEntryPage() {
   const query = useWorkbench("week");
   const [search, setSearch] = useState("");
   if (query.isLoading)
-    return <PageStatus kind="loading" title="正在读取可对照的合同案件" />;
+    return <PageStatus kind="loading" title="正在读取案件列表" />;
   if (query.isError || !query.data)
     return (
       <PageStatus
-        kind="error"
-        title="版本对照数据没有加载"
+        kind={isForbidden(query.error) || isUnauthenticated(query.error) ? "denied" : "error"}
+        title={isForbidden(query.error) || isUnauthenticated(query.error) ? "没有权限读取案件列表" : "版本对照数据没有加载"}
         detail={errorMessage(query.error)}
         action={
           <Button
@@ -60,9 +60,6 @@ export function CompareEntryPage() {
     runs.push(run);
     runsByCase.set(run.case_id, runs);
   }
-  const compareReady = snapshot.cases.filter(
-    (item) => (runsByCase.get(item.id)?.length ?? 0) >= 2,
-  ).length;
   const needle = search.trim().toLowerCase();
   const visibleCases = snapshot.cases.filter((item) => caseSearchText(item).includes(needle));
   const columns: TableColumnsType<WorkbenchCase> = [
@@ -98,7 +95,7 @@ export function CompareEntryPage() {
         const latest = latestRun(runsByCase.get(item.id) ?? []);
         const runCount = runsByCase.get(item.id)?.length ?? 0;
         if (!latest)
-          return <span className="compare-entry-muted">尚无审查运行</span>;
+          return <span className="compare-entry-muted">本周未返回运行记录</span>;
         return (
           <div className="compare-entry-run">
             <TechnicalDetail value={latest.id} label="运行标识" />
@@ -107,7 +104,7 @@ export function CompareEntryPage() {
             </StatusText>
             <TechnicalDetail value={latest.state} label="运行状态编码" />
             <span className="compare-entry-muted">
-              {runCount >= 2 ? `${runCount} 次运行可对照` : "仅 1 次运行"}
+              本周返回 {runCount} 次运行
             </span>
           </div>
         );
@@ -133,7 +130,7 @@ export function CompareEntryPage() {
         return (
           <div className="compare-entry-actions">
             <Link to={`/compare?case_id=${encodeURIComponent(item.id)}`}>
-              开始对照
+              选择审查
             </Link>
             <Link
               to={
@@ -155,7 +152,7 @@ export function CompareEntryPage() {
       <header className="page-head">
         <div>
           <h1>版本对照</h1>
-          <p>先选择合同，再对照两次审查使用的材料、修改内容和发现的问题。</p>
+          <p>先选择同一案件及两次明确的冻结执行，再进入结果对照。</p>
         </div>
         <Button aria-label={"案件列表"} type="text" href="/cases">
           案件列表
@@ -164,25 +161,21 @@ export function CompareEntryPage() {
       <ol className="compare-entry-summary" aria-label="版本对照摘要">
         <li data-state={snapshot.cases.length > 0 ? "filled" : "empty"}>
           <span className="compare-entry-summary-mark" aria-hidden="true" />
-          <span>可见合同</span>
+          <span>本周返回案件</span>
           <strong>{snapshot.cases.length}</strong>
         </li>
         <li data-state={snapshot.runs.length > 0 ? "filled" : "empty"}>
           <span className="compare-entry-summary-mark" aria-hidden="true" />
-          <span>本周运行</span>
+          <span>本周返回运行</span>
           <strong>{snapshot.runs.length}</strong>
         </li>
-        <li data-state={compareReady > 0 ? "filled" : "open"}>
-          <span className="compare-entry-summary-mark" aria-hidden="true" />
-          <span>可对照合同</span>
-          <strong>{compareReady}</strong>
-        </li>
       </ol>
+      <p className="compare-entry-note">本周返回的运行数量不能确认冻结执行或可比性；请进入案件选择并核对两次执行。</p>
       {snapshot.cases.length === 0 ? (
         <PageStatus
           kind="empty"
-          title="当前身份没有可访问案件"
-          detail="案件列表按当前服务端授权返回。"
+          title="本周未返回案件"
+          detail="列表按当前服务端授权和工作台数据范围返回。"
         />
       ) : (
         <>

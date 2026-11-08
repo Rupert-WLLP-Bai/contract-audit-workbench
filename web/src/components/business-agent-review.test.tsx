@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-05
-// Revision: r3
+// Updated: 2026-11-08
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -270,7 +270,7 @@ describe("business agent review", () => {
     expect(screen.getByText("关联引用详情不可用。")).toBeInTheDocument();
     expect(screen.queryByText("未经核验原文")).not.toBeInTheDocument();
     expect(screen.queryByText(/doc-1|parsed-1|gap-1/)).not.toBeInTheDocument();
-    expect(screen.getByText(/找到原文依据，并不代表风险已确认或合同已合规/)).toBeInTheDocument();
+    expect(screen.getByText(/请审查人员核对原文后再下判断/)).toBeInTheDocument();
   });
 
   it("keeps missing and unknown results separate from success", () => {

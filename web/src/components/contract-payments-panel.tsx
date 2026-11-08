@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-01
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -309,7 +309,7 @@ export function ContractPaymentsPanel({
           <p>核验修订：{result.contract_revision_id}；合同版本：{result.contract_row_version}；时间：{result.checked_at}</p>
           {result.reasons.map((reason, index) => <p key={`reason-${index}`}>{reason}</p>)}
           {result.evidence.map((evidence, index) => <p key={`evidence-${index}`}>依据：{evidence}</p>)}
-          <p>本次核验不会发起付款，符合条件也不代表款项已支付。</p>
+          <p>本次核验不会发起付款，符合条件后仍需查看付款回执。</p>
         </div>}
       />;
     }) : null}

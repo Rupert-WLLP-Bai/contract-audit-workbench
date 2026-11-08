@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-05
-// Revision: r3
+// Updated: 2026-11-08
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -170,11 +170,11 @@ function ContextComparison({ source, target }: { source: ReviewWorkspace; target
     <ul className="review-diff-summary">
       <li>范围：{stateText(scope, "可见范围身份一致", "可见范围不同，不能自动配对", "范围身份不完整，不能确认一致")}</li>
       <li>规则：{stateText(rules, "冻结规则摘要一致或属于同一审查", "冻结规则摘要不同", "规则摘要未完整返回，不能确认规则集一致")}</li>
-      <li>已返回的检查：{!sourceRules.length || !targetRules.length || !completeRuleIdentities ? "规则身份或检查记录不完整" : sameIds(sourceRules, targetRules) ? "检查身份与版本一致（不代表完整规则集一致）" : "检查身份、版本或返回数量不同"}</li>
+      <li>已返回的检查：{!sourceRules.length || !targetRules.length || !completeRuleIdentities ? "规则身份或检查记录不完整" : sameIds(sourceRules, targetRules) ? "检查身份与版本一致" : "检查身份、版本或返回数量不同"}</li>
       <li>输入：{sameIds(sourceDocuments, targetDocuments) ? "材料版本集合一致" : "材料版本集合不同"}；{inputHash}</li>
       <li>解析：{sameIds(sourceParses, targetParses) ? "冻结解析版本集合一致" : "冻结解析版本集合不同"}；缺少的解析器、配置或正文摘要标记为未返回。</li>
     </ul>
-    <p className="callout">对照只说明两个记录中返回的内容。范围变化、规则变化、未执行或缺少唯一对应时，不能把线索消失当成风险消除；模型结果仍需结合原文及人工判断。</p>
+    <p className="callout">对照只比较两次审查返回的内容。线索消失后请结合原文再判断风险是否仍在。</p>
     <div className="review-diff-columns">
       <SnapshotSide title="来源" workspace={source} />
       <SnapshotSide title="目标" workspace={target} />

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -22,6 +22,15 @@ import type { SubjectSummary } from "../api/types";
 import { formatDateTime } from "../domain/review";
 import { subjectVerificationLabel } from "../domain/subjects";
 import { clearPendingMutationKey, idempotencyActorScope, pendingMutationKey } from "../api/idempotency";
+import "./subjects-page.css";
+
+const detailSections = {
+  overview: "主体概览",
+  source: "登记来源",
+  cases: "关联案件",
+  history: "更正历史",
+} as const;
+type DetailSection = keyof typeof detailSections;
 
 function verificationTone(state: SubjectSummary["verification_state"]): "good" | "attention" | "neutral" {
   if (state === "verified") return "good";
@@ -169,6 +178,7 @@ export function SubjectsPage() {
 
 export function SubjectDetailPage() {
   const { subjectId = "" } = useParams();
+  const [activeSection, setActiveSection] = useState<DetailSection>("overview");
   const session = useSession();
   const scope = [subjectId, session.data?.id ?? "", session.data?.tenant_id ?? "", session.data?.org_id ?? "", session.data?.audience ?? ""].join(":");
   const [linkPage, setLinkPage] = useState<{ scope: string; cursor: string | null; stack: Array<string | null> }>({ scope: "", cursor: null, stack: [] });
@@ -197,16 +207,31 @@ export function SubjectDetailPage() {
           </p>
         </div>
       </header>
-      <Card title="当前身份资料" className="subject-detail-card">
-        <dl className="subject-detail-list">
-          <dt>法定名称</dt><dd>{current.legal_name || "—"}</dd>
-          <dt>身份来源</dt><dd>{current.source_kind === "authorized_correction" ? "经更正审批" : current.source_kind === "official_identifier" ? "受控来源" : "经办人录入"}</dd>
-          <dt>依据说明</dt><dd>{current.basis_summary}</dd>
-          <dt>别名</dt><dd>{current.aliases.length ? current.aliases.map((item) => `${item.value}（${item.kind}）`).join("、") : "—"}</dd>
-          <dt>登记时间</dt><dd>{formatDateTime(current.created_at)}</dd>
-          <dt>标识信息</dt><dd>{subject.data.identifiers.length ? subject.data.identifiers.map((item) => item.masked_value).join("、") : "—"}</dd>
-        </dl>
-      </Card>
+      <p className="subject-detail-note">登记信息与真实性核验分开；更正保留历史版本与审查引用。</p>
+      <nav className="subject-detail-sections" aria-label="主体详情分区">
+        {(Object.entries(detailSections) as Array<[DetailSection, string]>).map(([key, label]) => (
+          <button key={key} type="button" aria-pressed={activeSection === key} aria-controls={`subject-section-${key}`} onClick={() => setActiveSection(key)}>{label}</button>
+        ))}
+      </nav>
+      <section id="subject-section-overview" aria-label="主体概览" hidden={activeSection !== "overview"}>
+        <Card title="主体基本信息" className="subject-detail-card">
+          <dl className="subject-detail-list">
+            <dt>法定名称</dt><dd>{current.legal_name || "—"}</dd>
+            <dt>别名</dt><dd>{current.aliases.length ? current.aliases.map((item) => `${item.value}（${item.kind}）`).join("、") : "—"}</dd>
+            <dt>标识信息</dt><dd>{subject.data.identifiers.length ? subject.data.identifiers.map((item) => item.masked_value).join("、") : "—"}</dd>
+          </dl>
+        </Card>
+      </section>
+      <section id="subject-section-source" aria-label="登记来源" hidden={activeSection !== "source"}>
+        <Card title="登记来源" className="subject-detail-card">
+          <dl className="subject-detail-list">
+            <dt>身份来源</dt><dd>{current.source_kind === "authorized_correction" ? "经更正审批" : current.source_kind === "official_identifier" ? "受控来源" : "经办人录入"}</dd>
+            <dt>依据说明</dt><dd>{current.basis_summary}</dd>
+            <dt>登记时间</dt><dd>{formatDateTime(current.created_at)}</dd>
+          </dl>
+        </Card>
+      </section>
+      <section id="subject-section-history" aria-label="更正历史" hidden={activeSection !== "history"}>
       <Card title="身份版本与操作记录" className="subject-history-card">
         {history.isLoading ? <p>正在读取身份历史…</p> : null}
         {history.isError ? <Alert type="error" showIcon title="身份历史暂不可用" description={errorMessage(history.error)} action={<Button onClick={() => void history.refetch()}>重试</Button>} /> : null}
@@ -227,6 +252,8 @@ export function SubjectDetailPage() {
         ))}
         {history.data && history.data.versions.length === 0 && history.data.events.length === 0 ? <Empty description="暂无版本与操作记录" /> : null}
       </Card>
+      </section>
+      <section id="subject-section-cases" aria-label="关联案件" hidden={activeSection !== "cases"}>
       <Card title="当前可见案件绑定" className="subject-links-card">
         {links.isLoading ? <p>正在读取案件绑定…</p> : null}
         {links.isError ? <Alert type="error" showIcon title="案件绑定暂不可用" description={errorMessage(links.error)} action={<Button onClick={() => void links.refetch()}>重试</Button>} /> : null}
@@ -257,6 +284,7 @@ export function SubjectDetailPage() {
           </div>
         ) : null}
       </Card>
+      </section>
     </section>
   );
 }

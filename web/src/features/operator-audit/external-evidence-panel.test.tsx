@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-10-29
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -168,7 +168,7 @@ describe("external evidence panel", () => {
       await screen.findByText("当前案件没有外部快照"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("没有快照不代表合规；请检查采集任务状态与案件授权。"),
+      screen.getByText("还没有可用快照，请检查采集任务和案件授权。"),
     ).toBeInTheDocument();
     first.unmount();
 

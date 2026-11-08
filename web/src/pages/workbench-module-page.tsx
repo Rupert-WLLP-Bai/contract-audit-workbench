@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-05
-// Revision: r5
+// Updated: 2026-11-08
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -33,6 +33,7 @@ import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
 import { TechnicalDetail, TechnicalFieldGroup } from "../components/technical-detail";
 import { caseSelectPresentation } from "../components/case-select-presentation";
+import { QccMcpPanel } from "../components/qcc-mcp-panel";
 import { actorRoleLabel, caseHref, formatDateTime, parseLabel, parseTone, roleLabel, runLabel, runTone, taskKindLabel } from "../domain/review";
 import { caseOptionLabel } from "../domain/case-identity";
 import { businessActionLabel, businessSourceTypeLabel, remediationStatusLabel, suppliedBusinessName } from "../domain/business-labels";
@@ -136,6 +137,9 @@ type ModuleRecord = {
   href: string | null;
   panels: Record<string, DetailPanel>;
   task: WorkbenchSnapshot["tasks"][number] | null;
+  remediation?: WorkbenchSnapshot["remediations"][number] | null;
+  mediaType?: string;
+  template?: WorkbenchSnapshot["templates"][number] | null;
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -487,6 +491,7 @@ function buildRecords(
         href: caseHref(item.case_id, item.run_id),
         panels,
         task: null,
+        remediation: item,
       });
     });
 
@@ -636,6 +641,7 @@ function buildRecords(
         href: links[0]?.href ?? null,
         panels,
         task: null,
+        mediaType: item.media_type,
       });
     });
 
@@ -769,7 +775,7 @@ function buildRecords(
             field("组织", "组织名称未提供"),
             technicalField("组织 ID", item.org_id),
           ],
-          "成员信息不包含每个案件的授权明细，不能据此推断该成员有权查看哪些案件。",
+          "成员信息不含每个案件的授权明细；具体可查看范围以服务端授权为准。",
         ),
         活动记录: memberEvents.length
           ? panel(
@@ -832,6 +838,7 @@ function buildRecords(
         href: null,
         panels,
         task: null,
+        template: item,
       });
     });
 
@@ -1226,6 +1233,93 @@ export function WorkbenchModulePage() {
   return <WorkbenchModule key={routeModule} module={routeModule} />;
 }
 
+function FrozenReportPreview({ caseId, reportId }: { caseId: string; reportId: string }) {
+  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState<{ status: "loading" | "ready" | "error"; html: string; error: string }>({
+    status: "loading", html: "", error: "",
+  });
+  useEffect(() => {
+    let cancelled = false;
+    setState({ status: "loading", html: "", error: "" });
+    fetch(paths.report(caseId, reportId, "html"), { credentials: "same-origin", headers: { Accept: "text/html" } })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`报告正文请求失败（HTTP ${response.status}）`);
+        const html = await response.text();
+        if (!cancelled) setState({ status: "ready", html, error: "" });
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setState({ status: "error", html: "", error: cause instanceof Error ? cause.message : "报告正文请求失败" });
+      });
+    return () => { cancelled = true; };
+  }, [caseId, reportId, attempt]);
+  if (state.status === "loading") return <p role="status">正在加载报告正文…</p>;
+  if (state.status === "error") {
+    return (
+      <div className="module-report-error" role="alert">
+        <span>{state.error}</span>
+        <Button type="primary" htmlType="button" onClick={() => setAttempt((value) => value + 1)}>重试</Button>
+      </div>
+    );
+  }
+  return <iframe className="module-report-frame" title="报告正文预览" sandbox="" srcDoc={state.html} />;
+}
+
+function TemplateFieldPreview({ fields }: { fields: WorkbenchSnapshot["templates"][number]["fields"] }) {
+  if (fields.length === 0) return <p className="module-evidence-note">服务端没有返回字段定义，无法生成占位预览。</p>;
+  return (
+    <section className="module-template-preview" aria-label="模板字段占位预览">
+      <p className="module-evidence-note">服务端未返回范本正文；以下占位符仅由字段定义生成，不拼装合同正文。</p>
+      <ul>
+        {fields.map((field) => (
+          <li key={field.key}>
+            <code>{`{{${suppliedBusinessName(field.label, "字段名称未提供")}}}`}</code>
+            <span>{templateFieldTypeLabel(field.type)} · {field.required ? "必填" : "选填"}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function OriginalEvidencePreview({ caseId, documentId, filename, mediaType }: { caseId: string; documentId: string; filename: string; mediaType: string }) {
+  const [state, setState] = useState<{ status: "loading" | "ready" | "error" | "unsupported"; url: string; error: string }>({
+    status: "loading", url: "", error: "",
+  });
+  const urlRef = useRef("");
+  useEffect(() => {
+    let cancelled = false;
+    urlRef.current = "";
+    const image = mediaType.startsWith("image/");
+    const pdf = mediaType === "application/pdf";
+    if (!image && !pdf) {
+      setState({ status: "unsupported", url: "", error: "" });
+      return () => { cancelled = true; };
+    }
+    setState({ status: "loading", url: "", error: "" });
+    fetch(paths.documentOriginal(caseId, documentId), { credentials: "same-origin" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`原件读取失败（HTTP ${response.status}）`);
+        const blob = await response.blob();
+        if (cancelled) return;
+        const url = URL.createObjectURL(blob);
+        urlRef.current = url;
+        setState({ status: "ready", url, error: "" });
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setState({ status: "error", url: "", error: cause instanceof Error ? cause.message : "原件读取失败" });
+      });
+    return () => {
+      cancelled = true;
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    };
+  }, [caseId, documentId, mediaType]);
+  if (state.status === "loading") return <p role="status">正在加载原件预览…</p>;
+  if (state.status === "error") return <p role="alert" className="module-evidence-error">{state.error}</p>;
+  if (state.status === "unsupported") return <p className="module-evidence-note">该文件格式不提供内嵌预览，请使用“读取原件”。</p>;
+  if (mediaType.startsWith("image/")) return <img className="module-evidence-image" src={state.url} alt={filename} />;
+  return <iframe className="module-evidence-frame" title={`${filename}原件预览`} src={state.url} sandbox="" />;
+}
+
 function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<string>(WORKBENCH_MODULES[module].tabs[0]);
@@ -1405,6 +1499,9 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
     !query.isError;
 
   const selectedTask = selected?.task ?? null;
+  const selectedRemediation = selected?.remediation ?? null;
+  const memberNames = new Map(snapshot.members.map((item) => [item.id, item.display_name]));
+  const selectedAudit = module === "audit" ? snapshot.audit.find((item) => item.id === selected?.id) : undefined;
   const currentPanel =
     module === "knowledge"
       ? (knowledgePanelSet?.[detailTab] ?? null)
@@ -1515,6 +1612,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         </div>
         <div className="module-actions">{headerAction}</div>
       </header>
+      {module === "tools" ? <QccMcpPanel /> : null}
       {createOpen && (canCreateTask || taskCapabilityRevalidating) ? (
         <TaskCreateForm
           snapshot={snapshot}
@@ -1585,7 +1683,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
           {notice}
         </p>
       ) : null}
-      <div className="module-workspace">
+      <div className={module === "audit" ? "module-workspace module-workspace-audit" : ["reports", "evidence", "knowledge", "templates"].includes(module) ? "module-workspace module-workspace-reader" : "module-workspace"}>
         <section
           className="module-list-panel"
           aria-label={`${config.title}记录`}
@@ -1698,6 +1796,30 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                   </Button>
                 ) : null}
               </header>
+              {module === "tasks" && selectedTask ? (
+                <dl className="workbench-record-summary" aria-label="所选任务摘要">
+                  <div><dt>当前状态</dt><dd>{statusLabel(selectedTask.status)}</dd></div>
+                  <div><dt>负责人员</dt><dd>{memberName(memberNames, selectedTask.assignee_id)}</dd></div>
+                  <div><dt>处理期限</dt><dd>{selectedTask.due_at ? formatDateTime(selectedTask.due_at) : "未设期限"}</dd></div>
+                  <div><dt>所属案件</dt><dd>{selected.subtitle}</dd></div>
+                </dl>
+              ) : null}
+              {module === "remediation" && selectedRemediation ? (
+                <dl className="workbench-record-summary" aria-label="所选整改摘要">
+                  <div><dt>当前状态</dt><dd>{remediationStatusLabel(selectedRemediation.status)}</dd></div>
+                  <div><dt>负责人员</dt><dd>{memberName(memberNames, selectedRemediation.assignee_id)}</dd></div>
+                  <div><dt>处理期限</dt><dd>{formatDateTime(selectedRemediation.due_at)}</dd></div>
+                  <div><dt>所属案件</dt><dd>{selected.subtitle}</dd></div>
+                </dl>
+              ) : null}
+              {selectedAudit ? (
+                <dl className="audit-event-summary" aria-label="所选审计事件摘要">
+                  <div><dt>业务动作</dt><dd>{businessActionLabel(selectedAudit.action)}</dd></div>
+                  <div><dt>操作者</dt><dd>{suppliedBusinessName(selectedAudit.actor_name, "操作人姓名未提供")}</dd></div>
+                  <div><dt>发生时间</dt><dd><time dateTime={selectedAudit.at}>{formatDateTime(selectedAudit.at)}</time></dd></div>
+                  <div><dt>目标案件</dt><dd>{auditCaseName(selectedAudit)}</dd></div>
+                </dl>
+              ) : null}
               {module === "evidence" && tab === "完整性校验" ? null : (
                 <Tabs
                   aria-label="记录详情分类"
@@ -1707,7 +1829,17 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                 />
               )}
               {currentPanel ? (
-                <div className="module-detail-content">
+                <div className={module === "audit" ? "module-detail-content audit-detail-card" : "module-detail-content"}>
+                  {module === "audit" ? <h3>{detailTab === "事件详情" ? "当前事项" : detailTab}</h3> : null}
+                  {module === "reports" && detailTab === "报告预览" && selected.caseId ? (
+                    <FrozenReportPreview caseId={selected.caseId} reportId={selected.id} />
+                  ) : null}
+                  {module === "evidence" && detailTab === "原文预览" && selected.caseId ? (
+                    <OriginalEvidencePreview caseId={selected.caseId} documentId={selected.id} filename={selected.title} mediaType={selected.mediaType ?? ""} />
+                  ) : null}
+                  {module === "templates" && detailTab === "模板预览" && selected.template ? (
+                    <TemplateFieldPreview fields={selected.template.fields} />
+                  ) : null}
                   {currentPanel.body !== null ? (
                     <p
                       className={

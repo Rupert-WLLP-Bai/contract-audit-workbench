@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-05
-// Revision: r3
+// Updated: 2026-11-08
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -183,7 +183,7 @@ function ClauseComparisonTab({
 }) {
   return (
     <div className="finding-tab-content">
-      <p>各发现引用的实际材料片段；变更本身不代表风险。</p>
+      <p>下面是各条线索对应的原文片段。</p>
       {findings.map((item) => (
         <section key={item.id}>
           <Button
@@ -250,7 +250,7 @@ function ContractInfoTab({
 function ConclusionTab({ findings }: { findings: Finding[] }) {
   return (
     <div className="finding-tab-content">
-      <p>规则结果、模型建议和审查判断分别保存。审查执行结束不代表合同已获批。</p>
+      <p>规则结果、模型建议和人工判断分开保存。</p>
       {findings.map((item) => (
         <section key={item.id}>
           <h3>{item.claim}</h3>
@@ -528,7 +528,7 @@ function DecisionHistory({ decisions }: { decisions: HumanDecision[] }) {
     <>
       <h4>决定记录</h4>
       {decisions.length === 0 ? (
-        <p>还没有审查人员的判断。模型建议不会自动结案。</p>
+        <p>还没有人工判断。</p>
       ) : null}
       <ol className="history">
         {decisions.map((decision) => (
@@ -977,7 +977,7 @@ export function FindingPanel({
         </div>
         <p className="meta">待裁决优先，再按严重度排序。Alt+J 下一条，Alt+K 上一条。</p>
         {findings.length === 0 ? (
-          <p>本次审查还没有生成风险线索。这不代表材料没有风险。</p>
+          <p>这次审查还没有生成风险线索。</p>
         ) : null}
         {findings.length > 0 && visible.length === 0 ? <p>当前筛选条件下没有线索。</p> : null}
         <ul className="finding-list">

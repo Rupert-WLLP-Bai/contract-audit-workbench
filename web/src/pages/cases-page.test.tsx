@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Verifies filtering the current authorized loaded case collection before pagination and retaining case-ID links after an editable business-number change.
+// Purpose: Verifies URL-backed case views, filtering the current authorized loaded collection before pagination, and retaining case-ID links after an editable business-number change.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-05
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -19,7 +19,7 @@ import { CasesPage } from "./cases-page";
 const source = vi.hoisted(() => ({ items: [] as CaseSummary[] }));
 vi.mock("../api/queries", () => ({
   useCases: () => ({ data: source.items, isLoading: false, isError: false }),
-  useSession: () => ({ data: { role: "viewer" } }),
+  useSession: () => ({ data: { role: "viewer", display_name: "审查员" } }),
   useCreateCase: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
@@ -53,4 +53,41 @@ it("filters the authorized loaded set before paging and keeps links on case ID a
   await user.clear(screen.getByRole("searchbox", { name: "搜索案件" }));
   await user.type(screen.getByRole("searchbox", { name: "搜索案件" }), "BUS-NEW");
   expect(screen.getByRole("link", { name: "同名案件" })).toHaveAttribute("href", "/cases/case-0");
+});
+
+it("filters the visible case set by assigned owner and archived state", async () => {
+  source.items = [
+    {
+      id: "mine-open", title: "我负责的案件", case_number: "BUS-MINE",
+      contract_type: "service", scenario: "telecom_dedicated_line", business_line: "ENT",
+      owner_name: "审查员", archived_at: null, document_count: 0,
+      pending_decisions: 0, latest_run: null, updated_at: "2026-11-08T01:02:00Z",
+    },
+    {
+      id: "other-open", title: "他人负责的案件", case_number: "BUS-OTHER",
+      contract_type: "service", scenario: "telecom_dedicated_line", business_line: "ENT",
+      owner_name: "其他人", archived_at: null, document_count: 0,
+      pending_decisions: 0, latest_run: null, updated_at: "2026-11-08T01:03:00Z",
+    },
+    {
+      id: "mine-archived", title: "已归档案件", case_number: "BUS-ARCHIVED",
+      contract_type: "service", scenario: "telecom_dedicated_line", business_line: "ENT",
+      owner_name: "其他人", archived_at: "2026-11-07T01:02:00Z", document_count: 0,
+      pending_decisions: 0, latest_run: null, updated_at: "2026-11-07T01:02:00Z",
+    },
+  ];
+  const user = userEvent.setup();
+  render(<MemoryRouter initialEntries={["/cases"]}><CasesPage /></MemoryRouter>);
+
+  await user.click(screen.getByRole("tab", { name: "我负责的" }));
+  const assignedTable = within(screen.getByRole("table"));
+  expect(assignedTable.getByRole("link", { name: "我负责的案件" })).toBeInTheDocument();
+  expect(assignedTable.queryByRole("link", { name: "他人负责的案件" })).not.toBeInTheDocument();
+  expect(assignedTable.queryByRole("link", { name: "已归档案件" })).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("tab", { name: "已归档" }));
+  const archivedTable = within(screen.getByRole("table"));
+  expect(archivedTable.getByRole("link", { name: "已归档案件" })).toBeInTheDocument();
+  expect(archivedTable.queryByRole("link", { name: "我负责的案件" })).not.toBeInTheDocument();
+  expect(archivedTable.queryByRole("link", { name: "他人负责的案件" })).not.toBeInTheDocument();
 });

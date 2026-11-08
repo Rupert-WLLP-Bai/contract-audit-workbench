@@ -3,15 +3,16 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Alert, Button, Card, Empty, Input, Select, Space } from "antd";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { errorMessage } from "../api/http";
+import { errorMessage, isForbidden, isUnauthenticated } from "../api/http";
+import { actorReadContextKey } from "../domain/actor-read-context";
 import { idempotencyActorScope, pendingMutationKey, clearPendingMutationKey } from "../api/idempotency";
 import { getLegalApplicabilityFactHistory, getLegalApplicabilityFacts, legalApplicabilityDimensions, recordLegalApplicabilityFact, type LegalApplicabilityDimension, type LegalApplicabilityFactInput, type LegalApplicabilityPartyPin, type LegalApplicabilityStatus, type LegalApplicabilityTemporalBasis, type LegalApplicabilityUnknownReason } from "../api/legal-applicability";
 import { useCaseDetail, useCaseSubjects, useMaterialParsedDocuments, useMaterialParsedTextPage, useSession } from "../api/queries";
@@ -71,10 +72,14 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
   const caseDetail = useCaseDetail(caseId);
   const subjects = useCaseSubjects(caseId);
   const canManage = subjects.data?.can_manage === true;
-  const [businessAtInput, setBusinessAtInput] = useState(() => toBeijingInputValue(new Date().toISOString()));
-  const [evidenceCutoff, setEvidenceCutoff] = useState(() => toBeijingInputValue(new Date().toISOString()));
-  const [submittedTimes, setSubmittedTimes] = useState<{ businessAt: string; cutoff: string }>(() => ({ businessAt: beijingInputToUtc(toBeijingInputValue(new Date().toISOString())), cutoff: new Date().toISOString() }));
-  const [drafts, setDrafts] = useState<Record<string, Draft>>(() => Object.fromEntries(legalApplicabilityDimensions.map((dimension) => [dimension, initialDraft()])));
+  const [initialTime] = useState(() => toBeijingInputValue(new Date().toISOString()));
+  const [businessAtInput, setBusinessAtInput] = useState(initialTime);
+  const [evidenceCutoff, setEvidenceCutoff] = useState(initialTime);
+  const [submittedTimes, setSubmittedTimes] = useState<{ businessAt: string; cutoff: string }>(() => ({ businessAt: beijingInputToUtc(initialTime), cutoff: beijingInputToUtc(initialTime) }));
+  const actorScope = actorReadContextKey(session.data ?? null);
+  const draftScope = JSON.stringify([caseId, actorScope, submittedTimes.businessAt, submittedTimes.cutoff]);
+  const [draftState, setDraftState] = useState<Record<string, { drafts: Record<string, Draft>; dirty: Set<string> }>>({});
+  const drafts = draftState[draftScope]?.drafts ?? {};
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveNote, setSaveNote] = useState<string | null>(null);
   const [savingDimension, setSavingDimension] = useState<string | null>(null);
@@ -84,7 +89,11 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
   const [parsedDocumentId, setParsedDocumentId] = useState("");
   const [pageOffset, setPageOffset] = useState(0);
   const [pageStack, setPageStack] = useState<number[]>([]);
-  const [anchor, setAnchor] = useState<SelectedAnchor | null>(null);
+  const [anchors, setAnchors] = useState<Record<string, SelectedAnchor | null>>({});
+  const anchor = anchors[draftScope] ?? null;
+  const setAnchor = (value: SelectedAnchor | null) => setAnchors((current) => ({ ...current, [draftScope]: value }));
+  const [saveDeniedScope, setSaveDeniedScope] = useState<string | null>(null);
+  const contextScope = JSON.stringify([caseId, actorScope]);
   const textRef = useRef<HTMLPreElement>(null);
   const options = useMemo(() => materialAnchorVersionOptions(caseDetail.data), [caseDetail.data]);
   const selectedMaterial = options.find((item) => item.key === materialKey);
@@ -92,13 +101,17 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
   const selectedParse = parsedDocuments.data?.items.find((item) => item.parsed_document_id === parsedDocumentId);
   const parsedPage = useMaterialParsedTextPage(caseId, selectedMaterial?.material_id, selectedMaterial?.version, selectedParse?.parsed_document_id, pageOffset);
   const factQuery = useQuery({
-    queryKey: ["cases", caseId, "legal-applicability-facts", submittedTimes.businessAt, submittedTimes.cutoff],
-    queryFn: ({ signal }) => getLegalApplicabilityFacts(caseId, submittedTimes.businessAt, submittedTimes.cutoff, signal),
-    enabled: Boolean(caseId && submittedTimes.businessAt && submittedTimes.cutoff),
+    queryKey: ["cases", caseId, "legal-applicability-facts", submittedTimes.businessAt, submittedTimes.cutoff, actorScope],
+    queryFn: async ({ signal }) => {
+      const facts = await getLegalApplicabilityFacts(caseId, submittedTimes.businessAt, submittedTimes.cutoff, signal);
+      if (Date.parse(facts.business_at) !== Date.parse(submittedTimes.businessAt) || Date.parse(facts.evidence_cutoff_at) !== Date.parse(submittedTimes.cutoff)) throw new Error("法律适用事实响应时间与请求不匹配");
+      return facts;
+    },
+    enabled: Boolean(caseId && session.data && submittedTimes.businessAt && submittedTimes.cutoff),
     retry: false,
   });
   const histories = useQueries({ queries: legalApplicabilityDimensions.map((dimension) => ({
-    queryKey: ["cases", caseId, session.data?.id, "legal-applicability-history", dimension, historyCursors[dimension] ?? ""],
+    queryKey: ["cases", caseId, session.data?.id, "legal-applicability-history", dimension, historyCursors[dimension] ?? "", actorScope],
     queryFn: async ({ signal }) => {
       const history = await getLegalApplicabilityFactHistory(caseId, dimension, historyCursors[dimension] ?? null, signal);
       if (history.case_id !== caseId || history.dimension !== dimension) throw new Error("法律适用事实历史响应范围与请求不匹配");
@@ -107,27 +120,56 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
     enabled: Boolean(caseId && session.data), retry: false,
   })) });
 
+  const denied = [session.error, caseDetail.error, subjects.error, factQuery.error, parsedDocuments.error, parsedPage.error, ...histories.map((query) => query.error)].some((error) => isUnauthenticated(error) || isForbidden(error));
+  const accessible = Boolean(session.data && !denied && saveDeniedScope !== contextScope);
+  const contextRef = useRef({ scope: contextScope, accessible, generation: 0 });
+  if (contextRef.current.scope !== contextScope || contextRef.current.accessible !== accessible) {
+    contextRef.current = { scope: contextScope, accessible, generation: contextRef.current.generation + 1 };
+  }
+  const generation = useRef({ scope: "", value: 0 });
+  const activeScope = JSON.stringify([draftScope, accessible]);
+  if (generation.current.scope !== activeScope) generation.current = { scope: activeScope, value: generation.current.value + 1 };
+  useEffect(() => () => { generation.current.value += 1; }, []);
+
   useEffect(() => {
     const now = new Date().toISOString();
     const beijingNow = toBeijingInputValue(now);
     setHistoryCursors({});
     setHistoryStacks({});
-    setAnchor(null);
+    setAnchors({});
+    setSaveDeniedScope(null);
     setMaterialKey("");
     setParsedDocumentId("");
-    setDrafts(Object.fromEntries(legalApplicabilityDimensions.map((dimension) => [dimension, initialDraft()])));
+    setDraftState({});
+    setSaveError(null); setSaveNote(null); setSavingDimension(null);
     setBusinessAtInput(beijingNow);
     setEvidenceCutoff(beijingNow);
-    setSubmittedTimes({ businessAt: now, cutoff: now });
-  }, [caseId, session.data?.id]);
+    const normalizedNow = beijingInputToUtc(beijingNow);
+    setSubmittedTimes({ businessAt: normalizedNow, cutoff: normalizedNow });
+  }, [caseId, actorScope]);
 
   useEffect(() => {
-    if (!factQuery.data) return;
-    setDrafts((current) => {
-      const next = { ...current };
+    if (denied) setSaveDeniedScope(contextScope);
+  }, [denied, contextScope]);
+
+  useEffect(() => {
+    if (!accessible) {
+      setDraftState({});
+      setAnchors({}); setMaterialKey(""); setParsedDocumentId(""); setSaveError(null); setSaveNote(null); setSavingDimension(null);
+    }
+  }, [accessible]);
+
+  useEffect(() => {
+    if (!factQuery.data || !accessible) return;
+    setDraftState((current) => {
+      const snapshot = current[draftScope];
+      const dirty = snapshot?.dirty ?? new Set<string>();
+      const next = { ...snapshot?.drafts };
+      for (const dimension of legalApplicabilityDimensions) next[dimension] ??= initialDraft();
       for (const row of factQuery.data.facts) {
         const fact = row.fact;
-        if (!fact) continue;
+        if (dirty.has(row.dimension)) continue;
+        if (!fact) { next[row.dimension] = initialDraft(); continue; }
         next[row.dimension] = {
           status: fact.status, value: fact.value,
           unknown_reason: fact.unknown_reason || "insufficient_evidence",
@@ -138,13 +180,21 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
           binding_id: fact.party?.binding_id ?? "", scope_note: fact.party?.scope_note ?? "",
         };
       }
-      return next;
+      return { ...current, [draftScope]: { drafts: next, dirty } };
     });
-  }, [factQuery.data]);
+  }, [factQuery.data, draftScope, accessible]);
 
   function updateDraft(dimension: LegalApplicabilityDimension, patch: Partial<Draft>) {
-    setDrafts((current) => ({ ...current, [dimension]: { ...current[dimension]!, ...patch } }));
+    setDraftState((current) => {
+      const snapshot = current[draftScope];
+      const existing = snapshot?.drafts ?? {};
+      const dirty = new Set(snapshot?.dirty ?? []);
+      dirty.add(dimension);
+      return { ...current, [draftScope]: { drafts: { ...existing, [dimension]: { ...(existing[dimension] ?? initialDraft()), ...patch } }, dirty } };
+    });
   }
+  useEffect(() => { setSaveError(null); setSaveNote(null); setSavingDimension(null); }, [draftScope]);
+
   function submitBusinessTime() {
     const businessAt = beijingInputToUtc(businessAtInput);
     if (!businessAt) { setSaveError("请输入有效的北京时间（UTC+08:00）。"); return; }
@@ -180,7 +230,11 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
     const current = factQuery.data?.facts.find((item) => item.dimension === dimension);
     const history = histories[legalApplicabilityDimensions.indexOf(dimension)]?.data;
     const draft = drafts[dimension];
-    if (!session.data || !current || !history || !history.can_manage || !draft || !canManage) return;
+    if (!accessible || !session.data || !current || !history || !history.can_manage || !draft || !canManage || factQuery.isError || histories.some((query) => query.isError) || caseDetail.isError || subjects.isError || session.isError) return;
+    const saveGeneration = generation.current.value;
+    const saveContextGeneration = contextRef.current.generation;
+    const isCurrent = () => generation.current.value === saveGeneration;
+    const isSameContext = () => contextRef.current.generation === saveContextGeneration && contextRef.current.accessible;
     setSaveError(null); setSaveNote(null); setSavingDimension(dimension);
     try {
       const basisRefs: MaterialAnchorBasisInput[] = [];
@@ -215,21 +269,37 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
       if (!payload.basis_note) throw new Error("请填写事实依据说明。");
       if (draft.status === "established" && !values[dimension].some((option) => option.value === draft.value)) throw new Error("请选择该维度的受控取值。");
       if (draft.temporal_basis === "historical_interval" && (!payload.valid_from || !payload.valid_until || Date.parse(payload.valid_from) >= Date.parse(payload.valid_until))) throw new Error("历史事实需填写北京时间的有效起止时段，结束时间为排他边界。");
+      if (!isCurrent()) return;
       const pending = await pendingMutationKey("legal-applicability.record", idempotencyActorScope(session.data), `${caseId}:${dimension}`, payload);
+      if (!isCurrent()) return;
       const saved = await recordLegalApplicabilityFact(caseId, payload, pending.key);
-      setSaveNote(`${labels[dimension]}已追加为第 ${saved.version} 版。`);
       try { clearPendingMutationKey(pending.storageKey); }
-      catch { setSaveError("记录已保存，但浏览器无法清理安全重试标识；请勿重复提交本次内容，刷新后查看版本。"); }
-      await queryClient.invalidateQueries({ queryKey: ["cases", caseId, "legal-applicability-facts"] });
-      await queryClient.invalidateQueries({ queryKey: ["cases", caseId, session.data.id, "legal-applicability-history"] });
-      await factQuery.refetch();
-    } catch (cause) { setSaveError(errorMessage(cause)); }
-    finally { setSavingDimension(null); }
+      catch { if (isCurrent()) setSaveError("记录已保存，但浏览器无法清理安全重试标识；请勿重复提交本次内容，刷新后查看版本。"); }
+      if (!isSameContext()) return;
+      setDraftState((state) => {
+        const snapshot = state[draftScope];
+        if (!snapshot || snapshot.drafts[dimension] !== draft) return state;
+        const dirty = new Set(snapshot.dirty);
+        dirty.delete(dimension);
+        return { ...state, [draftScope]: { ...snapshot, dirty } };
+      });
+      if (isCurrent()) setSaveNote(`${labels[dimension]}已追加为第 ${saved.version} 版。`);
+      await queryClient.invalidateQueries({ queryKey: ["cases", caseId, "legal-applicability-facts"], predicate: (query) => query.queryKey[5] === actorScope });
+      if (!isSameContext()) return;
+      await queryClient.invalidateQueries({ queryKey: ["cases", caseId, session.data.id, "legal-applicability-history"], predicate: (query) => query.queryKey[6] === actorScope });
+    } catch (cause) {
+      if ((isUnauthenticated(cause) || isForbidden(cause)) && isSameContext()) {
+        setSaveDeniedScope(contextScope);
+        setDraftState({});
+        setAnchors({});
+      } else if (isCurrent()) setSaveError(errorMessage(cause));
+    }
+    finally { if (isCurrent()) setSavingDimension(null); }
   }
 
   return (
     <Card title="法律适用事实" className="case-legal-applicability-panel">
-      <p>事实用于规则适用判断。已确认事实必须有本案材料依据；资料不足时保留“未知”，不推断法律结论。时间均按北京时间输入，历史区间结束时间为排他边界。</p>
+      <p>已确认事实需要本案材料依据；资料不足时保留“未知”。时间按北京时间输入。</p>
       <Space wrap className="workflow-form">
         <label className="field">判断业务时点（北京时间）<Input aria-label="法律判断业务时点（北京时间）" type="datetime-local" value={businessAtInput} onChange={(event) => setBusinessAtInput(event.target.value)} /></label>
         <label className="field">证据截止时点（北京时间）<Input aria-label="法律事实证据截止时点（北京时间）" type="datetime-local" value={evidenceCutoff} onChange={(event) => setEvidenceCutoff(event.target.value)} /></label>
@@ -241,6 +311,8 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
       {subjects.data && !canManage ? <Alert type="info" showIcon title="当前案件为只读状态，可以查看事实，不能记录新版本。" /> : null}
       {subjects.isError ? <Alert type="error" showIcon title="本案主体绑定暂不可用" description={errorMessage(subjects.error)} action={<Button onClick={() => void subjects.refetch()}>重试</Button>} /> : null}
 
+      {!accessible ? <Alert type="error" showIcon title="当前无权查看法律适用事实" /> : null}
+      {accessible ? <>
       <section className="workflow-form" aria-label="法律适用事实材料依据">
         <h3>选择本案固定材料依据</h3>
         <Select aria-label="选择事实依据的材料版本" value={materialKey || undefined} onChange={chooseMaterialVersion} placeholder="选择材料和固定版本" options={options.map((item) => ({ value: item.key, label: `${item.role} · ${item.purpose} · v${item.version}` }))} />
@@ -340,6 +412,7 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
       </> : null}
       {saveError ? <Alert type="error" showIcon title={saveError} /> : null}
       {saveNote ? <Alert type="success" showIcon title={saveNote} /> : null}
+      </> : null}
     </Card>
   );
 }

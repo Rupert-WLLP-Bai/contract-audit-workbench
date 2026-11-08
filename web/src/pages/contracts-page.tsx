@@ -1,14 +1,14 @@
 // File metadata (manifest mirror):
-// Purpose: Creates and edits contract registrations and resumable drafts from the selected case; restricted party fields remain masked by server projections and writes use the server’s current draft revision.
+// Purpose: Creates and edits contract registrations and resumable drafts; separates the ledger, preserved draft editor and current-session export result into accessible tabs. Restricted party fields remain masked by server projections and writes use the server’s current draft revision.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-05
-// Revision: r7
+// Updated: 2026-11-08
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
-import { Alert, Button, Empty, Input, InputNumber, Modal, Select, Table, Tag } from "antd";
+import { Alert, Button, Empty, Input, InputNumber, Modal, Select, Table, Tabs, Tag } from "antd";
 import { actorReadContextKey } from "../domain/actor-read-context";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -104,6 +104,22 @@ function emptyFunding(): DraftFunding {
 function amountLabel(amount: string | null, currency: string | null): string {
   if (amount === null || currency === null) return "金额未知";
   return `${currency} ${amount}`;
+}
+
+const CONTRACT_FORM_SECTIONS = [
+  { key: "basic", label: "合同基本信息" },
+  { key: "parties", label: "相关方与标的" },
+  { key: "funding", label: "资金与付款" },
+  { key: "materials", label: "材料与核对" },
+] as const;
+type ContractFormSection = (typeof CONTRACT_FORM_SECTIONS)[number]["key"];
+
+function contractErrorSection(text: string): ContractFormSection | null {
+  if (/资金|付款|金额|预付款|币种/.test(text)) return "funding";
+  if (/当事方|相关方|标的|对方|供应方/.test(text)) return "parties";
+  if (/材料|核对|摘要/.test(text)) return "materials";
+  if (/名称|编号|类型|期限|日期/.test(text)) return "basic";
+  return null;
 }
 
 const CONTRACT_STATE_OPTIONS = [
@@ -259,6 +275,9 @@ export function ContractsPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState<"ledger" | "drafts" | "exports">("ledger");
+  const [formSection, setFormSection] = useState<ContractFormSection>("basic");
+  const [errorSection, setErrorSection] = useState<ContractFormSection | null>(null);
 
   const dirty = useMemo(
     () => JSON.stringify(draft) !== JSON.stringify(loaded),
@@ -289,6 +308,8 @@ export function ContractsPage() {
       setAllowed([]);
       setWarnings([]);
       setSourceLabel(null);
+      setFormSection("basic");
+      setErrorSection(null);
       return;
     }
     const next = detail.draft ?? emptyDraft();
@@ -300,6 +321,8 @@ export function ContractsPage() {
     setLoaded(next);
     setAllowed(detail.allowed_commands);
     setWarnings(detail.warnings);
+    setFormSection("basic");
+    setErrorSection(null);
     setSourceLabel(detail.source_ref === undefined
       ? null
       : [detail.source_ref.system, detail.source_ref.id,
@@ -362,6 +385,7 @@ export function ContractsPage() {
     setMessage(null);
     try {
       resetEditor(await getContract(id));
+      setWorkspaceTab("drafts");
     } catch (error) {
       setMessage({ kind: "error", text: errorMessage(error) });
     } finally {
@@ -391,6 +415,7 @@ export function ContractsPage() {
     }
     resetEditor(null);
     setMessage(null);
+    setWorkspaceTab("drafts");
   }
 
   function update(patch: Partial<DraftContent["contract"]>) {
@@ -405,6 +430,7 @@ export function ContractsPage() {
     if (actor === null || saving || !canSave) return;
     setSaving(true);
     setMessage(null);
+    setErrorSection(null);
     const operation = contractID === null ? "clm-create-draft" : "clm-replace-draft";
     const target = contractID ?? "new";
     try {
@@ -430,7 +456,11 @@ export function ContractsPage() {
             text: "服务端已有更新的内容。请先刷新查看最新版本；本页输入仍保留，未覆盖他人修改。",
           });
         } else {
-          setMessage({ kind: "error", text: errorMessage(error) });
+          const text = errorMessage(error);
+          const section = contractErrorSection(text);
+          setErrorSection(section);
+          if (section !== null) setFormSection(section);
+          setMessage({ kind: "error", text });
         }
       }
     } finally {
@@ -621,7 +651,7 @@ export function ContractsPage() {
         <div>
           <h1>合同登记</h1>
           <p>
-            草稿可以暂不完整；保存后可随时恢复继续填写。受限账户字段加密保存，只有具备管理授权者可见明文。
+            草稿可以先不写全，保存后继续填。收款账号一类敏感字段只对有管理权限的人显示。
           </p>
         </div>
         <div className="contracts-page-actions">
@@ -634,6 +664,17 @@ export function ContractsPage() {
         </div>
       </header>
 
+      <Tabs
+        activeKey={workspaceTab}
+        onChange={(key) => setWorkspaceTab(key as typeof workspaceTab)}
+        destroyOnHidden={false}
+        items={[
+          {
+            key: "ledger",
+            label: "合同台账",
+            forceRender: true,
+            children: (
+              <>
       <div className="contracts-ledger-summary" aria-label="合同台账摘要">
         <span>生效筛选</span>
         <strong>{activeLedgerFilters}</strong>
@@ -648,7 +689,7 @@ export function ContractsPage() {
           <div>
             <h2>合同台账</h2>
             <p>
-              默认条件覆盖常用查询，高级条件只收窄结果；每行仍按当前案件授权实时判断。
+              按名称、供应商、状态等条件查找合同。
             </p>
           </div>
           <div className="contracts-ledger-actions">
@@ -908,7 +949,7 @@ export function ContractsPage() {
           loading={ledger.isLoading}
           pagination={false}
           size="small"
-          scroll={{ x: "max-content" }}
+          scroll={{ x: "max-content" }} className="contracts-ledger-table"
           locale={{ emptyText: <Empty description="当前条件下没有可见合同" /> }}
         />
 
@@ -925,7 +966,15 @@ export function ContractsPage() {
           )}
         </div>
       </section>
-
+              </>
+            ),
+          },
+          {
+            key: "drafts",
+            label: "草稿",
+            forceRender: true,
+            children: (
+              <>
       <div className="contracts-page-summary" aria-label="合同草稿摘要">
         <span>我的草稿</span>
         <strong>{draftsData.length}</strong>
@@ -991,7 +1040,7 @@ export function ContractsPage() {
                   type="info"
                   showIcon
                   message="已签存量合同"
-                  description={`来源：${sourceLabel}。登记保留历史缺口，不补造会签或签名。`}
+                  description={`来源：${sourceLabel}。按已有来源登记，不会补写会签或签名。`}
                 />
               ) : null}
               {warnings.includes("approval_history_unknown") ? (
@@ -999,7 +1048,7 @@ export function ContractsPage() {
                   type="warning"
                   showIcon
                   message="未取得原会签记录"
-                  description="该合同按存量事实登记；历史审批状态未知，不会被当作已通过会签。"
+                  description="历史会签状态未知，请单独核对。"
                 />
               ) : null}
               {message !== null ? (
@@ -1017,7 +1066,7 @@ export function ContractsPage() {
                 />
               ) : null}
               {readOnly ? (
-                <Alert type="info" showIcon message="当前身份只能查看该合同" description="没有合同管理授权，不能保存修改；受限字段显示为掩码。" />
+                <Alert type="info" showIcon message="当前只能查看" description="没有编辑权限，敏感字段已隐藏。" />
               ) : null}
               {contractID !== null && contractDetail !== null ? (
                 <ContractLifecycleOverviewPanel
@@ -1028,7 +1077,25 @@ export function ContractsPage() {
                 />
               ) : null}
 
-              <fieldset className="contracts-page-section" disabled={readOnly}>
+              <nav className="contracts-form-sections" aria-label="合同登记分区">
+                {CONTRACT_FORM_SECTIONS.map((item) => (
+                  <button key={item.key} type="button" aria-pressed={formSection === item.key}
+                    data-error={errorSection === item.key ? "true" : undefined}
+                    onClick={() => setFormSection(item.key)}>{item.label}</button>
+                ))}
+              </nav>
+              {message?.kind === "error" ? (
+                <div className="contracts-form-error-summary" role="group" aria-label="错误定位">
+                  <strong>错误定位</strong>
+                  <span>{errorSection ? "已定位到相关分区，请检查该分区字段。" : "服务端未返回字段位置，请逐区检查。"}</span>
+                  <div>
+                    {CONTRACT_FORM_SECTIONS.map((item) => (
+                      <button key={item.key} type="button" onClick={() => setFormSection(item.key)}>{item.label}</button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <fieldset className="contracts-page-section" disabled={readOnly} hidden={formSection !== "basic"}>
                 <legend>一、合同基本信息</legend>
                 <div className="contracts-page-fields">
                   <label className="field">
@@ -1045,7 +1112,7 @@ export function ContractsPage() {
                     <Input
                       value={draft.contract.number ?? ""}
                       maxLength={100}
-                      placeholder="会签阶段可以留空"
+                      placeholder="可稍后填写"
                       onChange={(event) => update({ number: optionalText(event.target.value) })}
                     />
                   </label>
@@ -1127,7 +1194,7 @@ export function ContractsPage() {
                 </div>
               </fieldset>
 
-              <fieldset className="contracts-page-section" disabled={readOnly}>
+              <fieldset className="contracts-page-section" disabled={readOnly} hidden={formSection !== "parties"}>
                 <legend>二、相关方与标的</legend>
                 <div className="contracts-page-fields">
                   <label className="field">
@@ -1339,7 +1406,7 @@ export function ContractsPage() {
                 </Button>
               </fieldset>
 
-              <fieldset className="contracts-page-section" disabled={readOnly}>
+              <fieldset className="contracts-page-section" disabled={readOnly} hidden={formSection !== "funding"}>
                 <legend>三、资金与付款计划</legend>
                 <h3>资金来源</h3>
                 {(draft.funding ?? []).length === 0 ? (
@@ -1476,7 +1543,7 @@ export function ContractsPage() {
                 </p>
               </fieldset>
 
-              <fieldset className="contracts-page-section" disabled={readOnly}>
+              <fieldset className="contracts-page-section" disabled={readOnly} hidden={formSection !== "materials"}>
                 <legend>四、材料与核对</legend>
                 <p className="meta">
                   当前切片保存结构化登记内容。真实材料版本在“导入已签存量合同”时按来源案件关联并核对摘要；上传、解析与提取结果随合同材料链后续切片接入。
@@ -1552,6 +1619,25 @@ export function ContractsPage() {
           )}
         </div>
       </div>
+              </>
+            ),
+          },
+          {
+            key: "exports",
+            label: "导出记录",
+            children: (
+              <section className="contracts-ledger contracts-export-history" aria-labelledby="contracts-export-history-title">
+                <h2 id="contracts-export-history-title">导出记录</h2>
+                <p>这里展示本次页面操作的结果。已完成导出清单由服务端在下载时生成，当前接口不提供历史导出记录查询。</p>
+                {exportMessage !== null
+                  ? <Alert type="info" showIcon message={exportMessage} />
+                  : <Empty description="当前会话尚无导出结果" />}
+              </section>
+            ),
+          },
+        ]}
+        className="contracts-workspace-tabs"
+      />
 
       <LegacyImportDialog
         open={importOpen}

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-08
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -125,7 +125,7 @@ export function ReviewReadinessPanel({ caseId, data, loading, error, onRefresh, 
           </ul> : null}
           {scope.checks.length && (scope.id !== "single_contract_precheck" || isSingleContractV1(scope.rule_set)) ? <>
             <h4>本次检查项目</h4>
-            <p className="meta">材料已解析只表示原文可供检查；缺少规则所需事实或依据时仍需补充、核对，并不表示解析失败。</p>
+            <p className="meta">材料已解析，可打开原文核对；缺事实或依据时请继续补充。</p>
             <ul className="review-readiness-list" aria-label="规则准备状态">
               {scope.checks.map((check) => <li key={check.rule_id}>
                 <strong>{(Object.hasOwn(checkLabels, check.rule_id) ? checkLabels[check.rule_id] : undefined) ?? knownBusinessComparatorLabel(check.comparator) ?? (scope.id === "single_contract_precheck" ? "其他范围外检查" : "检查项目名称待核对")}</strong>{" "}<StatusText tone={check.status === "missing_basis" || check.status === "not_executed" ? "attention" : "neutral"}>{Object.hasOwn(checkStates, check.status) ? checkStates[check.status] : "状态待核对"}</StatusText>

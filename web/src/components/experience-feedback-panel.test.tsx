@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-07
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -217,7 +217,7 @@ describe("experience feedback panel", () => {
     const candidateContent = await screen.findByRole("region", { name: "经验候选内容" });
     expect(candidateContent).toHaveTextContent("核对约定期限");
     expect(screen.getByText(/任务状态：提炼完成/)).toBeInTheDocument();
-    expect(screen.getByText(/候选仅供后续治理审核，不代表批准或发布/)).toBeInTheDocument();
+    expect(screen.getByText(/候选还需要治理审核后才能发布/)).toBeInTheDocument();
     const chain = screen.getByRole("region", { name: "经验回流进度链" });
     expect(chain).toHaveTextContent("人工决定与冻结证据");
     expect(chain).toHaveTextContent("提炼完成");
