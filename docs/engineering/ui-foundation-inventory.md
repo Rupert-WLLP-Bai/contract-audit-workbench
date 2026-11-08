@@ -3,8 +3,8 @@
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-05 -->
-<!-- Updated: 2026-11-05 -->
-<!-- Revision: r2 -->
+<!-- Updated: 2026-11-08 -->
+<!-- Revision: r3 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -68,7 +68,7 @@
 
 ## 已知边界
 
-- 本盘点不声称 54 个设计视图已全部完成；逐页状态以 #261 覆盖矩阵和各里程碑 Issue 为准。
-- 颜色、字体和汇总透明度可以在组件层验证；真实浏览器滚动、原生 200% 缩放、权限和异步返回仍需要浏览器与固定候选证据。
+- 54 个设计视图的登记与状态见 [`ui-coverage-matrix.md`](./ui-coverage-matrix.md) / [`ui-coverage-matrix.json`](./ui-coverage-matrix.json)（#260）。截图在仓外；`PARTIAL` 不是产品 PASS。
+- 颜色、字体和汇总透明度可以在组件层验证；真实浏览器滚动、原生 200% 缩放、权限和异步返回仍需要浏览器与 [#97](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/issues/97) 固定候选证据。
 - 工作台技术字段聚合只改变呈现，不改变服务端字段、授权、冻结记录或人工历史。
 - 当前 `web/src` 未调用 Ant Design `message`/`notification`，Message 主题核对为 `NOT_APPLICABLE`；`bootstrap.tsx` 已挂载 `AntdApp`，后续使用会继承同一 `ConfigProvider`。Modal 已在客户端案件页做 computed style 定点核对，管理端与门户共用 `mountApplication`，管理端设置页与门户外层壳已核对。

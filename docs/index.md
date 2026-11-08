@@ -4,7 +4,7 @@
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
 <!-- Updated: 2026-11-08 -->
-<!-- Revision: r6 -->
+<!-- Revision: r7 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -30,6 +30,7 @@
 - [本地开发](engineering/local-development.md)
 - [业务界面工程约定](engineering/interface-conventions.md)
 - [UI2 M1 基础盘点](engineering/ui-foundation-inventory.md)
+- [UI2 覆盖矩阵（M5）](engineering/ui-coverage-matrix.md)
 - [检查与验收](engineering/verification.md)
 - [贡献与协作](engineering/contributing.md)
 - [用户上手与扩展指南](engineering/community-guide.md)
