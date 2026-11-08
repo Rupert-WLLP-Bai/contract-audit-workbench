@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-03
-// Revision: r3
+// Updated: 2026-11-07
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -267,6 +267,18 @@ describe("app shell", () => {
       "href",
       "/admin/rulepacks",
     );
+  });
+
+  it("places the handbook next to the API reference in developer resources", () => {
+    renderShell();
+    const group = screen.getByText("开发者资源").closest("ul");
+    expect(group).not.toBeNull();
+    expect(
+      within(group as HTMLElement).getByRole("link", { name: "使用手册" }),
+    ).toHaveAttribute("href", "/docs/");
+    expect(
+      within(group as HTMLElement).getByRole("link", { name: "API 文档" }),
+    ).toHaveAttribute("href", "/api-docs");
   });
 
   it("logs out to the login page", async () => {
