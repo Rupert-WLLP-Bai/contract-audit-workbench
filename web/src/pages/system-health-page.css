@@ -1,10 +1,10 @@
 /* File metadata (manifest mirror): */
-/* Purpose: Defines visual tokens and component/page rules, including Hallmark · built: the project · redesign: full ·…, .health-page :focus-visible, .health-page .page-head, .health-page .page-head h1; the stylesheet is imported by the web shell and carries no application state. */
+/* Purpose: Defines the visual information architecture for the read-only client and admin health workspaces: fact cards, dependency summary, issue panel, tabs, capacity tables and service inventory. The stylesheet carries no application state. */
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
-/* Updated: 2026-10-28 */
-/* Revision: r1 */
+/* Updated: 2026-11-08 */
+/* Revision: r2 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -15,11 +15,11 @@
 .health-page {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-6);
+  gap: var(--space-4);
   width: 100%;
   max-width: 1680px;
   margin-inline: auto;
-  padding: var(--space-6) var(--space-8) 40px;
+  padding: 22px 28px 32px;
   background: var(--surface-page);
   color: var(--text-primary);
 }
@@ -30,10 +30,11 @@
 }
 
 .health-page .page-head {
-  gap: var(--space-4);
+  align-items: flex-start;
+  gap: 20px;
   margin: 0;
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--border-strong);
+  padding: 0;
+  border: 0;
 }
 
 .health-page .page-head h1 {
@@ -42,11 +43,22 @@
   letter-spacing: -0.02em;
 }
 
+.health-page .page-head p {
+  margin-top: 5px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .health-refresh {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-3);
+}
+
+.health-refresh .ant-tag {
+  margin-inline-end: 0;
 }
 
 .health-note {
@@ -56,11 +68,246 @@
   line-height: 1.5;
 }
 
+.health-workspace {
+  min-width: 0;
+}
+
+.health-workspace > .ant-tabs > .ant-tabs-nav {
+  margin: 0 0 20px;
+}
+
+.health-workspace > .ant-tabs > .ant-tabs-nav::before {
+  border-bottom: 1px solid var(--border-default);
+}
+
+.health-workspace .ant-tabs-tab {
+  padding: 10px 1px;
+  font-size: 14px;
+}
+
+.health-workspace .ant-tabs-tab + .ant-tabs-tab {
+  margin-left: 24px;
+}
+
+.health-workspace .ant-tabs-tab-btn {
+  color: var(--text-secondary);
+}
+
+.health-workspace .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--action-primary);
+  font-weight: 600;
+}
+
+.health-workspace .ant-tabs-ink-bar {
+  height: 2px;
+  background: var(--action-primary);
+}
+
+.health-caveat {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--panel-radius);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.health-caveat p {
+  margin: 0;
+}
+
+.health-caveat-icon {
+  display: inline-grid;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-top: 1px;
+  place-items: center;
+  border: 1px solid var(--border-control);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.health-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.health-fact {
+  display: flex;
+  min-width: 0;
+  min-height: 136px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: 18px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--panel-radius);
+  background: var(--surface-raised);
+  box-shadow: none;
+}
+
+.health-fact-label {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.health-fact strong {
+  color: var(--text-primary);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.health-fact .ant-tag {
+  margin-inline-end: 0;
+}
+
+.health-fact-time {
+  margin-top: auto;
+  padding-top: var(--space-2);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.health-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(290px, 1fr);
+  gap: 20px;
+  align-items: start;
+  margin-bottom: 20px;
+}
+
+.health-panel {
+  min-width: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--panel-radius);
+  background: var(--surface-raised);
+}
+
+.health-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.health-panel-head h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.health-panel-head .ant-tag {
+  margin-inline-end: 0;
+}
+
+.health-panel-body {
+  min-width: 0;
+  padding: 16px 20px 20px;
+}
+
+.health-dependency-list,
+.health-issue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.health-dependency-list > li,
+.health-issue-list > li {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.health-dependency-list > li:first-child,
+.health-issue-list > li:first-child {
+  padding-top: 0;
+}
+
+.health-dependency-list > li:last-child,
+.health-issue-list > li:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.health-dependency-title,
+.health-issue-list strong {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.health-dependency-meta,
+.health-issue-list span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.health-issue-empty {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.health-issue-note {
+  margin-top: 12px;
+}
+
+.health-panel-actions {
+  margin-top: 16px;
+}
+
+.health-page .ant-card {
+  border-color: var(--border-default);
+  border-radius: var(--panel-radius);
+  box-shadow: none;
+}
+
+.health-page .ant-card:not(.health-service-card) {
+  margin-bottom: 20px;
+}
+
+.health-page .ant-card:not(.health-service-card):last-child {
+  margin-bottom: 0;
+}
+
 .health-summary {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0;
-  margin: 0;
+  margin: 0 0 20px;
   padding: 0;
   border-block: 1px solid var(--border-strong);
   background: transparent;
@@ -120,21 +367,13 @@
   line-height: 1.2;
 }
 
-.health-workspace {
-  min-width: 0;
-}
-
-.health-workspace > .ant-tabs > .ant-tabs-nav {
-  margin-bottom: 0;
-}
-
 .health-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
   gap: var(--space-4);
-  margin-bottom: var(--space-6);
-  padding: var(--space-4) 0;
+  margin-bottom: 20px;
+  padding: 12px 0;
   border-bottom: 1px solid var(--border-default);
 }
 
@@ -153,6 +392,14 @@
 
 .health-toolbar label:last-child {
   width: min(280px, 100%);
+}
+
+.health-page .caw-section {
+  margin-top: 20px;
+}
+
+.health-page .caw-section:first-child {
+  margin-top: 0;
 }
 
 .health-group {
@@ -286,6 +533,14 @@
 }
 
 @media (max-width: 1100px) {
+  .health-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .health-overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .health-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -306,13 +561,17 @@
 
 @media (max-width: 700px) {
   .health-page {
-    gap: var(--space-4);
+    gap: var(--space-3);
     padding: var(--space-4);
   }
 
   .health-page .page-head {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .health-facts {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .health-summary {
@@ -361,5 +620,10 @@
   .health-toolbar label:last-child,
   .health-toolbar label > .ant-select {
     width: 100%;
+  }
+
+  .health-panel-head,
+  .health-panel-body {
+    padding-inline: var(--space-4);
   }
 }

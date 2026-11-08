@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -159,7 +159,7 @@ function CapabilityPackPanelContent({
         <div>
           <h2>能力包目录</h2>
           <p className="meta">
-            包版本随每次执行固定；后续升级不会改写历史审查。空目录不代表审查通过。
+            包版本随每次执行固定；后续升级不会改写历史审查。当前目录为空。
           </p>
         </div>
         <Button
@@ -196,7 +196,7 @@ function CapabilityPackPanelContent({
         <PageStatus
           kind="empty"
           title="当前范围没有已发布的能力包"
-          detail="空目录不代表审查通过，也不改变已有案件。"
+          detail="当前目录为空。"
         />
       ) : null}
       {packs.isSuccess && packs.data.length > 0 ? (

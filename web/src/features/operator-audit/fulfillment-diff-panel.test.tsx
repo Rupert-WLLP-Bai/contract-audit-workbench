@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-10-29
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -166,6 +166,6 @@ describe("fulfillment diff panel", () => {
     expect(
       screen.getByText("当前评估没有可展示的检查结果"),
     ).toBeInTheDocument();
-    expect(screen.getByText("空结果不代表审查通过。")).toBeInTheDocument();
+    expect(screen.getByText("当前没有结果。")).toBeInTheDocument();
   });
 });

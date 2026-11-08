@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-31 */
-/* Updated: 2026-10-31 */
-/* Revision: r1 */
+/* Updated: 2026-11-08 */
+/* Revision: r2 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -122,7 +122,45 @@
   overflow-wrap: anywhere;
 }
 
+.evidence-sla-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+  min-width: 0;
+}
+
+.evidence-sla-table { min-width: 0; }
+.evidence-sla-select {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.evidence-sla-select:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.evidence-sla-select[aria-pressed="true"] { font-weight: 700; }
+.evidence-sla-detail {
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--panel-radius);
+  background: var(--surface-raised);
+  overflow-wrap: anywhere;
+}
+.evidence-sla-detail h3, .evidence-sla-detail h4 { margin: 0 0 var(--space-3); }
+.evidence-sla-detail h4:not(:first-child) { margin-top: var(--space-4); }
+.evidence-sla-detail dl { display: grid; gap: var(--space-2); }
+.evidence-sla-detail dt { color: var(--text-secondary); }
+.evidence-sla-detail dd { margin: 0; }
+.evidence-sla-history { padding-inline-start: 20px; }
+.evidence-sla-history li + li { margin-top: var(--space-3); }
+
 @media (max-width: 900px) {
+  .evidence-sla-workspace { grid-template-columns: minmax(0, 1fr); }
   .evidence-sla-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

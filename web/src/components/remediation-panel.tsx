@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-05
-// Revision: r4
+// Updated: 2026-11-08
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -539,7 +539,7 @@ function RemediationCard({
                 ))}
               </ul>
               <p className="meta">
-                能否完成复核，要看原发现对应的规则、版本、检查项目和对象，以及本轮唯一一条结果为“一致”的规则检查。差异标记仅供参考，系统会再次核对。
+                复核前请确认原发现对应的规则、版本、检查项目和对象，并核对本轮结果为“一致”的规则检查；系统会再核一遍差异标记。
               </p>
             </div>
           ) : null}

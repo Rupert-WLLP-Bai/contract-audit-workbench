@@ -1,0 +1,39 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles the subject detail section navigation and explanatory note, including selected and keyboard focus states. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-08 */
+/* Updated: 2026-11-08 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+.subject-detail-sections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.subject-detail-sections button {
+  padding: 8px 16px;
+  border: 1px solid var(--border-control);
+  border-radius: 6px;
+  background: var(--surface-page);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.subject-detail-sections button[aria-pressed="true"] {
+  border-color: currentColor;
+  font-weight: 600;
+}
+
+.subject-detail-sections button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.subject-detail-note {
+  margin: 0;
+}

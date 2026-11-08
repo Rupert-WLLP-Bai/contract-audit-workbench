@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-05
-// Revision: r5
+// Updated: 2026-11-08
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -574,6 +574,16 @@ class WorkbenchService {
     const parts = new URL(path, "http://workbench.test").pathname
       .split("/")
       .map(decodeURIComponent);
+    if (method === "GET" && parts[2] === "cases" && parts[4] === "documents" && parts[6] === "original") {
+      return new Response(new Uint8Array([137, 80, 78, 71]), {
+        headers: { "Content-Type": "image/png" },
+      });
+    }
+    if (method === "GET" && parts[2] === "cases" && parts[4] === "reports" && parts.length === 6) {
+      return new Response("<html><body><h1>冻结审查报告</h1><p>报告正文示例</p></body></html>", {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
     if (
       method === "GET" &&
       parts[2] === "knowledge" &&
@@ -987,6 +997,10 @@ describe("workbench tasks", () => {
     expectDisplayField("任务类型", "审查判断");
     expectDisplayField("优先级", "高优先级");
     expectDisplayField("状态", "待处理");
+    const taskSummary = details().getByLabelText("所选任务摘要");
+    expect(within(taskSummary).getByText("待处理")).toBeInTheDocument();
+    expect(within(taskSummary).getByText("审查员甲")).toBeInTheDocument();
+    expect(within(taskSummary).getByText("专线采购案件")).toBeInTheDocument();
     await expectTechnicalField(user, "任务类型编码", "decision");
     await expectTechnicalField(user, "状态编码", "open");
     expectField("版本", "7");
@@ -1702,6 +1716,9 @@ describe("workbench remediation and frozen artifacts", () => {
     expectField("责任人", "管理员乙");
     expectField("最近理由", "缺少签章");
     expectField("版本", "4");
+    const remediationSummary = details().getByLabelText("所选整改摘要");
+    expect(within(remediationSummary).getByText("管理员乙")).toBeInTheDocument();
+    expect(within(remediationSummary).getByText("专线采购案件")).toBeInTheDocument();
     expect(
       details().getByRole("link", { name: "进入案件整改与复核" }),
     ).toHaveAttribute("href", "/cases/case%2Falpha");
@@ -1787,6 +1804,9 @@ describe("workbench remediation and frozen artifacts", () => {
     expect(details().getByText("审查报告 v2")).toBeInTheDocument();
     expectField("案件", "专线采购案件");
     expectField("报告版本", "2");
+    const reportFrame = await details().findByTitle("报告正文预览");
+    expect(reportFrame).toHaveAttribute("sandbox", "");
+    await waitFor(() => expect(reportFrame.getAttribute("srcdoc")).toContain("冻结审查报告"));
     const frozen = details().getByRole("link", { name: "打开报告" });
     expect(frozen).toHaveAttribute(
       "href",
@@ -1842,10 +1862,13 @@ describe("workbench remediation and frozen artifacts", () => {
   });
 
   it("links evidence originals, parser identity and citations to actual document and run IDs", async () => {
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:evidence") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
     const { user } = open("evidence");
     const rows = await list("证据中心");
     expect(rows.getByRole("columnheader", { name: "状态" })).toBeVisible();
     expectField("文件名", "采购原件.pdf");
+    expect(await details().findByTitle("采购原件.pdf原件预览")).toHaveAttribute("src", "blob:evidence");
     expectDisplayField("已记录文件类型", "PDF 文档");
     await expectTechnicalField(user, "文件类型标识", "application/pdf");
     expectField("字节数", "2048");
@@ -2015,7 +2038,17 @@ describe("workbench execution and platform projections", () => {
     ).toHaveAttribute("href", "/cases/case-empty/reviews/run-no-usage");
   });
 
-  it("keeps registered tool capabilities, call counts and unreported status distinct from private payloads", async () => {
+  it("shows the read-only Qichacha MCP catalog and skill counts on the tools page", async () => {
+  open("tools");
+  const panel = await screen.findByRole("region", { name: "企查查 MCP 集成目录" });
+  expect(panel).toHaveTextContent("已识别 9 个 MCP Server、170 个 Skill");
+  expect(within(panel).getByRole("article", { name: "企业数据 MCP Server" })).toHaveTextContent("16 Skills");
+  expect(within(panel).getByRole("article", { name: "风险大脑 MCP Server" })).toHaveTextContent("38 Skills");
+  expect(within(panel).getByRole("article", { name: "历史存档 MCP Server" })).toHaveTextContent("未授权");
+  expect(within(panel).getByText("get_actual_controller", { selector: "span" })).toBeInTheDocument();
+});
+
+it("keeps registered tool capabilities, call counts and unreported status distinct from private payloads", async () => {
     const { user } = open("tools");
     await list("工具网关");
     await expectTechnicalField(user, "工具 ID", "tool/read-only");
@@ -2147,6 +2180,10 @@ describe("workbench public directory, templates and audit", () => {
     expectField("版本", "3.0.0");
     expectField("摘要", "template-sha256");
     expect(details().queryByRole("link")).not.toBeInTheDocument();
+    const placeholders = details().getByLabelText("模板字段占位预览");
+    expect(placeholders).toHaveTextContent("{{供应商}}");
+    expect(placeholders).toHaveTextContent("{{金额}}");
+    expect(placeholders).toHaveTextContent("文本 · 必填");
     await category(user, "模板管理", "字段配置");
     await detailTab(user, "字段定义");
     expectDisplayField("供应商", "文本，必填");
@@ -2233,6 +2270,9 @@ describe("workbench public directory, templates and audit", () => {
     const rows = await list("审计日志");
     expectField("事件标识", "audit-case-1");
     expectField("资源范围", "专线采购案件");
+    const summary = within(details().getByLabelText("所选审计事件摘要"));
+    expect(summary.getByText("创建办理任务")).toBeVisible();
+    expect(summary.getByText("专线采购案件")).toBeVisible();
     expect(
       details().getByRole("link", { name: "打开关联记录" }),
     ).toHaveAttribute("href", "/cases/case%2Falpha");
@@ -2248,6 +2288,8 @@ describe("workbench public directory, templates and audit", () => {
       details().queryByText(/维护安全制度|发布运营商规则包/),
     ).not.toBeInTheDocument();
     await selectRecord(user, /发布规则包/);
+    expect(summary.getByText("平台级事件")).toBeVisible();
+    expect(summary.getByText("发布规则包")).toBeVisible();
     expect(details().getByText("平台级事件没有案件关联。")).toBeInTheDocument();
     expect(details().queryByRole("link")).not.toBeInTheDocument();
     await detailTab(user, "事件详情");

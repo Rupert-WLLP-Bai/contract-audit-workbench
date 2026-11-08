@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -127,7 +127,7 @@ export function SubjectSourceVerificationPanel({
       <Alert
         type="info"
         showIcon
-        title="本功能仅对照系统配置的合成演示数据，不代表真实工商或主体身份核验。匹配只会发起待另一名有权审批人复核的更正申请，不会直接更改主体状态。"
+        title="当前对照的是演示数据。匹配后会发起更正申请，由另一名有权人复核。"
       />
       <div className="subject-source-actions">
         <Select

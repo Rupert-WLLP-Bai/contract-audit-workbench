@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -39,7 +39,7 @@ export function SubjectCreateFields() {
           validator: async (_rule, value: unknown) => {
             if (typeof value !== "string" || value.trim() === "") return;
             if (!usccPattern.test(value.trim().toUpperCase()))
-              throw new Error("请输入18位统一社会信用代码；格式正确不代表身份已核验");
+              throw new Error("请输入18位统一社会信用代码");
           },
         }]}
       >
@@ -48,7 +48,7 @@ export function SubjectCreateFields() {
       <Alert
         type="info"
         showIcon
-        title="新主体默认待核验。名称和标识由经办人录入，不会自动匹配或合并其他主体。"
+        title="新主体默认为待核验，由经办人录入名称和标识。"
       />
     </>
   );
@@ -60,7 +60,7 @@ export function subjectCreateInput(values: SubjectCreateFormValues): SubjectCrea
   const legalName = values.legal_name?.trim() ?? "";
   const identifierValue = values.identifier_value?.trim().toUpperCase() ?? "";
   if (identifierValue !== "" && !usccPattern.test(identifierValue))
-    throw new Error("请输入18位统一社会信用代码；格式正确不代表身份已核验");
+    throw new Error("请输入18位统一社会信用代码");
   return {
     display_name: displayName,
     ...(legalName === "" ? {} : { legal_name: legalName }),

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-05
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -61,7 +61,7 @@ export function ReviewWorkItems({ projection, filter, onFilter, onOpen, onContin
     <section className="workflow-panel review-work-items" aria-labelledby="review-work-items-title">
       <h2 id="review-work-items-title">人工办理</h2>
       <p className="meta">显示所选冻结执行的待判断发现和尚无请求的检查来源，以及本案件已建的未完成补件、整改；其他历史执行中尚未建立请求的来源不在此汇总。</p>
-      <p className="meta">待补件也包括预算、能力或来源内容需要核对的事项；不代表已经确认缺少材料或存在风险。</p>
+      <p className="meta">待办里包含需要补充或核对的事项。</p>
       {projection.agentSkipped ? <p className="meta">本次执行明确未进行智能体审查；这里只汇总已返回的规则来源。</p> : null}
       <div className="filter-row" role="group" aria-label="人工办理分类">
         {(Object.keys(labels) as WorkFilter[]).map((kind) => (

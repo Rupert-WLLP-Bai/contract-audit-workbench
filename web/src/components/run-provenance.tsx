@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -158,7 +158,7 @@ function RevisionSection({
     <>
       <Link to={`/cases/${caseId}/reviews/${previous}`}>查看上一轮审查</Link>
       <p className="meta">
-        对照使用规则要求和已核对的原文。之前的判断仅供参考，不会自动用于本次审查。
+        请对照规则要求和已核对的原文。
       </p>
       {reason ? <p className="callout">{reason}</p> : null}
       {revisions.length === 0 ? (

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -178,7 +178,7 @@ describe("finding panel", () => {
   it("explains an empty finding list without claiming the contract is clean", () => {
     renderPanel({ findings: [] });
     expect(
-      screen.getByText("本次审查还没有生成风险线索。这不代表材料没有风险。"),
+      screen.getByText("这次审查还没有生成风险线索。"),
     ).toBeInTheDocument();
     expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
   });
@@ -210,7 +210,7 @@ describe("finding panel", () => {
     expect(onSelect).toHaveBeenCalledWith("finding-1");
     await user.click(screen.getByRole("tab", { name: "条款比对" }));
     expect(
-      screen.getByText("各发现引用的实际材料片段；变更本身不代表风险。"),
+      screen.getByText("下面是各条线索对应的原文片段。"),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "付款期限过长" }));
     expect(onSelect).toHaveBeenLastCalledWith("finding-1");
@@ -220,7 +220,7 @@ describe("finding panel", () => {
     );
     await user.click(screen.getByRole("tab", { name: "审查结论" }));
     expect(
-      screen.getByText("规则结果、模型建议和审查判断分别保存。审查执行结束不代表合同已获批。"),
+      screen.getByText("规则结果、模型建议和人工判断分开保存。"),
     ).toBeInTheDocument();
     expect(screen.getByText("确认风险")).toBeInTheDocument();
   });

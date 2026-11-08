@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -40,10 +40,10 @@ const CAPABILITY_EXPRESSIONS: Record<string, string> = {
   authorization_basis:
     "尚未接入有版本记录的制度或审批材料，因此证据不足。提取审批原文只提供事实，不能直接得出合规结论。",
   commercial_baseline:
-    "只比较当前规则支持的金额和付款表述，不代表已审查全部商务条款。",
+    "比较当前规则支持的金额和付款表述。",
   warranty_months: "比较支持的材料中关于质保期的表述；其他技术承诺尚未覆盖。",
   acceptance_schedule:
-    "比较支持的交付、进场和验收时间表述，不代表已经完成履约。",
+    "比较支持的交付、进场和验收时间表述。",
   counterparty_record:
     "尚未接入授权的登记信息来源，无法核实登记状态和关联关系。提取主体名称不会推断其资质或关联关系。",
   amount: "从本次审查使用的材料中提取金额原文事实；抽取结果本身不作合规或付款判断。",
@@ -52,15 +52,15 @@ const CAPABILITY_EXPRESSIONS: Record<string, string> = {
   approval_validity:
     "只比较本次审查材料中已提取并核实的审批依据生效日、失效日与合同引用日；缺少任何日期时，不能用当前日期代替。",
   effective_scope: "从本次审查使用的材料中提取服务或项目范围原文。",
-  scope: "从本次审查使用的材料中提取技术或服务范围原文，不判断是否已履约。",
+  scope: "从本次材料提取技术或服务范围原文。",
   milestone: "从本次审查使用的材料中提取交付、验收、进场、开工、开通或上线等里程碑原文。",
-  explicit_start_event: "从本次审查使用的材料中提取明确的启动时间表达，不推断缺失日期。",
+  explicit_start_event: "从本次材料提取明确的启动时间表达。",
   subject_id: "从本次审查使用的材料中提取统一社会信用代码，不查询登记状态。",
   signing_party:
     "从本次审查使用的材料中提取签署方或签约方原文；名称相同不足以确认签署身份，需核验稳定主体 ID 与角色关联。",
   payee:
     "从本次审查使用的材料中提取收款方原文；名称相同不足以确认收款资格，需核验稳定主体 ID 与收款角色关联。",
-  responsibility: "从本次审查使用的材料中提取责任、义务原文，不判断履约完成。",
+  responsibility: "从本次材料提取责任、义务原文。",
   "dedicated_line.minimum_bandwidth":
     "比较同一电路的最低保障带宽；单位和比较对象必须对应。",
   "dedicated_line.monthly_availability":
@@ -340,7 +340,7 @@ function KnowledgeAdvisoryDetails({
       </p>
       {failed ? (
         <p className="callout">
-          建议不可用时，审查使用确定性排序继续完成；该失败本身不构成审查结论。
+          建议不可用时，审查按确定性规则继续。
         </p>
       ) : null}
     </>
@@ -421,7 +421,7 @@ function ConfigurationSection({
         </div>
         <div>
           <dt>实际模型来源</dt>
-          <dd>未知；计划配置和模型编号不能证明实际调用了哪个模型。</dd>
+          <dd>未知</dd>
         </div>
         <div>
           <dt>执行事件中的模型引用</dt>
@@ -658,7 +658,7 @@ function ScopeSection({ review }: { review: AgentReview }) {
     >
       <h4 id="agent-review-scope-title">范围、支持表达与证据覆盖</h4>
       {review.scope.length === 0 ? (
-        <p>没有报告审查范围；不推断为五域均已检查。</p>
+        <p>没有报告审查范围。</p>
       ) : (
         <ul className="agent-review-grid-list">
           {review.scope.map((scope) => (

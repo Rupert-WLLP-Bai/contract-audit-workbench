@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-07
-// Revision: r3
+// Updated: 2026-11-08
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -312,7 +312,7 @@ function CandidateView({ candidate, completed }: { candidate: ExperienceCandidat
   return (
     <section aria-label="经验候选内容">
       <h4>已生成经验候选</h4>
-      <p>候选仅供后续治理审核，不代表批准或发布。</p>
+      <p>候选还需要治理审核后才能发布。</p>
       <CandidateFields candidate={candidate} />
       {completed ? <p><a href={governanceUrl}>在知识治理中审阅此候选</a></p> : null}
     </section>
@@ -509,7 +509,7 @@ function FeedbackForm({
         <Input.TextArea aria-label="经验建议理由" value={reason} rows={3} disabled={disabled}
           onChange={(event) => onReason(event.target.value)} />
       </label>
-      <p className="meta">填写 2 至 1000 个字符。提交会保留原审查判断，不会自动批准候选。</p>
+      <p className="meta">填写 2 至 1000 个字符。提交后保留原审查判断。</p>
       <ErrorNotice error={submitError} />
       <Button type="primary" htmlType="submit" aria-label="提交经验建议并请求提炼" disabled={!ready} loading={pending}>提交经验建议并请求提炼</Button>
     </form>
@@ -666,7 +666,7 @@ function FeedbackProgressChain({
   return (
     <section aria-label="经验回流进度链">
       <h4>经验回流进度</h4>
-      <p className="meta">只读状态来自已保存记录；候选生成不等于审批或发布。</p>
+      <p className="meta">只读状态来自已保存记录；候选生成后仍需审批才能发布。</p>
       <ol>
         <li>
           <strong>人工决定与冻结证据</strong>
@@ -690,7 +690,7 @@ function FeedbackProgressChain({
         </li>
         <li>
           <strong>已发布 / 已撤回</strong>
-          <span>需在知识治理版本详情核对；候选生成不等于发布</span>
+          <span>请到知识治理版本详情核对；候选生成后仍需发布</span>
         </li>
         <li>
           <strong>后续审查参考与结果</strong>

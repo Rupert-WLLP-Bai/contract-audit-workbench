@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r6
+// Updated: 2026-11-08
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -622,9 +622,9 @@ export function HomePage() {
               ]}
             />
           </label>
+          <Link className="home-review-link" to="/review">进入合同审查</Link>
           <Button
             aria-label={"打开案件中心"}
-            type="primary"
             className="home-case-link"
             href="/cases"
           >
@@ -632,8 +632,6 @@ export function HomePage() {
           </Button>
         </div>
       </header>
-
-      <CircuitStrip nodes={circuitNodes} />
 
       <dl className="home-metrics" aria-label="工作台摘要">
         {metrics.map((metric) => (
@@ -653,94 +651,7 @@ export function HomePage() {
         ))}
       </dl>
 
-      <section className="home-panel home-case-work" aria-labelledby="home-case-work-title">
-        <header className="home-panel-head">
-          <div className="home-section-title">
-            <span aria-hidden="true" />
-            <h2 id="home-case-work-title">按案件处理</h2>
-          </div>
-          <span className="home-panel-meta">按案件更新时间排序，最多显示 8 个案件</span>
-        </header>
-        {caseWork.length === 0 ? (
-          <p className="home-empty">当前无可见案件。</p>
-        ) : (
-          <ul className="home-case-work-list">
-            {caseWork.map(({ item, tasks: caseTasks, remediations: caseRemediations }) => (
-              <li key={item.id}>
-                <div className="home-case-work-heading">
-                  <Link to={caseHref(item.id, null)}>{item.title}</Link>
-                  <TechnicalDetail value={item.id} label="案件标识" />
-                </div>
-                <div className="home-case-work-details">
-                  {item.severity ? (
-                    <StatusText tone={item.severity === "high" || item.severity === "critical" ? "bad" : item.severity === "medium" ? "attention" : "neutral"}>
-                      {item.severity === "high" || item.severity === "critical" ? "高风险" : item.severity === "medium" ? "中风险" : item.severity === "low" ? "低风险" : item.severity === "info" ? "提示" : item.severity === "unrated" ? "未分级" : "风险级别未知"}
-                    </StatusText>
-                  ) : null}
-                  {item.profile?.due_at ? <span>案件期限 · {formatDateTime(item.profile.due_at)}</span> : null}
-                  {caseTasks.map((task) => (
-                    <Link key={task.id} to={caseHref(item.id, null)}>
-                      {task.title} · {taskStatusLabel(task.status)}
-                      {task.due_at ? ` · 截止 ${formatDateTime(task.due_at)}` : " · 未设期限"}
-                    </Link>
-                  ))}
-                  {caseRemediations.map((remediation) => (
-                    <Link key={remediation.id} to={caseHref(item.id, remediation.run_id)}>
-                      整改：{remediation.measure} · {remediationStatusLabel(remediation.status)} · 截止 {formatDateTime(remediation.due_at)}
-                    </Link>
-                  ))}
-                  {caseTasks.length === 0 && caseRemediations.length === 0 && (item.severity === "high" || item.severity === "critical") ? <span>打开案件查看风险详情</span> : null}
-                </div>
-                <Button
-                  className="home-case-work-next-step"
-                  htmlType="button"
-                  aria-expanded={activeNextStepCaseId === item.id}
-                  onClick={() => setSelectedNextStep((current) =>
-                    current?.actorScope === nextStepActorScope && current.caseId === item.id
-                      ? null
-                      : { actorScope: nextStepActorScope, caseId: item.id },
-                  )}
-                >
-                  {activeNextStepCaseId === item.id ? "收起实际下一步" : "查看实际下一步"}
-                </Button>
-                {activeNextStepCaseId === item.id ? (
-                  <WorkbenchCaseNextStep key={`${nextStepActorScope}:${item.id}`} caseId={item.id} />
-                ) : null}
-                <Link className="home-case-work-open" to={caseHref(item.id, null)}>打开案件</Link>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="home-case-work-note">此处展示工作台快照中的任务、整改和风险级别；案件实际下一步及可执行动作以案件页服务端信息为准。</p>
-      </section>
-
-      <IntakePendingList
-        key={intakeActorScope}
-        actor={actor}
-        selectedOperationId={activeIntakeSelection?.detail.operation_id ?? null}
-        onSelectContinuation={(selection) =>
-          setSelectedIntake({ actorScope: intakeActorScope, selection })
-        }
-        onArchived={(operationId) => {
-          setSelectedIntake((current) =>
-            current?.actorScope === intakeActorScope &&
-            current.selection.detail.operation_id === operationId
-              ? {
-                  ...current,
-                  selection: { ...current.selection, archived: true },
-                }
-              : current,
-          );
-        }}
-      />
-
-      <div className="home-content-grid workbench-content-grid">
-        <IntakePrimaryContract
-          key={intakeActorScope}
-          actor={actor}
-          selectedContinuation={activeIntakeSelection}
-        />
-        <section
+      <section
           className="home-panel home-tasks"
           aria-labelledby="home-tasks-title"
         >
@@ -887,6 +798,97 @@ export function HomePage() {
             </Link>
           ) : null}
         </section>
+
+      <section className="home-panel home-case-work" aria-labelledby="home-case-work-title">
+        <header className="home-panel-head">
+          <div className="home-section-title">
+            <span aria-hidden="true" />
+            <h2 id="home-case-work-title">按案件处理</h2>
+          </div>
+          <span className="home-panel-meta">按案件更新时间排序，最多显示 8 个案件</span>
+        </header>
+        {caseWork.length === 0 ? (
+          <p className="home-empty">当前无可见案件。</p>
+        ) : (
+          <ul className="home-case-work-list">
+            {caseWork.map(({ item, tasks: caseTasks, remediations: caseRemediations }) => (
+              <li key={item.id}>
+                <div className="home-case-work-heading">
+                  <Link to={caseHref(item.id, null)}>{item.title}</Link>
+                  <TechnicalDetail value={item.id} label="案件标识" />
+                </div>
+                <div className="home-case-work-details">
+                  {item.severity ? (
+                    <StatusText tone={item.severity === "high" || item.severity === "critical" ? "bad" : item.severity === "medium" ? "attention" : "neutral"}>
+                      {item.severity === "high" || item.severity === "critical" ? "高风险" : item.severity === "medium" ? "中风险" : item.severity === "low" ? "低风险" : item.severity === "info" ? "提示" : item.severity === "unrated" ? "未分级" : "风险级别未知"}
+                    </StatusText>
+                  ) : null}
+                  {item.profile?.due_at ? <span>案件期限 · {formatDateTime(item.profile.due_at)}</span> : null}
+                  {caseTasks.map((task) => (
+                    <Link key={task.id} to={caseHref(item.id, null)}>
+                      {task.title} · {taskStatusLabel(task.status)}
+                      {task.due_at ? ` · 截止 ${formatDateTime(task.due_at)}` : " · 未设期限"}
+                    </Link>
+                  ))}
+                  {caseRemediations.map((remediation) => (
+                    <Link key={remediation.id} to={caseHref(item.id, remediation.run_id)}>
+                      整改：{remediation.measure} · {remediationStatusLabel(remediation.status)} · 截止 {formatDateTime(remediation.due_at)}
+                    </Link>
+                  ))}
+                  {caseTasks.length === 0 && caseRemediations.length === 0 && (item.severity === "high" || item.severity === "critical") ? <span>打开案件查看风险详情</span> : null}
+                </div>
+                <Button
+                  className="home-case-work-next-step"
+                  htmlType="button"
+                  aria-expanded={activeNextStepCaseId === item.id}
+                  onClick={() => setSelectedNextStep((current) =>
+                    current?.actorScope === nextStepActorScope && current.caseId === item.id
+                      ? null
+                      : { actorScope: nextStepActorScope, caseId: item.id },
+                  )}
+                >
+                  {activeNextStepCaseId === item.id ? "收起实际下一步" : "查看实际下一步"}
+                </Button>
+                {activeNextStepCaseId === item.id ? (
+                  <WorkbenchCaseNextStep key={`${nextStepActorScope}:${item.id}`} caseId={item.id} />
+                ) : null}
+                <Link className="home-case-work-open" to={caseHref(item.id, null)}>打开案件</Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="home-case-work-note">此处展示工作台快照中的任务、整改和风险级别；案件实际下一步及可执行动作以案件页服务端信息为准。</p>
+      </section>
+
+      <CircuitStrip nodes={circuitNodes} />
+
+      <IntakePendingList
+        key={intakeActorScope}
+        actor={actor}
+        selectedOperationId={activeIntakeSelection?.detail.operation_id ?? null}
+        onSelectContinuation={(selection) =>
+          setSelectedIntake({ actorScope: intakeActorScope, selection })
+        }
+        onArchived={(operationId) => {
+          setSelectedIntake((current) =>
+            current?.actorScope === intakeActorScope &&
+            current.selection.detail.operation_id === operationId
+              ? {
+                  ...current,
+                  selection: { ...current.selection, archived: true },
+                }
+              : current,
+          );
+        }}
+      />
+
+      <div className="home-content-grid workbench-content-grid">
+        <IntakePrimaryContract
+          key={intakeActorScope}
+          actor={actor}
+          selectedContinuation={activeIntakeSelection}
+        />
+
 
         <aside
           className="home-summary-stack"

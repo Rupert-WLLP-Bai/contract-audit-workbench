@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -577,6 +577,8 @@ describe("ComparePage frozen run selection", () => {
   it("pins both initial sides across a new run, reorder, retry and browser history", async () => {
     const { service, client, user } = open();
     await screen.findByLabelText("历史版本材料解析正文");
+    expect(screen.getByRole("heading", { name: "冻结执行对照", level: 1 })).toBeInTheDocument();
+    expect(screen.getByLabelText("冻结执行对照摘要")).toHaveTextContent("可比性");
     await chooseRun(user, "当前版本", /审查标识 run-a/);
     service.frozenAttempts.set("run-y:attempt-y", service.reviews.get("run-y")!);
     const nextRuns = [run("run-c", "case-main", { updated_at: "2026-11-05T01:00:00Z", attempt_id: "attempt-c" }),
@@ -726,15 +728,16 @@ describe("ComparePage frozen run selection", () => {
   it("filters the comparison entry by case number and links each contract into its own comparison", async () => {
     const { user, service } = openEntry(new CompareService());
     expect(await screen.findByText("专线合同修订")).toBeInTheDocument();
-    expect(screen.getByText("可对照合同").closest("li")).toHaveTextContent(
-      "可对照合同1",
-    );
+    expect(screen.queryByText("可对照合同")).not.toBeInTheDocument();
+    expect(screen.getByText(/运行数量不能确认冻结执行或可比性/)).toBeInTheDocument();
+    expect(within(screen.getByText("专线合同修订").closest("tr")!).getByText("本周返回 3 次运行")).toBeInTheDocument();
+    expect(within(screen.getByText("暂无审查案件").closest("tr")!).getByText("本周未返回运行记录")).toBeInTheDocument();
     const search = screen.getByRole("searchbox", { name: "搜索合同" });
     await user.type(search, " N-002 ");
     expect(screen.getByText("专线合同修订")).toBeInTheDocument();
     expect(screen.queryByText("暂无审查案件")).not.toBeInTheDocument();
     const mainRow = screen.getByText("专线合同修订").closest("tr")!;
-    expect(within(mainRow).getByRole("link", { name: "开始对照" })).toHaveAttribute(
+    expect(within(mainRow).getByRole("link", { name: "选择审查" })).toHaveAttribute(
       "href",
       "/compare?case_id=case-main",
     );
@@ -747,7 +750,7 @@ describe("ComparePage frozen run selection", () => {
     expect(screen.getByText("没有匹配的合同")).toBeInTheDocument();
     await user.clear(search);
     const emptyRow = screen.getByText("暂无审查案件").closest("tr")!;
-    expect(within(emptyRow).getByRole("link", { name: "开始对照" })).toHaveAttribute(
+    expect(within(emptyRow).getByRole("link", { name: "选择审查" })).toHaveAttribute(
       "href",
       "/compare?case_id=case-empty",
     );
@@ -758,6 +761,16 @@ describe("ComparePage frozen run selection", () => {
     expect(
       service.requests.some((path) => path.includes("case-empty/reviews")),
     ).toBe(false);
+    await user.click(within(emptyRow).getByRole("link", { name: "选择审查" }));
+    expect(screen.getByLabelText("路由查询")).toHaveTextContent("?case_id=case-empty");
+  });
+
+  it("distinguishes authorization denial from a loading failure", async () => {
+    const service = new CompareService();
+    service.snapshotFailures.push(403);
+    openEntry(service);
+    expect(await screen.findByText("没有权限读取案件列表")).toBeInTheDocument();
+    expect(screen.queryByText("专线合同修订")).not.toBeInTheDocument();
   });
 
   it("does not silently substitute another case for an unavailable URL identity", async () => {
@@ -1654,7 +1667,7 @@ describe("ComparePage unavailable data", () => {
     ).toHaveTextContent("历史合同质保36个月。");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(
-      screen.getByText("此运行没有返回发现；不代表合同已批准。"),
+      screen.getByText("这次审查没有返回发现。"),
     ).toBeInTheDocument();
   });
 });

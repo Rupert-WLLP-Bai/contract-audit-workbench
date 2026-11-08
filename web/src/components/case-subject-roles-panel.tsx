@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -180,7 +180,7 @@ export function CaseSubjectRolesPanel({ caseId }: { caseId: string }) {
                 onChange={setCandidateId}
                 loading={candidates.isLoading}
                 showSearch={false}
-                placeholder="请选择主体；同名主体不会自动合并"
+                placeholder="请选择主体"
                 options={(candidates.data?.items ?? []).map((item: SubjectSummary) => ({
                   value: item.subject_id,
                   label: `${item.display_name} · v${item.current_version} · ${subjectVerificationLabel(item.verification_state, item.verification_scope)}`,

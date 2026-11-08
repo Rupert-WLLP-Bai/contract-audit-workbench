@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -141,9 +141,9 @@ function availabilityNote(
 ): string | null {
   switch (availability) {
     case "unavailable":
-      return "该快照不可用：不能作为证据，也不能据此形成确定性结论。";
+      return "该快照不可用，请重新采集后再用于核对。";
     case "stale":
-      return "该快照已过期：不能作为当前证据；缺失或过期不等于合规。";
+      return "该快照已过期，请重新采集；缺失或过期时请按清单补齐。";
     case "rejected":
       return "该快照已被拒绝：不能进入核验。";
     case "unknown":
@@ -224,7 +224,7 @@ function SnapshotCard({
       {note ? <p className="callout">{note}</p> : null}
       {snapshot.availability === "available" ? (
         <p className="meta">
-          可用只表示该快照可用于核验，不表示业务关系已经成立。
+          该快照可用于核验。
         </p>
       ) : null}
       {covers === false ? (
@@ -270,7 +270,7 @@ function ExternalEvidencePanelContent({
         <div>
           <h2>外部证据快照</h2>
           <p className="meta">
-            采集任务受理不代表已取得证据；只有可用且在有效期内的快照才能参与核验。
+            受理后仍需取得可用且在有效期内的快照。
           </p>
         </div>
         <Button
@@ -294,7 +294,7 @@ function ExternalEvidencePanelContent({
           />
           {rejectedJobs.length > 0 ? (
             <p className="callout">
-              有采集任务被拒绝：未取得外部数据，不能据此形成结论。
+              有采集任务被拒绝，尚未取得外部数据；请处理拒绝原因后重试。
             </p>
           ) : null}
         </section>
@@ -326,7 +326,7 @@ function ExternalEvidencePanelContent({
         <PageStatus
           kind="empty"
           title="当前案件没有外部快照"
-          detail="没有快照不代表合规；请检查采集任务状态与案件授权。"
+          detail="还没有可用快照，请检查采集任务和案件授权。"
         />
       ) : null}
       {snapshots.isSuccess && snapshots.data.length > 0 ? (

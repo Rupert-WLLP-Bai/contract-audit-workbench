@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders CasesTable, the cases table workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.
+// Purpose: Renders the cases workbench table with stable identity links, responsive summary details and locally scrollable columns; server-derived state does not establish business authorization or evidence validity.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-05
-// Revision: r4
+// Updated: 2026-11-08
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -91,6 +91,16 @@ function CaseTitleCell({
         <InvalidTimeDetail value={item.updated_at} label="案件更新时间" />
         <TechnicalDetail value={item.id} label="案件标识" />
       </div>
+      <div className="cases-mobile-facts">
+        <span>材料 {item.document_count}</span>
+        <span>待决定 {item.pending_decisions}</span>
+        <span>
+          业务状态：{item.archived_at ? "已归档" : businessStatusLabel(item.business_status ?? "")}
+        </span>
+        <span>
+          最新运行：{item.latest_run ? runLabel(item.latest_run.state) : "尚未审查"}
+        </span>
+      </div>
     </>
   );
 }
@@ -129,6 +139,7 @@ function caseColumns(
     {
       title: "案件",
       key: "title",
+      width: 340,
       sorter: true,
       sortOrder: sortOrderFor("title", sort, direction),
       render: (_, item) => <CaseTitleCell item={item} location={location} actorScope={actorScope} />,
@@ -137,6 +148,8 @@ function caseColumns(
       title: "材料",
       dataIndex: "document_count",
       key: "document_count",
+      width: 76,
+      responsive: ["sm"],
       sorter: true,
       sortOrder: sortOrderFor("document_count", sort, direction),
     },
@@ -144,6 +157,8 @@ function caseColumns(
       title: "待决定",
       dataIndex: "pending_decisions",
       key: "pending_decisions",
+      width: 88,
+      responsive: ["sm"],
       sorter: true,
       sortOrder: sortOrderFor("pending_decisions", sort, direction),
     },
@@ -151,6 +166,8 @@ function caseColumns(
       title: "更新时间",
       dataIndex: "updated_at",
       key: "updated_at",
+      width: 160,
+      responsive: ["sm"],
       sorter: true,
       sortOrder: sortOrderFor("updated_at", sort, direction),
       render: (value: string) => formatDateTime(value),
@@ -158,16 +175,22 @@ function caseColumns(
     {
       title: "业务线 / 场景",
       key: "business",
+      width: 170,
+      responsive: ["sm"],
       render: (_, item) => businessSummary(item),
     },
     {
       title: "业务状态",
       key: "status",
+      width: 120,
+      responsive: ["sm"],
       render: (_, item) => <CaseStatusCell item={item} />,
     },
     {
       title: "最新运行",
       key: "run",
+      width: 160,
+      responsive: ["sm"],
       render: (_, item) => <LatestRunCell item={item} />,
     },
   ];
@@ -203,16 +226,22 @@ export function CasesTable({
     if (field) onSort(field);
   };
   return (
-    <Table
-      sortDirections={["ascend", "descend", "ascend"]}
-      rowKey="id"
-      dataSource={items}
-      columns={columns}
-      pagination={false}
-      onChange={onChange}
-      rowClassName={(item) =>
-        item.id === selectedId ? "cases-table-row-selected" : ""
-      }
-    />
+    <>
+      <p className="cases-table-scroll-note">
+        表格列较多时可横向滚动查看其余字段。
+      </p>
+      <Table
+        scroll={{ x: "max-content" }}
+        sortDirections={["ascend", "descend", "ascend"]}
+        rowKey="id"
+        dataSource={items}
+        columns={columns}
+        pagination={false}
+        onChange={onChange}
+        rowClassName={(item) =>
+          item.id === selectedId ? "cases-table-row-selected" : ""
+        }
+      />
+    </>
   );
 }

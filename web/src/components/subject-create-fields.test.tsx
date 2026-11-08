@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -29,7 +29,7 @@ describe("subject create input", () => {
 
   it("keeps a missing code optional and rejects format-only values that are not complete", () => {
     expect(subjectCreateInput({ display_name: "新主体" })).toEqual({ display_name: "新主体" });
-    expect(() => subjectCreateInput({ display_name: "新主体", identifier_value: "not a code" })).toThrow(/格式正确不代表身份已核验/);
+    expect(() => subjectCreateInput({ display_name: "新主体", identifier_value: "not a code" })).toThrow(/请输入18位统一社会信用代码/);
     expect(() => subjectCreateInput({ display_name: " " })).toThrow(/主体名称/);
   });
 });

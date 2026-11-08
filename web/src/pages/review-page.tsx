@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-06
-// Revision: r9
+// Updated: 2026-11-08
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -81,6 +81,7 @@ import { useReviewLayout } from "../hooks/use-viewport-layout";
 import { OriginalSourceContext } from "../components/original-document-reader";
 import { canRestartUserCancelled, hasTransientRetryCause } from "../features/review/review-outcome";
 import { projectReviewWork, readWorkReturn, workReturnState, type WorkFilter, type WorkTarget, type WorkTargetKind } from "../features/review/work-items";
+import "./review-page.css";
 
 const readingPositions = new Map<string, ReviewReadingPosition>();
 let previousReviewActor = "";
@@ -93,12 +94,47 @@ function captureReviewPosition(caseId: string, runId: string, attemptId: string 
   };
 }
 
+const reviewSectionTargets = {
+  document: "review-document-section",
+  work: "review-work-section",
+  coverage: "review-coverage-section",
+  trace: "review-trajectory",
+  diff: "review-diff",
+  history: "review-history-section",
+} as const;
+type ReviewSectionKey = keyof typeof reviewSectionTargets;
+const reviewSectionLabels: Record<ReviewSectionKey, string> = {
+  document: "原文核对", work: "人工办理", coverage: "覆盖范围",
+  trace: "执行轨迹", diff: "复审对照", history: "来源与历史",
+};
+
+function ReviewSectionNav({ active, onSelect }: { active: ReviewSectionKey; onSelect: (key: ReviewSectionKey) => void }) {
+  return (
+    <nav className="review-section-nav" aria-label="审查工作区分区">
+      {(Object.entries(reviewSectionLabels) as Array<[ReviewSectionKey, string]>).map(([key, label]) => (
+        <button key={key} type="button" aria-pressed={active === key} onClick={() => onSelect(key)}>{label}</button>
+      ))}
+    </nav>
+  );
+}
+
 export function ReviewPage() {
   const { caseId = "", runId = "" } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
   const [params, setParams] = useSearchParams();
+  const requestedReviewSection = params.get("review_section");
+  const reviewSection: ReviewSectionKey = Object.hasOwn(reviewSectionTargets, requestedReviewSection ?? "") ? requestedReviewSection as ReviewSectionKey : "document";
+  const selectReviewSection = (key: ReviewSectionKey) => {
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (key === "document") next.delete("review_section"); else next.set("review_section", key);
+      return next;
+    }, { state: location.state, replace: true });
+    const target = reviewSectionTargets[key];
+    document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const selectedAttemptId = params.get("attempt_id");
   const [streamLive, setStreamLive] = useState(false);
   const [streamReconnectKey, setStreamReconnectKey] = useState(0);
@@ -544,6 +580,8 @@ export function ReviewPage() {
   const caseNavigationState = {
     ...(listReturn ?? {}),
     ...(caseReadingPosition ? { caseReadingPosition } : {}),
+    ...(caseReadingPosition && location.state && typeof location.state === "object" && "caseSection" in location.state && typeof location.state.caseSection === "string"
+      ? { caseSection: location.state.caseSection } : {}),
   };
   const navigationState = {
     ...caseNavigationState,
@@ -811,6 +849,7 @@ export function ReviewPage() {
           返回案件
         </Button>
       </header>
+      <ReviewSectionNav active={reviewSection} onSelect={selectReviewSection} />
       {streamStatus === "exhausted" || streamStatus === "closed" ? (
         <section className="callout" role="status" aria-live="polite">
           <span>运行状态更新已停止，可以重新连接以同步最新审查结果。</span>
@@ -833,14 +872,14 @@ export function ReviewPage() {
         <p className="callout">案件已归档，历史审查仅供查看。</p>
       ) : null}
       {session.isSuccess && !session.isFetching ? (
-        <ReviewDiff
+        <div id="review-diff-section"><ReviewDiff
           caseId={caseId}
           latestRunId={caseDetail.data?.latest_run?.id ?? runId}
           actorScope={JSON.stringify([session.data.id, session.data.active_context?.tenant_id, session.data.active_context?.org_id, session.data.role, session.data.audience, session.data.active_context?.context_version])}
-        />
+        /></div>
       ) : null}
       {session.isSuccess && !session.isFetching && !scopeMismatch && !deniedRequests ? (
-        <ReviewWorkItems
+        <div id="review-work-section"><ReviewWorkItems
           projection={workProjection}
           filter={workFilter}
           onFilter={(filter) => setParams((current) => {
@@ -858,7 +897,7 @@ export function ReviewPage() {
           currentOrdinal={selectedAttempt?.ordinal ?? null}
           selectedKind={requestedKind}
           selectedId={requestedItem}
-        />
+        /></div>
       ) : deniedRequests ? <p role="alert">无法读取补件请求，办理导航暂不可用。</p> : null}
       {requestedItem && targetKind && !workTarget && !requests.isFetching && !scopeMismatch && !deniedRequests ?
         <p role="alert">所选办理事项不属于当前执行或身份不唯一，请返回办理列表核对。</p> : null}
@@ -868,7 +907,7 @@ export function ReviewPage() {
           contextKey: `${actorReadContextKey(session.data)}:${selectedAttempt?.id ?? "legacy"}`,
           digests: new Map(caseDetail.data.documents.map((document) => [document.id, document.digest])),
         } : null}>
-        <ReviewWorkspaceView
+        <div id="review-document-section"><ReviewWorkspaceView
           workspace={workspace}
           layout={layout}
           showDiagnostics={diagnosticData !== null}
@@ -955,11 +994,11 @@ export function ReviewPage() {
               ? () => setDiagnosticScope(currentDiagnosticScope)
               : undefined
           }
-        />
+        /></div>
         </OriginalSourceContext.Provider>
       </DecisionDraftScopeProvider>
       <DirtyLeaveGuard dirty={decisionDraftsDirty || evidenceDraftDirty} />
-      <details className="review-secondary-section" open={supplementOpen} onToggle={(event) => setSupplementOpen(event.currentTarget.open)}>
+      <details id="review-coverage-section" className="review-secondary-section" open={supplementOpen} onToggle={(event) => setSupplementOpen(event.currentTarget.open)}>
         <summary>补充材料与人工处理</summary>
         <ManualFindingsPanel
           key={`${caseId}:${runId}:${selectedAttempt?.id ?? "none"}:${session.data?.tenant_id ?? ""}:${session.data?.org_id ?? ""}:${session.data?.id ?? ""}:${session.data?.role ?? ""}`}
@@ -999,7 +1038,7 @@ export function ReviewPage() {
           attemptId={selectedAttempt?.id ?? null}
         />
       </details>
-      <details className="review-secondary-section">
+      <details id="review-history-section" className="review-secondary-section">
         <summary>经验、审查依据与历史</summary>
         <ExperienceFeedbackPanel
           caseId={caseId}

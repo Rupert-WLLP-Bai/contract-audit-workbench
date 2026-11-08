@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -25,7 +25,7 @@ const MISSING = "找不到对应来源，不能把这条引用当成已验证证
 const NO_TEXT =
   "正文尚未返回。下面只显示保存下来的引用快照，没有在文档中定位。";
 const QUOTE_MISMATCH = "引用原文与当前正文不一致，未跳转到高亮位置。";
-const BBOX_ONLY = "只记录了版面坐标，当前视图不能据此高亮正文。";
+const BBOX_ONLY = "只记录了版面坐标，当前视图暂无法高亮正文。";
 const NO_LOCATION = "这条证据没有可用的原文位置。";
 
 export function codePoints(text: string): string[] {

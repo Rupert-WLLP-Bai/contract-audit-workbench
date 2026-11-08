@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-05
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -242,7 +242,7 @@ export function projectReviewWork(
       key: unique ? JSON.stringify([caseId, "request", request.id]) : `invalid-request:${index}:${request.id}`, category: "evidence", title: request.question || "补充材料请求",
       origin: source?.kind === "gap" ? "补件请求 · 审查缺口" : source?.kind === "evaluation" ? "补件请求 · 规则检查" : "补件请求 · 来源待核对",
       status: !unique ? "请求身份待核对" : request.status === "open" ? "待提交" : request.status === "received" ? "已提交，待核验" : "状态待核对",
-      verification: request.status === "received" ? "提交材料不代表已核验" : "尚未取得核验结果",
+      verification: request.status === "received" ? "待核验" : "尚未取得核验结果",
       sourceRunId: request.source_run_id || null, sourceAttemptId: request.source_attempt_id || null,
       target: unique ? { kind: "request", id: request.id, runId, attemptId } : null,
       sourceTarget: linked?.target ?? (source && source.id && request.source_run_id && request.source_attempt_id &&

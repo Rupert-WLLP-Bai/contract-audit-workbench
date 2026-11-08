@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-05
-// Revision: r5
+// Updated: 2026-11-08
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -132,7 +132,7 @@ function gapGuidance(gaps: BusinessAgentGap[]): string {
   const lead = ranked.length > 0
     ? `本次 ${gaps.length} 项缺口中，${ranked.join("、")}。`
     : `本次共 ${gaps.length} 项缺口。`;
-  return `${lead}未解决或证据不足表示尚未确认，不等于已通过；按每条缺口给出的下一步处理。`;
+  return `${lead}未解决或证据不足表示尚未确认，请按每条缺口的下一步处理。`;
 }
 
 function statusLabel(value: string | null): string {
@@ -562,7 +562,7 @@ function GapsSection({
     <section className="agent-review-section" aria-label="审查缺口">
       <h4>审查缺口</h4>
       {gaps.length === 0 ? (
-        <p>暂无缺口资料；这不等于不存在风险。</p>
+        <p>暂无缺口资料；如需确认风险，请继续核对材料与审查结果。</p>
       ) : (
         <GapList gaps={gaps} unresolved={unresolved} evidence={review.evidence} selectedGapId={selectedGapId} navigationSerial={navigationSerial} />
       )}
@@ -605,7 +605,7 @@ function ReviewSections({
         <h3>五个方面的审查结果</h3>
         <StatusText tone={statusTone(review.status)}>{statusLabel(review.status)}</StatusText>
       </header>
-      <p className="meta">流程完成或找到原文依据，并不代表风险已确认或合同已合规；仍需审查人员判断。</p>
+      <p className="meta">请审查人员核对原文后再下判断。</p>
       {facts.missingCitations ? <p className="meta">部分项目没有原文依据，不能确认这些项目已经核验。</p> : null}
       {facts.gaps.length > 0 ? (
         <p className="meta">{gapGuidance(facts.gaps)}</p>

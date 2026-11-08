@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks readable contract ledger cells, saved-view operations and export request identity for name and code columns while preserving session validation and the frozen CSV boundary.
+// Purpose: Checks readable ledger cells, saved-view mutations, frozen CSV export identity, technical state fallback, keyboard tab navigation, and preservation of unsaved contract drafts.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-05
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -110,7 +110,7 @@ it("uses the submitted readable columns and obtains the CSV from the ledger rout
   await userEvent.setup().click(screen.getByRole("button", { name: "导出 CSV" }));
   await waitFor(() => expect(fetch).toHaveBeenCalled());
   expect(String(fetch.mock.calls[0]?.[0])).toBe("/api/contracts/ledger/exports");
-  await screen.findByText("已导出 1 行");
+  await within(screen.getByRole("region", { name: "合同台账" })).findByText("已导出 1 行");
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(String(fetch.mock.calls[1]?.[0])).toBe(`/api/contracts/ledger/exports/${exportID}/download`);
   const request = fetch.mock.calls.find(([, init]) => init?.method === "POST")?.[1];
@@ -262,6 +262,7 @@ it("keeps an unknown draft state behind technical details outside the draft butt
   // This deliberately bypasses the strict wire contract to exercise the display fallback.
   source.drafts = [row({ name: "状态待核对草稿", contract_state: "future_draft_state" })];
   renderPage();
+  await userEvent.setup().click(screen.getByRole("tab", { name: "草稿" }));
   const draft = (await screen.findByText("状态待核对草稿")).closest("li")!;
   const button = within(draft).getByRole("button", { name: /状态待核对草稿/ });
   expect(button).toHaveTextContent("待核对");
@@ -272,4 +273,49 @@ it("keeps an unknown draft state behind technical details outside the draft butt
   expect(button).not.toContainElement(detail);
   await userEvent.setup().click(detail);
   expect(fullCode).toBeVisible();
+});
+
+it("preserves the contract editor draft when switching workspace tabs", async () => {
+  renderPage();
+  const user = userEvent.setup();
+  const ledgerTab = screen.getByRole("tab", { name: "合同台账" });
+  ledgerTab.focus();
+  await user.keyboard("{ArrowRight}");
+  const draftsTab = screen.getByRole("tab", { name: /草稿/ });
+  expect(draftsTab).toHaveFocus();
+  await user.keyboard("{Enter}");
+  expect(draftsTab).toHaveAttribute("aria-selected", "true");
+  const name = screen.getByLabelText("合同名称");
+  await user.type(name, "切换分区仍保留的草稿名称");
+  draftsTab.focus();
+  await user.keyboard("{ArrowLeft}");
+  expect(ledgerTab).toHaveFocus();
+  await user.keyboard("{Enter}");
+  expect(ledgerTab).toHaveAttribute("aria-selected", "true");
+  expect(name).toHaveValue("切换分区仍保留的草稿名称");
+  ledgerTab.focus();
+  await user.keyboard("{ArrowRight}");
+  expect(draftsTab).toHaveFocus();
+  await user.keyboard("{Enter}");
+  expect(draftsTab).toHaveAttribute("aria-selected", "true");
+  expect(name).toBeVisible();
+  expect(name).toHaveValue("切换分区仍保留的草稿名称");
+});
+
+it("keeps one draft while switching among the four contract form sections", async () => {
+  renderPage();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("tab", { name: /草稿/ }));
+  const name = await screen.findByLabelText("合同名称");
+  await user.type(name, "四分区共享草稿");
+  await user.click(screen.getByRole("button", { name: "相关方与标的" }));
+  expect(screen.getByRole("button", { name: "相关方与标的" })).toHaveAttribute("aria-pressed", "true");
+  expect(name).not.toBeVisible();
+  await user.click(screen.getByRole("button", { name: "资金与付款" }));
+  expect(name).not.toBeVisible();
+  await user.click(screen.getByRole("button", { name: "材料与核对" }));
+  expect(name).not.toBeVisible();
+  await user.click(screen.getByRole("button", { name: "合同基本信息" }));
+  expect(name).toBeVisible();
+  expect(name).toHaveValue("四分区共享草稿");
 });

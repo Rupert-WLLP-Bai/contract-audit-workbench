@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-05
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -139,12 +139,18 @@ function fragment(hash: string): string | null {
   }
 }
 
+function isHidden(target: HTMLElement): boolean {
+  return Boolean(target.closest("[hidden], [aria-hidden='true'], [inert]"));
+}
+
 function focusAndScroll(target: HTMLElement) {
-  const focusTarget = target instanceof HTMLDetailsElement
-    ? target.querySelector<HTMLElement>(":scope > summary") ?? target
+  const candidates = target instanceof HTMLDetailsElement
+    ? target.querySelectorAll<HTMLElement>(":scope > summary")
     : target.matches("h1,h2,h3,h4,h5,h6,button,a,input,select,textarea,summary")
-      ? target
-      : target.querySelector<HTMLElement>("h1,h2,h3,h4,h5,h6,summary,button,a,input,select,textarea") ?? target;
+      ? [target]
+      : target.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6,summary,button,a,input,select,textarea");
+  const focusTarget = Array.from(candidates).find((candidate) => !isHidden(candidate)) ?? target;
+  if (isHidden(focusTarget)) return;
   if (!focusTarget.hasAttribute("tabindex") && !focusTarget.matches("a[href],button,input,select,textarea,summary")) {
     focusTarget.tabIndex = -1;
   }
@@ -166,12 +172,15 @@ export function SectionNavigationProvider({
   actorScope = scope,
   ready,
   targetPending,
+  revealTarget,
 }: {
   children: ReactNode;
   scope: string;
   actorScope?: string;
   ready: boolean;
   targetPending?: (id: string) => boolean;
+  /** Request the owning panel and return whether it is ready for navigation. */
+  revealTarget?: (id: string, target: HTMLElement | null) => boolean;
 }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -242,14 +251,17 @@ export function SectionNavigationProvider({
     document.addEventListener("wheel", cancel, true);
     const resolve = () => {
       if (!ready || cancelled || running || serial.current !== request.serial) return;
-      const target = document.getElementById(request.id);
-      if (!(target instanceof HTMLElement) || !root.current?.contains(target)) {
+      const found = document.getElementById(request.id);
+      const target = found instanceof HTMLElement && root.current?.contains(found) ? found : null;
+      if (revealTarget && !revealTarget(request.id, target)) return;
+      if (!target) {
         if (!targetPending?.(request.id)) {
           setMissing(true);
           setRequest(null);
         }
         return;
       }
+      if (isHidden(target)) return;
       running = true;
       let ancestor: HTMLElement | null = target.firstElementChild instanceof HTMLDetailsElement
         ? target.firstElementChild : target;
@@ -263,10 +275,18 @@ export function SectionNavigationProvider({
       }
       frame = requestAnimationFrame(() => {
         frame = requestAnimationFrame(() => {
-          if (cancelled || serial.current !== request.serial || !target.isConnected) return;
+          if (cancelled || serial.current !== request.serial) return;
+          if (!target.isConnected || !root.current?.contains(target) || isHidden(target)) {
+            running = false;
+            resolve();
+            return;
+          }
           let parent: HTMLElement | null = target;
           while (parent && root.current?.contains(parent)) {
-            if (parent instanceof HTMLDetailsElement && !parent.open) return;
+            if (parent instanceof HTMLDetailsElement && !parent.open) {
+              running = false;
+              return;
+            }
             parent = parent.parentElement;
           }
           setRequest(null);
@@ -275,7 +295,7 @@ export function SectionNavigationProvider({
       });
     };
     const observer = new MutationObserver(resolve);
-    if (root.current) observer.observe(root.current, { childList: true, subtree: true });
+    if (root.current) observer.observe(root.current, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "aria-hidden", "inert", "open"] });
     resolve();
     return () => {
       cancelled = true;
@@ -286,7 +306,7 @@ export function SectionNavigationProvider({
       document.removeEventListener("focusin", cancel, true);
       document.removeEventListener("wheel", cancel, true);
     };
-  }, [ready, request, scope, targetPending]);
+  }, [ready, request, revealTarget, scope, targetPending]);
 
   function onClick(event: MouseEvent<HTMLDivElement>) {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;

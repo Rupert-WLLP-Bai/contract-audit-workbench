@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -61,6 +61,7 @@ afterEach(() => { cleanup(); for (const client of clients.splice(0)) client.clea
 
 describe("knowledge governance administration", () => {
   it("keeps unknown comparison codes in technical details while preserving the policy quote", async () => {
+    const user = userEvent.setup();
     const unknown = { ...preview, comparisons: [{ ...preview.comparisons[0]!, comparator: "minimum_bandwidth（旧）", status: "different·" }] };
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
@@ -70,6 +71,7 @@ describe("knowledge governance administration", () => {
       return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
     }));
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
+    await user.click(await screen.findByRole("tab", { name: "验证与发布" }));
     expect(await screen.findByText("比较类型待核对 · 比较状态待核对")).toBeVisible();
     expect(screen.getByText(/政策原文：带宽不低于100 Mbit\/s/)).toBeVisible();
     expect(screen.getByText(/minimum_bandwidth（旧）/)).not.toBeVisible();
@@ -92,7 +94,7 @@ describe("knowledge governance administration", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
     clients.push(client);
     render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/admin/governed-knowledge"]}><AdminApp /></MemoryRouter></QueryClientProvider>);
-    expect(await screen.findByRole("heading", { name: "知识治理" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "受控知识" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "知识治理" })).toHaveAttribute("href", "/admin/governed-knowledge");
     await waitFor(() => expect(paths).toContain(root));
   });
@@ -298,13 +300,14 @@ describe("knowledge governance administration", () => {
       `/admin/governed-knowledge/kb-1/versions/${encodeURIComponent(digest)}`,
     );
     expect(screen.getByText("kb-1 · v1")).toBeInTheDocument();
-    expect(screen.getByText("已发布")).toBeInTheDocument();
+    const firstRow = screen.getByRole("link", { name: "专线制度" }).closest("tr")!;
+    expect(within(firstRow).getByText("已发布")).toBeInTheDocument();
     expect(screen.getByText("当前生效")).toBeInTheDocument();
     expect(screen.getAllByText(/政企业务 \/ 业务场景待核对 \/ 服务合同/).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("tab", { name: "待核验" }));
     expect(screen.getByText("操作指引")).toBeInTheDocument();
     expect(screen.getByText("草稿")).toBeInTheDocument();
     expect(screen.getByText(/"org_id":"org-1"/)).not.toBeVisible();
-    const firstRow = screen.getByRole("link", { name: "专线制度" }).closest("tr")!;
     const draftRow = screen.getByRole("link", { name: "操作手册" }).closest("tr")!;
     expect(within(firstRow).getByText("已发布").closest(".ant-tag")).toHaveClass("ant-tag-success");
     expect(within(draftRow).getByText("草稿").closest(".ant-tag")).toHaveClass("ant-tag-default");
@@ -492,6 +495,7 @@ describe("knowledge governance administration", () => {
   });
 
   it("renders preview issues and missing candidates", async () => {
+    const user = userEvent.setup();
     const previewVariant: PolicyPreview = {
       ...preview,
       approvable: true,
@@ -507,6 +511,7 @@ describe("knowledge governance administration", () => {
       return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
     }));
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
+    await user.click(await screen.findByRole("tab", { name: "验证与发布" }));
     expect(await screen.findByText(/预览：规则关联和可以提取的数值已通过检查。/)).toBeInTheDocument();
     expect(screen.getByText(/规则关联和可以提取的数值已通过检查/)).toBeInTheDocument();
     expect(screen.getByText(/自然月服务可用率对照 · 无法唯一确认/)).toBeInTheDocument();
@@ -548,6 +553,7 @@ describe("knowledge governance administration", () => {
     }));
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
+    await user.click(await screen.findByRole("tab", { name: "验证与发布" }));
     expect(await screen.findByText("政策规则差异没有加载")).toBeInTheDocument();
     expect(screen.getByText("政策预览与当前版本摘要不一致")).toBeInTheDocument();
     expect(screen.queryByText(/服务允许重试/)).not.toBeInTheDocument();
@@ -697,12 +703,14 @@ describe("knowledge governance administration", () => {
       }] });
       return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
     }));
+    const user = userEvent.setup();
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByText("经验审阅")).toBeInTheDocument();
     expect(screen.getByText("跨案审阅：已记录")).toBeInTheDocument();
     expect(screen.getByText(/候选：candidate-1/)).toBeInTheDocument();
     expect(screen.getByText(/反例：反例/)).toBeInTheDocument();
     expect(screen.getByText(/例外依据：例外依据/)).toBeInTheDocument();
+    await user.click(await screen.findByRole("tab", { name: "引用关系" }));
     expect(screen.getByRole("link", { name: /operator-policy \/ a{12}/ })).toBeInTheDocument();
     expect(screen.getByText("发布", { selector: "strong" })).toBeInTheDocument();
     expect(screen.getByText(/人工批准/)).toBeInTheDocument();
@@ -728,6 +736,7 @@ describe("knowledge governance administration", () => {
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByText("历史不可用")).toBeInTheDocument();
+    await user.click(await screen.findByRole("tab", { name: "版本历史" }));
     await user.click(screen.getByRole("button", { name: "重试历史" }));
     expect(await screen.findByText("没有返回历史记录。")).toBeInTheDocument();
   });
@@ -1048,5 +1057,106 @@ describe("knowledge governance administration", () => {
     expect(screen.getByText("来源知识版本没有加载")).toBeInTheDocument();
     expect(screen.queryByLabelText("标题")).not.toBeInTheDocument();
     expect(posts).toHaveLength(1);
+  });
+
+  it("groups versions under the published, pending and inactive status tabs", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === root) return json({ items: [
+        summary({ title: "已发布制度" }),
+        summary({ ref: { knowledge_id: "kb-draft", version_id: "d".repeat(64), content_sha256: "1".repeat(64) }, title: "草稿制度", status: "draft", active: false }),
+        summary({ ref: { knowledge_id: "kb-submitted", version_id: "e".repeat(64), content_sha256: "2".repeat(64) }, title: "待核验制度", status: "submitted", active: false }),
+        summary({ ref: { knowledge_id: "kb-withdrawn", version_id: "f".repeat(64), content_sha256: "3".repeat(64) }, title: "已撤回制度", status: "withdrawn", active: false }),
+      ] });
+      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+    }));
+    const user = userEvent.setup();
+    show("/admin/governed-knowledge");
+    expect(await screen.findByRole("tab", { name: "已发布" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "待核验" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "已停用" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "已发布制度" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "草稿制度" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "待核验" }));
+    expect(screen.getByRole("link", { name: "草稿制度" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "待核验制度" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "已发布制度" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "已停用" }));
+    expect(screen.getByRole("link", { name: "已撤回制度" })).toBeInTheDocument();
+    expect(screen.getByText("已撤回")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "待核验制度" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "已发布" }));
+    expect(screen.getByRole("link", { name: "已发布制度" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "草稿制度" })).not.toBeInTheDocument();
+  });
+
+  it("keeps registration in three steps with a live summary and a draft-only save", async () => {
+    const calls: string[] = [];
+    const posts: RequestInit[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      calls.push(path);
+      if (path === versionPath) return json(initial);
+      if (path === "/api/admin/rulepacks" || (path === root && init?.method === "GET")) return json({ items: [] });
+      if (path === root && init?.method === "POST") {
+        posts.push(init);
+        const payload = JSON.parse(String(init.body)) as { content: KnowledgeVersion["content"] };
+        return json({ ...initial, ref: { ...initial.ref, version_id: "9".repeat(64) }, content: payload.content, status: "draft", revision: 1, active: false, pointer_revision: 0 }, 201);
+      }
+      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+    }));
+    const user = userEvent.setup();
+    show(`/admin/governed-knowledge/new?from_knowledge=${id}&from_version=${versionId}`);
+    expect(await screen.findByRole("button", { name: "来源信息" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "内容与效力" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeInTheDocument();
+    const registrationSummary = screen.getByRole("complementary", { name: "登记摘要" });
+    expect(within(registrationSummary).getByText("专线制度")).toBeInTheDocument();
+    expect(within(registrationSummary).getByText("参考资料")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("标题"), { target: { value: "更新的专线制度" } });
+    expect(within(registrationSummary).getByText("更新的专线制度")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("版本号"), "2");
+    await user.click(screen.getByRole("button", { name: "内容与效力" }));
+    expect((await screen.findAllByRole("heading", { name: "内容与效力" })).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: "提交核验" }));
+    expect(screen.getAllByText(/保存后仅创建待核验草稿/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/保存待核验版本/)).toBeInTheDocument();
+    expect(posts).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "创建草稿" }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(calls.some((path) => path.endsWith("/commands"))).toBe(false);
+    expect(new Headers(posts[0]?.headers).get("Idempotency-Key")).toBeTruthy();
+  });
+
+  it("shows version facts, detail section tabs, lifecycle and grouped technical identifiers", async () => {
+    const published: KnowledgeVersion = { ...initial, status: "published", active: false, revision: 5, pointer_revision: 9 };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === versionPath) return json(published);
+      if (path === `${root}/${id}/history`) return json({ items: [] });
+      if (path === `${versionPath}/preview`) return json(preview);
+      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+    }));
+    const user = userEvent.setup();
+    show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
+    expect(await screen.findByText("来源类型")).toBeInTheDocument();
+    expect(screen.getByText("治理状态")).toBeInTheDocument();
+    expect(screen.getByText("生效时间")).toBeInTheDocument();
+    expect(screen.getByText("适用范围")).toBeInTheDocument();
+    expect(screen.getByText("已发布")).toBeInTheDocument();
+    expect(screen.getByText("未生效")).toBeInTheDocument();
+    expect(screen.getByText("状态与生效指针分别判定")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看核验流程" })).toHaveAttribute("href", "#knowledge-action-heading");
+    for (const label of ["依据正文", "来源与效力", "验证与发布", "引用关系", "版本历史"]) {
+      expect(screen.getByRole("tab", { name: label })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("heading", { name: "生命周期" })).toBeInTheDocument();
+    expect(screen.getByText("当前阶段 · 已发布")).toBeInTheDocument();
+    expect(screen.getByText(/技术详情 · 版本标识与摘要（8 项）/)).toBeInTheDocument();
+    expect(screen.getByText(versionId)).not.toBeVisible();
+    await user.click(screen.getByRole("tab", { name: "来源与效力" }));
+    expect(screen.getByText("来源：参考资料 · 制度文件")).toBeVisible();
+    await user.click(screen.getByRole("tab", { name: "版本历史" }));
+    expect(await screen.findByText("没有返回历史记录。")).toBeVisible();
   });
 });

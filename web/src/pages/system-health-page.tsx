@@ -1,14 +1,14 @@
 // File metadata (manifest mirror):
-// Purpose: Displays admin health snapshots with configured topology expectations separated from observed instances and stale observations, using the health API as source of operational status.
+// Purpose: Displays the read-only client and admin health workspaces. Top facts are derived only from services present in the health snapshot; missing observations stay 未报告 instead of being promoted to normal.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Alert,
   Button,
@@ -30,6 +30,7 @@ import {
   type HealthService,
   type HealthStatus,
   type ProductionComponent,
+  type SystemHealth,
 } from "../api/system-health";
 import type { SessionAudience } from "../api/types";
 import {
@@ -42,15 +43,17 @@ import { CollapsibleSection } from "../components/collapsible-section";
 import { formatDateTime } from "../domain/review";
 import "./system-health-page.css";
 
-const STATUS: Record<HealthStatus, { label: string; color: string }> = {
-  ready: { label: "正常", color: "success" },
-  degraded: { label: "降级", color: "warning" },
-  unavailable: { label: "不可用", color: "error" },
-  stopped: { label: "已停止", color: "error" },
-  starting: { label: "启动中", color: "processing" },
-  unknown: { label: "待确认", color: "warning" },
-  unconfigured: { label: "未启用", color: "default" },
-  completed: { label: "已完成", color: "success" },
+type HealthTone = "success" | "warning" | "error" | "processing" | "default";
+
+const STATUS: Record<HealthStatus, { label: string; tone: HealthTone }> = {
+  ready: { label: "正常", tone: "success" },
+  degraded: { label: "降级", tone: "warning" },
+  unavailable: { label: "不可用", tone: "error" },
+  stopped: { label: "已停止", tone: "error" },
+  starting: { label: "启动中", tone: "processing" },
+  unknown: { label: "待确认", tone: "warning" },
+  unconfigured: { label: "未启用", tone: "default" },
+  completed: { label: "已完成", tone: "success" },
 };
 const GROUPS: Record<string, string> = {
   frontend: "前端站点",
@@ -60,10 +63,102 @@ const GROUPS: Record<string, string> = {
   observability: "可观测服务",
   external: "模型与解析",
 };
-const TABS = ["服务概览", "容器清单", "依赖拓扑", "当前异常"] as const;
+const CLIENT_TABS = ["服务概览", "依赖与容量", "近期异常"] as const;
+const ADMIN_TABS = ["服务健康", "存储与网络", "容量与事件"] as const;
+const ATTENTION_STATUSES = new Set<HealthStatus>([
+  "degraded",
+  "unavailable",
+  "stopped",
+  "starting",
+  "unknown",
+]);
+
+type FactDefinition = {
+  key: string;
+  label: string;
+  ids: string[];
+  names: RegExp;
+};
+
+const CLIENT_FACT_DEFINITIONS: FactDefinition[] = [
+  {
+    key: "core",
+    label: "Core",
+    ids: ["core-api", "core"],
+    names: /核心业务\s*API|^core(?:\s|$)|core\s*api/i,
+  },
+  {
+    key: "worker",
+    label: "Worker",
+    ids: ["audit-worker", "worker"],
+    names: /审查\s*Worker|^worker(?:\s|$)/i,
+  },
+  {
+    key: "storage",
+    label: "对象存储",
+    ids: ["rustfs", "minio", "object-storage"],
+    names: /对象存储|Object\s*Storage|RustFS|MinIO/i,
+  },
+  {
+    key: "events",
+    label: "事件连接",
+    ids: ["nats", "event-bus", "event-stream"],
+    names: /NATS|事件|Event\s*(?:Bus|Stream)/i,
+  },
+];
+const ADMIN_FACT_DEFINITIONS: FactDefinition[] = [
+  {
+    key: "core",
+    label: "Core",
+    ids: ["core-api", "core"],
+    names: /核心业务\s*API|^core(?:\s|$)|core\s*api/i,
+  },
+  {
+    key: "database",
+    label: "数据库",
+    ids: ["db", "postgres", "postgresql"],
+    names: /PostgreSQL\s*业务库|业务数据库|^database$|PostgreSQL/i,
+  },
+  {
+    key: "storage",
+    label: "对象存储",
+    ids: ["rustfs", "minio", "object-storage"],
+    names: /对象存储|Object\s*Storage|RustFS|MinIO/i,
+  },
+  {
+    key: "worker",
+    label: "Worker",
+    ids: ["audit-worker", "worker"],
+    names: /审查\s*Worker|^worker(?:\s|$)/i,
+  },
+];
+
+type HealthFact = {
+  key: string;
+  label: string;
+  value: string;
+  tone: HealthTone;
+  observedAt?: string;
+  missing: boolean;
+  detail: string;
+};
+
+type HealthIssue = {
+  key: string;
+  title: string;
+  detail: string;
+};
+
+type DependencyRow = {
+  key: string;
+  fromName: string;
+  toName: string;
+  status: string;
+  detail: string;
+};
 
 function HealthTag({ status }: { status: HealthStatus }) {
-  return <Tag color={STATUS[status].color}>{STATUS[status].label}</Tag>;
+  return <Tag color={STATUS[status].tone}>{STATUS[status].label}</Tag>;
 }
 
 function healthStatusSummary(items: HealthService[]): string {
@@ -74,12 +169,391 @@ function healthStatusSummary(items: HealthService[]): string {
     .join(" · ");
 }
 
-const EXPECTED_SOURCE: Record<HealthGroup["expected_source"], string> = {
-  deployment: "Kubernetes Deployment",
-  config: "部署配置",
-  catalog: "内置服务清单",
-  unavailable: "未采集",
+function logicalId(service: HealthService): string {
+  return service.logical_id ?? service.id;
+}
+
+function matchesFact(id: string, name: string, definition: FactDefinition): boolean {
+  const normalizedId = id.toLocaleLowerCase();
+  return (
+    definition.ids.some((item) => item.toLocaleLowerCase() === normalizedId) ||
+    definition.names.test(name)
+  );
+}
+
+function latestObservedAt(items: HealthService[]): string | undefined {
+  return items.reduce<string | undefined>(
+    (latest, item) =>
+      item.observed_at && (!latest || item.observed_at > latest)
+        ? item.observed_at
+        : latest,
+    undefined,
+  );
+}
+
+function aggregateServiceStatus(items: HealthService[]): HealthStatus {
+  const statuses = new Set(items.map((item) => item.status));
+  const priority: HealthStatus[] = [
+    "unavailable",
+    "stopped",
+    "degraded",
+    "starting",
+    "unknown",
+    "ready",
+    "completed",
+    "unconfigured",
+  ];
+  return priority.find((status) => statuses.has(status)) ?? "unknown";
+}
+
+function groupObservationLabel(group: HealthGroup): string {
+  if (
+    group.observed_instances === 0 &&
+    (group.status === "unknown" || group.status === "unconfigured")
+  )
+    return "未报告";
+  return STATUS[group.status].label;
+}
+
+function buildHealthFacts(
+  data: SystemHealth,
+  audience: SessionAudience,
+): HealthFact[] {
+  const definitions =
+    audience === "admin" ? ADMIN_FACT_DEFINITIONS : CLIENT_FACT_DEFINITIONS;
+  return definitions.map((definition) => {
+    const group = data.groups.find((item) =>
+      matchesFact(item.id, item.name, definition),
+    );
+    const instances = data.services.filter((item) =>
+      matchesFact(logicalId(item), item.name, definition),
+    );
+    const missing = (detail: string): HealthFact => ({
+      key: definition.key,
+      label: definition.label,
+      value: "未报告",
+      tone: "default",
+      missing: true,
+      detail,
+    });
+    if (!group && instances.length === 0)
+      return missing("未在下发的健康快照中找到该服务的观测。");
+    if (
+      group &&
+      group.observed_instances === 0 &&
+      (group.status === "unknown" || group.status === "unconfigured")
+    )
+      return missing(group.detail);
+    const status = group?.status ?? aggregateServiceStatus(instances);
+    const running = instances.find(
+      (item) => item.container?.state.toLowerCase() === "running",
+    );
+    if ((!group || status === "unknown") && running)
+      return {
+        key: definition.key,
+        label: definition.label,
+        value: "运行中",
+        tone: "processing",
+        observedAt: group?.observed_at ?? latestObservedAt(instances),
+        missing: false,
+        detail: group?.detail ?? running.detail,
+      };
+    return {
+      key: definition.key,
+      label: definition.label,
+      value: group ? groupObservationLabel(group) : STATUS[status].label,
+      tone: STATUS[status].tone,
+      observedAt:
+        group?.observed_at ??
+        latestObservedAt(instances) ??
+        (group ? data.observed_at : undefined),
+      missing: false,
+      detail: group?.detail ?? instances[0]?.detail ?? "",
+    };
+  });
+}
+
+const DEPENDENCY_NAMES: Record<string, string> = {
+  "core-api": "核心业务 API",
+  "audit-worker": "审查 Worker",
+  "audit-execution": "审查执行服务",
+  "document-service": "文档服务",
+  "model-gateway": "模型网关",
+  "tool-gateway": "工具网关",
+  db: "PostgreSQL 业务库",
+  rustfs: "RustFS 对象存储",
+  nats: "NATS JetStream",
 };
+
+function buildDependencyRows(data: SystemHealth): DependencyRow[] {
+  const edges: {
+    key: string;
+    from: HealthService;
+    targetId: string;
+    target?: HealthService;
+  }[] = [];
+  const seen = new Set<string>();
+  for (const from of data.services) {
+    const fromId = logicalId(from);
+    for (const dependencyId of from.depends_on) {
+      const key = `${fromId}->${dependencyId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edges.push({
+        key,
+        from,
+        targetId: dependencyId,
+        target: data.services.find(
+          (item) => logicalId(item) === dependencyId || item.id === dependencyId,
+        ),
+      });
+    }
+  }
+  const preferred = [
+    { source: "core-api", target: "db" },
+    { source: "document-service", target: "rustfs" },
+    { source: "audit-execution", target: "nats" },
+  ];
+  const chosen: typeof edges = [];
+  for (const preference of preferred) {
+    const match =
+      edges.find(
+        (edge) =>
+          logicalId(edge.from) === preference.source &&
+          edge.targetId === preference.target,
+      ) ?? edges.find((edge) => edge.targetId === preference.target);
+    if (match && !chosen.includes(match)) chosen.push(match);
+  }
+  for (const edge of edges) {
+    if (chosen.length >= 3) break;
+    if (!chosen.includes(edge)) chosen.push(edge);
+  }
+  return chosen.slice(0, 3).map((edge) => {
+    const group = data.groups.find((item) => item.id === edge.targetId);
+    if (!group && !edge.target)
+      return {
+        key: edge.key,
+        fromName: edge.from.name,
+        toName: DEPENDENCY_NAMES[edge.targetId] ?? edge.targetId,
+        status: "未报告",
+        detail: "依赖目标未在下发的健康快照中报告。",
+      };
+    const target = edge.target;
+    return {
+      key: edge.key,
+      fromName: edge.from.name,
+      toName:
+        target?.name ?? DEPENDENCY_NAMES[edge.targetId] ?? edge.targetId,
+      status: group
+        ? groupObservationLabel(group)
+        : STATUS[target?.status ?? "unknown"].label,
+      detail: group?.detail ?? target?.detail ?? "未报告",
+    };
+  });
+}
+
+function buildRecentIssues(data: SystemHealth, facts: HealthFact[]): HealthIssue[] {
+  const issues: HealthIssue[] = [];
+  for (const fact of facts) {
+    if (!fact.missing) continue;
+    issues.push({
+      key: `fact-${fact.key}`,
+      title: `${fact.label}未报告`,
+      detail: "未在下发的健康快照中找到该服务的观测，不能按正常展示。",
+    });
+  }
+  for (const group of data.groups) {
+    if (!ATTENTION_STATUSES.has(group.status)) continue;
+    if (
+      group.observed_instances === 0 &&
+      (group.status === "unknown" || group.status === "unconfigured")
+    )
+      continue;
+    issues.push({
+      key: `group-${group.id}`,
+      title: `${group.name} · ${STATUS[group.status].label}`,
+      detail: group.detail,
+    });
+  }
+  return issues;
+}
+
+function modeLabel(mode: string): string {
+  if (mode === "kubernetes") return "Kubernetes 部署";
+  if (mode === "distributed") return "独立服务部署";
+  return "单进程部署";
+}
+
+function HealthPanel({
+  title,
+  extra,
+  children,
+  label,
+}: {
+  title: string;
+  extra?: ReactNode;
+  children: ReactNode;
+  label?: string;
+}) {
+  return (
+    <section className="health-panel" aria-label={label ?? title}>
+      <header className="health-panel-head">
+        <h2>{title}</h2>
+        {extra}
+      </header>
+      <div className="health-panel-body">{children}</div>
+    </section>
+  );
+}
+
+function FactCard({ fact }: { fact: HealthFact }) {
+  return (
+    <li
+      className="health-fact"
+      aria-label={fact.label}
+      data-missing={fact.missing ? "true" : "false"}
+      title={fact.detail || undefined}
+    >
+      <span className="health-fact-label">{fact.label}</span>
+      <strong>{fact.value}</strong>
+      <Tag color={fact.tone}>{fact.value}</Tag>
+      <span className="health-fact-time">
+        观测时间：{fact.observedAt ? formatDateTime(fact.observedAt) : "未报告"}
+      </span>
+    </li>
+  );
+}
+
+function DependencySummary({ rows }: { rows: DependencyRow[] }) {
+  if (rows.length === 0)
+    return <p className="health-note">未取得可核对的依赖关系。</p>;
+  return (
+    <ul className="health-dependency-list">
+      {rows.map((row) => (
+        <li key={row.key}>
+          <span className="health-dependency-title">
+            {row.fromName} → {row.toName}
+          </span>
+          <span className="health-dependency-meta">
+            {row.status} · {row.detail}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function IssueList({ issues }: { issues: HealthIssue[] }) {
+  if (issues.length === 0)
+    return <p className="health-issue-empty">当前观测没有需关注的异常。</p>;
+  return (
+    <ul className="health-issue-list">
+      {issues.map((issue) => (
+        <li key={issue.key}>
+          <strong>{issue.title}</strong>
+          <span>{issue.detail}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function HealthSummary({ data }: { data: SystemHealth }) {
+  const readyInstances = data.groups.reduce(
+    (sum, item) => sum + item.ready_instances,
+    0,
+  );
+  const observedInstances = data.groups.reduce(
+    (sum, item) => sum + item.observed_instances,
+    0,
+  );
+  const attentionGroups = data.groups.filter((item) =>
+    ATTENTION_STATUSES.has(item.status),
+  );
+  const unconfiguredGroups = data.groups.filter(
+    (item) => item.status === "unconfigured",
+  );
+  return (
+    <ol className="health-summary" aria-label="系统健康统计">
+      {[
+        { title: "逻辑服务", value: data.groups.length, tone: "progress" },
+        {
+          title: "实例就绪",
+          value: `${readyInstances}/${observedInstances}`,
+          tone: readyInstances === observedInstances ? "compatible" : "insufficient",
+        },
+        {
+          title: "实际容器",
+          value: data.services.filter((item) => item.container !== null).length,
+          tone: "neutral",
+        },
+        {
+          title: "需关注",
+          value: attentionGroups.length,
+          tone: attentionGroups.length > 0 ? "insufficient" : "compatible",
+        },
+        { title: "未启用", value: unconfiguredGroups.length, tone: "neutral" },
+      ].map((item) => (
+        <li key={item.title} data-tone={item.tone}>
+          <span className="health-summary-label">{item.title}</span>
+          <strong>{item.value}</strong>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function HealthToolbar({
+  count,
+  mode,
+  group,
+  search,
+  groups,
+  onGroup,
+  onSearch,
+}: {
+  count: number;
+  mode: string;
+  group: string;
+  search: string;
+  groups: Record<string, string>;
+  onGroup: (value: string) => void;
+  onSearch: (value: string) => void;
+}) {
+  return (
+    <div className="health-toolbar">
+      <span className="health-note">
+        {count} 项，{modeLabel(mode)}
+      </span>
+      <label>
+        <span>服务分组</span>
+        <Select
+          aria-label="服务分组"
+          value={group}
+          onChange={onGroup}
+          style={{ minWidth: 160 }}
+          options={[
+            { label: "全部服务", value: "all" },
+            ...Object.entries(groups).map(([value, label]) => ({
+              value,
+              label,
+            })),
+          ]}
+        />
+      </label>
+      <label>
+        <span>搜索服务</span>
+        <Input
+          aria-label="搜索服务"
+          allowClear
+          value={search}
+          onChange={(event) => onSearch(event.target.value)}
+          placeholder="服务、容器或镜像"
+        />
+      </label>
+    </div>
+  );
+}
 
 function GroupTable({
   groups,
@@ -296,7 +770,7 @@ function ProductionArchitecture({
         type="info"
         showIcon
         title="生产方案与当前部署对照"
-        description="单实例容器健康不代表满足生产副本、纠删码、mTLS、伸缩或容灾要求。没有集群观测和专项验证的能力保持未接入或未验收。"
+        description="这里显示当前连接状态；生产副本、容灾和专项验证需单独确认。"
       />
       <Table
         rowKey="id"
@@ -387,117 +861,114 @@ function ProductionArchitecture({
   );
 }
 
-export function SystemHealthPage({
-  audience = "client",
+const EXPECTED_SOURCE: Record<HealthGroup["expected_source"], string> = {
+  deployment: "Kubernetes Deployment",
+  config: "部署配置",
+  catalog: "内置服务清单",
+  unavailable: "未采集",
+};
+
+function ServiceInventory({
+  items,
+  onSelect,
 }: {
-  audience?: SessionAudience;
+  items: HealthService[];
+  onSelect: (id: string) => void;
 }) {
-  const query = useSystemHealth(audience);
-  const [tab, setTab] = useState<string>(
-    audience === "admin" ? "生产架构" : TABS[0],
+  return (
+    <>
+      {Object.entries(GROUPS).map(([id, name]) => {
+        const groupItems = items.filter((item) => item.category === id);
+        return groupItems.length ? (
+          <section className="health-group" key={id} aria-label={name}>
+            <CollapsibleSection
+              id={`health-group-${id}`}
+              title={name}
+              count={groupItems.length}
+              meta={healthStatusSummary(groupItems)}
+            >
+              <div className="health-card-grid">
+                {groupItems.map((item) => (
+                  <Card
+                    role="group"
+                    aria-label={String(item.name)}
+                    className="health-service-card"
+                    size="small"
+                    key={item.id}
+                    title={item.name}
+                    extra={<HealthTag status={item.status} />}
+                  >
+                    <code className="health-target">
+                      {item.target || "未配置连接地址"}
+                    </code>
+                    <p className="health-service-detail">{item.detail}</p>
+                    <div className="health-card-footer">
+                      <span>
+                        {item.container?.name ??
+                          (item.kind === "container"
+                            ? "未发现部署容器"
+                            : "外部集成")}
+                      </span>
+                      <Button
+                        type="link"
+                        size="small"
+                        aria-label={`查看 ${item.name}`}
+                        onClick={() => onSelect(item.instance_id ?? item.id)}
+                      >
+                        详情
+                      </Button>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </CollapsibleSection>
+          </section>
+        ) : null;
+      })}
+    </>
   );
-  const [search, setSearch] = useState("");
-  const [group, setGroup] = useState("all");
-  const [selectedId, setSelectedId] = useState("");
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 10_000);
-    return () => clearInterval(timer);
-  }, []);
-  // A revoked session or a permission change must not leave the previous
-  // deployment snapshot on screen, even if React Query still caches it.
-  if (isUnauthenticated(query.error) || isForbidden(query.error))
-    return (
-      <PageStatus
-        kind="denied"
-        title="没有访问系统健康的权限"
-        detail={errorMessage(query.error)}
+}
+
+function ClusterPanel({ cluster }: { cluster: NonNullable<SystemHealth["cluster"]> }) {
+  return (
+    <Card
+      role="group"
+      aria-label={"Kubernetes 节点"}
+      title="Kubernetes 节点"
+      extra={
+        <Tag color={cluster.status === "ready" ? "processing" : "error"}>
+          {cluster.namespace}
+        </Tag>
+      }
+    >
+      <p>{cluster.detail}</p>
+      <Table
+        rowKey="name"
+        size="small"
+        pagination={false}
+        dataSource={cluster.nodes}
+        columns={[
+          { title: "节点", dataIndex: "name" },
+          {
+            title: "就绪状态",
+            key: "status",
+            render: (_, node) => <HealthTag status={node.status} />,
+          },
+          { title: "Kubernetes 版本", dataIndex: "version" },
+        ]}
+        locale={{ emptyText: "未取得节点观测" }}
       />
-    );
-  if (query.isLoading)
-    return <PageStatus kind="loading" title="正在读取系统健康" />;
-  if (!query.data)
-    return (
-      <PageStatus
-        kind="error"
-        title="系统健康没有加载"
-        detail={errorMessage(query.error)}
-        action={
-          <Button aria-label={"重试"} onClick={() => void query.refetch()}>
-            重试
-          </Button>
-        }
-      />
-    );
-  const data = query.data;
-  const observedAt = Date.parse(data.observed_at);
-  const ageSeconds = Math.max(0, Math.floor((now - observedAt) / 1000));
-  const stale = ageSeconds > 75;
-  const partial =
-    data.source === "docker_partial" || data.source === "kubernetes_partial";
-  const readyInstances = data.groups.reduce(
-    (sum, item) => sum + item.ready_instances,
-    0,
+    </Card>
   );
-  const observedInstances = data.groups.reduce(
-    (sum, item) => sum + item.observed_instances,
-    0,
-  );
-  const attentionGroups = data.groups.filter((item) =>
-    ["degraded", "unavailable", "stopped", "starting", "unknown"].includes(
-      item.status,
-    ),
-  );
-  const unconfiguredGroups = data.groups.filter(
-    (item) => item.status === "unconfigured",
-  );
-  const attentionIds = new Set(
-    data.services
-      .filter(
-        (item) =>
-          item.status === "unavailable" ||
-          item.status === "stopped" ||
-          item.status === "unknown" ||
-          item.status === "starting",
-      )
-      .map((item) => item.id),
-  );
-  const needle = search.trim().toLocaleLowerCase();
-  const visible = data.services.filter(
-    (item) =>
-      (group === "all" || item.category === group) &&
-      `${item.name} ${item.id} ${item.target} ${item.container?.name ?? ""} ${item.container?.image ?? ""}`
-        .toLocaleLowerCase()
-        .includes(needle) &&
-      (tab !== "当前异常" || attentionIds.has(item.id)) &&
-      (tab !== "容器清单" || item.container !== null),
-  );
-  const architecture = data.architecture.filter(
-    (item) =>
-      (group === "all" || item.category === group) &&
-      `${item.name} ${item.target} ${item.observed}`
-        .toLocaleLowerCase()
-        .includes(needle),
-  );
-  const tabs = audience === "admin" ? ["生产架构", ...TABS] : TABS;
-  const groups = tab === "生产架构" ? ARCHITECTURE_GROUPS : GROUPS;
-  const selected =
-    data.services.find(
-      (item) => (item.instance_id ?? item.id) === selectedId,
-    ) ?? data.services.find((item) => (item.logical_id ?? item.id) === selectedId);
-  const pageStyle: CSSProperties & Record<`--health-${string}`, string> = {
-    background: "var(--surface-page)",
-    color: "var(--text-primary)",
-    "--health-bg": "var(--surface-raised)",
-    "--health-muted": "var(--text-secondary)",
-    "--health-line": "var(--border-default)",
-    "--health-primary": "var(--action-primary)",
-    "--health-success": "var(--state-compatible)",
-    "--health-success-bg": "var(--state-compatible-bg)",
-    "--health-error": "var(--state-conflict)",
-    "--health-error-bg": "var(--state-conflict-bg)",
-    "--health-radius": "var(--panel-radius)",
-  };
+}
+
+function ContainerTable({
+  items,
+  onSelect,
+}: {
+  items: HealthService[];
+  onSelect: (id: string) => void;
+}) {
   const columns: TableColumnsType<HealthService> = [
     {
       title: "容器名称",
@@ -509,7 +980,7 @@ export function SystemHealthPage({
         <Button
           aria-label={String(item.container?.name)}
           type="link"
-          onClick={() => setSelectedId(item.instance_id ?? item.id)}
+          onClick={() => onSelect(item.instance_id ?? item.id)}
           styles={{
             content: {
               whiteSpace: "normal",
@@ -532,9 +1003,7 @@ export function SystemHealthPage({
       title: "实例 ID",
       key: "instance",
       width: 180,
-      render: (_: unknown, item) => (
-        <code>{item.instance_id ?? "未采集"}</code>
-      ),
+      render: (_: unknown, item) => <code>{item.instance_id ?? "未采集"}</code>,
     },
     {
       title: "镜像",
@@ -574,10 +1043,308 @@ export function SystemHealthPage({
     },
   ];
   return (
+    <Table<HealthService>
+      rowKey="id"
+      columns={columns}
+      dataSource={items}
+      size="small"
+      scroll={{ x: 1340 }}
+      pagination={{
+        defaultPageSize: 20,
+        showSizeChanger: true,
+        pageSizeOptions: [10, 20, 50],
+        showTotal: (total) => `共 ${total} 个容器`,
+      }}
+      locale={{ emptyText: "当前筛选范围没有容器" }}
+    />
+  );
+}
+
+export function SystemHealthPage({
+  audience = "client",
+}: {
+  audience?: SessionAudience;
+}) {
+  const tabs = audience === "admin" ? ADMIN_TABS : CLIENT_TABS;
+  const query = useSystemHealth(audience);
+  const [tab, setTab] = useState<string>(tabs[0]);
+  const [search, setSearch] = useState("");
+  const [group, setGroup] = useState("all");
+  const [selectedId, setSelectedId] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 10_000);
+    return () => clearInterval(timer);
+  }, []);
+  // A revoked session or a permission change must not leave the previous
+  // deployment snapshot on screen, even if React Query still caches it.
+  if (isUnauthenticated(query.error) || isForbidden(query.error))
+    return (
+      <PageStatus
+        kind="denied"
+        title="没有访问系统健康的权限"
+        detail={errorMessage(query.error)}
+      />
+    );
+  if (query.isLoading)
+    return <PageStatus kind="loading" title="正在读取系统健康" />;
+  if (!query.data)
+    return (
+      <PageStatus
+        kind="error"
+        title="系统健康没有加载"
+        detail={errorMessage(query.error)}
+        action={
+          <Button aria-label={"重试"} onClick={() => void query.refetch()}>
+            重试
+          </Button>
+        }
+      />
+    );
+  const data = query.data;
+  const observedAt = Date.parse(data.observed_at);
+  const ageSeconds = Math.max(0, Math.floor((now - observedAt) / 1000));
+  const stale = ageSeconds > 75;
+  const partial =
+    data.source === "docker_partial" || data.source === "kubernetes_partial";
+  const attentionIds = new Set(
+    data.services
+      .filter((item) => ATTENTION_STATUSES.has(item.status))
+      .map((item) => item.id),
+  );
+  const needle = search.trim().toLocaleLowerCase();
+  const visible = data.services.filter(
+    (item) =>
+      (group === "all" || item.category === group) &&
+      `${item.name} ${item.id} ${item.target} ${item.container?.name ?? ""} ${item.container?.image ?? ""}`
+        .toLocaleLowerCase()
+        .includes(needle),
+  );
+  const architecture = data.architecture.filter(
+    (item) =>
+      (group === "all" || item.category === group) &&
+      `${item.name} ${item.target} ${item.observed}`
+        .toLocaleLowerCase()
+        .includes(needle),
+  );
+  const facts = buildHealthFacts(data, audience);
+  const dependencies = buildDependencyRows(data);
+  const issues = buildRecentIssues(data, facts);
+  const attentionServices = visible.filter((item) => attentionIds.has(item.id));
+  const containers = visible.filter((item) => item.container !== null);
+  const tabsConfig = tabs;
+  const overviewKey = tabsConfig[0];
+  const capacityKey = tabsConfig[1];
+  const exceptionKey = tabsConfig[2];
+  const selected =
+    data.services.find(
+      (item) => (item.instance_id ?? item.id) === selectedId,
+    ) ?? data.services.find((item) => (item.logical_id ?? item.id) === selectedId);
+  const pageStyle: CSSProperties & Record<`--health-${string}`, string> = {
+    background: "var(--surface-page)",
+    color: "var(--text-primary)",
+    "--health-bg": "var(--surface-raised)",
+    "--health-muted": "var(--text-secondary)",
+    "--health-line": "var(--border-default)",
+    "--health-primary": "var(--action-primary)",
+    "--health-success": "var(--state-compatible)",
+    "--health-success-bg": "var(--state-compatible-bg)",
+    "--health-error": "var(--state-conflict)",
+    "--health-error-bg": "var(--state-conflict-bg)",
+    "--health-radius": "var(--panel-radius)",
+  };
+  const overviewTab = (
+    <>
+      <div className="health-caveat" role="note">
+        <span className="health-caveat-icon" aria-hidden="true">
+          i
+        </span>
+        <p>
+          {audience === "admin"
+            ? "管理端可见信息按当前管理身份隔离；容量与高可用请以正式验收结果为准。"
+            : "组件健康与业务结论无关；缺失观测显示未报告，不补成正常。"}
+        </p>
+      </div>
+      <ul className="health-facts" aria-label="健康概览关键事实">
+        {facts.map((fact) => (
+          <FactCard key={fact.key} fact={fact} />
+        ))}
+      </ul>
+      <div className="health-overview-grid">
+        <HealthPanel title="服务与依赖">
+          <DependencySummary rows={dependencies} />
+        </HealthPanel>
+        <HealthPanel
+          title="近期异常"
+          extra={issues.length > 0 ? <Tag color="warning">{issues.length} 项</Tag> : null}
+        >
+          <IssueList issues={issues.slice(0, 3)} />
+          {issues.length > 3 ? (
+            <p className="health-note">另有 {issues.length - 3} 项，请在{exceptionKey}中查看。</p>
+          ) : null}
+          <p className="health-note health-issue-note">
+            诊断入口只展示当前身份获准的内容。
+          </p>
+          <div className="health-panel-actions">
+            <Button aria-label="查看诊断" onClick={() => setTab(exceptionKey)}>
+              查看诊断
+            </Button>
+          </div>
+        </HealthPanel>
+      </div>
+      <CollapsibleSection
+        id="health-service-inventory"
+        title="服务明细"
+        summaryLabel="展开服务明细"
+        count={visible.length}
+        meta={healthStatusSummary(visible)}
+      >
+        <ServiceInventory items={visible} onSelect={setSelectedId} />
+      </CollapsibleSection>
+    </>
+  );
+  const capacityTab = (
+    <>
+      <HealthToolbar
+        count={visible.length}
+        mode={data.mode}
+        group={group}
+        search={search}
+        groups={GROUPS}
+        onGroup={setGroup}
+        onSearch={setSearch}
+      />
+      <HealthSummary data={data} />
+      <Card
+        role="group"
+        aria-label={"服务组与副本"}
+        title="服务组与副本"
+        extra={
+          <Tag color={stale || partial ? "warning" : "processing"}>
+            {stale ? "观测过期" : partial ? "部分观测" : "当前观测"}
+          </Tag>
+        }
+      >
+        <GroupTable
+          groups={data.groups}
+          services={data.services}
+          onSelect={setSelectedId}
+        />
+      </Card>
+      {data.cluster ? <ClusterPanel cluster={data.cluster} /> : null}
+      <CollapsibleSection
+        id="health-dependency-topology"
+        title="依赖拓扑"
+        summaryLabel="展开依赖拓扑"
+        count={visible.length}
+        meta={healthStatusSummary(visible)}
+      >
+        <Topology services={visible} onSelect={setSelectedId} />
+      </CollapsibleSection>
+      <CollapsibleSection
+        id="health-containers"
+        title="容器清单"
+        summaryLabel="展开容器清单"
+        count={containers.length}
+      >
+        <ContainerTable items={containers} onSelect={setSelectedId} />
+      </CollapsibleSection>
+    </>
+  );
+  const exceptionTab = (
+    <>
+      <HealthToolbar
+        count={attentionServices.length}
+        mode={data.mode}
+        group={group}
+        search={search}
+        groups={GROUPS}
+        onGroup={setGroup}
+        onSearch={setSearch}
+      />
+      <HealthPanel title="近期异常">
+        <IssueList issues={issues} />
+      </HealthPanel>
+      {attentionServices.length === 0 ? (
+        <Empty description="当前筛选范围没有需关注的服务" />
+      ) : (
+        <ServiceInventory items={attentionServices} onSelect={setSelectedId} />
+      )}
+    </>
+  );
+  const architectureTab = (
+    <>
+      <HealthToolbar
+        count={architecture.length}
+        mode={data.mode}
+        group={group}
+        search={search}
+        groups={ARCHITECTURE_GROUPS}
+        onGroup={setGroup}
+        onSearch={setSearch}
+      />
+      <ProductionArchitecture
+        components={architecture}
+        services={data.services}
+        onService={setSelectedId}
+      />
+      <CollapsibleSection
+        id="health-dependency-topology"
+        title="依赖拓扑"
+        summaryLabel="展开依赖拓扑"
+        count={data.services.length}
+      >
+        <Topology services={data.services} onSelect={setSelectedId} />
+      </CollapsibleSection>
+    </>
+  );
+  const eventTab = (
+    <>
+      <HealthToolbar
+        count={visible.length}
+        mode={data.mode}
+        group={group}
+        search={search}
+        groups={GROUPS}
+        onGroup={setGroup}
+        onSearch={setSearch}
+      />
+      <HealthSummary data={data} />
+      <Card
+        role="group"
+        aria-label={"服务组与副本"}
+        title="服务组与副本"
+        extra={
+          <Tag color={stale || partial ? "warning" : "processing"}>
+            {stale ? "观测过期" : partial ? "部分观测" : "当前观测"}
+          </Tag>
+        }
+      >
+        <GroupTable
+          groups={data.groups}
+          services={data.services}
+          onSelect={setSelectedId}
+        />
+      </Card>
+      {data.cluster ? <ClusterPanel cluster={data.cluster} /> : null}
+      <HealthPanel title="事件与异常">
+        <IssueList issues={issues} />
+      </HealthPanel>
+      <CollapsibleSection
+        id="health-containers"
+        title="容器清单"
+        summaryLabel="展开容器清单"
+        count={containers.length}
+      >
+        <ContainerTable items={containers} onSelect={setSelectedId} />
+      </CollapsibleSection>
+    </>
+  );
+  return (
     <section className="page health-page" style={pageStyle}>
       <header className="page-head">
         <div>
-          <h1>{audience === "admin" ? "基础设施与中间件" : "系统健康"}</h1>
+          <h1>{audience === "admin" ? "基础设施" : "系统健康"}</h1>
           <p>服务、中间件与容器的实际运行状态。每 30 秒自动刷新。</p>
         </div>
         <div className="health-refresh">
@@ -628,240 +1395,28 @@ export function SystemHealthPage({
           description={`上次观测距现在 ${ageSeconds} 秒，已超过刷新周期的健康窗口；当前状态不能视为实时。`}
         />
       ) : null}
-      <ol className="health-summary" aria-label="系统健康统计">
-        {[
-          {
-            title: "逻辑服务",
-            value: data.groups.length,
-            tone: "progress",
-          },
-          {
-            title: "实例就绪",
-            value: `${readyInstances}/${observedInstances}`,
-            tone:
-              readyInstances === observedInstances
-                ? "compatible"
-                : "insufficient",
-          },
-          {
-            title: "实际容器",
-            value: data.services.filter((item) => item.container !== null)
-              .length,
-            tone: "neutral",
-          },
-          {
-            title: "需关注",
-            value: attentionGroups.length,
-            tone: attentionGroups.length > 0 ? "insufficient" : "compatible",
-          },
-          {
-            title: "未启用",
-            value: unconfiguredGroups.length,
-            tone: "neutral",
-          },
-        ].map((item) => (
-          <li key={item.title} data-tone={item.tone}>
-            <span className="health-summary-label">{item.title}</span>
-            <strong>{item.value}</strong>
-          </li>
-        ))}
-      </ol>
-      {audience === "admin" ? (
-        <CollapsibleSection
-          id="infra-service-groups"
-          title="服务组与副本"
-          summaryLabel="展开服务组与副本"
-          count={data.groups.length}
-          meta={
-            <Tag color={stale || partial ? "warning" : "processing"}>
-              {stale ? "观测过期" : partial ? "部分观测" : "当前观测"}
-            </Tag>
-          }
-        >
-          <Card role="group" aria-label={"服务组与副本"}>
-            <GroupTable
-              groups={data.groups}
-              services={data.services}
-              onSelect={setSelectedId}
-            />
-          </Card>
-        </CollapsibleSection>
-      ) : (
-        <Card
-          role="group"
-          aria-label={"服务组与副本"}
-          title="服务组与副本"
-          extra={
-            <Tag color={stale || partial ? "warning" : "processing"}>
-              {stale ? "观测过期" : partial ? "部分观测" : "当前观测"}
-            </Tag>
-          }
-        >
-          <GroupTable
-            groups={data.groups}
-            services={data.services}
-            onSelect={setSelectedId}
-          />
-        </Card>
-      )}
-      {data.cluster ? (
-        <Card
-          role="group"
-          aria-label={"Kubernetes 节点"}
-          title="Kubernetes 节点"
-          extra={
-            <Tag
-              color={data.cluster.status === "ready" ? "processing" : "error"}
-            >
-              {data.cluster.namespace}
-            </Tag>
-          }
-        >
-          <p>{data.cluster.detail}</p>
-          <Table
-            rowKey="name"
-            size="small"
-            pagination={false}
-            dataSource={data.cluster.nodes}
-            columns={[
-              { title: "节点", dataIndex: "name" },
-              {
-                title: "就绪状态",
-                key: "status",
-                render: (_, node) => <HealthTag status={node.status} />,
-              },
-              { title: "Kubernetes 版本", dataIndex: "version" },
-            ]}
-            locale={{ emptyText: "未取得节点观测" }}
-          />
-        </Card>
-      ) : null}
-      <section className="health-workspace">
+      <section className="health-workspace" aria-label="系统健康视图">
         <Tabs
           activeKey={tab}
           onChange={(key) => {
             setTab(key);
             setGroup("all");
           }}
-          items={tabs.map((key) => ({ key, label: key }))}
+          items={tabsConfig.map((key) => ({
+            key,
+            label: key,
+            children:
+              key === overviewKey
+                ? overviewTab
+                : key === capacityKey
+                  ? audience === "admin"
+                    ? architectureTab
+                    : capacityTab
+                  : audience === "admin"
+                    ? eventTab
+                    : exceptionTab,
+          }))}
         />
-        <div className="health-toolbar">
-          <span className="health-note">
-            {tab === "生产架构" ? architecture.length : visible.length} 项，{" "}
-            {data.mode === "kubernetes"
-              ? "Kubernetes 部署"
-              : data.mode === "distributed"
-                ? "独立服务部署"
-                : "单进程部署"}
-          </span>
-          <label>
-            <span>服务分组</span>
-            <Select
-              aria-label="服务分组"
-              value={group}
-              onChange={setGroup}
-              style={{ minWidth: 160 }}
-              options={[
-                { label: "全部服务", value: "all" },
-                ...Object.entries(groups).map(([value, label]) => ({
-                  value,
-                  label,
-                })),
-              ]}
-            />
-          </label>
-          <label>
-            <span>搜索服务</span>
-            <Input
-              aria-label="搜索服务"
-              allowClear
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="服务、容器或镜像"
-            />
-          </label>
-        </div>
-        {tab === "生产架构" ? (
-          <ProductionArchitecture
-            components={architecture}
-            services={data.services}
-            onService={setSelectedId}
-          />
-        ) : tab === "依赖拓扑" ? (
-          <Topology services={visible} onSelect={setSelectedId} />
-        ) : tab === "容器清单" ? (
-          <Table<HealthService>
-            rowKey="id"
-            columns={columns}
-            dataSource={visible}
-            size="small"
-            scroll={{ x: 1340 }}
-            pagination={{
-              defaultPageSize: 20,
-              showSizeChanger: true,
-              pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => `共 ${total} 个容器`,
-            }}
-            locale={{ emptyText: "当前筛选范围没有容器" }}
-          />
-        ) : visible.length === 0 ? (
-          <Empty
-            description={
-              tab === "当前异常"
-                ? "当前筛选范围没有需关注的服务"
-                : "没有匹配的服务"
-            }
-          />
-        ) : (
-          Object.entries(GROUPS).map(([id, name]) => {
-            const items = visible.filter((item) => item.category === id);
-            return items.length ? (
-              <section className="health-group" key={id} aria-label={name}>
-                <CollapsibleSection
-                  id={`health-group-${id}`}
-                  title={name}
-                  count={items.length}
-                  meta={healthStatusSummary(items)}
-                >
-                  <div className="health-card-grid">
-                    {items.map((item) => (
-                      <Card
-                        role="group"
-                        aria-label={String(item.name)}
-                        className="health-service-card"
-                        size="small"
-                        key={item.id}
-                        title={item.name}
-                        extra={<HealthTag status={item.status} />}
-                      >
-                        <code className="health-target">
-                          {item.target || "未配置连接地址"}
-                        </code>
-                        <p className="health-service-detail">{item.detail}</p>
-                        <div className="health-card-footer">
-                          <span>
-                            {item.container?.name ??
-                              (item.kind === "container"
-                                ? "未发现部署容器"
-                                : "外部集成")}
-                          </span>
-                          <Button
-                            type="link"
-                            size="small"
-                            aria-label={`查看 ${item.name}`}
-                            onClick={() => setSelectedId(item.instance_id ?? item.id)}
-                          >
-                            详情
-                          </Button>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                </CollapsibleSection>
-              </section>
-            ) : null;
-          })
-        )}
       </section>
       <Drawer
         title={selected?.name ?? "服务详情"}

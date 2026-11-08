@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -206,7 +206,7 @@ export function ContractSigningPanel({
       <p>登记人：{registration.registered_by} · {registration.registered_at}；审批依据：{registration.approval_evidence_status}</p>
       {registration.warnings.map((warning) => <p key={warning}>{warning}</p>)}
     </div>} /> : <>
-      <Alert type="warning" showIcon title="此登记由人工转录并核对冻结修订的结构化字段，不会自动读取原件正文，也不验证电子签名或印章真实性。" />
+      <Alert type="warning" showIcon title="请人工对照原件核对结构化字段。" />
       <div className="contracts-page-fields">
         <Select {...caseSelectPresentation} showSearch={{ optionFilterProp: "label" }} placeholder="选择有权读取的案件" value={caseVisible ? caseID : undefined} loading={cases.isLoading} options={(cases.isError ? [] : cases.data ?? []).map((item) => ({ value: item.id, label: caseOptionLabel(item) }))} onChange={(value) => { setCaseID(value); setMaterialVersionID(undefined); clearCheck(); }} />
         <Select placeholder={caseID ? "选择已授权材料版本" : "先选择案件"} value={materialVersionID} disabled={!caseID || caseDetail.isLoading || caseDetail.isError} loading={caseDetail.isLoading} options={materials.map(({ value, label }) => ({ value, label }))} onChange={(value) => { setMaterialVersionID(value); clearCheck(); }} />
@@ -217,7 +217,7 @@ export function ContractSigningPanel({
       {jsonError ? <Alert type="error" title={jsonError} /> : null}
       <label className="field">签署日期<Input type="date" value={signingDate} onChange={(event) => { setSigningDate(event.target.value); clearCheck(); }} /></label>
       <label className="field field-wide">存量审批历史未知时的人工依据（仅限真实导入来源）<Input.TextArea rows={2} value={legacyBasis} onChange={(event) => { setLegacyBasis(event.target.value); clearCheck(); }} /></label>
-      <Checkbox checked={confirmed} disabled={!selectedMaterial || !detail.current_revision_id || !signedContent || !!jsonError} onChange={(event) => { setConfirmed(event.target.checked); setCheck(null); }}>我已逐项将以上转录与所选原件及冻结修订对照；确认范围包括关键日期、附件、主体、金额、履约、资产与财务字段。此确认绑定所示材料摘要和修订，且不代表自动验真。</Checkbox>
+      <Checkbox checked={confirmed} disabled={!selectedMaterial || !detail.current_revision_id || !signedContent || !!jsonError} onChange={(event) => { setConfirmed(event.target.checked); setCheck(null); }}>我已逐项将以上转录与所选原件及冻结修订对照；确认范围包括关键日期、附件、主体、金额、履约、资产与财务字段。此确认绑定所示材料摘要和修订，。</Checkbox>
       <div className="contracts-page-fields"><Button loading={busy} disabled={!registrationLoaded || !confirmed || !selectedMaterial || !detail.current_revision_id || !signedContent || !!jsonError} onClick={() => void runCheck()}>核对转录与冻结修订</Button>
         {check?.can_register ? <Button type="primary" loading={busy} disabled={!actor || !signingDate || !confirmed} onClick={() => void register()}>追加签署登记</Button> : null}
       </div>

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r4
+// Updated: 2026-11-08
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -594,6 +594,10 @@ export function parseCaseDetail(value: unknown): CaseDetail {
   return {
     id: requiredString(record, "id"),
     title: optionalString(record, "title") ?? "未命名案件",
+    ...(record.case_number === undefined ? {} : { case_number: requiredStringValue(record, "case_number") }),
+    ...(record.customer === undefined ? {} : { customer: requiredStringValue(record, "customer") }),
+    ...(record.supplier === undefined ? {} : { supplier: requiredStringValue(record, "supplier") }),
+    ...(record.owner_name === undefined ? {} : { owner_name: requiredStringValue(record, "owner_name") }),
     contract_type: optionalString(record, "contract_type") ?? "",
     created_at: optionalString(record, "created_at") ?? "",
     updated_at: optionalString(record, "updated_at") ?? "",

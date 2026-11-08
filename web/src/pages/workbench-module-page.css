@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
-/* Updated: 2026-10-28 */
-/* Revision: r1 */
+/* Updated: 2026-11-08 */
+/* Revision: r2 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -533,6 +533,70 @@
   }
 }
 
+/* Audit keeps selection available above the selected event's full-width detail. */
+.module-workspace-audit {
+  grid-template-columns: minmax(0, 1fr);
+}
+.module-workspace-audit .module-list-panel {
+  max-height: 360px;
+  border-right: 0;
+  border-bottom: 1px solid var(--border-strong);
+}
+.module-workspace-audit .module-detail-panel {
+  position: static;
+  max-height: none;
+  padding: 24px 0;
+}
+.audit-event-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border-default);
+}
+.audit-event-summary dt {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.audit-event-summary dd {
+  margin: 6px 0 0;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.module-detail-content.audit-detail-card {
+  margin-top: 8px;
+  padding: 20px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--surface-raised);
+}
+.audit-detail-card h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.workbench-record-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border-default);
+}
+.workbench-record-summary dt {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.workbench-record-summary dd {
+  margin: 6px 0 0;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .audit-event-summary,
+  .workbench-record-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* Record rows read as a ruled ledger, not centred link cells. */
 .module-list-panel .ant-table-tbody .ant-btn-link {
   height: auto;
@@ -549,4 +613,88 @@
 .module-list-panel .ant-table-content {
   overflow-x: auto;
   overscroll-behavior-x: contain;
+}
+
+.module-report-frame {
+  width: 100%;
+  height: 640px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+}
+
+@media (max-width: 700px) {
+  .module-report-frame { height: 420px; }
+}
+
+.module-report-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--state-conflict);
+  border-radius: var(--radius-control);
+  color: var(--state-conflict);
+}
+
+.module-evidence-image,
+.module-evidence-frame {
+  display: block;
+  width: 100%;
+  max-height: 640px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+}
+
+.module-evidence-image { object-fit: contain; }
+
+.module-evidence-error,
+.module-evidence-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.module-template-preview ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.module-template-preview li {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2);
+  border: 1px dashed var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-page);
+}
+
+.module-template-preview code {
+  color: var(--action-primary);
+  font-size: 12px;
+}
+
+/* Reader modules keep a compact record rail and give documents the workspace width. */
+.module-workspace-reader {
+  grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
+}
+
+.module-workspace-reader .module-detail-panel {
+  min-width: 0;
+}
+
+.module-workspace-reader .module-knowledge-body {
+  max-width: 88ch;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 1100px) {
+  .module-workspace-reader { grid-template-columns: minmax(0, 1fr); }
 }

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-05
-// Revision: r5
+// Updated: 2026-11-08
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1061,6 +1061,94 @@ async function fillSupplementSource(user: ReturnType<typeof userEvent.setup>, la
 }
 
 describe("application routes and API contract", () => {
+  it("shows server case identity and removes it when case access is revoked", async () => {
+    const api = new Service();
+    Object.assign(api.cases.get("c1")!, { case_number: "案-2026-001", owner_name: "经办人员" });
+    const { client } = open(api, "/cases/c1#case-materials");
+    expect(await screen.findByRole("heading", { name: "接入设备采购" })).toBeVisible();
+    const facts = screen.getByLabelText("案件信息");
+    expect(facts).toHaveTextContent("案-2026-001");
+    expect(facts).toHaveTextContent("经办人员");
+    expect(document.querySelectorAll("#case-materials")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "当前材料" })).toHaveAttribute("aria-pressed", "true");
+    api.fail("GET /api/cases/c1", 403);
+    act(() => { void client.invalidateQueries({ queryKey: queryKeys.case("c1") }); });
+    expect(await screen.findByRole("heading", { name: "没有权限查看这个案件" })).toBeVisible();
+    expect(screen.queryByText("案-2026-001")).not.toBeInTheDocument();
+    expect(screen.queryByText("经办人员")).not.toBeInTheDocument();
+  });
+
+  it("opens the materials section from a deep link and preserves the upload draft across section changes", async () => {
+    const api = new Service();
+    const { user } = open(api, "/cases/c1#case-materials");
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    const file = new File(["材料"], "待上传.txt", { type: "text/plain" });
+    await user.upload(await screen.findByLabelText("文件"), file);
+    await user.click(screen.getByRole("button", { name: "案件概览" }));
+    await user.click(screen.getByRole("button", { name: "材料与版本" }));
+    expect(screen.getByText("待上传.txt")).toBeVisible();
+    expect(screen.getByRole("button", { name: "新增材料" })).toBeEnabled();
+  });
+
+  it("keeps the chosen materials section after a session refresh", async () => {
+    const api = new Service();
+    const { user, client } = open(api, "/cases/c1", <App />, 60_000);
+    await user.click(await screen.findByRole("button", { name: "材料与版本" }));
+    expect(screen.getByRole("button", { name: "材料与版本" })).toHaveAttribute("aria-pressed", "true");
+    const sessionReads = api.requests.filter((entry) => entry.key === "GET /api/session").length;
+    await act(async () => { await client.invalidateQueries({ queryKey: queryKeys.session, exact: true }); });
+    expect(api.requests.filter((entry) => entry.key === "GET /api/session").length).toBeGreaterThan(sessionReads);
+    expect(screen.getByRole("button", { name: "材料与版本" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "选择文件" })).toBeVisible();
+  });
+
+  it.each(["link", "history"] as const)("returns from review to the review section via %s", async (returnPath) => {
+    const api = new Service();
+    api.addReview();
+    const { user, router } = open(api, "/cases/c1", <App />, 60_000);
+    await user.click(await screen.findByRole("button", { name: "审查记录" }));
+    await user.click(await screen.findByRole("link", { name: "核对原文并处理决定" }));
+    await screen.findByRole("heading", { name: "审查工作区" });
+    const reviewNav = screen.getByRole("navigation", { name: "审查工作区分区" });
+    expect(within(reviewNav).getAllByRole("button")).toHaveLength(6);
+    await user.click(within(reviewNav).getByRole("button", { name: "人工办理" }));
+    expect(within(reviewNav).getByRole("button", { name: "人工办理" })).toHaveAttribute("aria-pressed", "true");
+    expect(router.state.location.search).toContain("review_section=work");
+    expect(router.state.location.state.caseSection).toBe("reviews");
+    if (returnPath === "link") await user.click(screen.getByRole("link", { name: /^返回案件$/ }));
+    else await act(async () => { await router.navigate(-1); });
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "审查记录" })).toHaveAttribute("aria-pressed", "true"));
+    expect(screen.getByLabelText("审查业务时间（北京时间）")).toBeVisible();
+  });
+
+  it("restores a manually chosen section when returning to a selected remediation URL", async () => {
+    const api = new Service();
+    addSubmittedRemediation(api, [evaluation()]);
+    const { user, router } = open(api, "/cases/c1?work_kind=remediation&work_item=rem1", <App />, 60_000);
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "协作与归档" })).toHaveAttribute("aria-pressed", "true"));
+    await user.click(screen.getByRole("button", { name: "材料与版本" }));
+    await user.click(screen.getByRole("link", { name: "返回案件列表" }));
+    await screen.findByRole("heading", { name: "案件", level: 1 });
+    await act(async () => { await router.navigate(-1); });
+    await screen.findByRole("heading", { name: "接入设备采购" });
+    expect(router.state.location.search).toContain("work_item=rem1");
+    await waitFor(() => expect(screen.getByRole("button", { name: "材料与版本" })).toHaveAttribute("aria-pressed", "true"));
+    expect(screen.getByRole("button", { name: "选择文件" })).toBeVisible();
+  });
+
+  it("does not report zero material counts before legacy selection is confirmed", async () => {
+    const api = new Service();
+    api.cases.get("c1")!.material_selection = {
+      version: 1, status: "pending_confirmation", document_ids: [], candidate_document_ids: [], primary_material_id: null,
+    };
+    open(api, "/cases/c1");
+    const chain = await screen.findByRole("list", { name: "案件材料链路" });
+    expect(within(chain).getAllByText("待确认")).toHaveLength(4);
+    expect(within(chain).queryByText("0")).not.toBeInTheDocument();
+  });
+
   it("opens the returned run's hash when the cached workspace reuses its provider", async () => {
     const api = new Service();
     api.addReview("completed", "r1");
@@ -2246,7 +2334,8 @@ describe("application routes and API contract", () => {
     await selectBusinessTime();
     expect(screen.queryByRole("button", { name: "开始审查" })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "先确认后续审查使用的材料" })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: /旧采购材料/ })).toBeChecked();
+    await user.click(screen.getByRole("link", { name: "确认材料集合" }));
+    expect(await screen.findByRole("checkbox", { name: /旧采购材料/ })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: /新增补充材料/ })).toBeChecked();
     await user.click(screen.getByRole("button", { name: "确认本次材料集合" }));
     await waitFor(() => expect(item.material_selection?.status).toBe("confirmed"));
@@ -2292,7 +2381,9 @@ describe("application routes and API contract", () => {
     });
     expect(screen.queryByRole("button", { name: "开始审查" })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "先处理服务端列出的缺项" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "审查记录" }));
     await selectBusinessTime();
+    await user.click(screen.getByRole("button", { name: "材料与版本" }));
     await user.upload(
       screen.getByLabelText("文件"),
       new File([text], "采购.txt", { type: "text/plain" }),
@@ -2309,6 +2400,7 @@ describe("application routes and API contract", () => {
     await waitFor(() =>
       expect(api.cases.get("c1")!.materials).toHaveLength(2),
     );
+    await user.click(screen.getByRole("button", { name: "案件概览" }));
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "开始审查" })).toBeEnabled(),
     );
@@ -2473,10 +2565,12 @@ describe("application routes and API contract", () => {
     const previousReview = api.addReview();
     const previousDocuments = structuredClone(previousReview.documents);
     const { user } = open(api, "/cases/c1");
-    expect(await screen.findByRole("heading", { name: "材料版本历史" })).toBeInTheDocument();
     expect(
       await screen.findByText(/有材料解析失败。文件仍保留/),
     ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "材料与版本" }));
+    await user.click(screen.getByRole("button", { name: "版本历史" }));
+    expect(await screen.findByRole("heading", { name: "材料版本历史" })).toBeInTheDocument();
     expect(screen.getByLabelText("文件")).toBeEnabled();
     await chooseOption(user, screen.getByLabelText("材料角色"), "拟签合同");
     await chooseOption(user, screen.getByLabelText("材料操作"), "替换选中的材料");
@@ -2494,8 +2588,10 @@ describe("application routes and API contract", () => {
     expect(api.cases.get("c1")!.documents.find((document) => document.id === "d2")?.superseded).toBe(true);
     expect(previousReview.documents).toEqual(previousDocuments);
     expect(api.cases.get("c1")!.revision_pending).toBe(true);
+    await user.click(screen.getByRole("button", { name: "审查记录" }));
     await screen.findByLabelText("审查业务时间（北京时间）");
     await selectBusinessTime();
+    await user.click(screen.getByRole("button", { name: "案件概览" }));
     const reReview = await screen.findByRole("button", { name: "开始复审" });
     await waitFor(() => expect(reReview).toBeEnabled());
     await user.click(reReview);
@@ -2549,20 +2645,26 @@ describe("application routes and API contract", () => {
     api.fail("POST /api/cases/c1/reviews", 503);
     api.fail("POST /api/cases/c1/documents", 413);
     const { user } = open(api, "/cases/c1");
-    expect(await screen.findByText("无法解码")).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "材料与版本" }));
+    expect(await screen.findByText("无法解码")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "案件概览" }));
     expect(screen.queryByRole("button", { name: "开始审查" })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "先处理服务端列出的缺项" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "审查记录" }));
     await selectBusinessTime();
+    await user.click(screen.getByRole("button", { name: "材料与版本" }));
     await user.click(screen.getByRole("button", { name: "重新解析 d2.txt" }));
     expect(await screen.findByText("受控失败 503")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重新解析 d2.txt" }));
     await waitFor(() => expect(item.documents.find((document) => document.id === "d2")?.parse_status).toBe("ready"));
     expect(item.material_selection).toMatchObject({ status: "confirmed", document_ids: ["d1", "d2"] });
+    await user.click(screen.getByRole("button", { name: "案件概览" }));
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "开始审查" })).toBeEnabled(),
     );
     await user.click(screen.getByRole("button", { name: "开始审查" }));
     expect(await screen.findByText(/受控失败 503/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "材料与版本" }));
     await user.upload(
       screen.getByLabelText("文件"),
       new File([text], "超限.txt", { type: "text/plain" }),
@@ -3101,7 +3203,7 @@ describe("application routes and API contract", () => {
     ).toHaveAttribute("href", "/cases/c1/reviews/r0");
     expect(screen.getByText(/图片转写未完成/)).toBeInTheDocument();
     expect(
-      screen.getByText("还没有审查人员的判断。模型建议不会自动结案。"),
+      screen.getByText("还没有人工判断。"),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "加载运行轨迹与诊断" }));
     await screen.findByRole("link", { name: "查看运行轨迹" });
@@ -3175,6 +3277,8 @@ describe("application routes and API contract", () => {
     api.role = "reviewer";
     api.addReview("completed");
     const { user } = open(api, "/cases/c1");
+    await user.click(await screen.findByRole("button", { name: "协作与归档" }));
+    await user.click(screen.getByText("整改与复核"));
     const finding = await screen.findByRole("checkbox", { name: /质保期限不一致/ });
     expect(screen.getByRole("button", { name: "创建整改" })).toBeDisabled();
     await user.click(finding);
@@ -3237,7 +3341,9 @@ describe("application routes and API contract", () => {
         finding_id: null,
       }),
     ]);
-    open(api, "/cases/c1");
+    const { user } = open(api, "/cases/c1");
+    await user.click(await screen.findByRole("button", { name: "协作与归档" }));
+    await user.click(screen.getByText("整改与复核"));
     await screen.findByText(/复核状态/);
     const reason = screen.getByLabelText("复核理由");
     await waitFor(() => expect(reason).toBeEnabled());
@@ -3293,7 +3399,9 @@ describe("application routes and API contract", () => {
     async (_scenario, candidateEvaluations) => {
       const api = new Service();
       addSubmittedRemediation(api, candidateEvaluations);
-      open(api, "/cases/c1");
+      const { user } = open(api, "/cases/c1");
+      await user.click(await screen.findByRole("button", { name: "协作与归档" }));
+      await user.click(screen.getByText("整改与复核"));
       await screen.findByText(/复核状态/);
       expect(screen.getByLabelText("复核理由")).toBeDisabled();
       expect(screen.getByRole("button", { name: "提交复核" })).toBeDisabled();
@@ -3361,9 +3469,10 @@ describe("application routes and API contract", () => {
     expect(screen.getByRole("button", { name: "新建案件" })).toBeDisabled();
     await user.click(screen.getByRole("link", { name: "接入设备采购" }));
     await screen.findByRole("heading", { name: "接入设备采购" });
-    expect(screen.getByRole("button", { name: "选择文件" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "开始审查" })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "先处理服务端列出的缺项" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "材料与版本" }));
+    expect(screen.getByRole("button", { name: "选择文件" })).toBeDisabled();
     expect(screen.getByText(/当前角色只能查看材料/)).toBeInTheDocument();
   });
 
@@ -3889,9 +3998,10 @@ describe("application routes and API contract", () => {
     const api = new Service();
     const { user } = open(api, "/unknown");
     expect(
-      await screen.findByRole("heading", { name: "没有这个页面" }),
+      await screen.findByRole("heading", { name: "页面不存在" }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("link", { name: "返回案件" }));
+    expect(screen.getAllByRole("link", { name: "返回工作台" })[0]).toHaveAttribute("href", "/");
+    await user.click(screen.getByRole("link", { name: "打开案件中心" }));
     expect(
       await screen.findByRole("heading", { name: "案件", level: 1 }),
     ).toBeInTheDocument();

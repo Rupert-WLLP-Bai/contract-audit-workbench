@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-04
-// Revision: r4
+// Updated: 2026-11-08
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -949,7 +949,7 @@ export function IntakePrimaryContract({
           title="服务器没有该幂等键对应的操作"
           description={
             draft !== null && draft.receipt.state === "completed"
-              ? "无法从服务器确认这张回执；案件可能已归档，或当前身份无权读取。这不代表回执被改写，服务器不会返回第二个案件。"
+              ? "无法确认这张回执。案件可能已归档，或当前身份无权读取。"
               : "请求可能没有到达服务器，也可能已被清理。可以用最初选择的同一文件重新提交；同一幂等键不会建出第二个案件。"
           }
           action={retry}
@@ -1128,7 +1128,7 @@ export function IntakePrimaryContract({
           </Button>
         </div>
         <p className="home-intake-note">
-          上传成功后进入案件页；准备清单与审查范围以案件页的服务端结果为准，这里不会自动开始单合同审查。
+          上传成功后进入案件页，再在案件里确认准备清单并开始审查。
         </p>
       </form>
     );

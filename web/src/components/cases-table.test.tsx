@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “cases table, cases table sorting helper and scroll”; representative assertions cover opens a case from the row title and shows the run in words, says when a case has not been reviewed instead of calling it clean, exposes sorting as a keyboard-operable table action. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Checks case-table behavior, including stable case links, sort actions, explicit run states, mobile summary facts and the horizontal scroll hint for narrow layouts.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-08
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -60,6 +60,9 @@ describe("cases table", () => {
     );
     expect(screen.getByRole("cell", { name: "待人工" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "2" })).toBeInTheDocument();
+    expect(screen.getByText("材料 3")).toBeInTheDocument();
+    expect(screen.getByText("最新运行：待人工")).toBeInTheDocument();
+    expect(screen.getByText("表格列较多时可横向滚动查看其余字段。")).toBeInTheDocument();
   });
 
   it("says when a case has not been reviewed instead of calling it clean", () => {

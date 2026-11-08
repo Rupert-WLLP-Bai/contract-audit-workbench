@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
-/* Updated: 2026-11-05 */
-/* Revision: r4 */
+/* Updated: 2026-11-08 */
+/* Revision: r5 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -3606,6 +3606,33 @@
     background: var(--surface-raised);
     box-shadow: var(--shadow-panel);
   }
+  .cases-table-scroll-note {
+    display: none;
+    margin: 0 0 var(--space-2);
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+  .cases-mobile-facts {
+    display: none;
+  }
+  @media (max-width: 1280px) {
+    .cases-table-scroll-note {
+      display: block;
+    }
+  }
+  @media (max-width: 575px) {
+    .cases-table-scroll-note {
+      display: none;
+    }
+    .cases-mobile-facts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-1) var(--space-3);
+      margin-top: var(--space-2);
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+  }
   .cases-page .ant-table-thead > tr > th,
   .cases-page .ant-table-tbody > tr > td:not(:first-child) {
     white-space: nowrap;
@@ -4663,5 +4690,55 @@
   }
   .page-back a {
     font-size: 12px;
+  }
+  .case-detail-sections {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: var(--space-4) 0;
+  }
+  .material-view-switch {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: var(--space-3) 0;
+    border-bottom: 1px solid var(--border-default);
+  }
+  .material-view-switch button {
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+  .material-view-switch button[aria-pressed="true"] {
+    border-bottom-color: var(--action-primary);
+    color: var(--action-primary);
+  }
+  .case-detail-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+    gap: var(--space-3) var(--space-4);
+    margin: 0 0 var(--space-4);
+    padding: var(--space-3) 0;
+    border-block: 1px solid var(--border-default);
+  }
+  .case-detail-facts > div {
+    min-width: 0;
+  }
+  .case-detail-facts dt {
+    color: var(--text-secondary);
+  }
+  .case-detail-facts dd {
+    margin: var(--space-1) 0 0;
+    overflow-wrap: anywhere;
+    color: var(--text-primary);
+  }
+  .case-detail-page .page-head > div {
+    min-width: 0;
+  }
+  .case-detail-page .page-head h1 {
+    overflow-wrap: anywhere;
   }
 }

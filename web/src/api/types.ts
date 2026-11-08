@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r5
+// Updated: 2026-11-08
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -124,6 +124,10 @@ export type FindingCounts = WireSchemas["FindingCounts"];
 export interface CaseDetail {
   id: string;
   title: string;
+  case_number?: string;
+  customer?: string;
+  supplier?: string;
+  owner_name?: string;
   contract_type: string;
   created_at: string;
   updated_at: string;

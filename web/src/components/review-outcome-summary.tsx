@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -46,7 +46,7 @@ export function ReviewOutcomeSummary({ workspace }: { workspace: ReviewWorkspace
   if (workspace.review_attempts?.attempt.history_kind === "preparing") {
     return <section aria-label="审查结果、范围与人工进度" className="callout">
       <h2>审查结果、范围与人工进度</h2>
-      <p>该执行尚未冻结审查输入，不能据此确认检查范围或人工进度。</p>
+      <p>该执行尚未冻结审查输入，检查范围与人工进度待冻结后确认。</p>
       {outcome?.reason === "cancelled_by_user" && canReadmitCancelledPreparation(workspace) ? <>
         <p>审查在准备期间由用户主动取消；请返回案件核对准备清单，确认是否可以重新发起新审查。</p>
         <p><a href={`${casePath}#review-readiness`}>返回审查准备清单</a></p>
@@ -76,7 +76,7 @@ export function ReviewOutcomeSummary({ workspace }: { workspace: ReviewWorkspace
     {capabilities.length > 0 ? <p>智能审查返回 {capabilities.length} 项能力状态，其中 {completedCapabilities} 项标记为完成；其他项目需逐项核对，不能推断已查。</p> : null}
     <p><strong>人工进度：</strong>{undecided > 0 ? `本次结果中 ${undecided} 项尚无人工判断。` : "本次结果中没有尚无人工判断的发现。"}
       {gaps === null || gaps === undefined ? "智能审查缺项状态未确认。" : gaps.length > 0 ? `智能审查另有 ${gaps.length} 项未解决的缺口。` : ""}
-      人工进度仅反映已返回的发现；审查建议不能替代人工判断，未检查的范围不能据此认定合规。</p>
+      人工进度仅反映已返回的发现；未检查范围请继续办理，审查建议供人工判断使用。</p>
     {outcome?.reason === "material_unavailable" || parseFailed || gapKinds.materials ? <p><a href={`${casePath}#case-materials`}>返回案件补齐或处理材料</a></p> : null}
     {outcome?.reason === "cancelled_by_user" && !canRestartUserCancelled(workspace) ? <p><a href={`${casePath}#review-readiness`}>返回审查准备清单</a></p> : null}
     {limited ? <p><a href={`${casePath}#review-readiness`}>查看完整审查准备</a></p> : null}

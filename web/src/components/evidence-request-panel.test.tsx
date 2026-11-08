@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-05
-// Revision: r4
+// Updated: 2026-11-08
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1169,7 +1169,7 @@ describe("补充材料请求", () => {
     expect((await within(panel).findAllByText(/材料名称未报告/)).length).toBeGreaterThan(0);
     expect(within(panel).queryByText("处理记录中未报告回执。")).not.toBeInTheDocument();
     expect(within(panel).getByText("已提交，待复核").closest(".ant-tag")).toHaveClass("ant-tag-warning");
-    expect(within(panel).getByText("下一步：提交回执后发起新审查，再根据新审查的检查结果和原文核验。上传或提交材料本身不代表已核验。")).toBeInTheDocument();
+    expect(within(panel).getByText("下一步：提交回执后发起新审查，再按新结果核对原文。")).toBeInTheDocument();
     expect(within(panel).queryByText(/unknown-document|unknown-actor|run-old|attempt-old/)).not.toBeInTheDocument();
     expect(within(panel).getByRole("link", { name: "查看来源审查" })).toHaveAttribute("href", "/cases/case-1/reviews/run-old?attempt_id=attempt-old");
   });

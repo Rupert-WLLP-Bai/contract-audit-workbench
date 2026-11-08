@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-01
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -23,7 +23,7 @@ function PaymentExpressions() {
   return <p>
     仅匹配部分使用阿拉伯数字的固定表达，例如“预付款20%”“20%预付款”“预付款百分之20”，
     以及“验收通过后支付70%”“设备到货后70%”“到货后支付70%”“质保期满后10%”。这些节点须紧接“支付”或比例。
-    其他写法可能无法识别；未识别不代表合同没有约定付款，证据不足时需要人工核对原文。
+    其他写法可能识别不到；证据不足时请人工核对原文。
   </p>;
 }
 

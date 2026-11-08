@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-10-29
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -88,7 +88,7 @@ export function ImpactPlanPanel({
       "当前开关只启用解释模式，服务端 shadow 结果仅作对照，不改变业务结果。",
     );
   if (plan.dependencyComplete === null)
-    warnings.push("依赖完整性未报告，不能据此复用。");
+    warnings.push("依赖完整性未报告，请先补齐后再复用。");
   if (plan.dependencyComplete === false && plan.fallback === "none")
     warnings.push("依赖不完整但未报告回退策略，本计划不能用于跳过检查。");
   if (plan.fallback === "full")
@@ -180,7 +180,7 @@ export function ImpactPlanPanel({
         columns={checkColumns}
         pagination={false}
         size="small"
-        locale={{ emptyText: "计划未列出任何检查（不代表没有影响）。" }}
+        locale={{ emptyText: "计划未列出检查项。" }}
       />
 
       <p className="meta">
@@ -193,7 +193,7 @@ export function ImpactPlanPanel({
       ) : null}
       {plan.dataClass === "synthetic" ? (
         <p className="meta">
-          合成 fixture 计划：仅用于演示与测试，不代表生产结果。
+          合成计划，仅用于演示与测试。
         </p>
       ) : null}
     </section>

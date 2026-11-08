@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-05
-// Revision: r3
+// Updated: 2026-11-08
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -643,7 +643,7 @@ describe("review workspace lifecycle", () => {
     ["connecting", "正在连接运行状态"],
     ["live", "运行状态已连接"],
     ["reconnecting", "连接中断，正在按游标重连"],
-    ["closed", "运行状态流已关闭，不会自动重连；请刷新页面或重新登录后再试。"],
+    ["closed", "状态更新已中断，请刷新页面或重新登录。"],
     ["inactive", "本次执行没有活动的事件流"],
   ] as const)("reports the %s stream status", (streamStatus, label) => {
     renderView({ streamStatus });

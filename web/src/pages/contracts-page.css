@@ -1,12 +1,24 @@
 /* File metadata (manifest mirror): */
-/* Purpose: Defines visual tokens and component/page rules, including .contracts-page-summary, .contracts-page-summary strong, .contracts-page-actions, .contracts-page-layout; the stylesheet is imported by the web shell and carries no application state. */
+/* Purpose: Defines visual tokens and component/page rules for the contract ledger, state-preserving workspace tabs, and export result panel; the stylesheet is imported by the web shell and carries no application state. */
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-01 */
-/* Updated: 2026-11-05 */
-/* Revision: r2 */
+/* Updated: 2026-11-08 */
+/* Revision: r3 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
+
+.contracts-workspace-tabs {
+  margin-top: var(--space-4);
+}
+
+.contracts-export-history {
+  max-width: 960px;
+}
+
+.contracts-export-history .contracts-ledger {
+  background: var(--surface-raised);
+}
 
 .contracts-page-summary {
   display: flex;
@@ -125,7 +137,7 @@ fieldset.contracts-page-section {
 
 .contracts-page-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: var(--space-3) var(--space-4);
 }
 
@@ -133,8 +145,25 @@ fieldset.contracts-page-section {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  min-width: 0;
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+.contracts-page-fields .field .ant-input,
+.contracts-page-fields .field .ant-input-affix-wrapper,
+.contracts-page-fields .field .ant-select,
+.contracts-page-fields .field .ant-input-number,
+.contracts-page-fields .field textarea.ant-input {
+  max-width: 100%;
+}
+
+.contracts-page-row {
+  min-width: 0;
+}
+
+.contracts-page-row > * {
+  min-width: 0;
 }
 
 .contracts-page-fields .field-wide {
@@ -150,7 +179,7 @@ fieldset.contracts-page-section {
 
 .contracts-page-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
   gap: var(--space-2);
   align-items: center;
 }
@@ -307,6 +336,19 @@ fieldset.contracts-page-section {
 
 .contracts-ledger .ant-table-wrapper {
   margin-top: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.contracts-ledger .ant-table-content,
+.contracts-page-section .ant-table-content {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.contracts-page-section .ant-table-wrapper {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .contracts-ledger-more {
@@ -314,4 +356,54 @@ fieldset.contracts-page-section {
   margin-top: var(--space-3);
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+/* Contract registration uses one mounted draft across four readable sections. */
+.contracts-form-sections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+}
+.contracts-form-sections button {
+  min-height: 34px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-page);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.contracts-form-sections button[aria-pressed="true"] {
+  border-color: var(--action-primary);
+  font-weight: 600;
+}
+.contracts-form-sections button[data-error="true"] {
+  border-color: var(--state-conflict);
+  color: var(--state-conflict);
+}
+.contracts-form-sections button:focus-visible,
+.contracts-form-error-summary button:focus-visible {
+  outline: 2px solid var(--action-primary);
+  outline-offset: 2px;
+}
+.contracts-form-error-summary {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--state-conflict);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+}
+.contracts-form-error-summary div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.contracts-form-error-summary button {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-page);
+  color: var(--text-primary);
+  cursor: pointer;
 }

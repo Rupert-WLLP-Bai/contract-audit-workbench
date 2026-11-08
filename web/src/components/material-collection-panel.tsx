@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-08
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -75,6 +75,7 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
   const materials = caseDetail.materials;
   const versions = caseDetail.material_versions;
   const selection = caseDetail.material_selection;
+  const [activeMaterialView, setActiveMaterialView] = useState("current");
   const [role, setRole] = useState<MaterialProjection["role"]>("procurement");
   const [attachmentPurpose, setAttachmentPurpose] = useState<MaterialPurpose>("supplement");
   const [intent, setIntent] = useState<"add" | "replace">("add");
@@ -265,7 +266,17 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
           </Button>
         </div>
       ) : null}
-      <div className="material-current-set" aria-label="本次材料集合">
+      <div className="material-view-switch" role="group" aria-label="材料视图">
+        {[
+          { key: "current", label: "当前材料" },
+          { key: "history", label: "版本历史" },
+          { key: "parsing", label: "解析记录" },
+        ].map((view) => (
+          <button key={view.key} type="button" aria-pressed={activeMaterialView === view.key}
+            onClick={() => setActiveMaterialView(view.key)}>{view.label}</button>
+        ))}
+      </div>
+      <div className="material-current-set" aria-label="本次材料集合" hidden={activeMaterialView !== "current"}>
         <h3>本次材料集合</h3>
         {materials.length === 0 ? <p>当前没有材料。</p> : null}
         <ul className="document-list">
@@ -302,7 +313,7 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
           })}
         </ul>
       </div>
-      <div className="material-history" aria-label="材料历史版本">
+      <div className="material-history" aria-label="材料历史版本" hidden={activeMaterialView !== "history"}>
         <h3>材料版本历史</h3>
         {materials.map((material) => {
           const history = versions
@@ -318,7 +329,8 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
                   const current = version.document_id === material.current_document_id;
                   return (
                     <li key={`${version.material_id}:${version.version}`} data-document-id={version.document_id}>
-                      <span>v{version.version} · {document?.filename ?? version.document_id} · {current ? "当前版本" : "同一材料的历史版本"}</span>
+                      <span>v{version.version} · {document?.filename ?? "文件名未提供"} · {current ? "当前版本" : "同一材料的历史版本"}</span>
+                      {!document ? <TechnicalDetail label="版本文件标识" value={version.document_id} /> : null}
                       {version.previous_document_id ? (() => {
                         const previousVersion = history.find((item) => item.document_id === version.previous_document_id);
                         const previousDocument = documentById.get(version.previous_document_id);
@@ -333,6 +345,24 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
           );
         })}
       </div>
+      {activeMaterialView === "parsing" ? <div className="material-parsing">
+        <h3>材料解析状态</h3>
+        <p className="meta">此处展示服务返回的各文件当前解析状态；历史审查使用其冻结的解析结果。</p>
+        {caseDetail.documents.length === 0 ? <p>当前没有材料解析记录。</p> : (
+          <ul className="document-list">
+            {caseDetail.documents.map((document) => (
+              <li key={document.id}>
+                <div className="document-main">
+                  <strong>{document.filename}</strong>
+                  <p className="meta">{roleLabel(document.role)} · {formatDateTime(document.created_at)}</p>
+                  {document.parse_status === "failed" && document.parse_error ? <p>{document.parse_error}</p> : null}
+                </div>
+                <StatusText tone={parseTone(document.parse_status)}>{parseLabel(document.parse_status)}</StatusText>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div> : null}
       <form className="upload-form" onSubmit={onUpload}>
         <h3>添加或替换材料</h3>
         <p className="meta">新增为默认操作。替换仅更新所选材料的当前版本；其他同用途材料和历史记录会保留。单文件不超过 32 MiB。</p>

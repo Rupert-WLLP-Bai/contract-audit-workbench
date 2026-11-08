@@ -1,0 +1,258 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Scopes the case legal-knowledge reader shell, including its URL-backed tabs, content directory, exact-version document panel and source capture sections; carries no application state. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-08 */
+/* Updated: 2026-11-08 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+.page-legal-knowledge .page-head {
+  margin-bottom: var(--space-3);
+}
+
+.legal-reader-head {
+  align-items: flex-start;
+}
+
+.legal-reader-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.legal-reader-tabs > .ant-tabs-nav {
+  margin-bottom: var(--space-3);
+}
+
+.legal-reader-tabs .ant-tabs-tab {
+  padding-block: var(--space-2);
+  font-size: 13px;
+}
+
+.legal-reader-notice {
+  margin-bottom: var(--space-3);
+}
+
+.legal-tab-panel {
+  min-width: 0;
+}
+
+.legal-tab-head {
+  margin-bottom: var(--space-3);
+}
+
+.legal-tab-head h2,
+.legal-reader-directory-head h2,
+.legal-reader-toolbar h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.legal-tab-head p,
+.legal-reader-directory-head p,
+.legal-reader-toolbar p {
+  margin: var(--space-1) 0 0;
+}
+
+.legal-reader-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-4);
+}
+
+.legal-reader-directory,
+.legal-reader-panel {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--panel-radius);
+  background: var(--surface-raised);
+}
+
+.legal-reader-directory-head {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.legal-reader-directory-status {
+  padding: var(--space-3) var(--space-4);
+}
+
+.legal-directory-list {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2);
+  margin: 0;
+  list-style: none;
+}
+
+.legal-directory-button {
+  display: grid;
+  width: 100%;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.legal-directory-button:hover {
+  background: var(--surface-hover);
+}
+
+.legal-directory-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.legal-directory-button[aria-current="true"] {
+  background: var(--action-primary-soft);
+  color: var(--action-primary);
+}
+
+.legal-directory-button strong,
+.legal-directory-button span {
+  overflow-wrap: anywhere;
+}
+
+.legal-directory-button span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.legal-directory-button[aria-current="true"] span {
+  color: var(--action-primary);
+}
+
+.legal-reader-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.legal-reader-toolbar > div {
+  min-width: 0;
+}
+
+.legal-reader-body {
+  min-width: 0;
+  padding: var(--space-4);
+}
+
+.legal-version-detail {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.legal-version-detail h3 {
+  margin: 0 0 var(--space-3);
+  font-size: 18px;
+  line-height: 1.5;
+}
+
+.legal-version-detail dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-3) 0 0;
+}
+
+.legal-version-detail dt {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.legal-version-detail dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.legal-article-body {
+  max-height: min(56vh, 560px);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-4);
+  overflow: auto;
+  border: 1px solid var(--border-default);
+  border-radius: var(--panel-radius);
+  background: var(--surface-subtle);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-document);
+  line-height: var(--line-height-document);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.legal-source-capture {
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--border-strong);
+}
+
+.legal-source-capture:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.legal-source-capture h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.legal-source-capture h5 {
+  margin: var(--space-3) 0 0;
+  font-size: 13px;
+}
+
+.legal-source-capture pre {
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.legal-company-sources {
+  margin-top: var(--space-4);
+}
+
+@media (max-width: 960px) {
+  .legal-reader-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .legal-reader-directory {
+    order: 2;
+  }
+
+  .legal-reader-panel {
+    order: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .page-legal-knowledge .page-head {
+    align-items: stretch;
+  }
+
+  .legal-reader-actions .ant-btn {
+    width: 100%;
+  }
+
+  .legal-version-detail dl {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+}

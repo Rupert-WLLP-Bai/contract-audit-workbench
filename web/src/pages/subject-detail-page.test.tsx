@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -56,9 +56,26 @@ beforeEach(() => {
 });
 
 describe("subject detail pagination scope", () => {
+  it("switches four sections while preserving masked identifiers and correction links", async () => {
+    const user = userEvent.setup();
+    mocks.useSubject.mockReturnValue({ data: { subject_id: "subject-1", current_version: 2, current, identifiers: [{ masked_value: "****1234" }] }, isLoading: false, isError: false });
+    mocks.useSubjectHistory.mockReturnValue({ data: { versions: [current], events: [{ event_id: "event-1", kind: "proposal_created", case_id: "case-1", request_id: "request-1", created_at: current.created_at }] }, isLoading: false, isError: false });
+    renderPage();
+    expect(screen.getByRole("button", { name: "主体概览" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("****1234")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "登记来源" }));
+    expect(screen.getByRole("button", { name: "登记来源" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("****1234")).not.toBeVisible();
+    expect(screen.getAllByText("经办人录入").length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: "更正历史" }));
+    expect(screen.getByRole("link", { name: "查看有权访问的案件记录" })).toHaveAttribute("href", "/cases/case-1/subject-changes/request-1");
+    await user.click(screen.getByRole("button", { name: "关联案件" }));
+    expect(screen.getByRole("link", { name: "第一页案件" })).toBeVisible();
+  });
   it("resets visible case-link pagination when the actor changes", async () => {
     const user = userEvent.setup();
     const view = renderPage();
+    await user.click(screen.getByRole("button", { name: "关联案件" }));
     expect(screen.getByRole("link", { name: "第一页案件" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "下一页" }));
     expect(await screen.findByRole("link", { name: "第二页案件" })).toBeInTheDocument();

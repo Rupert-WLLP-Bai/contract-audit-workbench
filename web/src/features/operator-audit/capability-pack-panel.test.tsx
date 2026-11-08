@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -76,7 +76,7 @@ describe("capability pack panel", () => {
       await screen.findByText("当前范围没有已发布的能力包"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("空目录不代表审查通过，也不改变已有案件。"),
+      screen.getByText("当前目录为空。"),
     ).toBeInTheDocument();
   });
 

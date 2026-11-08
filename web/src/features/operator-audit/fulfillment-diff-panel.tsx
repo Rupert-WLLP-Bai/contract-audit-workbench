@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-10-29
-// Revision: r1
+// Updated: 2026-11-08
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -57,7 +57,7 @@ function relationNote(relation: Relation): string {
     case "not_applicable":
       return "不适用需要可验证的范围证据；缺失、超时或失败不会被当作不适用。";
     case "compatible":
-      return "配置记录与合同约定一致；仍不代表实际吞吐已经验收。";
+      return "配置记录与合同约定一致，实际验收另看履约记录。";
     default:
       return "关系未报告，不能作为结论。";
   }
@@ -287,13 +287,13 @@ export function FulfillmentDiffPanel({
         </div>
       </header>
       <p className="callout">
-        配置差异不等于实际吞吐违约。机器结果只说明合同约定与配置记录的关系，最终结论仍需人工复核。
+        这里比较的是合同约定与配置记录；是否构成吞吐违约，请结合现场与人工复核判断。
       </p>
       {items.length === 0 ? (
         <PageStatus
           kind="empty"
           title="当前评估没有可展示的检查结果"
-          detail="空结果不代表审查通过。"
+          detail="当前没有结果。"
         />
       ) : (
         <div className="evidence-stack">

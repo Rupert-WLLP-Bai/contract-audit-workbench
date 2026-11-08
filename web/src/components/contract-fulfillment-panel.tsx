@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-08
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -224,7 +224,7 @@ export function ContractFulfillmentPanel({ detail, actor, onRefresh }: {
   if (!active) return null;
   return <section className="contracts-page-section" aria-label="合同交付、验收与整改事实">
     <h3>交付、验收与整改事实</h3>
-    <Alert type="info" showIcon title="只记录当前冻结修订对应的实际事实。范围按同一冻结单位记账，逻辑区间不代表具体设备序列号；未分配数量仍为待验收。案件证据撤权后由服务端隐藏或拒绝。" />
+    <Alert type="info" showIcon title="按当前冻结修订记录履约事实。未分配数量仍为待验收。" />
     {loading ? <p role="status">正在读取履约事实…</p> : null}
     {error ? <Alert type="error" showIcon title={error} /> : null}
     {message ? <Alert type="success" showIcon title={message} /> : null}

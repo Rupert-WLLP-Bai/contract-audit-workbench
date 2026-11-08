@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-08
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -583,8 +583,13 @@ describe("response parsers", () => {
     expect(parseCaseSummary({ ...base, case_number: "案-1", customer: "客户", supplier: "供应商", owner_name: "张三" })).toMatchObject({
       id: "case-1", case_number: "案-1", customer: "客户", supplier: "供应商", owner_name: "张三",
     });
+    const detail = parseCaseDetail({
+      ...caseDefaults, id: "case-1", case_number: "案-1", customer: "客户", supplier: "供应商", owner_name: "张三",
+    });
+    expect(detail).toMatchObject({ case_number: "案-1", customer: "客户", supplier: "供应商", owner_name: "张三" });
     expect(() => parseCaseSummary({ ...base, case_number: 1 })).toThrow(/case_number/);
     expect(() => parseCaseSummary({ ...base, owner_name: null })).toThrow(/owner_name/);
+    expect(() => parseCaseDetail({ ...caseDefaults, id: "case-1", owner_name: null })).toThrow(/owner_name/);
   });
 
   it("parses case members and drops incomplete activity entries", () => {

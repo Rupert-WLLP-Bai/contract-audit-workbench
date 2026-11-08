@@ -1,10 +1,10 @@
 /* File metadata (manifest mirror): */
-/* Purpose: Defines visual tokens and component/page rules, including Hallmark · built: the project · redesign: restyle…, .review-entry-page .page-head, .review-entry-page .page-head h1, .review-entry-summary; the stylesheet is imported by the web shell and carries no application state. */
+/* Purpose: Styles the review entry header, summary, URL-backed collection controls, case table, and narrow-screen layout; carries no application state. */
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
-/* Updated: 2026-10-28 */
-/* Revision: r1 */
+/* Updated: 2026-11-08 */
+/* Revision: r2 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -23,6 +23,64 @@
   font-size: 24px;
   font-weight: 600;
   letter-spacing: -0.02em;
+}
+
+.review-entry-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.review-entry-primary-action {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.review-entry-primary-action > span {
+  max-width: 320px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.review-entry-collection {
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--surface-raised);
+}
+
+.review-entry-list-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.review-entry-list-toolbar .ant-tabs {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.review-entry-list-toolbar .ant-tabs-nav {
+  margin-bottom: 0;
+}
+
+.review-entry-list-toolbar > .ant-input-affix-wrapper {
+  width: min(320px, 36%);
+  margin-block: 12px;
+}
+
+.review-entry-scope {
+  margin: 0;
+  padding: 10px 16px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .review-entry-summary {
@@ -83,9 +141,8 @@
 }
 
 .review-entry-table {
-  overflow: hidden;
-  border: 1px solid var(--border-default);
-  border-radius: 6px;
+  overflow: visible;
+  border-top: 1px solid var(--border-default);
   background: var(--surface-raised);
 }
 
@@ -139,6 +196,14 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+.review-entry-todo {
+  display: grid;
+  gap: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .review-entry-status code {
@@ -195,6 +260,34 @@
 @media (max-width: 620px) {
   .review-entry-page {
     padding: 16px;
+  }
+
+  .review-entry-header {
+    display: grid;
+    gap: 12px;
+  }
+
+  .review-entry-primary-action {
+    justify-items: start;
+  }
+
+  .review-entry-primary-action > span {
+    text-align: left;
+  }
+
+  .review-entry-list-toolbar {
+    display: grid;
+    gap: 0;
+    padding-inline: 12px;
+  }
+
+  .review-entry-list-toolbar .ant-tabs-nav-wrap {
+    overflow-x: auto;
+  }
+
+  .review-entry-list-toolbar > .ant-input-affix-wrapper {
+    width: 100%;
+    margin: 0 0 12px;
   }
 
   .review-entry-summary {
