@@ -8128,7 +8128,7 @@
           "kind": "git-last-content-change",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "docs/operations/deployment.md",
-          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r4",
@@ -8464,7 +8464,7 @@
           "kind": "git-last-content-change",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "docs/operations/tenant-restore.md",
-          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r4",
@@ -31029,7 +31029,7 @@
           "kind": "git-last-content-change",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/business_reports.go",
-          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r4",
@@ -38073,7 +38073,7 @@
           "kind": "git-last-content-change",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/migrations.go",
-          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r5",
@@ -43681,7 +43681,7 @@
           "kind": "git-last-content-change",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/service_roles.go",
-          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r5",
@@ -44820,7 +44820,7 @@
           "kind": "git-last-content-change",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/table_catalog.json",
-          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r4",
@@ -45350,7 +45350,7 @@
           "kind": "git-last-content-change",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/tenant_identity_role_provision.go",
-          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r4",
@@ -46446,7 +46446,7 @@
           "kind": "git-last-content-change",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/write_idempotency.go",
-          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r4",
@@ -49793,7 +49793,7 @@
           "kind": "git-last-content-change",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "scripts/check_fast.py",
-          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r6",
@@ -50422,7 +50422,7 @@
           "kind": "git-last-content-change",
           "commit": "c7d6091f1ed0dfae938f03eb0cd1e4f82a058058",
           "path": "scripts/file_metadata/policy.json",
-          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r7",
@@ -51448,7 +51448,7 @@
           "kind": "git-last-content-change",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "scripts/test_check_fast.py",
-          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r6",
@@ -72437,7 +72437,7 @@
           "kind": "git-last-content-change",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/review_readmission_pg_test.go",
-          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r2",
@@ -75376,7 +75376,7 @@
           "kind": "git-first-introduction",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/httpapi/report_receipt_replay_test.go",
-          "reason": "First traceable Git introduction for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
@@ -75385,7 +75385,7 @@
           "kind": "git-last-content-change",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/httpapi/report_receipt_replay_test.go",
-          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -75424,7 +75424,7 @@
           "kind": "git-first-introduction",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/migrations/0044_report_receipt_session_recovery.sql",
-          "reason": "First traceable Git introduction for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
@@ -75433,7 +75433,7 @@
           "kind": "git-last-content-change",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/migrations/0044_report_receipt_session_recovery.sql",
-          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -75477,7 +75477,7 @@
           "kind": "git-first-introduction",
           "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/report_receipt_replay_pg_test.go",
-          "reason": "First traceable Git introduction for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
@@ -75486,7 +75486,7 @@
           "kind": "git-last-content-change",
           "commit": "c7d6091f1ed0dfae938f03eb0cd1e4f82a058058",
           "path": "internal/store/report_receipt_replay_pg_test.go",
-          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
