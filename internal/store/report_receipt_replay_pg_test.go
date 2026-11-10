@@ -15,6 +15,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,7 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/fault"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -166,22 +168,35 @@ func TestReportReceiptReplayAfterNewSessionPostgres(t *testing.T) {
 	if err != nil || !bytes.Equal(legacyTargetJSON, originalJSON) {
 		t.Fatalf("unreplayable legacy key changed or hid its original report: err=%v", err)
 	}
-	if _, err := fixture.core.Archive(actorB, fixture.caseID, original.ID, "冻结报告回执测试后归档"); err != nil {
-		t.Fatalf("archive report fixture: %v", err)
-	}
-	if _, err := fixture.core.CreateReportWithIdempotency(ctxB, actorB, fixture.caseID, fixture.runID, fixture.attemptID, key); !isConflictFault(err) {
-		t.Fatalf("archived case must reject report receipt replay: %v", err)
-	}
 	fixture.core.UseReadOnly(true)
-	if _, err := fixture.core.CreateReportWithIdempotency(ctxB, actorB, fixture.caseID, fixture.runID, fixture.attemptID, key); err == nil {
-		t.Fatal("read-only Core replay was accepted")
-	}
+	_, readOnlyErr := fixture.core.CreateReportWithIdempotency(ctxB, actorB, fixture.caseID, fixture.runID, fixture.attemptID, key)
 	fixture.core.UseReadOnly(false)
+	var readOnlyFault *fault.Error
+	if !errors.As(readOnlyErr, &readOnlyFault) || readOnlyFault.Status != 503 || readOnlyFault.Code != "read_only" {
+		t.Fatalf("read-only must reject otherwise replayable report with 503/read_only: err=%v", readOnlyErr)
+	}
 	if err := fixture.core.Logout(tokenB); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.core.CreateReportWithIdempotency(ctxB, actorB, fixture.caseID, fixture.runID, fixture.attemptID, key); err == nil {
-		t.Fatal("logged-out session replay was accepted")
+	_, loggedOutErr := fixture.core.CreateReportWithIdempotency(ctxB, actorB, fixture.caseID, fixture.runID, fixture.attemptID, key)
+	var loggedOutFault *fault.Error
+	if !errors.As(loggedOutErr, &loggedOutFault) || loggedOutFault.Status != 401 || loggedOutFault.Code != "session_invalid" {
+		t.Fatalf("logged-out session must be rejected as 401/session_invalid: err=%v", loggedOutErr)
+	}
+	tokenC, err := fixture.core.EstablishSession(fixture.admin, "client")
+	if err != nil {
+		t.Fatalf("session C login for independent archive check: %v", err)
+	}
+	actorC, audience, err := fixture.core.AuthenticateSession(context.Background(), tokenC)
+	if err != nil || audience != "client" || actorC.ID != actorA.ID {
+		t.Fatalf("session C identity: audience=%q actor=%+v err=%v", audience, actorC, err)
+	}
+	ctxC := WithAdmissionSessionToken(context.Background(), tokenC)
+	if _, err := fixture.core.Archive(actorC, fixture.caseID, original.ID, "冻结报告回执测试后归档"); err != nil {
+		t.Fatalf("archive report fixture: %v", err)
+	}
+	if _, err := fixture.core.CreateReportWithIdempotency(ctxC, actorC, fixture.caseID, fixture.runID, fixture.attemptID, key); !isConflictFault(err) {
+		t.Fatalf("archived case must reject report receipt replay: %v", err)
 	}
 }
 
