@@ -67,6 +67,22 @@ func restoreReviewReceiptVersionForTest(t *testing.T, ctx context.Context, pool 
 	if _, err := tx.Exec(ctx, `ALTER TABLE execution_write_receipts DROP COLUMN command_origin_org`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := tx.Exec(ctx, `ALTER POLICY command_receipt_context ON core_write_receipts
+		USING (NULLIF(current_setting('app.command_digest',true),'') IS NULL OR command_session=current_setting('app.command_digest',true) AND command_version=NULLIF(current_setting('app.command_version',true),'')::bigint)
+		WITH CHECK (NULLIF(current_setting('app.command_digest',true),'') IS NULL OR command_session=current_setting('app.command_digest',true) AND command_version=NULLIF(current_setting('app.command_version',true),'')::bigint);
+		DROP TRIGGER report_receipt_origin ON core_write_receipts;
+		DROP FUNCTION tenant_report_receipt_key_conflict(text,text,text,text,text,text);
+		DROP FUNCTION tenant_report_receipt_recovery_allowed(text,text,text,text,text,text,text);
+		DROP FUNCTION stamp_report_receipt_origin()`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `REVOKE SELECT (tenant_id,org_id,case_id,actor_id,route,idempotency_key,command_session,command_version,command_origin_org)
+		ON core_write_receipts FROM `+pgx.Identifier{tenantIdentityOwnerName(database, schema)}.Sanitize()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `ALTER TABLE core_write_receipts DROP COLUMN command_origin_org`); err != nil {
+		t.Fatal(err)
+	}
 	if version == 42 {
 		catalog, err := migrationCatalog()
 		if err != nil {

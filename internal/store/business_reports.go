@@ -80,7 +80,7 @@ func (s *Store) CreateReportWithIdempotency(ctx context.Context, user accounts.U
 			return ReportRecord{}, err
 		}
 	}
-	if receipt, found, err := s.readWriteReceipt(ctx, currentUser, coreWriteReceipts, route, key, digest, access.Export); err != nil {
+	if receipt, found, err := s.readWriteReceipt(ctx, currentUser, coreWriteReceipts, route, key, digest, access.Export, caseID); err != nil {
 		return ReportRecord{}, err
 	} else if found {
 		var record ReportRecord
@@ -268,6 +268,15 @@ func (s *Store) CreateReportWithIdempotency(ctx context.Context, user accounts.U
 				return errors.New("invalid report idempotency receipt")
 			}
 			return nil
+		}
+		if key != "" {
+			unavailable, err := reportReceiptReplayUnavailable(ctx, receiptTx, currentUser, currentCase, route, key)
+			if err != nil {
+				return err
+			}
+			if unavailable {
+				return fault.Conflict("历史报告请求键缺少可信来源，不能重放；请通过受控查看路径读取既有报告")
+			}
 		}
 		currentAttempt, ok := next.attemptByID(attemptID)
 		if !ok || currentAttempt.RunID != runID || currentAttempt.InputHash == nil || currentAttempt.OutputHash == nil ||

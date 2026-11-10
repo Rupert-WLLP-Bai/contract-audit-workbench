@@ -569,6 +569,17 @@ func MigrateServiceRoles(ctx context.Context) error {
 	if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_review_receipt_key_conflict(text,text,text,text,text,text) TO `+pgx.Identifier{executionRoleName}.Sanitize()); err != nil {
 		return fmt.Errorf("cannot grant Execution receipt conflict check: %w", err)
 	}
+	// PostgreSQL validates RLS policy function privileges for every role that
+	// plans a projection, even when the report-recovery branch is false. The
+	// SECURITY DEFINER function admits only an authenticated Core caller.
+	for _, role := range configuredRoles {
+		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_report_receipt_recovery_allowed(text,text,text,text,text,text,text) TO `+pgx.Identifier{role}.Sanitize()); err != nil {
+			return fmt.Errorf("cannot grant report receipt recovery fence: %w", err)
+		}
+	}
+	if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_report_receipt_key_conflict(text,text,text,text,text,text) TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
+		return fmt.Errorf("cannot grant Core report receipt conflict check: %w", err)
+	}
 	for _, fn := range []string{"tenant_config_control(text)", "tenant_config_adopt(text,bigint,text,text,text)", "tenant_model_send_set(text,bigint,boolean,text)"} {
 		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.`+fn+` TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
 			return fmt.Errorf("cannot grant Core tenant config function %s: %w", fn, err)
@@ -646,6 +657,45 @@ func MigrateServiceRoles(ctx context.Context) error {
 	}
 	if reviewReceiptACLUnsafe {
 		return errors.New("review receipt recovery function has missing or unexpected execution grants")
+	}
+	var reportReceiptACLUnsafe bool
+	if err := tx.QueryRow(ctx, `WITH relation_owner AS (
+		SELECT relowner FROM pg_class WHERE oid=to_regclass(format('%I.core_write_receipts',$1::text))
+	), recovery AS (
+		SELECT to_regprocedure(format('%I.tenant_report_receipt_recovery_allowed(text,text,text,text,text,text,text)',$1::text))::oid AS oid
+	), conflict AS (
+		SELECT to_regprocedure(format('%I.tenant_report_receipt_key_conflict(text,text,text,text,text,text)',$1::text))::oid AS oid
+	), stamp AS (
+		SELECT to_regprocedure(format('%I.stamp_report_receipt_origin()',$1::text))::oid AS oid
+	), recovery_acl AS (
+		SELECT a.* FROM recovery f JOIN pg_proc p ON p.oid=f.oid
+		CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a
+	), conflict_acl AS (
+		SELECT a.* FROM conflict f JOIN pg_proc p ON p.oid=f.oid
+		CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a
+	), stamp_acl AS (
+		SELECT a.* FROM stamp f JOIN pg_proc p ON p.oid=f.oid
+		CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a
+	)
+	SELECT NOT EXISTS (SELECT 1 FROM recovery f JOIN pg_proc p ON p.oid=f.oid WHERE p.proowner=$2::regrole AND p.prosecdef)
+	 OR NOT EXISTS (SELECT 1 FROM conflict f JOIN pg_proc p ON p.oid=f.oid WHERE p.proowner=$2::regrole AND p.prosecdef)
+	 OR NOT EXISTS (SELECT 1 FROM stamp f JOIN pg_proc p ON p.oid=f.oid WHERE p.proowner=$2::regrole AND p.prosecdef AND p.prorettype='trigger'::regtype)
+	 OR EXISTS (SELECT 1 FROM recovery_acl WHERE grantee=0 OR is_grantable OR privilege_type<>'EXECUTE'
+		OR (grantee<>$2::regrole AND grantee<>(SELECT relowner FROM relation_owner)
+		AND grantee<>ALL(ARRAY(SELECT oid FROM pg_roles WHERE rolname=ANY($3::text[])))))
+	 OR EXISTS (SELECT 1 FROM conflict_acl WHERE grantee=0 OR is_grantable OR privilege_type<>'EXECUTE'
+		OR (grantee<>$2::regrole AND grantee<>(SELECT relowner FROM relation_owner) AND grantee<>$4::regrole))
+	 OR EXISTS (SELECT 1 FROM stamp_acl WHERE grantee<>$2::regrole OR is_grantable OR privilege_type<>'EXECUTE')
+	 OR NOT has_function_privilege((SELECT relowner FROM relation_owner),(SELECT oid FROM recovery),'EXECUTE')
+	 OR NOT has_function_privilege((SELECT relowner FROM relation_owner),(SELECT oid FROM conflict),'EXECUTE')
+	 OR NOT has_function_privilege($4::text,(SELECT oid FROM recovery),'EXECUTE')
+	 OR NOT has_function_privilege($4::text,(SELECT oid FROM conflict),'EXECUTE')
+	 OR EXISTS (SELECT 1 FROM unnest($3::text[]) r(role) WHERE NOT has_function_privilege(r.role,(SELECT oid FROM recovery),'EXECUTE'))
+	 OR EXISTS (SELECT 1 FROM unnest($3::text[]) r(role) WHERE r.role<>$4::text AND has_function_privilege(r.role,(SELECT oid FROM conflict),'EXECUTE'))`, schema, identityOwner, configuredRoles, coreRoleName).Scan(&reportReceiptACLUnsafe); err != nil {
+		return fmt.Errorf("cannot verify report receipt recovery grants: %w", err)
+	}
+	if reportReceiptACLUnsafe {
+		return errors.New("report receipt recovery functions have missing or unexpected execution grants")
 	}
 	var clmFunctionGrantUnsafe bool
 	if err := tx.QueryRow(ctx, `WITH expected AS (

@@ -395,6 +395,14 @@
       "reason": "Versioned SQL migration bytes are integrity-checked after application and must not be changed by metadata headers."
     },
     {
+      "id": "report-receipt-session-recovery-migration",
+      "paths": [
+        "internal/store/migrations/0044_report_receipt_session_recovery.sql"
+      ],
+      "handling": "manifest-only",
+      "reason": "Versioned SQL migration bytes are integrity-checked after application and must not be changed by metadata headers."
+    },
+    {
       "id": "docs-site-landing-page-js",
       "paths": [
         "docs-site/src/pages/index.js"

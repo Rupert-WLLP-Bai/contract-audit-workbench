@@ -59,6 +59,11 @@ func lockWriteReceipt(ctx context.Context, tx pgx.Tx, user accounts.User, route,
 
 func loadWriteReceipt(ctx context.Context, tx pgx.Tx, table string, user accounts.User, route, key string) (writeReceipt, bool, error) {
 	var receipt writeReceipt
+	if table == coreWriteReceipts && reportReceiptRoute(route) {
+		if _, err := tx.Exec(ctx, `SELECT set_config('app.report_receipt_route',$1,true), set_config('app.report_receipt_key',$2,true)`, route, key); err != nil {
+			return receipt, false, err
+		}
+	}
 	if table == executionWriteReceipts {
 		// Only an exact review admission is selectable across sessions. The RLS
 		// function independently verifies the current session and case grant.
@@ -73,6 +78,20 @@ func loadWriteReceipt(ctx context.Context, tx pgx.Tx, table string, user account
 		return writeReceipt{}, false, nil
 	}
 	return receipt, err == nil, err
+}
+
+func reportReceiptRoute(route string) bool {
+	return strings.HasPrefix(route, "POST /api/cases/") && strings.HasSuffix(route, "/reports")
+}
+
+// reportReceiptReplayUnavailable checks only whether this exact report key is
+// occupied by an untrusted-origin receipt. The SQL function repeats current
+// session, tenant, case, and Export checks and reveals no receipt body.
+func reportReceiptReplayUnavailable(ctx context.Context, tx pgx.Tx, user accounts.User, item Case, route, key string) (bool, error) {
+	var unavailable bool
+	err := tx.QueryRow(ctx, `SELECT tenant_report_receipt_key_conflict($1,$2,$3,$4,$5,$6)`,
+		item.TenantID, item.OwnerOrgID, item.ID, user.ID, route, key).Scan(&unavailable)
+	return unavailable, err
 }
 
 func insertWriteReceipt(ctx context.Context, tx pgx.Tx, table string, user accounts.User, item Case, route, key, digest string, response any) error {
@@ -169,6 +188,9 @@ func (s *Store) readWriteReceipt(ctx context.Context, user accounts.User, table,
 	if table == executionWriteReceipts && (len(requestedCase) != 1 || requestedCase[0] == "") {
 		return writeReceipt{}, false, errors.New("review receipt requires the requested case")
 	}
+	if table == coreWriteReceipts && reportReceiptRoute(route) && (len(requestedCase) != 1 || requestedCase[0] == "" || route != "POST /api/cases/"+requestedCase[0]+"/reports") {
+		return writeReceipt{}, false, errors.New("report receipt requires its exact requested case")
+	}
 	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return writeReceipt{}, false, err
@@ -182,6 +204,36 @@ func (s *Store) readWriteReceipt(ctx context.Context, user accounts.User, table,
 		return writeReceipt{}, found, err
 	}
 	if !found {
+		if table == coreWriteReceipts && reportReceiptRoute(route) {
+			if err := scopedCaseLock(ctx, tx, requestedCase[0]); err != nil {
+				return writeReceipt{}, false, err
+			}
+			current, err := trustedUser(user)
+			if err != nil {
+				return writeReceipt{}, false, err
+			}
+			item, err := loadKnowledgeCase(ctx, tx, current, requestedCase[0])
+			if err != nil {
+				return writeReceipt{}, false, err
+			}
+			if err := requireCaseAction(item, current, action); err != nil {
+				return writeReceipt{}, false, err
+			}
+			if err := businessWritable(item); err != nil {
+				return writeReceipt{}, false, err
+			}
+			unavailable, err := reportReceiptReplayUnavailable(ctx, tx, current, item, route, key)
+			if err != nil {
+				return writeReceipt{}, false, err
+			}
+			if unavailable {
+				return writeReceipt{}, false, fault.Conflict("历史报告请求键缺少可信来源，不能重放；请通过受控查看路径读取既有报告")
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return writeReceipt{}, false, err
+			}
+			return writeReceipt{}, false, nil
+		}
 		if table != executionWriteReceipts {
 			return writeReceipt{}, false, nil
 		}
