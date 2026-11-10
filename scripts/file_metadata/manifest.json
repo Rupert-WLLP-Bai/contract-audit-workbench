@@ -50420,7 +50420,7 @@
         "value": "2026-11-10",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
+          "commit": "c7d6091f1ed0dfae938f03eb0cd1e4f82a058058",
           "path": "scripts/file_metadata/policy.json",
           "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
         }
@@ -75484,7 +75484,7 @@
         "value": "2026-11-10",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
+          "commit": "c7d6091f1ed0dfae938f03eb0cd1e4f82a058058",
           "path": "internal/store/report_receipt_replay_pg_test.go",
           "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
         }
