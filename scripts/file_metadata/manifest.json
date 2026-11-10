@@ -108,6 +108,7 @@
       "internal/httpapi/jurisdiction_operations.go",
       "internal/httpapi/operation_authority.go",
       "internal/httpapi/operation_authority_unavailable_test.go",
+      "internal/httpapi/report_receipt_replay_test.go",
       "internal/httpapi/session_authority.go",
       "internal/httpapi/session_authority_test.go",
       "internal/httpapi/tenant_config.go",
@@ -189,11 +190,13 @@
       "internal/store/migrations/0041_intake_session_recovery.sql",
       "internal/store/migrations/0042_review_receipt_session_recovery.sql",
       "internal/store/migrations/0043_review_receipt_origin_org.sql",
+      "internal/store/migrations/0044_report_receipt_session_recovery.sql",
       "internal/store/offline_migrator_provision.go",
       "internal/store/offline_migrator_provision_pg_test.go",
       "internal/store/operation_authority.go",
       "internal/store/operation_authority_pg_test.go",
       "internal/store/operations_scope_recovery_pg_test.go",
+      "internal/store/report_receipt_replay_pg_test.go",
       "internal/store/review_readmission_pg_test.go",
       "internal/store/revoked_finalize_http_external_test.go",
       "internal/store/revoked_finalize_test.go",
@@ -8120,15 +8123,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-10",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4b8210cee4311fed1db706a0fedeb2151690172d",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "docs/operations/deployment.md",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -8456,15 +8459,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-10",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4b8210cee4311fed1db706a0fedeb2151690172d",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "docs/operations/tenant-restore.md",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -31021,15 +31024,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-10",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "248cdfa9600e9f8076df3f21e60dbec7a8a3ee18",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/business_reports.go",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -38065,15 +38068,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-10",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4b8210cee4311fed1db706a0fedeb2151690172d",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/migrations.go",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -43673,15 +43676,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-10",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4b8210cee4311fed1db706a0fedeb2151690172d",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/service_roles.go",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -44812,15 +44815,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-10",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4b8210cee4311fed1db706a0fedeb2151690172d",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/table_catalog.json",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -45342,15 +45345,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-10",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4b8210cee4311fed1db706a0fedeb2151690172d",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/tenant_identity_role_provision.go",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -46438,15 +46441,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-10",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4b8210cee4311fed1db706a0fedeb2151690172d",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/write_idempotency.go",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -49785,15 +49788,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-10",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4b8210cee4311fed1db706a0fedeb2151690172d",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "scripts/check_fast.py",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -50268,7 +50271,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r58",
+      "revision": "r59",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -50414,15 +50417,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-07",
+        "value": "2026-11-10",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4b4d145337ae7774f385604207111f00c499ada8",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "scripts/file_metadata/policy.json",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -51440,15 +51443,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-10",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4b8210cee4311fed1db706a0fedeb2151690172d",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "scripts/test_check_fast.py",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -72429,15 +72432,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-10",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4b8210cee4311fed1db706a0fedeb2151690172d",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
           "path": "internal/store/review_readmission_pg_test.go",
-          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -75348,6 +75351,155 @@
           "contact": "+86 13617696321"
         }
       ]
+    },
+    "internal/httpapi/report_receipt_replay_test.go": {
+      "purpose": "Verifies report creation idempotency through the authenticated HTTP route across logout and login.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-10",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
+          "path": "internal/httpapi/report_receipt_replay_test.go",
+          "reason": "First traceable Git introduction for issue #238; UTC committer date, not an assertion of authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-10",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
+          "path": "internal/httpapi/report_receipt_replay_test.go",
+          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/store/migrations/0044_report_receipt_session_recovery.sql": {
+      "purpose": "Freezes verified report command origin organizations and permits exact-key cross-session replay under current Export authorization without rewriting legacy receipts.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-10",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
+          "path": "internal/store/migrations/0044_report_receipt_session_recovery.sql",
+          "reason": "First traceable Git introduction for issue #238; UTC committer date, not an assertion of authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-10",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
+          "path": "internal/store/migrations/0044_report_receipt_session_recovery.sql",
+          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "manifest-only",
+      "header_state": "manifest-only",
+      "exception": {
+        "rule_id": "report-receipt-session-recovery-migration",
+        "source": "internal/store/migrations/0044_report_receipt_session_recovery.sql",
+        "reason": "internal/store/migrations/0044_report_receipt_session_recovery.sql: Versioned migration bytes are checksum-protected; metadata must not alter the migration payload."
+      }
+    },
+    "internal/store/report_receipt_replay_pg_test.go": {
+      "purpose": "Verifies immutable report receipt replay across client sessions with a restricted Core PostgreSQL role.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-10",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
+          "path": "internal/store/report_receipt_replay_pg_test.go",
+          "reason": "First traceable Git introduction for issue #238; UTC committer date, not an assertion of authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-10",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
+          "path": "internal/store/report_receipt_replay_pg_test.go",
+          "reason": "Latest traceable body-changing commit for issue #238; UTC committer date, not an assertion of authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
     }
   }
 }
