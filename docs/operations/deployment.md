@@ -114,6 +114,8 @@ Compose 只向 Core API 传递 `CLM_ENVELOPE_KEYS` 和 `CLM_LEGACY_DATA_KEY_REF`
 
 ## 本地 Compose
 
+应用通过官方 OpenTelemetry SDK 发送 OTLP/HTTP protobuf 到 Collector 的 /v1/traces 与 /v1/metrics；Collector 应返回 HTTP 200 和 protobuf acknowledgement。Exporter 不自动重试，也不使用环境代理。
+
 `make apps-up` 通过 `deployments/local.py` 和 `compose.app.yaml` 迁移数据库并启动 Gateway、Core、Document、Execution、Worker、Model/Tool Gateway 以及三个前端站点。先完成[本地开发](../engineering/local-development.md)中的基础设施和私有配置步骤，并确认容器能够访问模型端点。容器内 `127.0.0.1` 指向容器自身；模型服务若在宿主机运行，应配置容器可达地址。
 
 - `make apps-up` 使用已配置的 Model Gateway。
