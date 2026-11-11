@@ -62,7 +62,7 @@ func newOIDCTokenFixture(t *testing.T) *oidcTokenFixture {
 				TokenEndpoint: fixture.server.URL + "/token", JWKSURI: fixture.server.URL + "/jwks",
 			})
 		case "/token":
-			writeIdentityJSON(t, w, map[string]string{"id_token": fixture.token})
+			writeIdentityJSON(t, w, map[string]string{"access_token": "fixture-access-token", "id_token": fixture.token})
 		case "/jwks":
 			if responder, ok := fixture.jwks.(func(http.ResponseWriter)); ok {
 				responder(w)

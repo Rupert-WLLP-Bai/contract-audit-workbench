@@ -10,6 +10,12 @@
 
 # 部署模式
 
+## OIDC 身份提供方兼容要求
+
+Core 使用授权码流程和 S256 PKCE。提供方的 token endpoint 必须接受表单中的 `client_id`、`client_secret` 和 `code_verifier`，并一次性完成 code exchange；系统固定使用 `client_secret_post`，不会探测后重试。成功响应须是包含非空 `access_token` 和 `id_token` 的标准 JSON token response。只返回 `id_token` 的非标准响应会被拒绝。
+
+Discovery、token 和 JWKS 响应体各限制为 1 MiB，provider endpoint 不跟随重定向。生产 issuer 与其授权、token、JWKS endpoint 必须使用 HTTPS；仅 loopback 开发端点允许 HTTP。Core 启动时不会访问 issuer，发现请求在登录开始时进行。
+
 ## 主线版本与升级
 
 历史固定基线 `0421831c5ca86fdf56ea6d32939da4f825f08c3d` 的应用兼容 schema 为 `[26,26]`；PR [#140](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/140) 合入后的固定源码 `595fe2f` 接受 `[28,28]`。PR [#144](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/144) 合入 main `1a9eae0` 时，固定源码接受 schema `[30,30]`：0029 增加本地付款资格核验和可信付款/冲正事实，0030 增加冻结资产计划、人工移交及可信 ERP 入账/冲正事实。当前源码的兼容范围为 `[44,44]`，对应迁移 [0044](../../internal/store/migrations/0044_report_receipt_session_recovery.sql)。0043 为审查受理回执分别记录发起会话组织与案件所属组织；0044 对报告生成回执采用同样的来源区分，并重新检查当前 Export 权限、会话、租户和案件状态。升级后需重新配置服务角色函数权限。

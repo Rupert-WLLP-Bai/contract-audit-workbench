@@ -211,7 +211,7 @@ func newOIDCTestManager(t *testing.T, signingKey *rsa.PrivateKey, testCase testM
 				idToken = corruptTokenSignature(idToken)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]string{"id_token": idToken})
+			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "fixture-access-token", "id_token": idToken})
 		case "/jwks":
 			exponent := bigEndian(signingKey.E)
 			w.Header().Set("Content-Type", "application/json")
