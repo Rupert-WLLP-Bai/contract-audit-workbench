@@ -33,38 +33,117 @@ ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "internal/apidocs/openapi.json"
 OUTPUT = ROOT / "web/src/api/wire.generated.ts"
 ROOTS = (
-    "SupportGrant", "SupportGrantList", "SupportGrantRequest", "SupportGrantCommand", "SupportCaseView",
-    "Session", "ActiveContext", "ContextList", "ContextSwitchRequest",
-	"MembershipChoice", "PendingMembershipList", "PendingMembershipSelectionRequest",
-	"Activity", "ArchiveRequest", "CaseProfile", "CaseProfileInput", "CaseRelationInput",
-	"ContractAcceptance", "ContractAcceptanceDefect", "ContractAcceptanceDefectInput", "ContractAcceptanceList", "ContractAcceptanceRequest",
-	"ContractSourceCapability", "ContractLifecycleOverview",
-	"ContractDelivery", "ContractDeliveryList", "ContractDeliveryRequest", "ContractFulfillmentItemSummary", "ContractRectification", "ContractRectificationRequest",
-    "ContractPaymentEligibilityRequest", "ContractPaymentEligibility", "ContractPaymentReceiptRequest", "ContractPaymentReceipt", "ContractPaymentSummary",
-    "ContractAssetList", "ContractAssetPlanSummary", "ContractAssetHandover", "ContractAssetReceipt",
-    "ContractAssetHandoverRequest", "ContractAssetReceiptRequest",
-    "ContractSigningCheckRequest", "ContractSigningCheckResult", "ManualSigningComparison", "ContractSigningRegistration",
-    "ContractSigningRegistrationList", "ContractSigningRegistrationRequest", "ContractSupplement",
-    "ContractSupplementList", "ContractSupplementRequest", "ContractSupplementResult",
-    "CreateGenerationRequest", "CreateReportRequest", "Decision", "DecisionRequest",
-    "EvidenceReceiptCreate", "EvidenceRequestCreate", "EvidenceRequestVerify",
-    "ExperienceEvidenceRef", "ExperienceEvidenceView", "ExperienceFeedbackRequest",
-    "FindingCounts", "KnowledgeInput", "LLMModelSelectionInput", "MaterialProjection",
-    "MaterialSelectionProjection", "MaterialVersionProjection", "RemediationInput",
-    "RemediationSubmitInput", "RemediationVerifyInput", "TextOffset", "WorkbenchTask",
-    "WorkbenchTaskInput", "WorkbenchTaskUpdateInput", "WorkbenchSnapshotTask", "WorkbenchCase",
-    "TenantRuntimeControl", "TenantExecutionQueue", "TenantCostWindow", "TenantCost",
-    "TenantConfigRef", "TenantConfigCatalogEntry", "TenantModelCatalogEntry", "TenantCredentialRef",
-    "TenantConfigSelection", "AdoptedTenantConfig", "TenantConfigView", "TenantConfigPreviewRequest",
-    "TenantConfigDiff", "TenantConfigValidationError", "TenantConfigPreview", "TenantConfigAdoptionRequest",
-    "TenantConfigAdoptionResult", "TenantLiveControlRequest", "TenantLiveControlResult", "TenantOperations",
-    "AdoptedTenantConfigIdentity", "BusinessSnapshot",
-    "TenantMoneyWindow", "TenantMoneyPolicy", "TenantMoneyPolicyInput",
-    "PlatformModelPriceInput", "PlatformModelMoneyPolicyInput",
-    "PlatformModelMoneyPolicyResult", "PlatformModelMoneyPolicyView",
-    "TenantMoneyAdjustmentInput", "TenantMoneyAdjustmentResult",
-    "TenantProvisionOperationsView", "TenantProvisionOperationResult",
-    "TenantProvisionInput", "TenantProvisionStepInput",
+    "SupportGrant",
+    "SupportGrantList",
+    "SupportGrantRequest",
+    "SupportGrantCommand",
+    "SupportCaseView",
+    "Session",
+    "ActiveContext",
+    "ContextList",
+    "ContextSwitchRequest",
+    "MembershipChoice",
+    "PendingMembershipList",
+    "PendingMembershipSelectionRequest",
+    "Activity",
+    "ArchiveRequest",
+    "CaseProfile",
+    "CaseProfileInput",
+    "CaseRelationInput",
+    "ContractAcceptance",
+    "ContractAcceptanceDefect",
+    "ContractAcceptanceDefectInput",
+    "ContractAcceptanceList",
+    "ContractAcceptanceRequest",
+    "ContractSourceCapability",
+    "ContractLifecycleOverview",
+    "ContractDelivery",
+    "ContractDeliveryList",
+    "ContractDeliveryRequest",
+    "ContractFulfillmentItemSummary",
+    "ContractRectification",
+    "ContractRectificationRequest",
+    "ContractPaymentEligibilityRequest",
+    "ContractPaymentEligibility",
+    "ContractPaymentReceiptRequest",
+    "ContractPaymentReceipt",
+    "ContractPaymentSummary",
+    "ContractAssetList",
+    "ContractAssetPlanSummary",
+    "ContractAssetHandover",
+    "ContractAssetReceipt",
+    "ContractAssetHandoverRequest",
+    "ContractAssetReceiptRequest",
+    "ContractSigningCheckRequest",
+    "ContractSigningCheckResult",
+    "ManualSigningComparison",
+    "ContractSigningRegistration",
+    "ContractSigningRegistrationList",
+    "ContractSigningRegistrationRequest",
+    "ContractSupplement",
+    "ContractSupplementList",
+    "ContractSupplementRequest",
+    "ContractSupplementResult",
+    "CreateGenerationRequest",
+    "CreateReportRequest",
+    "Decision",
+    "DecisionRequest",
+    "EvidenceReceiptCreate",
+    "EvidenceRequestCreate",
+    "EvidenceRequestVerify",
+    "ExperienceEvidenceRef",
+    "ExperienceEvidenceView",
+    "ExperienceFeedbackRequest",
+    "FindingCounts",
+    "KnowledgeInput",
+    "LLMModelSelectionInput",
+    "MaterialProjection",
+    "MaterialSelectionProjection",
+    "MaterialVersionProjection",
+    "RemediationInput",
+    "RemediationSubmitInput",
+    "RemediationVerifyInput",
+    "TextOffset",
+    "WorkbenchTask",
+    "WorkbenchTaskInput",
+    "WorkbenchTaskUpdateInput",
+    "WorkbenchSnapshotTask",
+    "WorkbenchCase",
+    "TenantRuntimeControl",
+    "TenantExecutionQueue",
+    "TenantCostWindow",
+    "TenantCost",
+    "TenantConfigRef",
+    "TenantConfigCatalogEntry",
+    "TenantModelCatalogEntry",
+    "TenantCredentialRef",
+    "TenantConfigSelection",
+    "AdoptedTenantConfig",
+    "TenantConfigView",
+    "TenantConfigPreviewRequest",
+    "TenantConfigDiff",
+    "TenantConfigValidationError",
+    "TenantConfigPreview",
+    "TenantConfigAdoptionRequest",
+    "TenantConfigAdoptionResult",
+    "TenantLiveControlRequest",
+    "TenantLiveControlResult",
+    "TenantOperations",
+    "AdoptedTenantConfigIdentity",
+    "BusinessSnapshot",
+    "TenantMoneyWindow",
+    "TenantMoneyPolicy",
+    "TenantMoneyPolicyInput",
+    "PlatformModelPriceInput",
+    "PlatformModelMoneyPolicyInput",
+    "PlatformModelMoneyPolicyResult",
+    "PlatformModelMoneyPolicyView",
+    "TenantMoneyAdjustmentInput",
+    "TenantMoneyAdjustmentResult",
+    "TenantProvisionOperationsView",
+    "TenantProvisionOperationResult",
+    "TenantProvisionInput",
+    "TenantProvisionStepInput",
     "JurisdictionOperationsView",
 )
 # Runtime parsers consume these exact enum values, rather than maintaining a
@@ -80,15 +159,44 @@ ENUM_PATHS = (
 )
 
 ANNOTATIONS = {
-    "title", "description", "default", "example", "examples", "deprecated",
-    "readOnly", "writeOnly", "format", "contentEncoding", "contentMediaType",
-    "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
-    "minLength", "maxLength", "pattern", "minItems", "maxItems", "uniqueItems",
-    "minProperties", "maxProperties",
+    "title",
+    "description",
+    "default",
+    "example",
+    "examples",
+    "deprecated",
+    "readOnly",
+    "writeOnly",
+    "format",
+    "contentEncoding",
+    "contentMediaType",
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "multipleOf",
+    "minLength",
+    "maxLength",
+    "pattern",
+    "minItems",
+    "maxItems",
+    "uniqueItems",
+    "minProperties",
+    "maxProperties",
 }
 KEYWORDS = ANNOTATIONS | {
-    "$ref", "type", "nullable", "const", "enum", "properties", "required",
-    "additionalProperties", "items", "allOf", "anyOf", "oneOf",
+    "$ref",
+    "type",
+    "nullable",
+    "const",
+    "enum",
+    "properties",
+    "required",
+    "additionalProperties",
+    "items",
+    "allOf",
+    "anyOf",
+    "oneOf",
 }
 TYPE_NAMES = {"string", "number", "integer", "boolean", "null", "object", "array"}
 
@@ -146,7 +254,7 @@ class Generator:
         prefix = "#/components/schemas/"
         if not isinstance(ref, str) or not ref.startswith(prefix):
             raise SchemaError(f"{path}: only local component schema references are supported")
-        token = ref[len(prefix):]
+        token = ref[len(prefix) :]
         if not token or "/" in token or "~" in token.replace("~0", "").replace("~1", ""):
             raise SchemaError(f"{path}: invalid component reference {ref!r}")
         name = token.replace("~1", "/").replace("~0", "~")
@@ -196,7 +304,11 @@ class Generator:
         if not isinstance(schema, dict):
             return None
         values = [schema["const"]] if "const" in schema else schema.get("enum")
-        if not isinstance(values, list) or not values or not all(value_kind(value) is not None for value in values):
+        if (
+            not isinstance(values, list)
+            or not values
+            or not all(value_kind(value) is not None for value in values)
+        ):
             return None
         result = {literal(value, path) for value in values}
         if schema.get("nullable") is True:
@@ -219,8 +331,15 @@ class Generator:
         return result
 
     def exclusive(self, left, right, path):
-        left_values, right_values = self.literal_domain(left, path), self.literal_domain(right, path)
-        if left_values is not None and right_values is not None and left_values.isdisjoint(right_values):
+        left_values, right_values = (
+            self.literal_domain(left, path),
+            self.literal_domain(right, path),
+        )
+        if (
+            left_values is not None
+            and right_values is not None
+            and left_values.isdisjoint(right_values)
+        ):
             return True
         left_kinds, right_kinds = self.kinds(left, path), self.kinds(right, path)
         if left_kinds is None or right_kinds is None:
@@ -234,8 +353,10 @@ class Generator:
             return False
         left_discriminants = self.discriminants(left, path)
         right_discriminants = self.discriminants(right, path)
-        return any(left_discriminants[key].isdisjoint(right_discriminants[key])
-                   for key in left_discriminants.keys() & right_discriminants.keys())
+        return any(
+            left_discriminants[key].isdisjoint(right_discriminants[key])
+            for key in left_discriminants.keys() & right_discriminants.keys()
+        )
 
     def object_type(self, schema, path):
         properties = schema.get("properties", {})
@@ -250,10 +371,14 @@ class Generator:
         members = []
         for name in sorted(properties):
             optional = "" if name in required else "?"
-            members.append(f"{quoted(name)}{optional}: {self.render(properties[name], path + '.' + name)};")
+            members.append(
+                f"{quoted(name)}{optional}: {self.render(properties[name], path + '.' + name)};"
+            )
         if isinstance(additional, dict):
             if members:
-                raise SchemaError(f"{path}: typed additionalProperties with declared properties cannot be represented exactly")
+                raise SchemaError(
+                    f"{path}: typed additionalProperties with declared properties cannot be represented exactly"
+                )
             # An inline index signature supports recursive aliases, whereas
             # the mapped-type alias Record<string, RecursiveValue> does not.
             return f"{{ [key: string]: {self.render(additional, path + '.*')}; }}"
@@ -272,15 +397,22 @@ class Generator:
             if "items" not in schema:
                 raise SchemaError(f"{path}: array items are required")
             return f"Array<{self.render(schema['items'], path + '[]')}>"
-        return {"integer": "number", "number": "number", "string": "string",
-                "boolean": "boolean", "null": "null"}[kind]
+        return {
+            "integer": "number",
+            "number": "number",
+            "string": "string",
+            "boolean": "boolean",
+            "null": "null",
+        }[kind]
 
     def render(self, schema, path):
         if not isinstance(schema, dict) or not schema:
             raise SchemaError(f"{path}: unsupported or unconstrained schema")
         unknown = set(schema) - KEYWORDS
         if unknown:
-            raise SchemaError(f"{path}: unsupported schema keyword(s): {', '.join(sorted(unknown))}")
+            raise SchemaError(
+                f"{path}: unsupported schema keyword(s): {', '.join(sorted(unknown))}"
+            )
         if "nullable" in schema and not isinstance(schema["nullable"], bool):
             raise SchemaError(f"{path}: nullable must be boolean")
         parts = []
@@ -294,16 +426,25 @@ class Generator:
         kind = schema.get("type")
         if kind is not None:
             kinds = [kind] if isinstance(kind, str) else kind
-            if not isinstance(kinds, list) or not kinds or not all(isinstance(item, str) and item in TYPE_NAMES for item in kinds):
+            if (
+                not isinstance(kinds, list)
+                or not kinds
+                or not all(isinstance(item, str) and item in TYPE_NAMES for item in kinds)
+            ):
                 raise SchemaError(f"{path}: unsupported type {kind!r}")
             if len(kinds) != len(set(kinds)):
                 raise SchemaError(f"{path}: duplicate types")
-            if any(key in schema for key in ("properties", "required", "additionalProperties")) and "object" not in kinds:
+            if (
+                any(key in schema for key in ("properties", "required", "additionalProperties"))
+                and "object" not in kinds
+            ):
                 raise SchemaError(f"{path}: object keywords require object type")
             if "items" in schema and "array" not in kinds:
                 raise SchemaError(f"{path}: items requires array type")
             parts.append(" | ".join(self.primitive(item, schema, path) for item in kinds))
-        elif any(key in schema for key in ("properties", "required", "additionalProperties", "items")):
+        elif any(
+            key in schema for key in ("properties", "required", "additionalProperties", "items")
+        ):
             raise SchemaError(f"{path}: structural keywords require an explicit type")
         if "enum" in schema:
             values = schema["enum"]
@@ -313,7 +454,10 @@ class Generator:
             if len(literals) != len(set(literals)):
                 raise SchemaError(f"{path}: duplicate enum values")
             if kind is not None:
-                if not all(matches_type(value, kinds) or (value is None and schema.get("nullable") is True) for value in values):
+                if not all(
+                    matches_type(value, kinds) or (value is None and schema.get("nullable") is True)
+                    for value in values
+                ):
                     raise SchemaError(f"{path}: enum value conflicts with type")
                 parts[base_index] = " | ".join(literals)
             else:
@@ -321,7 +465,11 @@ class Generator:
         if "const" in schema:
             value = schema["const"]
             text = literal(value, path)
-            if kind is not None and not matches_type(value, kinds) and not (value is None and schema.get("nullable") is True):
+            if (
+                kind is not None
+                and not matches_type(value, kinds)
+                and not (value is None and schema.get("nullable") is True)
+            ):
                 raise SchemaError(f"{path}: const value conflicts with type")
             if "enum" in schema:
                 if text not in literals:
@@ -339,15 +487,25 @@ class Generator:
                 raise SchemaError(f"{path}: {keyword} must be a nonempty array")
             if keyword == "oneOf":
                 for index, left in enumerate(branches):
-                    for right in branches[index + 1:]:
+                    for right in branches[index + 1 :]:
                         if not self.exclusive(left, right, path):
-                            raise SchemaError(f"{path}: overlapping oneOf branches cannot be represented exactly")
+                            raise SchemaError(
+                                f"{path}: overlapping oneOf branches cannot be represented exactly"
+                            )
             separator = " & " if keyword == "allOf" else " | "
-            parts.append(separator.join(f"({self.render(branch, path + '.' + keyword)})" for branch in branches))
+            parts.append(
+                separator.join(
+                    f"({self.render(branch, path + '.' + keyword)})" for branch in branches
+                )
+            )
         if not parts:
-            raise SchemaError(f"{path}: missing representable type, reference, enum, const or composition")
+            raise SchemaError(
+                f"{path}: missing representable type, reference, enum, const or composition"
+            )
         # Intersections preserve simultaneous constraints such as type + enum.
-        result = " & ".join(f"({part})" if " | " in part and len(parts) > 1 else part for part in parts)
+        result = " & ".join(
+            f"({part})" if " | " in part and len(parts) > 1 else part for part in parts
+        )
         if schema.get("nullable") is True:
             result = f"({result}) | null"
         return result
@@ -383,29 +541,45 @@ class Generator:
                 if target not in visited:
                     visited.add(target)
                     reachable.extend(references[target])
-        self.aliases = {name: f"WireRecursiveSchema{index}"
-                        for index, name in enumerate(sorted(recursive))}
+        self.aliases = {
+            name: f"WireRecursiveSchema{index}" for index, name in enumerate(sorted(recursive))
+        }
         if self.aliases:
-            rendered = {name: self.render(self.schemas[name], f"components.schemas.{name}")
-                        for name in sorted(rendered)}
+            rendered = {
+                name: self.render(self.schemas[name], f"components.schemas.{name}")
+                for name in sorted(rendered)
+            }
             self.pending.clear()
         lines = [
             "// Generated by scripts/generate_openapi_types.py from internal/apidocs/openapi.json.",
             "// Do not edit. Runtime readers and the server validate constraints that TypeScript cannot express.",
         ]
-        lines.extend(f"type {self.aliases[name]} = {rendered[name]};" for name in sorted(self.aliases))
+        lines.extend(
+            f"type {self.aliases[name]} = {rendered[name]};" for name in sorted(self.aliases)
+        )
         lines.append("export interface WireSchemas {")
-        lines.extend(f"  {quoted(name)}: {self.aliases.get(name, rendered[name])};" for name in sorted(rendered))
+        lines.extend(
+            f"  {quoted(name)}: {self.aliases.get(name, rendered[name])};"
+            for name in sorted(rendered)
+        )
         lines.extend(["}", "", "export const wireEnums = {"])
         for name, field in sorted(ENUM_PATHS):
             schema = self.schemas.get(name)
             prop = schema.get("properties", {}).get(field) if isinstance(schema, dict) else None
             values = prop.get("enum") if isinstance(prop, dict) else None
-            if not isinstance(values, list) or not values or not all(isinstance(value, str) for value in values):
-                raise SchemaError(f"{name}.{field}: expected a nonempty string enum for runtime validation")
+            if (
+                not isinstance(values, list)
+                or not values
+                or not all(isinstance(value, str) for value in values)
+            ):
+                raise SchemaError(
+                    f"{name}.{field}: expected a nonempty string enum for runtime validation"
+                )
             if len(values) != len(set(values)):
                 raise SchemaError(f"{name}.{field}: duplicate enum values")
-            lines.append(f"  {quoted(name + '.' + field)}: [{', '.join(quoted(value) for value in values)}],")
+            lines.append(
+                f"  {quoted(name + '.' + field)}: [{', '.join(quoted(value) for value in values)}],"
+            )
         lines.extend(["} as const;", ""])
         return "\n".join(lines)
 
@@ -415,7 +589,9 @@ def main():
     parser.add_argument("--schema", type=Path, default=SCHEMA)
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--all", action="store_true", help="include all component schemas")
-    parser.add_argument("--check", action="store_true", help="fail if the output is missing or stale")
+    parser.add_argument(
+        "--check", action="store_true", help="fail if the output is missing or stale"
+    )
     args = parser.parse_args()
     try:
         with args.schema.open(encoding="utf-8") as stream:

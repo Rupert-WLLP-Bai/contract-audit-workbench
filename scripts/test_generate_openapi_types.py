@@ -30,23 +30,36 @@ class RecursiveWireTests(unittest.TestCase):
         value_ref = {"$ref": "#/components/schemas/Value"}
         document = {
             "openapi": "3.1.0",
-            "components": {"schemas": {
-                "Value": {"oneOf": [
-                    {"type": kind} for kind in ("string", "number", "boolean", "null")
-                ] + [
-                    {"type": "array", "items": value_ref},
-                    {"type": "object", "additionalProperties": value_ref},
-                ]},
-                "Branch": {"anyOf": [
-                    {"type": "string"},
-                    {"type": "object", "additionalProperties": {
-                        "$ref": "#/components/schemas/BranchList",
-                    }},
-                ]},
-                "BranchList": {"type": "array", "items": {
-                    "$ref": "#/components/schemas/Branch",
-                }},
-            }},
+            "components": {
+                "schemas": {
+                    "Value": {
+                        "oneOf": [
+                            {"type": kind} for kind in ("string", "number", "boolean", "null")
+                        ]
+                        + [
+                            {"type": "array", "items": value_ref},
+                            {"type": "object", "additionalProperties": value_ref},
+                        ]
+                    },
+                    "Branch": {
+                        "anyOf": [
+                            {"type": "string"},
+                            {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "$ref": "#/components/schemas/BranchList",
+                                },
+                            },
+                        ]
+                    },
+                    "BranchList": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Branch",
+                        },
+                    },
+                }
+            },
         }
         with patch.object(wire, "ENUM_PATHS", ()):
             content = wire.Generator(document).generate(["Value", "Branch"])
@@ -66,9 +79,19 @@ const invalidBranch: WireSchemas["Branch"] = { children: 1 };
             source = Path(directory) / "recursive.ts"
             source.write_text(content + checks, encoding="utf-8")
             result = subprocess.run(
-                [JS_RUNTIME, str(TSC), "--noEmit", "--strict", "--skipLibCheck",
-                 "--target", "ES2022", str(source)],
-                capture_output=True, text=True, timeout=30,
+                [
+                    JS_RUNTIME,
+                    str(TSC),
+                    "--noEmit",
+                    "--strict",
+                    "--skipLibCheck",
+                    "--target",
+                    "ES2022",
+                    str(source),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
