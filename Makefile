@@ -99,11 +99,11 @@ migrate:
 
 generate-openapi:
 	$(GO) generate ./internal/apidocs
-	$(PYTHON) scripts/generate_openapi_types.py
+	BUN="$(BUN)" $(PYTHON) scripts/generate_openapi_types.py
 
 check-openapi-generated:
 	$(GO) run ./cmd/openapi-gen --check
-	$(PYTHON) scripts/generate_openapi_types.py --check
+	BUN="$(BUN)" $(PYTHON) scripts/generate_openapi_types.py --check
 
 web-client:
 	cd web && $(BUN) run build:client

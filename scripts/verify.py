@@ -560,6 +560,10 @@ def build_checks(go, bun):
             ),
         ),
         Check("format", "static", (sys.executable, "scripts/check_format.py")),
+        Check("python-ruff-lint", "static", ("ruff", "check", ".")),
+        Check("python-ruff-format", "static", ("ruff", "format", "--check", ".")),
+        Check("web-eslint", "static", (bun, "run", "lint"), cwd=ROOT / "web"),
+        Check("web-prettier", "static", (bun, "run", "format:check"), cwd=ROOT / "web"),
         Check("modules", "static", (go, "mod", "verify")),
         Check("vet", "static", (go, "vet", "./...")),
         Check(

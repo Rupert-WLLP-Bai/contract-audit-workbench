@@ -130,6 +130,7 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
               """,
         )
         write(self.root, "web/src/app.tsx", "export const app = true\n")
+        write(self.root, "web/src/api/parse.ts", "export const parse = true\n")
         write(self.root, "web/public/logo.png", "")
         write(self.root, "web/vite.config.ts", "export default {}\n")
         write(self.root, "scripts/tool.py", "def run():\n    return 1\n")
@@ -180,6 +181,24 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         plan = self.plan(check_fast.Change("M", "web/src/app.tsx"))
         self.assertTrue(plan.web)
         self.assertFalse(plan.web_build)
+        self.assertEqual(plan.web_eslint_files, ["web/src/app.tsx"])
+        self.assertEqual(plan.web_prettier_files, ["web/src/app.tsx"])
+
+    def test_generated_and_fixture_web_files_are_not_formatted(self):
+        generated = self.plan(check_fast.Change("M", "web/src/api/wire.generated.ts"))
+        fixture = self.plan(check_fast.Change("M", "web/e2e/fixtures/sample.ts"))
+        self.assertEqual(generated.web_prettier_files, [])
+        self.assertEqual(generated.web_eslint_files, [])
+        self.assertEqual(fixture.web_prettier_files, [])
+        self.assertEqual(fixture.web_eslint_files, [])
+
+    def test_deleted_or_renamed_old_web_paths_are_not_passed_to_tools(self):
+        deleted = self.plan(check_fast.Change("D", "web/src/removed.ts"))
+        renamed = self.plan(check_fast.Change("R", "web/src/new name.tsx", "web/src/old name.tsx"))
+        self.assertEqual(deleted.web_eslint_files, [])
+        self.assertEqual(deleted.web_prettier_files, [])
+        self.assertEqual(renamed.web_eslint_files, ["web/src/new name.tsx"])
+        self.assertEqual(renamed.web_prettier_files, ["web/src/new name.tsx"])
 
     def test_web_build_config_requires_build(self):
         plan = self.plan(check_fast.Change("M", "web/vite.config.ts"))
@@ -199,11 +218,60 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         self.assertTrue(plan.python)
         self.assertEqual(plan.python_tests, ["scripts/test_tool.py"])
         self.assertEqual(plan.python_syntax_files, ["scripts/tool.py"])
+        self.assertEqual(plan.python_ruff_files, ["scripts/tool.py"])
 
     def test_python_change_without_test_has_no_test_check(self):
         plan = self.plan(check_fast.Change("M", "scripts/unused.py"))
         self.assertTrue(plan.python)
         self.assertEqual(plan.python_tests, [])
+        self.assertEqual(plan.python_ruff_files, ["scripts/unused.py"])
+
+    def test_ruff_config_change_loads_settings_without_scanning_python_files(self):
+        plan = self.plan(check_fast.Change("M", "ruff.toml"))
+        self.assertTrue(plan.python)
+        self.assertEqual(plan.python_syntax_files, [])
+        self.assertEqual(plan.python_ruff_files, [])
+        self.assertTrue(plan.python_ruff_config)
+        with patch.object(check_fast, "_resolve_binary", return_value="/fixture/bin/ruff"):
+            checks = check_fast._build_checks(
+                plan, self.root, sys.executable, self.root.parent / "check-output"
+            )
+        self.assertEqual([check.name for check in checks], ["python-ruff-settings"])
+        self.assertEqual(
+            checks[0].command,
+            ("/fixture/bin/ruff", "check", "--show-settings", "scripts/check_fast.py"),
+        )
+
+    def test_web_tool_config_changes_keep_file_scope_incremental(self):
+        eslint = self.plan(check_fast.Change("M", "web/eslint.config.mjs"))
+        prettier = self.plan(check_fast.Change("M", "web/.prettierrc.json"))
+        prettier_ignore = self.plan(check_fast.Change("M", "web/.prettierignore"))
+        package = self.plan(check_fast.Change("M", "web/package.json"))
+        lockfile = self.plan(check_fast.Change("M", "web/bun.lock"))
+
+        self.assertEqual(eslint.web_eslint_files, ["web/eslint.config.mjs"])
+        self.assertEqual(eslint.web_prettier_files, ["web/eslint.config.mjs"])
+        self.assertEqual(prettier.web_eslint_files, [])
+        self.assertEqual(prettier.web_prettier_files, ["web/.prettierrc.json"])
+        self.assertTrue(prettier_ignore.web_prettier_ignore_config)
+        self.assertEqual(prettier_ignore.web_prettier_files, [])
+        self.assertEqual(package.web_eslint_files, [])
+        self.assertEqual(package.web_prettier_files, ["web/package.json"])
+        self.assertEqual(lockfile.web_eslint_files, [])
+        self.assertEqual(lockfile.web_prettier_files, [])
+
+        with patch.object(check_fast, "_resolve_binary", return_value="/fixture/bin/bun"):
+            checks = check_fast._build_checks(
+                prettier_ignore, self.root, sys.executable, self.root.parent / "check-output"
+            )
+        self.assertEqual(
+            [check.name for check in checks],
+            ["web-prettier-ignore-settings", "web-typecheck"],
+        )
+        self.assertEqual(
+            checks[0].command,
+            ("/fixture/bin/bun", "run", "prettier", "--", "--file-info", "src/api/parse.ts"),
+        )
 
     def test_docs_only_selects_docs_build_without_application_scopes(self):
         plan = self.plan(
@@ -254,7 +322,16 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
             checks = check_fast._build_checks(
                 ui_only, self.root, sys.executable, self.root.parent / "check-output"
             )
-        self.assertEqual([check.name for check in checks], ["ui-terminology", "web-typecheck"])
+        self.assertEqual(
+            [check.name for check in checks],
+            ["ui-terminology", "web-eslint", "web-prettier", "web-typecheck"],
+        )
+        self.assertEqual(
+            checks[1].command[-1], "src/features/review/manual-findings/manual-findings-panel.tsx"
+        )
+        self.assertEqual(
+            checks[2].command[-1], "src/features/review/manual-findings/manual-findings-panel.tsx"
+        )
 
     def test_docs_rename_deletion_and_space_paths_keep_docs_scope(self):
         renamed = self.plan(

@@ -112,6 +112,15 @@ WEB_SOURCE_SUFFIXES = frozenset(
         ".tsx",
     }
 )
+WEB_CODE_SUFFIXES = frozenset({".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx"})
+WEB_FORMAT_SUFFIXES = frozenset(
+    {".cjs", ".css", ".html", ".js", ".jsx", ".json", ".mjs", ".scss", ".ts", ".tsx"}
+)
+WEB_GENERATED_FILES = frozenset({"web/src/api/wire.generated.ts"})
+WEB_EXCLUDED_PARTS = frozenset(
+    {"coverage", "dist", "fixtures", "node_modules", "playwright-report", "test-results"}
+)
+RUFF_CONFIG_FILES = frozenset({"requirements-dev.txt", "ruff.toml"})
 
 AUTH_TESTS = (
     "TestGovernanceServiceRoleBoundaries",
@@ -269,6 +278,11 @@ class Plan:
     go_build_all: bool = False
     web_build: bool = False
     go_format_files: list[str] = field(default_factory=list)
+    web_eslint_files: list[str] = field(default_factory=list)
+    web_prettier_files: list[str] = field(default_factory=list)
+    web_prettier_ignore_config: bool = False
+    python_ruff_files: list[str] = field(default_factory=list)
+    python_ruff_config: bool = False
     go_packages: set[str] = field(default_factory=set)
     go_unit_packages: set[str] = field(default_factory=set)
     python_syntax_files: list[str] = field(default_factory=list)
@@ -292,6 +306,11 @@ class Plan:
             "go_compile": "all" if self.go_build_all else "affected",
             "go_build_all": self.go_build_all,
             "go_format_files": list(self.go_format_files),
+            "web_eslint_files": list(self.web_eslint_files),
+            "web_prettier_files": list(self.web_prettier_files),
+            "web_prettier_ignore_config": self.web_prettier_ignore_config,
+            "python_ruff_files": list(self.python_ruff_files),
+            "python_ruff_config": self.python_ruff_config,
             "go_packages": sorted(self.go_packages),
             "go_unit_packages": sorted(self.go_unit_packages),
             "web_build": self.web_build,
@@ -1065,8 +1084,21 @@ def _web_relevant(path: str) -> bool:
     if relative.startswith(("src/", "e2e/", "public/")):
         return True
     return (
-        PurePosixPath(relative).name in WEB_BUILD_FILES
+        relative == ".prettierignore"
+        or PurePosixPath(relative).name in WEB_BUILD_FILES
         or PurePosixPath(relative).suffix in WEB_SOURCE_SUFFIXES
+    )
+
+
+def _web_tool_file(path: str, suffixes: frozenset[str]) -> bool:
+    if not path.startswith("web/") or path in WEB_GENERATED_FILES:
+        return False
+    relative = path[len("web/") :]
+    parts = PurePosixPath(relative).parts
+    return (
+        PurePosixPath(relative).suffix in suffixes
+        and not any(part in WEB_EXCLUDED_PARTS for part in parts)
+        and not relative.endswith((".lock", ".lockb"))
     )
 
 
@@ -1271,6 +1303,13 @@ def build_plan(root: Path, changes: Iterable[Change]) -> Plan:
             if path.startswith("web/") and _web_relevant(path):
                 plan.web = True
                 plan.web_build = plan.web_build or _web_build_config(path)
+                if path == "web/.prettierignore":
+                    plan.web_prettier_ignore_config = True
+                if path == change.path and not change.deleted:
+                    if _web_tool_file(path, WEB_CODE_SUFFIXES):
+                        plan.web_eslint_files.append(path)
+                    if _web_tool_file(path, WEB_FORMAT_SUFFIXES):
+                        plan.web_prettier_files.append(path)
             if _docs_build_relevant(path):
                 plan.docs_build = True
             if _architecture_relevant(path):
@@ -1281,9 +1320,18 @@ def build_plan(root: Path, changes: Iterable[Change]) -> Plan:
                 plan.python = True
                 if path == change.path and not change.deleted:
                     plan.python_syntax_files.append(path)
+                    plan.python_ruff_files.append(path)
+            if path in RUFF_CONFIG_FILES:
+                plan.python = True
 
     plan.go_format_files = sorted(set(plan.go_format_files))
+    plan.web_eslint_files = sorted(set(plan.web_eslint_files))
+    plan.web_prettier_files = sorted(set(plan.web_prettier_files))
     plan.python_syntax_files = sorted(set(plan.python_syntax_files))
+    plan.python_ruff_files = sorted(set(plan.python_ruff_files))
+    plan.python_ruff_config = any(
+        path in RUFF_CONFIG_FILES for change in changes for path in change.affected_paths()
+    )
     if plan.go_packages:
         module = _module_path(root)
         importer_counts = _go_importer_counts(root, module) if module else {}
@@ -1347,8 +1395,8 @@ def _required_database_env(plan: Plan) -> list[str]:
 
 
 def _resolve_binary(name: str) -> str:
-    # ``GO`` and ``BUN`` are the conventional build variables.
-    value = os.environ.get("GO" if name == "go" else "BUN", name)
+    # Tool-specific environment overrides use the conventional uppercase name.
+    value = os.environ.get(name.upper(), name)
     found = shutil.which(value)
     if not found:
         raise FastError(f"{name} is required for this plan but was not found on PATH")
@@ -1522,6 +1570,37 @@ def _build_checks(
                     files=tuple(plan.python_syntax_files),
                 )
             )
+        if plan.python_ruff_files:
+            ruff = _resolve_binary("ruff")
+            checks.append(
+                FastCheck(
+                    "python-ruff-lint",
+                    (ruff, "check", "--output-format=concise", *plan.python_ruff_files),
+                    cwd=root,
+                    env=env,
+                    timeout=180,
+                )
+            )
+            checks.append(
+                FastCheck(
+                    "python-ruff-format",
+                    (ruff, "format", "--check", *plan.python_ruff_files),
+                    cwd=root,
+                    env=env,
+                    timeout=180,
+                )
+            )
+        elif plan.python_ruff_config:
+            ruff = _resolve_binary("ruff")
+            checks.append(
+                FastCheck(
+                    "python-ruff-settings",
+                    (ruff, "check", "--show-settings", "scripts/check_fast.py"),
+                    cwd=root,
+                    env=env,
+                    timeout=180,
+                )
+            )
         for test_path in plan.python_tests:
             test_file = PurePosixPath(test_path)
             checks.append(
@@ -1546,6 +1625,38 @@ def _build_checks(
             )
     if plan.web:
         bun = _resolve_binary("bun")
+        if plan.web_eslint_files:
+            relative_files = [path.removeprefix("web/") for path in plan.web_eslint_files]
+            checks.append(
+                FastCheck(
+                    "web-eslint",
+                    (bun, "run", "lint:files", "--", *relative_files),
+                    cwd=root / "web",
+                    env=env,
+                    timeout=300,
+                )
+            )
+        if plan.web_prettier_files:
+            relative_files = [path.removeprefix("web/") for path in plan.web_prettier_files]
+            checks.append(
+                FastCheck(
+                    "web-prettier",
+                    (bun, "run", "format:files", "--", *relative_files),
+                    cwd=root / "web",
+                    env=env,
+                    timeout=300,
+                )
+            )
+        elif plan.web_prettier_ignore_config:
+            checks.append(
+                FastCheck(
+                    "web-prettier-ignore-settings",
+                    (bun, "run", "prettier", "--", "--file-info", "src/api/parse.ts"),
+                    cwd=root / "web",
+                    env=env,
+                    timeout=120,
+                )
+            )
         checks.append(
             FastCheck(
                 "web-typecheck",
