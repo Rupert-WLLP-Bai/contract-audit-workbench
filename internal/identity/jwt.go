@@ -60,6 +60,10 @@ type jwk struct {
 }
 
 func (m *Manager) verifyIDToken(ctx context.Context, metadata providerMetadata, token, clientID, expectedNonce string) (idTokenClaims, error) {
+	return m.verifyIDTokenWithClock(ctx, metadata, token, clientID, expectedNonce, time.Now)
+}
+
+func (m *Manager) verifyIDTokenWithClock(ctx context.Context, metadata providerMetadata, token, clientID, expectedNonce string, now func() time.Time) (idTokenClaims, error) {
 	header, claims, err := parseIDToken(token)
 	if err != nil {
 		return idTokenClaims{}, ErrAuthentication
@@ -71,11 +75,14 @@ func (m *Manager) verifyIDToken(ctx context.Context, metadata providerMetadata, 
 	verifier := oidc.NewVerifier(metadata.Issuer, keySet, &oidc.Config{
 		ClientID:             clientID,
 		SupportedSigningAlgs: []string{oidc.RS256},
+		// go-oidc truncates NumericDate fractions. Match the existing
+		// second-resolution policy before the full-precision claims check below.
+		Now: func() time.Time { return time.Unix(now().Unix(), 0) },
 	})
 	if _, err := verifier.Verify(ctx, token); err != nil {
 		return idTokenClaims{}, ErrAuthentication
 	}
-	if !validIDClaims(claims, metadata.Issuer, clientID, expectedNonce, time.Now()) {
+	if !validIDClaims(claims, metadata.Issuer, clientID, expectedNonce, now()) {
 		return idTokenClaims{}, ErrAuthentication
 	}
 	return claims, nil

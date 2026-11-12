@@ -419,3 +419,56 @@ func TestVerifyIDTokenAcceptsValidClaimVariants(t *testing.T) {
 		t.Fatalf("valid audience and not-before inside skew rejected: %v", err)
 	}
 }
+
+func TestVerifyIDTokenPreservesNumericDateSecondBoundaries(t *testing.T) {
+	fixture := newOIDCTokenFixture(t)
+	metadata := providerMetadata{Issuer: fixture.server.URL, JWKSURI: fixture.server.URL + "/jwks"}
+	now := time.Unix(1000, 900_000_000)
+	for _, test := range []struct {
+		name string
+		exp  float64
+		iat  float64
+		nbf  float64
+		want bool
+	}{
+		{"fractional expiry in current second", 1000.5, 900, 900, true},
+		{"integer expiry at current second", 1000, 900, 900, false},
+		{"fractional expiry before current second", 999.9, 900, 900, false},
+		{"issued-at exactly at skew", 2000, 1060, 900, true},
+		{"fractional issued-at beyond skew", 2000, 1060.1, 900, false},
+		{"not-before exactly at skew", 2000, 900, 1060, true},
+		{"fractional not-before beyond skew", 2000, 900, 1060.1, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			claims := fixture.validClaims()
+			claims["exp"], claims["iat"], claims["nbf"] = test.exp, test.iat, test.nbf
+			token := fixture.sign(fixture.signedHeader(), claims)
+			_, err := fixture.manager.verifyIDTokenWithClock(context.Background(), metadata, token,
+				fixtureClientID, fixtureNonce, func() time.Time { return now })
+			if (err == nil) != test.want {
+				t.Fatalf("verified=%v, want %v; err=%v", err == nil, test.want, err)
+			}
+			if err != nil && !errors.Is(err, ErrAuthentication) {
+				t.Fatalf("public authentication error changed: %v", err)
+			}
+		})
+	}
+
+	t.Run("expiry is rechecked after key retrieval", func(t *testing.T) {
+		claims := fixture.validClaims()
+		claims["exp"], claims["iat"] = 1000.5, 900
+		token := fixture.sign(fixture.signedHeader(), claims)
+		clockCalls := 0
+		_, err := fixture.manager.verifyIDTokenWithClock(context.Background(), metadata, token,
+			fixtureClientID, fixtureNonce, func() time.Time {
+				clockCalls++
+				if clockCalls == 1 {
+					return now
+				}
+				return time.Unix(1001, 0)
+			})
+		if !errors.Is(err, ErrAuthentication) || clockCalls < 2 {
+			t.Fatalf("expiry was not rechecked: clock calls=%d err=%v", clockCalls, err)
+		}
+	})
+}
