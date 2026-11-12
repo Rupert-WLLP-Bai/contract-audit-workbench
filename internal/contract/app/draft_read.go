@@ -125,10 +125,12 @@ func LoadDraftDetail(ctx context.Context, record clmcontract.Aggregate, reposito
 	return detail, nil
 }
 
-// ListMyDrafts returns only active native drafts created by the trusted caller.
-// The adapter applies tenant, actor, authority and lifecycle predicates.
+// ListMyDrafts narrows SQL candidates to the caller's active native drafts,
+// then rechecks each aggregate against current Read authority before
+// projecting any title or amount. Because the candidate query is bounded by
+// limit, inaccessible rows can make this recovery page shorter than requested.
 func ListMyDrafts(ctx context.Context, tenantID, actorID string, limit int,
-	repository DraftQueryRepository) ([]clmcontract.ContractDraftSummary, error) {
+	repository DraftQueryRepository, access DraftAccess) ([]clmcontract.ContractDraftSummary, error) {
 	if limit <= 0 {
 		limit = defaultMyDraftLimit
 	}
@@ -141,12 +143,19 @@ func ListMyDrafts(ctx context.Context, tenantID, actorID string, limit int,
 	}
 	items := make([]clmcontract.ContractDraftSummary, 0, len(rows))
 	for _, row := range rows {
+		if len(items) == limit {
+			break
+		}
+		if !access.CanRead(ctx, row.Record) {
+			continue
+		}
 		updatedAt := row.UpdatedAt
+		summary := clmcontract.SummaryFromDraft(row.Record, row.Name, row.Amount, row.Currency)
 		items = append(items, clmcontract.ContractDraftSummary{
-			ContractID: row.ContractID, AuthorityMode: row.AuthorityMode, Name: row.Name,
-			Number: row.Number, Amount: row.Amount, Currency: row.Currency,
-			ContractState: "draft", WorkflowState: "not_started", RowVersion: row.RowVersion,
-			CreatedAt: row.CreatedAt, UpdatedAt: &updatedAt,
+			ContractID: summary.ContractID, AuthorityMode: summary.AuthorityMode, Name: summary.Name,
+			Number: summary.Number, Amount: summary.Amount, Currency: summary.Currency,
+			ContractState: "draft", WorkflowState: "not_started", RowVersion: summary.RowVersion,
+			CreatedAt: summary.CreatedAt, UpdatedAt: &updatedAt,
 		})
 	}
 	return items, nil

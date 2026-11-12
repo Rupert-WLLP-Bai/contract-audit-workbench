@@ -18,8 +18,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
+	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	contractapp "contractaudit/internal/contract/app"
+	clmcontract "contractaudit/internal/contract/model"
 	"contractaudit/internal/fault"
 )
 
@@ -212,6 +216,73 @@ func TestContractDraftTenantAndGrantBoundaries(t *testing.T) {
 		t.Fatalf("non-creator draft list must be empty: %v %+v", err, nonOwnerList)
 	}
 }
+
+func TestContractDraftRecoveryRequiresCurrentReadGrant(t *testing.T) {
+	now := time.Now().UTC()
+	queries := contractDraftRecoveryRowsStub{rows: []clmcontract.DraftRecoveryRow{{
+		Record: clmcontract.Aggregate{
+			TenantID: "read-tenant", ContractID: "read-contract", OwnerOrgID: "read-org",
+			AuthorityMode: "native", ContractNumber: contractDraftStringPointer("READ-001"),
+			LifecycleState: "draft", ValidityState: "active", RowVersion: 1,
+			CreatedBy: "draft-owner", CreatedAt: now, UpdatedAt: now,
+		},
+		Name: "授权后可见的草稿标题", Amount: contractDraftStringPointer("987654.00"),
+		Currency: contractDraftStringPointer("CNY"), UpdatedAt: now,
+	}}}
+	reader := accounts.MembershipUser("draft-owner", "合同经办人", "clerk", "read-tenant", "read-org",
+		"draft-test", "owner", []access.Grant{{Role: "case_owner", Scope: "self"}})
+	list := func() ([]clmcontract.ContractDraftSummary, error) {
+		return contractapp.ListMyDrafts(context.Background(), "read-tenant", reader.ID, 25, queries,
+			storeDraftAccess{user: reader})
+	}
+
+	items, err := list()
+	if err != nil || len(items) != 1 || items[0].Name != "授权后可见的草稿标题" ||
+		items[0].Amount == nil || *items[0].Amount != "987654.00" {
+		t.Fatalf("current self Read grant should expose the own draft: items=%+v err=%v", items, err)
+	}
+
+	for _, revokedOrExpired := range []struct {
+		name   string
+		grants []access.Grant
+	}{
+		{name: "revoked", grants: nil},
+		{name: "expired", grants: []access.Grant{{
+			Role: "case_owner", Scope: "self", ExpiresAt: now.Add(-time.Minute),
+		}}},
+	} {
+		t.Run(revokedOrExpired.name, func(t *testing.T) {
+			reader.Grants = revokedOrExpired.grants
+			items, err := list()
+			if err != nil || len(items) != 0 {
+				t.Fatalf("draft without current Read authority was listed: items=%+v err=%v", items, err)
+			}
+			encoded, err := json.Marshal(items)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, forbidden := range []string{"授权后可见的草稿标题", "987654.00"} {
+				if strings.Contains(string(encoded), forbidden) {
+					t.Fatalf("draft list leaked protected summary data: %s", encoded)
+				}
+			}
+		})
+	}
+}
+
+type contractDraftRecoveryRowsStub struct {
+	rows []clmcontract.DraftRecoveryRow
+}
+
+func (r contractDraftRecoveryRowsStub) LoadDraftDetailFacts(context.Context, clmcontract.Aggregate) (clmcontract.DraftDetailFacts, error) {
+	return clmcontract.DraftDetailFacts{}, nil
+}
+
+func (r contractDraftRecoveryRowsStub) ListMyDraftRows(context.Context, string, string, int) ([]clmcontract.DraftRecoveryRow, error) {
+	return r.rows, nil
+}
+
+func contractDraftStringPointer(value string) *string { return &value }
 
 func TestLegacyImportKeepsHistoryUnknownAndVerifiesMaterial(t *testing.T) {
 	fixture, recovery := newContractDraftTestEnv(t)

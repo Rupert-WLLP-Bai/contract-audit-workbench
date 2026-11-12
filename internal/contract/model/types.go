@@ -101,18 +101,14 @@ type ContractDraftSummary struct {
 	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
 }
 
-// DraftRecoveryRow is the narrow row used by the personal continuation list.
-// Its facts come from the caller's tenant-filtered Contract projection.
+// DraftRecoveryRow carries the Contract identity needed for a current Read
+// authorization check before its title and amount can be projected.
 type DraftRecoveryRow struct {
-	ContractID    string
-	AuthorityMode string
-	Name          string
-	Number        *string
-	Amount        *string
-	Currency      *string
-	RowVersion    int64
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	Record    Aggregate
+	Name      string
+	Amount    *string
+	Currency  *string
+	UpdatedAt time.Time
 }
 
 // DraftDetailFacts contains raw Contract-owned rows. The application layer

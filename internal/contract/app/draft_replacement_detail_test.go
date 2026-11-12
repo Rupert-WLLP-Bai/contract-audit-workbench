@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -126,6 +127,57 @@ func TestReplaceDraftReplayRechecksCurrentVisibility(t *testing.T) {
 	}
 }
 
+func TestListMyDraftsRechecksReadAuthorityBeforeProjectingSummary(t *testing.T) {
+	createdAt := time.Date(2026, 11, 12, 3, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(time.Minute)
+	row := func(contractID, orgID, name, amount string) clmcontract.DraftRecoveryRow {
+		return clmcontract.DraftRecoveryRow{
+			Record: clmcontract.Aggregate{
+				TenantID: "tenant", ContractID: contractID, OwnerOrgID: orgID,
+				AuthorityMode: "native", ContractNumber: str(contractID + "-number"),
+				LifecycleState: "draft", ValidityState: "active", RowVersion: 4,
+				CreatedBy: "actor", CreatedAt: createdAt, UpdatedAt: updatedAt,
+			},
+			Name: name, Amount: str(amount), Currency: str("CNY"), UpdatedAt: updatedAt,
+		}
+	}
+	queries := &draftQueriesStub{rows: []clmcontract.DraftRecoveryRow{
+		row("readable", "org-readable", "可读取草稿", "10.00"),
+		row("revoked", "org-revoked", "撤权合同标题", "987654.00"),
+		row("expired", "org-expired", "过期授权合同标题", "876543.00"),
+	}}
+	access := &draftListAccessStub{readable: map[string]bool{
+		"readable": true, "revoked": false, "expired": false,
+	}}
+	items, err := ListMyDrafts(context.Background(), "tenant", "actor", 3, queries, access)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ContractID != "readable" || items[0].Name != "可读取草稿" || items[0].Amount == nil || *items[0].Amount != "10.00" {
+		t.Fatalf("current Read grant projection = %#v", items)
+	}
+	if len(access.seen) != 3 {
+		t.Fatalf("checked %d candidate contracts, want all 3", len(access.seen))
+	}
+	for i, want := range []struct{ id, org string }{
+		{"readable", "org-readable"}, {"revoked", "org-revoked"}, {"expired", "org-expired"},
+	} {
+		if access.seen[i].ContractID != want.id || access.seen[i].OwnerOrgID != want.org ||
+			access.seen[i].CreatedBy != "actor" || access.seen[i].TenantID != "tenant" {
+			t.Fatalf("authorization received incomplete aggregate identity at %d: %+v", i, access.seen[i])
+		}
+	}
+	encoded, err := json.Marshal(items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"撤权合同标题", "987654.00", "过期授权合同标题", "876543.00"} {
+		if strings.Contains(string(encoded), forbidden) {
+			t.Fatalf("draft list exposed a contract without current Read authority: %s", encoded)
+		}
+	}
+}
+
 type draftQueriesStub struct {
 	facts   clmcontract.DraftDetailFacts
 	rows    []clmcontract.DraftRecoveryRow
@@ -153,6 +205,18 @@ type draftAccessStub struct{ canRead, canManage bool }
 
 func (a draftAccessStub) CanRead(context.Context, clmcontract.Aggregate) bool { return a.canRead }
 func (a draftAccessStub) CanManage(clmcontract.Aggregate) bool                { return a.canManage }
+
+type draftListAccessStub struct {
+	readable map[string]bool
+	seen     []clmcontract.Aggregate
+}
+
+func (a *draftListAccessStub) CanRead(_ context.Context, record clmcontract.Aggregate) bool {
+	a.seen = append(a.seen, record)
+	return a.readable[record.ContractID]
+}
+
+func (*draftListAccessStub) CanManage(clmcontract.Aggregate) bool { return false }
 
 type identityCodec struct{}
 

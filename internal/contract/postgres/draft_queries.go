@@ -88,8 +88,10 @@ func (r *DraftQueries) LoadDraftDetailFacts(ctx context.Context, record clmcontr
 }
 
 func (r *DraftQueries) ListMyDraftRows(ctx context.Context, tenantID, actorID string, limit int) ([]clmcontract.DraftRecoveryRow, error) {
-	rows, err := r.tx.Query(ctx, `SELECT c.contract_id, c.authority_mode, c.contract_number, c.row_version, c.created_at,
-		d.updated_at, d.content->'contract'->>'name', d.content->'contract'->>'amount', d.content->'contract'->>'currency'
+	rows, err := r.tx.Query(ctx, `SELECT c.tenant_id,c.contract_id,c.owner_org_id,c.authority_mode,c.contract_number,
+		c.source_system,c.external_contract_id,c.source_version,c.lifecycle_state,c.validity_state,
+		c.current_revision_id,c.row_version,c.created_by,c.created_at,c.updated_at,
+		d.updated_at,d.content->'contract'->>'name',d.content->'contract'->>'amount',d.content->'contract'->>'currency'
 		FROM clm_contracts c JOIN clm_contract_drafts d
 			ON d.tenant_id=c.tenant_id AND d.contract_id=c.contract_id
 		WHERE c.tenant_id=$1 AND c.created_by=$2 AND c.authority_mode='native'
@@ -103,8 +105,12 @@ func (r *DraftQueries) ListMyDraftRows(ctx context.Context, tenantID, actorID st
 	for rows.Next() {
 		var item clmcontract.DraftRecoveryRow
 		var name *string
-		if err := rows.Scan(&item.ContractID, &item.AuthorityMode, &item.Number, &item.RowVersion,
-			&item.CreatedAt, &item.UpdatedAt, &name, &item.Amount, &item.Currency); err != nil {
+		if err := rows.Scan(&item.Record.TenantID, &item.Record.ContractID, &item.Record.OwnerOrgID,
+			&item.Record.AuthorityMode, &item.Record.ContractNumber, &item.Record.SourceSystem,
+			&item.Record.ExternalContractID, &item.Record.SourceVersion, &item.Record.LifecycleState,
+			&item.Record.ValidityState, &item.Record.CurrentRevisionID, &item.Record.RowVersion,
+			&item.Record.CreatedBy, &item.Record.CreatedAt, &item.Record.UpdatedAt,
+			&item.UpdatedAt, &name, &item.Amount, &item.Currency); err != nil {
 			return nil, err
 		}
 		if name != nil {

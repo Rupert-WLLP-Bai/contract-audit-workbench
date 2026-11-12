@@ -497,8 +497,8 @@ func (s *Store) LoadContractDetail(ctx context.Context, user accounts.User, cont
 	return detail, nil
 }
 
-// ListMyContractDrafts returns only the caller's own active native drafts, for
-// recovery after an interruption. The full ledger belongs to a later milestone.
+// ListMyContractDrafts returns only the caller's own active native drafts that
+// still pass the current Contract Read check, for recovery after interruption.
 func (s *Store) ListMyContractDrafts(ctx context.Context, user accounts.User, limit int) ([]ContractDraftSummary, error) {
 	ctx = commandContext(ctx, user)
 	if !s.HasDatabase() {
@@ -517,7 +517,7 @@ func (s *Store) ListMyContractDrafts(ctx context.Context, user accounts.User, li
 		return nil, err
 	}
 	items, err := contractapp.ListMyDrafts(ctx, accounts.Tenant(current), current.ID, limit,
-		contractpostgres.NewDraftQueries(platformpostgres.Bind(tx)))
+		contractpostgres.NewDraftQueries(platformpostgres.Bind(tx)), storeDraftAccess{tx: tx, user: current})
 	if err != nil {
 		return nil, err
 	}
