@@ -11,6 +11,7 @@
 package identity
 
 import (
+	"bytes"
 	"context"
 	"crypto/rsa"
 	"crypto/subtle"
