@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Guard every requested read before any call in the plan executes. The model may name only references actually delivered in this round and bounded body spans. Related `agentflow` operations include validateKnowledgeReads, knowledgeReadConfigurationValid, validKnowledgeReadRequest, executeKnowledgeReads.
+// Purpose: Guards requested frozen knowledge spans and replays only complete persisted reads after current authorization and byte-identity checks. Related `agentflow` operations include validateKnowledgeReads, knowledgeReadConfigurationValid, validKnowledgeReadRequest, executeKnowledgeReads.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,10 +12,13 @@ package agentflow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 	"unicode/utf8"
+
+	"contractaudit/internal/execution/steps"
 )
 
 // Guard every requested read before any call in the plan executes. The model may
@@ -65,21 +68,142 @@ func (r *Runtime) executeOneKnowledgeRead(ctx context.Context, state *execution,
 		return err
 	}
 	callID := knowledgeReadCallID(state, read)
+	started := r.config.Clock()
+	var identity steps.Identity
+	if r.config.StepJournal != nil {
+		var err error
+		identity, err = r.knowledgeReadStepIdentity(state, read, callID)
+		if err != nil {
+			return err
+		}
+		record, execute, err := r.config.StepJournal.Begin(ctx, identity)
+		if err != nil {
+			return err
+		}
+		if err := record.Validate(); err != nil {
+			return errors.Join(steps.ErrCorrupt, err)
+		}
+		switch record.Status {
+		case steps.StatusSucceeded:
+			if execute || record.ObservedAt == nil {
+				return steps.ErrCorrupt
+			}
+			var persisted KnowledgeReadObservation
+			if err := json.Unmarshal(record.Payload, &persisted); err != nil || !sameKnowledgeRead(persisted.KnowledgeReadIdentity, read, persisted.Text) {
+				return errors.Join(steps.ErrCorrupt, err)
+			}
+			// Re-read only to verify the authorized frozen span still resolves to
+			// the exact bytes already observed. The checkpoint text and original
+			// timestamp remain the planner observation.
+			current, err := readKnowledgeSpan(ctx, r, read)
+			if err != nil {
+				return fmt.Errorf("%w: reauthorize persisted frozen knowledge span: %w", ErrKnowledgeRead, err)
+			}
+			if current != persisted.Text {
+				return errors.Join(steps.ErrIdentityMismatch, ErrKnowledgeRead)
+			}
+			state.knowledgeReadAttempts[read] = true
+			state.knowledgeReadCalls++
+			state.report.ToolCalls += record.CallsConsumed
+			return r.acceptKnowledgeRead(state, read, callID, persisted.Text, record.ElapsedMS, *record.ObservedAt, true)
+		case steps.StatusFailed:
+			if execute || record.ObservedAt == nil {
+				return steps.ErrCorrupt
+			}
+			state.knowledgeReadAttempts[read] = true
+			state.knowledgeReadCalls++
+			state.report.ToolCalls += record.CallsConsumed
+			state.request.KnowledgeSelection.Reads = append(state.request.KnowledgeSelection.Reads, KnowledgeReadRecord{
+				KnowledgeID: read.KnowledgeID, VersionID: read.VersionID, ContentSHA256: read.ContentSHA256,
+				Round: state.round, Start: read.Start, End: read.End, Status: "failed"})
+			if err := r.eventKnowledgeReadFailure(state, read, callID, record.FailureCode, 0, *record.ObservedAt); err != nil {
+				return err
+			}
+			return errors.Join(steps.ErrPriorFailure, fmt.Errorf("%w: prior frozen knowledge read failed (%s)", ErrKnowledgeRead, record.FailureCode))
+		case steps.StatusAmbiguous:
+			if execute {
+				return steps.ErrCorrupt
+			}
+			state.knowledgeReadAttempts[read] = true
+			state.knowledgeReadCalls++
+			state.report.ToolCalls += record.CallsConsumed
+			state.termination = "step_result_ambiguous"
+			if err := state.eventCall("step_ambiguous", "knowledge.read", "", record.FailureCode, 0, callID, ""); err != nil {
+				return err
+			}
+			return steps.ErrAmbiguous
+		case steps.StatusStarted:
+			if !execute {
+				return steps.ErrAmbiguous
+			}
+		default:
+			return steps.ErrCorrupt
+		}
+	}
 	if err := state.eventCall("knowledge_read_started", "knowledge.read", "", "frozen_knowledge_read_started", 0, callID, ""); err != nil {
 		return err
 	}
 	state.knowledgeReadAttempts[read] = true
 	state.knowledgeReadCalls++
 	state.report.ToolCalls++
-	started := time.Now()
 	text, err := readKnowledgeSpan(ctx, r, read)
 	if err == nil {
 		err = validateKnowledgeSpan(text, read, state)
 	}
 	if err != nil {
-		return recordFailedKnowledgeRead(state, read, callID, started, err)
+		observedAt := r.config.Clock().UTC()
+		if r.config.StepJournal != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) &&
+			!errors.Is(err, ErrDenied) && !errors.Is(err, ErrPlanningAuthorization) && ctx.Err() == nil {
+			outcome := steps.Outcome{Status: steps.StatusFailed, FailureCode: "knowledge_read_failed", ObservedAt: observedAt,
+				ElapsedMS: elapsedMS(started, observedAt), CallsConsumed: 1, Usage: steps.Usage{Status: steps.UsageNotApplicable}}
+			if persistErr := r.finishStep(ctx, identity, outcome); persistErr != nil {
+				return persistErr
+			}
+		}
+		return r.recordFailedKnowledgeRead(state, read, callID, started, observedAt, err)
 	}
-	return recordSuccessfulKnowledgeRead(state, read, callID, started, text)
+	observedAt := r.config.Clock().UTC()
+	if r.config.StepJournal != nil {
+		observation := KnowledgeReadObservation{KnowledgeReadIdentity: KnowledgeReadIdentity{
+			KnowledgeID: read.KnowledgeID, VersionID: read.VersionID, ContentSHA256: read.ContentSHA256,
+			Start: read.Start, End: read.End, TextSHA256: TextHash(text)}, Text: text}
+		payload, err := json.Marshal(observation)
+		if err != nil {
+			return err
+		}
+		outcome := steps.Outcome{Status: steps.StatusSucceeded, Payload: payload, ObservedAt: observedAt,
+			ElapsedMS: elapsedMS(started, observedAt), CallsConsumed: 1, Usage: steps.Usage{Status: steps.UsageNotApplicable}}
+		if err := r.finishStep(ctx, identity, outcome); err != nil {
+			return err
+		}
+	}
+	return r.acceptKnowledgeRead(state, read, callID, text, elapsedMS(started, observedAt), observedAt, false)
+}
+
+func sameKnowledgeRead(identity KnowledgeReadIdentity, read KnowledgeReadRequest, text string) bool {
+	return identity.KnowledgeID == read.KnowledgeID && identity.VersionID == read.VersionID &&
+		identity.ContentSHA256 == read.ContentSHA256 && identity.Start == read.Start && identity.End == read.End &&
+		identity.TextSHA256 == TextHash(text)
+}
+
+func (r *Runtime) acceptKnowledgeRead(state *execution, read KnowledgeReadRequest, callID, text string, elapsed int64, observedAt time.Time, replayed bool) error {
+	if err := validateKnowledgeSpan(text, read, state); err != nil {
+		return errors.Join(steps.ErrCorrupt, err)
+	}
+	state.evidenceBytesLeft -= len(text)
+	digest := TextHash(text)
+	record := KnowledgeReadRecord{KnowledgeID: read.KnowledgeID, VersionID: read.VersionID, ContentSHA256: read.ContentSHA256,
+		Round: state.round, Start: read.Start, End: read.End, Status: "completed", Bytes: len(text), TextSHA256: digest}
+	state.request.KnowledgeSelection.Reads = append(state.request.KnowledgeSelection.Reads, record)
+	state.knowledgeObservations = append(state.knowledgeObservations, KnowledgeReadObservation{KnowledgeReadIdentity: KnowledgeReadIdentity{
+		KnowledgeID: read.KnowledgeID, VersionID: read.VersionID, ContentSHA256: read.ContentSHA256,
+		Start: read.Start, End: read.End, TextSHA256: digest}, Text: text})
+	state.roundProgress = true
+	kind, code, duration := "knowledge_read_completed", "frozen_knowledge_span_read", elapsed
+	if replayed {
+		kind, code, duration = "knowledge_read_reused", "persisted_frozen_knowledge_span_reused", 0
+	}
+	return state.eventAt(kind, "knowledge.read", "", code, duration, callID, "", observedAt)
 }
 
 func knowledgeReadCallID(state *execution, read KnowledgeReadRequest) string {
@@ -108,10 +232,10 @@ func validateKnowledgeSpan(text string, read KnowledgeReadRequest, state *execut
 	return nil
 }
 
-func recordFailedKnowledgeRead(state *execution, read KnowledgeReadRequest, callID string, started time.Time, err error) error {
+func (r *Runtime) recordFailedKnowledgeRead(state *execution, read KnowledgeReadRequest, callID string, started, observedAt time.Time, err error) error {
 	state.request.KnowledgeSelection.Reads = append(state.request.KnowledgeSelection.Reads, KnowledgeReadRecord{KnowledgeID: read.KnowledgeID,
 		VersionID: read.VersionID, ContentSHA256: read.ContentSHA256, Round: state.round, Start: read.Start, End: read.End, Status: "failed"})
-	if sinkErr := state.eventCall("knowledge_read_failed", "knowledge.read", "", "frozen_knowledge_read_failed", time.Since(started).Milliseconds(), callID, ""); sinkErr != nil {
+	if sinkErr := r.eventKnowledgeReadFailure(state, read, callID, "frozen_knowledge_read_failed", elapsedMS(started, observedAt), observedAt); sinkErr != nil {
 		return sinkErr
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -120,14 +244,6 @@ func recordFailedKnowledgeRead(state *execution, read KnowledgeReadRequest, call
 	return fmt.Errorf("%w: %w", ErrKnowledgeRead, err)
 }
 
-func recordSuccessfulKnowledgeRead(state *execution, read KnowledgeReadRequest, callID string, started time.Time, text string) error {
-	state.evidenceBytesLeft -= len(text)
-	digest := TextHash(text)
-	record := KnowledgeReadRecord{KnowledgeID: read.KnowledgeID, VersionID: read.VersionID, ContentSHA256: read.ContentSHA256,
-		Round: state.round, Start: read.Start, End: read.End, Status: "completed", Bytes: len(text), TextSHA256: digest}
-	state.request.KnowledgeSelection.Reads = append(state.request.KnowledgeSelection.Reads, record)
-	state.knowledgeObservations = append(state.knowledgeObservations, KnowledgeReadObservation{KnowledgeReadIdentity: KnowledgeReadIdentity{
-		KnowledgeID: read.KnowledgeID, VersionID: read.VersionID, ContentSHA256: read.ContentSHA256, Start: read.Start, End: read.End, TextSHA256: digest}, Text: text})
-	state.roundProgress = true
-	return state.eventCall("knowledge_read_completed", "knowledge.read", "", "frozen_knowledge_span_read", time.Since(started).Milliseconds(), callID, "")
+func (r *Runtime) eventKnowledgeReadFailure(state *execution, read KnowledgeReadRequest, callID, code string, duration int64, observedAt time.Time) error {
+	return state.eventAt("knowledge_read_failed", "knowledge.read", "", code, duration, callID, "", observedAt)
 }

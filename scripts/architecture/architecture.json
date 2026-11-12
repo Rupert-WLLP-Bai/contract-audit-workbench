@@ -103,6 +103,16 @@
         "postgres": [
           "internal/clmoutbox/postgres"
         ]
+      },
+      {
+        "id": "execution",
+        "app": [
+          "internal/execution/steps"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/execution/postgres"
+        ]
       }
     ]
   }

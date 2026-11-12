@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Only the built-in deterministic comparators implement the finite semantic checks this runtime can attest. Other read-only tools can supply validated observations and typed facts,… Related `agentflow` operations include New, defaultRuntimeConfig, defaultPlannerConfig, defaultRuntimeLimits.
+// Purpose: Runs bounded Agent planning, tool validation, and same-attempt recovery from versioned durable step results. Related `agentflow` operations include New, defaultRuntimeConfig, defaultPlannerConfig, defaultRuntimeLimits.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -25,6 +25,7 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/docir"
+	"contractaudit/internal/execution/steps"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
@@ -32,12 +33,13 @@ import (
 )
 
 type Runtime struct {
-	config    Config
-	tools     map[string]Tool
-	specs     []ToolSpec
-	specByID  map[string]ToolSpec
-	toolsNode *compose.ToolsNode
-	runnable  compose.Runnable[*execution, *execution]
+	config            Config
+	tools             map[string]Tool
+	specs             []ToolSpec
+	specByID          map[string]ToolSpec
+	toolCatalogSHA256 string
+	toolsNode         *compose.ToolsNode
+	runnable          compose.Runnable[*execution, *execution]
 }
 
 type execution struct {
@@ -100,6 +102,11 @@ func New(ctx context.Context, config Config) (*Runtime, error) {
 		return nil, err
 	}
 	runtime := &Runtime{config: config, tools: registered.tools, specs: registered.specs, specByID: registered.specByID}
+	catalogBytes, err := json.Marshal(runtime.specs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal Agent tool catalog identity: %w", err)
+	}
+	runtime.toolCatalogSHA256 = TextHash(string(catalogBytes))
 	configuration, err := runtimePlannerConfiguration(config, runtime.specs)
 	if err != nil {
 		return nil, err
@@ -250,12 +257,60 @@ func compileRuntime(ctx context.Context, runtime *Runtime) (compose.Runnable[*ex
 }
 
 func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
+	var recoverySummary steps.RecoverySummary
+	var knowledgeReadHistoryMismatch bool
+	if r.config.StepJournal != nil {
+		summary, err := r.config.StepJournal.RecoverySummary(ctx)
+		if err != nil {
+			return Report{}, err
+		}
+		if summary.ElapsedMS < 0 {
+			return Report{}, steps.ErrCorrupt
+		}
+		recoverySummary = summary
+		knowledgeReadHistoryMismatch = summary.KnowledgeReadCount != request.PriorKnowledgeReadCount
+		request.PriorElapsedMS, err = recoveredElapsedBudget(request.PriorElapsedMS,
+			request.CurrentAttemptPriorElapsedMS, summary.ElapsedMS)
+		if err != nil {
+			return Report{}, err
+		}
+		request.CurrentAttemptPriorElapsedMS = nil
+	}
 	state := newExecution(r, ctx, request)
 	if err := r.prepareRun(ctx, state); err != nil {
 		return state.report, err
 	}
 	if err := initializeExecutionState(state, r.specs); err != nil {
 		return state.report, err
+	}
+	if r.config.StepJournal != nil {
+		if knowledgeReadHistoryMismatch {
+			if _, err := acceptExecutionHistory(state); err != nil {
+				return state.report, err
+			}
+			if recoverySummary.KnowledgeReadCount > state.request.PriorKnowledgeReadCount {
+				state.report.ToolCalls += recoverySummary.KnowledgeReadCount - state.request.PriorKnowledgeReadCount
+			}
+			ambiguousErr := fmt.Errorf("%w: knowledge read events and durable steps disagree", steps.ErrAmbiguous)
+			state.report.Status = "partial"
+			state.termination = "step_result_ambiguous"
+			state.report.Limitations = append(state.report.Limitations, "Planning stopped: knowledge_read_checkpoint_event_mismatch")
+			if err := state.event("step_ambiguous", "", "", "knowledge_read_checkpoint_event_mismatch", 0); err != nil {
+				return state.report, err
+			}
+			remainingTime := remainingPlannerTime(r.config.Timeout, state.request.PriorElapsedMS)
+			finalizeRunReport(state, []Call{}, []KnowledgeReadRequest{}, ambiguousErr, remainingTime, r.config)
+			return state.report, ambiguousErr
+		}
+		// Preserve the event-derived count through frozen input validation above.
+		// Then replay complete durable reads in round order so planner calls see
+		// the same call and evidence budgets as they did before the takeover.
+		state.request.PriorKnowledgeReadCount = 0
+		state.knowledgeReadCalls = 0
+		state.evidenceBytesLeft = r.config.MaxEvidenceBytes - requestEvidenceBytes(state.request)
+		if state.evidenceBytesLeft < 0 {
+			return state.report, steps.ErrCorrupt
+		}
 	}
 	previousRound, err := acceptExecutionHistory(state)
 	if err != nil {
@@ -270,6 +325,106 @@ func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
 		return state.report, runErr
 	}
 	return state.report, nil
+}
+
+func (r *Runtime) plannerStepIdentity(state *execution, input PlanInput) (steps.Identity, error) {
+	body, err := json.Marshal(input)
+	if err != nil {
+		return steps.Identity{}, err
+	}
+	configuration := r.config.PlannerConfiguration
+	identity := steps.Identity{
+		StepID: fmt.Sprintf("planner/%d", state.round), Kind: "planner", Round: state.round,
+		RuntimeVersion: RuntimeVersion, PlannerID: r.config.Planner.Name(),
+		PlannerConfigurationID: configuration.ConfigurationID, ModelConfigurationID: configuration.ModelConfigurationID,
+		ToolCatalogVersion: configuration.ToolCatalogVersion, ToolCatalogSHA256: r.toolCatalogSHA256,
+		InputSHA256: TextHash(string(body)),
+	}
+	return identity, identity.Validate()
+}
+
+func (r *Runtime) toolStepIdentity(state *execution, call Call, callID string, input ToolInput) (steps.Identity, error) {
+	body, err := json.Marshal(input)
+	if err != nil {
+		return steps.Identity{}, err
+	}
+	spec := r.specByID[call.ToolID]
+	toolConfiguration, err := json.Marshal(spec)
+	if err != nil {
+		return steps.Identity{}, err
+	}
+	configuration := r.config.PlannerConfiguration
+	identity := steps.Identity{
+		StepID: "tool/" + callID, Kind: "tool", Round: state.round,
+		RuntimeVersion: RuntimeVersion, PlannerID: r.config.Planner.Name(),
+		PlannerConfigurationID: configuration.ConfigurationID, ModelConfigurationID: configuration.ModelConfigurationID,
+		ToolCatalogVersion: configuration.ToolCatalogVersion, ToolCatalogSHA256: r.toolCatalogSHA256,
+		ToolID: spec.ID, ToolVersion: spec.Version, ToolConfigurationSHA256: TextHash(string(toolConfiguration)),
+		InputSHA256: TextHash(string(body)),
+	}
+	return identity, identity.Validate()
+}
+
+func (r *Runtime) knowledgeReadStepIdentity(state *execution, read KnowledgeReadRequest, callID string) (steps.Identity, error) {
+	body, err := json.Marshal(read)
+	if err != nil {
+		return steps.Identity{}, err
+	}
+	configuration := r.config.PlannerConfiguration
+	identity := steps.Identity{
+		StepID: "knowledge/" + callID, Kind: "knowledge_read", Round: state.round,
+		RuntimeVersion: RuntimeVersion, PlannerID: r.config.Planner.Name(),
+		PlannerConfigurationID: configuration.ConfigurationID, ModelConfigurationID: configuration.ModelConfigurationID,
+		ToolCatalogVersion: configuration.ToolCatalogVersion, ToolCatalogSHA256: r.toolCatalogSHA256,
+		InputSHA256: TextHash(string(body)),
+	}
+	return identity, identity.Validate()
+}
+
+func plannerStepUsage(observation PlannerObservation, providerObserved, providerExpected bool) steps.Usage {
+	if !providerObserved && !providerExpected {
+		return steps.Usage{Status: steps.UsageNotApplicable}
+	}
+	if observation.InputTokens == nil || observation.OutputTokens == nil || observation.TotalTokens == nil ||
+		*observation.InputTokens < 0 || *observation.OutputTokens < 0 || *observation.TotalTokens < 0 {
+		if !providerExpected {
+			return steps.Usage{Status: steps.UsageNotApplicable}
+		}
+		return steps.Usage{Status: steps.UsageUnknown}
+	}
+	return steps.Usage{Status: steps.UsageObserved,
+		InputTokens:  cloneInt64Pointer(observation.InputTokens),
+		OutputTokens: cloneInt64Pointer(observation.OutputTokens),
+		TotalTokens:  cloneInt64Pointer(observation.TotalTokens)}
+}
+
+func (state *execution) recordRestoredPlannerUsage(record steps.Record) {
+	state.recordPlannerStepUsage(record.Usage, record.CallsConsumed)
+}
+
+func (state *execution) recordPlannerStepUsage(usage steps.Usage, calls int) {
+	state.observations.PlannerCalls += calls
+	switch usage.Status {
+	case steps.UsageObserved:
+		if state.observations.InputTokens == nil {
+			state.observations.InputTokens = new(int64)
+			state.observations.OutputTokens = new(int64)
+			state.observations.TotalTokens = new(int64)
+		}
+		*state.observations.InputTokens += *usage.InputTokens
+		*state.observations.OutputTokens += *usage.OutputTokens
+		*state.observations.TotalTokens += *usage.TotalTokens
+	case steps.UsageUnknown:
+		state.usageIncomplete = true
+	}
+}
+
+func elapsedMS(started, finished time.Time) int64 {
+	elapsed := finished.Sub(started).Milliseconds()
+	if elapsed < 0 {
+		return 0
+	}
+	return elapsed
 }
 
 func newExecution(r *Runtime, ctx context.Context, request Request) *execution {
@@ -325,7 +480,7 @@ func validateRunAccessAndRequest(ctx context.Context, state *execution, config C
 
 func validateRunEvidenceContext(ctx context.Context, state *execution, config Config) error {
 	totalEvidenceBytes := requestEvidenceBytes(state.request)
-	reservedKnowledgeBytes := state.request.PriorKnowledgeReadCount * KnowledgeReadMaxBytes
+	reservedKnowledgeBytes := requestKnowledgeReadReservation(state.request, config)
 	if reservedKnowledgeBytes > config.MaxEvidenceBytes || totalEvidenceBytes > config.MaxEvidenceBytes-reservedKnowledgeBytes {
 		return rejectRunInput(state, "input", "input_budget_exceeded", ErrInput)
 	}
@@ -363,10 +518,20 @@ func freezeRunRequest(state *execution, config Config) error {
 	}
 	state.request = frozen
 	totalEvidenceBytes := requestEvidenceBytes(frozen)
-	reservedKnowledgeBytes := frozen.PriorKnowledgeReadCount * KnowledgeReadMaxBytes
+	reservedKnowledgeBytes := requestKnowledgeReadReservation(frozen, config)
 	state.evidenceBytesLeft = config.MaxEvidenceBytes - totalEvidenceBytes - reservedKnowledgeBytes
 	state.report.InputSHA256 = TextHash(string(body))
 	return nil
+}
+
+func requestKnowledgeReadReservation(request Request, config Config) int {
+	if config.StepJournal != nil {
+		// Same-attempt reads are charged by their durable checkpoint replay after
+		// frozen request validation. Keep the historical count in the request and
+		// selection record, but don't reserve those bytes a second time here.
+		return 0
+	}
+	return request.PriorKnowledgeReadCount * KnowledgeReadMaxBytes
 }
 
 func initializeExecutionState(state *execution, specs []ToolSpec) error {
@@ -465,6 +630,37 @@ func remainingPlannerTime(timeout time.Duration, elapsed *int64) time.Duration {
 		return 0
 	}
 	return remaining - time.Duration(*elapsed)*time.Millisecond
+}
+
+func recoveredElapsedBudget(priorAttempt, currentAttempt *int64, checkpointElapsed int64) (*int64, error) {
+	if checkpointElapsed < 0 {
+		return nil, steps.ErrCorrupt
+	}
+	priorElapsed := int64(0)
+	hasPriorElapsed := priorAttempt != nil
+	if priorAttempt != nil {
+		priorElapsed = *priorAttempt
+	}
+	currentElapsed := int64(0)
+	hasCurrentElapsed := currentAttempt != nil
+	if currentAttempt != nil {
+		currentElapsed = *currentAttempt
+	}
+	if priorElapsed < 0 || currentElapsed < 0 {
+		return nil, steps.ErrCorrupt
+	}
+	if checkpointElapsed > currentElapsed {
+		currentElapsed = checkpointElapsed
+	}
+	const maxInt64 = int64(1<<63 - 1)
+	if currentElapsed > maxInt64-priorElapsed {
+		return nil, steps.ErrCorrupt
+	}
+	if !hasPriorElapsed && !hasCurrentElapsed && checkpointElapsed == 0 {
+		return nil, nil
+	}
+	total := priorElapsed + currentElapsed
+	return &total, nil
 }
 
 type roundResults struct {
@@ -601,7 +797,8 @@ func finalizeRunReport(state *execution, calls []Call, reads []KnowledgeReadRequ
 }
 
 func finalizeEmptyPriorRun(state *execution, remainingTime time.Duration, maxCalls int) {
-	if len(state.report.Rounds) != 0 || (len(state.request.PriorObservations) == 0 && state.request.PriorKnowledgeReadCount == 0) {
+	if state.termination != "" || len(state.report.Rounds) != 0 ||
+		(len(state.request.PriorObservations) == 0 && state.request.PriorKnowledgeReadCount == 0) {
 		return
 	}
 	reason := "max_rounds_reached"
@@ -813,7 +1010,90 @@ func (r *Runtime) plan(ctx context.Context, state *execution) (*execution, error
 	if err != nil {
 		return state, err
 	}
-	plan, err := r.requestPlan(ctx, state, input)
+	var plan Plan
+	var observation PlannerObservation
+	var plannerErr error
+	started := r.config.Clock()
+	observedPlanner := false
+	_, observedPlanner = r.config.Planner.(ObservedPlanner)
+	modelPlanner := r.config.PlannerConfiguration.Mode == ModeModelFixture || r.config.PlannerConfiguration.Mode == ModeModelLive
+	var identity steps.Identity
+	if r.config.StepJournal != nil {
+		identity, err = r.plannerStepIdentity(state, input)
+		if err != nil {
+			return state, err
+		}
+		record, execute, beginErr := r.config.StepJournal.Begin(ctx, identity)
+		if beginErr != nil {
+			return state, beginErr
+		}
+		if err := record.Validate(); err != nil {
+			return state, errors.Join(steps.ErrCorrupt, err)
+		}
+		switch record.Status {
+		case steps.StatusSucceeded:
+			if execute || record.ObservedAt == nil || json.Unmarshal(record.Payload, &plan) != nil || plan.Calls == nil {
+				return state, steps.ErrCorrupt
+			}
+			state.recordRestoredPlannerUsage(record)
+			if err := state.eventAt("planner_reused", "", "", "persisted_plan_reused", 0, "", "", *record.ObservedAt); err != nil {
+				return state, err
+			}
+		case steps.StatusFailed:
+			if execute || record.ObservedAt == nil {
+				return state, steps.ErrCorrupt
+			}
+			state.recordRestoredPlannerUsage(record)
+			plannerErr = plannerErrorFromStepFailure(record.FailureCode)
+			if err := state.eventAt("planner_failure_reused", "", "", record.FailureCode, 0, "", "", *record.ObservedAt); err != nil {
+				return state, err
+			}
+		case steps.StatusAmbiguous:
+			if execute {
+				return state, steps.ErrCorrupt
+			}
+			state.recordRestoredPlannerUsage(record)
+			state.termination = "step_result_ambiguous"
+			if err := state.event("step_ambiguous", "", "", record.FailureCode, 0); err != nil {
+				return state, err
+			}
+			return state, steps.ErrAmbiguous
+		case steps.StatusStarted:
+			if !execute {
+				return state, steps.ErrAmbiguous
+			}
+			plan, observation, plannerErr = r.requestPlan(ctx, state, input)
+			if ctx.Err() != nil {
+				return state, ctx.Err()
+			}
+			usage := plannerStepUsage(observation, observedPlanner, modelPlanner)
+			observedAt := r.config.Clock().UTC()
+			outcome := steps.Outcome{ObservedAt: observedAt, ElapsedMS: elapsedMS(started, observedAt), CallsConsumed: 1, Usage: usage}
+			if plannerErr != nil {
+				failureCode, persist := plannerStepFailureCode(plannerErr)
+				if !persist {
+					return state, plannerErr
+				}
+				outcome.Status, outcome.FailureCode = steps.StatusFailed, failureCode
+			} else {
+				outcome.Status = steps.StatusSucceeded
+				outcome.Payload, err = json.Marshal(plan)
+				if err != nil {
+					return state, err
+				}
+			}
+			if err := r.finishStep(ctx, identity, outcome); err != nil {
+				return state, err
+			}
+			state.recordPlannerStepUsage(usage, outcome.CallsConsumed)
+		default:
+			return state, steps.ErrCorrupt
+		}
+	} else {
+		plan, observation, plannerErr = r.requestPlan(ctx, state, input)
+		state.recordPlannerStepUsage(plannerStepUsage(observation, observedPlanner, modelPlanner), 1)
+	}
+	err = plannerErr
 	recordKnowledgePlanningRound(state, input, err)
 	if ctx.Err() != nil {
 		return state, ctx.Err()
@@ -829,6 +1109,37 @@ func (r *Runtime) plan(ctx context.Context, state *execution) (*execution, error
 		return state, err
 	}
 	return state, nil
+}
+
+func (r *Runtime) finishStep(ctx context.Context, identity steps.Identity, outcome steps.Outcome) error {
+	if r.config.StepJournal == nil {
+		return nil
+	}
+	if err := r.config.StepJournal.Finish(ctx, identity, outcome); err != nil {
+		return errors.Join(steps.ErrPersistence, err)
+	}
+	return nil
+}
+
+func plannerStepFailureCode(err error) (string, bool) {
+	if errors.Is(err, ErrPlan) {
+		return "invalid_model_plan", true
+	}
+	if errors.Is(err, ErrDenied) || errors.Is(err, ErrPlanningAuthorization) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return "", false
+	}
+	return "planner_unavailable", true
+}
+
+func plannerErrorFromStepFailure(code string) error {
+	switch code {
+	case "invalid_model_plan":
+		return ErrPlan
+	case "planner_unavailable":
+		return errPlannerUnavailable
+	default:
+		return steps.ErrCorrupt
+	}
 }
 
 func (r *Runtime) plannerInputForRun(ctx context.Context, state *execution) (PlanInput, error) {
@@ -851,15 +1162,12 @@ func (r *Runtime) plannerInputForRun(ctx context.Context, state *execution) (Pla
 	return input, nil
 }
 
-func (r *Runtime) requestPlan(ctx context.Context, state *execution, input PlanInput) (Plan, error) {
+func (r *Runtime) requestPlan(ctx context.Context, _ *execution, input PlanInput) (Plan, PlannerObservation, error) {
 	if observedPlanner, ok := r.config.Planner.(ObservedPlanner); ok {
-		plan, observation, err := observedPlanner.PlanObserved(ctx, input)
-		state.recordPlannerObservation(observation)
-		return plan, err
+		return observedPlanner.PlanObserved(ctx, input)
 	}
 	plan, err := r.config.Planner.Plan(ctx, input)
-	state.observations.PlannerCalls++
-	return plan, err
+	return plan, PlannerObservation{}, err
 }
 
 func recordKnowledgePlanningRound(state *execution, input PlanInput, err error) {
@@ -1022,15 +1330,102 @@ func (r *Runtime) execute(ctx context.Context, state *execution) (*execution, er
 
 func (r *Runtime) executeToolCall(ctx context.Context, state *execution, call Call) (bool, error) {
 	callID := stableCallID(state.request.RequestID, state.round, call)
+	input := state.toolInput(call)
+	var identity steps.Identity
+	var stepRecord steps.Record
+	execute := true
+	if r.config.StepJournal != nil {
+		var err error
+		identity, err = r.toolStepIdentity(state, call, callID, input)
+		if err != nil {
+			return false, err
+		}
+		stepRecord, execute, err = r.config.StepJournal.Begin(ctx, identity)
+		if err != nil {
+			return false, err
+		}
+		if err := stepRecord.Validate(); err != nil {
+			return false, errors.Join(steps.ErrCorrupt, err)
+		}
+		switch stepRecord.Status {
+		case steps.StatusSucceeded:
+			if execute || stepRecord.ObservedAt == nil {
+				return false, steps.ErrCorrupt
+			}
+			state.report.ToolCalls += stepRecord.CallsConsumed
+			if !r.reviewAccessAllowed(state) {
+				return false, ErrDenied
+			}
+			var findings []Finding
+			if err := json.Unmarshal(stepRecord.Payload, &findings); err != nil || findings == nil {
+				return false, errors.Join(steps.ErrCorrupt, err)
+			}
+			returnedBytes, err := r.validateToolResult(ctx, state, call, findings)
+			if err != nil {
+				return false, errors.Join(steps.ErrCorrupt, err)
+			}
+			if err := r.acceptToolResult(state, call, callID, findings, stepRecord.ElapsedMS, *stepRecord.ObservedAt, true); err != nil {
+				return false, err
+			}
+			return false, r.finishToolSuccess(state, call, callID, stepRecord.ElapsedMS, *stepRecord.ObservedAt, findings, returnedBytes, true)
+		case steps.StatusFailed:
+			if execute || stepRecord.ObservedAt == nil || stepRecord.FailureCode == "authorization_revoked_after_tool" || stepRecord.FailureCode == "cancelled_or_deadline" {
+				return false, steps.ErrCorrupt
+			}
+			state.report.ToolCalls += stepRecord.CallsConsumed
+			state.termination = "step_result_failed"
+			state.gapStates[call.GapID] = "unknown:" + stepRecord.FailureCode
+			state.domain(call.Domain).Status = "partial"
+			state.updatePlannedCall(callID, "failed", stepRecord.FailureCode, nil)
+			pair := call.GapID + "\x00" + call.ToolID
+			state.callEvidenceCounts[pair] = len(state.gapEvidenceIDs[call.GapID])
+			state.previousCallByPair[pair] = PriorCall{ToolID: call.ToolID, GapID: call.GapID}
+			if err := state.eventAt("step_failure_reused", call.ToolID, call.Domain, stepRecord.FailureCode, 0, callID, call.GapID, *stepRecord.ObservedAt); err != nil {
+				return false, err
+			}
+			return false, errors.Join(steps.ErrPriorFailure, fmt.Errorf("previous tool step %s failed", callID))
+		case steps.StatusAmbiguous:
+			if execute {
+				return false, steps.ErrCorrupt
+			}
+			state.report.ToolCalls += stepRecord.CallsConsumed
+			state.termination = "step_result_ambiguous"
+			state.gapStates[call.GapID] = "unknown:step_result_ambiguous"
+			state.domain(call.Domain).Status = "partial"
+			state.updatePlannedCall(callID, "failed", "step_result_ambiguous", nil)
+			pair := call.GapID + "\x00" + call.ToolID
+			state.callEvidenceCounts[pair] = len(state.gapEvidenceIDs[call.GapID])
+			state.previousCallByPair[pair] = PriorCall{ToolID: call.ToolID, GapID: call.GapID}
+			if err := state.eventCall("step_ambiguous", call.ToolID, call.Domain, stepRecord.FailureCode, 0, callID, call.GapID); err != nil {
+				return false, err
+			}
+			return false, steps.ErrAmbiguous
+		case steps.StatusStarted:
+			if !execute {
+				return false, steps.ErrAmbiguous
+			}
+		default:
+			return false, steps.ErrCorrupt
+		}
+	}
 	started, err := r.beginToolCall(ctx, state, call, callID)
 	if err != nil {
 		return false, err
 	}
-	findings, bytes, fatal, err := r.runTool(ctx, state, call, callID, started)
-	if fatal {
-		return false, err
-	}
+	findings, returnedBytes, err := r.runTool(ctx, state, call, callID, input)
 	if err != nil {
+		if r.config.StepJournal != nil && !errors.Is(err, ErrDenied) && !errors.Is(err, context.Canceled) &&
+			!errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			status, code := toolFailureStatus(err, state.termination)
+			if status != "cancelled" && status != "denied" {
+				observedAt := r.config.Clock().UTC()
+				outcome := steps.Outcome{Status: steps.StatusFailed, FailureCode: code, ObservedAt: observedAt,
+					ElapsedMS: elapsedMS(started, observedAt), CallsConsumed: 1, Usage: steps.Usage{Status: steps.UsageNotApplicable}}
+				if persistErr := r.finishStep(ctx, identity, outcome); persistErr != nil {
+					return false, persistErr
+				}
+			}
+		}
 		stop, failureErr := r.finishToolFailure(ctx, state, call, callID, started, err)
 		if failureErr != nil {
 			return false, failureErr
@@ -1043,7 +1438,30 @@ func (r *Runtime) executeToolCall(ctx context.Context, state *execution, call Ca
 		}
 		return stop, nil
 	}
-	return false, r.finishToolSuccess(state, call, callID, started, findings, bytes)
+	observedAt := r.config.Clock().UTC()
+	elapsed := elapsedMS(started, observedAt)
+	if r.config.StepJournal != nil {
+		payload, err := json.Marshal(findings)
+		if err != nil {
+			return false, err
+		}
+		outcome := steps.Outcome{Status: steps.StatusSucceeded, Payload: payload, ObservedAt: observedAt,
+			ElapsedMS: elapsed, CallsConsumed: 1, Usage: steps.Usage{Status: steps.UsageNotApplicable}}
+		if err := r.finishStep(ctx, identity, outcome); err != nil {
+			return false, err
+		}
+	}
+	if err := r.acceptToolResult(state, call, callID, findings, elapsed, observedAt, false); err != nil {
+		return false, err
+	}
+	return false, r.finishToolSuccess(state, call, callID, elapsed, observedAt, findings, returnedBytes, false)
+}
+
+func (state *execution) toolInput(call Call) ToolInput {
+	return ToolInput{
+		TenantID: state.request.Case.TenantID, CaseID: state.request.Case.CaseID, ActorID: state.request.Principal.UserID,
+		Gap: state.gaps[call.GapID], Evidence: slices.Clone(state.request.Evidence), PriorFindings: cloneFindings(state.findingsByGap[call.GapID]),
+	}
 }
 
 func (r *Runtime) beginToolCall(ctx context.Context, state *execution, call Call, callID string) (time.Time, error) {
@@ -1062,20 +1480,16 @@ func (r *Runtime) beginToolCall(ctx context.Context, state *execution, call Call
 		return time.Time{}, err
 	}
 	state.updatePlannedCall(callID, "running", "", nil)
-	return time.Now(), nil
+	return r.config.Clock(), nil
 }
 
 func (r *Runtime) reviewAccessAllowed(state *execution) bool {
 	return access.Check(access.Review, state.request.Principal, state.request.Case, r.config.Clock()).Allowed
 }
 
-func (r *Runtime) runTool(ctx context.Context, state *execution, call Call, callID string, started time.Time) ([]Finding, int, bool, error) {
+func (r *Runtime) runTool(ctx context.Context, state *execution, call Call, callID string, input ToolInput) ([]Finding, int, error) {
 	toolCtx, cancel := context.WithTimeout(ctx, r.config.ToolTimeout)
 	state.report.ToolCalls++
-	input := ToolInput{
-		TenantID: state.request.Case.TenantID, CaseID: state.request.Case.CaseID, ActorID: state.request.Principal.UserID,
-		Gap: state.gaps[call.GapID], Evidence: slices.Clone(state.request.Evidence), PriorFindings: cloneFindings(state.findingsByGap[call.GapID]),
-	}
 	toolCtx = withEinoInvocation(toolCtx, einoInvocation{toolID: call.ToolID, input: input})
 	toolMessages, err := r.toolsNode.Invoke(toolCtx, schema.AssistantMessage("", []schema.ToolCall{{
 		ID: callID, Type: "function", Function: schema.FunctionCall{Name: call.ToolID, Arguments: "{}"},
@@ -1104,17 +1518,37 @@ func (r *Runtime) runTool(ctx context.Context, state *execution, call Call, call
 		clearUnverifiedLocations(findings)
 		err = state.validateFactConsistency(findings)
 	}
-	if err == nil {
-		if sinkErr := state.eventCall("tool_observed", call.ToolID, call.Domain, "validated_tool_observation", time.Since(started).Milliseconds(), callID, call.GapID); sinkErr != nil {
-			return nil, 0, true, sinkErr
-		}
-		state.recordToolObservations(call, callID, findings)
-		if !verifiedComparator(r.tools[call.ToolID]) {
-			markClaimsUnverified(findings)
-		}
-		err = state.recordFindings(call.GapID, findings)
+	return findings, returnedBytes, err
+}
+
+func (r *Runtime) validateToolResult(ctx context.Context, state *execution, call Call, findings []Finding) (int, error) {
+	if err := validateFindings(ctx, findings, call.Domain, state.gaps[call.GapID].Capability, state.request.Evidence); err != nil {
+		return 0, err
 	}
-	return findings, returnedBytes, false, err
+	returnedBytes, err := validateReturnedToolFindings(state, findings, nil)
+	if err != nil {
+		return 0, err
+	}
+	clearUnverifiedLocations(findings)
+	if err := state.validateFactConsistency(findings); err != nil {
+		return 0, err
+	}
+	return returnedBytes, nil
+}
+
+func (r *Runtime) acceptToolResult(state *execution, call Call, callID string, findings []Finding, durationMS int64, observedAt time.Time, replayed bool) error {
+	kind, code := "tool_observed", "validated_tool_observation"
+	if replayed {
+		kind, code, durationMS = "tool_reused", "persisted_tool_result_reused", 0
+	}
+	if err := state.eventAt(kind, call.ToolID, call.Domain, code, durationMS, callID, call.GapID, observedAt); err != nil {
+		return err
+	}
+	state.recordToolObservations(call, callID, findings)
+	if !verifiedComparator(r.tools[call.ToolID]) {
+		markClaimsUnverified(findings)
+	}
+	return state.recordFindings(call.GapID, findings)
 }
 
 func validateReturnedToolFindings(state *execution, findings []Finding, err error) (int, error) {
@@ -1137,7 +1571,8 @@ func (r *Runtime) finishToolFailure(ctx context.Context, state *execution, call 
 	state.gapStates[call.GapID] = "unknown:" + code
 	state.domain(call.Domain).Status = "partial"
 	state.updatePlannedCall(callID, status, code, nil)
-	if sinkErr := state.eventCall("tool_failed", call.ToolID, call.Domain, code, time.Since(started).Milliseconds(), callID, call.GapID); sinkErr != nil {
+	observedAt := r.config.Clock().UTC()
+	if sinkErr := state.eventAt("tool_failed", call.ToolID, call.Domain, code, elapsedMS(started, observedAt), callID, call.GapID, observedAt); sinkErr != nil {
 		return false, sinkErr
 	}
 	if errors.Is(err, ErrDenied) {
@@ -1163,7 +1598,7 @@ func toolFailureStatus(err error, termination string) (string, string) {
 	return status, code
 }
 
-func (r *Runtime) finishToolSuccess(state *execution, call Call, callID string, started time.Time, findings []Finding, returnedBytes int) error {
+func (r *Runtime) finishToolSuccess(state *execution, call Call, callID string, durationMS int64, observedAt time.Time, findings []Finding, returnedBytes int, replayed bool) error {
 	state.evidenceBytesLeft -= returnedBytes
 	newState, resolved := gapOutcome(findings)
 	if state.gapStates[call.GapID] != newState {
@@ -1183,7 +1618,11 @@ func (r *Runtime) finishToolSuccess(state *execution, call Call, callID string, 
 	domain.Status = completedDomainStatus(newState)
 	domain.Findings = append(domain.Findings, findings...)
 	state.updatePlannedCall(callID, "completed", "", evidenceIDs)
-	if err := state.eventCall("tool_completed", call.ToolID, call.Domain, "validated_tool_result", time.Since(started).Milliseconds(), callID, call.GapID); err != nil {
+	if replayed {
+		return nil
+	}
+	completedAt := r.config.Clock().UTC()
+	if err := state.eventAt("tool_completed", call.ToolID, call.Domain, "validated_tool_result", max(durationMS, elapsedMS(observedAt, completedAt)), callID, call.GapID, completedAt); err != nil {
 		state.resolved[call.GapID] = false
 		state.gapStates[call.GapID] = "unknown:event_sink_failed"
 		state.domain(call.Domain).Status = "partial"
@@ -1213,13 +1652,17 @@ func (state *execution) remainingGaps() []Gap {
 }
 
 func (state *execution) eventCall(kind, tool string, domain Domain, code string, milliseconds int64, callID, gapID string) error {
+	return state.eventAt(kind, tool, domain, code, milliseconds, callID, gapID, state.clock().UTC())
+}
+
+func (state *execution) eventAt(kind, tool string, domain Domain, code string, milliseconds int64, callID, gapID string, occurredAt time.Time) error {
 	sequence := len(state.report.Events) + 1
 	if state.request.PriorEventCount > 0 && state.request.PriorEventCount <= 1024 {
 		sequence += state.request.PriorEventCount
 	}
 	event := Event{EventID: "event_" + TextHash(fmt.Sprintf("%s\x00%d\x00%d\x00%s\x00%s", state.request.RequestID, sequence, state.round, kind, callID))[:24],
 		Sequence: sequence, Round: state.round, Kind: kind, ToolID: tool, CallID: callID, GapID: gapID,
-		Domain: domain, Code: code, DurationMS: milliseconds, OccurredAt: state.clock().UTC()}
+		Domain: domain, Code: code, DurationMS: milliseconds, OccurredAt: occurredAt.UTC()}
 	state.report.Events = append(state.report.Events, event)
 	if state.sink != nil {
 		if err := state.sink(state.sinkContext, event); err != nil {

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -19,6 +19,7 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/docir"
+	"contractaudit/internal/execution/steps"
 )
 
 const RuntimeVersion = "operator-flow-v4/eino-0.9.22"
@@ -115,7 +116,9 @@ type Request struct {
 	PriorKnowledgeReadCount int                       `json:"prior_knowledge_read_count,omitempty"`
 	PriorEventCount         int                       `json:"prior_event_count,omitempty"`
 	PriorElapsedMS          *int64                    `json:"prior_elapsed_ms,omitempty"`
-	CanonicalEvaluations    []CanonicalEvaluation     `json:"canonical_evaluations,omitempty"`
+	// CurrentAttemptPriorElapsedMS carries event-derived runtime history separately from prior-attempt elapsed time.
+	CurrentAttemptPriorElapsedMS *int64                `json:"-"`
+	CanonicalEvaluations         []CanonicalEvaluation `json:"canonical_evaluations,omitempty"`
 }
 
 // KnowledgeReference is supplied only by the trusted attempt-snapshot resolver.
@@ -531,5 +534,7 @@ type Config struct {
 	PlannerConfiguration PlannerConfiguration
 	// EventSink runs synchronously at occurrence; an error stops the run.
 	EventSink func(context.Context, Event) error
-	Clock     func() time.Time
+	// StepJournal persists each planner/tool result before the next step can use it.
+	StepJournal steps.Journal
+	Clock       func() time.Time
 }

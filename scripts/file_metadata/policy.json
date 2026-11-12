@@ -433,6 +433,14 @@
       ],
       "handling": "manifest-only",
       "reason": "web/eslint.config.mjs uses ESM syntax while the trusted metadata mapper does not yet recognize .mjs as JavaScript; avoid a hash-style header and keep metadata in the manifest."
+    },
+    {
+      "id": "agent-step-checkpoints-migration",
+      "paths": [
+        "internal/store/migrations/0045_agent_step_checkpoints.sql"
+      ],
+      "handling": "manifest-only",
+      "reason": "Versioned SQL migration bytes are integrity-checked after application and must not be changed by metadata headers."
     }
   ],
   "unclassified_file_policy": "Do not infer a comment syntax or purpose. Add a reviewed class or path rule before the complete inventory is accepted.",

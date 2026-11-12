@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,6 +16,7 @@ import (
 
 	"contractaudit/internal/engine"
 	"contractaudit/internal/execution"
+	"contractaudit/internal/execution/steps"
 	"contractaudit/internal/model"
 )
 
@@ -25,6 +26,7 @@ import (
 func (s *Store) executeSingleContractPrecheck(parent, ctx context.Context, runID, attemptID string, models Models, recorder attemptRecorder) {
 	agentNotice := "智能审查未在此范围执行。"
 	var docs []Interpreted
+	agentStepFailureCode := ""
 	runCtx := execution.WithSpan(ctx, attemptID)
 	err := execution.Run(runCtx, recorder,
 		execution.Stage{Name: "input_preparation", Run: func(stageCtx context.Context) error {
@@ -144,8 +146,16 @@ func (s *Store) executeSingleContractPrecheck(parent, ctx context.Context, runID
 			stageCtx = model.WithCallObserver(stageCtx, attemptModelObserver{recorder: agentRecorder})
 			incomplete, err := s.runTelecomAgentReview(stageCtx, runID, attemptID, docs, models, agentRecorder)
 			if err != nil {
-				if errors.Is(err, errAttemptAuthorizationRevoked) || errors.Is(err, errAgentReviewPersistence) || errors.Is(err, errAgentReviewScopeChanged) || stageCtx.Err() != nil || recorder.err() != nil {
+				if isFatalAgentReviewBoundaryError(err) || stageCtx.Err() != nil || agentRecorder.err() != nil {
 					return err
+				}
+				if errors.Is(err, steps.ErrAmbiguous) || errors.Is(err, steps.ErrPriorFailure) {
+					agentStepFailureCode = "agent_step_failed"
+					if errors.Is(err, steps.ErrAmbiguous) {
+						agentStepFailureCode = "agent_step_ambiguous"
+					}
+					agentNotice = "智能审查步骤未能安全恢复，已保留确定性检查结果。"
+					return recordTelecomAgentReviewResult(stageCtx, agentRecorder, "partial", agentStepFailureCode)
 				}
 				agentNotice = "智能审查未完成，已保留确定性检查结果。"
 				return recordTelecomAgentReviewResult(stageCtx, agentRecorder, "partial", "agent_review_failed")
@@ -172,5 +182,9 @@ func (s *Store) executeSingleContractPrecheck(parent, ctx context.Context, runID
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", code)
 		return
 	}
-	_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "partial", "单合同预审仅核对已识别的付款比例；跨材料比对、正式制度审查和其他风险尚未执行。请补齐材料后发起完整审查。"+agentNotice, "precheck_scope_limited")
+	terminalCode := "precheck_scope_limited"
+	if agentStepFailureCode != "" {
+		terminalCode = agentStepFailureCode
+	}
+	_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "partial", "单合同预审仅核对已识别的付款比例；跨材料比对、正式制度审查和其他风险尚未执行。请补齐材料后发起完整审查。"+agentNotice, terminalCode)
 }
