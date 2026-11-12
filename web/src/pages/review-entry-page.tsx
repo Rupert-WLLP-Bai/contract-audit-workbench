@@ -85,10 +85,7 @@ function selectReviewEntryCases(
   const pendingTaskCaseIds = new Set(
     actorId
       ? snapshot.tasks
-          .filter(
-            (task) =>
-              task.assignee_id === actorId && task.status !== "completed",
-          )
+          .filter((task) => task.assignee_id === actorId && task.status !== "completed")
           .map((task) => task.case_id)
       : [],
   );
@@ -108,11 +105,8 @@ function selectReviewEntryCases(
 
 function ReviewEntryCaseCell({ item }: { item: WorkbenchCase }) {
   const context =
-    item.profile?.customer ||
-    (item.business_line ? businessLineLabel(item.business_line) : "");
-  const businessStatus = item.business_status
-    ? businessStatusLabel(item.business_status)
-    : "";
+    item.profile?.customer || (item.business_line ? businessLineLabel(item.business_line) : "");
+  const businessStatus = item.business_status ? businessStatusLabel(item.business_status) : "";
   return (
     <div className="review-entry-case">
       <strong>{item.title}</strong>
@@ -127,13 +121,7 @@ function ReviewEntryCaseCell({ item }: { item: WorkbenchCase }) {
   );
 }
 
-function ReviewEntryStatusCell({
-  item,
-  run,
-}: {
-  item: WorkbenchCase;
-  run: WorkbenchRun | null;
-}) {
+function ReviewEntryStatusCell({ item, run }: { item: WorkbenchCase; run: WorkbenchRun | null }) {
   if (!run) return <span className="review-entry-muted">尚未发起</span>;
   return (
     <div className="review-entry-status">
@@ -155,9 +143,7 @@ function ReviewEntryTodoCell({
   return (
     <div className="review-entry-todo">
       <span>
-        {item.pending_decisions > 0
-          ? `${item.pending_decisions} 项待判断`
-          : "暂无待判断"}
+        {item.pending_decisions > 0 ? `${item.pending_decisions} 项待判断` : "暂无待判断"}
       </span>
       {assignedTasks > 0 ? (
         <span className="review-entry-muted">{assignedTasks} 项分派待办</span>
@@ -166,13 +152,7 @@ function ReviewEntryTodoCell({
   );
 }
 
-function ReviewEntryActions({
-  item,
-  run,
-}: {
-  item: WorkbenchCase;
-  run: WorkbenchRun | null;
-}) {
+function ReviewEntryActions({ item, run }: { item: WorkbenchCase; run: WorkbenchRun | null }) {
   return (
     <div className="review-entry-actions">
       {run ? (
@@ -205,10 +185,7 @@ function reviewEntryColumns(
       key: "status",
       width: 190,
       render: (_, item) => (
-        <ReviewEntryStatusCell
-          item={item}
-          run={latestRunForCase(runsByCase, item.id)}
-        />
+        <ReviewEntryStatusCell item={item} run={latestRunForCase(runsByCase, item.id)} />
       ),
     },
     {
@@ -216,10 +193,7 @@ function reviewEntryColumns(
       key: "todo",
       width: 180,
       render: (_, item) => (
-        <ReviewEntryTodoCell
-          item={item}
-          assignedTasks={pendingTaskCounts.get(item.id) ?? 0}
-        />
+        <ReviewEntryTodoCell item={item} assignedTasks={pendingTaskCounts.get(item.id) ?? 0} />
       ),
     },
     {
@@ -241,10 +215,7 @@ function reviewEntryColumns(
       width: 210,
       align: "right",
       render: (_, item) => (
-        <ReviewEntryActions
-          item={item}
-          run={latestRunForCase(runsByCase, item.id)}
-        />
+        <ReviewEntryActions item={item} run={latestRunForCase(runsByCase, item.id)} />
       ),
     },
   ];
@@ -317,24 +288,11 @@ function ReviewEntryCases({
 }) {
   const pendingTaskCounts = new Map<string, number>();
   for (const task of snapshot.tasks) {
-    if (
-      actorId &&
-      task.assignee_id === actorId &&
-      task.status !== "completed"
-    ) {
-      pendingTaskCounts.set(
-        task.case_id,
-        (pendingTaskCounts.get(task.case_id) ?? 0) + 1,
-      );
+    if (actorId && task.assignee_id === actorId && task.status !== "completed") {
+      pendingTaskCounts.set(task.case_id, (pendingTaskCounts.get(task.case_id) ?? 0) + 1);
     }
   }
-  const cases = selectReviewEntryCases(
-    snapshot,
-    view,
-    query,
-    actorId,
-    runsByCase,
-  );
+  const cases = selectReviewEntryCases(snapshot, view, query, actorId, runsByCase);
   const tabItems = REVIEW_ENTRY_VIEWS.map(({ key, label }) => ({
     key,
     label,
@@ -440,10 +398,7 @@ export function ReviewEntryPage() {
   const [params, setParams] = useSearchParams();
   const view = parseReviewEntryView(params.get("view"));
   const search = params.get("q") ?? "";
-  const runsByCase = useMemo(
-    () => indexRunsByCase(query.data?.runs ?? []),
-    [query.data?.runs],
-  );
+  const runsByCase = useMemo(() => indexRunsByCase(query.data?.runs ?? []), [query.data?.runs]);
 
   function updateParam(key: "view" | "q", value: string) {
     setParams(
@@ -457,8 +412,7 @@ export function ReviewEntryPage() {
     );
   }
 
-  if (query.isLoading)
-    return <PageStatus kind="loading" title="正在读取审查工作区案件" />;
+  if (query.isLoading) return <PageStatus kind="loading" title="正在读取审查工作区案件" />;
   if (query.isError || !query.data)
     return (
       <PageStatus

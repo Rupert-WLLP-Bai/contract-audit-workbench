@@ -32,13 +32,16 @@ import "./compare-entry-page.css";
 export function CompareEntryPage() {
   const query = useWorkbench("week");
   const [search, setSearch] = useState("");
-  if (query.isLoading)
-    return <PageStatus kind="loading" title="正在读取案件列表" />;
+  if (query.isLoading) return <PageStatus kind="loading" title="正在读取案件列表" />;
   if (query.isError || !query.data)
     return (
       <PageStatus
         kind={isForbidden(query.error) || isUnauthenticated(query.error) ? "denied" : "error"}
-        title={isForbidden(query.error) || isUnauthenticated(query.error) ? "没有权限读取案件列表" : "版本对照数据没有加载"}
+        title={
+          isForbidden(query.error) || isUnauthenticated(query.error)
+            ? "没有权限读取案件列表"
+            : "版本对照数据没有加载"
+        }
         detail={errorMessage(query.error)}
         action={
           <Button
@@ -94,18 +97,13 @@ export function CompareEntryPage() {
       render: (_, item) => {
         const latest = latestRun(runsByCase.get(item.id) ?? []);
         const runCount = runsByCase.get(item.id)?.length ?? 0;
-        if (!latest)
-          return <span className="compare-entry-muted">本周未返回运行记录</span>;
+        if (!latest) return <span className="compare-entry-muted">本周未返回运行记录</span>;
         return (
           <div className="compare-entry-run">
             <TechnicalDetail value={latest.id} label="运行标识" />
-            <StatusText tone={runTone(latest.state)}>
-              {runLabel(latest.state)}
-            </StatusText>
+            <StatusText tone={runTone(latest.state)}>{runLabel(latest.state)}</StatusText>
             <TechnicalDetail value={latest.state} label="运行状态编码" />
-            <span className="compare-entry-muted">
-              本周返回 {runCount} 次运行
-            </span>
+            <span className="compare-entry-muted">本周返回 {runCount} 次运行</span>
           </div>
         );
       },
@@ -115,7 +113,8 @@ export function CompareEntryPage() {
       key: "updated",
       width: 165,
       render: (_, item) => (
-        <div><time dateTime={item.updated_at}>{formatDateTime(item.updated_at)}</time>
+        <div>
+          <time dateTime={item.updated_at}>{formatDateTime(item.updated_at)}</time>
           <InvalidTimeDetail value={item.updated_at} label="案件更新时间" />
         </div>
       ),
@@ -129,9 +128,7 @@ export function CompareEntryPage() {
         const latest = latestRun(runsByCase.get(item.id) ?? []);
         return (
           <div className="compare-entry-actions">
-            <Link to={`/compare?case_id=${encodeURIComponent(item.id)}`}>
-              选择审查
-            </Link>
+            <Link to={`/compare?case_id=${encodeURIComponent(item.id)}`}>选择审查</Link>
             <Link
               to={
                 latest
@@ -170,7 +167,9 @@ export function CompareEntryPage() {
           <strong>{snapshot.runs.length}</strong>
         </li>
       </ol>
-      <p className="compare-entry-note">本周返回的运行数量不能确认冻结执行或可比性；请进入案件选择并核对两次执行。</p>
+      <p className="compare-entry-note">
+        本周返回的运行数量不能确认冻结执行或可比性；请进入案件选择并核对两次执行。
+      </p>
       {snapshot.cases.length === 0 ? (
         <PageStatus
           kind="empty"

@@ -594,7 +594,9 @@
 }
 @media (max-width: 760px) {
   .audit-event-summary,
-  .workbench-record-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .workbench-record-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* Record rows read as a ruled ledger, not centred link cells. */
@@ -624,7 +626,9 @@
 }
 
 @media (max-width: 700px) {
-  .module-report-frame { height: 420px; }
+  .module-report-frame {
+    height: 420px;
+  }
 }
 
 .module-report-error {
@@ -648,7 +652,9 @@
   background: var(--surface-raised);
 }
 
-.module-evidence-image { object-fit: contain; }
+.module-evidence-image {
+  object-fit: contain;
+}
 
 .module-evidence-error,
 .module-evidence-note {
@@ -696,5 +702,7 @@
 }
 
 @media (max-width: 1100px) {
-  .module-workspace-reader { grid-template-columns: minmax(0, 1fr); }
+  .module-workspace-reader {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
