@@ -9,6 +9,7 @@
 // End file metadata.
 
 import type { BusinessAgentReview } from "./business-agent-review";
+import type { ContractFactsProjection } from "./contract-facts";
 import type { FrozenLegalReviewProjection } from "./legal-citations";
 import type { WireSchemas } from "./wire.generated";
 
@@ -727,6 +728,7 @@ export interface ReviewWorkspace {
   /** True only when the response explicitly returned top-level review_attempts: null. */
   review_attempts_explicit_null?: boolean;
   agent_review?: BusinessAgentReview | null;
+  contract_facts?: ContractFactsProjection | null;
   execution: Execution | null;
   snapshot?: RunSnapshot | null;
   evaluations?: ConstraintEvaluation[];

@@ -193,6 +193,18 @@ func (s *Store) CreateReportWithIdempotency(ctx context.Context, user accounts.U
 	} else {
 		agentReviewJSON = nil
 	}
+	contractFactsJSON, hasContractFacts, err := s.ContractFactsForAttempt(ctx, currentUser, caseID, runID, attemptID)
+	if err != nil {
+		return ReportRecord{}, err
+	}
+	var contractFactsBytes []byte
+	contractFactsDigest := ""
+	if hasContractFacts {
+		contractFactsBytes = append([]byte(nil), contractFactsJSON...)
+		contractFactsDigest = sha256Bytes(contractFactsBytes)
+	} else {
+		contractFactsJSON = nil
+	}
 	if runSnapshot.ReviewScope != nil {
 		attempt.ReviewScope = runSnapshot.ReviewScope
 		input.ReviewScope = runSnapshot.ReviewScope
@@ -214,6 +226,7 @@ func (s *Store) CreateReportWithIdempotency(ctx context.Context, user accounts.U
 		},
 		InputHash: *attempt.InputHash, OutputHash: *attempt.OutputHash, DecisionSnapshotHash: decisionHash,
 		AgentReview: agentReviewJSON, AgentReviewBytes: agentReviewBytes, AgentReviewSHA256: agentReviewDigest,
+		ContractFacts: contractFactsJSON, ContractFactsBytes: contractFactsBytes, ContractFactsSHA256: contractFactsDigest,
 	}
 	if precheck {
 		envelope.PrecheckMapping = json.RawMessage(engine.SingleContractPrecheckManifest)

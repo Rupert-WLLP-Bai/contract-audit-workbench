@@ -199,8 +199,14 @@ func withFrozenGovernance(current, frozen RunSnapshot) RunSnapshot {
 // plannerConfigurationForAcceptance freezes the agent planner configuration a
 // run must use. A resolver failure is a hard error: an unfrozen planner identity
 // would let a retry silently switch prompt or limits.
-func (s *Store) plannerConfigurationForAcceptance(modelConfigurationID string) (agentflow.PlannerConfiguration, error) {
-	configuration, err := agentflow.ResolvePlannerConfiguration(modelConfigurationID)
+func (s *Store) plannerConfigurationForAcceptance(modelConfigurationID, factsChatModel, factsConfigurationID string) (agentflow.PlannerConfiguration, error) {
+	var configuration agentflow.PlannerConfiguration
+	var err error
+	if factsConfigurationID != "" || factsChatModel != "" {
+		configuration, err = agentflow.ResolvePlannerConfigurationWithContractFacts(modelConfigurationID, factsChatModel, factsConfigurationID)
+	} else {
+		configuration, err = agentflow.ResolvePlannerConfiguration(modelConfigurationID)
+	}
 	if err != nil {
 		return agentflow.PlannerConfiguration{}, fault.Conflict("审查计划配置不可用，无法保存本次审查信息：" + err.Error())
 	}

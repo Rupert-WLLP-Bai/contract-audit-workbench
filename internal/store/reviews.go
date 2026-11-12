@@ -239,7 +239,8 @@ type Workspace struct {
 	Revisions                []Revision
 	RevisionComparisonReason string
 	RevisionComparisonSource *RevisionComparisonSource
-	Execution                *Execution `json:"execution"`
+	Execution                *Execution      `json:"execution"`
+	ContractFacts            json.RawMessage `json:"contract_facts,omitempty"`
 }
 
 func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAttemptID ...string) (Workspace, error) {
@@ -270,6 +271,7 @@ func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAtte
 		return Workspace{}, fault.NotFound("没有找到对应记录")
 	}
 	executionView := selectedExecution(st, runID, selectedID)
+	var contractFacts json.RawMessage
 	if executionView != nil && executionView.Attempt != nil {
 		// The five-domain projection is read for this exact attempt only. It is
 		// null when no agent-flow record was persisted; it is never derived from
@@ -280,6 +282,15 @@ func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAtte
 		}
 		if present {
 			executionView.AgentReview = review
+		}
+		facts, factsPresent, factsErr := s.ContractFactsForAttempt(context.Background(), user, caseID, runID, executionView.Attempt.ID)
+		if factsErr != nil {
+			return Workspace{}, factsErr
+		}
+		if factsPresent {
+			// Facts-only output is a separate business projection. It never
+			// populates Execution.AgentReview or any risk finding.
+			contractFacts = facts
 		}
 	}
 	if selectedID != "" && executionView == nil {
@@ -349,6 +360,7 @@ func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAtte
 		RevisionComparisonReason: comparisonReason,
 		RevisionComparisonSource: source,
 		Execution:                executionView,
+		ContractFacts:            contractFacts,
 	}, nil
 }
 

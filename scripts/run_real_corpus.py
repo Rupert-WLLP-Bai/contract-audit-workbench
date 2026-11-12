@@ -34,6 +34,10 @@ from seed_telecom import read_dotenv
 ROOT = Path(__file__).resolve().parents[1]
 ROLES = {"draft_contract", "procurement", "award", "attachment"}
 PENDING = {"accepted", "queued", "running"}
+CONTRACT_FACT_FIELDS = {
+    "parties", "contract_amount", "tax_treatment", "business_dates", "term",
+    "payment_schedule", "subject_matter", "exceptions",
+}
 
 
 class RunnerError(RuntimeError):
@@ -187,6 +191,216 @@ def snapshot_model_calls(source, output, started_at, finished_at):
     return count
 
 
+def model_call_purpose_counts(events):
+    counts = {}
+    for event in events:
+        if not isinstance(event, dict) or event.get("node_kind") != "model_call":
+            continue
+        if event.get("event_type") not in {"model_completed", "model_failed"}:
+            continue
+        purpose = event.get("phase")
+        purpose = purpose if isinstance(purpose, str) and purpose else "unclassified"
+        counts[purpose] = counts.get(purpose, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def request_diagnostics(api, case_id, run_id, attempt_id):
+    if not case_id or not run_id or not attempt_id:
+        return {"status": "BLOCKED", "reason": "diagnostics requires the accepted case, run, and attempt identities"}
+    path = (f"/api/cases/{urllib.parse.quote(case_id, safe='')}/reviews/"
+            f"{urllib.parse.quote(run_id, safe='')}/diagnostics?"
+            f"{urllib.parse.urlencode({'attempt_id': attempt_id})}")
+    try:
+        response = api.request("GET", path)
+    except RunnerError as exc:
+        match = re.search(r"returned HTTP (\d{3})$", str(exc))
+        status = "BLOCKED" if match and int(match.group(1)) in {401, 403} else "NOT_RUN"
+        reason = "diagnostics access was denied" if status == "BLOCKED" else "diagnostics endpoint was unavailable"
+        return {"status": status, "reason": reason}
+
+    if not isinstance(response, dict):
+        return {"status": "BLOCKED", "reason": "diagnostics response is not an object", "response": response}
+    execution = response.get("execution")
+    attempt = execution.get("attempt") if isinstance(execution, dict) else None
+    events = execution.get("events") if isinstance(execution, dict) else None
+    if response.get("case_id") != case_id or response.get("run_id") != run_id:
+        return {"status": "BLOCKED", "reason": "diagnostics response case or run identity does not match", "response": response}
+    if not isinstance(attempt, dict) or attempt.get("id") != attempt_id or attempt.get("run_id") != run_id:
+        return {"status": "BLOCKED", "reason": "diagnostics response attempt identity does not match", "response": response}
+    if not isinstance(events, list) or any(not isinstance(event, dict) or event.get("attempt_id") != attempt_id for event in events):
+        return {"status": "BLOCKED", "reason": "diagnostics events are not bound to the accepted attempt", "response": response}
+    return {"status": "PASS", "response": response}
+
+
+def diagnostics_execution(diagnostics, case_id, run_id, attempt_id):
+    if not isinstance(diagnostics, dict) or diagnostics.get("status") != "PASS":
+        return None
+    if not case_id or not run_id or not attempt_id:
+        return None
+    response = diagnostics.get("response")
+    execution = response.get("execution") if isinstance(response, dict) else None
+    if not isinstance(response, dict) or not isinstance(execution, dict):
+        return None
+    attempt = execution.get("attempt")
+    events = execution.get("events")
+    if response.get("case_id") != case_id:
+        return None
+    if response.get("run_id") != run_id:
+        return None
+    if not isinstance(attempt, dict) or attempt.get("id") != attempt_id:
+        return None
+    if attempt.get("run_id") != run_id:
+        return None
+    if not isinstance(events, list) or any(not isinstance(event, dict) or event.get("attempt_id") != attempt_id for event in events):
+        return None
+    return execution
+
+
+def contract_facts_acceptance(workspace, diagnostics, case_id, run_id, attempt_id):
+    execution = diagnostics_execution(diagnostics, case_id, run_id, attempt_id)
+    events = (execution.get("events") or []) if execution else []
+    calls = [event for event in events if isinstance(event, dict) and event.get("node_kind") == "model_call"
+             and event.get("phase") == "contract_facts"
+             and event.get("event_type") in {"model_completed", "model_failed"}]
+    completed = any(event.get("event_type") == "model_completed" for event in calls)
+    failed = any(event.get("event_type") == "model_failed" for event in calls)
+    projection = workspace.get("contract_facts")
+    diagnostics_status = diagnostics.get("status") if isinstance(diagnostics, dict) else "NOT_RUN"
+    if diagnostics_status not in {"PASS", "BLOCKED", "NOT_RUN"}:
+        diagnostics_status = "BLOCKED"
+    if diagnostics_status == "PASS" and execution is None:
+        diagnostics_status = "BLOCKED"
+    if diagnostics_status != "PASS":
+        request_completion = {
+            "status": diagnostics_status,
+            "reason": (diagnostics.get("reason") if isinstance(diagnostics, dict) else None)
+                      or "authorized diagnostics could not confirm whether the model request ran",
+        }
+    elif completed:
+        request_completion = {"status": "PASS", "reason": "a contract_facts model request completed"}
+    elif failed:
+        request_completion = {"status": "FAIL", "reason": "the contract_facts model request failed"}
+    else:
+        request_completion = {
+            "status": "NOT_RUN",
+            "reason": "no controlled async new-admission facts request event; synchronous and legacy attempts do not count",
+        }
+
+    golden_quality = {
+        "status": "NOT_RUN",
+        "reason": "the selected attempt was not compared with frozen golden fact annotations; output validity and coverage are not quality evidence",
+    }
+    structured_output = {"status": "NOT_RUN", "reason": "no completed structured facts output was observed"}
+
+    # An explicit invalid marker is itself an authoritative result of the
+    # selected attempt projection; missing diagnostics cannot turn it into
+    # "not run".
+    if isinstance(projection, dict) and projection.get("structured_output_status") == "invalid":
+        return {
+            "request_completion": request_completion,
+            "structured_output": {"status": "FAIL", "reason": "the facts projection records invalid structured JSON"},
+            "golden_fact_quality": golden_quality,
+        }
+    if projection is None:
+        if completed:
+            structured_output = {"status": "FAIL", "reason": "completed facts request has no isolated structured facts projection"}
+        return {
+            "request_completion": request_completion,
+            "structured_output": structured_output,
+            "golden_fact_quality": golden_quality,
+        }
+
+    if not isinstance(projection, dict) or projection.get("schema_version") != "contract-facts/v1" or projection.get("attempt_id") != attempt_id:
+        structured_output = {"status": "FAIL", "reason": "facts projection discriminator or attempt identity is invalid"}
+        return {
+            "request_completion": request_completion,
+            "structured_output": structured_output,
+            "golden_fact_quality": golden_quality,
+        }
+    fields = projection.get("fields")
+    if not isinstance(fields, list) or len(fields) != len(CONTRACT_FACT_FIELDS) or \
+            {field.get("field") for field in fields if isinstance(field, dict)} != CONTRACT_FACT_FIELDS:
+        structured_output = {"status": "FAIL", "reason": "facts projection does not contain the exact bounded field set"}
+        return {
+            "request_completion": request_completion,
+            "structured_output": structured_output,
+            "golden_fact_quality": golden_quality,
+        }
+    if projection.get("status") not in {"suggested", "partial"} or not isinstance(projection.get("input_truncated"), bool):
+        structured_output = {"status": "FAIL", "reason": "facts projection coverage identity is invalid"}
+        return {
+            "request_completion": request_completion,
+            "structured_output": structured_output,
+            "golden_fact_quality": golden_quality,
+        }
+    if any(not isinstance(field, dict) or field.get("status") not in {"known", "unknown", "conflicting"} for field in fields):
+        structured_output = {"status": "FAIL", "reason": "facts projection contains an unknown field status"}
+        return {
+            "request_completion": request_completion,
+            "structured_output": structured_output,
+            "golden_fact_quality": golden_quality,
+        }
+    source = projection.get("source")
+    if not isinstance(source, dict) or not source.get("document_id") or not source.get("parsed_document_id"):
+        structured_output = {"status": "FAIL", "reason": "facts projection lacks frozen source identity"}
+        return {
+            "request_completion": request_completion,
+            "structured_output": structured_output,
+            "golden_fact_quality": golden_quality,
+        }
+    frozen_source = any(isinstance(document, dict) and document.get("id") == source["document_id"] and
+                        document.get("parsed_document_id") == source["parsed_document_id"]
+                        for document in workspace.get("documents", []))
+    if not frozen_source:
+        structured_output = {"status": "FAIL", "reason": "facts projection source is not a document in the selected workspace"}
+        return {
+            "request_completion": request_completion,
+            "structured_output": structured_output,
+            "golden_fact_quality": golden_quality,
+        }
+
+    coverage = {
+        "projection_status": projection.get("status"),
+        "input_truncated": projection["input_truncated"],
+        "unknown_fields": sorted(field["field"] for field in fields if isinstance(field, dict) and field.get("status") == "unknown"),
+        "conflicting_fields": sorted(field["field"] for field in fields if isinstance(field, dict) and field.get("status") == "conflicting"),
+    }
+    output_status = projection.get("structured_output_status")
+    if not completed:
+        reason = "authorized diagnostics could not verify a completed facts request" if diagnostics_status != "PASS" else \
+            "no completed contract_facts request event proves that the retained projection came from a completed call"
+        structured_output = {
+            "status": "NOT_RUN",
+            "reason": reason,
+            "coverage": coverage,
+        }
+    elif projection.get("status") not in {"suggested", "partial"}:
+        structured_output = {"status": "FAIL", "reason": "facts projection status is invalid", "coverage": coverage}
+    elif output_status == "invalid":
+        structured_output = {"status": "FAIL", "reason": "the completed request returned invalid structured JSON", "coverage": coverage}
+    elif output_status != "valid":
+        structured_output = {"status": "FAIL", "reason": "the completed request did not return a valid structured facts output", "coverage": coverage}
+    else:
+        has_partial_coverage = projection["input_truncated"] or any(field.get("status") != "known" for field in fields)
+        expected_projection_status = "partial" if has_partial_coverage or output_status != "valid" else "suggested"
+        if projection.get("status") != expected_projection_status:
+            return {
+                "request_completion": request_completion,
+                "structured_output": {"status": "FAIL", "reason": "facts projection status does not match its coverage", "coverage": coverage},
+                "golden_fact_quality": golden_quality,
+            }
+        structured_output = {
+            "status": "PASS",
+            "reason": "the completed facts request produced a valid bounded structured projection; this does not establish fact quality",
+            "coverage": coverage,
+        }
+    return {
+        "request_completion": request_completion,
+        "structured_output": structured_output,
+        "golden_fact_quality": golden_quality,
+    }
+
+
 
 def run(args):
     delivery = Path(os.environ.get("CAW_DELIVERY_DIR", ROOT.parent / "contract-audit-delivery")).expanduser().resolve()
@@ -278,7 +492,8 @@ def run(args):
                     raise RunnerError(f"review {current['run_id']} timed out")
                 workspace = api.request("GET", f"{prefix}/reviews/{current['run_id']}", timeout=min(args.request_timeout, remaining))
                 current["workspace"] = workspace
-                current["attempt_id"] = current["attempt_id"] or (workspace.get("execution") or {}).get("attempt", {}).get("id")
+                summary_attempt = ((workspace.get("review_attempts") or {}).get("attempt") or {}).get("id")
+                current["attempt_id"] = current["attempt_id"] or summary_attempt
                 state = workspace.get("run", {}).get("state")
                 current["run_state"] = state
                 save(result_path, result)
@@ -288,9 +503,12 @@ def run(args):
                     break
                 time.sleep(min(0.5, max(0, deadline - time.monotonic())))
             current["review_finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
-            execution = workspace.get("execution") or {}
-            attempt = execution.get("attempt") or {}
-            events = execution.get("events") or []
+            diagnostics = request_diagnostics(api, current["case_id"], current["run_id"], current["attempt_id"])
+            current["diagnostics"] = diagnostics
+            execution = diagnostics_execution(diagnostics, current["case_id"], current["run_id"], current["attempt_id"])
+            attempt = (execution.get("attempt") or {}) if execution else {}
+            events = (execution.get("events") or []) if execution else []
+            current["model_call_purposes"] = model_call_purpose_counts(events) if execution else None
             if args.review_scope == "single_contract_precheck":
                 # Precheck attempts terminate as run state "partial" by design
                 # (precheck_scope_limited): the scope runs the deterministic
@@ -326,15 +544,33 @@ def run(args):
                 }
                 current["model_call_acceptance"] = {
                     "status": "NOT_APPLICABLE",
-                    "reason": "single_contract_precheck on a non-governed public case runs deterministic payment-rule checks only; no agent review or text-model call is executed in this scope",
+                    "reason": "single_contract_precheck does not run five-domain planner review; contract fact extraction is reported separately",
                 }
+                current["contract_facts_acceptance"] = contract_facts_acceptance(
+                    workspace, diagnostics, current["case_id"], current["run_id"], current["attempt_id"])
             else:
                 if state not in {"completed", "awaiting_human"}:
                     raise RunnerError(f"review ended in {state}")
-                if attempt.get("state") != "completed" or not any(event.get("node_kind") == "model_call" and event.get("event_type") == "model_completed" for event in events):
-                    raise RunnerError("review lacks a completed model execution")
-                current["model_call_acceptance"] = {"status": "PASS",
-                                                    "reason": "full review completed with a recorded model_completed event"}
+                if execution is None:
+                    diagnostics_status = diagnostics.get("status", "NOT_RUN")
+                    if diagnostics_status == "PASS":
+                        diagnostics_status = "BLOCKED"
+                    current["model_call_acceptance"] = {
+                        "status": diagnostics_status,
+                        "reason": diagnostics.get("reason") or "authorized diagnostics could not verify model execution",
+                    }
+                else:
+                    completed_review_calls = [event for event in events if isinstance(event, dict) and
+                                              event.get("node_kind") == "model_call" and
+                                              event.get("event_type") == "model_completed" and
+                                              event.get("phase") not in {"contract_facts", "ocr"}]
+                    if attempt.get("state") != "completed" or not completed_review_calls:
+                        raise RunnerError("review lacks a completed model execution")
+                    current["model_call_acceptance"] = {"status": "PASS", "purposes": sorted({
+                        event.get("phase") if event.get("phase") else "unclassified" for event in completed_review_calls
+                    }), "reason": "full review completed with a planner or other non-facts, non-OCR model_completed event"}
+                current["contract_facts_acceptance"] = contract_facts_acceptance(
+                    workspace, diagnostics, current["case_id"], current["run_id"], current["attempt_id"])
             current["status"] = "complete"
             current["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
             save(result_path, result)

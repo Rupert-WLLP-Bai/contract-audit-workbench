@@ -290,7 +290,16 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	// in a separate read, so the pack that is frozen is the pack the acceptance
 	// write saw under its own locks. The planner configuration is frozen in the
 	// same signature so a retry can never switch prompt or limits.
-	plannerConfiguration, err := s.plannerConfigurationForAcceptance(signatureModelConfigurationID(models))
+	factsChatModel, factsConfigurationID := "", ""
+	if scope == ReviewScopeSingleContract && !isGovernedReviewCase(caseItem) && durable && models != nil {
+		if factsModel, ok := models.(contractFactsModel); ok {
+			factsConfigurationID = factsModel.ContractFactsConfigurationID()
+			if factsConfigurationID != "" {
+				factsChatModel = models.Name()
+			}
+		}
+	}
+	plannerConfiguration, err := s.plannerConfigurationForAcceptance(signatureModelConfigurationID(models), factsChatModel, factsConfigurationID)
 	if err != nil {
 		return "", err
 	}
@@ -2030,7 +2039,11 @@ func (r attemptRecorder) RecordExecutionEvent(ctx context.Context, event executi
 }
 
 func (r attemptRecorder) StartModelCall(ctx context.Context, modelRef string) (context.Context, func(model.CallObservation)) {
-	spanCtx, finish, err := execution.StartSpan(ctx, r, "model_call", "model_request", modelRef)
+	phase := model.CallPurpose(ctx)
+	if phase == "" {
+		phase = "model_request"
+	}
+	spanCtx, finish, err := execution.StartSpan(ctx, r, "model_call", phase, modelRef)
 	if err != nil {
 		r.remember(err)
 		cancelled, cancel := context.WithCancel(ctx)

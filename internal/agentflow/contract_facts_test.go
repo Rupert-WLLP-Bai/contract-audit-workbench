@@ -1,0 +1,183 @@
+// File metadata (manifest mirror):
+// Purpose: Pins facts capability freezing, unique quote binding to Unicode codepoint spans, truncated-prefix boundaries and partial coverage.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
+package agentflow
+
+import (
+	"strings"
+	"testing"
+
+	"contractaudit/internal/model"
+)
+
+func factsTestConfiguration(t *testing.T) ContractFactsConfiguration {
+	t.Helper()
+	modelConfig := strings.Repeat("a", 64)
+	configuration, err := ResolveContractFactsConfiguration(modelConfig, "selected-chat", model.ContractFactsConfigurationID(modelConfig, "selected-chat"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return *configuration
+}
+
+func factsTestSource() ContractFactsSource {
+	return ContractFactsSource{DocumentID: "doc-1", ParsedDocumentID: "parsed-1", OriginalDigest: strings.Repeat("b", 64), NormalizedDigest: strings.Repeat("c", 64)}
+}
+
+func factsTestSuggestion(known model.ContractFactsField) model.ContractFactsSuggestion {
+	fields := make([]model.ContractFactsField, 0, len(contractFactFieldNames))
+	for _, name := range contractFactFieldNames {
+		fields = append(fields, model.ContractFactsField{Field: name, Status: "unknown", Value: "", Citations: []model.ContractFactsCitation{}})
+	}
+	for index := range fields {
+		if fields[index].Field == known.Field {
+			fields[index] = known
+		}
+	}
+	return model.ContractFactsSuggestion{Fields: fields}
+}
+
+func TestBindContractFactsUsesUnicodeCodepointOffsetsAndUnknownStaysPartial(t *testing.T) {
+	text := "甲方🌙公司于2026年付款"
+	suggestion := factsTestSuggestion(model.ContractFactsField{
+		Field: "parties", Status: "known", Value: "🌙公司",
+		Citations: []model.ContractFactsCitation{{Quote: "🌙公司"}},
+	})
+	projection, err := BindContractFacts("attempt-1", text, text, false, factsTestSource(), factsTestConfiguration(t), suggestion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.Status != "partial" || projection.Fields[0].Citations[0].Start != 2 || projection.Fields[0].Citations[0].End != 5 {
+		t.Fatalf("unknown fields or codepoint span were not preserved: %#v", projection)
+	}
+	if err := projection.Validate(); err != nil {
+		t.Fatalf("bound projection did not validate: %v", err)
+	}
+}
+
+func TestSelectContractFactsPrimaryRequiresOneReadyFrozenDraft(t *testing.T) {
+	candidate := ContractFactsMaterialCandidate{
+		Role: "draft_contract", Ready: true, Frozen: true, Source: factsTestSource(), Text: "冻结正文",
+	}
+	source, text, err := SelectContractFactsPrimary([]ContractFactsMaterialCandidate{candidate})
+	if err != nil || source != candidate.Source || text != candidate.Text {
+		t.Fatalf("unique frozen primary was not selected: source=%+v text=%q error=%v", source, text, err)
+	}
+	if _, _, err := SelectContractFactsPrimary([]ContractFactsMaterialCandidate{candidate, candidate}); err == nil {
+		t.Fatal("ambiguous primary contracts were accepted")
+	}
+	candidate.Frozen = false
+	if _, _, err := SelectContractFactsPrimary([]ContractFactsMaterialCandidate{candidate}); err == nil {
+		t.Fatal("an interpreted but unfrozen primary was accepted")
+	}
+}
+
+func TestBindContractFactsPreservesConflictingSourceClaimsAsPartial(t *testing.T) {
+	text := "甲方与乙方"
+	suggestion := factsTestSuggestion(model.ContractFactsField{
+		Field: "parties", Status: "conflicting", Value: "",
+		Citations: []model.ContractFactsCitation{
+			{Quote: "甲方"},
+			{Quote: "乙方"},
+		},
+	})
+	projection, err := BindContractFacts("attempt-1", text, text, false, factsTestSource(), factsTestConfiguration(t), suggestion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.Status != "partial" || projection.Fields[0].Status != "conflicting" || len(projection.Fields[0].Citations) != 2 {
+		t.Fatalf("conflicting source claims were collapsed: %#v", projection.Fields[0])
+	}
+}
+
+func TestBindContractFactsDowngradesOnlyAmbiguousOrOutsidePrefixQuotes(t *testing.T) {
+	text := "甲方及甲方或乙方"
+	configuration := factsTestConfiguration(t)
+	source := factsTestSource()
+	fields := make([]model.ContractFactsField, 0, len(contractFactFieldNames))
+	for _, name := range contractFactFieldNames {
+		fields = append(fields, model.ContractFactsField{Field: name, Status: "unknown", Value: "", Citations: []model.ContractFactsCitation{}})
+	}
+	fields[0] = model.ContractFactsField{Field: "parties", Status: "known", Value: "甲方", Citations: []model.ContractFactsCitation{{Quote: "甲方"}}}
+	fields[1] = model.ContractFactsField{Field: "contract_amount", Status: "known", Value: "乙方", Citations: []model.ContractFactsCitation{{Quote: "乙方"}}}
+	projection, err := BindContractFacts("attempt-1", text, text, false, source, configuration, model.ContractFactsSuggestion{Fields: fields})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.Status != "partial" || projection.Fields[0].Status != "unknown" || projection.Fields[0].Value != "" ||
+		projection.Fields[1].Status != "known" || len(projection.Fields[1].Citations) != 1 {
+		t.Fatalf("an ambiguous quote discarded other verified facts or remained known: %#v", projection.Fields[:2])
+	}
+}
+
+func TestResolvePlannerConfigurationOnlyFreezesFactsWhenExplicitlyEnabled(t *testing.T) {
+	legacy, err := ResolvePlannerConfiguration("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.ContractFacts != nil {
+		t.Fatal("legacy planner configuration unexpectedly enabled contract facts")
+	}
+	modelConfig := strings.Repeat("d", 64)
+	withFacts, err := ResolvePlannerConfigurationWithContractFacts(modelConfig, "selected-chat", model.ContractFactsConfigurationID(modelConfig, "selected-chat"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withFacts.ContractFacts == nil || withFacts.ConfigurationID == legacy.ConfigurationID {
+		t.Fatal("facts-enabled admission did not freeze a distinct capability identity")
+	}
+	if _, err := ResolveContractFactsConfiguration(modelConfig, "selected-chat", ""); err == nil {
+		t.Fatal("missing frozen facts identity was accepted")
+	}
+}
+
+func TestContractFactsProjectionDowngradesQuotesOutsideSuppliedPrefix(t *testing.T) {
+	text := "甲方🌙公司"
+	suggestion := factsTestSuggestion(model.ContractFactsField{
+		Field: "parties", Status: "known", Value: "🌙公司",
+		Citations: []model.ContractFactsCitation{{Quote: "🌙公司"}},
+	})
+	projection, err := BindContractFacts("attempt-1", text, "甲方", true, factsTestSource(), factsTestConfiguration(t), suggestion)
+	if err != nil || projection.Fields[0].Status != "unknown" || projection.Status != "partial" {
+		t.Fatalf("a quote outside the supplied prefix was not downgraded: projection=%#v error=%v", projection, err)
+	}
+}
+
+func TestBindContractFactsKeepsTruncatedPrefixPartialEvenWhenEveryFieldIsKnown(t *testing.T) {
+	fullText := "甲方🌙公司及乙方"
+	prefix := "甲方🌙公司"
+	fields := make([]model.ContractFactsField, 0, len(contractFactFieldNames))
+	for _, name := range contractFactFieldNames {
+		fields = append(fields, model.ContractFactsField{
+			Field: name, Status: "known", Value: "原文建议",
+			Citations: []model.ContractFactsCitation{{Quote: "甲方"}},
+		})
+	}
+	projection, err := BindContractFacts("attempt-1", fullText, prefix, true, factsTestSource(), factsTestConfiguration(t),
+		model.ContractFactsSuggestion{Fields: fields})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.Status != "partial" || !projection.InputTruncated || projection.InputCodepoints != len([]rune(prefix)) {
+		t.Fatalf("truncated input was reported as complete: %#v", projection)
+	}
+}
+
+func TestEmptyContractFactsFailureProjectionStaysPartialAndUsesKnownFailureCode(t *testing.T) {
+	configuration := factsTestConfiguration(t)
+	projection := EmptyContractFactsProjection("attempt-1", configuration, factsTestSource(), 4, false, "contract_facts_request_failed")
+	if err := projection.Validate(); err != nil || projection.Status != "partial" || projection.FailureCode == "" {
+		t.Fatalf("failed extraction did not remain a valid partial projection: projection=%#v error=%v", projection, err)
+	}
+	projection.FailureCode = "arbitrary_internal_detail"
+	if err := projection.Validate(); err == nil {
+		t.Fatal("unknown internal failure code was accepted")
+	}
+}

@@ -432,6 +432,22 @@ func evidenceAgentReview(ctx context.Context, tx pgx.Tx, item Case, runID, attem
 	if storedInput != inputHash || sha256Bytes(raw) != digest {
 		return agentflow.AgentReview{}, fault.Conflict("已保存的智能审查待补充检查编号无效")
 	}
+	return decodeEvidenceAgentReview(raw, attemptID)
+}
+
+func decodeEvidenceAgentReview(raw []byte, attemptID string) (agentflow.AgentReview, error) {
+	var header struct {
+		SchemaVersion string `json:"schema_version"`
+	}
+	if err := json.Unmarshal(raw, &header); err != nil {
+		return agentflow.AgentReview{}, fault.Conflict("智能审查待补充检查的格式或编号无效")
+	}
+	if header.SchemaVersion == agentflow.ContractFactsProjectionSchema {
+		return agentflow.AgentReview{}, fault.Conflict("这次执行只有合同事实建议，没有可补充的五域智能审查")
+	}
+	if header.SchemaVersion != agentflow.AgentReviewSchemaVersion {
+		return agentflow.AgentReview{}, fault.Conflict("智能审查待补充检查的格式或编号无效")
+	}
 	var review agentflow.AgentReview
 	if err := json.Unmarshal(raw, &review); err != nil || review.SchemaVersion != agentflow.AgentReviewSchemaVersion || review.AttemptID != attemptID {
 		return agentflow.AgentReview{}, fault.Conflict("智能审查待补充检查的格式或编号无效")

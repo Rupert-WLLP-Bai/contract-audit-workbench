@@ -12,6 +12,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
+import type { ContractFactsCitation, ContractFactsProjection } from "../api/contract-facts";
 import type { Finding, ReviewDocument } from "../api/types";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { DocumentStage, type ReviewCaseContext } from "./document-stage";
@@ -291,6 +292,138 @@ describe("document stage case context", () => {
 });
 
 describe("document stage materials and search", () => {
+  it("locates a facts citation by Unicode codepoint in its matching frozen source", async () => {
+    const text = "甲方应支付金额💰元。";
+    const document = documentOf("doc-facts", "draft_contract", "合同.txt", text, {
+      digest: "",
+      parsed_document_id: "parsed-facts",
+      parsed_document: null,
+    });
+    const citation: ContractFactsCitation = {
+      document_id: document.id,
+      parsed_document_id: "parsed-facts",
+      original_digest: "a".repeat(64),
+      normalized_digest: "b".repeat(64),
+      quote: "金额💰",
+      start: 5,
+      end: 8,
+    };
+    const projection: ContractFactsProjection = {
+      schema_version: "contract-facts/v1",
+      attempt_id: "attempt-facts",
+      status: "partial",
+      structured_output_status: "valid",
+      source: {
+        document_id: document.id,
+        parsed_document_id: "parsed-facts",
+        original_digest: "a".repeat(64),
+        normalized_digest: "b".repeat(64),
+      },
+      input_codepoints: Array.from(text).length,
+      input_truncated: false,
+      fields: [
+        {
+          field: "contract_amount",
+          status: "known",
+          value: "金额💰",
+          citations: [citation],
+        },
+        ...(
+          [
+            "parties",
+            "tax_treatment",
+            "business_dates",
+            "term",
+            "payment_schedule",
+            "subject_matter",
+            "exceptions",
+          ] as const
+        ).map((field) => ({ field, status: "unknown" as const, value: "", citations: [] })),
+      ],
+    };
+    const { container } = renderStage({
+      documents: [document],
+      contractFactsCitation: citation,
+      contractFactsLocationScope: {
+        caseId: "case-facts",
+        runId: "run-facts",
+        attemptId: "attempt-facts",
+        historyKind: "frozen",
+        parsedDocumentIds: ["parsed-facts"],
+        projection,
+      },
+    });
+
+    const mark = await waitFor(() => {
+      const selected = container.querySelector("mark.hit-find");
+      expect(selected).not.toBeNull();
+      return selected;
+    });
+    expect(mark?.textContent).toBe("金额💰");
+    expect(container.querySelector(".doc-pane")?.getAttribute("data-document-version-id")).toBe(
+      "doc-facts",
+    );
+  });
+
+  it("does not highlight facts when the parsed identity is outside the selected frozen attempt", () => {
+    const text = "甲方应支付金额💰元。";
+    const document = documentOf("doc-facts", "draft_contract", "合同.txt", text, {
+      digest: "",
+      parsed_document_id: "parsed-facts",
+      parsed_document: null,
+    });
+    const citation: ContractFactsCitation = {
+      document_id: document.id,
+      parsed_document_id: "parsed-facts",
+      original_digest: "a".repeat(64),
+      normalized_digest: "b".repeat(64),
+      quote: "金额💰",
+      start: 5,
+      end: 8,
+    };
+    const projection: ContractFactsProjection = {
+      schema_version: "contract-facts/v1",
+      attempt_id: "attempt-facts",
+      status: "partial",
+      structured_output_status: "valid",
+      source: {
+        document_id: document.id,
+        parsed_document_id: "parsed-facts",
+        original_digest: citation.original_digest,
+        normalized_digest: citation.normalized_digest,
+      },
+      input_codepoints: Array.from(text).length,
+      input_truncated: false,
+      fields: [
+        { field: "contract_amount", status: "known", value: "金额💰", citations: [citation] },
+        ...(
+          [
+            "parties",
+            "tax_treatment",
+            "business_dates",
+            "term",
+            "payment_schedule",
+            "subject_matter",
+            "exceptions",
+          ] as const
+        ).map((field) => ({ field, status: "unknown" as const, value: "", citations: [] })),
+      ],
+    };
+    const { container } = renderStage({
+      documents: [document],
+      contractFactsCitation: citation,
+      contractFactsLocationScope: {
+        caseId: "case-facts",
+        runId: "run-facts",
+        attemptId: "attempt-facts",
+        historyKind: "frozen",
+        parsedDocumentIds: ["another-parsed-document"],
+        projection,
+      },
+    });
+    expect(container.querySelector("mark.hit-find")).toBeNull();
+  });
+
   it("navigates to frozen key clauses without a finding and marks them separately", async () => {
     const user = userEvent.setup();
     const text = "😀第一条 付款约定：甲方应支付预付款。";

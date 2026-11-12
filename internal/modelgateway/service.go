@@ -751,7 +751,7 @@ func validStructuredRequest(body []byte, enabled bool, requestedModel, reviewMod
 	if json.Compact(&actual, format) != nil {
 		return false
 	}
-	for _, kind := range []string{"warranty", "cloud_contract"} {
+	for _, kind := range []string{"warranty", "cloud_contract", "contract_facts"} {
 		var expected bytes.Buffer
 		if json.Compact(&expected, model.StructuredResponseFormat(kind)) == nil && bytes.Equal(actual.Bytes(), expected.Bytes()) {
 			return true

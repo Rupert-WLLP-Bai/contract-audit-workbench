@@ -18,6 +18,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { Button, Select } from "antd";
+import type { ContractFactsCitation } from "../api/contract-facts";
 import type {
   CaseRelationInput,
   DecisionAction,
@@ -37,6 +38,7 @@ import type { CaseReturnState } from "./section-navigation";
 import { ExecutionInspector } from "./execution-inspector";
 import { FindingPanel } from "./finding-panel";
 import { BusinessAgentReviewView } from "./business-agent-review";
+import { ContractFactsPanel } from "./contract-facts-panel";
 import { TrajectoryView } from "./trajectory-view";
 import { SingleContractScopeCoverage } from "./single-contract-scope-coverage";
 import { ReviewOutcomeSummary } from "./review-outcome-summary";
@@ -641,6 +643,32 @@ export function ReviewWorkspaceView({
   }, [quoteScope, run.case_id, run.id, selected, workspace.documents]);
   const [findingColumnWidth, setFindingColumnWidth] = useState(440);
   const [workspaceView, setWorkspaceView] = useState<"context" | "evidence">("evidence");
+  const [factLocation, setFactLocation] = useState<{
+    attemptId: string;
+    citation: ContractFactsCitation;
+  } | null>(null);
+  const factCitation =
+    factLocation &&
+    factLocation.attemptId === selected?.id &&
+    factLocation.attemptId === workspace.contract_facts?.attempt_id
+      ? factLocation.citation
+      : null;
+  const selectedFactsProjection = workspace.contract_facts ?? null;
+  const contractFactsLocationScope =
+    selected &&
+    selectedFactsProjection &&
+    selected.history_kind === "frozen" &&
+    selected.run_id === run.id &&
+    selectedFactsProjection.attempt_id === selected.id
+      ? {
+          caseId: run.case_id,
+          runId: run.id,
+          attemptId: selected.id,
+          historyKind: selected.history_kind,
+          parsedDocumentIds: selected.parsed_document_ids,
+          projection: selectedFactsProjection,
+        }
+      : null;
   const evidenceViewButton = useRef<HTMLButtonElement>(null);
   const focusEvidenceAfterSwitch = useRef(false);
   useEffect(() => {
@@ -718,6 +746,15 @@ export function ReviewWorkspaceView({
       ) : null}
       {showDocument ? (
         <>
+          {workspace.contract_facts ? (
+            <ContractFactsPanel
+              facts={workspace.contract_facts}
+              onLocate={(citation) => {
+                setWorkspaceView("evidence");
+                setFactLocation({ attemptId: workspace.contract_facts!.attempt_id, citation });
+              }}
+            />
+          ) : null}
           <div className="review-workspace-view-switch" role="group" aria-label="工作区视图">
             <Button
               htmlType="button"
@@ -756,6 +793,8 @@ export function ReviewWorkspaceView({
               onCreateRelation={onCreateRelation}
               onDeleteRelation={onDeleteRelation}
               quoteScope={stageQuoteScope}
+              contractFactsCitation={factCitation}
+              contractFactsLocationScope={contractFactsLocationScope}
               onQuoteSelectionChange={onQuoteSelectionChange}
             />
             <WorkspaceResizeHandle value={findingColumnWidth} onChange={setFindingColumnWidth} />

@@ -27,6 +27,7 @@ import { Link } from "react-router";
 import type { CaseReturnState } from "./section-navigation";
 import { TechnicalDetail } from "./technical-detail";
 import { caseSelectPresentation } from "./case-select-presentation";
+import type { ContractFactsCitation, ContractFactsProjection } from "../api/contract-facts";
 import type { CaseRelationInput, EvidenceAnchor, Finding, ReviewDocument } from "../api/types";
 import type { ReviewLayout } from "../domain/review";
 import {
@@ -43,6 +44,7 @@ import {
   findTextMatches,
   resolveAnchor,
   segmentText,
+  sliceByCodePoints,
   type CodePointTextIndex,
   type ResolvedAnchor,
   type TextSegment,
@@ -123,6 +125,66 @@ function documentForAnchor(
       ),
     ) ?? null
   );
+}
+
+function documentForContractFactsCitation(
+  citation: ContractFactsCitation | null,
+  documents: ReviewDocument[],
+  scope: ContractFactsLocationScope | null,
+): ReviewDocument | null {
+  if (
+    !citation ||
+    !scope ||
+    scope.historyKind !== "frozen" ||
+    !scope.caseId ||
+    !scope.runId ||
+    scope.projection.attempt_id !== scope.attemptId ||
+    !scope.parsedDocumentIds.includes(citation.parsed_document_id)
+  )
+    return null;
+  const source = scope.projection.source;
+  if (
+    source.document_id !== citation.document_id ||
+    source.parsed_document_id !== citation.parsed_document_id ||
+    source.original_digest !== citation.original_digest ||
+    source.normalized_digest !== citation.normalized_digest ||
+    citation.end > scope.projection.input_codepoints ||
+    !scope.projection.fields.some((field) =>
+      field.citations.some(
+        (item) =>
+          item.document_id === citation.document_id &&
+          item.parsed_document_id === citation.parsed_document_id &&
+          item.original_digest === citation.original_digest &&
+          item.normalized_digest === citation.normalized_digest &&
+          item.quote === citation.quote &&
+          item.start === citation.start &&
+          item.end === citation.end,
+      ),
+    )
+  )
+    return null;
+  return (
+    documents.find((document) => {
+      return (
+        document.id === citation.document_id &&
+        document.role === "draft_contract" &&
+        document.parsed_document_id === citation.parsed_document_id &&
+        scope.parsedDocumentIds.includes(document.parsed_document_id) &&
+        document.parse_status === "ready" &&
+        document.text !== null &&
+        sliceByCodePoints(document.text, citation.start, citation.end) === citation.quote
+      );
+    }) ?? null
+  );
+}
+
+export interface ContractFactsLocationScope {
+  caseId: string;
+  runId: string;
+  attemptId: string;
+  historyKind: string;
+  parsedDocumentIds: readonly string[];
+  projection: ContractFactsProjection;
 }
 
 function anchorsFor(document: ReviewDocument, finding: Finding | null): EvidenceAnchor[] {
@@ -598,6 +660,7 @@ const TextDocumentBody = memo(function TextDocumentBody({
   textIndex: CodePointTextIndex | null;
   quoteScope: FrozenQuoteScope | null;
   keyClause: KeyClauseCandidate | null;
+  focusRange?: { start: number; end: number } | null;
   onClearKeyClause?: () => void;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
@@ -774,6 +837,7 @@ const DocumentBody = memo(function DocumentBody(props: ComponentProps<typeof Tex
             }
           : null
       }
+      focusRange={props.focusRange ?? null}
       onClearKeyClause={props.onClearKeyClause}
     >
       {textBody}
@@ -1340,6 +1404,7 @@ function DocumentView({
   split,
   evidenceDocs,
   quoteScope,
+  focusRange,
   keyClause,
   onClearKeyClause,
   onQuoteSelectionChange,
@@ -1353,6 +1418,7 @@ function DocumentView({
   split: boolean;
   evidenceDocs: ReviewDocument[];
   quoteScope: FrozenQuoteScope | null;
+  focusRange: { start: number; end: number } | null;
   keyClause: KeyClauseCandidate | null;
   onClearKeyClause?: () => void;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
@@ -1371,6 +1437,7 @@ function DocumentView({
             showDiagnostics={showDiagnostics}
             activeSource={item === active}
             quoteScope={quoteScope}
+            focusRange={item === active ? focusRange : null}
             keyClause={
               keyClause?.documentId === item.id &&
               keyClause.parsedDocumentId === item.parsed_document_id
@@ -1393,6 +1460,7 @@ function DocumentView({
       showDiagnostics={showDiagnostics}
       activeSource
       quoteScope={quoteScope}
+      focusRange={focusRange}
       keyClause={keyClause}
       onClearKeyClause={onClearKeyClause}
       onQuoteSelectionChange={onQuoteSelectionChange}
@@ -1462,9 +1530,11 @@ function useEvidenceAutoSwitch(
   active: ReviewDocument | null,
   documents: ReviewDocument[],
   setActiveKey: (key: string) => void,
+  factCitationActive: boolean,
 ) {
   useEffect(() => {
     if (
+      factCitationActive ||
       !finding ||
       !active ||
       finding.evidence.some((anchor) => anchor.document_version_id === active.id)
@@ -1472,7 +1542,7 @@ function useEvidenceAutoSwitch(
       return;
     const source = evidenceSourceOf(finding, documents);
     if (source) setActiveKey(documentKey(source));
-  }, [active, documents, finding, setActiveKey]);
+  }, [active, documents, factCitationActive, finding, setActiveKey]);
 }
 
 function useScrollToEvidence(finding: Finding | null, active: ReviewDocument | null) {
@@ -1590,6 +1660,7 @@ function DocumentColumn({
   onCompare,
   onActiveKey,
   quoteScope,
+  focusRange,
   keyClause,
   onClearKeyClause,
   onQuoteSelectionChange,
@@ -1608,6 +1679,7 @@ function DocumentColumn({
   onCompare: (compare: boolean) => void;
   onActiveKey: (key: string) => void;
   quoteScope: FrozenQuoteScope | null;
+  focusRange: { start: number; end: number } | null;
   keyClause: KeyClauseCandidate | null;
   onClearKeyClause?: () => void;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
@@ -1639,6 +1711,7 @@ function DocumentColumn({
         split={split}
         evidenceDocs={evidenceDocs}
         quoteScope={quoteScope}
+        focusRange={focusRange}
         keyClause={keyClause}
         onClearKeyClause={onClearKeyClause}
         onQuoteSelectionChange={onQuoteSelectionChange}
@@ -1663,6 +1736,8 @@ export function DocumentStage({
   onCreateRelation,
   onDeleteRelation,
   quoteScope = null,
+  contractFactsCitation = null,
+  contractFactsLocationScope = null,
   onQuoteSelectionChange,
 }: {
   documents: ReviewDocument[];
@@ -1680,6 +1755,8 @@ export function DocumentStage({
   onCreateRelation?: (input: CaseRelationInput) => Promise<void>;
   onDeleteRelation?: (relationId: string) => void;
   quoteScope?: FrozenQuoteScope | null;
+  contractFactsCitation?: ContractFactsCitation | null;
+  contractFactsLocationScope?: ContractFactsLocationScope | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   const initialDocument = initialDocumentOf(finding, documents);
@@ -1695,6 +1772,19 @@ export function DocumentStage({
   const [relatedCaseId, setRelatedCaseId] = useState("");
   const [relationReason, setRelationReason] = useState("");
   const active = activeDocumentOf(documents, activeKey);
+  const factSource = useMemo(
+    () =>
+      documentForContractFactsCitation(
+        contractFactsCitation,
+        documents,
+        contractFactsLocationScope,
+      ),
+    [contractFactsCitation, contractFactsLocationScope, documents],
+  );
+  const factRange =
+    factSource && contractFactsCitation
+      ? { start: contractFactsCitation.start, end: contractFactsCitation.end }
+      : null;
   const quoteParsedIds = quoteScope?.parsedDocumentIds.join("\u0000") ?? "";
   useEffect(() => {
     onQuoteSelectionChange?.(null);
@@ -1731,7 +1821,13 @@ export function DocumentStage({
     [active, active?.parsed_document, active?.parsed_document_id, active?.text],
   );
   const evidenceDocs = useMemo(() => evidenceDocumentsOf(finding, documents), [documents, finding]);
-  useEvidenceAutoSwitch(finding, active, documents, setActiveKey);
+  useEffect(() => {
+    if (!factSource) return;
+    setActiveKey(documentKey(factSource));
+    setSelectedKeyClauseId(null);
+    setCompareSources(false);
+  }, [factSource]);
+  useEvidenceAutoSwitch(finding, active, documents, setActiveKey, factSource !== null);
   const relatedFindings = useMemo(() => relatedFindingsOf(active, findings), [active, findings]);
   const activeIsEvidence = isActiveEvidence(active, evidenceDocs);
   const split = shouldSplit(compareSources, layout, evidenceDocs.length, activeIsEvidence);
@@ -1740,8 +1836,28 @@ export function DocumentStage({
       active?.text ? findTextMatches(active.text, deferredQuery, activeTextIndex ?? undefined) : [],
     [active, activeTextIndex, deferredQuery],
   );
-  const currentMatch = currentMatchOf(matches, matchIndex);
+  const currentMatch =
+    factRange &&
+    active !== null &&
+    factSource !== null &&
+    documentKey(active) === documentKey(factSource)
+      ? factRange
+      : currentMatchOf(matches, matchIndex);
   useScrollToEvidence(finding, active);
+  useEffect(() => {
+    if (!factRange || !factSource || !active || documentKey(active) !== documentKey(factSource))
+      return;
+    const target = window.document.querySelector<HTMLElement>(
+      `.doc-pane[data-active-source="true"] [data-offset="${factRange.start}"]`,
+    );
+    const pane = target?.closest<HTMLElement>(".col-doc");
+    if (target && pane && pane.scrollHeight > pane.clientHeight) {
+      pane.scrollTop +=
+        target.getBoundingClientRect().top -
+        pane.getBoundingClientRect().top -
+        pane.clientHeight / 2;
+    }
+  }, [active, factRange, factSource]);
   const visibleClauses = useMemo(
     () => visibleClausesOf(active, deferredQuery),
     [active, deferredQuery],
@@ -1866,6 +1982,14 @@ export function DocumentStage({
         onCompare={setCompareSources}
         onActiveKey={setActiveKey}
         quoteScope={quoteScope}
+        focusRange={
+          factRange &&
+          active !== null &&
+          factSource !== null &&
+          documentKey(active) === documentKey(factSource)
+            ? factRange
+            : null
+        }
         keyClause={selectedKeyClause}
         onClearKeyClause={() => setSelectedKeyClauseId(null)}
         onQuoteSelectionChange={onQuoteSelectionChange}

@@ -69,6 +69,7 @@ import { isRecord } from "./guards";
 import { enumValue, invalidResponse } from "./respond";
 import { parseAgentReview } from "./agent-review";
 import { parseBusinessAgentReview } from "./business-agent-review";
+import { parseContractFacts } from "./contract-facts";
 import { wireEnums } from "./wire.generated";
 function nonNegativeIntegerOrNull(value: unknown): number | null {
   const result = numberOrNull(value);
@@ -826,6 +827,7 @@ export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
     review_attempts_reported: Object.prototype.hasOwnProperty.call(record, "review_attempts"),
     review_attempts_explicit_null: record.review_attempts === null,
     agent_review: parseBusinessAgentReview(record.agent_review),
+    contract_facts: parseContractFacts(record.contract_facts),
     execution: parseExecution(record.execution),
     snapshot: parseSnapshot(record.snapshot),
     evaluations: Array.isArray(record.evaluations)

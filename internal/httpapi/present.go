@@ -275,7 +275,7 @@ func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) ma
 	}
 	out := map[string]any{
 		"run": run, "documents": docs, "findings": findings, "evaluations": evals,
-		"review_attempts": attempts, "agent_review": review,
+		"review_attempts": attempts, "agent_review": review, "contract_facts": businessContractFactsJSON(ws.ContractFacts),
 		"snapshot":        map[string]any{"document_ids": ws.Snapshot.DocumentIDs, "business_at": snapshotBusinessAt(&ws.Snapshot), "adopted_tenant_config": nil},
 		"business_events": businessAuditJSON(ws.Audit),
 		// Older clients require these fields even though the detailed records are
@@ -298,6 +298,45 @@ func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) ma
 		out["revision_comparison_source"] = ws.RevisionComparisonSource
 	}
 	return out
+}
+
+func businessContractFactsJSON(raw json.RawMessage) any {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var projection agentflow.ContractFactsProjection
+	if err := json.Unmarshal(raw, &projection); err != nil || projection.Validate() != nil {
+		return nil
+	}
+	fields := make([]any, 0, len(projection.Fields))
+	structuredOutputStatus := "valid"
+	switch projection.FailureCode {
+	case "contract_facts_output_invalid":
+		structuredOutputStatus = "invalid"
+	case "":
+	default:
+		structuredOutputStatus = "not_returned"
+	}
+	for _, item := range projection.Fields {
+		citations := make([]any, 0, len(item.Citations))
+		for _, citation := range item.Citations {
+			citations = append(citations, map[string]any{
+				"document_id": citation.DocumentID, "parsed_document_id": citation.ParsedDocumentID,
+				"original_digest": citation.OriginalDigest, "normalized_digest": citation.NormalizedDigest,
+				"quote": citation.Quote, "start": citation.Start, "end": citation.End,
+			})
+		}
+		fields = append(fields, map[string]any{"field": item.Field, "status": item.Status, "value": item.Value, "citations": citations})
+	}
+	return map[string]any{
+		"schema_version": projection.SchemaVersion, "attempt_id": projection.AttemptID, "status": projection.Status,
+		"structured_output_status": structuredOutputStatus,
+		"source": map[string]any{
+			"document_id": projection.Source.DocumentID, "parsed_document_id": projection.Source.ParsedDocumentID,
+			"original_digest": projection.Source.OriginalDigest, "normalized_digest": projection.Source.NormalizedDigest,
+		},
+		"input_codepoints": projection.InputCodepoints, "input_truncated": projection.InputTruncated, "fields": fields,
+	}
 }
 
 func snapshotBusinessAt(snapshot *store.RunSnapshot) any {

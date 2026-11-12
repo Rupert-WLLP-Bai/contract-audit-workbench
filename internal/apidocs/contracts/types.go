@@ -3173,8 +3173,44 @@ type Workspace struct {
 	Execution                  any                         `json:"execution" openapi:"{\"type\":\"null\"}"`
 	Review_attempts            any                         `json:"review_attempts" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/BusinessAttempts\"},{\"type\":\"null\"}]}"`
 	Agent_review               any                         `json:"agent_review" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/BusinessAgentReview\"},{\"type\":\"null\"}]}"`
+	Contract_facts             any                         `json:"contract_facts" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/ContractFactsProjection\"},{\"type\":\"null\"}],\"description\":\"单合同事实建议；独立于五域审查，不构成风险结论。\"}"`
 	Business_events            []BusinessAuditEvent        `json:"business_events" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/BusinessAuditEvent\"}"`
 }
+type ContractFactsSource struct {
+	Document_id        string `json:"document_id" openapi:"{\"type\":\"string\",\"minLength\":1}"`
+	Parsed_document_id string `json:"parsed_document_id" openapi:"{\"type\":\"string\",\"minLength\":1}"`
+	Original_digest    string `json:"original_digest" openapi:"{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"}"`
+	Normalized_digest  string `json:"normalized_digest" openapi:"{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"}"`
+}
+
+type ContractFactsCitation struct {
+	Document_id        string `json:"document_id" openapi:"{\"type\":\"string\",\"minLength\":1}"`
+	Parsed_document_id string `json:"parsed_document_id" openapi:"{\"type\":\"string\",\"minLength\":1}"`
+	Original_digest    string `json:"original_digest" openapi:"{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"}"`
+	Normalized_digest  string `json:"normalized_digest" openapi:"{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"}"`
+	Quote              string `json:"quote" openapi:"{\"type\":\"string\",\"minLength\":1,\"maxLength\":500}"`
+	Start              int64  `json:"start" openapi:"{\"type\":\"integer\",\"minimum\":0}"`
+	End                int64  `json:"end" openapi:"{\"type\":\"integer\",\"minimum\":1}"`
+}
+
+type ContractFact struct {
+	Field     string                  `json:"field" openapi:"{\"type\":\"string\",\"enum\":[\"parties\",\"contract_amount\",\"tax_treatment\",\"business_dates\",\"term\",\"payment_schedule\",\"subject_matter\",\"exceptions\"]}"`
+	Status    string                  `json:"status" openapi:"{\"type\":\"string\",\"enum\":[\"known\",\"unknown\",\"conflicting\"]}"`
+	Value     string                  `json:"value" openapi:"{\"type\":\"string\",\"maxLength\":1200}"`
+	Citations []ContractFactsCitation `json:"citations" openapi:"{\"type\":\"array\",\"maxItems\":3}" openapi_items:"{\"$ref\":\"#/components/schemas/ContractFactsCitation\"}"`
+}
+
+type ContractFactsProjection struct {
+	Schema_version           string              `json:"schema_version" openapi:"{\"type\":\"string\",\"const\":\"contract-facts/v1\"}"`
+	Attempt_id               string              `json:"attempt_id" openapi:"{\"type\":\"string\",\"minLength\":1}"`
+	Status                   string              `json:"status" openapi:"{\"type\":\"string\",\"enum\":[\"suggested\",\"partial\"]}"`
+	Structured_output_status string              `json:"structured_output_status" openapi:"{\"type\":\"string\",\"enum\":[\"valid\",\"invalid\",\"not_returned\"]}"`
+	Source                   ContractFactsSource `json:"source" openapi:"{\"$ref\":\"#/components/schemas/ContractFactsSource\"}"`
+	Input_codepoints         int64               `json:"input_codepoints" openapi:"{\"type\":\"integer\",\"minimum\":1,\"maximum\":32000}"`
+	Input_truncated          bool                `json:"input_truncated" openapi:"{\"type\":\"boolean\"}"`
+	Fields                   []ContractFact      `json:"fields" openapi:"{\"type\":\"array\",\"minItems\":8,\"maxItems\":8}" openapi_items:"{\"$ref\":\"#/components/schemas/ContractFact\"}"`
+}
+
 type BusinessSnapshot struct {
 	Document_ids          []string            `json:"document_ids" openapi:"{\"type\":[\"array\",\"null\"]}" openapi_items:"{\"type\":\"string\"}"`
 	Business_at           any                 `json:"business_at,omitempty" openapi:"{\"type\":[\"string\",\"null\"],\"format\":\"date-time\",\"description\":\"该次审查尝试冻结的业务时间；历史记录未保存时为null，不取当前查询时间。\"}"`
@@ -4489,7 +4525,11 @@ var SchemaRules = map[string]string{
 	"Evaluation":                             "{\"type\":\"object\",\"required\":[\"id\",\"domain\",\"relation\",\"rule_version\",\"reason\",\"finding_id\",\"rule_id\",\"capability_id\",\"reason_code\",\"fact_ids\",\"object_refs\"],\"additionalProperties\":false}",
 	"AuditEvent":                             "{\"type\":\"object\",\"required\":[\"event_id\",\"run_id\",\"actor\",\"seq\",\"event_type\",\"prev_hash\",\"hash\",\"correlation_ids\"],\"additionalProperties\":false}",
 	"Revision":                               "{\"type\":\"object\",\"required\":[\"mark\",\"finding_id\",\"previous_finding_id\",\"domain\",\"relation\",\"claim\",\"evidence\",\"prior_decision\"],\"additionalProperties\":false}",
-	"Workspace":                              "{\"type\":\"object\",\"required\":[\"run\",\"documents\",\"findings\",\"evaluations\",\"snapshot\",\"audit_events\",\"previous_run_id\",\"revision_comparison_reason\",\"revisions\",\"execution\",\"review_attempts\",\"agent_review\",\"business_events\"],\"additionalProperties\":false}",
+	"Workspace":                              "{\"type\":\"object\",\"required\":[\"run\",\"documents\",\"findings\",\"evaluations\",\"snapshot\",\"audit_events\",\"previous_run_id\",\"revision_comparison_reason\",\"revisions\",\"execution\",\"review_attempts\",\"agent_review\",\"contract_facts\",\"business_events\"],\"additionalProperties\":false}",
+	"ContractFactsSource":                    "{\"type\":\"object\",\"required\":[\"document_id\",\"parsed_document_id\",\"original_digest\",\"normalized_digest\"],\"additionalProperties\":false}",
+	"ContractFactsCitation":                  "{\"type\":\"object\",\"required\":[\"document_id\",\"parsed_document_id\",\"original_digest\",\"normalized_digest\",\"quote\",\"start\",\"end\"],\"additionalProperties\":false}",
+	"ContractFact":                           "{\"type\":\"object\",\"required\":[\"field\",\"status\",\"value\",\"citations\"],\"additionalProperties\":false}",
+	"ContractFactsProjection":                "{\"type\":\"object\",\"required\":[\"schema_version\",\"attempt_id\",\"status\",\"structured_output_status\",\"source\",\"input_codepoints\",\"input_truncated\",\"fields\"],\"additionalProperties\":false}",
 	"BusinessSnapshot":                       "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"document_ids\",\"adopted_tenant_config\"]}",
 	"AdoptedTenantConfigIdentity":            "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"version_id\",\"digest\"]}",
 	"BusinessAttempt":                        "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"id\",\"run_id\",\"ordinal\",\"retry_of_attempt_id\",\"state\",\"accepted_at\",\"started_at\",\"finished_at\",\"history_kind\",\"parsed_document_ids\",\"frozen_result_available\"]}",
@@ -4931,6 +4971,10 @@ func Types() map[string]reflect.Type {
 		"AuditEvent":                             reflect.TypeOf((*AuditEvent)(nil)).Elem(),
 		"Revision":                               reflect.TypeOf((*Revision)(nil)).Elem(),
 		"Workspace":                              reflect.TypeOf((*Workspace)(nil)).Elem(),
+		"ContractFactsSource":                    reflect.TypeOf((*ContractFactsSource)(nil)).Elem(),
+		"ContractFactsCitation":                  reflect.TypeOf((*ContractFactsCitation)(nil)).Elem(),
+		"ContractFact":                           reflect.TypeOf((*ContractFact)(nil)).Elem(),
+		"ContractFactsProjection":                reflect.TypeOf((*ContractFactsProjection)(nil)).Elem(),
 		"BusinessSnapshot":                       reflect.TypeOf((*BusinessSnapshot)(nil)).Elem(),
 		"AdoptedTenantConfigIdentity":            reflect.TypeOf((*AdoptedTenantConfigIdentity)(nil)).Elem(),
 		"BusinessAttempt":                        reflect.TypeOf((*BusinessAttempt)(nil)).Elem(),

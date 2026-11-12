@@ -24,6 +24,14 @@ type Models interface {
 	Transcribe(ctx context.Context, media string, body []byte) (string, error)
 }
 
+// contractFactsModel is an optional, strictly typed capability. Keeping it
+// separate from Models preserves legacy fixtures and model adapters that do
+// not implement this newly admitted facts path.
+type contractFactsModel interface {
+	ContractFacts(ctx context.Context, text string, truncated bool) (model.ContractFactsSuggestion, error)
+	ContractFactsConfigurationID() string
+}
+
 // UseModels installs the caller. Call it before serving, or from the endpoint
 // watcher: each operation captures the current caller once so an in-flight
 // attempt keeps the frozen identity it validated.

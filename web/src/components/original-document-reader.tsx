@@ -35,6 +35,7 @@ export function OriginalDocumentReader({
   text,
   quotes,
   keyClause = null,
+  focusRange = null,
   onClearKeyClause,
   children,
 }: {
@@ -51,6 +52,7 @@ export function OriginalDocumentReader({
     quote: string;
     page: number | null;
   } | null;
+  focusRange?: { start: number; end: number } | null;
   onClearKeyClause?: () => void;
   children: ReactNode;
 }) {
@@ -63,17 +65,24 @@ export function OriginalDocumentReader({
     if (noPage) setMode("text");
   }, [quoteIdentity, noPage]);
   useEffect(() => {
+    if (focusRange) setMode("text");
+  }, [focusRange?.start, focusRange?.end]);
+  useEffect(() => {
     if (effectiveMode !== "text") return;
-    const mark =
-      reader.current?.querySelector<HTMLElement>(
-        "[data-active-source='true'] .hit-key-clause[data-selected-key-clause='true']",
-      ) ?? reader.current?.querySelector<HTMLElement>("[data-active-source='true'] .hit-evidence");
+    const mark = focusRange
+      ? reader.current?.querySelector<HTMLElement>(
+          `[data-active-source='true'] [data-offset='${focusRange.start}']`,
+        )
+      : (reader.current?.querySelector<HTMLElement>(
+          "[data-active-source='true'] .hit-key-clause[data-selected-key-clause='true']",
+        ) ??
+        reader.current?.querySelector<HTMLElement>("[data-active-source='true'] .hit-evidence"));
     const pane = mark?.closest<HTMLElement>(".col-doc");
     if (mark && pane && pane.scrollHeight > pane.clientHeight) {
       pane.scrollTop +=
         mark.getBoundingClientRect().top - pane.getBoundingClientRect().top - pane.clientHeight / 2;
     }
-  }, [effectiveMode, keyClause?.id, quoteIdentity]);
+  }, [effectiveMode, focusRange?.start, keyClause?.id, quoteIdentity]);
   return (
     <section
       ref={reader}
@@ -105,6 +114,11 @@ export function OriginalDocumentReader({
           </p>
           <blockquote>{keyClause.quote}</blockquote>
         </div>
+      ) : null}
+      {focusRange && effectiveMode === "text" && !keyClause ? (
+        <p className="meta" role="status">
+          已按引用位置打开冻结文字；请结合上下文核对这条事实建议。
+        </p>
       ) : null}
       {effectiveMode === "text" && keyClause === null && noPage ? (
         <p className="meta">引用未记录原件页码，已显示冻结文字中的位置；可切换原件自行核对页码。</p>

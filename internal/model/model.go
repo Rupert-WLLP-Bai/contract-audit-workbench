@@ -290,6 +290,7 @@ func (c *Client) Generate(ctx context.Context, messages []*schema.Message, _ ...
 	if err := validatePlannerMessages(ctx, messages); err != nil {
 		return nil, err
 	}
+	ctx = WithCallPurpose(ctx, CallPurposePlanner)
 	completion, err := c.postChatMessages(ctx, c.cfg.ChatModel, []chatMessage{
 		{Role: string(messages[0].Role), Content: messages[0].Content},
 		{Role: string(messages[1].Role), Content: messages[1].Content},
@@ -354,6 +355,7 @@ func (c *Client) Transcribe(ctx context.Context, media string, body []byte) (str
 		return "", fmt.Errorf("%w: missing context", ErrRequest)
 	}
 	ctx = context.WithValue(ctx, transcriptionCallKey{}, true)
+	ctx = WithCallPurpose(ctx, CallPurposeOCR)
 	if len(body) == 0 {
 		return "", fmt.Errorf("%w: empty image", ErrUnusable)
 	}
