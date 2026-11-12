@@ -54,10 +54,20 @@ type CreateContractDraftInput struct {
 	IdempotencyKey     string
 }
 
-// CreateDraftResult is the stable response payload produced by the
-// CreateContractDraft application command. Store retains its wider legacy
-// detail DTO as the compatibility envelope.
-type CreateDraftResult struct {
+// ReplaceContractDraftInput is the Store-compatible draft replacement
+// command. Keep field order and default JSON names stable: they participate in
+// the existing idempotency digest stored by core.
+type ReplaceContractDraftInput struct {
+	ContractID         string
+	ExpectedRowVersion int64
+	Draft              DraftContent
+	IdempotencyKey     string
+}
+
+// DraftDetail is the Contract-owned projection used by draft commands and
+// detail reads. SigningRegistration stays raw here because its response type
+// and source-case visibility are owned by the signing Store bridge.
+type DraftDetail struct {
 	Summary                      Summary         `json:"summary"`
 	CurrentRevisionID            *string         `json:"current_revision_id"`
 	Draft                        *DraftContent   `json:"draft,omitempty"`
@@ -70,6 +80,61 @@ type CreateDraftResult struct {
 	SourceObservationDisposition string          `json:"source_observation_disposition,omitempty"`
 	SigningRegistration          json.RawMessage `json:"signing_registration,omitempty"`
 	Warnings                     []string        `json:"warnings"`
+}
+
+// CreateDraftResult preserves the #287 application name while sharing one
+// authoritative response shape with detail and replacement.
+type CreateDraftResult = DraftDetail
+
+// ContractDraftSummary is one caller-owned resumable draft row.
+type ContractDraftSummary struct {
+	ContractID    string     `json:"contract_id"`
+	AuthorityMode string     `json:"authority_mode"`
+	Name          string     `json:"name"`
+	Number        *string    `json:"number"`
+	Amount        *string    `json:"amount"`
+	Currency      *string    `json:"currency"`
+	ContractState string     `json:"contract_state"`
+	WorkflowState string     `json:"workflow_state"`
+	RowVersion    int64      `json:"row_version"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+}
+
+// DraftRecoveryRow is the narrow row used by the personal continuation list.
+// Its facts come from the caller's tenant-filtered Contract projection.
+type DraftRecoveryRow struct {
+	ContractID    string
+	AuthorityMode string
+	Name          string
+	Number        *string
+	Amount        *string
+	Currency      *string
+	RowVersion    int64
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+// DraftDetailFacts contains raw Contract-owned rows. The application layer
+// selects the authoritative draft/revision and applies the response rules.
+type DraftDetailFacts struct {
+	DraftContent      []byte
+	HasDraft          bool
+	RevisionSnapshot  []byte
+	HasRevision       bool
+	SourceObservation *DraftSourceObservation
+	LegacyImport      *DraftLegacyImport
+}
+
+type DraftSourceObservation struct {
+	State       string
+	Disposition string
+	ObservedAt  time.Time
+}
+
+type DraftLegacyImport struct {
+	ApprovalHistoryStatus string
+	ImportedAt            time.Time
 }
 
 // WriteReceipt is an idempotency result stored with the business transaction.

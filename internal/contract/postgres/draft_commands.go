@@ -55,6 +55,36 @@ func (r *DraftCommands) LoadContract(ctx context.Context, tenantID, contractID s
 		FROM clm_contracts WHERE tenant_id=$1 AND contract_id=$2`, tenantID, contractID))
 }
 
+func (r *DraftCommands) LockContract(ctx context.Context, contractID string) error {
+	_, err := r.tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(current_schema() || ':clm-contract:' || $1, 0))`, contractID)
+	return err
+}
+
+// ReplaceDraft advances the aggregate with the existing row-version CAS and
+// replaces its working content in the same caller-owned transaction.
+func (r *DraftCommands) ReplaceDraft(ctx context.Context, record clmcontract.Aggregate,
+	expectedRowVersion int64, content []byte, actorID string) (clmcontract.Aggregate, error) {
+	err := r.tx.QueryRow(ctx, `UPDATE clm_contracts SET row_version=row_version+1, updated_at=clock_timestamp()
+		WHERE tenant_id=$1 AND contract_id=$2 AND row_version=$3
+			AND authority_mode='native' AND lifecycle_state='draft' AND validity_state='active'
+		RETURNING row_version, updated_at`,
+		record.TenantID, record.ContractID, expectedRowVersion).Scan(&record.RowVersion, &record.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return clmcontract.Aggregate{}, fault.Conflict("合同内容已被他人修改，请刷新后确认")
+	}
+	if err != nil {
+		return clmcontract.Aggregate{}, err
+	}
+	if _, err := r.tx.Exec(ctx, `INSERT INTO clm_contract_drafts (tenant_id,contract_id,content,updated_by)
+		VALUES ($1,$2,$3::jsonb,$4)
+		ON CONFLICT (tenant_id,contract_id) DO UPDATE
+		SET content=EXCLUDED.content, updated_by=EXCLUDED.updated_by, updated_at=clock_timestamp()`,
+		record.TenantID, record.ContractID, string(content), actorID); err != nil {
+		return clmcontract.Aggregate{}, err
+	}
+	return record, nil
+}
+
 func (r *DraftCommands) CreateDraftAggregate(ctx context.Context, record clmcontract.Aggregate, content []byte, actorID string) (time.Time, error) {
 	var createdAt time.Time
 	err := r.tx.QueryRow(ctx, `INSERT INTO clm_contracts

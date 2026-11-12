@@ -35,7 +35,6 @@ import (
 // schema write inside a contract lock (docs/11 事务边界).
 const (
 	clmRouteCreateDraft  = contractapp.CreateDraftRoute
-	clmRouteReplaceDraft = "clm.replace_draft"
 	clmRouteLegacyImport = "clm.legacy_import"
 
 	clmEventLegacyImported = "contract.legacy_imported.v1"
@@ -63,32 +62,14 @@ type ContractDetail struct {
 	Warnings                     []string                     `json:"warnings"`
 }
 
-// ContractDraftSummary is one own-draft row for recovery after an interruption.
-type ContractDraftSummary struct {
-	ContractID    string     `json:"contract_id"`
-	AuthorityMode string     `json:"authority_mode"`
-	Name          string     `json:"name"`
-	Number        *string    `json:"number"`
-	Amount        *string    `json:"amount"`
-	Currency      *string    `json:"currency"`
-	ContractState string     `json:"contract_state"`
-	WorkflowState string     `json:"workflow_state"`
-	RowVersion    int64      `json:"row_version"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
-}
+// ContractDraftSummary remains available from Store as a compatibility alias.
+type ContractDraftSummary = clmcontract.ContractDraftSummary
 
 // CreateContractDraftInput remains available from Store as a compatibility alias.
 type CreateContractDraftInput = clmcontract.CreateContractDraftInput
 
-// ReplaceContractDraftInput fully replaces one draft with optimistic
-// concurrency against the contract aggregate row version.
-type ReplaceContractDraftInput struct {
-	ContractID         string
-	ExpectedRowVersion int64
-	Draft              DraftContent
-	IdempotencyKey     string
-}
+// ReplaceContractDraftInput remains available from Store as a compatibility alias.
+type ReplaceContractDraftInput = clmcontract.ReplaceContractDraftInput
 
 // LegacyImportInput registers one already-signed historical contract. It binds
 // an authorized real case and material version, keeps unknown history unknown
@@ -434,7 +415,7 @@ func (s *Store) CreateContractDraft(ctx context.Context, user accounts.User, inp
 	if err != nil {
 		return ContractDetail{}, err
 	}
-	detail := contractDetailFromDraftResult(result)
+	detail := contractDetailFromAppResult(result)
 	if err := tx.Commit(ctx); err != nil {
 		return ContractDetail{}, err
 	}
@@ -507,137 +488,23 @@ func (s *Store) LoadContractDetail(ctx context.Context, user accounts.User, cont
 	if err := setLocalScope(ctx, tx, dbScope{ActorID: current.ID, TenantID: accounts.Tenant(current), OrgID: record.OwnerOrgID, Role: "api"}); err != nil {
 		return ContractDetail{}, err
 	}
-	detail, _, err := s.buildContractDetail(ctx, tx, record, current)
+	result, err := contractapp.LoadDraftDetail(ctx, record,
+		contractpostgres.NewDraftQueries(platformpostgres.Bind(tx)),
+		storeDraftWorkflowReader{tx: tx, user: current}, storeDraftCodec{},
+		storeDraftAccess{tx: tx, user: current})
 	if err != nil {
 		return ContractDetail{}, err
 	}
+	detail := contractDetailFromAppResult(result)
+	registration, err := s.loadContractSigningSummary(ctx, tx, current, record)
+	if err != nil {
+		return ContractDetail{}, err
+	}
+	detail.SigningRegistration = registration
 	if err := tx.Commit(ctx); err != nil {
 		return ContractDetail{}, err
 	}
 	return detail, nil
-}
-
-// buildContractDetail assembles the projected detail. It returns the caller
-// projection only; receipt storage reuses the sealed bytes separately.
-func (s *Store) buildContractDetail(ctx context.Context, tx pgx.Tx, record clmContractRecord, current accounts.User) (ContractDetail, []byte, error) {
-	ctx = commandContext(ctx, current)
-	var contentBytes []byte
-	var updatedAt *time.Time
-	if record.CurrentRevisionID != nil && record.LifecycleState != "draft" {
-		// A frozen version is authoritative once the contract has left the
-		// editable draft state; the working draft row is never consulted
-		// ahead of it.
-		err := tx.QueryRow(ctx, `SELECT snapshot FROM clm_contract_revisions
-			WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3`,
-			accounts.Tenant(current), record.ContractID, *record.CurrentRevisionID).Scan(&contentBytes)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ContractDetail{}, nil, fault.NotFound("没有找到对应记录")
-		}
-		if err != nil {
-			return ContractDetail{}, nil, err
-		}
-	} else {
-		err := tx.QueryRow(ctx, `SELECT content, updated_at FROM clm_contract_drafts
-			WHERE tenant_id=$1 AND contract_id=$2`, accounts.Tenant(current), record.ContractID).Scan(&contentBytes, &updatedAt)
-		if errors.Is(err, pgx.ErrNoRows) {
-			if record.CurrentRevisionID != nil {
-				err := tx.QueryRow(ctx, `SELECT snapshot FROM clm_contract_revisions
-					WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3`,
-					accounts.Tenant(current), record.ContractID, *record.CurrentRevisionID).Scan(&contentBytes)
-				if errors.Is(err, pgx.ErrNoRows) {
-					return ContractDetail{}, nil, fault.NotFound("没有找到对应记录")
-				}
-				if err != nil {
-					return ContractDetail{}, nil, err
-				}
-			} else {
-				contentBytes = nil
-			}
-		} else if err != nil {
-			return ContractDetail{}, nil, err
-		}
-	}
-	name, amount, currency := "", (*string)(nil), (*string)(nil)
-	var err error
-	if contentBytes != nil {
-		if name, amount, currency, err = draftContentSummaryFacts(contentBytes); err != nil {
-			return ContractDetail{}, nil, err
-		}
-	}
-	detail := ContractDetail{
-		Summary:           clmSummary(record, name, amount, currency),
-		CurrentRevisionID: record.CurrentRevisionID,
-		ActiveRoundID:     nil,
-		AllowedCommands:   clmDraftCommands(record, authorizeContract(record, current, access.Manage)),
-		SourceRef:         contractSourceRef(record),
-		Warnings:          []string{},
-	}
-	if record.SourceSystem != nil {
-		detail.SourceID = *record.SourceSystem
-	}
-	if record.AuthorityMode == "external" {
-		detail.Summary.ContractState = "external_observed"
-		detail.Summary.WorkflowState = "external_observed"
-		detail.SourceObservedState = "unknown"
-		var observedAt time.Time
-		var state, disposition string
-		err := tx.QueryRow(ctx, `SELECT source_observed_state,disposition,recorded_at
-			FROM clm_contract_source_observations WHERE tenant_id=$1 AND contract_id=$2
-			ORDER BY recorded_at DESC,observation_id DESC LIMIT 1`, accounts.Tenant(current), record.ContractID).
-			Scan(&state, &disposition, &observedAt)
-		if err == nil {
-			detail.SourceObservedState = state
-			detail.SourceObservationDisposition = disposition
-			detail.SourceObservedAt = &observedAt
-		} else if !errors.Is(err, pgx.ErrNoRows) {
-			return ContractDetail{}, nil, err
-		}
-	} else if detail.SourceRef != nil {
-		var importedAt time.Time
-		var historyStatus string
-		err := tx.QueryRow(ctx, `SELECT approval_history_status, imported_at FROM clm_legacy_imports
-			WHERE tenant_id=$1 AND contract_id=$2`, accounts.Tenant(current), record.ContractID).Scan(&historyStatus, &importedAt)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ContractDetail{}, nil, fault.NotFound("没有找到对应记录")
-		}
-		if err != nil {
-			return ContractDetail{}, nil, err
-		}
-		detail.SourceObservedAt = new(importedAt)
-		if historyStatus == "unknown" {
-			detail.Warnings = append(detail.Warnings, "approval_history_unknown")
-		}
-	}
-	workflowState := "not_started"
-	var latestRoundID *string
-	if record.AuthorityMode == "external" {
-		workflowState = "external_observed"
-	} else if err := tx.QueryRow(ctx, `SELECT state,approval_round_id FROM clm_approval_rounds
-		WHERE tenant_id=$1 AND contract_id=$2 ORDER BY round_number DESC LIMIT 1`,
-		accounts.Tenant(current), record.ContractID).Scan(&workflowState, &latestRoundID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return ContractDetail{}, nil, err
-	}
-	detail.Summary.WorkflowState = workflowState
-	if workflowState == "in_review" {
-		detail.ActiveRoundID = latestRoundID
-		// Freeze, draft replacement and re-submission are all closed while the
-		// frozen revision is under review.
-		detail.AllowedCommands = []string{}
-	}
-	registration, err := s.loadContractSigningSummary(ctx, tx, current, record)
-	if err != nil {
-		return ContractDetail{}, nil, err
-	}
-	detail.SigningRegistration = registration
-	if contentBytes == nil {
-		return detail, nil, nil
-	}
-	plaintext, err := unsealStoredDraftBound(ctx, contentBytes, record.TenantID, record.ContractID)
-	if err != nil {
-		return ContractDetail{}, nil, err
-	}
-	detail.Draft = new(projectDraftForViewer(plaintext, authorizeContract(record, current, access.Manage)))
-	return detail, contentBytes, nil
 }
 
 // ListMyContractDrafts returns only the caller's own active native drafts, for
@@ -646,12 +513,6 @@ func (s *Store) ListMyContractDrafts(ctx context.Context, user accounts.User, li
 	ctx = commandContext(ctx, user)
 	if !s.HasDatabase() {
 		return nil, fault.New(503, "database_unavailable", "服务数据库不可用")
-	}
-	if limit <= 0 {
-		limit = 25
-	}
-	if limit > 100 {
-		limit = 100
 	}
 	current, err := trustedUser(user)
 	if err != nil {
@@ -665,35 +526,9 @@ func (s *Store) ListMyContractDrafts(ctx context.Context, user accounts.User, li
 	if err := setLocalScope(ctx, tx, userScope(current)); err != nil {
 		return nil, err
 	}
-	rows, err := tx.Query(ctx, `SELECT c.contract_id, c.authority_mode, c.contract_number, c.row_version, c.created_at,
-			d.updated_at, d.content->'contract'->>'name', d.content->'contract'->>'amount', d.content->'contract'->>'currency'
-		FROM clm_contracts c JOIN clm_contract_drafts d
-			ON d.tenant_id=c.tenant_id AND d.contract_id=c.contract_id
-		WHERE c.tenant_id=$1 AND c.created_by=$2 AND c.lifecycle_state='draft' AND c.validity_state='active'
-		ORDER BY d.updated_at DESC, c.contract_id DESC LIMIT $3`,
-		accounts.Tenant(current), current.ID, limit)
+	items, err := contractapp.ListMyDrafts(ctx, accounts.Tenant(current), current.ID, limit,
+		contractpostgres.NewDraftQueries(platformpostgres.Bind(tx)))
 	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ContractDraftSummary{}
-	for rows.Next() {
-		var item ContractDraftSummary
-		var updatedAt time.Time
-		var name *string
-		if err := rows.Scan(&item.ContractID, &item.AuthorityMode, &item.Number, &item.RowVersion,
-			&item.CreatedAt, &updatedAt, &name, &item.Amount, &item.Currency); err != nil {
-			return nil, err
-		}
-		if name != nil {
-			item.Name = *name
-		}
-		item.ContractState = "draft"
-		item.WorkflowState = "not_started"
-		item.UpdatedAt = new(updatedAt)
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -707,24 +542,7 @@ func (s *Store) ListMyContractDrafts(ctx context.Context, user accounts.User, li
 // change answers 409 and the client must re-read and confirm.
 func (s *Store) ReplaceContractDraft(ctx context.Context, user accounts.User, input ReplaceContractDraftInput) (ContractDetail, error) {
 	ctx = commandContext(ctx, user)
-	id, err := normalizeContractUUID(input.ContractID)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	if input.ExpectedRowVersion < 1 {
-		return ContractDetail{}, fault.Invalid("替换草稿必须携带当前合同 row_version")
-	}
-	if err := validateCLMIdempotencyKey(input.IdempotencyKey); err != nil {
-		return ContractDetail{}, err
-	}
-	sanitizeDraftReferences(&input.Draft)
-	if err := validateDraftContent(&input.Draft); err != nil {
-		return ContractDetail{}, err
-	}
-	if err := validateDraftAmounts(&input.Draft, contractmoney.StageDraft); err != nil {
-		return ContractDetail{}, err
-	}
-	digest, err := clmRequestDigest(clmRouteReplaceDraft, "PUT", "/api/contracts/"+id+"/draft", input.ExpectedRowVersion, input)
+	prepared, err := contractapp.PrepareReplaceDraft(input)
 	if err != nil {
 		return ContractDetail{}, err
 	}
@@ -733,107 +551,14 @@ func (s *Store) ReplaceContractDraft(ctx context.Context, user accounts.User, in
 		return ContractDetail{}, err
 	}
 	defer rollbackCLM(tx)
-	if err := lockWriteReceipt(ctx, tx, current, clmRouteReplaceDraft, input.IdempotencyKey); err != nil {
-		return ContractDetail{}, err
-	}
-	receipt, found, err := replayCLMWriteReceipt(ctx, tx, current, clmRouteReplaceDraft, input.IdempotencyKey, digest, id)
+	result, err := contractapp.ReplaceDraft(ctx, contractapp.CreateDraftPrincipal{
+		TenantID: accounts.Tenant(current), ActorID: current.ID, OrgID: current.OrgID,
+	}, prepared, contractpostgres.NewDraftCommands(platformpostgres.Bind(tx)), storeDraftCodec{},
+		storeDraftAccess{tx: tx, user: current}, storeDraftWorkflowReader{tx: tx, user: current})
 	if err != nil {
 		return ContractDetail{}, err
 	}
-	if found {
-		record, err := loadCLMContract(ctx, tx, accounts.Tenant(current), receipt.ContractID)
-		if err != nil {
-			return ContractDetail{}, err
-		}
-		detail, err := projectReceiptDetail(ctx, receipt, current, record)
-		if err != nil {
-			return ContractDetail{}, err
-		}
-		if err := tx.Commit(ctx); err != nil {
-			return ContractDetail{}, err
-		}
-		return detail, nil
-	}
-	if err := scopedContractLock(ctx, tx, id); err != nil {
-		return ContractDetail{}, err
-	}
-	record, err := loadCLMContract(ctx, tx, accounts.Tenant(current), id)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	if !authorizeContractRead(ctx, tx, record, current) {
-		return ContractDetail{}, fault.NotFound("没有找到对应记录")
-	}
-	if !authorizeContract(record, current, access.Manage) {
-		return ContractDetail{}, fault.Forbidden("当前授权不能修改此合同草稿")
-	}
-	if record.AuthorityMode != "native" {
-		return ContractDetail{}, fault.Forbidden("外部权威合同不允许本地修改草稿")
-	}
-	if record.LifecycleState != "draft" || record.ValidityState != "active" {
-		return ContractDetail{}, fault.Conflict("合同当前状态不允许修改草稿")
-	}
-	if record.RowVersion != input.ExpectedRowVersion {
-		return ContractDetail{}, fault.Conflict("合同内容已被他人修改，请刷新后确认")
-	}
-	var inReview bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM clm_approval_rounds
-		WHERE tenant_id=$1 AND contract_id=$2 AND state='in_review')`,
-		accounts.Tenant(current), id).Scan(&inReview); err != nil {
-		return ContractDetail{}, err
-	}
-	if inReview {
-		return ContractDetail{}, fault.Conflict("合同已有进行中的会签轮次，不能修改草稿")
-	}
-	_, sealedBytes, _, err := sealDraftContentBound(ctx, input.Draft, record.TenantID, record.ContractID)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	var updatedRowVersion int64
-	err = tx.QueryRow(ctx, `UPDATE clm_contracts SET row_version=row_version+1, updated_at=clock_timestamp()
-		WHERE tenant_id=$1 AND contract_id=$2 AND row_version=$3
-			AND authority_mode='native' AND lifecycle_state='draft' AND validity_state='active'
-		RETURNING row_version, updated_at`,
-		accounts.Tenant(current), id, record.RowVersion).Scan(&updatedRowVersion, &record.UpdatedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ContractDetail{}, fault.Conflict("合同内容已被他人修改，请刷新后确认")
-	}
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	record.RowVersion = updatedRowVersion
-	if _, err := tx.Exec(ctx, `INSERT INTO clm_contract_drafts (tenant_id,contract_id,content,updated_by)
-		VALUES ($1,$2,$3::jsonb,$4)
-		ON CONFLICT (tenant_id,contract_id) DO UPDATE
-		SET content=EXCLUDED.content, updated_by=EXCLUDED.updated_by, updated_at=clock_timestamp()`,
-		accounts.Tenant(current), id, string(sealedBytes), current.ID); err != nil {
-		return ContractDetail{}, err
-	}
-	name, amount, currency, err := draftContentSummaryFacts(sealedBytes)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	sealedDetail := ContractDetail{
-		Summary:         clmSummary(record, name, amount, currency),
-		ActiveRoundID:   nil,
-		AllowedCommands: clmDraftCommands(record, true),
-		Draft:           sealedDraftOf(sealedBytes),
-		Warnings:        []string{},
-	}
-	response, err := json.Marshal(sealedDetail)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	if err := insertCLMWriteReceipt(ctx, tx, accounts.Tenant(current), current.ID, clmRouteReplaceDraft,
-		input.IdempotencyKey, digest, id, 200, response); err != nil {
-		return ContractDetail{}, err
-	}
-	detail := sealedDetail
-	plaintext, err := unsealStoredDraftBound(ctx, sealedBytes, record.TenantID, record.ContractID)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	detail.Draft = new(projectDraftForViewer(plaintext, true))
+	detail := contractDetailFromAppResult(result)
 	if err := tx.Commit(ctx); err != nil {
 		return ContractDetail{}, err
 	}
