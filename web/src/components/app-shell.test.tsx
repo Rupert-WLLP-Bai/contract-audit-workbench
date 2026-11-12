@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “app shell”; representative assertions cover renders the competition brand, search and current identity, shows an unknown identity while the session loads, uses the case title and adds the review workspace crumb. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Checks app-shell identity and breadcrumb behavior plus ordinary/admin role navigation visibility without starting the full browser journey.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-09
-// Revision: r5
+// Updated: 2026-11-12
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -268,10 +268,7 @@ describe("app shell", () => {
     ["/workbench/templates", "模板管理", "/workbench/templates"],
     ["/workbench/organization", "组织与权限", "/workbench/organization"],
     ["/workbench/tools", "工具网关", "/workbench/tools"],
-    ["/workbench/settings", "系统设置", "/workbench/settings"],
     ["/workbench/executions", "Agent Studio", "/workbench/executions"],
-    ["/workbench/health", "系统健康", "/workbench/health"],
-    ["/workbench/audit", "审计日志", "/workbench/audit"],
     ["/docs/", "使用手册", "/docs/"],
     ["/api-docs", "API 文档", "/api-docs"],
   ])("keeps %s reachable from its selected entry group", (path, label, href) => {
@@ -279,6 +276,36 @@ describe("app shell", () => {
     expect(
       screen.getByLabelText("主导航").querySelector(`a[aria-label="${label}"]`),
     ).toHaveAttribute("href", href);
+  });
+
+  it("keeps public references and read-only directories visible while hiding admin operations", () => {
+    renderShell("/workbench/knowledge");
+    const nav = within(screen.getByLabelText("主导航"));
+    expect(nav.getByRole("link", { name: "知识与规则" })).toHaveAttribute(
+      "href",
+      "/workbench/knowledge",
+    );
+    expect(nav.getByRole("link", { name: "模板管理" })).toHaveAttribute(
+      "href",
+      "/workbench/templates",
+    );
+    expect(nav.queryByRole("link", { name: "规则包治理" })).not.toBeInTheDocument();
+    const utility = within(
+      screen.getByRole("heading", { name: "只读目录与文档" }).closest("section") as HTMLElement,
+    );
+    expect(utility.getByRole("link", { name: "使用手册" })).toHaveAttribute("href", "/docs/");
+    expect(utility.getByRole("link", { name: "API 文档" })).toHaveAttribute("href", "/api-docs");
+    expect(utility.getByRole("link", { name: "组织与权限" })).toHaveAttribute(
+      "href",
+      "/workbench/organization",
+    );
+    expect(utility.getByRole("link", { name: "工具网关" })).toHaveAttribute(
+      "href",
+      "/workbench/tools",
+    );
+    for (const label of ["系统设置", "系统健康", "审计日志"]) {
+      expect(utility.queryByRole("link", { name: label })).not.toBeInTheDocument();
+    }
   });
 
   it("selects the Agent Studio entry for an attempt-specific detail route without rewriting its query", () => {
@@ -323,6 +350,7 @@ describe("app shell", () => {
 
   it("links rulepack governance to the admin base when configured", () => {
     vi.stubEnv("VITE_ADMIN_URL", "http://admin.example.test/");
+    mocks.useSession.mockReturnValue({ data: { ...actor, role: "admin" } });
     renderShell("/workbench/knowledge");
     expect(screen.getByRole("link", { name: "规则包治理" })).toHaveAttribute(
       "href",
@@ -332,6 +360,7 @@ describe("app shell", () => {
   });
 
   it("links rulepack governance locally by default", () => {
+    mocks.useSession.mockReturnValue({ data: { ...actor, role: "admin" } });
     renderShell("/workbench/knowledge");
     expect(screen.getByRole("link", { name: "规则包治理" })).toHaveAttribute(
       "href",
@@ -339,9 +368,29 @@ describe("app shell", () => {
     );
   });
 
-  it("places the handbook and API reference in the management and documentation area", () => {
+  it("shows operation links for an admin client actor without changing their destinations", () => {
+    mocks.useSession.mockReturnValue({ data: { ...actor, role: "admin" } });
     renderShell();
-    const group = screen.getByRole("heading", { name: "管理与文档" }).closest("section");
+    const utility = within(
+      screen.getByRole("heading", { name: "管理与文档" }).closest("section") as HTMLElement,
+    );
+    expect(utility.getByRole("link", { name: "系统设置" })).toHaveAttribute(
+      "href",
+      "/workbench/settings",
+    );
+    expect(utility.getByRole("link", { name: "系统健康" })).toHaveAttribute(
+      "href",
+      "/workbench/health",
+    );
+    expect(utility.getByRole("link", { name: "审计日志" })).toHaveAttribute(
+      "href",
+      "/workbench/audit",
+    );
+  });
+
+  it("keeps the handbook and API reference in the read-only links for ordinary roles", () => {
+    renderShell();
+    const group = screen.getByRole("heading", { name: "只读目录与文档" }).closest("section");
     expect(group).not.toBeNull();
     expect(within(group as HTMLElement).getByRole("link", { name: "使用手册" })).toHaveAttribute(
       "href",

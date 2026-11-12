@@ -1,10 +1,10 @@
 /* File metadata (manifest mirror): */
-/* Purpose: 为文档站主题提供 .tenant-lifecycle-page .page-head, .lifecycle-detail, .lifecycle-create-card > .ant-card-body > p 等布局与颜色样式。 */
+/* Purpose: Styles the tenant lifecycle list, operation detail, creation form, pagination, and transparent page summary. */
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-02 */
-/* Updated: 2026-11-02 */
-/* Revision: r1 */
+/* Updated: 2026-11-12 */
+/* Revision: r2 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -17,6 +17,26 @@
   .lifecycle-detail {
     margin-bottom: var(--space-5);
     background: var(--surface-raised);
+  }
+  .lifecycle-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-6);
+    margin: 0;
+  }
+  .lifecycle-summary > div {
+    display: grid;
+    gap: var(--space-1);
+  }
+  .lifecycle-summary dt {
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+  .lifecycle-summary dd {
+    margin: 0;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
   }
   .lifecycle-create-card > .ant-card-body > p {
     max-width: 900px;

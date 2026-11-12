@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-08
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -33,6 +33,7 @@ import {
 } from "../api/idempotency";
 import { CaseLegalApplicabilityPanel } from "../components/case-legal-applicability-panel";
 import { PageStatus } from "../components/page-status";
+import { ListPage } from "../components/page-patterns";
 import { beijingInputToUtc, toBeijingInputValue } from "../components/beijing-datetime";
 import { formatDateTime } from "../domain/review";
 import "./legal-knowledge-page.css";
@@ -720,94 +721,108 @@ export function LegalKnowledgeAdminList({
     onSearch(value);
   }
   return (
-    <section className="page page-rulepacks">
-      <header className="page-head">
-        <div>
-          <h1>知识治理 · 法律规范</h1>
+    <ListPage
+      className="page-rulepacks"
+      title="知识治理 · 法律规范"
+      description="法律条文使用已捕获的官方来源和效力证据，并沿用知识治理的提交、校验、批准与发布流程。法律审阅状态只显示当前登记值。"
+      actions={<Button onClick={onSelectOtherKind}>返回其他知识类型</Button>}
+      beforeSummary={
+        <section className="rulepack-editor-section">
+          <h2>导入官方来源捕获</h2>
           <p>
-            法律条文使用已捕获的官方来源和效力证据，并沿用知识治理的提交、校验、批准与发布流程。法律审阅状态只显示当前登记值。
+            粘贴带有 capture 与 articles 的原始
+            JSON。服务端会核对来源正文、状态证据和各自摘要；法律审阅状态保持 NOT_RUN。
           </p>
-        </div>
-        <Button onClick={onSelectOtherKind}>返回其他知识类型</Button>
-      </header>
-      <section className="rulepack-editor-section">
-        <h2>导入官方来源捕获</h2>
-        <p>
-          粘贴带有 capture 与 articles 的原始
-          JSON。服务端会核对来源正文、状态证据和各自摘要；法律审阅状态保持 NOT_RUN。
-        </p>
-        <form className="workflow-form" onSubmit={(event) => void submit(event)}>
-          <label className="field">
-            官方捕获 JSON
-            <Input.TextArea
-              aria-label="官方捕获 JSON"
-              rows={10}
-              value={raw}
-              onChange={(event) => setRaw(event.target.value)}
-              disabled={command.isPending}
-              placeholder={`{"capture":{...},"articles":[...]}`}
+          <form className="workflow-form" onSubmit={(event) => void submit(event)}>
+            <label className="field">
+              官方捕获 JSON
+              <Input.TextArea
+                aria-label="官方捕获 JSON"
+                rows={10}
+                value={raw}
+                onChange={(event) => setRaw(event.target.value)}
+                disabled={command.isPending}
+                placeholder={`{"capture":{...},"articles":[...]}`}
+              />
+            </label>
+            {localError && (
+              <Alert
+                type="error"
+                showIcon
+                title="导入没有完成"
+                description={
+                  <>
+                    <p>{localError}</p>
+                    {command.error && (
+                      <pre>
+                        {JSON.stringify(
+                          (command.error as { details?: unknown }).details ?? command.error,
+                          null,
+                          2,
+                        )}
+                      </pre>
+                    )}
+                  </>
+                }
+              />
+            )}
+            {success && (
+              <Alert
+                type="success"
+                showIcon
+                title={`已保存来源快照 ${success.capture_snapshot_id}`}
+                description={
+                  <>
+                    {success.provenance} · 正文摘要 {success.extracted_full_text_sha256}
+                    <div>导入 {success.articles.length} 条精确版本；每条继续使用治理流程。</div>
+                  </>
+                }
+              />
+            )}
+            {command.isPending && <p role="status">正在核验并保存来源捕获…</p>}
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={command.isPending}
+              disabled={!raw.trim() || command.isPending}
+            >
+              导入并核验
+            </Button>
+          </form>
+        </section>
+      }
+      filters={
+        <form className="governance-filters" onSubmit={submitSearch}>
+          <label className="field" htmlFor="legal-admin-search">
+            查找法律条文
+            <Input
+              id="legal-admin-search"
+              type="search"
+              value={searchDraft}
+              placeholder="法规名称、条号或正文"
+              onChange={(event) => setSearchDraft(event.target.value)}
             />
           </label>
-          {localError && (
-            <Alert
-              type="error"
-              showIcon
-              title="导入没有完成"
-              description={
-                <>
-                  <p>{localError}</p>
-                  {command.error && (
-                    <pre>
-                      {JSON.stringify(
-                        (command.error as { details?: unknown }).details ?? command.error,
-                        null,
-                        2,
-                      )}
-                    </pre>
-                  )}
-                </>
-              }
-            />
-          )}
-          {success && (
-            <Alert
-              type="success"
-              showIcon
-              title={`已保存来源快照 ${success.capture_snapshot_id}`}
-              description={
-                <>
-                  {success.provenance} · 正文摘要 {success.extracted_full_text_sha256}
-                  <div>导入 {success.articles.length} 条精确版本；每条继续使用治理流程。</div>
-                </>
-              }
-            />
-          )}
-          {command.isPending && <p role="status">正在核验并保存来源捕获…</p>}
-          <Button
-            type="primary"
-            htmlType="submit"
-            loading={command.isPending}
-            disabled={!raw.trim() || command.isPending}
-          >
-            导入并核验
+          <Button type="primary" htmlType="submit">
+            检索
           </Button>
         </form>
-      </section>
-      <form className="governance-filters" onSubmit={submitSearch}>
-        <label className="field" htmlFor="legal-admin-search">
-          查找法律条文
-          <Input
-            id="legal-admin-search"
-            type="search"
-            value={searchDraft}
-            placeholder="法规名称、条号或正文"
-            onChange={(event) => setSearchDraft(event.target.value)}
-          />
-        </label>
-        <Button type="primary" htmlType="submit">
-          检索
-        </Button>
-      </form>
+      }
+      pagination={
+        query.data?.next_cursor ? (
+          <Button
+            htmlType="button"
+            onClick={() => {
+              const next = new URLSearchParams(params);
+              next.set("cursor", query.data!.next_cursor!);
+              setParams(next);
+            }}
+          >
+            下一页
+          </Button>
+        ) : null
+      }
+    >
       {query.isLoading && <PageStatus kind="loading" title="正在读取法律条文" />}
       {query.isError && (
         <Alert
@@ -819,29 +834,15 @@ export function LegalKnowledgeAdminList({
         />
       )}
       {query.data && (
-        <>
-          <Table
-            rowKey={(item) => `${item.ref.knowledge_id}:${item.ref.version_id}`}
-            dataSource={query.data.items}
-            columns={columns}
-            pagination={false}
-            locale={{ emptyText: "没有可显示的法律条文" }}
-          />
-          {query.data.next_cursor ? (
-            <Button
-              htmlType="button"
-              onClick={() => {
-                const next = new URLSearchParams(params);
-                next.set("cursor", query.data.next_cursor!);
-                setParams(next);
-              }}
-            >
-              下一页
-            </Button>
-          ) : null}
-        </>
+        <Table
+          rowKey={(item) => `${item.ref.knowledge_id}:${item.ref.version_id}`}
+          dataSource={query.data.items}
+          columns={columns}
+          pagination={false}
+          locale={{ emptyText: "没有可显示的法律条文" }}
+        />
       )}
-    </section>
+    </ListPage>
   );
 }
 

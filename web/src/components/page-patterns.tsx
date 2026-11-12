@@ -23,6 +23,7 @@ function PageHeading({
   status,
   actions,
   className,
+  headingLevel = 1,
 }: {
   title: ReactNode;
   description?: ReactNode;
@@ -31,12 +32,14 @@ function PageHeading({
   status?: ReactNode;
   actions?: ReactNode;
   className?: string;
+  headingLevel?: 1 | 2;
 }) {
+  const Heading = headingLevel === 2 ? "h2" : "h1";
   return (
     <header className={classNames("page-head", "page-pattern-heading", className)}>
       <div className="page-pattern-heading-main">
         {eyebrow ? <div className="page-pattern-eyebrow">{eyebrow}</div> : null}
-        <h1>{title}</h1>
+        <Heading>{title}</Heading>
         {description ? <p>{description}</p> : null}
         {status ? <div className="page-pattern-status">{status}</div> : null}
         {meta ? <div className="page-pattern-meta">{meta}</div> : null}
@@ -61,19 +64,32 @@ export function ListPage({
   actions,
   filters,
   summary,
+  beforeSummary,
+  beforeFilters,
   pagination,
+  headingClassName,
   className,
   contentRef,
   children,
 }: PagePatternBaseProps & {
   filters?: ReactNode;
   summary?: ReactNode;
+  beforeSummary?: ReactNode;
+  beforeFilters?: ReactNode;
   pagination?: ReactNode;
+  headingClassName?: string;
 }) {
   return (
     <section ref={contentRef} className={classNames("page", "page-pattern-list", className)}>
-      <PageHeading title={title} description={description} actions={actions} />
+      <PageHeading
+        title={title}
+        description={description}
+        actions={actions}
+        className={headingClassName}
+      />
+      {beforeSummary}
       {summary ? <div className="page-pattern-summary">{summary}</div> : null}
+      {beforeFilters}
       {filters ? <div className="page-pattern-filters">{filters}</div> : null}
       {children}
       {pagination}
@@ -85,6 +101,9 @@ export function ObjectDetailPage({
   title,
   description,
   actions,
+  eyebrow,
+  meta,
+  headingLevel,
   status,
   facts,
   nextStep,
@@ -93,7 +112,11 @@ export function ObjectDetailPage({
   className,
   contentRef,
   children,
-}: PagePatternBaseProps & {
+}: Omit<PagePatternBaseProps, "children"> & {
+  children?: ReactNode;
+  eyebrow?: ReactNode;
+  meta?: ReactNode;
+  headingLevel?: 1 | 2;
   status?: ReactNode;
   facts?: ReactNode;
   nextStep?: ReactNode;
@@ -103,11 +126,19 @@ export function ObjectDetailPage({
   return (
     <section ref={contentRef} className={classNames("page", "page-pattern-object", className)}>
       {before}
-      <PageHeading title={title} description={description} actions={actions} status={status} />
+      <PageHeading
+        title={title}
+        description={description}
+        eyebrow={eyebrow}
+        meta={meta}
+        headingLevel={headingLevel}
+        actions={actions}
+        status={status}
+      />
       {facts}
       {nextStep}
       {navigation}
-      <div className="page-pattern-object-content">{children}</div>
+      {children ? <div className="page-pattern-object-content">{children}</div> : null}
     </section>
   );
 }

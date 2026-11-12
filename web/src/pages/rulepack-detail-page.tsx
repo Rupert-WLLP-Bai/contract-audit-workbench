@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -34,6 +34,7 @@ import type {
   RulePackMutationResult,
 } from "../api/rulepacks";
 import { PageStatus } from "../components/page-status";
+import { ObjectDetailPage } from "../components/page-patterns";
 import { DirtyLeaveGuard } from "../components/dirty-leave-guard";
 import { RulePackErrorSummary } from "../components/rulepack-error-summary";
 import { RulePackManifestEditor } from "../components/rulepack-manifest-editor";
@@ -319,21 +320,16 @@ export function RulePackDetailPage() {
     (expectedRevision !== pack.revision || (edit.error !== null && isConflict(edit.error)));
 
   return (
-    <section className="page page-rulepack-detail">
-      <nav className="page-back" aria-label="规则包导航">
-        <Link to="/admin/rulepacks">返回规则包</Link>
-      </nav>
-      <header className="page-head">
-        <div>
-          <h1>
-            {pack.id}，v{pack.version}
-          </h1>
-          <p>
-            租户 {pack.tenant_id}，状态 {pack.status}，行修订 {pack.revision} ，指针修订{" "}
-            {pack.active_pointer_revision}
-            {pack.is_active ? "，当前生效" : "，当前未生效"}
-          </p>
-        </div>
+    <ObjectDetailPage
+      className="page-rulepack-detail"
+      before={
+        <nav className="page-back" aria-label="规则包导航">
+          <Link to="/admin/rulepacks">返回规则包</Link>
+        </nav>
+      }
+      title={`${pack.id}，v${pack.version}`}
+      description={`租户 ${pack.tenant_id}，状态 ${pack.status}，行修订 ${pack.revision}，指针修订 ${pack.active_pointer_revision}${pack.is_active ? "，当前生效" : "，当前未生效"}`}
+      actions={
         <Button
           aria-label={"基于此版本修改"}
           type="primary"
@@ -341,15 +337,18 @@ export function RulePackDetailPage() {
         >
           基于此版本修改
         </Button>
-      </header>
-      <nav className="rulepack-detail-nav" aria-label="规则包详情章节">
-        <a href="#rulepack-content">规则内容</a>
-        <a href="#rulepack-provenance">版本来源</a>
-        <a href="#rulepack-lifecycle">验证与发布</a>
-        <a href="#rulepack-history">历史与回滚</a>
-        <a href="#rulepack-test">规则试算</a>
-        <a href="#rulepack-shadow">影子对比</a>
-      </nav>
+      }
+      navigation={
+        <nav className="rulepack-detail-nav" aria-label="规则包详情章节">
+          <a href="#rulepack-content">规则内容</a>
+          <a href="#rulepack-provenance">版本来源</a>
+          <a href="#rulepack-lifecycle">验证与发布</a>
+          <a href="#rulepack-history">历史与回滚</a>
+          <a href="#rulepack-test">规则试算</a>
+          <a href="#rulepack-shadow">影子对比</a>
+        </nav>
+      }
+    >
       {!isTenantOwner ? (
         <p className="workflow-error" role="alert">
           当前会话的可信租户与规则包不一致，页面只读。
@@ -758,6 +757,6 @@ export function RulePackDetailPage() {
         dirty={dirty}
         description="规则包草稿修改尚未保存。离开或刷新页面都会丢失这些修改，先保存草稿再离开。"
       />
-    </section>
+    </ObjectDetailPage>
   );
 }

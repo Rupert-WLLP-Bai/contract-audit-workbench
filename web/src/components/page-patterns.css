@@ -12,6 +12,10 @@
   min-width: 0;
 }
 
+.page-pattern-heading h2 {
+  margin-bottom: var(--space-1);
+}
+
 .page-pattern-eyebrow,
 .page-pattern-status,
 .page-pattern-meta {

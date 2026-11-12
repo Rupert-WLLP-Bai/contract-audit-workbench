@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-08
-// Revision: r4
+// Updated: 2026-11-12
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,6 +15,7 @@ import { errorMessage, isForbidden, isUnauthenticated } from "../api/http";
 import { useWorkbench } from "../api/queries";
 import type { WorkbenchCase, WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { ListPage } from "../components/page-patterns";
 import { StatusText } from "../components/status-text";
 import { TechnicalDetail } from "../components/technical-detail";
 import { InvalidTimeDetail } from "../components/invalid-time-detail";
@@ -145,39 +146,36 @@ export function CompareEntryPage() {
   ];
 
   return (
-    <section className="page compare-entry-page">
-      <header className="page-head">
-        <div>
-          <h1>版本对照</h1>
-          <p>先选择同一案件及两次明确的冻结执行，再进入结果对照。</p>
-        </div>
+    <ListPage
+      className="compare-entry-page"
+      title="版本对照"
+      description="先选择同一案件及两次明确的冻结执行，再进入结果对照。"
+      actions={
         <Button aria-label={"案件列表"} type="text" href="/cases">
           案件列表
         </Button>
-      </header>
-      <ol className="compare-entry-summary" aria-label="版本对照摘要">
-        <li data-state={snapshot.cases.length > 0 ? "filled" : "empty"}>
-          <span className="compare-entry-summary-mark" aria-hidden="true" />
-          <span>本周返回案件</span>
-          <strong>{snapshot.cases.length}</strong>
-        </li>
-        <li data-state={snapshot.runs.length > 0 ? "filled" : "empty"}>
-          <span className="compare-entry-summary-mark" aria-hidden="true" />
-          <span>本周返回运行</span>
-          <strong>{snapshot.runs.length}</strong>
-        </li>
-      </ol>
-      <p className="compare-entry-note">
-        本周返回的运行数量不能确认冻结执行或可比性；请进入案件选择并核对两次执行。
-      </p>
-      {snapshot.cases.length === 0 ? (
-        <PageStatus
-          kind="empty"
-          title="本周未返回案件"
-          detail="列表按当前服务端授权和工作台数据范围返回。"
-        />
-      ) : (
+      }
+      summary={
         <>
+          <ol className="compare-entry-summary" aria-label="版本对照摘要">
+            <li data-state={snapshot.cases.length > 0 ? "filled" : "empty"}>
+              <span className="compare-entry-summary-mark" aria-hidden="true" />
+              <span>本周返回案件</span>
+              <strong>{snapshot.cases.length}</strong>
+            </li>
+            <li data-state={snapshot.runs.length > 0 ? "filled" : "empty"}>
+              <span className="compare-entry-summary-mark" aria-hidden="true" />
+              <span>本周返回运行</span>
+              <strong>{snapshot.runs.length}</strong>
+            </li>
+          </ol>
+          <p className="compare-entry-note">
+            本周返回的运行数量不能确认冻结执行或可比性；请进入案件选择并核对两次执行。
+          </p>
+        </>
+      }
+      filters={
+        snapshot.cases.length > 0 ? (
           <div className="compare-entry-toolbar">
             <label>
               搜索合同
@@ -190,6 +188,17 @@ export function CompareEntryPage() {
             </label>
             <span>共 {visibleCases.length} 份合同</span>
           </div>
+        ) : undefined
+      }
+    >
+      {snapshot.cases.length === 0 ? (
+        <PageStatus
+          kind="empty"
+          title="本周未返回案件"
+          detail="列表按当前服务端授权和工作台数据范围返回。"
+        />
+      ) : (
+        <>
           <div className="compare-entry-table">
             <Table<WorkbenchCase>
               rowKey="id"
@@ -209,6 +218,6 @@ export function CompareEntryPage() {
           </div>
         </>
       )}
-    </section>
+    </ListPage>
   );
 }

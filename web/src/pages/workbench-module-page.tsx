@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-09
-// Revision: r7
+// Updated: 2026-11-12
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -26,6 +26,7 @@ import {
 } from "../api/queries";
 import type { Knowledge, KnowledgeInput, WorkbenchSnapshot } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { ListPage } from "../components/page-patterns";
 import { StatusText } from "../components/status-text";
 import { TechnicalDetail, TechnicalFieldGroup } from "../components/technical-detail";
 import { caseSelectPresentation } from "../components/case-select-presentation";
@@ -1646,81 +1647,94 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         aria-hidden={moduleRevalidating || moduleRevalidationFailed}
         style={{ display: moduleRevalidating || moduleRevalidationFailed ? "none" : undefined }}
       >
-        <section className="page module-page">
-          <header className="page-head module-page-head">
-            <div>
-              <h1>
-                {config.title}
-                <span className="module-total">{allRecords.length}</span>
-              </h1>
-              <p>
-                {config.description} 数据更新时间： {formatDateTime(snapshot.generated_at)}。
-              </p>
+        <ListPage
+          className="module-page"
+          headingClassName="module-page-head"
+          title={
+            <>
+              {config.title}
+              <span className="module-total">{allRecords.length}</span>
+            </>
+          }
+          description={
+            <>
+              {config.description} 数据更新时间： {formatDateTime(snapshot.generated_at)}。
+            </>
+          }
+          actions={<div className="module-actions">{headerAction}</div>}
+          beforeSummary={
+            <>
+              {module === "tools" ? <QccMcpPanel /> : null}
+              {createOpen && (canCreateTask || taskCapabilityRevalidating) ? (
+                <TaskCreateForm
+                  snapshot={snapshot}
+                  canCreateTask={canCreateTask}
+                  onCreated={() => setCreateOpen(false)}
+                />
+              ) : null}
+              {createOpen && canCreateKnowledge ? (
+                <KnowledgeCreateForm onClose={() => setCreateOpen(false)} />
+              ) : null}
+              {updateTask.isError ? (
+                <p className="module-error" role="alert">
+                  {errorMessage(updateTask.error)}
+                </p>
+              ) : null}
+            </>
+          }
+          summary={
+            <dl className="module-stats" aria-label="真实数据摘要">
+              <div>
+                <dt>工作台集合</dt>
+                <dd>{allRecords.length}</dd>
+              </div>
+              <div>
+                <dt>匹配当前标签</dt>
+                <dd>{records.length}</dd>
+              </div>
+              <div>
+                <dt>数据周期</dt>
+                <dd>{periodLabel}</dd>
+              </div>
+              <div>
+                <dt>数据更新时间</dt>
+                <dd>
+                  <time dateTime={snapshot.generated_at}>
+                    {formatDateTime(snapshot.generated_at)}
+                  </time>
+                </dd>
+              </div>
+            </dl>
+          }
+          filters={
+            <div className="module-toolbar">
+              {config.tabs.length > 1 ? (
+                <Tabs
+                  aria-label={`${config.title}分类`}
+                  activeKey={tab}
+                  onChange={(key) => {
+                    setTab(key);
+                    if (module !== "knowledge") setSelectedId("");
+                  }}
+                  items={config.tabs.map((label) => ({ key: label, label }))}
+                />
+              ) : (
+                <h2 className="module-toolbar-title">{config.tabs[0]}</h2>
+              )}
+              <label className="module-search">
+                搜索当前数据
+                <Input
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder={
+                    module === "knowledge" ? "检索标题或制度正文" : "搜索名称、编号、状态"
+                  }
+                />
+              </label>
             </div>
-            <div className="module-actions">{headerAction}</div>
-          </header>
-          {module === "tools" ? <QccMcpPanel /> : null}
-          {createOpen && (canCreateTask || taskCapabilityRevalidating) ? (
-            <TaskCreateForm
-              snapshot={snapshot}
-              canCreateTask={canCreateTask}
-              onCreated={() => setCreateOpen(false)}
-            />
-          ) : null}
-          {createOpen && canCreateKnowledge ? (
-            <KnowledgeCreateForm onClose={() => setCreateOpen(false)} />
-          ) : null}
-          {updateTask.isError ? (
-            <p className="module-error" role="alert">
-              {errorMessage(updateTask.error)}
-            </p>
-          ) : null}
-          <dl className="module-stats" aria-label="真实数据摘要">
-            <div>
-              <dt>工作台集合</dt>
-              <dd>{allRecords.length}</dd>
-            </div>
-            <div>
-              <dt>匹配当前标签</dt>
-              <dd>{records.length}</dd>
-            </div>
-            <div>
-              <dt>数据周期</dt>
-              <dd>{periodLabel}</dd>
-            </div>
-            <div>
-              <dt>数据更新时间</dt>
-              <dd>
-                <time dateTime={snapshot.generated_at}>
-                  {formatDateTime(snapshot.generated_at)}
-                </time>
-              </dd>
-            </div>
-          </dl>
-          <div className="module-toolbar">
-            {config.tabs.length > 1 ? (
-              <Tabs
-                aria-label={`${config.title}分类`}
-                activeKey={tab}
-                onChange={(key) => {
-                  setTab(key);
-                  if (module !== "knowledge") setSelectedId("");
-                }}
-                items={config.tabs.map((label) => ({ key: label, label }))}
-              />
-            ) : (
-              <h2 className="module-toolbar-title">{config.tabs[0]}</h2>
-            )}
-            <label className="module-search">
-              搜索当前数据
-              <Input
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={module === "knowledge" ? "检索标题或制度正文" : "搜索名称、编号、状态"}
-              />
-            </label>
-          </div>
+          }
+        >
           {notice ? (
             <p className="module-note" role="status">
               {notice}
@@ -2052,7 +2066,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
               )}
             </aside>
           </div>
-        </section>
+        </ListPage>
       </div>
       {moduleRevalidating ? (
         <PageStatus kind="loading" title={`正在加载${WORKBENCH_MODULES[module].title}`} />

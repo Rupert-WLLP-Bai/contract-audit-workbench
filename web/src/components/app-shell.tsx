@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-09
-// Revision: r4
+// Updated: 2026-11-12
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -50,6 +50,7 @@ type NavLinkItem = {
   end?: boolean;
   external?: boolean;
   href?: string;
+  adminRoleOnly?: boolean;
 };
 
 type MainNavKey = "workbench" | "cases" | "contracts" | "knowledge" | "agent-studio";
@@ -101,7 +102,7 @@ const NAV_GROUPS: {
     to: "/workbench/knowledge",
     icon: "knowledge",
     links: [
-      { to: "rules", label: "规则包治理", icon: "rules", external: true },
+      { to: "rules", label: "规则包治理", icon: "rules", external: true, adminRoleOnly: true },
       { to: "/workbench/templates", label: "模板管理", icon: "templates" },
     ],
   },
@@ -117,9 +118,9 @@ const NAV_GROUPS: {
 const UTILITY_LINKS: NavLinkItem[] = [
   { to: "/workbench/organization", label: "组织与权限", icon: "organization" },
   { to: "/workbench/tools", label: "工具网关", icon: "tools" },
-  { to: "/workbench/settings", label: "系统设置", icon: "settings" },
-  { to: "/workbench/health", label: "系统健康", icon: "health" },
-  { to: "/workbench/audit", label: "审计日志", icon: "audit" },
+  { to: "/workbench/settings", label: "系统设置", icon: "settings", adminRoleOnly: true },
+  { to: "/workbench/health", label: "系统健康", icon: "health", adminRoleOnly: true },
+  { to: "/workbench/audit", label: "审计日志", icon: "audit", adminRoleOnly: true },
   { to: "/docs/", label: "使用手册", icon: "knowledge", external: true, href: "/docs/" },
   { to: "/api-docs", label: "API 文档", icon: "api" },
 ];
@@ -431,17 +432,25 @@ function AppTopbar({
 }
 
 function AppSidebar({
+  actor,
   pathname,
   adminRulePacksUrl,
   collapsed,
   onCollapse,
 }: {
+  actor: Actor | undefined;
   pathname: string;
   adminRulePacksUrl: string;
   collapsed: boolean;
   onCollapse: (collapsed: boolean) => void;
 }) {
+  const canSeeManagementLinks = actor?.role === "admin";
   const activeGroup = NAV_GROUPS.find((group) => group.key === selectedPrimaryKey(pathname));
+  const visibleGroupLinks =
+    activeGroup?.links.filter((item) => !item.adminRoleOnly || canSeeManagementLinks) ?? [];
+  const visibleUtilityLinks = UTILITY_LINKS.filter(
+    (item) => !item.adminRoleOnly || canSeeManagementLinks,
+  );
 
   function renderLink(item: NavLinkItem) {
     const icon = NAV_ICONS[item.icon];
@@ -511,20 +520,22 @@ function AppSidebar({
             );
           })}
         </ul>
-        {activeGroup && activeGroup.links.length > 0 ? (
+        {activeGroup && visibleGroupLinks.length > 0 ? (
           <section className="secondary-navigation" aria-labelledby="secondary-navigation-title">
             <h2 id="secondary-navigation-title">{activeGroup.label}工作区</h2>
             <ul>
-              {activeGroup.links.map((item) => (
+              {visibleGroupLinks.map((item) => (
                 <li key={item.to}>{renderLink(item)}</li>
               ))}
             </ul>
           </section>
         ) : null}
         <section className="utility-navigation" aria-labelledby="utility-navigation-title">
-          <h2 id="utility-navigation-title">管理与文档</h2>
+          <h2 id="utility-navigation-title">
+            {canSeeManagementLinks ? "管理与文档" : "只读目录与文档"}
+          </h2>
           <ul>
-            {UTILITY_LINKS.map((item) => (
+            {visibleUtilityLinks.map((item) => (
               <li key={item.to}>{renderLink(item)}</li>
             ))}
           </ul>
@@ -582,6 +593,7 @@ export function AppShell() {
       />
       <Layout className="frame" hasSider>
         <AppSidebar
+          actor={actor}
           pathname={location.pathname}
           adminRulePacksUrl={adminRulePacksUrl}
           collapsed={collapsed}

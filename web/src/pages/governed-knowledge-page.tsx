@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-08
-// Revision: r5
+// Updated: 2026-11-12
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -37,6 +37,7 @@ import {
 } from "../components/governed-knowledge-editor";
 import { ExperienceMetricsPanel } from "../components/experience-metrics-panel";
 import { PageStatus } from "../components/page-status";
+import { ListPage, ObjectDetailPage, VersionEditorPage } from "../components/page-patterns";
 import { StatusText } from "../components/status-text";
 import { TechnicalDetail, TechnicalFieldGroup } from "../components/technical-detail";
 import {
@@ -246,56 +247,60 @@ export function GovernedKnowledgeListPage() {
     },
   ];
   return (
-    <section className="page page-rulepacks page-governed-list">
-      <header className="page-head">
-        <div>
-          <h1>受控知识</h1>
-          <p>
-            管理政策、指引、例外和审查经验的精确版本及发布状态。列表只显示当前管理员可访问的版本。
-          </p>
-        </div>
+    <ListPage
+      className="page-rulepacks page-governed-list"
+      title="受控知识"
+      description="管理政策、指引、例外和审查经验的精确版本及发布状态。列表只显示当前管理员可访问的版本。"
+      actions={
         <Button type="primary" href={`${root}/new`}>
           登记依据版本
         </Button>
-      </header>
-      <Tabs
-        className="governed-status-tabs"
-        activeKey={statusTab}
-        onChange={(key) => setStatusTab(key as StatusTabKey)}
-        items={statusTabs.map((item) => ({ key: item.key, label: item.label }))}
-      />
-      <div className="governance-filters">
-        <label className="field" htmlFor="knowledge-search">
-          查找知识
-          <Input
-            id="knowledge-search"
-            type="search"
-            value={search}
-            placeholder="标题、知识 ID 或版本"
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
-        <label className="field" htmlFor="knowledge-kind-filter">
-          知识类型
-          <Select
-            id="knowledge-kind-filter"
-            style={{ width: "100%" }}
-            value={kind}
-            onChange={setKind}
-            options={[
-              { value: "all", label: "全部类型" },
-              { value: "policy", label: "政策制度" },
-              { value: "guidance", label: "操作指引" },
-              { value: "exception", label: "例外" },
-              { value: "experience", label: "审查经验" },
-              { value: "legal", label: "法律规范" },
-            ]}
-          />
-        </label>
+      }
+      summary={
         <p className="governed-list-summary" role="status">
           {filtered.length} / {rows.length} 个版本；治理状态与生效指针分别显示。
         </p>
-      </div>
+      }
+      filters={
+        <>
+          <Tabs
+            className="governed-status-tabs"
+            activeKey={statusTab}
+            onChange={(key) => setStatusTab(key as StatusTabKey)}
+            items={statusTabs.map((item) => ({ key: item.key, label: item.label }))}
+          />
+          <div className="governance-filters">
+            <label className="field" htmlFor="knowledge-search">
+              查找知识
+              <Input
+                id="knowledge-search"
+                type="search"
+                value={search}
+                placeholder="标题、知识 ID 或版本"
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </label>
+            <label className="field" htmlFor="knowledge-kind-filter">
+              知识类型
+              <Select
+                id="knowledge-kind-filter"
+                style={{ width: "100%" }}
+                value={kind}
+                onChange={setKind}
+                options={[
+                  { value: "all", label: "全部类型" },
+                  { value: "policy", label: "政策制度" },
+                  { value: "guidance", label: "操作指引" },
+                  { value: "exception", label: "例外" },
+                  { value: "experience", label: "审查经验" },
+                  { value: "legal", label: "法律规范" },
+                ]}
+              />
+            </label>
+          </div>
+        </>
+      }
+    >
       <Table
         rowKey={(item) => `${item.ref.knowledge_id}:${item.ref.version_id}`}
         dataSource={filtered}
@@ -304,7 +309,7 @@ export function GovernedKnowledgeListPage() {
         scroll={{ x: 1050 }}
         locale={{ emptyText: "没有可显示的知识版本" }}
       />
-    </section>
+    </ListPage>
   );
 }
 
@@ -398,21 +403,6 @@ function createPageStatus(
   if (fromId && failure) return failure;
   if (fromId && !initialized) return <PageStatus kind="loading" title="正在准备新版本" />;
   return null;
-}
-
-function CreateHeader({ fromId }: { fromId: string }) {
-  return (
-    <header className="page-head">
-      <div>
-        <h1>{fromId ? "编辑并创建新版本" : "登记受控知识"}</h1>
-        <p>
-          {fromId
-            ? "原版本会保留。按来源信息、内容与效力、提交核验三步审阅新版本，保存后会创建一份独立草稿。"
-            : "按来源信息、内容与效力、提交核验三步登记。保存只创建草稿。"}
-        </p>
-      </div>
-    </header>
-  );
 }
 
 function ValidationSummary({
@@ -731,65 +721,70 @@ export function GovernedKnowledgeCreatePage() {
   if (status) return status;
   const stepMeta = createSteps[step]!;
   return (
-    <section className="page page-rulepack-form page-governed-create">
-      <CreateNavigation fromId={fromId} fromVersion={fromVersion} />
-      <CreateHeader fromId={fromId} />
-      <form
-        className="workflow-form rulepack-form"
-        noValidate
-        onSubmit={(event) =>
-          void submitCreate(
-            event,
-            draft,
-            keys.current,
-            create,
-            client,
-            navigate,
-            setIssues,
-            setError,
-            (next) => setStep(stepForIssues(next)),
-          )
-        }
-      >
-        {hasCreateSummary(issues, error) && (
-          <ValidationSummary issues={issues} error={error} summaryRef={summaryRef} />
-        )}
-        <p className="governed-form-note">
-          保存只创建草稿；法律效力、专业核验、审批发布与来源授权请在后续步骤分别完成。
-        </p>
-        <div className="governed-form-layout">
-          <CreateStepNav step={step} onSelect={setStep} />
-          <div className="governed-form-main">
-            <header className="governed-step-head">
-              <h2>{stepMeta.label}</h2>
-              <span className="meta">
-                步骤 {step + 1} / 3 · {step === 2 ? "保存待核验版本" : "未提交"}
-              </span>
-            </header>
-            {step === 2 ? (
-              <SubmitReview draft={draft} />
-            ) : (
-              <KnowledgeEditor
-                value={draft}
-                onChange={setDraft}
-                issues={issues}
-                lockedIdentity={Boolean(fromId)}
-                disabled={create.isPending}
-                step={step === 0 ? "source" : "content"}
-              />
-            )}
-            <CreateFooter
-              step={step}
-              onStep={setStep}
-              fromId={fromId}
-              fromVersion={fromVersion}
-              pending={create.isPending}
+    <VersionEditorPage
+      className="page-rulepack-form page-governed-create"
+      title={fromId ? "编辑并创建新版本" : "登记受控知识"}
+      description={
+        fromId
+          ? "原版本会保留。按来源信息、内容与效力、提交核验三步审阅新版本，保存后会创建一份独立草稿。"
+          : "按来源信息、内容与效力、提交核验三步登记。保存只创建草稿。"
+      }
+      before={<CreateNavigation fromId={fromId} fromVersion={fromVersion} />}
+      formClassName="workflow-form rulepack-form"
+      onSubmit={(event) =>
+        void submitCreate(
+          event,
+          draft,
+          keys.current,
+          create,
+          client,
+          navigate,
+          setIssues,
+          setError,
+          (next) => setStep(stepForIssues(next)),
+        )
+      }
+      actions={
+        <CreateFooter
+          step={step}
+          onStep={setStep}
+          fromId={fromId}
+          fromVersion={fromVersion}
+          pending={create.isPending}
+        />
+      }
+    >
+      {hasCreateSummary(issues, error) && (
+        <ValidationSummary issues={issues} error={error} summaryRef={summaryRef} />
+      )}
+      <p className="governed-form-note">
+        保存只创建草稿；法律效力、专业核验、审批发布与来源授权请在后续步骤分别完成。
+      </p>
+      <div className="governed-form-layout">
+        <CreateStepNav step={step} onSelect={setStep} />
+        <div className="governed-form-main">
+          <header className="governed-step-head">
+            <h2>{stepMeta.label}</h2>
+            <span className="meta">
+              步骤 {step + 1} / 3 · {step === 2 ? "保存待核验版本" : "未提交"}
+            </span>
+          </header>
+          {step === 2 ? (
+            <SubmitReview draft={draft} />
+          ) : (
+            <KnowledgeEditor
+              value={draft}
+              onChange={setDraft}
+              issues={issues}
+              lockedIdentity={Boolean(fromId)}
+              disabled={create.isPending}
+              step={step === 0 ? "source" : "content"}
             />
-          </div>
-          <RegistrationSummary draft={draft} />
+          )}
         </div>
-      </form>
-    </section>
+        <RegistrationSummary draft={draft} />
+      </div>
+    </VersionEditorPage>
   );
 }
 
@@ -939,43 +934,6 @@ function actionFor(version: KnowledgeVersion): KnowledgeAction | null {
   return null;
 }
 type Replay = { command: KnowledgeCommand; key: string };
-
-function DetailHeader({
-  knowledgeId,
-  versionId,
-  content,
-}: {
-  knowledgeId: string;
-  versionId: string;
-  content: KnowledgeContent;
-}) {
-  return (
-    <>
-      <nav className="page-back" aria-label="知识治理导航">
-        <Link to={root}>返回知识列表</Link>
-      </nav>
-      <header className="page-head">
-        <div>
-          <p className="governed-eyebrow">受控知识版本详情</p>
-          <h1>{content.title}</h1>
-          <p>
-            {display(content.kind)} · 第 {content.version} 版
-          </p>
-        </div>
-        <div className="governed-head-actions">
-          <Button href="#knowledge-action-heading">查看核验流程</Button>
-          {content.kind !== "legal" && (
-            <Button
-              href={`${root}/new?from_knowledge=${encodeURIComponent(knowledgeId)}&from_version=${encodeURIComponent(versionId)}`}
-            >
-              编辑并创建新版本
-            </Button>
-          )}
-        </div>
-      </header>
-    </>
-  );
-}
 
 function DetailFacts({
   content,
@@ -1718,10 +1676,34 @@ function GovernedKnowledgeDetail() {
       ),
   }));
   return (
-    <section className="page page-rulepack-detail page-governed-detail">
-      <DetailHeader knowledgeId={knowledgeId} versionId={versionId} content={content} />
-      <DetailFacts content={content} version={version} />
-      <VersionIdentity version={version} content={content} />
+    <ObjectDetailPage
+      className="page-rulepack-detail page-governed-detail"
+      before={
+        <nav className="page-back" aria-label="知识治理导航">
+          <Link to={root}>返回知识列表</Link>
+        </nav>
+      }
+      title={content.title}
+      description={`${display(content.kind)} · 第 ${content.version} 版`}
+      actions={
+        <div className="governed-head-actions">
+          <Button href="#knowledge-action-heading">查看核验流程</Button>
+          {content.kind !== "legal" && (
+            <Button
+              href={`${root}/new?from_knowledge=${encodeURIComponent(knowledgeId)}&from_version=${encodeURIComponent(versionId)}`}
+            >
+              编辑并创建新版本
+            </Button>
+          )}
+        </div>
+      }
+      facts={
+        <>
+          <DetailFacts content={content} version={version} />
+          <VersionIdentity version={version} content={content} />
+        </>
+      }
+    >
       <div className="governed-detail-layout">
         <div className="governed-detail-main">
           <Tabs activeKey={tab} onChange={(key) => setTab(key as DetailTabKey)} items={tabItems} />
@@ -1739,6 +1721,6 @@ function GovernedKnowledgeDetail() {
         detail={detail}
         command={command}
       />
-    </section>
+    </ObjectDetailPage>
   );
 }

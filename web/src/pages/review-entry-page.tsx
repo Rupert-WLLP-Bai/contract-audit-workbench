@@ -3,18 +3,19 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r4
+// Updated: 2026-11-12
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Button, Input, Table, Tabs, type TableColumnsType } from "antd";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useSearchParams } from "react-router";
 import { errorMessage } from "../api/http";
 import { useSession, useWorkbench } from "../api/queries";
 import type { WorkbenchCase, WorkbenchRun, WorkbenchSnapshot } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { ListPage } from "../components/page-patterns";
 import { StatusText } from "../components/status-text";
 import { TechnicalDetail } from "../components/technical-detail";
 import { businessLineLabel } from "../domain/business-labels";
@@ -221,23 +222,6 @@ function reviewEntryColumns(
   ];
 }
 
-function ReviewEntryHeader() {
-  return (
-    <header className="page-head review-entry-header">
-      <div>
-        <h1>合同审查</h1>
-        <p>从当前有权访问的案件进入审查，进入有权访问的案件继续办理。</p>
-      </div>
-      <div className="review-entry-primary-action">
-        <Button type="primary" href="/cases">
-          发起审查
-        </Button>
-        <span>先选择案件；系统会在案件准备流程中核对权限与材料。</span>
-      </div>
-    </header>
-  );
-}
-
 function ReviewEntrySummary({ snapshot }: { snapshot: WorkbenchSnapshot }) {
   const items = [
     {
@@ -277,6 +261,7 @@ function ReviewEntryCases({
   runsByCase,
   onViewChange,
   onQueryChange,
+  children,
 }: {
   snapshot: WorkbenchSnapshot;
   view: ReviewEntryView;
@@ -285,6 +270,7 @@ function ReviewEntryCases({
   runsByCase: Map<string, WorkbenchRun[]>;
   onViewChange: (view: ReviewEntryView) => void;
   onQueryChange: (query: string) => void;
+  children: (parts: { filters: ReactNode; content: ReactNode }) => ReactNode;
 }) {
   const pendingTaskCounts = new Map<string, number>();
   for (const task of snapshot.tasks) {
@@ -314,22 +300,24 @@ function ReviewEntryCases({
           ? "请检查案件名称、业务编号或客户名称。"
           : "案件列表按当前服务端授权返回。";
 
-  return (
+  const filters = (
+    <div className="review-entry-list-toolbar">
+      <Tabs
+        activeKey={view}
+        items={tabItems}
+        onChange={(key) => onViewChange(parseReviewEntryView(key))}
+      />
+      <Input
+        aria-label="搜索案件"
+        allowClear
+        placeholder="名称、业务编号或客户"
+        value={query}
+        onChange={(event) => onQueryChange(event.target.value)}
+      />
+    </div>
+  );
+  const content = (
     <section className="review-entry-collection" aria-label="审查案件列表">
-      <div className="review-entry-list-toolbar">
-        <Tabs
-          activeKey={view}
-          items={tabItems}
-          onChange={(key) => onViewChange(parseReviewEntryView(key))}
-        />
-        <Input
-          aria-label="搜索案件"
-          allowClear
-          placeholder="名称、业务编号或客户"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-        />
-      </div>
       <p className="review-entry-scope">
         显示当前已加载的授权案件。运行状态、待办与最近执行分别呈现；执行完成后请继续核对审查结论。小屏幕可横向滚动表格。
       </p>
@@ -356,6 +344,7 @@ function ReviewEntryCases({
       )}
     </section>
   );
+  return children({ filters, content });
 }
 
 function ReviewEntryContent({
@@ -376,19 +365,36 @@ function ReviewEntryContent({
   onQueryChange: (query: string) => void;
 }) {
   return (
-    <section className="page review-entry-page">
-      <ReviewEntryHeader />
-      <ReviewEntrySummary snapshot={snapshot} />
-      <ReviewEntryCases
-        snapshot={snapshot}
-        view={view}
-        query={query}
-        actorId={actorId}
-        runsByCase={runsByCase}
-        onViewChange={onViewChange}
-        onQueryChange={onQueryChange}
-      />
-    </section>
+    <ReviewEntryCases
+      snapshot={snapshot}
+      view={view}
+      query={query}
+      actorId={actorId}
+      runsByCase={runsByCase}
+      onViewChange={onViewChange}
+      onQueryChange={onQueryChange}
+    >
+      {({ filters, content }) => (
+        <ListPage
+          className="review-entry-page"
+          headingClassName="review-entry-header"
+          title="合同审查"
+          description="从当前有权访问的案件进入审查，进入有权访问的案件继续办理。"
+          actions={
+            <div className="review-entry-primary-action">
+              <Button type="primary" href="/cases">
+                发起审查
+              </Button>
+              <span>先选择案件；系统会在案件准备流程中核对权限与材料。</span>
+            </div>
+          }
+          summary={<ReviewEntrySummary snapshot={snapshot} />}
+          filters={filters}
+        >
+          {content}
+        </ListPage>
+      )}
+    </ReviewEntryCases>
   );
 }
 

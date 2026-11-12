@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-08
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -35,6 +35,7 @@ import {
 import { errorMessage, invalidateSessionIdentity } from "../api/http";
 import { clearIdentityQueries, useSession } from "../api/queries";
 import { PageStatus } from "../components/page-status";
+import { ListPage, ObjectDetailPage } from "../components/page-patterns";
 import "./support-grants.css";
 
 const SUPPORT_GRANTS_KEY = ["support-grants"] as const;
@@ -299,14 +300,11 @@ export function SupportGrantsPage() {
         ? "目前没有待批准的支援授权。"
         : "目前没有已失效或已撤销的支援授权。";
   return (
-    <section className="page support-grants-page">
-      <header className="page-head">
-        <div>
-          <h1>案件支援访问</h1>
-          <p>仅显示授予当前成员的案件级只读支援。当前登录身份与租户不会改变。</p>
-        </div>
-      </header>
-      <Card className="support-grants-list">
+    <ListPage
+      className="support-grants-page"
+      title="案件支援访问"
+      description="仅显示授予当前成员的案件级只读支援。当前登录身份与租户不会改变。"
+      filters={
         <Tabs
           activeKey={activeTab}
           onChange={(key) => setActiveTab(key as SupportTab)}
@@ -316,6 +314,9 @@ export function SupportGrantsPage() {
             { key: "history", label: "已失效" },
           ]}
         />
+      }
+    >
+      <Card className="support-grants-list">
         {visible.length === 0 ? (
           <Empty description={emptyText} />
         ) : (
@@ -327,7 +328,7 @@ export function SupportGrantsPage() {
           />
         )}
       </Card>
-    </section>
+    </ListPage>
   );
 }
 
@@ -374,36 +375,44 @@ export function SupportGrantCasePage() {
   if (!query.data) return <PageStatus kind="empty" title="没有可显示的案件" />;
   const view = query.data;
   return (
-    <section className="page support-readonly-page">
-      <nav className="page-back" aria-label="支援访问导航">
-        <Link to="/support">返回支援访问</Link>
-      </nav>
-      <Alert
-        type="info"
-        showIcon
-        title="只读支援视图"
-        description="此页面使用当前登录成员身份访问，不切换租户；仅显示案件概览，不提供合同正文、审查、审批、决定、签署或导出功能。授权状态会重新向服务端核验。"
-      />
-      <Card title={view.title} className="support-case-card">
-        <dl>
-          <dt>案件编号</dt>
-          <dd>{view.case_id}</dd>
-          <dt>合同类型</dt>
-          <dd>{view.contract_type}</dd>
-          <dt>业务状态</dt>
-          <dd>{view.business_status}</dd>
-          <dt>目标租户 / 组织</dt>
-          <dd>
-            {view.tenant_id} / {view.org_id}
-          </dd>
-          <dt>案件建立时间</dt>
-          <dd>{formatTimestamp(view.created_at)}</dd>
-          <dt>最近更新</dt>
-          <dd>{formatTimestamp(view.updated_at)}</dd>
-          <dt>支援授权编号</dt>
-          <dd>{view.grant_id}</dd>
-        </dl>
-      </Card>
-    </section>
+    <ObjectDetailPage
+      className="support-readonly-page"
+      before={
+        <>
+          <nav className="page-back" aria-label="支援访问导航">
+            <Link to="/support">返回支援访问</Link>
+          </nav>
+          <Alert
+            type="info"
+            showIcon
+            title="只读支援视图"
+            description="此页面使用当前登录成员身份访问，不切换租户；仅显示案件概览，不提供合同正文、审查、审批、决定、签署或导出功能。授权状态会重新向服务端核验。"
+          />
+        </>
+      }
+      title={view.title}
+      facts={
+        <Card className="support-case-card">
+          <dl>
+            <dt>案件编号</dt>
+            <dd>{view.case_id}</dd>
+            <dt>合同类型</dt>
+            <dd>{view.contract_type}</dd>
+            <dt>业务状态</dt>
+            <dd>{view.business_status}</dd>
+            <dt>目标租户 / 组织</dt>
+            <dd>
+              {view.tenant_id} / {view.org_id}
+            </dd>
+            <dt>案件建立时间</dt>
+            <dd>{formatTimestamp(view.created_at)}</dd>
+            <dt>最近更新</dt>
+            <dd>{formatTimestamp(view.updated_at)}</dd>
+            <dt>支援授权编号</dt>
+            <dd>{view.grant_id}</dd>
+          </dl>
+        </Card>
+      }
+    />
   );
 }

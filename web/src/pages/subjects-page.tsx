@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-08
-// Revision: r3
+// Updated: 2026-11-12
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -25,6 +25,7 @@ import type { ColumnsType } from "antd/es/table";
 import type { SubjectCreateFormValues } from "../components/subject-create-fields";
 import { SubjectCreateFields, subjectCreateInput } from "../components/subject-create-fields";
 import { PageStatus } from "../components/page-status";
+import { ListPage, ObjectDetailPage } from "../components/page-patterns";
 import { StatusText } from "../components/status-text";
 import { errorMessage } from "../api/http";
 import {
@@ -206,12 +207,11 @@ export function SubjectsPage() {
   ];
 
   return (
-    <section className="page subjects-page">
-      <header className="page-head">
-        <div>
-          <h1>主体台账</h1>
-          <p>管理合同往来主体，查看身份信息、核验状态与关联案件。</p>
-        </div>
+    <ListPage
+      className="subjects-page"
+      title="主体台账"
+      description="管理合同往来主体，查看身份信息、核验状态与关联案件。"
+      actions={
         <Button
           type="primary"
           icon={<PlusOutlined />}
@@ -222,75 +222,76 @@ export function SubjectsPage() {
         >
           {showCreate ? "收起新建" : "新建待核验主体"}
         </Button>
-      </header>
-
-      <dl className="subject-ledger-summary" aria-label="本页主体概况">
-        <div>
-          <dt>本页主体</dt>
-          <dd>
-            {subjects.data ? items.length : "—"}
-            <span>家</span>
-          </dd>
-        </div>
-        <div>
-          <dt>
-            <span className="subject-status-dot subject-status-dot-pending" />
-            本页待核验
-          </dt>
-          <dd>
-            {subjects.data
-              ? items.filter((item) => item.verification_state === "pending_verification").length
-              : "—"}
-            <span>家</span>
-          </dd>
-        </div>
-        <div>
-          <dt>
-            <span className="subject-status-dot subject-status-dot-verified" />
-            本页已核验
-          </dt>
-          <dd>
-            {subjects.data
-              ? items.filter((item) => item.verification_state === "verified").length
-              : "—"}
-            <span>家</span>
-          </dd>
-        </div>
-      </dl>
-
-      {showCreate ? (
-        <Card title="新建主体" className="subject-create-card">
-          <Form form={form} layout="vertical" onFinish={(values) => void onCreate(values)}>
-            <SubjectCreateFields />
-            {formError ? <Alert type="error" showIcon title={formError} /> : null}
-            {formNote ? <Alert type="warning" showIcon title={formNote} /> : null}
-            {created ? (
-              <Alert
-                type="success"
-                showIcon
-                title="主体已登记，当前状态为待核验。"
-                description={
-                  <Link to={`/subjects/${encodeURIComponent(created.subject_id)}`}>
-                    查看主体详情
-                  </Link>
-                }
-              />
-            ) : null}
-            <Form.Item>
-              <Button
-                type="primary"
-                htmlType="submit"
-                loading={create.isPending}
-                disabled={!session.data}
-              >
-                登记主体
-              </Button>
-            </Form.Item>
-          </Form>
-        </Card>
-      ) : null}
-
-      <Card className="subject-ledger-card" styles={{ body: { padding: 0 } }}>
+      }
+      summary={
+        <dl className="subject-ledger-summary" aria-label="本页主体概况">
+          <div>
+            <dt>本页主体</dt>
+            <dd>
+              {subjects.data ? items.length : "—"}
+              <span>家</span>
+            </dd>
+          </div>
+          <div>
+            <dt>
+              <span className="subject-status-dot subject-status-dot-pending" />
+              本页待核验
+            </dt>
+            <dd>
+              {subjects.data
+                ? items.filter((item) => item.verification_state === "pending_verification").length
+                : "—"}
+              <span>家</span>
+            </dd>
+          </div>
+          <div>
+            <dt>
+              <span className="subject-status-dot subject-status-dot-verified" />
+              本页已核验
+            </dt>
+            <dd>
+              {subjects.data
+                ? items.filter((item) => item.verification_state === "verified").length
+                : "—"}
+              <span>家</span>
+            </dd>
+          </div>
+        </dl>
+      }
+      beforeFilters={
+        showCreate ? (
+          <Card title="新建主体" className="subject-create-card">
+            <Form form={form} layout="vertical" onFinish={(values) => void onCreate(values)}>
+              <SubjectCreateFields />
+              {formError ? <Alert type="error" showIcon title={formError} /> : null}
+              {formNote ? <Alert type="warning" showIcon title={formNote} /> : null}
+              {created ? (
+                <Alert
+                  type="success"
+                  showIcon
+                  title="主体已登记，当前状态为待核验。"
+                  description={
+                    <Link to={`/subjects/${encodeURIComponent(created.subject_id)}`}>
+                      查看主体详情
+                    </Link>
+                  }
+                />
+              ) : null}
+              <Form.Item>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  loading={create.isPending}
+                  disabled={!session.data}
+                >
+                  登记主体
+                </Button>
+              </Form.Item>
+            </Form>
+          </Card>
+        ) : null
+      }
+      filters={
         <div className="subject-ledger-toolbar">
           <div>
             <h2>主体目录</h2>
@@ -329,6 +330,9 @@ export function SubjectsPage() {
             ) : null}
           </form>
         </div>
+      }
+    >
+      <Card className="subject-ledger-card" styles={{ body: { padding: 0 } }}>
         {query ? (
           <p className="subject-search-result" role="status">
             搜索“{query}”的结果
@@ -393,7 +397,7 @@ export function SubjectsPage() {
           </nav>
         ) : null}
       </Card>
-    </section>
+    </ListPage>
   );
 }
 
@@ -476,50 +480,60 @@ export function SubjectDetailPage() {
     },
   ];
   return (
-    <section className="page subject-detail-page">
-      <nav className="page-back subject-back" aria-label="主体导航">
-        <Link to="/subjects">
-          <ArrowLeftOutlined aria-hidden />
-          返回主体台账
-        </Link>
-      </nav>
-      <header className="subject-identity-header">
-        <div className="subject-identity-mark" aria-hidden>
+    <ObjectDetailPage
+      className="subject-detail-page"
+      before={
+        <nav className="page-back subject-back" aria-label="主体导航">
+          <Link to="/subjects">
+            <ArrowLeftOutlined aria-hidden />
+            返回主体台账
+          </Link>
+        </nav>
+      }
+      eyebrow={
+        <span className="subject-identity-mark" aria-hidden>
           <ApartmentOutlined />
+        </span>
+      }
+      title={current.display_name}
+      description={
+        current.legal_name && current.legal_name !== current.display_name
+          ? current.legal_name
+          : undefined
+      }
+      status={
+        <StatusText tone={verificationTone(current.verification_state)}>
+          {subjectVerificationLabel(current.verification_state, current.verification_scope)}
+        </StatusText>
+      }
+      meta={
+        <div className="subject-identity-meta">
+          <span>
+            主体编号 <code>{subject.data.subject_id}</code>
+          </span>
+          <span>
+            当前身份版本 <strong>v{subject.data.current_version}</strong>
+          </span>
         </div>
-        <div className="subject-identity-title">
-          <div className="subject-identity-heading">
-            <h1>{current.display_name}</h1>
-            <StatusText tone={verificationTone(current.verification_state)}>
-              {subjectVerificationLabel(current.verification_state, current.verification_scope)}
-            </StatusText>
-          </div>
-          {current.legal_name && current.legal_name !== current.display_name ? (
-            <p>{current.legal_name}</p>
-          ) : null}
-          <div className="subject-identity-meta">
-            <span>
-              主体编号 <code>{subject.data.subject_id}</code>
-            </span>
-            <span>
-              当前身份版本 <strong>v{subject.data.current_version}</strong>
-            </span>
-          </div>
-        </div>
-      </header>
-      <nav className="subject-detail-sections" aria-label="主体详情分区">
-        {(Object.entries(detailSections) as Array<[DetailSection, string]>).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            aria-pressed={activeSection === key}
-            aria-controls={`subject-section-${key}`}
-            onClick={() => setActiveSection(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      }
+      navigation={
+        <nav className="subject-detail-sections" aria-label="主体详情分区">
+          {(Object.entries(detailSections) as Array<[DetailSection, string]>).map(
+            ([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={activeSection === key}
+                aria-controls={`subject-section-${key}`}
+                onClick={() => setActiveSection(key)}
+              >
+                {label}
+              </button>
+            ),
+          )}
+        </nav>
+      }
+    >
       <section
         id="subject-section-overview"
         aria-label="主体概览"
@@ -786,6 +800,6 @@ export function SubjectDetailPage() {
           ) : null}
         </Card>
       </section>
-    </section>
+    </ObjectDetailPage>
   );
 }

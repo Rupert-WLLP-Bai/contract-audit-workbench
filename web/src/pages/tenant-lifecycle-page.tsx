@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-08
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -38,6 +38,7 @@ import {
   pendingMutationKey,
 } from "../api/idempotency";
 import type { Actor } from "../api/types";
+import { ListPage, ObjectDetailPage } from "../components/page-patterns";
 import {
   createTenantProvisionOperation,
   recordTenantProvisionStep,
@@ -485,128 +486,134 @@ function OperationDetail({
     });
   };
   return (
-    <Card
-      className="lifecycle-detail"
+    <ObjectDetailPage
+      className="lifecycle-operation-detail"
       title="操作详情"
-      extra={<Button onClick={() => void detail.refetch()}>刷新状态</Button>}
+      headingLevel={2}
+      description="查看持久化步骤回执，并根据当前记录推进或核对操作。"
+      actions={<Button onClick={() => void detail.refetch()}>刷新状态</Button>}
     >
-      <Descriptions size="small" column={{ xs: 1, md: 2 }}>
-        <Descriptions.Item label="操作 ID">
-          <code>{operation.operation_id}</code>
-        </Descriptions.Item>
-        <Descriptions.Item label="租户">
-          <span>{operation.tenant_id}</span>
-        </Descriptions.Item>
-        <Descriptions.Item label="操作类型">{KIND_LABEL[operation.kind]}</Descriptions.Item>
-        <Descriptions.Item label="状态">
-          <Tag color={STATUS_COLOR[operation.status]}>{STATUS_LABEL[operation.status]}</Tag>
-        </Descriptions.Item>
-        <Descriptions.Item label="当前步骤">{STEP_LABEL[operation.current_step]}</Descriptions.Item>
-        <Descriptions.Item label="revision">{operation.revision}</Descriptions.Item>
-        <Descriptions.Item label="payload SHA-256">
-          <code>{operation.payload_sha256}</code>
-        </Descriptions.Item>
-        <Descriptions.Item label="创建时间">
-          {new Date(operation.created_at).toLocaleString("zh-CN", { timeZone: "UTC" })} UTC
-        </Descriptions.Item>
-      </Descriptions>
-      {operation.reconciliation_required ? (
-        <Alert
-          className="lifecycle-alert"
-          type="warning"
-          showIcon
-          message="外部操作结果待核对"
-          description="当前操作锁定在此处。先从外部权威核对结果并留下回执；不要直接重放可能已经执行的动作。"
+      <Card className="lifecycle-detail">
+        <Descriptions size="small" column={{ xs: 1, md: 2 }}>
+          <Descriptions.Item label="操作 ID">
+            <code>{operation.operation_id}</code>
+          </Descriptions.Item>
+          <Descriptions.Item label="租户">
+            <span>{operation.tenant_id}</span>
+          </Descriptions.Item>
+          <Descriptions.Item label="操作类型">{KIND_LABEL[operation.kind]}</Descriptions.Item>
+          <Descriptions.Item label="状态">
+            <Tag color={STATUS_COLOR[operation.status]}>{STATUS_LABEL[operation.status]}</Tag>
+          </Descriptions.Item>
+          <Descriptions.Item label="当前步骤">
+            {STEP_LABEL[operation.current_step]}
+          </Descriptions.Item>
+          <Descriptions.Item label="revision">{operation.revision}</Descriptions.Item>
+          <Descriptions.Item label="payload SHA-256">
+            <code>{operation.payload_sha256}</code>
+          </Descriptions.Item>
+          <Descriptions.Item label="创建时间">
+            {new Date(operation.created_at).toLocaleString("zh-CN", { timeZone: "UTC" })} UTC
+          </Descriptions.Item>
+        </Descriptions>
+        {operation.reconciliation_required ? (
+          <Alert
+            className="lifecycle-alert"
+            type="warning"
+            showIcon
+            message="外部操作结果待核对"
+            description="当前操作锁定在此处。先从外部权威核对结果并留下回执；不要直接重放可能已经执行的动作。"
+          />
+        ) : null}
+        <Table
+          rowKey="name"
+          size="small"
+          pagination={false}
+          columns={stepColumns}
+          dataSource={operation.steps}
         />
-      ) : null}
-      <Table
-        rowKey="name"
-        size="small"
-        pagination={false}
-        columns={stepColumns}
-        dataSource={operation.steps}
-      />
-      {operation.status === "provision_failed" ? (
-        <Alert
-          className="lifecycle-alert"
-          type="error"
-          showIcon
-          message="当前操作已终止"
-          description="失败操作不能重放。修复前置问题并重新核对租户状态后，需登记新的显式操作；当前记录和回执会保留。"
-        />
-      ) : operation.status !== "completed" ? (
-        <section className="lifecycle-step-editor" aria-label="记录当前步骤">
-          <h3>记录当前步骤：{STEP_LABEL[operation.current_step]}</h3>
-          {currentStep?.state === "external_unknown" || operation.reconciliation_required ? (
-            <>
-              <label>
-                人工核对结论
-                <Select
-                  value={reconciliation || undefined}
-                  placeholder="请选择核对结论"
-                  onChange={setReconciliation}
-                  options={RECONCILIATION_OPTIONS}
-                />
-              </label>
-              <label>
-                外部核对回执 SHA-256（必填）
-                <Input
-                  value={receipt}
-                  onChange={(event) => setReceipt(event.target.value)}
-                  autoComplete="off"
-                />
-              </label>
-              <Button
-                type="primary"
-                disabled={mutation.isPending || reconciliation === ""}
-                onClick={() => recordConfirmed("reconciled", reconciliation)}
-              >
-                提交核对结果
-              </Button>
-            </>
-          ) : (
-            <>
-              <label>
-                步骤回执 SHA-256（完成/核对时必填）
-                <Input
-                  value={receipt}
-                  onChange={(event) => setReceipt(event.target.value)}
-                  autoComplete="off"
-                />
-              </label>
-              <Space wrap>
+        {operation.status === "provision_failed" ? (
+          <Alert
+            className="lifecycle-alert"
+            type="error"
+            showIcon
+            message="当前操作已终止"
+            description="失败操作不能重放。修复前置问题并重新核对租户状态后，需登记新的显式操作；当前记录和回执会保留。"
+          />
+        ) : operation.status !== "completed" ? (
+          <section className="lifecycle-step-editor" aria-label="记录当前步骤">
+            <h3>记录当前步骤：{STEP_LABEL[operation.current_step]}</h3>
+            {currentStep?.state === "external_unknown" || operation.reconciliation_required ? (
+              <>
+                <label>
+                  人工核对结论
+                  <Select
+                    value={reconciliation || undefined}
+                    placeholder="请选择核对结论"
+                    onChange={setReconciliation}
+                    options={RECONCILIATION_OPTIONS}
+                  />
+                </label>
+                <label>
+                  外部核对回执 SHA-256（必填）
+                  <Input
+                    value={receipt}
+                    onChange={(event) => setReceipt(event.target.value)}
+                    autoComplete="off"
+                  />
+                </label>
                 <Button
                   type="primary"
-                  disabled={mutation.isPending}
-                  onClick={() => recordConfirmed("complete")}
+                  disabled={mutation.isPending || reconciliation === ""}
+                  onClick={() => recordConfirmed("reconciled", reconciliation)}
                 >
-                  确认步骤已完成
+                  提交核对结果
                 </Button>
-                <Button
-                  disabled={mutation.isPending}
-                  onClick={() => recordConfirmed("external_unknown")}
-                >
-                  记录外部结果未知
-                </Button>
-                <Button
-                  danger
-                  disabled={mutation.isPending}
-                  onClick={() => recordConfirmed("failed")}
-                >
-                  记录步骤失败
-                </Button>
-              </Space>
-            </>
-          )}
-          {notice ? <p role="status">{notice}</p> : null}
-          {mutation.isError && isForbidden(mutation.error) ? (
-            <Alert type="error" message="当前身份不能提交此操作回执。" />
-          ) : null}
-        </section>
-      ) : (
-        <p className="meta">操作已完成。归档和删除不属于本页的恢复动作。</p>
-      )}
-    </Card>
+              </>
+            ) : (
+              <>
+                <label>
+                  步骤回执 SHA-256（完成/核对时必填）
+                  <Input
+                    value={receipt}
+                    onChange={(event) => setReceipt(event.target.value)}
+                    autoComplete="off"
+                  />
+                </label>
+                <Space wrap>
+                  <Button
+                    type="primary"
+                    disabled={mutation.isPending}
+                    onClick={() => recordConfirmed("complete")}
+                  >
+                    确认步骤已完成
+                  </Button>
+                  <Button
+                    disabled={mutation.isPending}
+                    onClick={() => recordConfirmed("external_unknown")}
+                  >
+                    记录外部结果未知
+                  </Button>
+                  <Button
+                    danger
+                    disabled={mutation.isPending}
+                    onClick={() => recordConfirmed("failed")}
+                  >
+                    记录步骤失败
+                  </Button>
+                </Space>
+              </>
+            )}
+            {notice ? <p role="status">{notice}</p> : null}
+            {mutation.isError && isForbidden(mutation.error) ? (
+              <Alert type="error" message="当前身份不能提交此操作回执。" />
+            ) : null}
+          </section>
+        ) : (
+          <p className="meta">操作已完成。归档和删除不属于本页的恢复动作。</p>
+        )}
+      </Card>
+    </ObjectDetailPage>
   );
 }
 
@@ -703,24 +710,31 @@ export function TenantLifecyclePage() {
     },
   ];
   return (
-    <section className="page tenant-lifecycle-page">
-      <header className="page-head">
-        <div>
-          <h1>租户生命周期管理</h1>
-          <p>
-            平台控制操作与租户自助运维分别授权。页面记录幂等操作、步骤回执和外部结果核对；未知结果不得盲目重试。
-          </p>
-        </div>
-      </header>
-      <OperationCreator
-        actor={session.data}
-        onCreated={(operation) => setSelectedId(operation.operation_id)}
-      />
-      <Card
-        className="lifecycle-operations-card"
-        title="持久化操作记录"
-        extra={<Button onClick={() => void pageQuery.refetch()}>刷新</Button>}
-      >
+    <ListPage
+      className="tenant-lifecycle-page"
+      title="租户生命周期管理"
+      description="平台控制操作与租户自助运维分别授权。页面记录幂等操作、步骤回执和外部结果核对；未知结果不得盲目重试。"
+      actions={<Button onClick={() => void pageQuery.refetch()}>刷新操作</Button>}
+      beforeSummary={
+        <OperationCreator
+          actor={session.data}
+          onCreated={(operation) => setSelectedId(operation.operation_id)}
+        />
+      }
+      summary={
+        <dl className="lifecycle-summary" aria-label="操作记录分页摘要">
+          <div>
+            <dt>本页操作</dt>
+            <dd>{page?.operations.length ?? "尚未核实"}</dd>
+          </div>
+          <div>
+            <dt>后续页面</dt>
+            <dd>{page ? (page.next_cursor ? "有" : "无") : "尚未核实"}</dd>
+          </div>
+        </dl>
+      }
+    >
+      <Card className="lifecycle-operations-card" title="持久化操作记录">
         <Table<TenantProvisionOperation>
           rowKey="operation_id"
           size="small"
@@ -744,6 +758,6 @@ export function TenantLifecyclePage() {
         </Space>
       </Card>
       <OperationDetail operationId={selectedId} enabled={session.isSuccess} actor={session.data} />
-    </section>
+    </ListPage>
   );
 }

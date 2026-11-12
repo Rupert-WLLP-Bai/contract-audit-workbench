@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-08 */
-/* Updated: 2026-11-08 */
-/* Revision: r1 */
+/* Updated: 2026-11-12 */
+/* Revision: r2 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -74,6 +74,13 @@
   justify-content: space-between;
   gap: 20px;
   padding: 20px 24px;
+}
+
+.subjects-page .page-pattern-filters {
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--card-border);
+  border-radius: var(--panel-radius);
+  background: var(--surface-raised);
 }
 
 .subject-ledger-toolbar h2 {
@@ -167,13 +174,6 @@
   gap: 8px;
 }
 
-.subject-identity-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 8px 0 24px;
-}
-
 .subject-identity-mark {
   display: grid;
   place-items: center;
@@ -187,27 +187,6 @@
   font-size: 26px;
 }
 
-.subject-identity-title {
-  min-width: 0;
-  flex: 1;
-}
-.subject-identity-title > p {
-  margin: 8px 0 0;
-  color: var(--text-secondary);
-}
-.subject-identity-heading {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-}
-.subject-identity-heading h1 {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 600;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
 .subject-identity-meta {
   display: flex;
   flex-wrap: wrap;
@@ -224,6 +203,50 @@
   margin-left: 4px;
   color: var(--text-primary);
   font-weight: 500;
+}
+
+.subject-detail-page .page-pattern-heading {
+  align-items: flex-start;
+  gap: 16px;
+  padding: 8px 0 24px;
+}
+
+.subject-detail-page .page-pattern-heading-main {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-areas:
+    "identity title"
+    "identity description"
+    "identity status"
+    "identity meta";
+  column-gap: 16px;
+  align-items: center;
+}
+
+.subject-detail-page .page-pattern-eyebrow {
+  grid-area: identity;
+  margin: 0;
+}
+.subject-detail-page .page-pattern-heading-main > h1 {
+  grid-area: title;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.subject-detail-page .page-pattern-heading-main > p {
+  grid-area: description;
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+}
+.subject-detail-page .page-pattern-status {
+  grid-area: status;
+  margin-top: 8px;
+}
+.subject-detail-page .page-pattern-meta {
+  grid-area: meta;
+  margin-top: 12px;
 }
 
 .subject-detail-sections {
@@ -465,21 +488,25 @@
   .subject-pagination-controls {
     gap: 8px;
   }
-  .subject-identity-header {
-    gap: 12px;
-  }
   .subject-identity-mark {
     width: 40px;
     height: 40px;
-    font-size: 20px;
-  }
-  .subject-identity-heading h1 {
     font-size: 20px;
   }
   .subject-identity-meta {
     gap: 6px;
   }
   .subject-identity-meta > span {
+    width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .subject-detail-page .page-pattern-heading-main {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .subject-detail-page .page-pattern-heading-main > h1 {
+    font-size: 20px;
+  }
+  .subject-detail-page .page-pattern-meta > span {
     width: 100%;
     overflow-wrap: anywhere;
   }

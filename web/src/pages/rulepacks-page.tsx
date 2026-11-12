@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,6 +16,7 @@ import { Link } from "react-router";
 import { errorMessage, isForbidden } from "../api/http";
 import { useRulePacks } from "../api/queries";
 import { PageStatus } from "../components/page-status";
+import { ListPage } from "../components/page-patterns";
 import { StatusText } from "../components/status-text";
 
 const STATE_LABELS = {
@@ -160,16 +161,21 @@ export function RulePacksPage() {
     },
   ];
   return (
-    <section className="page page-rulepacks">
-      <header className="page-head">
-        <div>
-          <h1>规则库 / RulePack 治理</h1>
-          <p>管理规则版本、验证与发布。已发布内容保持不可变，活动版本用于后续新审查。</p>
-        </div>
+    <ListPage
+      className="page-rulepacks"
+      title="规则库 / RulePack 治理"
+      description="管理规则版本、验证与发布。已发布内容保持不可变，活动版本用于后续新审查。"
+      actions={
         <Button aria-label={"创建草稿"} type="primary" href="/admin/rulepacks/new">
           创建草稿
         </Button>
-      </header>
+      }
+      summary={
+        <p className="meta" role="status">
+          {filtered.length} / {rows.length} 个版本
+        </p>
+      }
+    >
       <div className="governance-workspace">
         <nav className="governance-state-nav" aria-label="规则包版本分类">
           <h2>版本状态</h2>
@@ -213,9 +219,6 @@ export function RulePacksPage() {
                 ]}
               />
             </label>
-            <p className="meta" role="status">
-              {filtered.length} / {rows.length} 个版本
-            </p>
           </div>
           {rows.length === 0 ? (
             <PageStatus
@@ -302,6 +305,6 @@ export function RulePacksPage() {
           </aside>
         ) : null}
       </div>
-    </section>
+    </ListPage>
   );
 }

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-01
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -30,6 +30,7 @@ import { errorMessage, isConflict } from "../api/http";
 import { useSession } from "../api/queries";
 import type { Actor } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { ListPage } from "../components/page-patterns";
 import { StatusText } from "../components/status-text";
 import {
   approvalActionLabel,
@@ -673,31 +674,31 @@ export function ApprovalTasksPage() {
   }
 
   return (
-    <section className="page approval-page">
-      <header className="page-head">
-        <div>
-          <h1>合同会签</h1>
-          <p>
-            待办只显示服务端仍标记为活动的任务。通过和退回只有在服务端确认后才会改变状态；失败重试复用同一幂等键。
-          </p>
+    <ListPage
+      className="approval-page"
+      title="合同会签"
+      description="待办只显示服务端仍标记为活动的任务。通过和退回只有在服务端确认后才会改变状态；失败重试复用同一幂等键。"
+      summary={
+        <div className="approval-summary" aria-label="会签视图摘要">
+          <span>
+            当前视图：<strong>{VIEW_LABELS[view]}</strong>
+          </span>
+          <span>
+            已加载 <strong>{items.length}</strong> 项
+          </span>
         </div>
-      </header>
-      <div className="approval-summary" aria-label="会签视图摘要">
-        <span>
-          当前视图：<strong>{VIEW_LABELS[view]}</strong>
-        </span>
-        <span>
-          已加载 <strong>{items.length}</strong> 项
-        </span>
-      </div>
-      <Tabs
-        activeKey={view}
-        onChange={changeView}
-        items={(["todo", "done", "initiated"] as const).map((key) => ({
-          key,
-          label: VIEW_LABELS[key],
-        }))}
-      />
+      }
+      filters={
+        <Tabs
+          activeKey={view}
+          onChange={changeView}
+          items={(["todo", "done", "initiated"] as const).map((key) => ({
+            key,
+            label: VIEW_LABELS[key],
+          }))}
+        />
+      }
+    >
       {inbox.error ? (
         <Alert
           type="error"
@@ -725,6 +726,6 @@ export function ApprovalTasksPage() {
           onClose={() => setSelection(null)}
         />
       </div>
-    </section>
+    </ListPage>
   );
 }
