@@ -96,13 +96,13 @@ function response(value: unknown, status = 200): Response {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("ContractLifecycleOverviewPanel", () => {
-  it("reads one lifecycle endpoint and keeps missing sources unknown", async () => {
+  it("reads one lifecycle endpoint and keeps missing sources unverified", async () => {
     const fetchMock = vi.fn().mockResolvedValue(response(overview()));
     vi.stubGlobal("fetch", fetchMock);
     render(<ContractLifecycleOverviewPanel detail={detail} actor={actor()} />);
 
-    expect(await screen.findByText("还没有计划日期。")).toBeInTheDocument();
-    expect(screen.getByText(/争议状态：暂无/)).toBeInTheDocument();
+    expect(await screen.findByText("计划日期尚未核实。")).toBeInTheDocument();
+    expect(screen.getByText(/争议状态：尚未核实/)).toBeInTheDocument();
     expect(screen.getByText(/本次读取时间：2026-11-03T01:02:03Z/)).toBeInTheDocument();
     await waitFor(() =>
       expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
@@ -110,6 +110,36 @@ describe("ContractLifecycleOverviewPanel", () => {
       ),
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("labels confirmed empty collections as none while retaining unverified archive facts", async () => {
+    const value = overview({
+      completeness: {
+        plans: "known",
+        deliveries: "known",
+        acceptances: "known",
+        payments: "known",
+        assets: "known",
+        disputes: "unknown",
+        warranty: "unknown",
+        other_obligations: "unknown",
+      },
+      plans: { delivery_plans: [], acceptance_plans: [], payments: [], assets: [] },
+      payments: [],
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(value)));
+    render(<ContractLifecycleOverviewPanel detail={detail} actor={actor()} />);
+
+    const deliveries = await screen.findByRole("region", { name: "交付事实" });
+    const acceptances = screen.getByRole("region", { name: "验收事实" });
+    const payments = screen.getByRole("region", { name: "付款事实" });
+    const assets = screen.getByRole("region", { name: "资产事实" });
+    expect(deliveries).toHaveTextContent("暂无");
+    expect(acceptances).toHaveTextContent("暂无");
+    expect(payments).toHaveTextContent("暂无");
+    expect(assets).toHaveTextContent("暂无");
+    expect(screen.getByText("还没有计划日期。")).toBeInTheDocument();
+    expect(screen.getByText(/争议状态：尚未核实/)).toBeInTheDocument();
   });
 
   it.each([401, 403, 404])(

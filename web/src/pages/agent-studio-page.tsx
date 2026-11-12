@@ -30,6 +30,7 @@ import type {
   RunSnapshot,
 } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { RunInspectionPage } from "../components/page-patterns";
 import { ExecutionDiagram } from "../components/execution-diagram";
 import { buildExecutionDiagram, isEinoToolEvent } from "../domain/execution-diagram";
 import { StatusText } from "../components/status-text";
@@ -1801,56 +1802,59 @@ export function AgentStudioPage() {
   const refreshing = review.isFetching || diagnostics.isFetching || caseDetail.isFetching;
 
   return (
-    <section className="page page-agent-studio">
-      <header className="page-head studio-head">
-        <div className="studio-head-main">
-          <div className="studio-head-topline">
-            <Link className="studio-back" to={reviewHref}>
-              ← 返回审查
-            </Link>
-            <span className="studio-kicker">Agent Studio · 只读</span>
-          </div>
-          <h1>{caseTitle}</h1>
-          <div className="studio-head-meta">
-            <StatusText tone={runTone(runState)}>{runLabel(runState)}</StatusText>
+    <RunInspectionPage
+      className="page-agent-studio"
+      headingClassName="studio-head"
+      eyebrow={
+        <div className="studio-head-topline">
+          <Link className="studio-back" to={reviewHref}>
+            ← 返回审查
+          </Link>
+          <span className="studio-kicker">Agent Studio · 只读</span>
+        </div>
+      }
+      title={caseTitle}
+      meta={
+        <div className="studio-head-meta">
+          <StatusText tone={runTone(runState)}>{runLabel(runState)}</StatusText>
+          <span className="studio-meta-item">
+            规划模式 <strong>{modeText}</strong>
+          </span>
+          <span className="studio-meta-item">
+            尝试 <strong>{selectedAttempt ? `第 ${selectedAttempt.ordinal} 次` : "未报告"}</strong>
+          </span>
+          {selectedAttempt ? (
             <span className="studio-meta-item">
-              规划模式 <strong>{modeText}</strong>
+              历史类型 <strong>{historyKindLabel(selectedAttempt.history_kind)}</strong>
             </span>
-            <span className="studio-meta-item">
-              尝试{" "}
-              <strong>{selectedAttempt ? `第 ${selectedAttempt.ordinal} 次` : "未报告"}</strong>
-            </span>
-            {selectedAttempt ? (
-              <span className="studio-meta-item">
-                历史类型 <strong>{historyKindLabel(selectedAttempt.history_kind)}</strong>
-              </span>
-            ) : null}
-            <TechnicalDetail
-              label="尝试技术详情"
-              value={selectedAttempt?.id ?? effectiveAttemptId ?? undefined}
-            >
-              <dl className="studio-technical-inline">
-                <div>
-                  <dt>尝试序号</dt>
-                  <dd>{selectedAttempt ? `第 ${selectedAttempt.ordinal} 次` : "未报告"}</dd>
-                </div>
-                <div>
-                  <dt>重试来源</dt>
-                  <dd>{selectedAttempt?.retry_of_attempt_id ?? "无"}</dd>
-                </div>
-                <div>
-                  <dt>运行标识</dt>
-                  <dd>{runId}</dd>
-                </div>
-              </dl>
-            </TechnicalDetail>
-          </div>
+          ) : null}
+          <TechnicalDetail
+            label="尝试技术详情"
+            value={selectedAttempt?.id ?? effectiveAttemptId ?? undefined}
+          >
+            <dl className="studio-technical-inline">
+              <div>
+                <dt>尝试序号</dt>
+                <dd>{selectedAttempt ? `第 ${selectedAttempt.ordinal} 次` : "未报告"}</dd>
+              </div>
+              <div>
+                <dt>重试来源</dt>
+                <dd>{selectedAttempt?.retry_of_attempt_id ?? "无"}</dd>
+              </div>
+              <div>
+                <dt>运行标识</dt>
+                <dd>{runId}</dd>
+              </div>
+            </dl>
+          </TechnicalDetail>
           {caseDetail.isError ? (
             <p className="studio-inline-note" role="status">
               案件名称暂不可用：{errorMessage(caseDetail.error)}
             </p>
           ) : null}
         </div>
+      }
+      actions={
         <div className="studio-head-actions">
           <Button
             type="primary"
@@ -1862,8 +1866,8 @@ export function AgentStudioPage() {
             刷新
           </Button>
         </div>
-      </header>
-
+      }
+    >
       {diagnostics.isError ? (
         <p className="studio-notice studio-notice-warning" role="status">
           诊断数据不可用：{errorMessage(diagnostics.error)}。执行与能力来源将显示为未观测或不可用。
@@ -1938,6 +1942,6 @@ export function AgentStudioPage() {
           }
         />
       )}
-    </section>
+    </RunInspectionPage>
   );
 }

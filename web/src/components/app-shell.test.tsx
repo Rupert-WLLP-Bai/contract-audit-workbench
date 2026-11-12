@@ -75,6 +75,7 @@ function renderShell(path = "/") {
           <Route path="/login" element={<LocationEcho />} />
           <Route element={<AppShell />}>
             <Route path="/cases" element={<LocationEcho />} />
+            <Route path="/cases/:caseId/reviews/:runId/agent" element={<LocationEcho />} />
             <Route path="*" element={<p>页面内容</p>} />
           </Route>
         </Routes>
@@ -208,9 +209,7 @@ describe("app shell", () => {
 
   it("marks the active navigation entry and review layout", () => {
     renderShell("/cases/case-1/reviews/run-1");
-    expect(screen.getByRole("link", { name: "合同审查" }).closest("li")).toHaveClass(
-      "ant-menu-item-selected",
-    );
+    expect(screen.getByRole("link", { name: "案件" })).toHaveAttribute("aria-current", "page");
     expect(document.querySelector(".app")).toHaveClass("app--review");
   });
 
@@ -224,16 +223,75 @@ describe("app shell", () => {
 
   it("selects the parent navigation entry for nested module routes", () => {
     renderShell("/workbench/tasks/123");
-    expect(screen.getByRole("link", { name: "审查任务" }).closest("li")).toHaveClass(
-      "ant-menu-item-selected",
-    );
+    expect(screen.getByRole("link", { name: "审查任务" })).toHaveClass("active");
   });
 
   it("keeps unknown module and external paths unselected but readable", () => {
     renderShell("/workbench/unknown");
     expect(
-      within(screen.getByLabelText("主导航")).getByRole("link", { name: "工作台" }).closest("li"),
-    ).not.toHaveClass("ant-menu-item-selected");
+      within(screen.getByLabelText("主导航")).getByRole("link", { name: "工作台" }),
+    ).not.toHaveAttribute("aria-current", "page");
+  });
+
+  it("shows five named main entry points and sends Agent Studio to the saved execution list", () => {
+    renderShell();
+    const nav = within(screen.getByLabelText("主导航"));
+    const mainEntries = nav.getByRole("list", { name: "五个主入口" });
+    expect(within(mainEntries).getAllByRole("link")).toHaveLength(5);
+    expect(nav.getByRole("link", { name: "工作台" })).toHaveAttribute("href", "/");
+    expect(nav.getByRole("link", { name: "案件" })).toHaveAttribute("href", "/cases");
+    expect(nav.getByRole("link", { name: "合同台账" })).toHaveAttribute("href", "/contracts");
+    expect(nav.getByRole("link", { name: "知识与规则" })).toHaveAttribute(
+      "href",
+      "/workbench/knowledge",
+    );
+    expect(nav.getByRole("link", { name: "Agent Studio" })).toHaveAttribute(
+      "href",
+      "/workbench/executions",
+    );
+  });
+
+  it.each([
+    ["/review", "合同审查", "/review"],
+    ["/compare", "版本对照", "/compare"],
+    ["/cases", "案件", "/cases"],
+    ["/support", "案件支援访问", "/support"],
+    ["/contracts", "合同台账", "/contracts"],
+    ["/workbench/approvals", "合同会签", "/workbench/approvals"],
+    ["/subjects", "主体台账", "/subjects"],
+    ["/workbench/tasks", "审查任务", "/workbench/tasks"],
+    ["/workbench/remediation", "整改中心", "/workbench/remediation"],
+    ["/workbench/reports", "报告中心", "/workbench/reports"],
+    ["/workbench/evidence", "证据中心", "/workbench/evidence"],
+    ["/workbench/evidence-sla", "补证时效", "/workbench/evidence-sla"],
+    ["/workbench/knowledge", "知识与规则", "/workbench/knowledge"],
+    ["/workbench/templates", "模板管理", "/workbench/templates"],
+    ["/workbench/organization", "组织与权限", "/workbench/organization"],
+    ["/workbench/tools", "工具网关", "/workbench/tools"],
+    ["/workbench/settings", "系统设置", "/workbench/settings"],
+    ["/workbench/executions", "Agent Studio", "/workbench/executions"],
+    ["/workbench/health", "系统健康", "/workbench/health"],
+    ["/workbench/audit", "审计日志", "/workbench/audit"],
+    ["/docs/", "使用手册", "/docs/"],
+    ["/api-docs", "API 文档", "/api-docs"],
+  ])("keeps %s reachable from its selected entry group", (path, label, href) => {
+    renderShell(path);
+    expect(
+      screen.getByLabelText("主导航").querySelector(`a[aria-label="${label}"]`),
+    ).toHaveAttribute("href", href);
+  });
+
+  it("selects the Agent Studio entry for an attempt-specific detail route without rewriting its query", () => {
+    renderShell("/cases/case-1/reviews/run-1/agent?attempt=attempt-7");
+    const nav = within(screen.getByLabelText("主导航"));
+    expect(nav.getByRole("link", { name: "Agent Studio" })).toHaveAttribute("aria-current", "page");
+    expect(nav.getByRole("link", { name: "Agent Studio" })).toHaveAttribute(
+      "href",
+      "/workbench/executions",
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/cases/case-1/reviews/run-1/agent?attempt=attempt-7|POP",
+    );
   });
 
   it("keeps the main landmark programmatically focusable", () => {
@@ -250,6 +308,12 @@ describe("app shell", () => {
       "false",
     );
     expect(document.querySelector(".app")).toHaveClass("app--nav-collapsed");
+    expect(screen.getByRole("link", { name: "合同审查" })).toHaveAttribute("href", "/review");
+    const mainNavigation = within(screen.getByRole("list", { name: "五个主入口" }));
+    const mainEntries = mainNavigation.getAllByRole("link");
+    mainEntries[0]!.focus();
+    await user.tab();
+    expect(document.activeElement).toBe(mainEntries[1]);
     await user.click(screen.getByRole("button", { name: "展开侧栏" }));
     expect(screen.getByRole("button", { name: "收合侧栏" })).toHaveAttribute(
       "aria-expanded",
@@ -259,7 +323,7 @@ describe("app shell", () => {
 
   it("links rulepack governance to the admin base when configured", () => {
     vi.stubEnv("VITE_ADMIN_URL", "http://admin.example.test/");
-    renderShell();
+    renderShell("/workbench/knowledge");
     expect(screen.getByRole("link", { name: "规则包治理" })).toHaveAttribute(
       "href",
       "http://admin.example.test/admin/rulepacks",
@@ -268,16 +332,16 @@ describe("app shell", () => {
   });
 
   it("links rulepack governance locally by default", () => {
-    renderShell();
+    renderShell("/workbench/knowledge");
     expect(screen.getByRole("link", { name: "规则包治理" })).toHaveAttribute(
       "href",
       "/admin/rulepacks",
     );
   });
 
-  it("places the handbook next to the API reference in developer resources", () => {
+  it("places the handbook and API reference in the management and documentation area", () => {
     renderShell();
-    const group = screen.getByText("开发者资源").closest("ul");
+    const group = screen.getByRole("heading", { name: "管理与文档" }).closest("section");
     expect(group).not.toBeNull();
     expect(within(group as HTMLElement).getByRole("link", { name: "使用手册" })).toHaveAttribute(
       "href",

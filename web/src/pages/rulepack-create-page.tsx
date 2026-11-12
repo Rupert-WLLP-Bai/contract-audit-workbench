@@ -15,6 +15,7 @@ import { errorMessage, isConflict, isForbidden, isUnauthenticated } from "../api
 import { useCreateRulePack, useRulePack, useSession } from "../api/queries";
 import type { RulePackManifestInput } from "../api/rulepacks";
 import { PageStatus } from "../components/page-status";
+import { VersionEditorPage } from "../components/page-patterns";
 import { RulePackErrorSummary } from "../components/rulepack-error-summary";
 import {
   createEmptyRulePackDraft,
@@ -123,36 +124,23 @@ export function RulePackCreatePage() {
   }
 
   return (
-    <section className="page page-rulepack-form">
-      <nav className="page-back" aria-label="规则包导航">
-        <Link to="/admin/rulepacks">返回规则包</Link>
-      </nav>
-      <header className="page-head">
-        <div>
-          <h1>创建规则包草稿</h1>
-          <p>
-            {sourceInitialized
-              ? `已复制 ${sourcePack} v${sourceVersion} 的规则内容。填写一个新的版本号后编辑并保存；原版本继续保留。`
-              : "填写适用范围、比较条件、事实来源和依据。保存后成为草稿。"}
-          </p>
-        </div>
-      </header>
-      <form className="workflow-form rulepack-form" noValidate onSubmit={submit}>
-        <RulePackErrorSummary issues={issues} />
-        {create.error ? (
-          <p className="workflow-error" role="alert" tabIndex={-1} ref={serverError}>
-            {errorMessage(create.error)}
-            {isConflict(create.error) ? " 草稿未创建；请调整规则包 ID 或版本后重试。" : ""}
-          </p>
-        ) : null}
-        <RulePackManifestEditor
-          value={draft}
-          tenantId={tenantId}
-          lockedPackId={sourceInitialized}
-          disabled={create.isPending}
-          onChange={(next) => setDraft(next)}
-        />
-        <div className="dialog-actions">
+    <VersionEditorPage
+      className="page-rulepack-form"
+      title="创建规则包草稿"
+      description={
+        sourceInitialized
+          ? `已复制 ${sourcePack} v${sourceVersion} 的规则内容。填写一个新的版本号后编辑并保存；原版本继续保留。`
+          : "填写适用范围、比较条件、事实来源和依据。保存后成为草稿。"
+      }
+      before={
+        <nav className="page-back" aria-label="规则包导航">
+          <Link to="/admin/rulepacks">返回规则包</Link>
+        </nav>
+      }
+      formClassName="workflow-form rulepack-form"
+      onSubmit={submit}
+      actions={
+        <>
           <Button aria-label={"取消"} type="text" href="/admin/rulepacks">
             取消
           </Button>
@@ -164,8 +152,23 @@ export function RulePackCreatePage() {
           >
             {create.isPending ? "正在创建草稿" : "创建草稿"}
           </Button>
-        </div>
-      </form>
-    </section>
+        </>
+      }
+    >
+      <RulePackErrorSummary issues={issues} />
+      {create.error ? (
+        <p className="workflow-error" role="alert" tabIndex={-1} ref={serverError}>
+          {errorMessage(create.error)}
+          {isConflict(create.error) ? " 草稿未创建；请调整规则包 ID 或版本后重试。" : ""}
+        </p>
+      ) : null}
+      <RulePackManifestEditor
+        value={draft}
+        tenantId={tenantId}
+        lockedPackId={sourceInitialized}
+        disabled={create.isPending}
+        onChange={(next) => setDraft(next)}
+      />
+    </VersionEditorPage>
   );
 }

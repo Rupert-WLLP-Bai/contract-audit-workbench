@@ -39,10 +39,11 @@ function isAccessDenied(error: unknown): boolean {
 
 function completenessLabel(
   state: ContractLifecycleOverview["completeness"][keyof ContractLifecycleOverview["completeness"]],
+  confirmedEmpty = false,
 ): string {
-  if (state === "known") return "已读取";
+  if (state === "known") return confirmedEmpty ? "暂无" : "已读取";
   if (state === "not_applicable") return "明确不适用";
-  return "暂无";
+  return "尚未核实";
 }
 
 function resultTag(result: "passed" | "partial" | "failed") {
@@ -269,7 +270,10 @@ export function ContractLifecycleOverviewPanel({
             ? "读取中"
             : currentOverview.state === "unavailable"
               ? "暂不可用"
-              : completenessLabel(projection?.completeness.deliveries ?? "unknown")}
+              : completenessLabel(
+                  projection?.completeness.deliveries ?? "unknown",
+                  deliveryRows.length === 0,
+                )}
         </Tag>
         {projection?.completeness.deliveries === "known" && deliveryRows.length === 0 && (
           <p>还没有交付记录。</p>
@@ -289,7 +293,10 @@ export function ContractLifecycleOverviewPanel({
             ? "读取中"
             : currentOverview.state === "unavailable"
               ? "暂不可用"
-              : completenessLabel(projection?.completeness.acceptances ?? "unknown")}
+              : completenessLabel(
+                  projection?.completeness.acceptances ?? "unknown",
+                  acceptanceRows.length === 0,
+                )}
         </Tag>
         {projection?.completeness.acceptances === "known" && acceptanceRows.length === 0 && (
           <p>还没有验收记录。</p>
@@ -310,7 +317,10 @@ export function ContractLifecycleOverviewPanel({
             ? "读取中"
             : currentOverview.state === "unavailable"
               ? "暂不可用"
-              : completenessLabel(projection?.completeness.payments ?? "unknown")}
+              : completenessLabel(
+                  projection?.completeness.payments ?? "unknown",
+                  projection?.payments !== null && paymentRows.length === 0,
+                )}
         </Tag>
         {projection?.completeness.payments === "known" && projection.payments === null && (
           <p>暂时看不到付款记录。</p>
@@ -332,7 +342,10 @@ export function ContractLifecycleOverviewPanel({
             ? "读取中"
             : currentOverview.state === "unavailable"
               ? "暂不可用"
-              : completenessLabel(projection?.completeness.assets ?? "unknown")}
+              : completenessLabel(
+                  projection?.completeness.assets ?? "unknown",
+                  assetPlans.length === 0,
+                )}
         </Tag>
         {projection?.completeness.assets === "known" && (
           <p>
@@ -360,11 +373,11 @@ export function ContractLifecycleOverviewPanel({
 
       <section aria-label="计划日期提示" style={{ marginTop: 20 }}>
         <h3>计划日期提示</h3>
-        {!frozenPlanReadable && <p>还没有计划日期。</p>}
+        {!frozenPlanReadable && <p>计划日期尚未核实。</p>}
         {frozenPlanReadable &&
           (plans.delivery_plans === null ||
             plans.acceptance_plans === null ||
-            plans.payments === null) && <p>部分计划信息暂缺。</p>}
+            plans.payments === null) && <p>部分计划信息尚未核实。</p>}
         {frozenPlanReadable &&
           reminders.length === 0 &&
           plans.delivery_plans !== null &&

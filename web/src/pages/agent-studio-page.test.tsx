@@ -21,6 +21,7 @@ import type {
   ReviewWorkspace,
   RunSnapshot,
 } from "../api/types";
+import { tokenCount } from "../domain/execution-labels";
 import { renderWithAntd as render } from "../test/antd";
 import {
   AgentStudioPage,
@@ -250,6 +251,18 @@ describe("AgentStudioPage", () => {
     expect(screen.getByText("经验", { selector: ".studio-capability-title" })).toBeInTheDocument();
     expect(screen.getAllByText("未观测").length).toBeGreaterThanOrEqual(5);
     expect(screen.queryByText(/0 次真实调用/)).not.toBeInTheDocument();
+  });
+
+  it("keeps missing token usage unknown instead of displaying zero", () => {
+    const value = execution([]);
+    value.usage = null;
+    mocks.useReviewDiagnostics.mockReturnValue(query(diagnostics(value)));
+    renderPage();
+
+    const tokenTotal = screen.getByText("Token 合计").parentElement;
+    expect(tokenTotal).not.toBeNull();
+    expect(tokenTotal).toHaveTextContent("未知");
+    expect(tokenCount(null)).toBe("未知");
   });
 
   it("filters the loaded event list and reports matched versus loaded counts", async () => {

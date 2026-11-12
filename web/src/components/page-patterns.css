@@ -1,0 +1,73 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles the shared page-pattern composition slots with existing semantic tokens; domain-specific tables, forms, tabs and status meanings remain with feature pages. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-12 */
+/* Updated: 2026-11-12 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+.page-pattern-heading-main {
+  min-width: 0;
+}
+
+.page-pattern-eyebrow,
+.page-pattern-status,
+.page-pattern-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.page-pattern-eyebrow {
+  margin-bottom: var(--space-2);
+}
+
+.page-pattern-status,
+.page-pattern-meta {
+  margin-top: var(--space-2);
+}
+
+.page-pattern-actions,
+.page-pattern-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.page-pattern-filters {
+  min-width: 0;
+}
+
+.page-pattern-summary {
+  margin: 0 0 var(--space-3);
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.page-pattern-summary strong {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.page-pattern-object-content,
+.page-pattern-run-content {
+  min-width: 0;
+}
+
+.page-pattern-form-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 575px) {
+  .page-pattern-heading {
+    align-items: flex-start;
+  }
+
+  .page-pattern-actions {
+    width: 100%;
+  }
+}

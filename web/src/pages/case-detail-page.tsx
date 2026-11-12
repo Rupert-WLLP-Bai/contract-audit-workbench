@@ -18,6 +18,7 @@ import { ReviewReadinessPanel } from "../components/review-readiness-panel";
 import { errorMessage, isForbidden, isUnauthenticated } from "../api/http";
 import { useCaseDetail, useCaseReviewHistory, useSession, useStartReview } from "../api/queries";
 import { PageStatus } from "../components/page-status";
+import { ObjectDetailPage } from "../components/page-patterns";
 import { CollapsibleSection } from "../components/collapsible-section";
 import {
   isReadingInteraction,
@@ -45,6 +46,7 @@ import { readWorkReturn } from "../features/review/work-items";
 import { actorReadContextKey } from "../domain/actor-read-context";
 import {
   businessStatusLabel,
+  businessStatusTone,
   contractTypeLabel,
   formatDateTime,
   readyDocumentCount,
@@ -467,106 +469,120 @@ export function CaseDetailPage() {
       targetPending={targetPending}
       revealTarget={revealTarget}
     >
-      <section ref={readingContent} className="page case-detail-page">
-        <nav className="page-back" aria-label="案件导航">
-          {workReturn ? (
+      <ObjectDetailPage
+        contentRef={readingContent}
+        className="case-detail-page"
+        before={
+          <nav className="page-back" aria-label="案件导航">
+            {workReturn ? (
+              <Link
+                to={workReturn}
+                state={{ ...(listReturn ?? {}), caseReadingPosition, reviewReadingPosition }}
+              >
+                返回人工办理
+              </Link>
+            ) : null}
             <Link
-              to={workReturn}
-              state={{ ...(listReturn ?? {}), caseReadingPosition, reviewReadingPosition }}
-            >
-              返回人工办理
-            </Link>
-          ) : null}
-          <Link
-            to={navigationListReturn?.returnTo ?? "/cases"}
-            state={{
-              restoreScrollY: navigationListReturn?.scrollY ?? 0,
-              actorScope: navigationScope,
-            }}
-          >
-            返回案件列表
-          </Link>
-        </nav>
-        <header className="page-head">
-          <div>
-            <h1>{item.title}</h1>
-            <p>
-              {[
-                businessScopeLabel(item.business_line, item.scenario),
-                businessStatusLabel(item.business_status),
-                contractTypeLabel(item.contract_type),
-              ]
-                .filter(Boolean)
-                .join("，")}{" "}
-              ，更新于 {formatDateTime(item.updated_at)}
-            </p>
-          </div>
-          <EvidenceSLADashboard mode="reminder" cases={[{ id: item.id, title: item.title }]} />
-          <Button href={`/cases/${encodeURIComponent(item.id)}/legal-knowledge`}>法律知识</Button>
-        </header>
-        <dl className="case-detail-facts" aria-label="案件信息">
-          <div>
-            <dt>业务编号</dt>
-            <dd>{item.case_number?.trim() || "未提供"}</dd>
-          </div>
-          <div>
-            <dt>业务场景</dt>
-            <dd>{businessScopeLabel(item.business_line, item.scenario)}</dd>
-          </div>
-          <div>
-            <dt>责任人</dt>
-            <dd>{item.owner_name?.trim() || "未提供"}</dd>
-          </div>
-          <div>
-            <dt>更新时间</dt>
-            <dd>{formatDateTime(item.updated_at)}</dd>
-          </div>
-        </dl>
-        <CaseNextStep
-          caseDetail={item}
-          actorRole={actorRole}
-          sessionReady={session.isSuccess}
-          sessionLoading={session.isLoading}
-          sessionError={session.isError ? session.error : null}
-          readiness={readiness.data}
-          readinessLoading={readiness.isFetching}
-          readinessError={readiness.isError ? readiness.error : null}
-          selectedScope={reviewScope}
-          businessAtInput={businessAt}
-          validBusinessAt={validBusinessAt}
-          historyLoading={history.isLoading}
-          historyError={history.isError ? history.error : null}
-          latestWorkspace={latestWorkspace}
-          startPending={start.isPending}
-          startError={start.isError ? start.error : null}
-          onRetrySession={() => void session.refetch()}
-          onRefreshReadiness={() => {
-            start.reset();
-            void Promise.all([
-              readiness.refetch(),
-              detail.refetch(),
-              ...(item.latest_run ? [history.refetch()] : []),
-            ]);
-          }}
-          onRefreshHistory={() => void history.refetch()}
-          onStartReview={onStartReview}
-          onNavigateReview={(href) => void navigate(href, { state: reviewNavigationState() })}
-        />
-        <nav className="case-detail-sections" aria-label="案件详情分区">
-          {Object.entries(sectionLabels).map(([key, label]) => (
-            <Button
-              key={key}
-              type={activeSection === key ? "primary" : "default"}
-              aria-pressed={activeSection === key}
-              onClick={() => {
-                manualSectionVisit.current = sectionVisit;
-                setActiveSection(key as CaseSection);
+              to={navigationListReturn?.returnTo ?? "/cases"}
+              state={{
+                restoreScrollY: navigationListReturn?.scrollY ?? 0,
+                actorScope: navigationScope,
               }}
             >
-              {label}
-            </Button>
-          ))}
-        </nav>
+              返回案件列表
+            </Link>
+          </nav>
+        }
+        title={item.title}
+        description={
+          [
+            businessScopeLabel(item.business_line, item.scenario),
+            contractTypeLabel(item.contract_type),
+          ]
+            .filter(Boolean)
+            .join("，") + `，更新于 ${formatDateTime(item.updated_at)}`
+        }
+        status={
+          <StatusText tone={businessStatusTone(item.business_status ?? "")}>
+            {businessStatusLabel(item.business_status ?? "")}
+          </StatusText>
+        }
+        actions={
+          <>
+            <EvidenceSLADashboard mode="reminder" cases={[{ id: item.id, title: item.title }]} />
+            <Button href={`/cases/${encodeURIComponent(item.id)}/legal-knowledge`}>法律知识</Button>
+          </>
+        }
+        facts={
+          <dl className="case-detail-facts" aria-label="案件信息">
+            <div>
+              <dt>业务编号</dt>
+              <dd>{item.case_number?.trim() || "未提供"}</dd>
+            </div>
+            <div>
+              <dt>业务场景</dt>
+              <dd>{businessScopeLabel(item.business_line, item.scenario)}</dd>
+            </div>
+            <div>
+              <dt>责任人</dt>
+              <dd>{item.owner_name?.trim() || "未提供"}</dd>
+            </div>
+            <div>
+              <dt>更新时间</dt>
+              <dd>{formatDateTime(item.updated_at)}</dd>
+            </div>
+          </dl>
+        }
+        nextStep={
+          <CaseNextStep
+            caseDetail={item}
+            actorRole={actorRole}
+            sessionReady={session.isSuccess}
+            sessionLoading={session.isLoading}
+            sessionError={session.isError ? session.error : null}
+            readiness={readiness.data}
+            readinessLoading={readiness.isFetching}
+            readinessError={readiness.isError ? readiness.error : null}
+            selectedScope={reviewScope}
+            businessAtInput={businessAt}
+            validBusinessAt={validBusinessAt}
+            historyLoading={history.isLoading}
+            historyError={history.isError ? history.error : null}
+            latestWorkspace={latestWorkspace}
+            startPending={start.isPending}
+            startError={start.isError ? start.error : null}
+            onRetrySession={() => void session.refetch()}
+            onRefreshReadiness={() => {
+              start.reset();
+              void Promise.all([
+                readiness.refetch(),
+                detail.refetch(),
+                ...(item.latest_run ? [history.refetch()] : []),
+              ]);
+            }}
+            onRefreshHistory={() => void history.refetch()}
+            onStartReview={onStartReview}
+            onNavigateReview={(href) => void navigate(href, { state: reviewNavigationState() })}
+          />
+        }
+        navigation={
+          <nav className="case-detail-sections" aria-label="案件详情分区">
+            {Object.entries(sectionLabels).map(([key, label]) => (
+              <Button
+                key={key}
+                type={activeSection === key ? "primary" : "default"}
+                aria-pressed={activeSection === key}
+                onClick={() => {
+                  manualSectionVisit.current = sectionVisit;
+                  setActiveSection(key as CaseSection);
+                }}
+              >
+                {label}
+              </Button>
+            ))}
+          </nav>
+        }
+      >
         <section
           data-case-section="overview"
           aria-label="案件概览"
@@ -887,7 +903,7 @@ export function CaseDetailPage() {
             </ol>
           </CollapsibleSection>
         </section>
-      </section>
+      </ObjectDetailPage>
     </SectionNavigationProvider>
   );
 }

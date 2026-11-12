@@ -60,6 +60,7 @@ import {
 } from "../api/idempotency";
 import type { Actor } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { ListPage } from "../components/page-patterns";
 import { TechnicalDetail } from "../components/technical-detail";
 import { ContractReferencesPanel } from "../components/contract-references-panel";
 import { caseSelectPresentation } from "../components/case-select-presentation";
@@ -670,12 +671,11 @@ export function ContractsPage() {
   ).length;
 
   return (
-    <section className="page contracts-page">
-      <header className="page-head">
-        <div>
-          <h1>合同登记</h1>
-          <p>草稿可以先不写全，保存后继续填。收款账号一类敏感字段只对有管理权限的人显示。</p>
-        </div>
+    <ListPage
+      className="contracts-page"
+      title="合同登记"
+      description="草稿可以先不写全，保存后继续填。收款账号一类敏感字段只对有管理权限的人显示。"
+      actions={
         <div className="contracts-page-actions">
           <Button type="text" onClick={() => setImportOpen(true)} disabled={actor === null}>
             导入已签存量合同
@@ -684,8 +684,8 @@ export function ContractsPage() {
             新建合同草稿
           </Button>
         </div>
-      </header>
-
+      }
+    >
       <Tabs
         activeKey={workspaceTab}
         onChange={(key) => setWorkspaceTab(key as typeof workspaceTab)}
@@ -1887,7 +1887,7 @@ export function ContractsPage() {
           void queryClient.invalidateQueries({ queryKey: queryKeys.contractDraftsPrefix });
         }}
       />
-    </section>
+    </ListPage>
   );
 
   function patchItem(index: number, patch: Partial<DraftItem>) {

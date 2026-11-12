@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "purpose": "UI2-M5 in-repo coverage registry for 54 design views. Screenshot binaries stay outside the source repo under CAW_DELIVERY_DIR/ui2. Status PARTIAL means a page screenshot exists; it is not product PASS. Fixed-candidate / native-200% / role-state acceptance remains NOT_RUN on #97.",
+  "purpose": "UI2-M5 in-repo coverage registry for 54 design views. Screenshot binaries stay outside the source repo under CAW_DELIVERY_DIR/ui2. Status PARTIAL means a page screenshot exists; it is not product PASS. Fixed-candidate / native-200% / role-state acceptance remains NOT_RUN on #97. Representative page-pattern migrations are registered separately; the original design-view count stays 54.",
   "baseline_sha": "2a1a942939f0bd73c1bb1669157b77def2f9a622",
   "design_baseline": "contract-audit-delivery/ui2/prototype-pages.json",
   "external_coverage": "contract-audit-delivery/ui2/UI2_COVERAGE.md",
@@ -20,6 +20,114 @@
     "role_state_keyboard_matrix": "NOT_RUN",
     "fixed_candidate_five_stage": "NOT_RUN"
   },
+  "representativePagePatterns": {
+    "scope": "First representative consumers only; this does not claim that all 54 design views have migrated.",
+    "templates": [
+      {
+        "pattern": "list",
+        "routes": ["/cases", "/contracts"],
+        "sources": [
+          "web/src/components/page-patterns.tsx",
+          "web/src/components/page-patterns.css",
+          "web/src/pages/cases-page.tsx",
+          "web/src/pages/contracts-page.tsx"
+        ]
+      },
+      {
+        "pattern": "object-detail",
+        "routes": ["/cases/:caseId"],
+        "sources": [
+          "web/src/components/page-patterns.tsx",
+          "web/src/components/page-patterns.css",
+          "web/src/pages/case-detail-page.tsx"
+        ]
+      },
+      {
+        "pattern": "version-editor",
+        "routes": ["/admin/rulepacks/new"],
+        "sources": [
+          "web/src/components/page-patterns.tsx",
+          "web/src/components/page-patterns.css",
+          "web/src/pages/rulepack-create-page.tsx"
+        ]
+      },
+      {
+        "pattern": "run-inspection",
+        "entryRoute": "/workbench/executions",
+        "detailRoute": "/cases/:caseId/reviews/:runId/agent?attempt=:attemptId",
+        "sources": [
+          "web/src/components/page-patterns.tsx",
+          "web/src/components/page-patterns.css",
+          "web/src/pages/agent-studio-page.tsx",
+          "web/src/pages/agent-studio-page.css"
+        ]
+      },
+      {
+        "pattern": "review-workspace",
+        "route": "/cases/:caseId/reviews/:runId",
+        "sources": [
+          "web/src/pages/review-page.tsx",
+          "web/src/components/review-workspace.tsx",
+          "web/src/components/document-stage.tsx"
+        ],
+        "note": "Existing review workspace; no extra template wrapper added."
+      }
+    ]
+  },
+  "mainNavigation": {
+    "mainEntries": [
+      {
+        "key": "workbench",
+        "label": "工作台",
+        "route": "/",
+        "secondaryRoutes": [
+          "/review",
+          "/workbench/tasks",
+          "/workbench/remediation",
+          "/workbench/reports",
+          "/workbench/evidence",
+          "/workbench/evidence-sla"
+        ]
+      },
+      {
+        "key": "cases",
+        "label": "案件",
+        "route": "/cases",
+        "secondaryRoutes": ["/support", "/compare"]
+      },
+      {
+        "key": "contracts",
+        "label": "合同台账",
+        "route": "/contracts",
+        "secondaryRoutes": ["/workbench/approvals", "/subjects"]
+      },
+      {
+        "key": "knowledge",
+        "label": "知识与规则",
+        "route": "/workbench/knowledge",
+        "secondaryRoutes": ["/admin/rulepacks", "/workbench/templates"]
+      },
+      {
+        "key": "agent-studio",
+        "label": "Agent Studio",
+        "route": "/workbench/executions",
+        "detailRoute": "/cases/:caseId/reviews/:runId/agent?attempt=:attemptId"
+      }
+    ],
+    "managementAndDocsRoutes": [
+      "/workbench/organization",
+      "/workbench/tools",
+      "/workbench/settings",
+      "/workbench/health",
+      "/workbench/audit",
+      "/docs/",
+      "/api-docs"
+    ],
+    "sources": [
+      "web/src/components/app-shell.tsx",
+      "web/src/components/app-shell.test.tsx"
+    ]
+  },
   "views": [
     {
       "designId": "UI-001",
@@ -28,7 +136,10 @@
       "title": "工作台",
       "site": "client",
       "kind": "route",
-      "sources": ["web/src/pages/home-page.tsx"],
+      "sources": [
+        "web/src/pages/home-page.tsx",
+        "web/src/components/app-shell.tsx"
+      ],
       "implementationIssue": 257,
       "figmaNodeId": "6:2",
       "screenshotRefs": [
@@ -68,7 +179,12 @@
       "title": "案件管理",
       "site": "client",
       "kind": "route",
-      "sources": ["web/src/pages/cases-page.tsx"],
+      "sources": [
+        "web/src/pages/cases-page.tsx",
+        "web/src/components/cases-table.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
+      ],
       "implementationIssue": 257,
       "figmaNodeId": "8:183",
       "screenshotRefs": [
@@ -89,7 +205,11 @@
       "title": "合同登记",
       "site": "client",
       "kind": "route",
-      "sources": ["web/src/pages/contracts-page.tsx"],
+      "sources": [
+        "web/src/pages/contracts-page.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
+      ],
       "implementationIssue": 257,
       "figmaNodeId": "8:258",
       "screenshotRefs": [
@@ -128,7 +248,11 @@
       "title": "案件详情",
       "site": "client",
       "kind": "route",
-      "sources": ["web/src/pages/case-detail-page.tsx"],
+      "sources": [
+        "web/src/pages/case-detail-page.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
+      ],
       "implementationIssue": 257,
       "figmaNodeId": "6:112",
       "screenshotRefs": [
@@ -426,7 +550,14 @@
       "title": "执行轨迹",
       "site": "client",
       "kind": "route",
-      "sources": ["web/src/pages/workbench-module-page.tsx"],
+      "sources": [
+        "web/src/pages/workbench-module-page.tsx",
+        "web/src/components/app-shell.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css",
+        "web/src/pages/agent-studio-page.tsx",
+        "web/src/pages/agent-studio-page.css"
+      ],
       "implementationIssue": 258,
       "figmaNodeId": "8:1600",
       "screenshotRefs": ["executions.png"],
@@ -443,7 +574,10 @@
       "sources": ["web/src/pages/workbench-module-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:1698",
-      "screenshotRefs": ["knowledge.png", "audit/round41/knowledge-reader-1440.png"],
+      "screenshotRefs": [
+        "knowledge.png",
+        "audit/round41/knowledge-reader-1440.png"
+      ],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -471,7 +605,10 @@
       "sources": ["web/src/pages/workbench-module-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:1881",
-      "screenshotRefs": ["templates.png", "audit/round41/templates-reader-1440.png"],
+      "screenshotRefs": [
+        "templates.png",
+        "audit/round41/templates-reader-1440.png"
+      ],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -662,7 +799,11 @@
       "title": "新建规则包版本",
       "site": "admin",
       "kind": "route",
-      "sources": ["web/src/pages/rulepack-create-page.tsx"],
+      "sources": [
+        "web/src/pages/rulepack-create-page.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
+      ],
       "implementationIssue": 259,
       "figmaNodeId": "8:2802",
       "screenshotRefs": ["admin-rulepack-new.png"],
@@ -758,7 +899,11 @@
       "title": "合同登记 · 编辑工作区",
       "site": "client",
       "kind": "view",
-      "sources": ["web/src/pages/contracts-page.tsx"],
+      "sources": [
+        "web/src/pages/contracts-page.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
+      ],
       "implementationIssue": 257,
       "figmaNodeId": "6:296",
       "screenshotRefs": [
@@ -911,7 +1056,9 @@
       "kind": "subview",
       "sources": [
         "web/src/pages/case-detail-page.tsx",
-        "web/src/components/material-collection-panel.tsx"
+        "web/src/components/material-collection-panel.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "8:3655",
@@ -929,7 +1076,11 @@
       "title": "合同登记 · 资金与付款",
       "site": "client",
       "kind": "subview",
-      "sources": ["web/src/pages/contracts-page.tsx"],
+      "sources": [
+        "web/src/pages/contracts-page.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
+      ],
       "implementationIssue": 257,
       "figmaNodeId": "8:3725",
       "screenshotRefs": [

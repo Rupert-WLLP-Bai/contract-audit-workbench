@@ -15,6 +15,7 @@ import { errorMessage, isForbidden } from "../api/http";
 import { useCases, useCreateCase, useSession } from "../api/queries";
 import { CasesTable } from "../components/cases-table";
 import { isReadingInteraction } from "../components/section-navigation";
+import { ListPage } from "../components/page-patterns";
 import { actorReadContextKey } from "../domain/actor-read-context";
 import { PageStatus } from "../components/page-status";
 import {
@@ -312,15 +313,17 @@ export function CasesPage() {
   }
 
   return (
-    <section ref={readingContent} className="page cases-page">
-      <header className="page-head">
-        <div>
-          <h1>案件</h1>
-          <p>
-            案件由服务端按当前身份授权返回；“我负责的”依据服务端责任人名称匹配当前身份，“已归档”依据归档时间筛选。
-            {canCreate ? "" : " 当前角色仅可查看案件；新建案件需要管理员或经办人角色。"}
-          </p>
-        </div>
+    <ListPage
+      contentRef={readingContent}
+      className="cases-page"
+      title="案件"
+      description={
+        <>
+          案件由服务端按当前身份授权返回；“我负责的”依据服务端责任人名称匹配当前身份，“已归档”依据归档时间筛选。
+          {canCreate ? "" : " 当前角色仅可查看案件；新建案件需要管理员或经办人角色。"}
+        </>
+      }
+      actions={
         <Button
           aria-label={"新建案件"}
           type="primary"
@@ -331,70 +334,90 @@ export function CasesPage() {
         >
           新建案件
         </Button>
-      </header>
-
-      <div className="cases-filters" aria-label="案件筛选">
-        <Tabs
-          activeKey={view}
-          style={{ gridColumn: "1 / -1" }}
-          onChange={(key) => {
-            if (key === "all" || key === "mine" || key === "archived")
-              updateParam("view", key === "all" ? "" : key, { clearSelection: true });
-          }}
-          items={[
-            { key: "all", label: "全部案件" },
-            { key: "mine", label: "我负责的" },
-            { key: "archived", label: "已归档" },
-          ]}
-        />
-        <label className="field cases-search">
-          搜索案件
-          <Input
-            value={query}
-            onChange={(event) => updateParam("q", event.target.value, { clearSelection: true })}
-            placeholder="标题、业务编号、中文场景或完整案件标识"
-            type="search"
-          />
-        </label>
-        <label className="field">
-          业务状态
-          <Select<string>
-            aria-label="业务状态"
-            value={String(businessStatus)}
-            onChange={(selectedValue) =>
-              updateParam("business_status", selectedValue, {
-                clearSelection: true,
-              })
-            }
-            options={[
-              { value: "all", label: "全部业务状态" },
-              ...businessStatuses.map((status) => ({
-                value: String(status),
-                label: businessStatusLabel(status),
-              })),
+      }
+      filters={
+        <div className="cases-filters" aria-label="案件筛选">
+          <Tabs
+            activeKey={view}
+            style={{ gridColumn: "1 / -1" }}
+            onChange={(key) => {
+              if (key === "all" || key === "mine" || key === "archived")
+                updateParam("view", key === "all" ? "" : key, { clearSelection: true });
+            }}
+            items={[
+              { key: "all", label: "全部案件" },
+              { key: "mine", label: "我负责的" },
+              { key: "archived", label: "已归档" },
             ]}
           />
-        </label>
-        <label className="field">
-          运行状态
-          <Select<string>
-            aria-label="运行状态"
-            value={String(run)}
-            onChange={(selectedValue) =>
-              updateParam("run", selectedValue === "all" ? "" : selectedValue, {
-                clearSelection: true,
-              })
-            }
-            options={[
-              ...FILTERS.map((item) => ({
-                value: String(item.id),
-                label: String(item.label ?? ""),
-              })),
-            ]}
+          <label className="field cases-search">
+            搜索案件
+            <Input
+              value={query}
+              onChange={(event) => updateParam("q", event.target.value, { clearSelection: true })}
+              placeholder="标题、业务编号、中文场景或完整案件标识"
+              type="search"
+            />
+          </label>
+          <label className="field">
+            业务状态
+            <Select<string>
+              aria-label="业务状态"
+              value={String(businessStatus)}
+              onChange={(selectedValue) =>
+                updateParam("business_status", selectedValue, {
+                  clearSelection: true,
+                })
+              }
+              options={[
+                { value: "all", label: "全部业务状态" },
+                ...businessStatuses.map((status) => ({
+                  value: String(status),
+                  label: businessStatusLabel(status),
+                })),
+              ]}
+            />
+          </label>
+          <label className="field">
+            运行状态
+            <Select<string>
+              aria-label="运行状态"
+              value={String(run)}
+              onChange={(selectedValue) =>
+                updateParam("run", selectedValue === "all" ? "" : selectedValue, {
+                  clearSelection: true,
+                })
+              }
+              options={[
+                ...FILTERS.map((item) => ({
+                  value: String(item.id),
+                  label: String(item.label ?? ""),
+                })),
+              ]}
+            />
+          </label>
+        </div>
+      }
+      pagination={
+        filtered.length > 0 ? (
+          <Pagination
+            current={page}
+            total={sorted.length}
+            pageSize={pageSize}
+            pageSizeOptions={[...PAGE_SIZES]}
+            showSizeChanger
+            showTotal={(total, range) => `显示 ${range[0]}–${range[1]} 条，共 ${total} 条`}
+            onChange={(nextPage, nextSize) => {
+              const next = new URLSearchParams(params);
+              next.set("page_size", String(nextSize));
+              if (nextSize !== pageSize) next.delete("page");
+              else next.set("page", String(nextPage));
+              setParams(next, { replace: true });
+            }}
           />
-        </label>
-      </div>
-
+        ) : null
+      }
+    >
       {cases.data?.length === 0 ? (
         <PageStatus
           kind="empty"
@@ -415,31 +438,14 @@ export function CasesPage() {
           </Button>
         </section>
       ) : (
-        <>
-          <CasesTable
-            items={pageItems}
-            sort={sort}
-            direction={direction}
-            selectedId={selectedId}
-            actorScope={actorScope}
-            onSort={sortBy}
-          />
-          <Pagination
-            current={page}
-            total={sorted.length}
-            pageSize={pageSize}
-            pageSizeOptions={[...PAGE_SIZES]}
-            showSizeChanger
-            showTotal={(total, range) => `显示 ${range[0]}–${range[1]} 条，共 ${total} 条`}
-            onChange={(nextPage, nextSize) => {
-              const next = new URLSearchParams(params);
-              next.set("page_size", String(nextSize));
-              if (nextSize !== pageSize) next.delete("page");
-              else next.set("page", String(nextPage));
-              setParams(next, { replace: true });
-            }}
-          />
-        </>
+        <CasesTable
+          items={pageItems}
+          sort={sort}
+          direction={direction}
+          selectedId={selectedId}
+          actorScope={actorScope}
+          onSort={sortBy}
+        />
       )}
 
       {open ? (
@@ -560,6 +566,6 @@ export function CasesPage() {
           </form>
         </Modal>
       ) : null}
-    </section>
+    </ListPage>
   );
 }

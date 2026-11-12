@@ -17,7 +17,7 @@ export function PageStatus({
   detail,
   action,
 }: {
-  kind: "loading" | "empty" | "error" | "denied";
+  kind: "loading" | "empty" | "error" | "denied" | "unknown" | "unavailable" | "stale";
   title: string;
   detail?: string;
   action?: ReactNode;
@@ -44,11 +44,13 @@ export function PageStatus({
         </Empty>
       </section>
     );
+  const isAlert = kind === "error" || kind === "denied";
+  const status = kind === "denied" ? "403" : kind === "error" ? "error" : "warning";
   return (
-    <section role="alert">
+    <section role={isAlert ? "alert" : "status"}>
       <Result
         className={`page-status page-status-${kind}`}
-        status={kind === "denied" ? "403" : "error"}
+        status={status}
         title={<h1>{title}</h1>}
         subTitle={detail}
         extra={action}

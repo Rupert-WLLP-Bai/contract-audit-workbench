@@ -21,7 +21,7 @@ import {
 import { useCaseDetail, useLogout, useSession } from "../api/queries";
 import { presentedPersonName } from "../domain/organization";
 import { actorRoleLabel } from "../domain/review";
-import { Avatar, Breadcrumb, Button, Input, Layout, Menu } from "antd";
+import { Avatar, Breadcrumb, Button, Input, Layout } from "antd";
 import {
   ApiOutlined,
   AuditOutlined,
@@ -52,72 +52,77 @@ type NavLinkItem = {
   href?: string;
 };
 
+type MainNavKey = "workbench" | "cases" | "contracts" | "knowledge" | "agent-studio";
+
 const NAV_GROUPS: {
-  key: string;
+  key: MainNavKey;
   label: string;
+  to: string;
+  icon: string;
   links: NavLinkItem[];
 }[] = [
   {
-    key: "main",
-    label: "主要工作区",
+    key: "workbench",
+    label: "工作台",
+    to: "/",
+    icon: "home",
     links: [
-      { to: "/", label: "工作台", icon: "home", end: true },
       { to: "/review", label: "合同审查", icon: "review" },
-      { to: "/compare", label: "版本对照", icon: "compare" },
-    ],
-  },
-  {
-    key: "business",
-    label: "业务管理",
-    links: [
-      { to: "/cases", label: "案件管理", icon: "case", end: true },
-      { to: "/support", label: "案件支援访问", icon: "support" },
-      { to: "/contracts", label: "合同登记", icon: "contracts", end: true },
-      { to: "/workbench/approvals", label: "合同会签", icon: "contracts" },
-      { to: "/subjects", label: "主体台账", icon: "subjects" },
       { to: "/workbench/tasks", label: "审查任务", icon: "tasks" },
       { to: "/workbench/remediation", label: "整改中心", icon: "remediation" },
       { to: "/workbench/reports", label: "报告中心", icon: "reports" },
       { to: "/workbench/evidence", label: "证据中心", icon: "evidence" },
       { to: "/workbench/evidence-sla", label: "补证时效", icon: "evidence-sla" },
-      { to: "/workbench/knowledge", label: "知识库", icon: "knowledge" },
     ],
   },
   {
-    key: "platform",
-    label: "平台配置",
+    key: "cases",
+    label: "案件",
+    to: "/cases",
+    icon: "case",
+    links: [
+      { to: "/support", label: "案件支援访问", icon: "support" },
+      { to: "/compare", label: "版本对照", icon: "compare" },
+    ],
+  },
+  {
+    key: "contracts",
+    label: "合同台账",
+    to: "/contracts",
+    icon: "contracts",
+    links: [
+      { to: "/workbench/approvals", label: "合同会签", icon: "contracts" },
+      { to: "/subjects", label: "主体台账", icon: "subjects" },
+    ],
+  },
+  {
+    key: "knowledge",
+    label: "知识与规则",
+    to: "/workbench/knowledge",
+    icon: "knowledge",
     links: [
       { to: "rules", label: "规则包治理", icon: "rules", external: true },
-      {
-        to: "/workbench/organization",
-        label: "组织与权限",
-        icon: "organization",
-      },
       { to: "/workbench/templates", label: "模板管理", icon: "templates" },
-      { to: "/workbench/tools", label: "工具网关", icon: "tools" },
-      { to: "/workbench/settings", label: "系统设置", icon: "settings" },
     ],
   },
   {
-    key: "observability",
-    label: "可观测",
-    links: [
-      { to: "/workbench/executions", label: "执行轨迹", icon: "executions" },
-      { to: "/workbench/health", label: "系统健康", icon: "health" },
-      { to: "/workbench/audit", label: "审计日志", icon: "audit" },
-    ],
-  },
-  {
-    key: "developer",
-    label: "开发者资源",
-    links: [
-      { to: "/docs/", label: "使用手册", icon: "knowledge", external: true, href: "/docs/" },
-      { to: "/api-docs", label: "API 文档", icon: "api" },
-    ],
+    key: "agent-studio",
+    label: "Agent Studio",
+    to: "/workbench/executions",
+    icon: "executions",
+    links: [],
   },
 ];
 
-const NAV_LINKS = NAV_GROUPS.flatMap((group) => group.links);
+const UTILITY_LINKS: NavLinkItem[] = [
+  { to: "/workbench/organization", label: "组织与权限", icon: "organization" },
+  { to: "/workbench/tools", label: "工具网关", icon: "tools" },
+  { to: "/workbench/settings", label: "系统设置", icon: "settings" },
+  { to: "/workbench/health", label: "系统健康", icon: "health" },
+  { to: "/workbench/audit", label: "审计日志", icon: "audit" },
+  { to: "/docs/", label: "使用手册", icon: "knowledge", external: true, href: "/docs/" },
+  { to: "/api-docs", label: "API 文档", icon: "api" },
+];
 
 const NAV_ICONS: Record<string, ReactNode> = {
   home: <HomeOutlined />,
@@ -150,7 +155,7 @@ const MODULE_TITLES: Record<string, string> = {
   reports: "报告中心",
   evidence: "证据中心",
   "evidence-sla": "补充材料时效",
-  executions: "执行轨迹",
+  executions: "Agent Studio",
   knowledge: "知识库",
   organization: "组织与权限",
   templates: "模板管理",
@@ -242,6 +247,9 @@ function breadcrumbsFor(
   if (fixed) return fixed;
   if (caseId) {
     const crumbs = caseBreadcrumbs(caseId, caseTitle, inReview);
+    if (/^\/cases\/[^/]+\/reviews\/[^/]+\/agent$/.test(pathname)) {
+      return [...crumbs, { label: "Agent Studio", to: null }];
+    }
     return /^\/cases\/[^/]+\/subject-changes\/[^/]+/.test(pathname)
       ? [...crumbs, { label: "主体更正复核", to: null }]
       : crumbs;
@@ -253,13 +261,52 @@ function breadcrumbsFor(
   ];
 }
 
-function selectedMenuKey(pathname: string, inReview: boolean): string {
-  if (pathname === "/") return "/";
-  if (inReview) return "/review";
-  const match = NAV_LINKS.find(
-    (item) => !item.external && (pathname === item.to || pathname.startsWith(`${item.to}/`)),
-  );
-  return match ? match.to : pathname;
+function selectedPrimaryKey(pathname: string): MainNavKey | null {
+  if (pathname === "/") return "workbench";
+  if (
+    pathname === "/workbench/executions" ||
+    pathname.startsWith("/workbench/executions/") ||
+    /^\/cases\/[^/]+\/reviews\/[^/]+\/agent$/.test(pathname)
+  )
+    return "agent-studio";
+  if (
+    pathname === "/review" ||
+    [
+      "/workbench/tasks",
+      "/workbench/remediation",
+      "/workbench/reports",
+      "/workbench/evidence",
+      "/workbench/evidence-sla",
+    ].some((path) => pathname === path || pathname.startsWith(`${path}/`))
+  )
+    return "workbench";
+  if (
+    pathname === "/cases" ||
+    pathname.startsWith("/cases/") ||
+    pathname === "/compare" ||
+    pathname === "/support" ||
+    pathname === "/support-grants" ||
+    pathname.startsWith("/support-grants/")
+  )
+    return "cases";
+  if (
+    pathname === "/contracts" ||
+    pathname.startsWith("/contracts/") ||
+    pathname === "/subjects" ||
+    pathname.startsWith("/subjects/") ||
+    pathname === "/workbench/approvals"
+  )
+    return "contracts";
+  if (
+    pathname === "/workbench/knowledge" ||
+    pathname.startsWith("/workbench/knowledge/") ||
+    pathname === "/workbench/templates" ||
+    pathname.startsWith("/workbench/templates/") ||
+    pathname === "/admin/rulepacks" ||
+    pathname.startsWith("/admin/rulepacks/")
+  )
+    return "knowledge";
+  return null;
 }
 
 function searchFromLocation(search: string): string {
@@ -385,17 +432,41 @@ function AppTopbar({
 
 function AppSidebar({
   pathname,
-  inReview,
   adminRulePacksUrl,
   collapsed,
   onCollapse,
 }: {
   pathname: string;
-  inReview: boolean;
   adminRulePacksUrl: string;
   collapsed: boolean;
   onCollapse: (collapsed: boolean) => void;
 }) {
+  const activeGroup = NAV_GROUPS.find((group) => group.key === selectedPrimaryKey(pathname));
+
+  function renderLink(item: NavLinkItem) {
+    const icon = NAV_ICONS[item.icon];
+    const content = (
+      <>
+        <span className="client-nav-icon" aria-hidden="true">
+          {icon}
+        </span>
+        <span className="nav-label">{item.label}</span>
+      </>
+    );
+    if (item.external) {
+      return (
+        <a href={item.href ?? adminRulePacksUrl} aria-label={item.label} title={item.label}>
+          {content}
+        </a>
+      );
+    }
+    return (
+      <NavLink to={item.to} end={item.end} aria-label={item.label} title={item.label}>
+        {content}
+      </NavLink>
+    );
+  }
+
   return (
     <Layout.Sider
       trigger={
@@ -410,34 +481,55 @@ function AppSidebar({
       theme="dark"
       id="primary-navigation"
       className="sidenav"
-      aria-label="主导航"
       width={248}
       collapsedWidth={72}
       collapsed={collapsed}
       collapsible
       onCollapse={onCollapse}
     >
-      <Menu
-        mode="inline"
-        theme="dark"
-        selectedKeys={[selectedMenuKey(pathname, inReview)]}
-        items={NAV_GROUPS.map((group) => ({
-          key: group.key,
-          type: "group" as const,
-          label: group.label,
-          children: group.links.map((item) => ({
-            key: item.to,
-            icon: NAV_ICONS[item.icon],
-            label: item.external ? (
-              <a href={item.href ?? adminRulePacksUrl}>{item.label}</a>
-            ) : (
-              <NavLink to={item.to} end={item.end}>
-                {item.label}
-              </NavLink>
-            ),
-          })),
-        }))}
-      />
+      <nav className="client-navigation" aria-label="主导航">
+        <ul className="primary-navigation" aria-label="五个主入口">
+          {NAV_GROUPS.map((group) => {
+            const selected = group.key === selectedPrimaryKey(pathname);
+            return (
+              <li key={group.key}>
+                <Link
+                  className={
+                    selected ? "primary-navigation-link is-current" : "primary-navigation-link"
+                  }
+                  to={group.to}
+                  aria-label={group.label}
+                  aria-current={selected ? "page" : undefined}
+                  title={group.label}
+                >
+                  <span className="client-nav-icon" aria-hidden="true">
+                    {NAV_ICONS[group.icon]}
+                  </span>
+                  <span className="nav-label">{group.label}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+        {activeGroup && activeGroup.links.length > 0 ? (
+          <section className="secondary-navigation" aria-labelledby="secondary-navigation-title">
+            <h2 id="secondary-navigation-title">{activeGroup.label}工作区</h2>
+            <ul>
+              {activeGroup.links.map((item) => (
+                <li key={item.to}>{renderLink(item)}</li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        <section className="utility-navigation" aria-labelledby="utility-navigation-title">
+          <h2 id="utility-navigation-title">管理与文档</h2>
+          <ul>
+            {UTILITY_LINKS.map((item) => (
+              <li key={item.to}>{renderLink(item)}</li>
+            ))}
+          </ul>
+        </section>
+      </nav>
     </Layout.Sider>
   );
 }
@@ -491,7 +583,6 @@ export function AppShell() {
       <Layout className="frame" hasSider>
         <AppSidebar
           pathname={location.pathname}
-          inReview={reviewMatch !== null}
           adminRulePacksUrl={adminRulePacksUrl}
           collapsed={collapsed}
           onCollapse={setCollapsed}
