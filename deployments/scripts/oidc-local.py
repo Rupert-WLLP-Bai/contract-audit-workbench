@@ -4,8 +4,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-25
-# Updated: 2026-10-31
-# Revision: r1
+# Updated: 2026-11-09
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -1118,10 +1118,10 @@ def run_host_provider(recorder: Recorder, provider_image: str, args) -> int:
     }
     users: list[dict[str, object]] = []
     identities = (
-        ("demo-admin", "admin", "local-demo", "demo-org", "演示管理员"),
-        ("demo-reviewer", "reviewer", "local-demo", "demo-org", "演示审查员"),
-        ("demo-clerk", "clerk", "local-demo", "demo-org", "演示经办"),
-        ("demo-viewer", "viewer", "local-demo", "demo-org", "演示只读"),
+        ("demo-admin", "admin", "local-demo", "demo-org", "James Carter"),
+        ("demo-reviewer", "reviewer", "local-demo", "demo-org", "Oliver Bennett"),
+        ("demo-clerk", "clerk", "local-demo", "demo-org", "Emma Walsh"),
+        ("demo-viewer", "viewer", "local-demo", "demo-org", "Sophia Reed"),
         ("d2-tenant-b-clerk", "clerk", "d2-tenant-b", "d2-tenant-b-org", "D2合成租户经办"),
     )
     for user_id, role, tenant_id, org_id, display_name in identities:

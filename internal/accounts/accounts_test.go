@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-09
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -104,8 +104,8 @@ func TestDemoIdentityAndCapabilities(t *testing.T) {
 		t.Fatal("unknown role has privileges")
 	}
 	items := List()
-	if len(items) != len(cases) {
-		t.Fatalf("directory count %d, want %d", len(items), len(cases))
+	if len(items) != len(cases)+additionalDistrictLogins {
+		t.Fatalf("directory count %d, want %d", len(items), len(cases)+additionalDistrictLogins)
 	}
 	items[0].Role = "changed"
 	if List()[0].Role != "admin" {
