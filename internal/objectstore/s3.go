@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: provides private, path-style S3-compatible object storage. Related `objectstore` operations include New, Put, Get, validateOperation.
+// Purpose: Adapts the official AWS S3 SDK to private path-style Put/Get while enforcing original-object key, size, signed SHA-256 metadata, response, cancellation and redacted-error contracts.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-11
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 

@@ -1,10 +1,10 @@
 # File metadata (manifest mirror):
-# Purpose: 验证生成的 wire schemas 能表达自引用与互引用且不接受非 JSON 值，并确认运行时 enum 从同一 OpenAPI schema 读取。
+# Purpose: Exercises the public SDK-backed wire generator with recursive JSON types and schema-derived runtime enums while preserving negative TypeScript assertions.
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-11-01
-# Updated: 2026-11-01
-# Revision: r1
+# Updated: 2026-11-12
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 

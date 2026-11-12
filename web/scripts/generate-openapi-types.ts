@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Delegates OpenAPI schema compilation to locked openapi-typescript and its AST printer, retaining the WireSchemas alias, schema-derived runtime enums and compatibility CLI modes.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

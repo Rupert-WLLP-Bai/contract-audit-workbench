@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Provides protobuf collector fixtures for telemetry HTTP/runtime metric assertions through the SDK-backed exporter interface.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-11
+// Updated: 2026-11-11
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package telemetry
 
 import (

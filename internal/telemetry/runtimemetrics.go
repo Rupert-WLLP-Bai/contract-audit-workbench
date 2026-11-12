@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: RuntimeSnapshot is a bounded process-local pool snapshot and, only for the authorized worker, cross-tenant queue and outbox snapshots. Failure values are "role", "timeout",… Related `telemetry` operations include observe, metric, SetRuntimeMetricsSource, RecordQueueClaim.
+// Purpose: Maps authorized pool, PostgreSQL queue, Outbox and CLM snapshots plus local queue/quota observations to bounded SDK instruments and availability-aware callbacks.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-01
-// Revision: r2
+// Updated: 2026-11-11
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

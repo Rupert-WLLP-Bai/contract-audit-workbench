@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # File metadata (manifest mirror):
-# Purpose: Generate the frontend's HTTP wire types from internal/apidocs/openapi.json. This module’s command-line arguments and return artifacts define its operational boundary.
+# Purpose: Preserves the Python wire-generation CLI as a path-safe launcher for the locked Bun/openapi-typescript generator; does not implement schema-to-type compilation.
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-31
-# Updated: 2026-11-03
-# Revision: r4
+# Updated: 2026-11-12
+# Revision: r5
 # Copyright: See LICENSE
 # End file metadata.
 

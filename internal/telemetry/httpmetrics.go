@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: The HTTP RED series extend the same bounded, metadata-only projection the execution exporter already maintains: rate and duration per bounded route template, with the response… Related `telemetry` operations include httpDurationKey, observeHTTP, drainHTTPMetrics, flushMetrics.
+// Purpose: Records bounded HTTP RED observations in official SDK counter and histogram instruments while preserving route, status and millisecond bucket semantics.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-11
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 

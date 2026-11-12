@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Exercises SDK-backed `objectstore` behavior through path-style signed Put/Get, digest verification, S3 status mapping, size and input boundaries, redaction, redirects, retries, cancellation, and deadlines.
+// Purpose: Exercises SDK-backed object storage through signed requests, original bytes, bounded responses, digest rejection, status mapping, cancellation and single-attempt behavior.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-11
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
