@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 
+	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 	contractapp "contractaudit/internal/contract/app"
 	clmcontract "contractaudit/internal/contract/model"
@@ -37,7 +38,7 @@ func (a storeDraftAccess) CanRead(ctx context.Context, record clmcontract.Aggreg
 }
 
 func (a storeDraftAccess) CanManage(record clmcontract.Aggregate) bool {
-	return authorizeContract(record, a.user, "case.manage")
+	return authorizeContract(record, a.user, access.Manage)
 }
 
 func contractDetailFromDraftResult(result clmcontract.CreateDraftResult) ContractDetail {

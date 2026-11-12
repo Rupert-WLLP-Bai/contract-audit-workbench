@@ -152,7 +152,7 @@ func replayCreatedDraft(ctx context.Context, principal CreateDraftPrincipal, rec
 		return clmcontract.CreateDraftResult{}, fault.NotFound("没有找到对应记录")
 	}
 	var result clmcontract.CreateDraftResult
-	if err := json.Unmarshal(receipt.Response, &result); err != nil {
+	if err := clmcontract.UnmarshalStoredDraft(receipt.Response, &result); err != nil {
 		return clmcontract.CreateDraftResult{}, err
 	}
 	if result.Draft == nil {
