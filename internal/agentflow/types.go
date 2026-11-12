@@ -21,7 +21,7 @@ import (
 	"contractaudit/internal/docir"
 )
 
-const RuntimeVersion = "operator-flow-v3/eino-0.9.22"
+const RuntimeVersion = "operator-flow-v4/eino-0.9.22"
 
 type Domain string
 

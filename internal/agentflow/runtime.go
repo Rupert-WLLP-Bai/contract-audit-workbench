@@ -26,15 +26,18 @@ import (
 	"contractaudit/internal/access"
 	"contractaudit/internal/docir"
 
+	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
+	"github.com/cloudwego/eino/schema"
 )
 
 type Runtime struct {
-	config   Config
-	tools    map[string]Tool
-	specs    []ToolSpec
-	specByID map[string]ToolSpec
-	runnable compose.Runnable[*execution, *execution]
+	config    Config
+	tools     map[string]Tool
+	specs     []ToolSpec
+	specByID  map[string]ToolSpec
+	toolsNode *compose.ToolsNode
+	runnable  compose.Runnable[*execution, *execution]
 }
 
 type execution struct {
@@ -227,6 +230,18 @@ func validateToolCapabilities(capabilities []string) error {
 }
 
 func compileRuntime(ctx context.Context, runtime *Runtime) (compose.Runnable[*execution, *execution], error) {
+	einoTools := make([]tool.BaseTool, 0, len(runtime.specs))
+	for _, spec := range runtime.specs {
+		einoTools = append(einoTools, einoTool{spec: spec, inner: runtime.tools[spec.ID]})
+	}
+	toolsNode, err := compose.NewToolNode(ctx, &compose.ToolsNodeConfig{
+		Tools: einoTools, ExecuteSequentially: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("compile read-only tools node: %w", err)
+	}
+	runtime.toolsNode = toolsNode
+
 	chain := compose.NewChain[*execution, *execution]()
 	chain.AppendLambda(compose.InvokableLambda(runtime.plan), compose.WithNodeName("scope_planning"))
 	chain.AppendLambda(compose.InvokableLambda(runtime.guard), compose.WithNodeName("plan_guard"))
@@ -1057,10 +1072,23 @@ func (r *Runtime) reviewAccessAllowed(state *execution) bool {
 func (r *Runtime) runTool(ctx context.Context, state *execution, call Call, callID string, started time.Time) ([]Finding, int, bool, error) {
 	toolCtx, cancel := context.WithTimeout(ctx, r.config.ToolTimeout)
 	state.report.ToolCalls++
-	findings, err := r.tools[call.ToolID].Execute(toolCtx, ToolInput{
+	input := ToolInput{
 		TenantID: state.request.Case.TenantID, CaseID: state.request.Case.CaseID, ActorID: state.request.Principal.UserID,
 		Gap: state.gaps[call.GapID], Evidence: slices.Clone(state.request.Evidence), PriorFindings: cloneFindings(state.findingsByGap[call.GapID]),
-	})
+	}
+	toolCtx = withEinoInvocation(toolCtx, einoInvocation{toolID: call.ToolID, input: input})
+	toolMessages, err := r.toolsNode.Invoke(toolCtx, schema.AssistantMessage("", []schema.ToolCall{{
+		ID: callID, Type: "function", Function: schema.FunctionCall{Name: call.ToolID, Arguments: "{}"},
+	}}))
+	var findings []Finding
+	if err == nil {
+		if len(toolMessages) != 1 || toolMessages[0] == nil || toolMessages[0].Role != schema.Tool ||
+			toolMessages[0].ToolCallID != callID || toolMessages[0].ToolName != call.ToolID {
+			err = errors.New("read-only tools node returned an unexpected result")
+		} else {
+			err = json.Unmarshal([]byte(toolMessages[0].Content), &findings)
+		}
+	}
 	if toolCtx.Err() != nil {
 		err = toolCtx.Err()
 	}
