@@ -14,7 +14,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
 
 	"contractaudit/internal/access"
@@ -22,7 +21,6 @@ import (
 	contractapp "contractaudit/internal/contract/app"
 	clmcontract "contractaudit/internal/contract/model"
 	contractpostgres "contractaudit/internal/contract/postgres"
-	"contractaudit/internal/contractmoney"
 	"contractaudit/internal/fault"
 	platformpostgres "contractaudit/internal/platform/postgres"
 
@@ -35,9 +33,9 @@ import (
 // schema write inside a contract lock (docs/11 事务边界).
 const (
 	clmRouteCreateDraft  = contractapp.CreateDraftRoute
-	clmRouteLegacyImport = "clm.legacy_import"
+	clmRouteLegacyImport = contractapp.LegacyImportRoute
 
-	clmEventLegacyImported = "contract.legacy_imported.v1"
+	clmEventLegacyImported = contractapp.LegacyImportedEvent
 )
 
 // Contract summary and aggregate models are owned by internal/contract; these
@@ -71,19 +69,11 @@ type CreateContractDraftInput = clmcontract.CreateContractDraftInput
 // ReplaceContractDraftInput remains available from Store as a compatibility alias.
 type ReplaceContractDraftInput = clmcontract.ReplaceContractDraftInput
 
-// LegacyImportInput registers one already-signed historical contract. It binds
-// an authorized real case and material version, keeps unknown history unknown
-// and never fabricates local approval rounds or signatures.
-type LegacyImportInput struct {
-	ExpectedRowVersion          int64
-	AuthorityMode               string
-	SourceRef                   SourceRef
-	SourceEvidence              MaterialRef
-	Snapshot                    DraftContent
-	ApprovalHistoryStatus       string
-	HistoricalApprovalMaterials []MaterialRef
-	Reason                      string
-	IdempotencyKey              string
+// LegacyImportInput remains available from Store as a compatibility alias.
+type LegacyImportInput = clmcontract.LegacyImportInput
+
+func legacyAmountPair(snapshot DraftContent) (*string, *string) {
+	return clmcontract.LegacyAmountPair(snapshot)
 }
 
 // resolvedMaterialVersion is a verified material version with its owning case.
@@ -571,60 +561,7 @@ func (s *Store) ReplaceContractDraft(ctx context.Context, user accounts.User, in
 // local rounds or signatures are fabricated.
 func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.User, input LegacyImportInput) (ContractDetail, error) {
 	ctx = commandContext(ctx, user)
-	if input.ExpectedRowVersion != 0 {
-		return ContractDetail{}, fault.Invalid("存量导入必须携带 expected_row_version=0")
-	}
-	if input.AuthorityMode != "native" {
-		return ContractDetail{}, fault.Invalid("本版只能导入 native 权威模式的存量合同")
-	}
-	if err := validateCLMIdempotencyKey(input.IdempotencyKey); err != nil {
-		return ContractDetail{}, err
-	}
-	if err := validateSourceRef(&input.SourceRef); err != nil {
-		return ContractDetail{}, err
-	}
-	if err := validateMaterialRef(&input.SourceEvidence); err != nil {
-		return ContractDetail{}, err
-	}
-	if input.ApprovalHistoryStatus != "unknown" && input.ApprovalHistoryStatus != "evidence_attached" {
-		return ContractDetail{}, fault.Invalid("approval_history_status 必须是 unknown 或 evidence_attached")
-	}
-	if input.ApprovalHistoryStatus == "unknown" && len(input.HistoricalApprovalMaterials) > 0 {
-		return ContractDetail{}, fault.Invalid("审批历史未知时不能登记历史审批材料")
-	}
-	if input.ApprovalHistoryStatus == "evidence_attached" && len(input.HistoricalApprovalMaterials) == 0 {
-		return ContractDetail{}, fault.Invalid("登记历史审批材料时必须提供至少一项材料引用")
-	}
-	if len(input.HistoricalApprovalMaterials) > 100 {
-		return ContractDetail{}, fault.Invalid("历史审批材料最多 100 项")
-	}
-	for index := range input.HistoricalApprovalMaterials {
-		if err := validateMaterialRef(&input.HistoricalApprovalMaterials[index]); err != nil {
-			return ContractDetail{}, err
-		}
-	}
-	reason := strings.TrimSpace(input.Reason)
-	if reason == "" || runeCount(reason) > 2000 {
-		return ContractDetail{}, fault.Invalid("请填写存量导入原因（1 到 2000 字）")
-	}
-	input.Reason = reason
-	sanitizeDraftReferences(&input.Snapshot)
-	if err := validateDraftContent(&input.Snapshot); err != nil {
-		return ContractDetail{}, err
-	}
-	amountsReconciled := false
-	if legacyAmountsKnown(&input.Snapshot) {
-		// Legacy registration is not the #81 freeze command: it stays a
-		// gated path so an unknown historical amount remains legal (#77).
-		// The revision records whether StageFinal actually ran, so an
-		// unreconciled unknown-amount import can never be mistaken for a
-		// reconciled frozen version.
-		if err := validateDraftAmounts(&input.Snapshot, contractmoney.StageFinal); err != nil {
-			return ContractDetail{}, err
-		}
-		amountsReconciled = true
-	}
-	digest, err := clmRequestDigest(clmRouteLegacyImport, "POST", "/api/contracts/legacy-imports", input.ExpectedRowVersion, input)
+	prepared, err := contractapp.PrepareLegacyImport(input)
 	if err != nil {
 		return ContractDetail{}, err
 	}
@@ -633,234 +570,19 @@ func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.Us
 		return ContractDetail{}, err
 	}
 	defer rollbackCLM(tx)
-	if err := lockWriteReceipt(ctx, tx, current, clmRouteLegacyImport, input.IdempotencyKey); err != nil {
-		return ContractDetail{}, err
-	}
-	receipt, found, err := replayCLMWriteReceipt(ctx, tx, current, clmRouteLegacyImport, input.IdempotencyKey, digest, "")
+	result, err := contractapp.ImportLegacySignedContract(ctx, contractapp.VersionPrincipal{
+		TenantID: accounts.Tenant(current), ActorID: current.ID, OrgID: current.OrgID,
+	}, prepared, contractpostgres.NewVersionCommands(platformpostgres.Bind(tx)), storeVersionCodec{},
+		storeDraftAccess{tx: tx, user: current}, storeVersionReferenceResolver{tx: tx, user: current},
+		storeVersionEventAdapter{tx: tx}, storeVersionEventAdapter{tx: tx})
 	if err != nil {
 		return ContractDetail{}, err
 	}
-	if found {
-		record, err := loadCLMContract(ctx, tx, accounts.Tenant(current), receipt.ContractID)
-		if err != nil {
-			return ContractDetail{}, err
-		}
-		detail, err := projectReceiptDetail(ctx, receipt, current, record)
-		if err != nil {
-			return ContractDetail{}, err
-		}
-		if err := tx.Commit(ctx); err != nil {
-			return ContractDetail{}, err
-		}
-		return detail, nil
-	}
-	source, err := resolveMaterialVersion(ctx, tx, accounts.Tenant(current), input.SourceEvidence)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	sourceCase, err := loadCLMCase(ctx, tx, current, source.CaseOrgID, source.CaseID)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	// The source case is the anchor of the frozen reference chain. Resolve
-	// every subject, material and procurement result against tables owned by
-	// the subject/document services before sealing the snapshot; the pins are
-	// written into the JSONB snapshot, never into upstream tables.
-	if _, err := resolveContractReferences(ctx, tx, current, sourceCase, &input.Snapshot, referenceModeImport); err != nil {
-		return ContractDetail{}, err
-	}
-	historical, err := s.resolveHistoricalMaterials(ctx, tx, current, input.HistoricalApprovalMaterials)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	contractID, err := newContractUUID()
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	_, sealedSnapshot, _, err := sealDraftContentBound(ctx, input.Snapshot, accounts.Tenant(current), contractID)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	// The revision stores jsonb, not the raw Go bytes. Digest the exact
-	// canonical text the row will return so later reads can verify it.
-	sealedSnapshot, err = canonicalStoredJSON(ctx, tx, sealedSnapshot)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	if err := scopedContractLock(ctx, tx, contractID); err != nil {
-		return ContractDetail{}, err
-	}
-	revisionID, err := newContractUUID()
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	contractNumber := optionalTextOrPointer(input.Snapshot.Contract.Number)
-	amount, currency := legacyAmountPair(input.Snapshot)
-	var createdAt time.Time
-	err = tx.QueryRow(ctx, `INSERT INTO clm_contracts
-		(tenant_id,contract_id,owner_org_id,authority_mode,contract_number,source_system,external_contract_id,source_version,lifecycle_state,row_version,created_by)
-		VALUES ($1,$2,$3,'native',$4,$5,$6,$7,'registered',1,$8) RETURNING created_at`,
-		accounts.Tenant(current), contractID, current.OrgID, contractNumber,
-		input.SourceRef.System, input.SourceRef.ID, input.SourceRef.SourceVersion, current.ID).Scan(&createdAt)
-	if err != nil {
-		return ContractDetail{}, clmUniqueViolation(err, "合同编号或来源合同已存在")
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO clm_contract_revisions
-		(tenant_id,contract_id,contract_revision_id,revision_number,amount,currency,snapshot,snapshot_digest,frozen_by,amounts_reconciled)
-		VALUES ($1,$2,$3,1,$4,$5,$6::jsonb,$7,$8,$9)`,
-		accounts.Tenant(current), contractID, revisionID, amount, currency,
-		string(sealedSnapshot), sha256Bytes(sealedSnapshot), current.ID, amountsReconciled); err != nil {
-		return ContractDetail{}, err
-	}
-	if err := insertFrozenContractRevisionItems(ctx, tx, accounts.Tenant(current), contractID, revisionID, input.Snapshot.Items); err != nil {
-		return ContractDetail{}, err
-	}
-	if _, err := tx.Exec(ctx, `UPDATE clm_contracts SET current_revision_id=$3, updated_at=clock_timestamp()
-		WHERE tenant_id=$1 AND contract_id=$2`, accounts.Tenant(current), contractID, revisionID); err != nil {
-		return ContractDetail{}, err
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO clm_contract_cases (tenant_id,contract_id,case_org_id,case_id,linked_by)
-		VALUES ($1,$2,$3,$4,$5)`, accounts.Tenant(current), contractID, sourceCase.OwnerOrgID, sourceCase.ID, current.ID); err != nil {
-		return ContractDetail{}, err
-	}
-	historicalJSON, err := json.Marshal(historical)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	var importedAt time.Time
-	err = tx.QueryRow(ctx, `INSERT INTO clm_legacy_imports
-		(tenant_id,contract_id,contract_revision_id,source_system,source_id,source_version,
-		 case_org_id,case_id,material_id,material_version,material_digest,
-		 approval_history_status,historical_approval_materials,reason,imported_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15)
-		RETURNING imported_at`,
-		accounts.Tenant(current), contractID, revisionID, input.SourceRef.System, input.SourceRef.ID, input.SourceRef.SourceVersion,
-		source.CaseOrgID, source.CaseID, source.MaterialID, source.Version, source.Digest,
-		input.ApprovalHistoryStatus, string(historicalJSON), input.Reason, current.ID).Scan(&importedAt)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	eventID, err := newContractUUID()
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	payload, err := json.Marshal(map[string]any{
-		"contract_id":               contractID,
-		"contract_revision_id":      revisionID,
-		"source_system":             input.SourceRef.System,
-		"source_id":                 input.SourceRef.ID,
-		"source_version":            input.SourceRef.SourceVersion,
-		"case_org_id":               source.CaseOrgID,
-		"case_id":                   source.CaseID,
-		"material_id":               source.MaterialID,
-		"material_version":          source.Version,
-		"material_digest":           source.Digest,
-		"approval_history_status":   input.ApprovalHistoryStatus,
-		"historical_material_count": len(historical),
-	})
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO clm_business_events
-		(tenant_id,event_id,contract_id,aggregate_version,event_type,schema_version,payload)
-		VALUES ($1,$2,$3,1,$4,1,$5::jsonb)`,
-		accounts.Tenant(current), eventID, contractID, clmEventLegacyImported, string(payload)); err != nil {
-		return ContractDetail{}, err
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO clm_outbox_delivery (tenant_id,event_id) VALUES ($1,$2)`,
-		accounts.Tenant(current), eventID); err != nil {
-		return ContractDetail{}, err
-	}
-	record := clmContractRecord{
-		TenantID: accounts.Tenant(current), ContractID: contractID, OwnerOrgID: current.OrgID,
-		AuthorityMode: "native", ContractNumber: contractNumber, SourceSystem: new(input.SourceRef.System),
-		ExternalContractID: new(input.SourceRef.ID), SourceVersion: new(input.SourceRef.SourceVersion),
-		LifecycleState: "registered", ValidityState: "active", CurrentRevisionID: new(revisionID),
-		RowVersion: 1, CreatedBy: current.ID, CreatedAt: createdAt, UpdatedAt: createdAt,
-	}
-	detailName, detailAmount, detailCurrency, err := draftContentSummaryFacts(sealedSnapshot)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	sealedDetail := ContractDetail{
-		Summary:           clmSummary(record, detailName, detailAmount, detailCurrency),
-		CurrentRevisionID: new(revisionID),
-		ActiveRoundID:     nil,
-		AllowedCommands:   clmDraftCommands(record, true),
-		SourceRef:         contractSourceRef(record),
-		SourceObservedAt:  new(importedAt),
-		Warnings:          clmImportWarnings(input.ApprovalHistoryStatus),
-	}
-	response, err := json.Marshal(sealedDetail)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	if err := insertCLMWriteReceipt(ctx, tx, accounts.Tenant(current), current.ID, clmRouteLegacyImport,
-		input.IdempotencyKey, digest, contractID, 201, response); err != nil {
-		return ContractDetail{}, err
-	}
-	detail := sealedDetail
-	plaintext, err := unsealStoredDraftBound(ctx, sealedSnapshot, record.TenantID, record.ContractID)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	detail.Draft = new(projectDraftForViewer(plaintext, authorizeContract(record, current, access.Manage)))
+	detail := contractDetailFromAppResult(result)
 	if err := tx.Commit(ctx); err != nil {
 		return ContractDetail{}, err
 	}
 	return detail, nil
-}
-
-func clmImportWarnings(status string) []string {
-	if status == "unknown" {
-		return []string{"approval_history_unknown"}
-	}
-	return []string{}
-}
-
-// legacyAmountPair keeps the SQL pair constraint honest: unknown amount and
-// unknown currency stay NULL together.
-func legacyAmountPair(snapshot DraftContent) (*string, *string) {
-	if snapshot.Contract == nil {
-		return nil, nil
-	}
-	if snapshot.Contract.Amount == "" || snapshot.Contract.Currency == "" {
-		return nil, nil
-	}
-	amount := snapshot.Contract.Amount
-	currency := snapshot.Contract.Currency
-	return &amount, &currency
-}
-
-// resolvedHistoricalMaterial records a verified historical approval material
-// with the case identity that made the verification possible.
-type resolvedHistoricalMaterial struct {
-	MaterialID        string `json:"material_id"`
-	MaterialVersionID string `json:"material_version_id"`
-	SHA256            string `json:"sha256"`
-	Purpose           string `json:"purpose"`
-	CaseOrgID         string `json:"case_org_id"`
-	CaseID            string `json:"case_id"`
-	MaterialVersion   int    `json:"material_version"`
-}
-
-func (s *Store) resolveHistoricalMaterials(ctx context.Context, tx pgx.Tx, current accounts.User, refs []MaterialRef) ([]resolvedHistoricalMaterial, error) {
-	ctx = commandContext(ctx, current)
-	resolved := make([]resolvedHistoricalMaterial, 0, len(refs))
-	for _, ref := range refs {
-		version, err := resolveMaterialVersion(ctx, tx, accounts.Tenant(current), ref)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := loadCLMCase(ctx, tx, current, version.CaseOrgID, version.CaseID); err != nil {
-			return nil, err
-		}
-		resolved = append(resolved, resolvedHistoricalMaterial{
-			MaterialID: ref.MaterialID, MaterialVersionID: ref.MaterialVersionID, SHA256: ref.SHA256,
-			Purpose: ref.Purpose, CaseOrgID: version.CaseOrgID, CaseID: version.CaseID, MaterialVersion: version.Version,
-		})
-	}
-	return resolved, nil
 }
 
 // clmRequestDigest fingerprints the verified command: route scope, normalized

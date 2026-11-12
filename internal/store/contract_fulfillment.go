@@ -22,7 +22,10 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	clmcontract "contractaudit/internal/contract/model"
+	contractpostgres "contractaudit/internal/contract/postgres"
 	"contractaudit/internal/fault"
+	platformpostgres "contractaudit/internal/platform/postgres"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -197,38 +200,8 @@ type revisionItemInfo struct {
 }
 
 func insertFrozenContractRevisionItems(ctx context.Context, tx pgx.Tx, tenantID, contractID, revisionID string, items []DraftItem) error {
-	counts := make(map[string]int, len(items))
-	for _, item := range items {
-		if itemID, err := normalizeContractUUID(item.ItemID); err == nil {
-			counts[itemID]++
-		}
-	}
-	for _, item := range items {
-		itemID, err := normalizeContractUUID(item.ItemID)
-		if err != nil {
-			continue
-		}
-		// Repeated IDs cannot identify a unique frozen line. Preserve the
-		// original snapshot and let fulfillment report the plan as unknown.
-		if counts[itemID] != 1 {
-			continue
-		}
-		var quantity any
-		if parsed, err := fulfillmentDecimal("items[].quantity", strings.TrimSpace(item.Quantity), false); err == nil && parsed.Sign() > 0 {
-			quantity = item.Quantity
-		}
-		var unit any
-		trimmedUnit := strings.TrimSpace(item.Unit)
-		if trimmedUnit != "" && len([]rune(trimmedUnit)) <= 40 {
-			unit = trimmedUnit
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO clm_contract_revision_items
-			(tenant_id,contract_id,contract_revision_id,item_id,planned_quantity,unit)
-			VALUES ($1,$2,$3,$4,$5,$6)`, tenantID, contractID, revisionID, itemID, quantity, unit); err != nil {
-			return err
-		}
-	}
-	return nil
+	return contractpostgres.NewVersionCommands(platformpostgres.Bind(tx)).InsertFrozenRevisionItems(ctx,
+		tenantID, contractID, revisionID, clmcontract.FrozenRevisionPlanItems(items))
 }
 
 func parseFulfillmentTime(field, raw string) (time.Time, error) {
