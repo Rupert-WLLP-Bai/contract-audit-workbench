@@ -28,9 +28,7 @@
       "title": "工作台",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/home-page.tsx"
-      ],
+      "sources": ["web/src/pages/home-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "6:2",
       "screenshotRefs": [
@@ -50,9 +48,7 @@
       "title": "合同审查",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/review-entry-page.tsx"
-      ],
+      "sources": ["web/src/pages/review-entry-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "8:108",
       "screenshotRefs": [
@@ -72,9 +68,7 @@
       "title": "案件管理",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/cases-page.tsx"
-      ],
+      "sources": ["web/src/pages/cases-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "8:183",
       "screenshotRefs": [
@@ -95,9 +89,7 @@
       "title": "合同登记",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/contracts-page.tsx"
-      ],
+      "sources": ["web/src/pages/contracts-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "8:258",
       "screenshotRefs": [
@@ -116,9 +108,7 @@
       "title": "合同会签",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/approval-tasks-page.tsx"
-      ],
+      "sources": ["web/src/pages/approval-tasks-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "6:387",
       "screenshotRefs": [
@@ -138,9 +128,7 @@
       "title": "案件详情",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/case-detail-page.tsx"
-      ],
+      "sources": ["web/src/pages/case-detail-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "6:112",
       "screenshotRefs": [
@@ -159,14 +147,10 @@
       "title": "案件支援访问",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/support-grant-pages.tsx"
-      ],
+      "sources": ["web/src/pages/support-grant-pages.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "8:333",
-      "screenshotRefs": [
-        "support-ui2.png"
-      ],
+      "screenshotRefs": ["support-ui2.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -177,9 +161,7 @@
       "title": "支援案件概览",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/support-grant-pages.tsx"
-      ],
+      "sources": ["web/src/pages/support-grant-pages.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "8:403",
       "screenshotRefs": [],
@@ -193,9 +175,7 @@
       "title": "案件适用依据",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/legal-knowledge-page.tsx"
-      ],
+      "sources": ["web/src/pages/legal-knowledge-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:499",
       "screenshotRefs": [
@@ -215,9 +195,7 @@
       "title": "主体台账",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/subjects-page.tsx"
-      ],
+      "sources": ["web/src/pages/subjects-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "8:584",
       "screenshotRefs": [
@@ -237,14 +215,10 @@
       "title": "主体详情",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/subjects-page.tsx"
-      ],
+      "sources": ["web/src/pages/subjects-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "8:654",
-      "screenshotRefs": [
-        "subject-detail.png"
-      ],
+      "screenshotRefs": ["subject-detail.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -255,9 +229,7 @@
       "title": "运营商专项核验",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/operator-audit-page.tsx"
-      ],
+      "sources": ["web/src/pages/operator-audit-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:751",
       "screenshotRefs": [
@@ -277,9 +249,7 @@
       "title": "审查工作区",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/review-page.tsx"
-      ],
+      "sources": ["web/src/pages/review-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "6:206",
       "screenshotRefs": [
@@ -299,9 +269,7 @@
       "title": "主体更正复核",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/subject-change-review-page.tsx"
-      ],
+      "sources": ["web/src/pages/subject-change-review-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "8:836",
       "screenshotRefs": [],
@@ -315,14 +283,10 @@
       "title": "版本对照",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/compare-entry-page.tsx"
-      ],
+      "sources": ["web/src/pages/compare-entry-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:923",
-      "screenshotRefs": [
-        "compare.png"
-      ],
+      "screenshotRefs": ["compare.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -333,9 +297,7 @@
       "title": "系统健康",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/system-health-page.tsx"
-      ],
+      "sources": ["web/src/pages/system-health-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:997",
       "screenshotRefs": [
@@ -355,14 +317,10 @@
       "title": "补证时效",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/evidence-sla-page.tsx"
-      ],
+      "sources": ["web/src/pages/evidence-sla-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "8:1081",
-      "screenshotRefs": [
-        "evidence-sla.png"
-      ],
+      "screenshotRefs": ["evidence-sla.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -373,14 +331,10 @@
       "title": "API 文档",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/api-docs-page.tsx"
-      ],
+      "sources": ["web/src/pages/api-docs-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:1174",
-      "screenshotRefs": [
-        "api-docs.png"
-      ],
+      "screenshotRefs": ["api-docs.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -391,9 +345,7 @@
       "title": "审查任务",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/workbench-module-page.tsx"
-      ],
+      "sources": ["web/src/pages/workbench-module-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "8:1240",
       "screenshotRefs": [
@@ -413,9 +365,7 @@
       "title": "整改中心",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/workbench-module-page.tsx"
-      ],
+      "sources": ["web/src/pages/workbench-module-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "8:1334",
       "screenshotRefs": [
@@ -435,9 +385,7 @@
       "title": "报告中心",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/workbench-module-page.tsx"
-      ],
+      "sources": ["web/src/pages/workbench-module-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:1428",
       "screenshotRefs": [
@@ -458,9 +406,7 @@
       "title": "证据中心",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/workbench-module-page.tsx"
-      ],
+      "sources": ["web/src/pages/workbench-module-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:1514",
       "screenshotRefs": [
@@ -480,14 +426,10 @@
       "title": "执行轨迹",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/workbench-module-page.tsx"
-      ],
+      "sources": ["web/src/pages/workbench-module-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:1600",
-      "screenshotRefs": [
-        "executions.png"
-      ],
+      "screenshotRefs": ["executions.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -498,15 +440,10 @@
       "title": "知识库",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/workbench-module-page.tsx"
-      ],
+      "sources": ["web/src/pages/workbench-module-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:1698",
-      "screenshotRefs": [
-        "knowledge.png",
-        "audit/round41/knowledge-reader-1440.png"
-      ],
+      "screenshotRefs": ["knowledge.png", "audit/round41/knowledge-reader-1440.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -517,14 +454,10 @@
       "title": "组织与权限",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/workbench-module-page.tsx"
-      ],
+      "sources": ["web/src/pages/workbench-module-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:1784",
-      "screenshotRefs": [
-        "organization.png"
-      ],
+      "screenshotRefs": ["organization.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -535,15 +468,10 @@
       "title": "模板管理",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/workbench-module-page.tsx"
-      ],
+      "sources": ["web/src/pages/workbench-module-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:1881",
-      "screenshotRefs": [
-        "templates.png",
-        "audit/round41/templates-reader-1440.png"
-      ],
+      "screenshotRefs": ["templates.png", "audit/round41/templates-reader-1440.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -554,14 +482,10 @@
       "title": "工具网关",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/workbench-module-page.tsx"
-      ],
+      "sources": ["web/src/pages/workbench-module-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:1967",
-      "screenshotRefs": [
-        "tools.png"
-      ],
+      "screenshotRefs": ["tools.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -572,14 +496,10 @@
       "title": "审计日志",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/workbench-module-page.tsx"
-      ],
+      "sources": ["web/src/pages/workbench-module-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2064",
-      "screenshotRefs": [
-        "audit-log.png"
-      ],
+      "screenshotRefs": ["audit-log.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -590,14 +510,10 @@
       "title": "系统设置",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/settings-page.tsx"
-      ],
+      "sources": ["web/src/pages/settings-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2161",
-      "screenshotRefs": [
-        "settings.png"
-      ],
+      "screenshotRefs": ["settings.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -608,14 +524,10 @@
       "title": "登录",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/login-page.tsx"
-      ],
+      "sources": ["web/src/pages/login-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2252",
-      "screenshotRefs": [
-        "login.png"
-      ],
+      "screenshotRefs": ["login.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -626,14 +538,10 @@
       "title": "成员待开通",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/pending-membership-page.tsx"
-      ],
+      "sources": ["web/src/pages/pending-membership-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2315",
-      "screenshotRefs": [
-        "login-membership.png"
-      ],
+      "screenshotRefs": ["login-membership.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -644,14 +552,10 @@
       "title": "管理端登录",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/login-page.tsx"
-      ],
+      "sources": ["web/src/pages/login-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2368",
-      "screenshotRefs": [
-        "admin-login.png"
-      ],
+      "screenshotRefs": ["admin-login.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -662,14 +566,10 @@
       "title": "管理成员待开通",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/pending-membership-page.tsx"
-      ],
+      "sources": ["web/src/pages/pending-membership-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2417",
-      "screenshotRefs": [
-        "admin-membership.png"
-      ],
+      "screenshotRefs": ["admin-membership.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -680,9 +580,7 @@
       "title": "基础设施",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/system-health-page.tsx"
-      ],
+      "sources": ["web/src/pages/system-health-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2456",
       "screenshotRefs": [
@@ -700,9 +598,7 @@
       "title": "平台设置",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/settings-page.tsx"
-      ],
+      "sources": ["web/src/pages/settings-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2526",
       "screenshotRefs": [
@@ -720,14 +616,10 @@
       "title": "租户生命周期",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/tenant-lifecycle-page.tsx"
-      ],
+      "sources": ["web/src/pages/tenant-lifecycle-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2603",
-      "screenshotRefs": [
-        "admin-tenant-lifecycle-mock.png"
-      ],
+      "screenshotRefs": ["admin-tenant-lifecycle-mock.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -738,14 +630,10 @@
       "title": "辖区运营概览",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/jurisdiction-operations-page.tsx"
-      ],
+      "sources": ["web/src/pages/jurisdiction-operations-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2675",
-      "screenshotRefs": [
-        "admin-jurisdiction-mock.png"
-      ],
+      "screenshotRefs": ["admin-jurisdiction-mock.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -756,9 +644,7 @@
       "title": "规则包治理",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/rulepacks-page.tsx"
-      ],
+      "sources": ["web/src/pages/rulepacks-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2746",
       "screenshotRefs": [
@@ -776,14 +662,10 @@
       "title": "新建规则包版本",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/rulepack-create-page.tsx"
-      ],
+      "sources": ["web/src/pages/rulepack-create-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2802",
-      "screenshotRefs": [
-        "admin-rulepack-new.png"
-      ],
+      "screenshotRefs": ["admin-rulepack-new.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -794,14 +676,10 @@
       "title": "规则包版本详情",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/rulepack-detail-page.tsx"
-      ],
+      "sources": ["web/src/pages/rulepack-detail-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "6:478",
-      "screenshotRefs": [
-        "admin-rulepack-detail.png"
-      ],
+      "screenshotRefs": ["admin-rulepack-detail.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -812,9 +690,7 @@
       "title": "受控知识",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/governed-knowledge-page.tsx"
-      ],
+      "sources": ["web/src/pages/governed-knowledge-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2878",
       "screenshotRefs": [
@@ -832,9 +708,7 @@
       "title": "登记受控知识",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/governed-knowledge-page.tsx"
-      ],
+      "sources": ["web/src/pages/governed-knowledge-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2934",
       "screenshotRefs": [
@@ -852,9 +726,7 @@
       "title": "受控知识版本详情",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/governed-knowledge-page.tsx"
-      ],
+      "sources": ["web/src/pages/governed-knowledge-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:3010",
       "screenshotRefs": [
@@ -872,14 +744,10 @@
       "title": "开发者门户",
       "site": "portal",
       "kind": "route",
-      "sources": [
-        "web/src/portal-main.tsx"
-      ],
+      "sources": ["web/src/portal-main.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:3083",
-      "screenshotRefs": [
-        "portal-api-docs.png"
-      ],
+      "screenshotRefs": ["portal-api-docs.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -890,9 +758,7 @@
       "title": "合同登记 · 编辑工作区",
       "site": "client",
       "kind": "view",
-      "sources": [
-        "web/src/pages/contracts-page.tsx"
-      ],
+      "sources": ["web/src/pages/contracts-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "6:296",
       "screenshotRefs": [
@@ -917,9 +783,7 @@
       "title": "冻结执行对照",
       "site": "client",
       "kind": "view",
-      "sources": [
-        "web/src/pages/compare-page.tsx"
-      ],
+      "sources": ["web/src/pages/compare-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:3149",
       "screenshotRefs": [
@@ -939,9 +803,7 @@
       "title": "页面不存在",
       "site": "client",
       "kind": "fallback",
-      "sources": [
-        "web/src/pages/not-found-page.tsx"
-      ],
+      "sources": ["web/src/pages/not-found-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:3236",
       "screenshotRefs": [
@@ -961,14 +823,10 @@
       "title": "管理页面不存在",
       "site": "admin",
       "kind": "fallback",
-      "sources": [
-        "web/src/admin-app.tsx"
-      ],
+      "sources": ["web/src/admin-app.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:3289",
-      "screenshotRefs": [
-        "admin-not-found.png"
-      ],
+      "screenshotRefs": ["admin-not-found.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -979,14 +837,10 @@
       "title": "工作区不存在",
       "site": "client",
       "kind": "fallback",
-      "sources": [
-        "web/src/pages/workbench-module-page.tsx"
-      ],
+      "sources": ["web/src/pages/workbench-module-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:3328",
-      "screenshotRefs": [
-        "module-not-found.png"
-      ],
+      "screenshotRefs": ["module-not-found.png"],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL"
     },
@@ -997,9 +851,7 @@
       "title": "人工办理",
       "site": "client",
       "kind": "subview",
-      "sources": [
-        "web/src/pages/review-page.tsx"
-      ],
+      "sources": ["web/src/pages/review-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:3381",
       "screenshotRefs": [
@@ -1019,9 +871,7 @@
       "title": "审查覆盖范围",
       "site": "client",
       "kind": "subview",
-      "sources": [
-        "web/src/pages/review-page.tsx"
-      ],
+      "sources": ["web/src/pages/review-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:3474",
       "screenshotRefs": [
@@ -1041,9 +891,7 @@
       "title": "审查执行轨迹",
       "site": "client",
       "kind": "subview",
-      "sources": [
-        "web/src/pages/review-page.tsx"
-      ],
+      "sources": ["web/src/pages/review-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:3558",
       "screenshotRefs": [
@@ -1081,9 +929,7 @@
       "title": "合同登记 · 资金与付款",
       "site": "client",
       "kind": "subview",
-      "sources": [
-        "web/src/pages/contracts-page.tsx"
-      ],
+      "sources": ["web/src/pages/contracts-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "8:3725",
       "screenshotRefs": [

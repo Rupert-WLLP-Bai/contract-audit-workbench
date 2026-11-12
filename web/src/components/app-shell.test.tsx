@@ -10,13 +10,7 @@
 
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  MemoryRouter,
-  Route,
-  Routes,
-  useLocation,
-  useNavigationType,
-} from "react-router";
+import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Actor } from "../api/types";
@@ -49,7 +43,14 @@ const actor: Actor = {
   org_id: "demo-org",
   audience: "client",
   principal_id: "principal-1",
-  active_context: { membership_id: "membership-1", tenant_id: "tenant-1", tenant_name: "租户一", org_id: "demo-org", org_name: "演示组织", context_version: "1" },
+  active_context: {
+    membership_id: "membership-1",
+    tenant_id: "tenant-1",
+    tenant_name: "租户一",
+    org_id: "demo-org",
+    org_name: "演示组织",
+    context_version: "1",
+  },
   csrf_token: "test-csrf",
   context_switch_enabled: false,
 };
@@ -95,7 +96,9 @@ beforeEach(() => {
     mutateAsync,
   });
   mocks.useCaseDetail.mockReturnValue({ data: { title: "案件甲" } });
-  mocks.useContextChoices.mockReturnValue({ data: { context_switch_enabled: false, memberships: [] } });
+  mocks.useContextChoices.mockReturnValue({
+    data: { context_switch_enabled: false, memberships: [] },
+  });
   mocks.useSwitchContext.mockReturnValue({ isPending: false, mutateAsync: vi.fn() });
   mutateAsync.mockReset();
   mutateAsync.mockResolvedValue(undefined);
@@ -158,10 +161,7 @@ describe("app shell", () => {
     expect(nav).toHaveTextContent("案件");
     expect(nav).toHaveTextContent("案件甲");
     expect(nav).toHaveTextContent("审查工作区");
-    expect(within(nav).getByRole("link", { name: "案件" })).toHaveAttribute(
-      "href",
-      "/cases",
-    );
+    expect(within(nav).getByRole("link", { name: "案件" })).toHaveAttribute("href", "/cases");
     expect(within(nav).getByRole("link", { name: "案件甲" })).toHaveAttribute(
       "href",
       "/cases/case%20one",
@@ -197,9 +197,7 @@ describe("app shell", () => {
     await user.clear(search);
     await user.click(screen.getByRole("button", { name: "搜索" }));
     await waitFor(() =>
-      expect(screen.getByTestId("location")).toHaveTextContent(
-        "/cases?run=active",
-      ),
+      expect(screen.getByTestId("location")).toHaveTextContent("/cases?run=active"),
     );
   });
 
@@ -210,9 +208,9 @@ describe("app shell", () => {
 
   it("marks the active navigation entry and review layout", () => {
     renderShell("/cases/case-1/reviews/run-1");
-    expect(
-      screen.getByRole("link", { name: "合同审查" }).closest("li"),
-    ).toHaveClass("ant-menu-item-selected");
+    expect(screen.getByRole("link", { name: "合同审查" }).closest("li")).toHaveClass(
+      "ant-menu-item-selected",
+    );
     expect(document.querySelector(".app")).toHaveClass("app--review");
   });
 
@@ -226,17 +224,15 @@ describe("app shell", () => {
 
   it("selects the parent navigation entry for nested module routes", () => {
     renderShell("/workbench/tasks/123");
-    expect(
-      screen.getByRole("link", { name: "审查任务" }).closest("li"),
-    ).toHaveClass("ant-menu-item-selected");
+    expect(screen.getByRole("link", { name: "审查任务" }).closest("li")).toHaveClass(
+      "ant-menu-item-selected",
+    );
   });
 
   it("keeps unknown module and external paths unselected but readable", () => {
     renderShell("/workbench/unknown");
     expect(
-      within(screen.getByLabelText("主导航"))
-        .getByRole("link", { name: "工作台" })
-        .closest("li"),
+      within(screen.getByLabelText("主导航")).getByRole("link", { name: "工作台" }).closest("li"),
     ).not.toHaveClass("ant-menu-item-selected");
   });
 
@@ -283,12 +279,14 @@ describe("app shell", () => {
     renderShell();
     const group = screen.getByText("开发者资源").closest("ul");
     expect(group).not.toBeNull();
-    expect(
-      within(group as HTMLElement).getByRole("link", { name: "使用手册" }),
-    ).toHaveAttribute("href", "/docs/");
-    expect(
-      within(group as HTMLElement).getByRole("link", { name: "API 文档" }),
-    ).toHaveAttribute("href", "/api-docs");
+    expect(within(group as HTMLElement).getByRole("link", { name: "使用手册" })).toHaveAttribute(
+      "href",
+      "/docs/",
+    );
+    expect(within(group as HTMLElement).getByRole("link", { name: "API 文档" })).toHaveAttribute(
+      "href",
+      "/api-docs",
+    );
   });
 
   it("logs out to the login page", async () => {
@@ -296,11 +294,7 @@ describe("app shell", () => {
     renderShell("/cases");
     await user.click(screen.getByRole("button", { name: "退出" }));
     expect(mutateAsync).toHaveBeenCalledTimes(1);
-    await waitFor(() =>
-      expect(screen.getByTestId("location")).toHaveTextContent(
-        "/login|REPLACE",
-      ),
-    );
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/login|REPLACE"));
   });
 
   it("disables logout while pending", () => {

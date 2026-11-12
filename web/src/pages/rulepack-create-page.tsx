@@ -11,12 +11,7 @@
 import { Button } from "antd";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import {
-  errorMessage,
-  isConflict,
-  isForbidden,
-  isUnauthenticated,
-} from "../api/http";
+import { errorMessage, isConflict, isForbidden, isUnauthenticated } from "../api/http";
 import { useCreateRulePack, useRulePack, useSession } from "../api/queries";
 import type { RulePackManifestInput } from "../api/rulepacks";
 import { PageStatus } from "../components/page-status";
@@ -25,10 +20,7 @@ import {
   createEmptyRulePackDraft,
   RulePackManifestEditor,
 } from "../components/rulepack-manifest-editor";
-import {
-  validateRulePackDraft,
-  type RulePackFormIssue,
-} from "../domain/rulepack-form";
+import { validateRulePackDraft, type RulePackFormIssue } from "../domain/rulepack-form";
 
 export function RulePackCreatePage() {
   const [params] = useSearchParams();
@@ -40,9 +32,7 @@ export function RulePackCreatePage() {
   const create = useCreateRulePack();
   const navigate = useNavigate();
   const serverError = useRef<HTMLParagraphElement>(null);
-  const [draft, setDraft] = useState<RulePackManifestInput>(() =>
-    createEmptyRulePackDraft(""),
-  );
+  const [draft, setDraft] = useState<RulePackManifestInput>(() => createEmptyRulePackDraft(""));
   const [issues, setIssues] = useState<RulePackFormIssue[]>([]);
   const tenantId = session.data?.tenant_id ?? "";
 
@@ -70,8 +60,7 @@ export function RulePackCreatePage() {
     if (create.error) serverError.current?.focus();
   }, [create.error]);
 
-  if (session.isLoading)
-    return <PageStatus kind="loading" title="正在确认管理身份" />;
+  if (session.isLoading) return <PageStatus kind="loading" title="正在确认管理身份" />;
   if (session.isError || !session.data) {
     const denied = isForbidden(session.error);
     const unauthenticated = isUnauthenticated(session.error);
@@ -79,23 +68,15 @@ export function RulePackCreatePage() {
       <PageStatus
         kind={denied ? "denied" : "error"}
         title={denied ? "当前管理身份无权创建规则包" : "无法确认管理身份"}
-        detail={
-          session.error ? errorMessage(session.error) : "请重新登录管理工作台。"
-        }
+        detail={session.error ? errorMessage(session.error) : "请重新登录管理工作台。"}
         action={
           denied ? (
-            <Button
-              aria-label={"返回管理设置"}
-              type="primary"
-              href="/admin/settings"
-            >
+            <Button aria-label={"返回管理设置"} type="primary" href="/admin/settings">
               返回管理设置
             </Button>
           ) : (
             <Button
-              aria-label={String(
-                unauthenticated ? "重新登录" : "登录管理工作台",
-              )}
+              aria-label={String(unauthenticated ? "重新登录" : "登录管理工作台")}
               type="primary"
               href="/admin/login"
             >
@@ -119,8 +100,7 @@ export function RulePackCreatePage() {
       );
     if (source.data && source.data.manifest.tenant_id !== tenantId)
       return <PageStatus kind="denied" title="来源规则版本不属于当前租户" />;
-    if (!sourceInitialized)
-      return <PageStatus kind="loading" title="正在读取来源规则版本" />;
+    if (!sourceInitialized) return <PageStatus kind="loading" title="正在读取来源规则版本" />;
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -157,23 +137,12 @@ export function RulePackCreatePage() {
           </p>
         </div>
       </header>
-      <form
-        className="workflow-form rulepack-form"
-        noValidate
-        onSubmit={submit}
-      >
+      <form className="workflow-form rulepack-form" noValidate onSubmit={submit}>
         <RulePackErrorSummary issues={issues} />
         {create.error ? (
-          <p
-            className="workflow-error"
-            role="alert"
-            tabIndex={-1}
-            ref={serverError}
-          >
+          <p className="workflow-error" role="alert" tabIndex={-1} ref={serverError}>
             {errorMessage(create.error)}
-            {isConflict(create.error)
-              ? " 草稿未创建；请调整规则包 ID 或版本后重试。"
-              : ""}
+            {isConflict(create.error) ? " 草稿未创建；请调整规则包 ID 或版本后重试。" : ""}
           </p>
         ) : null}
         <RulePackManifestEditor

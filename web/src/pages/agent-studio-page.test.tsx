@@ -201,10 +201,7 @@ function renderPage(path = "/cases/case-1/reviews/run-1/agent") {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
-          <Route
-            path="/cases/:caseId/reviews/:runId/agent"
-            element={<AgentStudioPage />}
-          />
+          <Route path="/cases/:caseId/reviews/:runId/agent" element={<AgentStudioPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -236,15 +233,11 @@ describe("AgentStudioPage", () => {
   it("shows unobserved states without fabricating execution or capability records", async () => {
     renderPage();
     expect(screen.getByText("未观测到本次执行")).toBeInTheDocument();
-    expect(
-      screen.getByText(/不会用审查摘要反推事件、步骤或耗时/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/不会用审查摘要反推事件、步骤或耗时/)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("radio", { name: "能力关系" }));
 
-    expect(
-      screen.getByText("模型", { selector: ".studio-capability-title" }),
-    ).toBeInTheDocument();
+    expect(screen.getByText("模型", { selector: ".studio-capability-title" })).toBeInTheDocument();
     expect(
       screen.getByText("工具与 MCP", { selector: ".studio-capability-title" }),
     ).toBeInTheDocument();
@@ -254,9 +247,7 @@ describe("AgentStudioPage", () => {
     expect(
       screen.getByText("输入证据", { selector: ".studio-capability-title" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("经验", { selector: ".studio-capability-title" }),
-    ).toBeInTheDocument();
+    expect(screen.getByText("经验", { selector: ".studio-capability-title" })).toBeInTheDocument();
     expect(screen.getAllByText("未观测").length).toBeGreaterThanOrEqual(5);
     expect(screen.queryByText(/0 次真实调用/)).not.toBeInTheDocument();
   });
@@ -301,10 +292,35 @@ describe("AgentStudioPage", () => {
   });
 
   it("shows the Eino invocation only when the recorded runtime identifies v4", async () => {
-    const tool = event({ seq: 5, span_id: "tool-5", node_kind: "tool_call", event_type: "agent_review_event", status: "completed", error_code: "validated_tool_result", model_ref: "evidence.lookup" });
-    const snapshot: RunSnapshot = { document_ids: [], rule_set_hash: "", playbook_hash: "", model_ref: null, comparator_ref: null,
-      planner: { mode: "deterministic_planner", configuration_id: "config", model_configuration_id: null, prompt_version: "v1", schema_version: "v1", runtime_version: "operator-flow-v4/eino-0.9.22", tool_catalog_version: "v1", max_rounds: 1 } };
-    mocks.useReviewDiagnostics.mockReturnValue(query({ ...diagnostics(execution([tool])), snapshot }));
+    const tool = event({
+      seq: 5,
+      span_id: "tool-5",
+      node_kind: "tool_call",
+      event_type: "agent_review_event",
+      status: "completed",
+      error_code: "validated_tool_result",
+      model_ref: "evidence.lookup",
+    });
+    const snapshot: RunSnapshot = {
+      document_ids: [],
+      rule_set_hash: "",
+      playbook_hash: "",
+      model_ref: null,
+      comparator_ref: null,
+      planner: {
+        mode: "deterministic_planner",
+        configuration_id: "config",
+        model_configuration_id: null,
+        prompt_version: "v1",
+        schema_version: "v1",
+        runtime_version: "operator-flow-v4/eino-0.9.22",
+        tool_catalog_version: "v1",
+        max_rounds: 1,
+      },
+    };
+    mocks.useReviewDiagnostics.mockReturnValue(
+      query({ ...diagnostics(execution([tool])), snapshot }),
+    );
     renderPage();
     await userEvent.click(screen.getByText("按顺序选择节点（键盘可用）"));
     await userEvent.click(screen.getByRole("button", { name: /工具 · evidence.lookup · #5/ }));
@@ -401,7 +417,21 @@ describe("AgentStudioPage", () => {
     mocks.useReview.mockReturnValue(
       query({
         ...workspace(),
-        documents: ["doc-1", "doc-2", "doc-3", "doc-4"].map((id) => ({ id, role: "draft_contract", filename: id, media_type: "text/plain", digest: "digest", size: 1, parse_status: "ready", parse_error: null, created_at: "2026-11-07T00:00:00Z", parsed_document: null, parsed_document_id: null, text: null, clauses: [] })),
+        documents: ["doc-1", "doc-2", "doc-3", "doc-4"].map((id) => ({
+          id,
+          role: "draft_contract",
+          filename: id,
+          media_type: "text/plain",
+          digest: "digest",
+          size: 1,
+          parse_status: "ready",
+          parse_error: null,
+          created_at: "2026-11-07T00:00:00Z",
+          parsed_document: null,
+          parsed_document_id: null,
+          text: null,
+          clauses: [],
+        })),
         findings: [
           {
             id: "f1",
@@ -411,7 +441,20 @@ describe("AgentStudioPage", () => {
             relation: "conflict",
             confidence: null,
             verification_status: "verified",
-            evidence: [{ id: "anchor-1", document_version_id: "doc-1", parsed_document_id: null, normalized_digest: null, quote: "预付款", status: "located", page: null, text_offset: null, bbox: null, mismatch_reason: null }],
+            evidence: [
+              {
+                id: "anchor-1",
+                document_version_id: "doc-1",
+                parsed_document_id: null,
+                normalized_digest: null,
+                quote: "预付款",
+                status: "located",
+                page: null,
+                text_offset: null,
+                bbox: null,
+                mismatch_reason: null,
+              },
+            ],
             unverified_reason: null,
             version: 1,
             severity: null,
@@ -421,9 +464,7 @@ describe("AgentStudioPage", () => {
         ],
       } as ReviewWorkspace),
     );
-    mocks.useReviewDiagnostics.mockReturnValue(
-      query({ ...diagnostics(modelExecution), snapshot }),
-    );
+    mocks.useReviewDiagnostics.mockReturnValue(query({ ...diagnostics(modelExecution), snapshot }));
     renderPage();
     await userEvent.click(screen.getByRole("radio", { name: "能力关系" }));
     expect(screen.getAllByText("确定性规划").length).toBeGreaterThan(0);
@@ -461,14 +502,8 @@ describe("AgentStudioPage", () => {
       }),
     ];
     const lanes = buildStudioLanes(shuffled);
-    expect(lanes.map((lane) => lane.label)).toEqual([
-      "输入准备",
-      "模型请求",
-      "custom_phase",
-    ]);
+    expect(lanes.map((lane) => lane.label)).toEqual(["输入准备", "模型请求", "custom_phase"]);
     expect(lanes[1]?.events.map((item) => item.seq)).toEqual([2, 3]);
-    expect(filterStudioEvents(shuffled, "custom_event").map((item) => item.seq)).toEqual([
-      4,
-    ]);
+    expect(filterStudioEvents(shuffled, "custom_event").map((item) => item.seq)).toEqual([4]);
   });
 });

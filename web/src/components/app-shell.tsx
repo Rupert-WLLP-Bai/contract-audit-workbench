@@ -207,11 +207,7 @@ function staticBreadcrumb(pathname: string): Crumb[] | null {
   return null;
 }
 
-function caseBreadcrumbs(
-  caseId: string,
-  caseTitle: string,
-  inReview: boolean,
-): Crumb[] {
+function caseBreadcrumbs(caseId: string, caseTitle: string, inReview: boolean): Crumb[] {
   return [
     { label: "工作台", to: "/" },
     { label: "案件", to: "/cases" },
@@ -224,9 +220,7 @@ function caseBreadcrumbs(
 }
 
 function moduleTitle(moduleKey: string): string {
-  return Object.hasOwn(MODULE_TITLES, moduleKey)
-    ? MODULE_TITLES[moduleKey]!
-    : "工作区";
+  return Object.hasOwn(MODULE_TITLES, moduleKey) ? MODULE_TITLES[moduleKey]! : "工作区";
 }
 
 function workbenchBreadcrumbs(pathname: string): Crumb[] {
@@ -259,16 +253,11 @@ function breadcrumbsFor(
   ];
 }
 
-function selectedMenuKey(
-  pathname: string,
-  inReview: boolean,
-): string {
+function selectedMenuKey(pathname: string, inReview: boolean): string {
   if (pathname === "/") return "/";
   if (inReview) return "/review";
   const match = NAV_LINKS.find(
-    (item) =>
-      !item.external &&
-      (pathname === item.to || pathname.startsWith(`${item.to}/`)),
+    (item) => !item.external && (pathname === item.to || pathname.startsWith(`${item.to}/`)),
   );
   return match ? match.to : pathname;
 }
@@ -302,11 +291,7 @@ function caseIdOf(pathname: string): string {
   return match?.[1] ? decodeURIComponent(match[1]) : "";
 }
 
-function layoutClassName(
-  collapsed: boolean,
-  inReview: boolean,
-  pathname: string,
-): string {
+function layoutClassName(collapsed: boolean, inReview: boolean, pathname: string): string {
   const classes = ["app"];
   if (collapsed) classes.push("app--nav-collapsed");
   if (inReview) classes.push("app--review");
@@ -475,25 +460,12 @@ export function AppShell() {
   useEffect(() => {
     setSearch(searchFromLocation(location.search));
   }, [location.pathname, location.search]);
-  const reviewMatch = location.pathname.match(
-    /^\/cases\/([^/]+)\/reviews\/([^/]+)/,
-  );
+  const reviewMatch = location.pathname.match(/^\/cases\/([^/]+)\/reviews\/([^/]+)/);
   const caseTitle = caseTitleOf(caseDetail.data?.title);
-  const breadcrumbs = breadcrumbsFor(
-    location.pathname,
-    caseId,
-    caseTitle,
-    reviewMatch !== null,
-  );
+  const breadcrumbs = breadcrumbsFor(location.pathname, caseId, caseTitle, reviewMatch !== null);
 
   return (
-    <Layout
-      className={layoutClassName(
-        collapsed,
-        reviewMatch !== null,
-        location.pathname,
-      )}
-    >
+    <Layout className={layoutClassName(collapsed, reviewMatch !== null, location.pathname)}>
       <a className="skip" href="#main">
         跳到主要内容
       </a>
@@ -508,7 +480,10 @@ export function AppShell() {
         }}
         onLogout={() => {
           void logout.mutateAsync().finally(() => {
-            void navigate("/login", { replace: true, state: { from: location.pathname + location.search + location.hash } });
+            void navigate("/login", {
+              replace: true,
+              state: { from: location.pathname + location.search + location.hash },
+            });
           });
         }}
         onContextTransition={setContextTransition}
@@ -526,7 +501,9 @@ export function AppShell() {
           <main id="main" tabIndex={-1}>
             {contextTransition ? (
               <PageStatus kind="loading" title="正在确认新的工作上下文" />
-            ) : <Outlet />}
+            ) : (
+              <Outlet />
+            )}
           </main>
         </Layout.Content>
       </Layout>
