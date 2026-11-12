@@ -207,28 +207,39 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 // blocks runtime progress until the event has been committed or rejected.
 func agentReviewEventSink(recorder attemptRecorder) func(context.Context, agentflow.Event) error {
 	return func(ctx context.Context, event agentflow.Event) error {
-		status := "completed"
-		switch event.Kind {
-		case "tool_started", "knowledge_read_started":
-			status = "running"
-		case "tool_failed", "knowledge_read_failed", "plan_rejected", "gap_unsupported":
-			status = "failed"
-		case "planner_fallback":
-			status = "partial"
-		case "run_cancelled":
-			status = "cancelled"
-		}
-		var duration *int64
-		if event.DurationMS > 0 {
-			value := event.DurationMS
-			duration = &value
-		}
-		return recorder.RecordExecutionEvent(ctx, execution.Event{
-			EventKey:     fmt.Sprintf("agent-review/%d", event.Sequence),
-			ParentSpanID: execution.ParentSpanID(ctx), NodeKind: "agent_review", Phase: event.Kind,
-			EventType: "agent_review_event", At: event.OccurredAt, DurationMS: duration, Status: status,
-			ErrorCode: event.Code,
-		})
+		return recorder.RecordExecutionEvent(ctx, agentReviewExecutionEvent(ctx, event))
+	}
+}
+
+func agentReviewExecutionEvent(ctx context.Context, event agentflow.Event) execution.Event {
+	status := "completed"
+	switch event.Kind {
+	case "tool_started", "knowledge_read_started":
+		status = "running"
+	case "tool_failed", "knowledge_read_failed", "plan_rejected", "gap_unsupported":
+		status = "failed"
+	case "planner_fallback":
+		status = "partial"
+	case "run_cancelled":
+		status = "cancelled"
+	}
+	var duration *int64
+	measured := event.Kind == "tool_observed" || event.Kind == "tool_completed" || event.Kind == "tool_failed" ||
+		event.Kind == "knowledge_read_completed" || event.Kind == "knowledge_read_failed"
+	if event.DurationMS > 0 || measured {
+		value := event.DurationMS
+		duration = &value
+	}
+	nodeKind, spanID, modelRef := "agent_review", "", ""
+	switch event.Kind {
+	case "tool_started", "tool_completed", "tool_failed":
+		nodeKind, spanID, modelRef = "tool_call", event.CallID, event.ToolID
+	}
+	return execution.Event{
+		EventKey: fmt.Sprintf("agent-review/%d", event.Sequence),
+		SpanID:   spanID, ParentSpanID: execution.ParentSpanID(ctx), NodeKind: nodeKind, Phase: event.Kind,
+		EventType: "agent_review_event", At: event.OccurredAt, DurationMS: duration, Status: status,
+		ErrorCode: event.Code, ModelRef: modelRef,
 	}
 }
 

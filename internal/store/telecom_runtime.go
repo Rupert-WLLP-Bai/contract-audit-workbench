@@ -727,7 +727,9 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 			modelErr = engine.ErrRejected
 		}
 	} else {
-		modelErr = s.runTelecomModelReview(ctx, runID, attemptID, models, docs, caseItem, recorder)
+		modelErr = runApplicableTelecomModelReview(caseItem, func() error {
+			return s.runTelecomModelReview(ctx, runID, attemptID, models, docs, caseItem, recorder)
+		})
 	}
 	if parent.Err() != nil {
 		return
@@ -751,6 +753,9 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 			claim, durable := s.claimForAttempt(attemptID)
 			if executionScopeRequiresClaim(ctx) && (!durable || !claimMatchesExecutionScope(ctx, claim)) {
 				return
+			}
+			if !durable || claim.JobID == "" || claim.RunID != runID {
+				agentReviewIncomplete = true
 			}
 			if durable && claim.JobID != "" && claim.RunID == runID {
 				agentEvents := latest.executionEvents(attemptID)
@@ -857,14 +862,17 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 		terminalState = "partial"
 		partialReason = "五域补充审查执行失败；专线必检规则结果保持独立。"
 		errorCode = "agent_review_failed"
+	} else if readyCount(docs) < len(docs) {
+		terminalState = "partial"
+		partialReason = "有材料解析失败，结果不能当成完整审查。"
+		if agentReviewIncomplete {
+			partialReason += "五域补充审查也存在未解决或未执行的能力缺口。"
+		}
+		errorCode = "document_parse_incomplete"
 	} else if agentReviewIncomplete {
 		terminalState = "partial"
 		partialReason = "五域补充审查存在未解决或未执行的能力缺口；专线必检规则结果保持独立。"
 		errorCode = "agent_review_incomplete"
-	} else if readyCount(docs) < len(docs) {
-		terminalState = "partial"
-		partialReason = "有材料解析失败，结果不能当成完整审查。"
-		errorCode = "document_parse_incomplete"
 	}
 	_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, terminalState, partialReason, errorCode)
 }
@@ -1430,6 +1438,15 @@ func telecomEvaluationsPresent(st state, attemptID string) (int, error) {
 		return 0, errors.New("incomplete persisted governed result set")
 	}
 	return count, nil
+}
+
+// Dedicated-line reviews use their frozen rules and agent tools; the legacy
+// non-cloud model entry point is a warranty-specific contract.
+func runApplicableTelecomModelReview(caseItem Case, run func() error) error {
+	if isTelecomDedicatedLineCase(caseItem) {
+		return nil
+	}
+	return run()
 }
 
 func (s *Store) runTelecomModelReview(ctx context.Context, runID, attemptID string, models Models, docs []Interpreted, caseItem Case, recorder attemptRecorder) error {

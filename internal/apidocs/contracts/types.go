@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-05
-// Revision: r9
+// Updated: 2026-11-09
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -3101,15 +3101,29 @@ type Run struct {
 	Partial_reason  any    `json:"partial_reason" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
 	Failure_message any    `json:"failure_message" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
 }
+type FrozenPlannerIdentity struct {
+	Mode                   string `json:"mode" openapi:"{\"type\":\"string\",\"enum\":[\"fixed_chain\",\"deterministic_planner\",\"model_fixture\",\"model_live\"]}"`
+	Configuration_id       string `json:"configuration_id" openapi:"{\"type\":\"string\"}"`
+	Model_configuration_id any    `json:"model_configuration_id" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
+	Prompt_version         string `json:"prompt_version" openapi:"{\"type\":\"string\"}"`
+	Schema_version         string `json:"schema_version" openapi:"{\"type\":\"string\"}"`
+	Runtime_version        string `json:"runtime_version" openapi:"{\"type\":\"string\"}"`
+	Tool_catalog_version   string `json:"tool_catalog_version" openapi:"{\"type\":\"string\"}"`
+	Max_rounds             int64  `json:"max_rounds" openapi:"{\"type\":\"integer\",\"minimum\":0}"`
+}
 type Snapshot struct {
-	Adopted_tenant_config any                 `json:"adopted_tenant_config" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/AdoptedTenantConfigIdentity\"},{\"type\":\"null\"}],\"description\":\"该次新运行实际冻结的租户配置版本；历史未记录时为null，不从当前配置推断。\"}"`
-	Document_ids          []string            `json:"document_ids" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\"}"`
-	Rule_set_hash         string              `json:"rule_set_hash" openapi:"{\"type\":\"string\"}"`
-	Playbook_hash         string              `json:"playbook_hash" openapi:"{\"type\":\"string\"}"`
-	Model_ref             any                 `json:"model_ref" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
-	Comparator_ref        any                 `json:"comparator_ref" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
-	Review_scope          ReviewScopeIdentity `json:"review_scope,omitempty" openapi:"{\"$ref\":\"#/components/schemas/ReviewScopeIdentity\"}"`
-	Governed_knowledge    any                 `json:"governed_knowledge" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/ReviewKnowledgeSnapshot\"},{\"type\":\"null\"}]}"`
+	Adopted_tenant_config   any                    `json:"adopted_tenant_config" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/AdoptedTenantConfigIdentity\"},{\"type\":\"null\"}],\"description\":\"该次新运行实际冻结的租户配置版本；历史未记录时为null，不从当前配置推断。\"}"`
+	Document_ids            []string               `json:"document_ids" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\"}"`
+	Parsed_document_ids     []string               `json:"parsed_document_ids,omitempty" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\"}"`
+	Parse_selection_hash    string                 `json:"parse_selection_hash,omitempty" openapi:"{\"type\":\"string\"}"`
+	Parser_configuration_id string                 `json:"parser_configuration_id,omitempty" openapi:"{\"type\":\"string\"}"`
+	Rule_set_hash           string                 `json:"rule_set_hash" openapi:"{\"type\":\"string\"}"`
+	Playbook_hash           string                 `json:"playbook_hash" openapi:"{\"type\":\"string\"}"`
+	Model_ref               any                    `json:"model_ref" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
+	Comparator_ref          any                    `json:"comparator_ref" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
+	Review_scope            ReviewScopeIdentity    `json:"review_scope,omitempty" openapi:"{\"$ref\":\"#/components/schemas/ReviewScopeIdentity\"}"`
+	Planner                 *FrozenPlannerIdentity `json:"planner,omitempty" openapi:"{\"$ref\":\"#/components/schemas/FrozenPlannerIdentity\"}"`
+	Governed_knowledge      any                    `json:"governed_knowledge" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/ReviewKnowledgeSnapshot\"},{\"type\":\"null\"}]}"`
 }
 type Evaluation struct {
 	Id            string   `json:"id" openapi:"{\"type\":\"string\"}"`
@@ -4471,6 +4485,7 @@ var SchemaRules = map[string]string{
 	"Finding":                                "{\"type\":\"object\",\"required\":[\"id\",\"origin\",\"domain\",\"claim\",\"relation\",\"confidence\",\"evidence\",\"disposition_suggestion\",\"unverified_reason\",\"version\",\"decisions\",\"revision_mark\"],\"additionalProperties\":false}",
 	"Run":                                    "{\"type\":\"object\",\"required\":[\"id\",\"state\",\"updated_at\",\"case_id\",\"started_at\",\"partial_reason\",\"failure_message\"],\"additionalProperties\":false}",
 	"Snapshot":                               "{\"type\":\"object\",\"required\":[\"document_ids\",\"rule_set_hash\",\"playbook_hash\",\"model_ref\",\"comparator_ref\",\"governed_knowledge\"],\"additionalProperties\":false}",
+	"FrozenPlannerIdentity":                  "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"mode\",\"configuration_id\",\"model_configuration_id\",\"prompt_version\",\"schema_version\",\"runtime_version\",\"tool_catalog_version\",\"max_rounds\"]}",
 	"Evaluation":                             "{\"type\":\"object\",\"required\":[\"id\",\"domain\",\"relation\",\"rule_version\",\"reason\",\"finding_id\",\"rule_id\",\"capability_id\",\"reason_code\",\"fact_ids\",\"object_refs\"],\"additionalProperties\":false}",
 	"AuditEvent":                             "{\"type\":\"object\",\"required\":[\"event_id\",\"run_id\",\"actor\",\"seq\",\"event_type\",\"prev_hash\",\"hash\",\"correlation_ids\"],\"additionalProperties\":false}",
 	"Revision":                               "{\"type\":\"object\",\"required\":[\"mark\",\"finding_id\",\"previous_finding_id\",\"domain\",\"relation\",\"claim\",\"evidence\",\"prior_decision\"],\"additionalProperties\":false}",
@@ -4911,6 +4926,7 @@ func Types() map[string]reflect.Type {
 		"Finding":                                reflect.TypeOf((*Finding)(nil)).Elem(),
 		"Run":                                    reflect.TypeOf((*Run)(nil)).Elem(),
 		"Snapshot":                               reflect.TypeOf((*Snapshot)(nil)).Elem(),
+		"FrozenPlannerIdentity":                  reflect.TypeOf((*FrozenPlannerIdentity)(nil)).Elem(),
 		"Evaluation":                             reflect.TypeOf((*Evaluation)(nil)).Elem(),
 		"AuditEvent":                             reflect.TypeOf((*AuditEvent)(nil)).Elem(),
 		"Revision":                               reflect.TypeOf((*Revision)(nil)).Elem(),

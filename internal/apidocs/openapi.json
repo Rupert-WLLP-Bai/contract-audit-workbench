@@ -10706,6 +10706,60 @@
         ],
         "additionalProperties": false
       },
+      "FrozenPlannerIdentity": {
+        "type": "object",
+        "properties": {
+          "configuration_id": {
+            "type": "string"
+          },
+          "max_rounds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "fixed_chain",
+              "deterministic_planner",
+              "model_fixture",
+              "model_live"
+            ]
+          },
+          "model_configuration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt_version": {
+            "type": "string"
+          },
+          "runtime_version": {
+            "type": "string"
+          },
+          "schema_version": {
+            "type": "string"
+          },
+          "tool_catalog_version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "configuration_id",
+          "model_configuration_id",
+          "prompt_version",
+          "schema_version",
+          "runtime_version",
+          "tool_catalog_version",
+          "max_rounds"
+        ],
+        "additionalProperties": false
+      },
       "GenerationRecord": {
         "type": "object",
         "properties": {
@@ -18625,6 +18679,21 @@
                 "type": "null"
               }
             ]
+          },
+          "parse_selection_hash": {
+            "type": "string"
+          },
+          "parsed_document_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "parser_configuration_id": {
+            "type": "string"
+          },
+          "planner": {
+            "$ref": "#/components/schemas/FrozenPlannerIdentity"
           },
           "playbook_hash": {
             "type": "string"
