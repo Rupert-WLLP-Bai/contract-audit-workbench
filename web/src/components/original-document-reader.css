@@ -60,3 +60,17 @@
   margin-inline: 0;
   white-space: pre-wrap;
 }
+.original-reader-key-clause {
+  margin-block: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-inline-start: 3px dashed var(--state-progress);
+  background: var(--state-progress-bg);
+}
+.original-reader-key-clause p,
+.original-reader-key-clause blockquote {
+  margin: 0;
+}
+.original-reader-key-clause blockquote {
+  margin-block-start: var(--space-2);
+  white-space: pre-wrap;
+}

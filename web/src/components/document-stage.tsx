@@ -1,4 +1,3 @@
-import { findingTitle } from "../domain/finding-presentation";
 // File metadata (manifest mirror):
 // Purpose: Renders DocumentStage, the document stage workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
@@ -9,6 +8,7 @@ import { findingTitle } from "../domain/finding-presentation";
 // Copyright: See LICENSE
 // End file metadata.
 
+import { findingTitle } from "../domain/finding-presentation";
 import { Tabs } from "antd";
 import { Collapse } from "antd";
 import { Button, Input, Select } from "antd";
@@ -50,9 +50,15 @@ import {
 import { ParsedDocumentSummary } from "./parsed-document-summary";
 import {
   createFrozenQuoteSelection,
+  frozenQuoteMatchesDocument,
   type FrozenQuoteScope,
   type FrozenQuoteSelection,
 } from "../domain/frozen-quote";
+import {
+  keyClauseNavigationFor,
+  type KeyClauseCandidate,
+  type KeyClauseNavigation,
+} from "../domain/key-clauses";
 import { StatusText } from "./status-text";
 import {
   OriginalDocumentReader,
@@ -60,6 +66,7 @@ import {
   supportsOriginalPreview,
 } from "./original-document-reader";
 import { businessScopeLabel } from "../domain/business-labels";
+import { KeyClauseNavigator } from "./key-clause-navigator";
 
 export interface ReviewCaseContext {
   caseId: string;
@@ -232,15 +239,47 @@ function DiagnosticsCollapse({
   );
 }
 
-const DocSegments = memo(function DocSegments({ segments }: { segments: TextSegment[] }) {
+const DocSegments = memo(function DocSegments({
+  segments,
+  keyClause,
+}: {
+  segments: TextSegment[];
+  keyClause: KeyClauseCandidate | null;
+}) {
   return (
     <>
-      {segments.map((segment) =>
-        segment.highlighted === "evidence" ? (
-          <mark key={segment.start} data-offset={segment.start} className="hit-evidence">
-            {segment.text}
-          </mark>
-        ) : (
+      {segments.map((segment) => {
+        const segmentEnd = segment.start + Array.from(segment.text).length;
+        const inKeyClause =
+          keyClause !== null &&
+          segment.start >= keyClause.range.start &&
+          segmentEnd <= keyClause.range.end;
+        const selectedAttribute = inKeyClause ? { "data-selected-key-clause": "true" } : {};
+        if (segment.highlighted === "evidence") {
+          return (
+            <mark
+              key={segment.start}
+              data-offset={segment.start}
+              {...selectedAttribute}
+              className={`hit-evidence${inKeyClause ? " key-clause-overlap" : ""}`}
+            >
+              {segment.text}
+            </mark>
+          );
+        }
+        if (inKeyClause) {
+          return (
+            <mark
+              key={segment.start}
+              data-offset={segment.start}
+              {...selectedAttribute}
+              className={`hit-key-clause${segment.highlighted === "find" ? " hit-find" : ""}`}
+            >
+              {segment.text}
+            </mark>
+          );
+        }
+        return (
           <span
             key={segment.start}
             data-offset={
@@ -250,8 +289,8 @@ const DocSegments = memo(function DocSegments({ segments }: { segments: TextSegm
           >
             {segment.text}
           </span>
-        ),
-      )}
+        );
+      })}
     </>
   );
 });
@@ -313,12 +352,14 @@ function SelectableDocText({
   scope,
   textIndex,
   segments,
+  keyClause,
   onQuoteSelectionChange,
 }: {
   document: ReviewDocument;
   scope: FrozenQuoteScope | null;
   textIndex: CodePointTextIndex | null;
   segments: TextSegment[];
+  keyClause: KeyClauseCandidate | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   if (document.text === null) return <p>这份材料还没有可阅读的正文。</p>;
@@ -346,7 +387,7 @@ function SelectableDocText({
         )
       }
     >
-      <DocSegments segments={segments} />
+      <DocSegments segments={segments} keyClause={keyClause} />
     </div>
   );
 }
@@ -392,6 +433,7 @@ function HighlightBody({
   activeSource,
   scope,
   textIndex,
+  keyClause,
   onQuoteSelectionChange,
 }: {
   document: ReviewDocument;
@@ -405,6 +447,7 @@ function HighlightBody({
   activeSource: boolean;
   scope: FrozenQuoteScope | null;
   textIndex: CodePointTextIndex | null;
+  keyClause: KeyClauseCandidate | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   const pages = [...new Set(resolved.flatMap((item) => (item.page === null ? [] : [item.page])))];
@@ -435,6 +478,7 @@ function HighlightBody({
         scope={scope}
         textIndex={textIndex}
         segments={segments}
+        keyClause={keyClause}
         onQuoteSelectionChange={onQuoteSelectionChange}
       />
     </DocPane>
@@ -461,6 +505,7 @@ function EmptyOrText({
   scope,
   textIndex,
   segments,
+  keyClause,
   onQuoteSelectionChange,
 }: {
   hasResolved: boolean;
@@ -468,6 +513,7 @@ function EmptyOrText({
   scope: FrozenQuoteScope | null;
   textIndex: CodePointTextIndex | null;
   segments: TextSegment[];
+  keyClause: KeyClauseCandidate | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   if (hasResolved) return null;
@@ -477,6 +523,7 @@ function EmptyOrText({
       scope={scope}
       textIndex={textIndex}
       segments={segments}
+      keyClause={keyClause}
       onQuoteSelectionChange={onQuoteSelectionChange}
     />
   );
@@ -490,6 +537,7 @@ function PlainBody({
   activeSource,
   scope,
   textIndex,
+  keyClause,
   onQuoteSelectionChange,
 }: {
   document: ReviewDocument;
@@ -499,6 +547,7 @@ function PlainBody({
   activeSource: boolean;
   scope: FrozenQuoteScope | null;
   textIndex: CodePointTextIndex | null;
+  keyClause: KeyClauseCandidate | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   return (
@@ -522,6 +571,7 @@ function PlainBody({
         scope={scope}
         textIndex={textIndex}
         segments={segments}
+        keyClause={keyClause}
         onQuoteSelectionChange={onQuoteSelectionChange}
       />
     </DocPane>
@@ -536,6 +586,8 @@ const TextDocumentBody = memo(function TextDocumentBody({
   showDiagnostics,
   textIndex: providedTextIndex,
   quoteScope,
+  keyClause,
+  onClearKeyClause,
   onQuoteSelectionChange,
 }: {
   document: ReviewDocument;
@@ -545,6 +597,8 @@ const TextDocumentBody = memo(function TextDocumentBody({
   showDiagnostics: boolean;
   textIndex: CodePointTextIndex | null;
   quoteScope: FrozenQuoteScope | null;
+  keyClause: KeyClauseCandidate | null;
+  onClearKeyClause?: () => void;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   const textIndex = useMemo(
@@ -595,14 +649,19 @@ const TextDocumentBody = memo(function TextDocumentBody({
       start: item.start,
       end: item.end,
     }));
+    const clauseOffsets = keyClause
+      ? clauseStarts.concat(keyClause.range.start, keyClause.range.end)
+      : clauseStarts;
     return segmentText(
       document.text,
       highlights,
-      highlights.length > 0 ? clauseStarts.concat(highlights.map((item) => item.start)) : [],
+      highlights.length > 0
+        ? clauseOffsets.concat(highlights.map((item) => item.start))
+        : clauseOffsets,
       findRange,
       textIndex ?? undefined,
     );
-  }, [clauseStarts, document, findRange, locatedAnchors, textIndex]);
+  }, [clauseStarts, document, findRange, keyClause, locatedAnchors, textIndex]);
   function selectAnchor(anchor: LocatedEvidenceAnchor) {
     setSelectedAnchorId(anchor.anchor.id);
     focusAnchorOffset(document, anchor.resolved.start);
@@ -633,6 +692,7 @@ const TextDocumentBody = memo(function TextDocumentBody({
         activeSource={activeSource}
         scope={quoteScope}
         textIndex={textIndex}
+        keyClause={keyClause}
         onQuoteSelectionChange={onQuoteSelectionChange}
       />
     );
@@ -647,6 +707,7 @@ const TextDocumentBody = memo(function TextDocumentBody({
       activeSource={activeSource}
       scope={quoteScope}
       textIndex={textIndex}
+      keyClause={keyClause}
       onQuoteSelectionChange={onQuoteSelectionChange}
     />
   );
@@ -683,8 +744,11 @@ const DocumentBody = memo(function DocumentBody(props: ComponentProps<typeof Tex
   const digest = scope?.digests.get(document.id);
   if (
     !scope ||
+    !props.quoteScope ||
+    scope.caseId !== props.quoteScope.caseId ||
     !digest ||
-    !props.quoteScope?.isFrozenAttempt ||
+    digest !== document.digest ||
+    !props.quoteScope.isFrozenAttempt ||
     !document.parsed_document_id ||
     !props.quoteScope.parsedDocumentIds.includes(document.parsed_document_id) ||
     !supportsOriginalPreview(document.filename)
@@ -699,6 +763,18 @@ const DocumentBody = memo(function DocumentBody(props: ComponentProps<typeof Tex
       digest={digest}
       text={document.text ?? ""}
       quotes={quotes}
+      keyClause={
+        props.keyClause
+          ? {
+              id: props.keyClause.id,
+              heading: props.keyClause.heading,
+              sourceLabel: props.keyClause.sourceLabel,
+              quote: props.keyClause.quote,
+              page: props.keyClause.page,
+            }
+          : null
+      }
+      onClearKeyClause={props.onClearKeyClause}
     >
       {textBody}
     </OriginalDocumentReader>
@@ -896,11 +972,11 @@ const ClauseList = memo(function ClauseList({
         {clauses.map((clause) => (
           <li key={clause.id}>
             <Button
-              aria-label={`${clause.page !== null ? `第 ${clause.page} 页，` : ""}${clause.heading}`}
+              aria-label={`${clause.page !== null ? `起始页第 ${clause.page} 页，` : ""}${clause.heading}`}
               htmlType="button"
               onClick={() => onFocus(clause.text_offset.start)}
             >
-              {clause.page !== null ? `第 ${clause.page} 页，` : ""}
+              {clause.page !== null ? `起始页第 ${clause.page} 页，` : ""}
               {clause.heading}
             </Button>
           </li>
@@ -952,6 +1028,8 @@ function MaterialPane({
   matches,
   currentMatchIndex,
   clauses,
+  keyClauseNavigation,
+  selectedKeyClauseId,
   relatedFindings,
   selectedFindingId,
   onActiveKey,
@@ -959,6 +1037,7 @@ function MaterialPane({
   onPreviousMatch,
   onNextMatch,
   onFocusOffset,
+  onSelectKeyClause,
   onSelectFinding,
 }: {
   documents: ReviewDocument[];
@@ -968,6 +1047,8 @@ function MaterialPane({
   matches: { start: number; end: number }[];
   currentMatchIndex: number;
   clauses: ReviewDocument["clauses"];
+  keyClauseNavigation: KeyClauseNavigation;
+  selectedKeyClauseId: string | null;
   relatedFindings: Finding[];
   selectedFindingId: string | null;
   onActiveKey: (key: string) => void;
@@ -975,6 +1056,7 @@ function MaterialPane({
   onPreviousMatch: () => void;
   onNextMatch: () => void;
   onFocusOffset: (offset: number) => void;
+  onSelectKeyClause: (candidate: KeyClauseCandidate) => void;
   onSelectFinding: (findingId: string) => void;
 }) {
   return (
@@ -1001,6 +1083,11 @@ function MaterialPane({
             onNext={onNextMatch}
           />
           <ClauseList clauses={clauses} onFocus={onFocusOffset} />
+          <KeyClauseNavigator
+            navigation={keyClauseNavigation}
+            selectedId={selectedKeyClauseId}
+            onSelect={onSelectKeyClause}
+          />
           <RelatedFindings
             findings={relatedFindings}
             selectedFindingId={selectedFindingId}
@@ -1253,6 +1340,8 @@ function DocumentView({
   split,
   evidenceDocs,
   quoteScope,
+  keyClause,
+  onClearKeyClause,
   onQuoteSelectionChange,
 }: {
   documents: ReviewDocument[];
@@ -1264,6 +1353,8 @@ function DocumentView({
   split: boolean;
   evidenceDocs: ReviewDocument[];
   quoteScope: FrozenQuoteScope | null;
+  keyClause: KeyClauseCandidate | null;
+  onClearKeyClause?: () => void;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   if (documents.length === 0) return <p>这次运行没有带上材料。</p>;
@@ -1280,6 +1371,13 @@ function DocumentView({
             showDiagnostics={showDiagnostics}
             activeSource={item === active}
             quoteScope={quoteScope}
+            keyClause={
+              keyClause?.documentId === item.id &&
+              keyClause.parsedDocumentId === item.parsed_document_id
+                ? keyClause
+                : null
+            }
+            onClearKeyClause={onClearKeyClause}
             onQuoteSelectionChange={onQuoteSelectionChange}
           />
         ))}
@@ -1295,6 +1393,8 @@ function DocumentView({
       showDiagnostics={showDiagnostics}
       activeSource
       quoteScope={quoteScope}
+      keyClause={keyClause}
+      onClearKeyClause={onClearKeyClause}
       onQuoteSelectionChange={onQuoteSelectionChange}
     />
   ) : null;
@@ -1435,7 +1535,9 @@ function focusOffsetNode(offset: number, source: ReviewDocument | null) {
     candidates.find(
       (candidate) => candidate.closest<HTMLElement>(".doc-pane")?.dataset.activeSource === "true",
     ) ?? candidates[0];
-  node?.scrollIntoView({ block: "center" });
+  if (node && typeof node.scrollIntoView === "function") {
+    node.scrollIntoView({ block: "center" });
+  }
 }
 function focusAnchorOffset(source: ReviewDocument, offset: number) {
   focusOffsetNode(offset, source);
@@ -1488,6 +1590,8 @@ function DocumentColumn({
   onCompare,
   onActiveKey,
   quoteScope,
+  keyClause,
+  onClearKeyClause,
   onQuoteSelectionChange,
 }: {
   documents: ReviewDocument[];
@@ -1504,6 +1608,8 @@ function DocumentColumn({
   onCompare: (compare: boolean) => void;
   onActiveKey: (key: string) => void;
   quoteScope: FrozenQuoteScope | null;
+  keyClause: KeyClauseCandidate | null;
+  onClearKeyClause?: () => void;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   return (
@@ -1533,6 +1639,8 @@ function DocumentColumn({
         split={split}
         evidenceDocs={evidenceDocs}
         quoteScope={quoteScope}
+        keyClause={keyClause}
+        onClearKeyClause={onClearKeyClause}
         onQuoteSelectionChange={onQuoteSelectionChange}
       />
     </section>
@@ -1581,6 +1689,7 @@ export function DocumentStage({
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [matchIndex, setMatchIndex] = useState(0);
+  const [selectedKeyClauseId, setSelectedKeyClauseId] = useState<string | null>(null);
   const [compareSources, setCompareSources] = useState(false);
   const [leftTab, setLeftTab] = useState<"材料" | "审查成员" | "相关案件">("材料");
   const [relatedCaseId, setRelatedCaseId] = useState("");
@@ -1596,6 +1705,20 @@ export function DocumentStage({
     active?.digest,
     active?.text,
     onQuoteSelectionChange,
+    quoteScope?.attemptId,
+    quoteScope?.caseId,
+    quoteScope?.isFrozenAttempt,
+    quoteScope?.runId,
+    quoteParsedIds,
+    selectedFindingId,
+  ]);
+  useEffect(() => {
+    setSelectedKeyClauseId(null);
+  }, [
+    active?.id,
+    active?.parsed_document?.id,
+    active?.parsed_document_id,
+    active?.digest,
     quoteScope?.attemptId,
     quoteScope?.caseId,
     quoteScope?.isFrozenAttempt,
@@ -1623,6 +1746,19 @@ export function DocumentStage({
     () => visibleClausesOf(active, deferredQuery),
     [active, deferredQuery],
   );
+  const keyClauseNavigation = useMemo(
+    () => keyClauseNavigationFor(quoteScope, active),
+    [active, quoteScope],
+  );
+  const selectedKeyClause =
+    keyClauseNavigation.candidates.find(
+      (candidate) =>
+        candidate.id === selectedKeyClauseId &&
+        active !== null &&
+        candidate.documentId === active.id &&
+        candidate.parsedDocumentId === active.parsed_document_id &&
+        frozenQuoteMatchesDocument(candidate.selection, quoteScope, active),
+    ) ?? null;
 
   function submitRelation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1645,6 +1781,22 @@ export function DocumentStage({
     const range = matches[next];
     setMatchIndex(next);
     if (range) focusOffsetNode(range.start, active);
+  }
+
+  function selectKeyClause(candidate: KeyClauseCandidate) {
+    if (
+      !active ||
+      !quoteScope ||
+      candidate.documentId !== active.id ||
+      candidate.parsedDocumentId !== active.parsed_document_id ||
+      !frozenQuoteMatchesDocument(candidate.selection, quoteScope, active)
+    ) {
+      setSelectedKeyClauseId(null);
+      return;
+    }
+    setSelectedKeyClauseId(candidate.id);
+    onQuoteSelectionChange?.(null);
+    focusOffsetNode(candidate.range.start, active);
   }
 
   return (
@@ -1679,6 +1831,8 @@ export function DocumentStage({
             matches={matches}
             currentMatchIndex={matchIndex}
             clauses={visibleClauses}
+            keyClauseNavigation={keyClauseNavigation}
+            selectedKeyClauseId={selectedKeyClause?.id ?? null}
             relatedFindings={relatedFindings}
             selectedFindingId={selectedFindingId}
             onActiveKey={(key) => {
@@ -1692,6 +1846,7 @@ export function DocumentStage({
             onPreviousMatch={() => moveMatch(-1)}
             onNextMatch={() => moveMatch(1)}
             onFocusOffset={(offset) => focusOffsetNode(offset, active)}
+            onSelectKeyClause={selectKeyClause}
             onSelectFinding={onSelectFinding}
           />
         }
@@ -1711,6 +1866,8 @@ export function DocumentStage({
         onCompare={setCompareSources}
         onActiveKey={setActiveKey}
         quoteScope={quoteScope}
+        keyClause={selectedKeyClause}
+        onClearKeyClause={() => setSelectedKeyClauseId(null)}
         onQuoteSelectionChange={onQuoteSelectionChange}
       />
     </>

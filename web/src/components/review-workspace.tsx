@@ -10,6 +10,7 @@
 
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -609,6 +610,35 @@ export function ReviewWorkspaceView({
 }) {
   const { run } = workspace;
   const { selected, attempts } = attemptsOf(workspace);
+  const stageQuoteScope = useMemo<FrozenQuoteScope | null>(() => {
+    if (
+      !quoteScope ||
+      !selected ||
+      selected.history_kind !== "frozen" ||
+      selected.run_id !== run.id ||
+      quoteScope.caseId !== run.case_id ||
+      quoteScope.runId !== run.id ||
+      quoteScope.attemptId !== selected.id ||
+      !quoteScope.isFrozenAttempt
+    )
+      return null;
+    const attemptParsedIds = new Set(selected.parsed_document_ids);
+    const parsedDocumentIds = workspace.documents.flatMap((document) => {
+      const parsedDocumentId = document.parsed_document_id;
+      if (!parsedDocumentId || !attemptParsedIds.has(parsedDocumentId)) return [];
+      const parsedDocument = document.parsed_document;
+      if (
+        !parsedDocument ||
+        parsedDocument.id !== parsedDocumentId ||
+        parsedDocument.document_id !== document.id ||
+        parsedDocument.original_digest !== document.digest ||
+        parsedDocument.status !== "ready"
+      )
+        return [];
+      return [parsedDocumentId];
+    });
+    return { ...quoteScope, parsedDocumentIds };
+  }, [quoteScope, run.case_id, run.id, selected, workspace.documents]);
   const [findingColumnWidth, setFindingColumnWidth] = useState(440);
   const [workspaceView, setWorkspaceView] = useState<"context" | "evidence">("evidence");
   const evidenceViewButton = useRef<HTMLButtonElement>(null);
@@ -725,7 +755,7 @@ export function ReviewWorkspaceView({
               relationError={relationError}
               onCreateRelation={onCreateRelation}
               onDeleteRelation={onDeleteRelation}
-              quoteScope={quoteScope}
+              quoteScope={stageQuoteScope}
               onQuoteSelectionChange={onQuoteSelectionChange}
             />
             <WorkspaceResizeHandle value={findingColumnWidth} onChange={setFindingColumnWidth} />

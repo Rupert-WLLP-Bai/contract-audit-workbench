@@ -35,7 +35,7 @@ it("connects a frozen finding to original-page annotations and keeps unfrozen hi
   const scope = {
     caseId: "case-1",
     contextKey: "reviewer:attempt-1",
-    digests: new Map([[document.id, "a".repeat(64)]]),
+    digests: new Map([[document.id, document.digest]]),
   };
   const quoteScope = {
     caseId: "case-1",
@@ -291,6 +291,171 @@ describe("document stage case context", () => {
 });
 
 describe("document stage materials and search", () => {
+  it("navigates to frozen key clauses without a finding and marks them separately", async () => {
+    const user = userEvent.setup();
+    const text = "😀第一条 付款约定：甲方应支付预付款。";
+    const quote = "第一条 付款约定：甲方应支付预付款。";
+    const points = Array.from(text);
+    const start = points.findIndex((_, index) =>
+      Array.from(quote).every((character, quoteIndex) => points[index + quoteIndex] === character),
+    );
+    const document = documentOf("doc-key", "procurement", "合同.txt", text, {
+      parsed_document_id: "parsed-key",
+      parsed_document: {
+        id: "parsed-key",
+        document_id: "doc-key",
+        original_digest: "abc12345",
+        parser_id: "parser",
+        parser_version: "1",
+        config_hash: "config",
+        normalization_version: "v1",
+        normalized_digest: "normalized",
+        ir_digest: "ir",
+        artifact_digest: "artifact",
+        created_at: at,
+        status: "ready",
+      },
+      clauses: [
+        {
+          id: "clause-payment",
+          heading: "付款约定",
+          text_offset: { start, end: start + Array.from(quote).length },
+          page: null,
+        },
+      ],
+    });
+    const { container, onSelectFinding } = renderStage({
+      documents: [document],
+      quoteScope: {
+        caseId: "case-1",
+        runId: "run-1",
+        attemptId: "attempt-1",
+        isFrozenAttempt: true,
+        parsedDocumentIds: ["parsed-key"],
+      },
+    });
+
+    expect(screen.getByRole("heading", { name: "关键条款导航" })).toBeInTheDocument();
+    expect(screen.getByText(/关键词分类只用于查找，不表示风险判断/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /付款约定.*页码未记录/ }));
+
+    const mark = container.querySelector("mark.hit-key-clause[data-selected-key-clause='true']");
+    expect(mark?.textContent).toBe(quote);
+    expect(mark).not.toHaveClass("hit-evidence");
+    expect(screen.getByText(/原件页码未记录，只定位冻结文字/)).toBeInTheDocument();
+    expect(onSelectFinding).not.toHaveBeenCalled();
+  });
+
+  it("shows unstructured body fragments as text-only candidates when clauses are absent", async () => {
+    const user = userEvent.setup();
+    const text = "😀前言说明。\n甲方付款约定：乙方应支付预付款。";
+    const document = documentOf("doc-body", "procurement", "扫描件.txt", text, {
+      parsed_document_id: "parsed-body",
+      parsed_document: {
+        id: "parsed-body",
+        document_id: "doc-body",
+        original_digest: "abc12345",
+        parser_id: "parser",
+        parser_version: "1",
+        config_hash: "config",
+        normalization_version: "v1",
+        normalized_digest: "normalized",
+        ir_digest: "ir",
+        artifact_digest: "artifact",
+        created_at: at,
+        status: "ready",
+      },
+      clauses: [],
+    });
+    const { container } = renderStage({
+      documents: [document],
+      quoteScope: {
+        caseId: "case-1",
+        runId: "run-1",
+        attemptId: "attempt-1",
+        isFrozenAttempt: true,
+        parsedDocumentIds: ["parsed-body"],
+      },
+    });
+    const choice = screen.getByRole("button", {
+      name: /正文片段\/标题未识别.*付款.*页码未记录/,
+    });
+
+    expect(choice).toBeInTheDocument();
+    await user.click(choice);
+
+    const mark = container.querySelector("mark.hit-key-clause[data-selected-key-clause='true']");
+    expect(mark?.textContent).toContain("支付预付款");
+    expect(mark).not.toHaveClass("hit-evidence");
+    expect(screen.getByText(/正文片段，不是已解析的完整结构化条款/)).toBeInTheDocument();
+    expect(screen.getByText(/原件页码未记录，只定位冻结文字/)).toBeInTheDocument();
+  });
+
+  it("clears an auxiliary clause highlight when the selected material changes", async () => {
+    const user = userEvent.setup();
+    const firstText = "第一条 付款约定：甲方支付预付款。";
+    const firstQuote = firstText;
+    const first = documentOf("doc-key", "procurement", "合同.txt", firstText, {
+      parsed_document_id: "parsed-key",
+      parsed_document: {
+        id: "parsed-key",
+        document_id: "doc-key",
+        original_digest: "abc12345",
+        parser_id: "parser",
+        parser_version: "1",
+        config_hash: "config",
+        normalization_version: "v1",
+        normalized_digest: "normalized",
+        ir_digest: "ir",
+        artifact_digest: "artifact",
+        created_at: at,
+        status: "ready",
+      },
+      clauses: [
+        {
+          id: "clause-payment",
+          heading: "付款约定",
+          text_offset: { start: 0, end: Array.from(firstQuote).length },
+          page: 1,
+        },
+      ],
+    });
+    const second = documentOf("doc-plain", "attachment", "附件.txt", "仅供阅读的说明文本", {
+      parsed_document_id: "parsed-plain",
+      parsed_document: {
+        id: "parsed-plain",
+        document_id: "doc-plain",
+        original_digest: "abc12345",
+        parser_id: "parser",
+        parser_version: "1",
+        config_hash: "config",
+        normalization_version: "v1",
+        normalized_digest: "normalized",
+        ir_digest: "ir",
+        artifact_digest: "artifact",
+        created_at: at,
+        status: "ready",
+      },
+      clauses: [],
+    });
+    const { container } = renderStage({
+      documents: [first, second],
+      quoteScope: {
+        caseId: "case-1",
+        runId: "run-1",
+        attemptId: "attempt-1",
+        isFrozenAttempt: true,
+        parsedDocumentIds: ["parsed-key", "parsed-plain"],
+      },
+    });
+    await user.click(screen.getByRole("button", { name: /付款约定.*第 1 页/ }));
+    expect(container.querySelector(".hit-key-clause")).not.toBeNull();
+
+    await user.click(screen.getByRole("tab", { name: "技术附件" }));
+    expect(container.querySelector(".hit-key-clause")).toBeNull();
+    expect(screen.getByText("当前材料中没有可定位的关键条款。")).toBeInTheDocument();
+  });
+
   it("labels duplicate material versions and linked findings", async () => {
     const user = userEvent.setup();
     const finding = findingWith([locatedAnchor("doc-1", "质保三十六个月", 4, 11)]);
@@ -326,7 +491,7 @@ describe("document stage materials and search", () => {
     expect(screen.getByText("正文匹配 2 处")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "搜索下一处" }));
     expect(container.querySelectorAll(".hit-find").length).toBe(1);
-    expect(screen.getByRole("button", { name: "第 2 页，第一条 质保" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "起始页第 2 页，第一条 质保" })).toBeInTheDocument();
     await user.clear(screen.getByLabelText("文内搜索"));
     expect(screen.getByText("输入后在当前材料中查找")).toBeInTheDocument();
   });

@@ -152,6 +152,59 @@
 .review-selected-finding p {
   margin: 0;
 }
+.key-clause-navigator {
+  display: grid;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  background: var(--surface-raised);
+}
+.key-clause-navigator h3,
+.key-clause-navigator p {
+  margin: 0;
+}
+.key-clause-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.key-clause-choice {
+  display: grid;
+  width: 100%;
+  gap: var(--space-1);
+  text-align: start;
+  white-space: normal;
+}
+.key-clause-choice[aria-pressed="true"] {
+  border-color: var(--state-progress);
+  background: var(--state-progress-bg);
+}
+.key-clause-source,
+.key-clause-categories,
+.key-clause-page {
+  color: var(--state-neutral);
+  font-size: var(--font-size-ui);
+}
+.key-clause-selection {
+  padding-inline-start: var(--space-2);
+  border-inline-start: 2px solid var(--state-progress);
+  color: var(--text-primary);
+}
+.review-workspace-layout .hit-key-clause {
+  background: var(--state-progress-bg);
+  border-bottom: 2px dashed var(--state-progress);
+  color: var(--text-primary);
+}
+.review-workspace-layout .hit-key-clause.hit-find {
+  background: var(--state-progress-bg);
+}
+.review-workspace-layout .hit-evidence.key-clause-overlap {
+  outline: 2px dashed var(--state-progress);
+  outline-offset: 1px;
+}
 .review-workspace-layout .finding-severity-counts {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
