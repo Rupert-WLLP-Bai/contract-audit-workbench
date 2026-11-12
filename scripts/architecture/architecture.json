@@ -84,7 +84,10 @@
       {
         "id": "contract",
         "app": [
-          "internal/contract/lifecycle"
+          "internal/contract/lifecycle",
+          "internal/contract/model",
+          "internal/contract/app",
+          "internal/contract/ledger"
         ],
         "transport": [],
         "postgres": [

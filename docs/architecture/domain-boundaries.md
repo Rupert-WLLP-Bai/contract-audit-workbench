@@ -103,3 +103,13 @@ python3 scripts/architecture/generate_store_ownership.py \
 生命周期概览采用一个只读 Repeatable Read 事务，复用现有交付、验收、付款和资产读取及材料授权。响应契约归 `internal/contract/lifecycle`，数据所有权仍分别归原领域。为保留私有授权与既有 DTO 的兼容性，暂允许 Store 的专用概览入口组织这些事务内加载器；该例外仅覆盖读取和投影组合，不新增业务事实、关闭判断、通知或通用事务回调。将四类 DTO 和加载器一次搬出会扩大当前切片，后续随 #148 对应领域迁移逐项替换，旧四个读取接口继续保留兼容包装。
 
 本次读取时间采用数据库事务开始时间；外部事实时间、记录时间与独立来源观察时间分别保留，未知来源时间为 null。`known` 只表示本次授权范围内读取成功，空集合不证明履约完成。租户、合同、外部关联案件和材料授权沿用原服务端入口，失权或版本不匹配时清除视图；不声称跨外部系统的一致快照或快照开始后的即时撤权。
+
+## #287 Contract 草稿创建与台账查询纵切片
+
+此切片仅迁移 `CreateContractDraft` 命令和 `ListContractLedger` 查询的领域模型、不变量、应用编排、端口及 PostgreSQL adapter。`internal/contract/model` 承接草稿模型、格式与金额校验、合同聚合及摘要；`internal/contract/app` 承接草稿创建的校验、请求摘要、回执重放和台账分页；`internal/contract/ledger` 承接台账筛选、游标和投影；`internal/contract/postgres` 只查询或写入合同自有表。
+
+Store 仍是认证、角色门禁、服务端身份解析、RLS scope、事务生命周期、当前合同授权及受限字段加解密的边界。写命令在 Store 已授权事务中创建 adapter；同一个非拥有 `platform.Executor` 仅增加 `Query`、`QueryRow` 能力，不暴露连接、提交或回滚，并继续委托给原事务封装，使每条语句和提交前 proof 复核保持生效。合同写入及幂等回执仍原子提交。
+
+台账 SQL 仅按已校验筛选条件缩小候选行；Store 对每行执行现有授权后，应用层继续扫描直到填满一页可见行，再生成绑定租户、操作者、排序和筛选摘要的游标。投影不含受限供应商字段；未知状态值继续作为原始值显示。已迁移的草稿模型、摘要、创建输入和台账 DTO 通过 Store 类型别名保留兼容入口；包含签署 DTO 的 `ContractDetail` 仍是 Store 兼容 envelope。
+
+当前 `CreateContractDraft` 本身不追加 `clm_business_events` 或 Outbox，因此该切片不新增事件；`ImportLegacySignedContract` 已有的业务事件与 Outbox 写入仍留在原 Store 事务及原位置，未纳入迁移。保存视图、导出、替换草稿和历史导入也不属于本切片。此迁移不改变 HTTP/OpenAPI wire 或数据库 schema。

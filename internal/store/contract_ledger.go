@@ -13,103 +13,49 @@ package store
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	contractapp "contractaudit/internal/contract/app"
+	"contractaudit/internal/contract/ledger"
+	contractpostgres "contractaudit/internal/contract/postgres"
 	"contractaudit/internal/fault"
+	platformpostgres "contractaudit/internal/platform/postgres"
 
 	"github.com/jackc/pgx/v5"
 )
 
-// Contract ledger reads the existing aggregate and its sealed content without
-// adding a second projection table. Every row is authorized through the same
-// case-scope policy as the detail endpoint; SQL predicates only narrow data.
+// Contract ledger data models and query rules are owned by internal/contract/ledger.
+// Store aliases keep the current HTTP and saved-view consumers source compatible.
 const (
-	contractLedgerDefaultLimit = 25
-	contractLedgerMaxLimit     = 100
-	contractLedgerCursorVer    = 1
-	contractLedgerSortCreated  = "created_at"
-
+	contractLedgerDefaultLimit   = ledger.DefaultLimit
+	contractLedgerMaxLimit       = ledger.MaxLimit
+	contractLedgerCursorVer      = ledger.CursorVersion
+	contractLedgerSortCreated    = ledger.SortCreated
 	contractSavedViewNameMax     = 60
 	contractSavedViewColumnsMax  = 20
 	contractExportMaxRows        = 5000
 	contractExportMaxScanned     = 20000
 	contractExportFormatCSV      = "csv"
 	contractExportRowsBatch      = 500
-	contractLedgerContentAmount  = `^(0|[1-9][0-9]{0,15})\.[0-9]{2}$`
-	contractLedgerTimeLayout     = time.RFC3339
-	contractLedgerDateLayout     = "2006-01-02"
-	contractLedgerCursorMaxBytes = 2048
+	contractLedgerContentAmount  = ledger.ContentAmountPattern
+	contractLedgerTimeLayout     = ledger.TimeLayout
+	contractLedgerDateLayout     = ledger.DateLayout
+	contractLedgerCursorMaxBytes = ledger.CursorMaxBytes
 )
 
-// ContractLedgerFilter is the shared filter shape of list, saved views and
-// export. Unknown values are rejected before they reach SQL.
-type ContractLedgerFilter struct {
-	Text              string     `json:"text,omitempty"`
-	SupplierName      string     `json:"supplier_name,omitempty"`
-	DepartmentID      string     `json:"department_id,omitempty"`
-	ContractState     string     `json:"contract_state,omitempty"`
-	WorkflowState     string     `json:"workflow_state,omitempty"`
-	AuthorityMode     string     `json:"authority_mode,omitempty"`
-	ValidityState     string     `json:"validity_state,omitempty"`
-	ProjectType       string     `json:"project_type,omitempty"`
-	ProcurementMethod string     `json:"procurement_method,omitempty"`
-	AmountMin         *string    `json:"amount_min,omitempty"`
-	AmountMax         *string    `json:"amount_max,omitempty"`
-	SigningDateFrom   *string    `json:"signing_date_from,omitempty"`
-	SigningDateTo     *string    `json:"signing_date_to,omitempty"`
-	CreatedFrom       *time.Time `json:"created_from,omitempty"`
-	CreatedTo         *time.Time `json:"created_to,omitempty"`
-}
+type ContractLedgerFilter = ledger.Filter
+type ContractLedgerItem = ledger.Item
+type ContractLedgerPage = ledger.Page
+type ContractLedgerQuery = ledger.Query
+type contractLedgerCursor = ledger.Cursor
 
-// ContractLedgerItem is one visible ledger row. Restricted supplier fields are
-// never projected into this shape.
-type ContractLedgerItem struct {
-	ContractID        string    `json:"contract_id"`
-	AuthorityMode     string    `json:"authority_mode"`
-	Name              string    `json:"name"`
-	Number            *string   `json:"number"`
-	Amount            *string   `json:"amount"`
-	Currency          *string   `json:"currency"`
-	ContractState     string    `json:"contract_state"`
-	WorkflowState     string    `json:"workflow_state"`
-	SupplierName      *string   `json:"supplier_name,omitempty"`
-	DepartmentID      *string   `json:"department_id,omitempty"`
-	ProjectType       *string   `json:"project_type,omitempty"`
-	ProcurementMethod *string   `json:"procurement_method,omitempty"`
-	SigningDate       *string   `json:"signing_date,omitempty"`
-	SourceSystem      *string   `json:"source_system,omitempty"`
-	OwnerOrgID        string    `json:"owner_org_id"`
-	RowVersion        int64     `json:"row_version"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-}
-
-// ContractLedgerPage is one keyset page. The cursor is opaque to clients.
-type ContractLedgerPage struct {
-	Items      []ContractLedgerItem `json:"items"`
-	NextCursor *string              `json:"next_cursor"`
-	HasMore    bool                 `json:"has_more"`
-}
-
-// ContractLedgerQuery carries one validated list request.
-type ContractLedgerQuery struct {
-	Filter ContractLedgerFilter
-	Sort   string
-	Cursor string
-	Limit  int
-}
-
-// ContractSavedView is a personal filter/column preset. It is a preference,
-// not an audit fact, so it may be replaced or deleted by its owner.
 type ContractSavedView struct {
 	ViewID     string               `json:"view_id"`
 	Name       string               `json:"name"`
@@ -217,147 +163,9 @@ var contractLedgerDefaultColumns = []string{
 	"department_id", "contract_state", "workflow_state", "updated_at",
 }
 
-var contractLifecycleStates = map[string]bool{
-	"draft": true, "ready_to_sign": true, "registered": true,
-	"performing": true, "closed": true, "terminated": true, "external_observed": true,
-}
-
-var contractWorkflowStates = map[string]bool{"not_started": true, "in_review": true, "external_observed": true}
-var contractAuthorityModes = map[string]bool{"native": true, "external": true}
-var contractValidityStates = map[string]bool{"active": true, "voided": true}
-
-func normalizeLedgerText(field string, value *string, max int) error {
-	trimmed := strings.TrimSpace(*value)
-	if runeCount(trimmed) > max {
-		return fault.Invalid(field + "超过最大长度")
-	}
-	*value = trimmed
-	return nil
-}
-
-func ledgerAmountScaled(value string) (int64, bool) {
-	if !moneyPattern.MatchString(value) {
-		return 0, false
-	}
-	parts := strings.SplitN(value, ".", 2)
-	whole, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	cents, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	return whole*100 + cents, true
-}
-
-func normalizeLedgerAmount(field string, value **string) error {
-	if value == nil || *value == nil {
-		return nil
-	}
-	trimmed := strings.TrimSpace(**value)
-	if trimmed == "" {
-		*value = nil
-		return nil
-	}
-	if _, ok := ledgerAmountScaled(trimmed); !ok {
-		return fault.Invalid(field + "必须是两位小数的非负金额字符串")
-	}
-	*value = &trimmed
-	return nil
-}
-
-func normalizeLedgerDate(field string, value **string) error {
-	if value == nil || *value == nil {
-		return nil
-	}
-	trimmed := strings.TrimSpace(**value)
-	if trimmed == "" {
-		*value = nil
-		return nil
-	}
-	parsed, err := time.Parse(contractLedgerDateLayout, trimmed)
-	if err != nil {
-		return fault.Invalid(field + "必须是有效日期")
-	}
-	formatted := parsed.Format(contractLedgerDateLayout)
-	*value = &formatted
-	return nil
-}
-
-func normalizeLedgerTime(field string, value *time.Time) error {
-	if value == nil {
-		return nil
-	}
-	if value.IsZero() {
-		return fault.Invalid(field + "必须是有效时间")
-	}
-	*value = value.UTC()
-	return nil
-}
-
-// validateContractLedgerFilter normalizes and validates every field in place.
-// The validated shape is the value persisted in saved views and exports.
+func ledgerAmountScaled(value string) (int64, bool) { return ledger.AmountScaled(value) }
 func validateContractLedgerFilter(filter *ContractLedgerFilter) error {
-	for _, item := range []struct {
-		field string
-		value *string
-		max   int
-	}{
-		{"text", &filter.Text, 200},
-		{"supplier_name", &filter.SupplierName, 200},
-		{"department_id", &filter.DepartmentID, 100},
-		{"project_type", &filter.ProjectType, 100},
-		{"procurement_method", &filter.ProcurementMethod, 100},
-	} {
-		if err := normalizeLedgerText(item.field, item.value, item.max); err != nil {
-			return err
-		}
-	}
-	if filter.ContractState != "" && !contractLifecycleStates[filter.ContractState] {
-		return fault.Invalid("contract_state 不是有效的合同状态")
-	}
-	if filter.WorkflowState != "" && !contractWorkflowStates[filter.WorkflowState] {
-		return fault.Invalid("workflow_state 不是有效的会签状态")
-	}
-	if filter.AuthorityMode != "" && !contractAuthorityModes[filter.AuthorityMode] {
-		return fault.Invalid("authority_mode 必须是 native 或 external")
-	}
-	if filter.ValidityState != "" && !contractValidityStates[filter.ValidityState] {
-		return fault.Invalid("validity_state 必须是 active 或 voided")
-	}
-	if err := normalizeLedgerAmount("amount_min", &filter.AmountMin); err != nil {
-		return err
-	}
-	if err := normalizeLedgerAmount("amount_max", &filter.AmountMax); err != nil {
-		return err
-	}
-	if filter.AmountMin != nil && filter.AmountMax != nil {
-		minimum, _ := ledgerAmountScaled(*filter.AmountMin)
-		maximum, _ := ledgerAmountScaled(*filter.AmountMax)
-		if minimum > maximum {
-			return fault.Invalid("amount_min 不能大于 amount_max")
-		}
-	}
-	if err := normalizeLedgerDate("signing_date_from", &filter.SigningDateFrom); err != nil {
-		return err
-	}
-	if err := normalizeLedgerDate("signing_date_to", &filter.SigningDateTo); err != nil {
-		return err
-	}
-	if filter.SigningDateFrom != nil && filter.SigningDateTo != nil && *filter.SigningDateFrom > *filter.SigningDateTo {
-		return fault.Invalid("signing_date_from 不能晚于 signing_date_to")
-	}
-	if err := normalizeLedgerTime("created_from", filter.CreatedFrom); err != nil {
-		return err
-	}
-	if err := normalizeLedgerTime("created_to", filter.CreatedTo); err != nil {
-		return err
-	}
-	if filter.CreatedFrom != nil && filter.CreatedTo != nil && filter.CreatedFrom.After(*filter.CreatedTo) {
-		return fault.Invalid("created_from 不能晚于 created_to")
-	}
-	return nil
+	return ledger.ValidateFilter(filter)
 }
 
 func normalizeContractLedgerColumns(columns []string) ([]string, error) {
@@ -392,58 +200,15 @@ func normalizeContractColumns(columns []string, allowExportOnly bool) ([]string,
 	return out, nil
 }
 
-func validateContractLedgerSort(sort string) (string, error) {
-	if sort == "" {
-		return contractLedgerSortCreated, nil
-	}
-	if sort != contractLedgerSortCreated {
-		return "", fault.Invalid("当前只支持按创建时间排序")
-	}
-	return sort, nil
-}
-
+func validateContractLedgerSort(sort string) (string, error) { return ledger.ValidateSort(sort) }
 func contractLedgerFilterDigest(filter ContractLedgerFilter, sort string) (string, error) {
-	return canonicalHash(struct {
-		Schema string               `json:"schema"`
-		Filter ContractLedgerFilter `json:"filter"`
-		Sort   string               `json:"sort"`
-	}{Schema: "clm-contract-ledger-filter/v1", Filter: filter, Sort: sort})
+	return ledger.FilterDigest(filter, sort)
 }
-
-type contractLedgerCursor struct {
-	Version      int       `json:"v"`
-	TenantID     string    `json:"t"`
-	ActorID      string    `json:"a"`
-	Sort         string    `json:"s"`
-	FilterDigest string    `json:"f"`
-	Key          time.Time `json:"k"`
-	ContractID   string    `json:"i"`
-}
-
 func encodeContractLedgerCursor(current accounts.User, sort, digest string, key time.Time, contractID string) string {
-	raw, _ := json.Marshal(contractLedgerCursor{
-		Version: contractLedgerCursorVer, TenantID: accounts.Tenant(current), ActorID: current.ID,
-		Sort: sort, FilterDigest: digest, Key: key.UTC(), ContractID: contractID,
-	})
-	return base64.RawURLEncoding.EncodeToString(raw)
+	return ledger.EncodeCursor(ledger.CursorIdentity{TenantID: accounts.Tenant(current), ActorID: current.ID}, sort, digest, key, contractID)
 }
-
 func decodeContractLedgerCursor(value string, current accounts.User, sort, digest string) (*contractLedgerCursor, error) {
-	if value == "" {
-		return nil, nil
-	}
-	if len(value) > contractLedgerCursorMaxBytes {
-		return nil, fault.Invalid("台账分页游标无效")
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(value)
-	var cursor contractLedgerCursor
-	if err != nil || json.Unmarshal(raw, &cursor) != nil ||
-		cursor.Version != contractLedgerCursorVer || cursor.TenantID != accounts.Tenant(current) ||
-		cursor.ActorID != current.ID || cursor.Sort != sort || cursor.FilterDigest != digest ||
-		cursor.Key.IsZero() || !validContractUUID(cursor.ContractID) {
-		return nil, fault.Invalid("台账分页游标无效")
-	}
-	return &cursor, nil
+	return ledger.DecodeCursor(value, ledger.CursorIdentity{TenantID: accounts.Tenant(current), ActorID: current.ID}, sort, digest)
 }
 
 type contractLedgerRow struct {
@@ -473,157 +238,19 @@ func (s *Store) beginContractLedgerRead(ctx context.Context, user accounts.User)
 }
 
 func contractLedgerItemFrom(record clmContractRecord, content []byte, inReview bool) (ContractLedgerItem, error) {
-	var draft DraftContent
-	if len(content) != 0 {
-		if err := unmarshalStoredDraft(content, &draft); err != nil {
-			return ContractLedgerItem{}, err
-		}
-	}
-	item := ContractLedgerItem{
-		ContractID: record.ContractID, AuthorityMode: record.AuthorityMode,
-		Number: record.ContractNumber, ContractState: record.LifecycleState,
-		WorkflowState: "not_started", OwnerOrgID: record.OwnerOrgID,
-		SourceSystem: record.SourceSystem, RowVersion: record.RowVersion,
-		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
-	}
-	if record.AuthorityMode == "external" {
-		item.ContractState = "external_observed"
-		item.WorkflowState = "external_observed"
-	} else if inReview {
-		item.WorkflowState = "in_review"
-	}
-	if basics := draft.Contract; basics != nil {
-		item.Name = basics.Name
-		if basics.Number != nil {
-			item.Number = basics.Number
-		}
-		item.Amount = optionalText(basics.Amount)
-		item.Currency = optionalText(basics.Currency)
-		item.DepartmentID = optionalText(basics.DepartmentID)
-		item.ProjectType = optionalText(basics.ProjectType)
-		item.ProcurementMethod = optionalText(basics.ProcurementMethod)
-		item.SigningDate = optionalText(basics.SigningDate)
-	}
-	if draft.Supplier != nil {
-		item.SupplierName = optionalText(draft.Supplier.Name)
-	}
-	return item, nil
-}
-
-func appendContractLedgerFilter(where *strings.Builder, args *[]any, filter ContractLedgerFilter) {
-	add := func(predicate string, value any) {
-		*args = append(*args, value)
-		where.WriteString(fmt.Sprintf(predicate, len(*args)))
-	}
-	if filter.Text != "" {
-		*args = append(*args, filter.Text)
-		position := len(*args)
-		where.WriteString(fmt.Sprintf(` AND (position(lower($%d) in lower(coalesce(k.content->'contract'->>'name','')))>0`+
-			` OR position(lower($%d) in lower(coalesce(k.contract_number,'')))>0`+
-			` OR position(lower($%d) in lower(coalesce(k.content->'contract'->>'number','')))>0)`,
-			position, position, position))
-	}
-	if filter.SupplierName != "" {
-		add(` AND position(lower($%d) in lower(coalesce(k.content->'supplier'->>'name','')))>0`, filter.SupplierName)
-	}
-	if filter.DepartmentID != "" {
-		add(` AND k.content->'contract'->>'department_id'=$%d`, filter.DepartmentID)
-	}
-	if filter.ProjectType != "" {
-		add(` AND k.content->'contract'->>'project_type'=$%d`, filter.ProjectType)
-	}
-	if filter.ProcurementMethod != "" {
-		add(` AND k.content->'contract'->>'procurement_method'=$%d`, filter.ProcurementMethod)
-	}
-	if filter.ContractState != "" {
-		add(` AND (CASE WHEN k.authority_mode='external' THEN 'external_observed' ELSE k.lifecycle_state END)=$%d`, filter.ContractState)
-	}
-	if filter.AuthorityMode != "" {
-		add(` AND k.authority_mode=$%d`, filter.AuthorityMode)
-	}
-	if filter.ValidityState != "" {
-		add(` AND k.validity_state=$%d`, filter.ValidityState)
-	}
-	if filter.WorkflowState == "in_review" {
-		where.WriteString(` AND k.authority_mode='native' AND k.in_review`)
-	} else if filter.WorkflowState == "not_started" {
-		where.WriteString(` AND k.authority_mode='native' AND NOT k.in_review`)
-	} else if filter.WorkflowState == "external_observed" {
-		where.WriteString(` AND k.authority_mode='external'`)
-	}
-	if filter.AmountMin != nil {
-		add(` AND (CASE WHEN k.content->'contract'->>'amount' ~ '`+contractLedgerContentAmount+`' THEN (k.content->'contract'->>'amount')::numeric END) >= $%d::numeric`, *filter.AmountMin)
-	}
-	if filter.AmountMax != nil {
-		add(` AND (CASE WHEN k.content->'contract'->>'amount' ~ '`+contractLedgerContentAmount+`' THEN (k.content->'contract'->>'amount')::numeric END) <= $%d::numeric`, *filter.AmountMax)
-	}
-	if filter.SigningDateFrom != nil {
-		add(` AND k.signing_date >= $%d`, *filter.SigningDateFrom)
-	}
-	if filter.SigningDateTo != nil {
-		add(` AND k.signing_date <= $%d`, *filter.SigningDateTo)
-	}
-	if filter.CreatedFrom != nil {
-		add(` AND k.created_at >= $%d::timestamptz`, filter.CreatedFrom.UTC())
-	}
-	if filter.CreatedTo != nil {
-		add(` AND k.created_at <= $%d::timestamptz`, filter.CreatedTo.UTC())
-	}
+	return ledger.ItemFromAggregate(record, content, inReview)
 }
 
 func queryContractLedgerRows(ctx context.Context, tx pgx.Tx, tenant string, filter ContractLedgerFilter,
 	afterSet bool, afterKey time.Time, afterID string, limit int) ([]contractLedgerRow, error) {
-	where := &strings.Builder{}
-	where.WriteString(`WHERE k.tenant_id=$1`)
-	args := []any{tenant}
-	appendContractLedgerFilter(where, &args, filter)
-	if afterSet {
-		args = append(args, afterKey.UTC(), afterID)
-		where.WriteString(fmt.Sprintf(` AND (k.created_at,k.contract_id) < ($%d::timestamptz,$%d::uuid)`, len(args)-1, len(args)))
-	}
-	args = append(args, limit)
-	query := `SELECT k.tenant_id,k.contract_id,k.owner_org_id,k.authority_mode,k.contract_number,
-		k.lifecycle_state,k.validity_state,k.row_version,k.created_by,k.created_at,k.updated_at,
-		k.source_system,k.in_review,k.content,k.signing_date
-	FROM (
-		SELECT c.tenant_id,c.contract_id,c.owner_org_id,c.authority_mode,c.contract_number,
-			c.lifecycle_state,c.validity_state,c.row_version,c.created_by,c.created_at,c.updated_at,
-			c.source_system,COALESCE(d.content,r.snapshot) AS content,
-			COALESCE((SELECT registration.signing_date::text FROM clm_contract_signing_registrations registration
-				WHERE registration.tenant_id=c.tenant_id AND registration.contract_id=c.contract_id),
-				COALESCE(d.content->'contract'->>'signing_date',r.snapshot->'contract'->>'signing_date')) AS signing_date,
-			EXISTS(SELECT 1 FROM clm_approval_rounds ar
-				WHERE ar.tenant_id=c.tenant_id AND ar.contract_id=c.contract_id AND ar.state='in_review') AS in_review
-		FROM clm_contracts c
-		LEFT JOIN clm_contract_drafts d ON d.tenant_id=c.tenant_id AND d.contract_id=c.contract_id
-		LEFT JOIN clm_contract_revisions r ON r.tenant_id=c.tenant_id AND r.contract_id=c.contract_id
-			AND r.contract_revision_id=c.current_revision_id
-	) k ` + where.String() + ` ORDER BY k.created_at DESC,k.contract_id DESC LIMIT $` + strconv.Itoa(len(args))
-	rows, err := tx.Query(ctx, query, args...)
+	rows, err := contractpostgres.NewLedgerReader(platformpostgres.Bind(tx)).Read(ctx, tenant, filter,
+		afterSet, afterKey, afterID, limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []contractLedgerRow{}
-	for rows.Next() {
-		var record clmContractRecord
-		var content []byte
-		var inReview bool
-		var signingDate *string
-		if err := rows.Scan(&record.TenantID, &record.ContractID, &record.OwnerOrgID, &record.AuthorityMode,
-			&record.ContractNumber, &record.LifecycleState, &record.ValidityState, &record.RowVersion,
-			&record.CreatedBy, &record.CreatedAt, &record.UpdatedAt, &record.SourceSystem, &inReview, &content, &signingDate); err != nil {
-			return nil, err
-		}
-		item, err := contractLedgerItemFrom(record, content, inReview)
-		if err != nil {
-			return nil, err
-		}
-		item.SigningDate = signingDate
-		out = append(out, contractLedgerRow{record: record, item: item, sortKey: record.CreatedAt})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+	out := make([]contractLedgerRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, contractLedgerRow{record: row.Aggregate, item: row.Item, sortKey: row.SortKey})
 	}
 	return out, nil
 }
@@ -632,67 +259,16 @@ func queryContractLedgerRows(ctx context.Context, tx pgx.Tx, tenant string, filt
 // validated filter and the case-scope policy authorizes every returned row.
 func (s *Store) ListContractLedger(ctx context.Context, user accounts.User, query ContractLedgerQuery) (ContractLedgerPage, error) {
 	ctx = commandContext(ctx, user)
-	limit := query.Limit
-	if limit == 0 {
-		limit = contractLedgerDefaultLimit
-	}
-	if limit < 1 || limit > contractLedgerMaxLimit {
-		return ContractLedgerPage{}, fault.Invalid("limit 必须在 1 到 100 之间")
-	}
-	if err := validateContractLedgerFilter(&query.Filter); err != nil {
-		return ContractLedgerPage{}, err
-	}
-	sort, err := validateContractLedgerSort(query.Sort)
-	if err != nil {
-		return ContractLedgerPage{}, err
-	}
 	tx, current, err := s.beginContractLedgerRead(ctx, user)
 	if err != nil {
 		return ContractLedgerPage{}, err
 	}
 	defer rollbackCLM(tx)
-	digest, err := contractLedgerFilterDigest(query.Filter, sort)
+	identity := ledger.CursorIdentity{TenantID: accounts.Tenant(current), ActorID: current.ID}
+	reader := contractpostgres.NewLedgerReader(platformpostgres.Bind(tx))
+	page, err := contractapp.ListContractLedger(ctx, identity, query, reader, storeLedgerAccess{tx: tx, user: current})
 	if err != nil {
 		return ContractLedgerPage{}, err
-	}
-	before, err := decodeContractLedgerCursor(query.Cursor, current, sort, digest)
-	if err != nil {
-		return ContractLedgerPage{}, err
-	}
-	page := ContractLedgerPage{Items: []ContractLedgerItem{}}
-	afterSet, afterID := false, ""
-	var afterKey time.Time
-	var lastKey time.Time
-	if before != nil {
-		afterSet, afterKey, afterID = true, before.Key, before.ContractID
-	}
-	for {
-		rows, err := queryContractLedgerRows(ctx, tx, accounts.Tenant(current), query.Filter, afterSet, afterKey, afterID, limit+1)
-		if err != nil {
-			return ContractLedgerPage{}, err
-		}
-		foundExtra := false
-		for _, row := range rows {
-			afterSet, afterKey, afterID = true, row.sortKey, row.item.ContractID
-			if !authorizeContractRead(ctx, tx, row.record, current) {
-				continue
-			}
-			if len(page.Items) == limit {
-				foundExtra = true
-				break
-			}
-			page.Items = append(page.Items, row.item)
-			lastKey = row.sortKey
-		}
-		if foundExtra {
-			cursor := encodeContractLedgerCursor(current, sort, digest, lastKey, page.Items[len(page.Items)-1].ContractID)
-			page.NextCursor = &cursor
-			page.HasMore = true
-			break
-		}
-		if len(rows) < limit+1 {
-			break
-		}
 	}
 	if _, err := trustedUser(current); err != nil {
 		return ContractLedgerPage{}, err

@@ -19,8 +19,12 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	contractapp "contractaudit/internal/contract/app"
+	clmcontract "contractaudit/internal/contract/model"
+	contractpostgres "contractaudit/internal/contract/postgres"
 	"contractaudit/internal/contractmoney"
 	"contractaudit/internal/fault"
+	platformpostgres "contractaudit/internal/platform/postgres"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -30,52 +34,20 @@ import (
 // They never enter the legacy loadState/clone writer and never nest an old
 // schema write inside a contract lock (docs/11 事务边界).
 const (
-	clmRouteCreateDraft  = "clm.create_draft"
+	clmRouteCreateDraft  = contractapp.CreateDraftRoute
 	clmRouteReplaceDraft = "clm.replace_draft"
 	clmRouteLegacyImport = "clm.legacy_import"
 
 	clmEventLegacyImported = "contract.legacy_imported.v1"
 )
 
-// clmContractRecord is one contract aggregate row. Tenant, organization,
-// creator and authority mode come only from trusted server state.
-type clmContractRecord struct {
-	TenantID           string
-	ContractID         string
-	OwnerOrgID         string
-	AuthorityMode      string
-	ContractNumber     *string
-	SourceSystem       *string
-	ExternalContractID *string
-	SourceVersion      *string
-	LifecycleState     string
-	ValidityState      string
-	CurrentRevisionID  *string
-	RowVersion         int64
-	CreatedBy          string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-}
+// Contract summary and aggregate models are owned by internal/contract; these
+// aliases preserve Store consumers while this domain migrates incrementally.
+type clmContractRecord = clmcontract.Aggregate
+type ContractSummary = clmcontract.Summary
 
-// ContractSummary is the ledger-shaped projection shared by the detail
-// response. It never contains restricted supplier fields.
-type ContractSummary struct {
-	ContractID    string    `json:"contract_id"`
-	AuthorityMode string    `json:"authority_mode"`
-	Name          string    `json:"name"`
-	Number        *string   `json:"number"`
-	Amount        *string   `json:"amount"`
-	Currency      *string   `json:"currency"`
-	ContractState string    `json:"contract_state"`
-	WorkflowState string    `json:"workflow_state"`
-	PaymentState  *string   `json:"payment_state,omitempty"`
-	RowVersion    int64     `json:"row_version"`
-	CreatedAt     time.Time `json:"created_at"`
-}
-
-// ContractDetail mirrors the design ContractDetail: summary, the resumable
-// draft (restricted fields revealed or masked by authorization) and routing
-// facts for imported sources.
+// ContractDetail remains the Store compatibility envelope because it also
+// contains response types owned by the signing slice.
 type ContractDetail struct {
 	Summary                      ContractSummary              `json:"summary"`
 	CurrentRevisionID            *string                      `json:"current_revision_id"`
@@ -106,15 +78,8 @@ type ContractDraftSummary struct {
 	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
 }
 
-// CreateContractDraftInput carries the strict create command. Tenant, actor
-// and organization are resolved from the authenticated identity, never from
-// the payload.
-type CreateContractDraftInput struct {
-	ExpectedRowVersion int64
-	AuthorityMode      string
-	Draft              DraftContent
-	IdempotencyKey     string
-}
+// CreateContractDraftInput remains available from Store as a compatibility alias.
+type CreateContractDraftInput = clmcontract.CreateContractDraftInput
 
 // ReplaceContractDraftInput fully replaces one draft with optimistic
 // concurrency against the contract aggregate row version.
@@ -153,26 +118,11 @@ type resolvedMaterialVersion struct {
 	MediaType    string
 }
 
-type clmWriteReceipt struct {
-	ContractID     string
-	RequestDigest  string
-	ResponseStatus int
-	Response       []byte
-}
+type clmWriteReceipt = clmcontract.WriteReceipt
 
 // validateCLMIdempotencyKey follows the design parameter: 8 to 128 visible
 // ASCII characters. The key is scoped to tenant, actor and route scope.
-func validateCLMIdempotencyKey(key string) error {
-	if len(key) < 8 || len(key) > 128 {
-		return fault.Invalid("Idempotency-Key必须是8到128个字符")
-	}
-	for _, char := range key {
-		if char < 0x21 || char > 0x7e {
-			return fault.Invalid("Idempotency-Key只能包含可见ASCII字符")
-		}
-	}
-	return nil
-}
+func validateCLMIdempotencyKey(key string) error { return clmcontract.ValidateCLMIdempotencyKey(key) }
 
 // bindLocalDemoContractGrant binds an unbound demo case grant to a contract
 // only when the same identity created that contract. Enterprise identities are
@@ -402,23 +352,7 @@ func draftContentSummaryFacts(contentJSON []byte) (string, *string, *string, err
 }
 
 func clmSummary(record clmContractRecord, name string, amount, currency *string) ContractSummary {
-	item := ContractSummary{
-		ContractID:    record.ContractID,
-		AuthorityMode: record.AuthorityMode,
-		Name:          name,
-		Number:        record.ContractNumber,
-		Amount:        amount,
-		Currency:      currency,
-		ContractState: record.LifecycleState,
-		WorkflowState: "not_started",
-		RowVersion:    record.RowVersion,
-		CreatedAt:     record.CreatedAt,
-	}
-	if record.AuthorityMode == "external" {
-		item.ContractState = "external_observed"
-		item.WorkflowState = "external_observed"
-	}
-	return item
+	return clmcontract.SummaryFromDraft(record, name, amount, currency)
 }
 
 func contractSourceRef(record clmContractRecord) *SourceRef {
@@ -484,23 +418,7 @@ func loadCLMCase(ctx context.Context, tx pgx.Tx, current accounts.User, orgID, c
 // 0 and stores an idempotent receipt for replay.
 func (s *Store) CreateContractDraft(ctx context.Context, user accounts.User, input CreateContractDraftInput) (ContractDetail, error) {
 	ctx = commandContext(ctx, user)
-	if input.ExpectedRowVersion != 0 {
-		return ContractDetail{}, fault.Invalid("创建合同草稿必须携带 expected_row_version=0")
-	}
-	if input.AuthorityMode != "native" {
-		return ContractDetail{}, fault.Invalid("本版只能创建 native 权威模式的合同草稿")
-	}
-	if err := validateCLMIdempotencyKey(input.IdempotencyKey); err != nil {
-		return ContractDetail{}, err
-	}
-	sanitizeDraftReferences(&input.Draft)
-	if err := validateDraftContent(&input.Draft); err != nil {
-		return ContractDetail{}, err
-	}
-	if err := validateDraftAmounts(&input.Draft, contractmoney.StageDraft); err != nil {
-		return ContractDetail{}, err
-	}
-	digest, err := clmRequestDigest(clmRouteCreateDraft, "POST", "/api/contracts", input.ExpectedRowVersion, input)
+	prepared, err := contractapp.PrepareCreateDraft(input)
 	if err != nil {
 		return ContractDetail{}, err
 	}
@@ -509,78 +427,14 @@ func (s *Store) CreateContractDraft(ctx context.Context, user accounts.User, inp
 		return ContractDetail{}, err
 	}
 	defer rollbackCLM(tx)
-	if err := lockWriteReceipt(ctx, tx, current, clmRouteCreateDraft, input.IdempotencyKey); err != nil {
-		return ContractDetail{}, err
-	}
-	receipt, found, err := replayCLMWriteReceipt(ctx, tx, current, clmRouteCreateDraft, input.IdempotencyKey, digest, "")
+	repository := contractpostgres.NewDraftCommands(platformpostgres.Bind(tx))
+	result, err := contractapp.CreateDraft(ctx, contractapp.CreateDraftPrincipal{
+		TenantID: accounts.Tenant(current), ActorID: current.ID, OrgID: current.OrgID,
+	}, prepared, repository, storeDraftCodec{}, storeDraftAccess{tx: tx, user: current})
 	if err != nil {
 		return ContractDetail{}, err
 	}
-	if found {
-		record, err := loadCLMContract(ctx, tx, accounts.Tenant(current), receipt.ContractID)
-		if err != nil {
-			return ContractDetail{}, err
-		}
-		detail, err := projectReceiptDetail(ctx, receipt, current, record)
-		if err != nil {
-			return ContractDetail{}, err
-		}
-		if err := tx.Commit(ctx); err != nil {
-			return ContractDetail{}, err
-		}
-		return detail, nil
-	}
-	contractID, err := newContractUUID()
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	_, sealedBytes, _, err := sealDraftContentBound(ctx, input.Draft, accounts.Tenant(current), contractID)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	contractNumber := optionalTextOrPointer(input.Draft.Contract.Number)
-	var createdAt time.Time
-	err = tx.QueryRow(ctx, `INSERT INTO clm_contracts
-		(tenant_id,contract_id,owner_org_id,authority_mode,contract_number,lifecycle_state,row_version,created_by)
-		VALUES ($1,$2,$3,'native',$4,'draft',1,$5) RETURNING created_at`,
-		accounts.Tenant(current), contractID, current.OrgID, contractNumber, current.ID).Scan(&createdAt)
-	if err != nil {
-		return ContractDetail{}, clmUniqueViolation(err, "合同编号已被使用")
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO clm_contract_drafts (tenant_id,contract_id,content,updated_by)
-		VALUES ($1,$2,$3::jsonb,$4)`, accounts.Tenant(current), contractID, string(sealedBytes), current.ID); err != nil {
-		return ContractDetail{}, err
-	}
-	record := clmContractRecord{
-		TenantID: accounts.Tenant(current), ContractID: contractID, OwnerOrgID: current.OrgID,
-		AuthorityMode: "native", ContractNumber: contractNumber, LifecycleState: "draft",
-		ValidityState: "active", RowVersion: 1, CreatedBy: current.ID, CreatedAt: createdAt, UpdatedAt: createdAt,
-	}
-	name, amount, currency, err := draftContentSummaryFacts(sealedBytes)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	sealedDetail := ContractDetail{
-		Summary:         clmSummary(record, name, amount, currency),
-		ActiveRoundID:   nil,
-		AllowedCommands: clmDraftCommands(record, true),
-		Draft:           sealedDraftOf(sealedBytes),
-		Warnings:        []string{},
-	}
-	response, err := json.Marshal(sealedDetail)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	if err := insertCLMWriteReceipt(ctx, tx, accounts.Tenant(current), current.ID, clmRouteCreateDraft,
-		input.IdempotencyKey, digest, contractID, 201, response); err != nil {
-		return ContractDetail{}, err
-	}
-	detail := sealedDetail
-	plaintext, err := unsealStoredDraftBound(ctx, sealedBytes, record.TenantID, record.ContractID)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	detail.Draft = new(projectDraftForViewer(plaintext, authorizeContract(record, current, access.Manage)))
+	detail := contractDetailFromDraftResult(result)
 	if err := tx.Commit(ctx); err != nil {
 		return ContractDetail{}, err
 	}
@@ -607,19 +461,7 @@ func clmUniqueViolation(err error, message string) error {
 // fields are not writable, so offering the command would only invite a
 // conflict with the stored sealed values.
 func clmDraftCommands(record clmContractRecord, canManage bool) []string {
-	if !canManage {
-		return []string{}
-	}
-	if record.AuthorityMode == "native" && record.LifecycleState == "draft" && record.ValidityState == "active" {
-		commands := []string{"replace_draft", clmCommandFreezeVersion}
-		// Submission always uses the frozen current revision. Offering it before
-		// the first freeze would only produce a conflict.
-		if record.CurrentRevisionID != nil {
-			commands = append(commands, clmCommandSubmitApproval)
-		}
-		return commands
-	}
-	return []string{}
+	return clmcontract.DraftCommands(record, canManage)
 }
 
 // sealedDraftOf decodes persisted sealed bytes back into the wire shape
@@ -1300,15 +1142,5 @@ func (s *Store) resolveHistoricalMaterials(ctx context.Context, tx pgx.Tx, curre
 // method and path, the optimistic version and the typed payload. Trace headers
 // and server receive time never participate.
 func clmRequestDigest(routeScope, method, path string, expectedRowVersion int64, payload any) (string, error) {
-	return canonicalHash(struct {
-		Schema             string `json:"schema"`
-		RouteScope         string `json:"route_scope"`
-		Method             string `json:"method"`
-		Path               string `json:"path"`
-		ExpectedRowVersion int64  `json:"expected_row_version"`
-		Payload            any    `json:"payload"`
-	}{
-		Schema: "clm-write-request/v1", RouteScope: routeScope, Method: method, Path: path,
-		ExpectedRowVersion: expectedRowVersion, Payload: payload,
-	})
+	return clmcontract.RequestDigest(routeScope, method, path, expectedRowVersion, payload)
 }

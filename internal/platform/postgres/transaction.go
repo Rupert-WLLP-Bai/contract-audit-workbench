@@ -24,6 +24,8 @@ import (
 // responsibility of the command that owns the transaction.
 type Executor interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
 type executor struct{ tx pgx.Tx }
@@ -35,4 +37,12 @@ func Bind(tx pgx.Tx) Executor { return executor{tx: tx} }
 
 func (e executor) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 	return e.tx.Exec(ctx, sql, args...)
+}
+
+func (e executor) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	return e.tx.Query(ctx, sql, args...)
+}
+
+func (e executor) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	return e.tx.QueryRow(ctx, sql, args...)
 }
