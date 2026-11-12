@@ -8,15 +8,7 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import {
-  Alert,
-  Button,
-  Empty,
-  Input,
-  Table,
-  Tabs,
-  type TableColumnsType,
-} from "antd";
+import { Alert, Button, Empty, Input, Table, Tabs, type TableColumnsType } from "antd";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -53,9 +45,7 @@ import { formatDateTime } from "../domain/review";
 import "./approval-tasks-page.css";
 
 type Selection =
-  | { kind: "task"; taskId: string }
-  | { kind: "round"; contractId: string; roundId: string }
-  | null;
+  { kind: "task"; taskId: string } | { kind: "round"; contractId: string; roundId: string } | null;
 
 const VIEW_LABELS: Record<ApprovalInboxView, string> = {
   todo: "我的待办",
@@ -100,9 +90,7 @@ function itemSelection(item: ApprovalInboxItem): Selection {
 function itemStatus(item: ApprovalInboxItem) {
   if (item.view === "done" && item.decision_action !== null) {
     return (
-      <StatusText
-        tone={item.decision_action === "approve" ? "good" : "attention"}
-      >
+      <StatusText tone={item.decision_action === "approve" ? "good" : "attention"}>
         {approvalActionLabel(item.decision_action)}
       </StatusText>
     );
@@ -158,9 +146,7 @@ function ApprovalInboxList({
         render: (_: unknown, item) => (
           <div className="approval-contract-cell">
             <strong>{item.contract_name}</strong>
-            <span className="approval-mono">
-              {item.contract_number ?? item.contract_id}
-            </span>
+            <span className="approval-mono">{item.contract_number ?? item.contract_id}</span>
           </div>
         ),
       },
@@ -171,9 +157,7 @@ function ApprovalInboxList({
           <div className="approval-round-cell">
             <span>第 {item.round_number} 轮</span>
             <span className="approval-muted">
-              {item.node_code === null
-                ? "未返回节点"
-                : approvalNodeLabel(item.node_code)}
+              {item.node_code === null ? "未返回节点" : approvalNodeLabel(item.node_code)}
             </span>
           </div>
         ),
@@ -226,9 +210,7 @@ function ApprovalInboxList({
   return (
     <div className="approval-list">
       <Table<ApprovalInboxItem>
-        rowKey={(item) =>
-          `${item.view}:${item.task_id ?? item.approval_round_id}`
-        }
+        rowKey={(item) => `${item.view}:${item.task_id ?? item.approval_round_id}`}
         columns={columns}
         dataSource={items}
         pagination={false}
@@ -277,20 +259,15 @@ function RoundHistory({
           <li key={item.round.approval_round_id}>
             <button
               type="button"
-              className={
-                item.round.approval_round_id === currentRoundId
-                  ? "is-current"
-                  : ""
-              }
+              className={item.round.approval_round_id === currentRoundId ? "is-current" : ""}
               onClick={() => onSelect(contractId, item.round)}
             >
               <span>
-                第 {item.round.round_number} 轮 ·{" "}
-                {approvalRoundStateLabel(item.round.state)}
+                第 {item.round.round_number} 轮 · {approvalRoundStateLabel(item.round.state)}
               </span>
               <span className="approval-muted">
-                {formatDateTime(item.round.started_at)} ·{" "}
-                {item.decision_count}/{item.task_count} 个节点已决定
+                {formatDateTime(item.round.started_at)} · {item.decision_count}/{item.task_count}{" "}
+                个节点已决定
               </span>
               {item.active_task ? (
                 <span className="approval-muted">
@@ -384,25 +361,13 @@ function DecisionForm({
         />
       </label>
       {notice !== null ? (
-        <Alert
-          type={mutation.isError ? "error" : "info"}
-          showIcon
-          message={notice}
-        />
+        <Alert type={mutation.isError ? "error" : "info"} showIcon message={notice} />
       ) : null}
       <div className="approval-decision-actions">
-        <Button
-          type="primary"
-          loading={mutation.isPending}
-          onClick={() => submit("approve")}
-        >
+        <Button type="primary" loading={mutation.isPending} onClick={() => submit("approve")}>
           通过
         </Button>
-        <Button
-          danger
-          loading={mutation.isPending}
-          onClick={() => submit("return")}
-        >
+        <Button danger loading={mutation.isPending} onClick={() => submit("return")}>
           退回修改
         </Button>
       </div>
@@ -410,11 +375,7 @@ function DecisionForm({
   );
 }
 
-function RevisionDiff({
-  detail,
-}: {
-  detail: ApprovalRoundReadDetail;
-}) {
+function RevisionDiff({ detail }: { detail: ApprovalRoundReadDetail }) {
   if (detail.previous_round === null) {
     return (
       <section className="approval-detail-section" aria-label="轮次差异">
@@ -428,8 +389,7 @@ function RevisionDiff({
       <section className="approval-detail-section" aria-label="轮次差异">
         <h3>轮次差异</h3>
         <p className="approval-muted">
-          本轮与第 {detail.previous_round.round_number}{" "}
-          轮使用同一冻结版本，正文没有变化。
+          本轮与第 {detail.previous_round.round_number} 轮使用同一冻结版本，正文没有变化。
         </p>
       </section>
     );
@@ -439,11 +399,9 @@ function RevisionDiff({
     <section className="approval-detail-section" aria-label="轮次差异">
       <h3>轮次差异</h3>
       <p className="approval-muted">
-        第 {diff.from_revision_number ?? "—"} 版 → 第 {diff.to_revision_number}{" "}
-        版；{diff.changed ? "存在字段变化。" : "未返回字段变化。"}
-        {diff.amount_terms.length > 0
-          ? ` 金额或标的相关变化 ${diff.amount_terms.length} 项。`
-          : ""}
+        第 {diff.from_revision_number ?? "—"} 版 → 第 {diff.to_revision_number} 版；
+        {diff.changed ? "存在字段变化。" : "未返回字段变化。"}
+        {diff.amount_terms.length > 0 ? ` 金额或标的相关变化 ${diff.amount_terms.length} 项。` : ""}
       </p>
       {diff.fields.length === 0 ? (
         <p className="approval-muted">没有返回普通字段差异。</p>
@@ -502,9 +460,7 @@ function RoundTimeline({
       <h3>节点与意见 · {approvalProgressLabel(detail.tasks.map((task) => task.state))}</h3>
       <ol className="approval-timeline">
         {detail.tasks.map((task) => {
-          const decision = detail.decisions.find(
-            (item) => item.task_id === task.task_id,
-          );
+          const decision = detail.decisions.find((item) => item.task_id === task.task_id);
           const current = task.task_id === detail.active_task_id;
           return (
             <li
@@ -526,9 +482,7 @@ function RoundTimeline({
               </div>
               <div className="approval-muted">
                 受理人：{task.assignee_display}
-                {task.activated_at
-                  ? ` · 激活 ${formatDateTime(task.activated_at)}`
-                  : ""}
+                {task.activated_at ? ` · 激活 ${formatDateTime(task.activated_at)}` : ""}
                 {task.decided_at ? ` · 决定 ${formatDateTime(task.decided_at)}` : ""}
               </div>
               {decision ? (
@@ -556,17 +510,14 @@ function ApprovalDetailBody({
   selectedTaskId: string | null;
   onSelectRound: (contractId: string, round: ApprovalRoundReadSummary) => void;
 }) {
-  const activeTask = detail.tasks.find(
-    (task) => task.task_id === detail.active_task_id,
-  );
+  const activeTask = detail.tasks.find((task) => task.task_id === detail.active_task_id);
   return (
     <>
       <header className="approval-detail-head">
         <div>
           <h2>{detail.contract_name}</h2>
           <p className="approval-muted">
-            {detail.contract_number ?? detail.contract_id} · 第{" "}
-            {detail.round.round_number} 轮 ·{" "}
+            {detail.contract_number ?? detail.contract_id} · 第 {detail.round.round_number} 轮 ·{" "}
             {approvalRoundStateLabel(detail.round.state)}
           </p>
         </div>
@@ -589,17 +540,12 @@ function ApprovalDetailBody({
         </div>
         <div>
           <dt>结束时间</dt>
-          <dd>
-            {detail.round.ended_at
-              ? formatDateTime(detail.round.ended_at)
-              : "尚未结束"}
-          </dd>
+          <dd>{detail.round.ended_at ? formatDateTime(detail.round.ended_at) : "尚未结束"}</dd>
         </div>
         <div>
           <dt>流程模板</dt>
           <dd>
-            {detail.round.workflow_template_id} /{" "}
-            {detail.round.workflow_template_version}
+            {detail.round.workflow_template_id} / {detail.round.workflow_template_version}
           </dd>
         </div>
         <div>
@@ -608,9 +554,7 @@ function ApprovalDetailBody({
             {detail.risk_disposition_state === "unknown"
               ? "未配置，不能视为已接受风险"
               : detail.risk_disposition_state}
-            {detail.risk_disposition_reason
-              ? `（${detail.risk_disposition_reason}）`
-              : ""}
+            {detail.risk_disposition_reason ? `（${detail.risk_disposition_reason}）` : ""}
           </dd>
         </div>
         <div>
@@ -640,8 +584,7 @@ function ApprovalDetailPanel({
   onClose: () => void;
 }) {
   const taskId = selection?.kind === "task" ? selection.taskId : null;
-  const roundContractId =
-    selection?.kind === "round" ? selection.contractId : null;
+  const roundContractId = selection?.kind === "round" ? selection.contractId : null;
   const roundId = selection?.kind === "round" ? selection.roundId : null;
   const task = useApprovalTaskDetail(taskId);
   const round = useContractApprovalRound(roundContractId, roundId);
@@ -680,13 +623,8 @@ function ApprovalDetailPanel({
     );
   }
   const detail: ApprovalRoundReadDetail | null =
-    selection.kind === "task"
-      ? (task.data?.round_detail ?? null)
-      : (round.data ?? null);
-  const selectedTaskId =
-    selection.kind === "task"
-      ? (task.data?.selected_task_id ?? null)
-      : null;
+    selection.kind === "task" ? (task.data?.round_detail ?? null) : (round.data ?? null);
+  const selectedTaskId = selection.kind === "task" ? (task.data?.selected_task_id ?? null) : null;
   if (detail === null) {
     return (
       <aside className="approval-detail" aria-label="会签详情">
@@ -716,10 +654,7 @@ export function ApprovalTasksPage() {
   const session = useSession();
   const actor = session.data ?? null;
   const inbox = useApprovalInbox(view, actorScope(actor), actor !== null);
-  const items = useMemo(
-    () => inbox.data?.pages.flatMap((page) => page.items) ?? [],
-    [inbox.data],
-  );
+  const items = useMemo(() => inbox.data?.pages.flatMap((page) => page.items) ?? [], [inbox.data]);
   const [selection, setSelection] = useState<Selection>(null);
 
   function changeView(next: string) {
