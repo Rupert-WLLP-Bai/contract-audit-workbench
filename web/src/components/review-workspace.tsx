@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r8
+// Updated: 2026-11-09
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -39,7 +39,7 @@ import { BusinessAgentReviewView } from "./business-agent-review";
 import { TrajectoryView } from "./trajectory-view";
 import { SingleContractScopeCoverage } from "./single-contract-scope-coverage";
 import { ReviewOutcomeSummary } from "./review-outcome-summary";
-import { canRestartUserCancelled, hasTransientRetryCause } from "../features/review/review-outcome";
+import { canReadmitCancelledPreparation, canRestartUserCancelled, hasTransientRetryCause, selectedOutcome } from "../features/review/review-outcome";
 import { StatusText } from "./status-text";
 import { TechnicalDetail } from "./technical-detail";
 import "./review-workspace-layout.css";
@@ -209,17 +209,15 @@ function TraceLink({
   );
 }
 
-function RunCallouts({ run }: { run: ReviewRun }) {
+function RunCallouts({ run, compact = false }: { run: ReviewRun; compact?: boolean }) {
   return (
     <>
       {run.state === "partial" ? (
         <>
           <p className="callout">
-            {run.partial_reason ?? "部分结果已保留。"}
+            {compact ? "部分完成：" : ""}{run.partial_reason ?? "部分结果已保留。"}
           </p>
-          <p className="meta">
-            部分完成：有的项目已出结果，有的还缺材料或证据。
-          </p>
+          {!compact ? <p className="meta">部分完成：有的项目已出结果，有的还缺材料或证据。</p> : null}
         </>
       ) : null}
       {run.state === "failed" ? (
@@ -461,6 +459,68 @@ function WorkspaceResizeHandle({
   );
 }
 
+function DocumentRunStatus({
+  workspace,
+  streamStatus,
+  selected,
+  attempts,
+  onSelectAttempt,
+  canCancel,
+  cancelling,
+  cancelError,
+  onCancel,
+}: {
+  workspace: ReviewWorkspace;
+  streamStatus: StreamStatus;
+  selected: ExecutionAttempt | null;
+  attempts: ExecutionAttempt[];
+  onSelectAttempt: (attemptId: string) => void;
+  canCancel: boolean;
+  cancelling: boolean;
+  cancelError: string | null;
+  onCancel: () => void;
+}) {
+  const outcome = selectedOutcome(workspace);
+  const preparing = workspace.review_attempts?.attempt.history_kind === "preparing";
+  const casePath = `/cases/${encodeURIComponent(workspace.run.case_id)}`;
+  return (
+    <>
+      <div className="review-run-controls"><span className="meta">{STREAM_LABEL[streamStatus]}</span>
+      {preparing ? <p>该执行尚未冻结审查输入，检查范围与人工进度待冻结后确认。</p> : null}
+      {preparing && outcome?.reason === "cancelled_by_user" && canReadmitCancelledPreparation(workspace) ? (
+        <p><a href={`${casePath}#review-readiness`}>返回审查准备清单</a></p>
+      ) : null}
+      {outcome?.reason === "authorization_revoked" ? <p>本次执行因授权变化而取消，请联系案件管理员核对权限。</p> : null}
+      {outcome?.reason === "cancelled_by_user" && !canReadmitCancelledPreparation(workspace) && !canRestartUserCancelled(workspace) ? (
+        <p>审查由用户主动取消；冻结输入尚不能核对，请查看审查准备。</p>
+      ) : null}
+      {selected ? (
+        <label className="field">
+          查看执行记录
+          <Select
+            aria-label="查看执行记录"
+            value={selected.id}
+            onChange={onSelectAttempt}
+            options={attemptOptions(attempts)}
+          />
+        </label>
+      ) : (
+        <p>没有获取到本次审查的执行记录。未记录的阶段、耗时和用量不会显示为已知。</p>
+      )}
+      </div>
+      {selected?.history_kind === "legacy_unfrozen" ? (
+        <p className="callout">较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。</p>
+      ) : null}
+      {canCancel ? (
+        <Button type="text" disabled={cancelling} onClick={onCancel}>
+          {cancelling ? "正在取消" : "取消本次执行"}
+        </Button>
+      ) : null}
+      {cancelError ? <p role="alert">{cancelError}</p> : null}
+    </>
+  );
+}
+
 export function ReviewWorkspaceView({
   workspace,
   layout,
@@ -498,6 +558,7 @@ export function ReviewWorkspaceView({
   onSelectEvidence,
   workTarget = null,
   navigationSerial = 0,
+  surface = "full",
 }: {
   workspace: ReviewWorkspace;
   layout: ReviewLayout;
@@ -540,10 +601,11 @@ export function ReviewWorkspaceView({
   onSelectEvidence?: (evidenceId: string | null) => void;
   workTarget?: WorkTarget | null;
   navigationSerial?: number;
+  surface?: "full" | "document" | "trace" | "coverage";
 }) {
   const { run } = workspace;
   const { selected, attempts } = attemptsOf(workspace);
-  const [findingColumnWidth, setFindingColumnWidth] = useState(360);
+  const [findingColumnWidth, setFindingColumnWidth] = useState(440);
   const [workspaceView, setWorkspaceView] = useState<"context" | "evidence">("evidence");
   const evidenceViewButton = useRef<HTMLButtonElement>(null);
   const focusEvidenceAfterSwitch = useRef(false);
@@ -566,25 +628,59 @@ export function ReviewWorkspaceView({
   const gridStyle = {
     "--finding-column-width": `${findingColumnWidth}px`,
   } as CSSProperties;
+  const showDocument = surface === "full" || surface === "document";
+  const showCoverage = surface === "full" || surface === "coverage";
+  const showTrace = surface === "full" || surface === "trace";
+  const showRetry = hasTransientRetryCause(workspace) || canRestartUserCancelled(workspace);
   return (
     <div className="workspace">
-      <WorkspaceBanner
-        run={run}
-        documents={workspace.documents}
-        findings={workspace.findings}
-        streamStatus={streamStatus}
-        retrying={retrying}
-        canRetry={canRetry}
-        onRetry={onRetry}
-        showRetry={hasTransientRetryCause(workspace) || canRestartUserCancelled(workspace)}
-        restartCancelled={canRestartUserCancelled(workspace)}
-        hasExecution={workspace.execution !== null}
-        diagnosticsLoading={diagnosticsLoading}
-        onLoadDiagnostics={onLoadDiagnostics}
-      />
-      <ReviewOutcomeSummary workspace={workspace} />
-      <SingleContractScopeCoverage mode="workspace" workspace={workspace} />
-      <RunCallouts run={run} />
+      {surface === "full" ? (
+        <WorkspaceBanner
+          run={run}
+          documents={workspace.documents}
+          findings={workspace.findings}
+          streamStatus={streamStatus}
+          retrying={retrying}
+          canRetry={canRetry}
+          onRetry={onRetry}
+          showRetry={showRetry}
+          restartCancelled={canRestartUserCancelled(workspace)}
+          hasExecution={workspace.execution !== null}
+          diagnosticsLoading={diagnosticsLoading}
+          onLoadDiagnostics={onLoadDiagnostics}
+        />
+      ) : null}
+      {surface === "document" ? (
+        <>
+          <DocumentRunStatus
+            workspace={workspace}
+            streamStatus={streamStatus}
+            selected={selected}
+            attempts={attempts}
+            onSelectAttempt={onSelectAttempt}
+            canCancel={canCancel}
+            cancelling={cancelling}
+            cancelError={cancelError}
+            onCancel={onCancel}
+          />
+        </>
+      ) : null}
+      {showCoverage ? (
+        <>
+          <ReviewOutcomeSummary workspace={workspace} />
+          <SingleContractScopeCoverage mode="workspace" workspace={workspace} />
+        </>
+      ) : null}
+      {surface === "full" || surface === "document" ? <RunCallouts run={run} compact={surface === "document"} /> : null}
+      {surface === "document" && showRetry ? (
+        <RetryButton
+          retrying={retrying}
+          canRetry={canRetry}
+          onRetry={onRetry}
+          restartCancelled={canRestartUserCancelled(workspace)}
+        />
+      ) : null}
+      {showDocument ? (<>
       <div className="review-workspace-view-switch" role="group" aria-label="工作区视图">
         <Button
           htmlType="button"
@@ -646,6 +742,8 @@ export function ReviewWorkspaceView({
           navigationSerial={navigationSerial}
         />
       </div>
+      </> ) : null}
+      {showCoverage ? (
       <BusinessAgentReviewView
         review={workspace.agent_review ?? null}
         caseId={run.case_id}
@@ -656,10 +754,20 @@ export function ReviewWorkspaceView({
         selectedGapId={workTarget?.kind === "gap" ? workTarget.id : null}
         navigationSerial={navigationSerial}
       />
-      {workspace.execution ? (
+      ) : null}
+      {surface === "trace" ? (
+        <div className="workspace-banner">
+          <TraceLink
+            hasExecution={workspace.execution !== null}
+            diagnosticsLoading={diagnosticsLoading}
+            onLoadDiagnostics={onLoadDiagnostics}
+          />
+        </div>
+      ) : null}
+      {showTrace && workspace.execution ? (
         <TrajectoryView execution={workspace.execution} />
       ) : null}
-      {workspace.execution ? (
+      {showTrace ? (workspace.execution ? (
         <ExecutionInspector
           execution={workspace.execution}
           caseId={run.case_id}
@@ -684,7 +792,7 @@ export function ReviewWorkspaceView({
           cancelError={cancelError}
           onCancel={onCancel}
         />
-      )}
+      )) : null}
     </div>
   );
 }

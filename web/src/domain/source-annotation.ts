@@ -48,7 +48,7 @@ function comparableGlyphs(text: string): string {
   const chars = Array.from(text);
   return chars.map((char, index) => {
     if (char === "：") return ":";
-    if (char === "。" && !/[0-9]/.test(chars[index - 1] ?? "") && !/[0-9]/.test(chars[index + 1] ?? "")) return ".";
+    if (char === "。" && !/[0-9]/.test(chars[index - 1] ?? "")) return ".";
     return char;
   }).join("");
 }
@@ -85,7 +85,9 @@ export function locateSourceQuote(
   for (let at = comparableText.indexOf(needle); at >= 0; at = comparableText.indexOf(needle, at + 1)) {
     const previous = text[at - 1] ?? "";
     const following = text[at + needle.length] ?? "";
-    if (/^[0-9]/.test(needle) && /[0-9.,+\-−。．]/.test(previous)) continue;
+    const beforePrevious = text[at - 2] ?? "";
+    if (/^[0-9]/.test(needle) && (/[0-9+\-−.,．，]/.test(previous) ||
+      (previous === "。" && !/\p{Script=Han}/u.test(beforePrevious)))) continue;
     if (/[0-9]$/.test(needle) && /[0-9.,]/.test(following)) continue;
     if (/^[A-Za-z]/.test(needle) && /[A-Za-z0-9_]/.test(previous) && !boundaries.has(at)) continue;
     if (/[A-Za-z]$/.test(needle) && /[A-Za-z0-9_]/.test(following) && !boundaries.has(at + needle.length)) continue;

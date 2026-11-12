@@ -369,7 +369,7 @@ describe("document stage rendering states", () => {
     });
     expect(screen.getByText("解析失败")).toBeInTheDocument();
     expect(
-      screen.getByText("这份材料解析失败，不能据此给出无风险结论。"),
+      screen.getByText("这份材料解析失败，请先处理解析问题再继续审查。"),
     ).toBeInTheDocument();
     expect(screen.getByText("解析器失败")).toBeInTheDocument();
     expect(screen.getByText("保存的引用")).toBeInTheDocument();

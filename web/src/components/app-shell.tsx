@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-07
-// Revision: r3
+// Updated: 2026-11-09
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -19,6 +19,7 @@ import {
   type NavigateFunction,
 } from "react-router";
 import { useCaseDetail, useLogout, useSession } from "../api/queries";
+import { presentedPersonName } from "../domain/organization";
 import { actorRoleLabel } from "../domain/review";
 import { Avatar, Breadcrumb, Button, Input, Layout, Menu } from "antd";
 import {
@@ -372,10 +373,10 @@ function AppTopbar({
         {actor ? (
           <>
             <Avatar className="header-avatar">
-              {Array.from(actor.display_name)[0]}
+              {Array.from(presentedPersonName(actor.id, actor.display_name))[0]}
             </Avatar>
             <span className="identity-copy">
-              <strong>{actor.display_name}</strong>
+              <strong>{presentedPersonName(actor.id, actor.display_name)}</strong>
               <span className="meta">{actorRoleLabel(actor.role)}</span>
             </span>
           </>

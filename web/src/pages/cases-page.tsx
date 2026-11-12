@@ -3,13 +3,13 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r6
+// Updated: 2026-11-09
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Button, Input, Modal, Pagination, Select, Tabs } from "antd";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { errorMessage, isForbidden } from "../api/http";
 import { useCases, useCreateCase, useSession } from "../api/queries";
@@ -98,7 +98,6 @@ export function CasesPage() {
     (!confirmedActorScope || !confirmedCases));
   const previousActorScope = useRef(actorScope);
   const [open, setOpen] = useState(false);
-  const titleId = useId();
   const [title, setTitle] = useState("");
   const [contractType, setContractType] = useState("service");
   const [scenario, setScenario] = useState("telecom_dedicated_line");
@@ -425,7 +424,6 @@ export function CasesPage() {
           destroyOnHidden
         >
           <form onSubmit={onCreate}>
-            <h2 id={titleId}>新建案件</h2>
             <label className="field">
               标题
               <Input

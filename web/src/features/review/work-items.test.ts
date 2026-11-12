@@ -56,6 +56,13 @@ function detail(): CaseDetail {
 }
 
 describe("人工办理投影", () => {
+  it("uses the same readable title for a known rule finding in the work queue", () => {
+    const input = workspace();
+    input.findings = [{ ...finding("f-rule", "rule"), relation: "insufficient", claim: "规则 ENT-COM-ADV-001 信息不足：缺少采购文件或中标文件中的合同依据。" }];
+    expect(projectReviewWork(input, detail(), []).items.find((item) => item.target?.id === "f-rule")?.title).toBe("预付款依据不足，暂无法核对");
+    expect(input.findings[0]?.claim).toContain("ENT-COM-ADV-001");
+  });
+
   it("groups only an identical source projection, while preserving independent requests, findings, and old-scope remediation", () => {
     const result = projectReviewWork(workspace(), detail(), [request("r1", "g1"), request("r2", "g1"), request("r-old", "g1", "run-old", "attempt-old")]);
     expect(result.items.filter((item) => item.category === "judgment").map((item) => item.target?.id)).toEqual(["f-rule", "f-model"]);
@@ -223,6 +230,8 @@ describe("办理返回路径", () => {
   it("retains only local same-case review identities and rechecks the actor context", () => {
     const state = workReturnState("/cases/case-1/reviews/run-1?attempt_id=a1&work_filter=evidence&work_item=r1&secret=example", "case-1", "actor-a");
     expect(readWorkReturn(state, "case-1", "actor-a")).toBe("/cases/case-1/reviews/run-1?attempt_id=a1&work_filter=evidence&work_item=r1");
+    const section = workReturnState("/cases/case-1/reviews/run-1?review_section=work&review_section_extra=no", "case-1", "actor-a");
+    expect(readWorkReturn(section, "case-1", "actor-a")).toBe("/cases/case-1/reviews/run-1?review_section=work");
     expect(readWorkReturn(state, "case-1", "actor-b")).toBeNull();
     for (const path of ["https://evil.test/cases/case-1/reviews/r", "//evil.test/cases/case-1/reviews/r", "/cases/other/reviews/r", "/cases/case-1/reviews/r/extra", "/cases/case-1/../reviews/r"]) {
       expect(reviewReturnPath(path, "case-1")).toBeNull();

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-09
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -335,7 +335,7 @@ test("evidence request, receipt, later review and verification", operations("cre
   await warrantyOption.evaluate((element) => (element as HTMLElement).click());
   await panel.getByLabel("任务名称", { exact: true }).fill(`补充质保材料 ${stamp}`);
   await panel.getByRole("combobox", { name: "责任人" }).click();
-  await chooseVisibleOption(page, "演示审查员");
+  await chooseVisibleOption(page, "Oliver Bennett");
   await panel.getByLabel("完成期限（本地时间）", { exact: true }).fill("2027-12-31T18:00");
   await panel.getByLabel("需要补充的问题", { exact: true }).fill(question);
   await panel.getByRole("combobox", { name: "要求的材料类型" }).click();

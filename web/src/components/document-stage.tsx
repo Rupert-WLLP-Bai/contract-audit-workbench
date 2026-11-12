@@ -1,3 +1,4 @@
+import { findingTitle } from "../domain/finding-presentation";
 // File metadata (manifest mirror):
 // Purpose: Renders DocumentStage, the document stage workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
@@ -854,12 +855,12 @@ const RelatedFindings = memo(function RelatedFindings({
           {findings.map((item) => (
             <li key={item.id}>
               <Button
-                aria-label={"查看线索：" + String(item.claim || "未命名线索")}
+                aria-label={"查看线索：" + findingTitle(item)}
                 htmlType="button"
                 aria-pressed={selectedFindingId === item.id}
                 onClick={() => onSelectFinding(item.id)}
               >
-                查看线索：{item.claim || "未命名线索"}
+                查看线索：{findingTitle(item)}
               </Button>
             </li>
           ))}
@@ -1332,7 +1333,14 @@ function useScrollToEvidence(
     const mark = document.querySelector(
       '.col-doc [data-active-source="true"] .hit-evidence',
     );
-    if (mark instanceof HTMLElement) mark.scrollIntoView({ block: "nearest" });
+    const pane = mark?.closest<HTMLElement>(".col-doc");
+    if (mark instanceof HTMLElement && pane && pane.scrollHeight > pane.clientHeight) {
+      const markRect = mark.getBoundingClientRect();
+      const paneRect = pane.getBoundingClientRect();
+      // Move only the document pane. Scrolling every ancestor would overwrite the
+      // page's restored position when opening a finding or switching materials.
+      pane.scrollTop += markRect.top - paneRect.top - pane.clientHeight / 2;
+    }
   }, [finding, active]);
 }
 

@@ -19,6 +19,7 @@ import { invalidateSessionIdentity, queryRetryDelay, shouldRetryQuery } from "./
 import { clearIdentityQueries } from "./api/queries";
 import { installContextInvalidation } from "./api/context-sync";
 import { clearAllEvidenceDrafts } from "./features/review/evidence-request-drafts";
+import { ApplicationError } from "./components/application-error";
 import "./styles.css";
 
 const rootStyle = getComputedStyle(document.documentElement);
@@ -129,7 +130,9 @@ export function mountApplication(
     // dirty-form leave guards only works under RouterProvider.
     content = (
       <RouterProvider
-        router={createBrowserRouter([{ path: "*", element: content }])}
+        router={createBrowserRouter([
+          { path: "*", element: content, errorElement: <ApplicationError /> },
+        ])}
       />
     );
   if (options.queries !== false)

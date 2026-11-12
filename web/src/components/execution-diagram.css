@@ -1,0 +1,14 @@
+.execution-diagram { min-width: 0; }
+.execution-diagram-toolbar { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; color: var(--text-secondary); font-size: 12px; }
+.execution-diagram-toolbar > div { display: flex; flex-wrap: wrap; gap: 4px; }
+.execution-diagram button { border: 1px solid var(--border-default); background: var(--surface-raised); color: var(--text-secondary); border-radius: 6px; padding: 6px 9px; cursor: pointer; }
+.execution-diagram button:hover, .execution-diagram button[aria-pressed="true"] { border-color: var(--action-primary); color: var(--action-primary); }
+.execution-diagram button:focus-visible, .execution-diagram summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.execution-diagram-canvas { height: clamp(400px, 60vh, 560px); margin-top: 12px; overflow: hidden; border: 1px solid var(--border-default); border-radius: 10px; background: var(--surface-subtle); }
+.execution-diagram-canvas .lf-graph { background: transparent; }
+.execution-diagram-index { margin-top: 10px; font-size: 13px; }
+.execution-diagram-index summary { cursor: pointer; }
+.execution-diagram-index > div { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 10px; }
+
+.execution-diagram-pages { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--text-secondary); font-size: 12px; }
+.execution-diagram-pages button:disabled { opacity: .5; cursor: default; }

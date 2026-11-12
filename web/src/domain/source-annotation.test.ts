@@ -41,6 +41,29 @@ describe("original page citation annotations", () => {
     expect(locateSourceQuote(number, { ...citation, quote: number, end: number.length }, [word("1.5万元")], 1).kind).toBe("not_found");
   });
 
+  it("matches a sentence immediately followed by a numbered clause without changing values", () => {
+    for (const text of ["最低保障带宽 50 Mbit/s。", "可用率 99.5%。", "预付款 45%。"]) {
+      const citation = { id: "next-clause", quote: text, start: 0, end: text.length, page: 1 };
+      expect(locateSourceQuote(text, citation, [word(text + "4. 下一条")], 1).kind).toBe("located");
+    }
+    const numbered = "14.4 专项结算约定：预付款 45%。";
+    expect(locateSourceQuote(numbered, { id: "numbered", quote: numbered, start: 0, end: numbered.length, page: 1 }, [word("上一条结束。" + numbered + "14.5 下一条")], 1).kind).toBe("located");
+    expect(locateSourceQuote("50", { id: "number", quote: "50", start: 0, end: 2, page: 1 }, [word("1.50")], 1).kind).toBe("not_found");
+    for (const [text, other] of [["带宽 50 Mbit/s。", "带宽 100 Mbit/s。"], ["可用率 99.5%。", "可用率 99.9%。"], ["预付款 45%。", "预付款 30%。"]]) {
+      expect(locateSourceQuote(text!, { id: "numeric", quote: text!, start: 0, end: text!.length, page: 1 }, [word(other! + "4. 下一条")], 1).kind).toBe("not_found");
+    }
+  });
+
+  it("does not match a numeric suffix after decimal or grouping punctuation", () => {
+    const text = "50";
+    const citation = { id: "number", quote: text, start: 0, end: 2, page: 1 };
+    for (const observed of [".50", "-.50", "．50", ",50", "，50", "1,50"]) {
+      expect(locateSourceQuote(text, citation, [word(observed)], 1).kind, observed).toBe("not_found");
+    }
+    const numbered = "14.4 专项约定";
+    expect(locateSourceQuote(numbered, { id: "clause", quote: numbered, start: 0, end: numbered.length, page: 1 }, [word("上一条结束。" + numbered)], 1).kind).toBe("located");
+  });
+
   it("keeps a weak layout colon as context without highlighting it or accepting weak numeric punctuation", () => {
     const text = "条款：付款";
     const result = locateSourceQuote(text, { id: "separator", quote: text, start: 0, end: text.length, page: 1 },

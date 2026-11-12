@@ -748,8 +748,42 @@ export type DecisionInput = Omit<WireSchemas["DecisionRequest"], "expected_versi
   expectedVersion: WireSchemas["DecisionRequest"]["expected_version"];
 };
 
+export interface FrozenPlannerIdentity {
+  mode: string;
+  configuration_id: string;
+  model_configuration_id: string | null;
+  prompt_version: string;
+  schema_version: string;
+  runtime_version: string;
+  tool_catalog_version: string;
+  max_rounds: number;
+}
+
+export interface FrozenRulePackIdentity {
+  id: string;
+  version: string;
+  content_sha256: string;
+}
+
+export interface FrozenKnowledgeSelectionView {
+  knowledge_id: string;
+  version_id: string;
+  kind: string;
+  selection_reason: string;
+  required: boolean;
+}
+
+export interface FrozenKnowledgeView {
+  snapshot_sha256: string;
+  rulepack: FrozenRulePackIdentity | null;
+  selections: FrozenKnowledgeSelectionView[];
+}
+
 export interface RunSnapshot {
   document_ids: string[];
+  parsed_document_ids?: string[];
+  parse_selection_hash?: string;
+  parser_configuration_id?: string;
   business_at?: string | null;
   rule_set_hash: string;
   playbook_hash: string;
@@ -757,6 +791,8 @@ export interface RunSnapshot {
   review_scope?: ReviewScopeIdentity;
   comparator_ref: string | null;
   adopted_tenant_config?: { version_id: string; digest: string } | null;
+  planner?: FrozenPlannerIdentity;
+  governed_knowledge?: FrozenKnowledgeView | null;
 }
 
 export interface ConstraintEvaluation {

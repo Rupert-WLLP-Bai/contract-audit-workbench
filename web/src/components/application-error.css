@@ -1,0 +1,51 @@
+/* File metadata (manifest mirror):
+Purpose: Styles the native route error recovery page with shared semantic tokens and wrapping actions for narrow screens.
+Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+Contact: +86 13617696321
+Created: unknown
+Updated: unknown
+Revision: r1
+Copyright: See LICENSE
+End file metadata. */
+
+@layer components {
+  .application-error {
+    width: min(40rem, calc(100% - 2rem));
+    margin: clamp(2rem, 12vh, 8rem) auto;
+    padding: var(--space-4);
+    background: var(--surface-raised);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-control);
+  }
+
+  .application-error h1 {
+    margin: 0 0 var(--space-3);
+  }
+
+  .application-error p {
+    color: var(--text-secondary);
+  }
+
+  .application-error-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+  }
+
+  .application-error-actions button {
+    min-height: 2.5rem;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--button-primary-bg);
+    border-radius: var(--radius-control);
+    color: var(--button-primary-fg);
+    background: var(--button-primary-bg);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .application-error-actions button:hover {
+    background: var(--button-primary-hover-bg);
+  }
+}

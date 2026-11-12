@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-07
-// Revision: r4
+// Updated: 2026-11-09
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -117,6 +117,16 @@ describe("app shell", () => {
     expect(screen.getByText("租户一")).toBeInTheDocument();
     expect(screen.getByText("页面内容")).toBeInTheDocument();
     expect(screen.getByText("跳到主要内容")).toBeInTheDocument();
+  });
+
+  it("shows the district roster name for a previous demo person label", () => {
+    mocks.useSession.mockReturnValue({
+      data: { ...actor, id: "demo-admin", display_name: "演示管理员", role: "admin" },
+    });
+    renderShell();
+    const who = screen.getByLabelText("当前身份");
+    expect(within(who).getByText("James Carter")).toBeInTheDocument();
+    expect(within(who).queryByText("演示管理员")).not.toBeInTheDocument();
   });
 
   it("shows an unknown identity while the session loads", () => {

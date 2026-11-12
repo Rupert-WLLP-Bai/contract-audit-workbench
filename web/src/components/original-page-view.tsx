@@ -184,6 +184,10 @@ export default function OriginalPageView({ scope, documentId, filename, digest, 
     if (!container || !region) return;
     container.scrollTo({ top: Math.max(0, region.offsetTop - (container.clientHeight - region.offsetHeight) / 2),
       left: Math.max(0, region.offsetLeft - (container.clientWidth - region.offsetWidth) / 2) });
+    const pane = container.closest<HTMLElement>(".col-doc");
+    if (pane && pane.scrollHeight > pane.clientHeight) {
+      pane.scrollTop += region.getBoundingClientRect().top - pane.getBoundingClientRect().top - pane.clientHeight / 2;
+    }
   }, [highlightKey, page, zoom]);
 
   return (

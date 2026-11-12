@@ -116,6 +116,16 @@ function renderPanel(props: Partial<Parameters<typeof FindingPanel>[0]> = {}) {
 }
 
 describe("finding panel", () => {
+  it("explains a known insufficient rule result without changing its status or hiding its source", async () => {
+    const claim = "规则 ENT-COM-ADV-001 信息不足：缺少采购文件或中标文件中的合同依据。";
+    renderPanel({ findings: [finding({ claim, relation: "insufficient", verification_status: "unverified", unverified_reason: claim, evidence: [], severity: null })], selectedId: "finding-1" });
+    expect(screen.getAllByText("预付款依据不足，暂无法核对").length).toBeGreaterThan(0);
+    expect(within(screen.getByLabelText("当前选中线索")).getByText("缺少采购文件或中标文件中的合同依据。请补充相关文件，再核对预付款约定。")).toBeInTheDocument();
+    expect(screen.getByText("这条线索没有附带证据，不能视为已验证。")).toBeInTheDocument();
+    expect(screen.getByText("规则原始结果与编号")).toBeInTheDocument();
+    expect(screen.getByText(claim)).toBeInTheDocument();
+  });
+
   it("counts severities and includes an unrated bucket only when needed", () => {
     const findings = [
       finding({ id: "f1", severity: "high" }),

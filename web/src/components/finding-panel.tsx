@@ -42,6 +42,7 @@ import {
 } from "../domain/review";
 import { evidenceSourceMatches, resolveAnchor } from "../domain/text";
 import { businessDomainLabel } from "../domain/business-labels";
+import { findingPresentation, findingTitle } from "../domain/finding-presentation";
 import { FindingBatchControls } from "./finding-batch-controls";
 import { TechnicalDetail } from "./technical-detail";
 const FILTERS: { id: FindingFilter; label: string }[] = [
@@ -134,7 +135,7 @@ function FindingListRow({
     <li>
       <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-2)" }}>
       <Checkbox
-        aria-label={`批量选择线索：${finding.claim || "未命名线索"}`}
+        aria-label={`批量选择线索：${findingTitle(finding)}`}
         title={selectionHint}
         checked={checked}
         disabled={selectionDisabled}
@@ -145,12 +146,12 @@ function FindingListRow({
         className="finding-button"
         data-relation={finding.relation}
         data-severity={finding.severity ?? "unrated"}
-        aria-label={`选择线索：${finding.claim || "未命名线索"}`}
+        aria-label={`选择线索：${findingTitle(finding)}`}
         aria-current={finding.id === selectedId}
         onClick={() => onSelect(finding.id)}
       >
         <span className="finding-card-title">
-          {finding.claim || "未命名线索"}
+          {findingTitle(finding)}
         </span>
         <span
           className="finding-grade"
@@ -187,14 +188,14 @@ function ClauseComparisonTab({
       {findings.map((item) => (
         <section key={item.id}>
           <Button
-            aria-label={String(item.claim)}
+            aria-label={findingTitle(item)}
             htmlType="button"
             onClick={() => {
               onSelect(item.id);
               onPanel("风险审查");
             }}
           >
-            {item.claim}
+            {findingTitle(item)}
           </Button>
           {item.evidence.map((anchor) => (
             <blockquote key={anchor.id}>
@@ -253,7 +254,7 @@ function ConclusionTab({ findings }: { findings: Finding[] }) {
       <p>规则结果、模型建议和人工判断分开保存。</p>
       {findings.map((item) => (
         <section key={item.id}>
-          <h3>{item.claim}</h3>
+          <h3>{findingTitle(item)}</h3>
           <p>
             {originLabel(item.origin)}，{relationLabel(item.relation)}
           </p>
@@ -333,14 +334,17 @@ function FindingDetailHeader({
   showDiagnostics: boolean;
 }) {
   const confidence = confidenceLabel(finding.confidence);
+  const presentation = findingPresentation(finding);
   return (
     <>
-      <h3>{finding.claim || "未命名线索"}</h3>
+      <h3>{findingTitle(finding)}</h3>
       <p className="meta">
         {originLabel(finding.origin)}，{relationLabel(finding.relation)}
         {confidence ? `，${confidence}` : ""}
         {finding.domain ? `，${businessDomainLabel(finding.domain)}` : ""}
       </p>
+      {presentation ? <p className="callout">{presentation.nextStep}</p> : null}
+      {presentation ? <TechnicalDetail label="规则原始结果与编号" value={presentation.raw} /> : null}
       <TechnicalDetail label="发现类型技术详情" value={JSON.stringify({ domain: finding.domain, origin: finding.origin, relation: finding.relation, confidence: finding.confidence })} />
       <FindingCircuit finding={finding} />
       {finding.severity_source ? (
@@ -356,7 +360,7 @@ function FindingDetailHeader({
           {finding.severity_source.reason}
         </p>
       ) : null}
-      {finding.unverified_reason ? (
+      {finding.unverified_reason && !(presentation && finding.unverified_reason === finding.claim) ? (
         <p className="callout">尚未核验：{finding.unverified_reason}</p>
       ) : null}
     </>
@@ -937,7 +941,7 @@ export function FindingPanel({
       batch.update((current) => ({
         ...current,
         selectedIds: outcome.status === "success" ? current.selectedIds.filter((id) => id !== finding.id) : current.selectedIds,
-        results: [...current.results.filter((result) => result.findingId !== finding.id), { findingId: finding.id, claim: finding.claim, status: outcome.status, message: outcome.message, confirmedVersion: null }],
+        results: [...current.results.filter((result) => result.findingId !== finding.id), { findingId: finding.id, claim: findingTitle(finding), status: outcome.status, message: outcome.message, confirmedVersion: null }],
       }));
     }
     if (successes.size === items.length) {
@@ -968,6 +972,11 @@ export function FindingPanel({
         )}
       />
       <div hidden={panel !== "风险审查"}>
+        {selected ? <div className="review-selected-finding" aria-label="当前选中线索">
+          <span className="meta">当前线索</span>
+          <strong>{findingTitle(selected)}</strong>
+          {findingPresentation(selected) ? <p>{findingPresentation(selected)?.nextStep}</p> : null}
+        </div> : null}
         <SeverityCounts findings={findings} />
         <FindingFilterButtons filter={filter} onChange={setFilter} />
         <p className="meta" aria-live="polite">当前筛选显示 {visible.length} / {findings.length} 条线索。</p>

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r6
+// Updated: 2026-11-09
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -37,6 +37,7 @@ import { QccMcpPanel } from "../components/qcc-mcp-panel";
 import { actorRoleLabel, caseHref, formatDateTime, parseLabel, parseTone, roleLabel, runLabel, runTone, taskKindLabel } from "../domain/review";
 import { caseOptionLabel } from "../domain/case-identity";
 import { businessActionLabel, businessSourceTypeLabel, remediationStatusLabel, suppliedBusinessName } from "../domain/business-labels";
+import { knownOrganizationName, presentOrganizationMembers } from "../domain/organization";
 import { SettingsPage } from "./settings-page";
 import "./workbench-module-page.css";
 
@@ -233,6 +234,10 @@ function technicalField(label: string, value: string | number | null): DetailFie
 
 function memberName(members: Map<string, string>, id: string): string {
   return suppliedBusinessName(members.get(id), "姓名未提供");
+}
+
+function shownOrganization(orgId: string): string {
+  return knownOrganizationName(orgId) ?? "组织名称未提供";
 }
 
 function auditFields(entries: WorkbenchSnapshot["audit"], memberView = false): DetailField[] {
@@ -738,7 +743,7 @@ function buildRecords(
     });
 
   if (module === "organization")
-    return snapshot.members.map((item) => {
+    return presentOrganizationMembers(snapshot.members).map((item) => {
       const fields = [
         technicalField("身份 ID", item.id),
         field("显示姓名", suppliedBusinessName(item.display_name, "姓名未提供")),
@@ -746,7 +751,7 @@ function buildRecords(
         technicalField("角色编码", item.role),
         field("租户", "租户名称未提供"),
         technicalField("租户 ID", item.tenant_id),
-        field("组织", "组织名称未提供"),
+        field("组织", shownOrganization(item.org_id)),
         technicalField("组织 ID", item.org_id),
       ];
       const memberEvents = [...(auditByActor.get(item.id) ?? [])]
@@ -760,7 +765,7 @@ function buildRecords(
             technicalField("角色编码", item.role),
             field("租户", "租户名称未提供"),
             technicalField("租户 ID", item.tenant_id),
-            field("组织", "组织名称未提供"),
+            field("组织", shownOrganization(item.org_id)),
             technicalField("组织 ID", item.org_id),
           ],
           "这些信息来自公开成员目录。访问案件时，系统仍会逐次检查权限。",
@@ -772,7 +777,7 @@ function buildRecords(
             technicalField("角色编码", item.role),
             field("租户", "租户名称未提供"),
             technicalField("租户 ID", item.tenant_id),
-            field("组织", "组织名称未提供"),
+            field("组织", shownOrganization(item.org_id)),
             technicalField("组织 ID", item.org_id),
           ],
           "成员信息不含每个案件的授权明细；具体可查看范围以服务端授权为准。",
@@ -788,7 +793,7 @@ function buildRecords(
       return make({
         id: item.id,
         title: suppliedBusinessName(item.display_name, "姓名未提供"),
-        subtitle: `${actorRoleLabel(item.role)}，组织名称未提供`,
+        subtitle: `${actorRoleLabel(item.role)}，${shownOrganization(item.org_id)}`,
         status: "当前身份可见",
         updatedAt: null,
         caseId: null,

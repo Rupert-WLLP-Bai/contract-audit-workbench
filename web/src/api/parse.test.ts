@@ -1306,6 +1306,72 @@ describe("response parser boundary values", () => {
     expect(workspace.execution?.agent_review).toBeNull();
   });
 
+  it("keeps a frozen planner and governed knowledge selection on diagnostics", () => {
+    const diagnostics = parseReviewDiagnostics({
+      case_id: "c1",
+      run_id: "r1",
+      execution: null,
+      audit_events: [],
+      snapshot: {
+        document_ids: ["doc-1"],
+        parsed_document_ids: ["parse-1"],
+        parse_selection_hash: "parse-hash",
+        parser_configuration_id: "parser-1",
+        rule_set_hash: "rules",
+        playbook_hash: "playbook",
+        model_ref: "panda-local/model",
+        comparator_ref: null,
+        governed_knowledge: {
+          snapshot_sha256: "sha",
+          rule_pack: { pack_id: "telecom-governed", version: "1", content_sha256: "pack" },
+          required_policies: [
+            {
+              ref: { knowledge_id: "policy-1", version_id: "v1" },
+              kind: "policy",
+              selection_reason: "in scope",
+            },
+          ],
+          optional_candidates: [],
+        },
+        planner: {
+          mode: "deterministic_planner",
+          configuration_id: "planner-id",
+          model_configuration_id: null,
+          prompt_version: "scope-tool-selection/v5",
+          schema_version: "agent-plan/v4",
+          runtime_version: "runtime",
+          tool_catalog_version: "catalog",
+          max_rounds: 2,
+        },
+      },
+    });
+    expect(diagnostics.snapshot?.planner?.mode).toBe("deterministic_planner");
+    expect(diagnostics.snapshot?.planner?.model_configuration_id).toBeNull();
+    expect(diagnostics.snapshot?.parsed_document_ids).toEqual(["parse-1"]);
+    expect(diagnostics.snapshot?.governed_knowledge?.rulepack?.id).toBe("telecom-governed");
+    expect(diagnostics.snapshot?.governed_knowledge?.selections).toEqual([
+      expect.objectContaining({ knowledge_id: "policy-1", required: true }),
+    ]);
+    expect(diagnostics.execution).toBeNull();
+  });
+
+  it("drops a malformed planner without dropping the rest of the diagnostics snapshot", () => {
+    const diagnostics = parseReviewDiagnostics({
+      case_id: "c1",
+      run_id: "r1",
+      execution: null,
+      audit_events: [],
+      snapshot: {
+        document_ids: ["doc-1"],
+        planner: { mode: "not-a-mode" },
+        governed_knowledge: null,
+      },
+    });
+    expect(diagnostics.snapshot?.document_ids).toEqual(["doc-1"]);
+    expect(diagnostics.snapshot?.planner).toBeUndefined();
+    expect(diagnostics.snapshot?.governed_knowledge).toBeNull();
+  });
+
   it("parses review diagnostics with an empty audit event list", () => {
     const diagnostics = parseReviewDiagnostics({
       case_id: "c1",

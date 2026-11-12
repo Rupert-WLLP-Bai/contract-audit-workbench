@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
-/* Updated: 2026-11-08 */
-/* Revision: r5 */
+/* Updated: 2026-11-09 */
+/* Revision: r6 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -1082,30 +1082,6 @@
   .login-mobile-brand {
     display: none;
   }
-  .page-review {
-    padding: 0;
-  }
-  .page-review > .page-head {
-    min-height: 36px;
-    margin: 0;
-    padding: var(--space-1) var(--space-3);
-    border-bottom: 1px solid var(--border-default);
-    background: var(--surface-raised);
-  }
-  .page-review > .page-head > div {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--space-2) var(--space-4);
-  }
-  .page-review > .page-head h1 {
-    font-size: 13px;
-    margin: 0;
-  }
-  .page-review > .page-head p {
-    margin: 0;
-    font-size: 13px;
-  }
   .workspace-banner {
     display: flex;
     flex-wrap: wrap;
@@ -1614,7 +1590,7 @@
   .page-review .col-nav,
   .page-review .col-doc,
   .page-review .col-findings {
-    height: calc(100dvh - 408px);
+    height: calc(100dvh - 260px);
     min-height: 330px;
   }
   @media (max-width: 1099px) {
@@ -2835,10 +2811,6 @@
     max-width: 1720px;
     margin-inline: auto;
     padding: 20px var(--space-6) 40px;
-  }
-  .page-review {
-    max-width: none;
-    padding: 0;
   }
   .page-head {
     margin-bottom: var(--space-4);

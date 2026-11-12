@@ -1161,3 +1161,6 @@
     transform: none;
   }
 }
+
+/* Give the execution diagram the page width; details follow the selected node. */
+.studio-execution-view .studio-execution-layout { grid-template-columns: minmax(0, 1fr); }

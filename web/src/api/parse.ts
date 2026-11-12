@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r5
+// Updated: 2026-11-09
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -33,6 +33,9 @@ import type {
   ExecutionUsage,
   Finding,
   FindingVerification,
+  FrozenKnowledgeSelectionView,
+  FrozenKnowledgeView,
+  FrozenRulePackIdentity,
   FindingCounts,
   HumanDecision,
   LLMEndpointView,
@@ -856,6 +859,96 @@ function parseRevisionComparisonSource(value: unknown): NonNullable<ReviewWorksp
   return { current: side(source.current), previous: side(source.previous) };
 }
 
+const FROZEN_PLANNER_MODES = new Set([
+  "fixed_chain",
+  "deterministic_planner",
+  "model_fixture",
+  "model_live",
+]);
+
+function optionalIDList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const ids = value.filter((item): item is string => typeof item === "string" && item !== "");
+  return ids.length > 0 ? ids : undefined;
+}
+
+function parseFrozenPlanner(value: unknown): RunSnapshot["planner"] {
+  if (!isRecord(value)) return undefined;
+  const mode = typeof value.mode === "string" ? value.mode : "";
+  const configurationID = typeof value.configuration_id === "string" ? value.configuration_id : "";
+  const promptVersion = typeof value.prompt_version === "string" ? value.prompt_version : "";
+  const schemaVersion = typeof value.schema_version === "string" ? value.schema_version : "";
+  const runtimeVersion = typeof value.runtime_version === "string" ? value.runtime_version : "";
+  const toolCatalogVersion = typeof value.tool_catalog_version === "string" ? value.tool_catalog_version : "";
+  const rounds = value.max_rounds;
+  const modelID = value.model_configuration_id;
+  if (
+    !FROZEN_PLANNER_MODES.has(mode) ||
+    configurationID === "" ||
+    promptVersion === "" ||
+    schemaVersion === "" ||
+    runtimeVersion === "" ||
+    toolCatalogVersion === "" ||
+    typeof rounds !== "number" ||
+    !Number.isInteger(rounds) ||
+    rounds < 0 ||
+    (modelID !== null && typeof modelID !== "string")
+  ) {
+    return undefined;
+  }
+  return {
+    mode,
+    configuration_id: configurationID,
+    model_configuration_id: typeof modelID === "string" && modelID !== "" ? modelID : null,
+    prompt_version: promptVersion,
+    schema_version: schemaVersion,
+    runtime_version: runtimeVersion,
+    tool_catalog_version: toolCatalogVersion,
+    max_rounds: rounds,
+  };
+}
+
+function parseFrozenKnowledge(value: unknown): FrozenKnowledgeView | null | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return null;
+  const snapshotSHA = typeof value.snapshot_sha256 === "string" ? value.snapshot_sha256 : "";
+  let rulepack: FrozenRulePackIdentity | null = null;
+  if (isRecord(value.rule_pack)) {
+    const id = value.rule_pack.pack_id;
+    const version = value.rule_pack.version;
+    const hash = value.rule_pack.content_sha256;
+    if (typeof id === "string" && id !== "" && typeof version === "string" && version !== "") {
+      rulepack = {
+        id,
+        version,
+        content_sha256: typeof hash === "string" ? hash : "",
+      };
+    }
+  }
+  const selections: FrozenKnowledgeSelectionView[] = [];
+  for (const key of ["required_policies", "optional_candidates"] as const) {
+    const list = value[key];
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      if (!isRecord(item) || !isRecord(item.ref)) continue;
+      const knowledgeID = item.ref.knowledge_id;
+      const versionID = item.ref.version_id;
+      if (typeof knowledgeID !== "string" || knowledgeID === "" || typeof versionID !== "string" || versionID === "") {
+        continue;
+      }
+      selections.push({
+        knowledge_id: knowledgeID,
+        version_id: versionID,
+        kind: typeof item.kind === "string" ? item.kind : "",
+        selection_reason: typeof item.selection_reason === "string" ? item.selection_reason : "",
+        required: key === "required_policies",
+      });
+    }
+  }
+  if (snapshotSHA === "" && rulepack === null && selections.length === 0) return null;
+  return { snapshot_sha256: snapshotSHA, rulepack, selections };
+}
+
 function parseSnapshot(value: unknown): RunSnapshot | null {
   if (!isRecord(value)) return null;
   let adoptedTenantConfig: RunSnapshot["adopted_tenant_config"] | undefined;
@@ -867,10 +960,18 @@ function parseSnapshot(value: unknown): RunSnapshot | null {
     if (!versionId || !/^[0-9a-f]{64}$/.test(digest)) fail("运行配置快照格式错误");
     adoptedTenantConfig = { version_id: versionId, digest };
   }
+  const planner = parseFrozenPlanner(value.planner);
+  const governedKnowledge = parseFrozenKnowledge(value.governed_knowledge);
+  const parsedDocumentIDs = optionalIDList(value.parsed_document_ids);
+  const parseSelectionHash = optionalString(value, "parse_selection_hash");
+  const parserConfigurationID = optionalString(value, "parser_configuration_id");
   return {
     document_ids: Array.isArray(value.document_ids)
       ? value.document_ids.filter((id): id is string => typeof id === "string")
       : [],
+    ...(parsedDocumentIDs === undefined ? {} : { parsed_document_ids: parsedDocumentIDs }),
+    ...(parseSelectionHash ? { parse_selection_hash: parseSelectionHash } : {}),
+    ...(parserConfigurationID ? { parser_configuration_id: parserConfigurationID } : {}),
     business_at: optionalString(value, "business_at"),
     rule_set_hash: optionalString(value, "rule_set_hash") ?? "",
     playbook_hash: optionalString(value, "playbook_hash") ?? "",
@@ -878,6 +979,8 @@ function parseSnapshot(value: unknown): RunSnapshot | null {
     review_scope: parseReviewScope(value.review_scope),
     comparator_ref: optionalString(value, "comparator_ref"),
     ...(adoptedTenantConfig === undefined ? {} : { adopted_tenant_config: adoptedTenantConfig }),
+    ...(planner === undefined ? {} : { planner }),
+    ...(governedKnowledge === undefined ? {} : { governed_knowledge: governedKnowledge }),
   };
 }
 

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-06
-// Updated: 2026-11-06
-// Revision: r1
+// Updated: 2026-11-09
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -30,6 +30,8 @@ import type {
   RunSnapshot,
 } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { ExecutionDiagram } from "../components/execution-diagram";
+import { buildExecutionDiagram, isEinoToolEvent } from "../domain/execution-diagram";
 import { StatusText } from "../components/status-text";
 import {
   TechnicalDetail,
@@ -147,6 +149,13 @@ export interface StudioCapabilityGroup {
   facts: StudioCapabilityFact[];
 }
 
+export interface StudioFindingSource {
+  id: string;
+  claim: string;
+  origin: string;
+  anchorCount: number;
+}
+
 export interface StudioCapabilityInput {
   execution: Execution | null;
   agentReview: AgentReview | null;
@@ -154,23 +163,43 @@ export interface StudioCapabilityInput {
   snapshot: RunSnapshot | null;
   documentCount: number | null;
   diagnosticsLoaded: boolean;
+  findings: StudioFindingSource[];
 }
 
 /** The backend mode is preserved as reported; fixture is never relabelled live. */
 export function plannerModeOf(
   workspace: ReviewWorkspace | undefined,
   execution: Execution | null,
+  snapshot?: RunSnapshot | null,
 ): string | null {
-  const diagnosticMode = execution?.agent_review?.mode;
-  if (diagnosticMode !== undefined) {
-    return diagnosticMode;
-  }
+  if (execution?.agent_review?.mode) return execution.agent_review.mode;
   const businessReview = workspace?.agent_review as
     | (BusinessAgentReview & { mode?: unknown })
     | null
     | undefined;
   const businessMode = businessReview?.mode;
-  return typeof businessMode === "string" && businessMode !== "" ? businessMode : null;
+  if (typeof businessMode === "string" && businessMode !== "") return businessMode;
+  const frozen = snapshot?.planner?.mode;
+  return typeof frozen === "string" && frozen !== "" ? frozen : null;
+}
+
+export function planRoundsText(
+  agentReview: AgentReview | null,
+  plannerMode: string | null,
+): string {
+  if (agentReview) return `${agentReview.plan.rounds.length} 轮`;
+  if (plannerMode) return "未执行";
+  return "未观测";
+}
+
+export function agentCardSubtitle(
+  agentReview: AgentReview | null,
+  attemptState: string | null,
+  plannerMode: string | null,
+): string {
+  if (agentReview) return `智能体审查 · ${agentStatusLabel(agentReview.status)}`;
+  if (attemptState === "completed" && plannerMode) return "规则与模型审查已完成";
+  return "智能体审查尚未写入";
 }
 
 export function plannerModeLabel(mode: string | null): string {
@@ -311,6 +340,7 @@ export function buildCapabilityGroups(
     snapshot,
     documentCount,
     diagnosticsLoaded,
+    findings,
   } = input;
   const events = execution?.events ?? [];
   const modelEvents = events.filter((event) => event.node_kind === "model_call");
@@ -331,11 +361,29 @@ export function buildCapabilityGroups(
   const optionalAgentState = (present: boolean): StudioObservationState =>
     present ? "observed" : agentReview === null ? agentState : "not_observed";
   const usage = execution?.usage ?? null;
+  const frozenPlanner = snapshot?.planner ?? null;
+  const plannerMode = agentReview?.mode || frozenPlanner?.mode || null;
   const modelConfigurationId =
-    agentReview?.planner.model_configuration_id ?? null;
+    agentReview?.planner.model_configuration_id ??
+    frozenPlanner?.model_configuration_id ??
+    null;
+  const plannerIdentityKnown = agentReview !== null || frozenPlanner !== null;
+  const plannerOmitsModel =
+    plannerMode === "deterministic_planner" || plannerMode === "fixed_chain";
   const plannedCalls = agentReview?.plan.calls ?? null;
   const observations = agentReview?.observations ?? null;
-  const rulepack = agentReview?.rulepack ?? businessReview?.rulepack ?? null;
+  const frozenKnowledge = snapshot?.governed_knowledge ?? null;
+  const frozenRulepack = frozenKnowledge?.rulepack ?? null;
+  const rulepack =
+    agentReview?.rulepack ??
+    businessReview?.rulepack ??
+    (frozenRulepack
+      ? {
+          id: frozenRulepack.id,
+          version: frozenRulepack.version,
+          content_sha256: frozenRulepack.content_sha256,
+        }
+      : null);
   const rulepackContentHash: string | null =
     rulepack !== null &&
     "content_sha256" in rulepack &&
@@ -344,9 +392,26 @@ export function buildCapabilityGroups(
       : null;
   const knowledgeReads = agentReview?.knowledge_reads ?? null;
   const knowledgeSelection = agentReview?.knowledge_selection ?? null;
+  const frozenSelections = frozenKnowledge?.selections ?? [];
+  const frozenSelectionKnown = Boolean(
+    frozenKnowledge &&
+      (frozenKnowledge.snapshot_sha256 !== "" || frozenSelections.length > 0),
+  );
   const planRounds = agentReview?.plan.rounds ?? null;
   const sourceSnapshot = agentReview?.source_snapshot ?? null;
   const evidence = agentReview?.evidence ?? null;
+  const parsedIDs =
+    snapshot?.parsed_document_ids ??
+    execution?.attempt.parsed_document_ids ??
+    [];
+  const hasParseIdentity =
+    sourceSnapshot !== null ||
+    parsedIDs.length > 0 ||
+    Boolean(snapshot?.parse_selection_hash) ||
+    Boolean(snapshot?.parser_configuration_id);
+  const anchoredFindings = findings.filter((item) => item.anchorCount > 0);
+  const missingState = (unavailableText: string, absentText: string): string =>
+    agentState === "unavailable" ? unavailableText : absentText;
 
   const modelFacts = [
     fact(
@@ -392,14 +457,39 @@ export function buildCapabilityGroups(
     fact(
       "planner-model",
       "规划模型配置",
-      optionalAgentState(modelConfigurationId !== null),
-      modelConfigurationId === null ? "未观测到规划模型配置" : "已记录",
-      [
-        { label: "规划器标识", value: agentReview?.planner.identity },
-        { label: "模型配置标识", value: modelConfigurationId },
-        { label: "Prompt 版本", value: agentReview?.planner.prompt_version },
-        { label: "运行时版本", value: agentReview?.planner.runtime_version },
-      ],
+      plannerIdentityKnown
+        ? modelConfigurationId !== null || plannerOmitsModel
+          ? "observed"
+          : "not_observed"
+        : agentState,
+      !plannerIdentityKnown
+        ? missingState("规划模型配置不可用", "没有规划模型配置")
+        : modelConfigurationId !== null
+          ? "已记录规划模型"
+          : plannerOmitsModel
+            ? "已记录规划配置，没有规划模型"
+            : "没有规划模型配置",
+      plannerIdentityKnown
+        ? [
+            { label: "规划模式", value: plannerModeLabel(plannerMode) },
+            {
+              label: "规划配置标识",
+              value: agentReview?.planner.configuration_id ?? frozenPlanner?.configuration_id,
+            },
+            { label: "模型配置标识", value: modelConfigurationId ?? "无" },
+            {
+              label: "Prompt 版本",
+              value: agentReview?.planner.prompt_version ?? frozenPlanner?.prompt_version,
+            },
+            {
+              label: "运行时版本",
+              value: agentReview?.planner.runtime_version ?? frozenPlanner?.runtime_version,
+            },
+            frozenPlanner
+              ? { label: "配置上限", value: `${frozenPlanner.max_rounds} 轮` }
+              : { label: "规划器标识", value: agentReview?.planner.identity },
+          ]
+        : undefined,
     ),
   ];
 
@@ -409,7 +499,7 @@ export function buildCapabilityGroups(
       "计划调用",
       optionalAgentState(plannedCalls !== null),
       plannedCalls === null
-        ? "未观测到计划调用"
+        ? missingState("计划调用不可用", "没有计划调用")
         : `${plannedCalls.length} 个计划调用`,
       plannedCalls?.map((call) => ({
         label: `调用 ${call.call_id}`,
@@ -421,7 +511,7 @@ export function buildCapabilityGroups(
       "工具观测",
       optionalAgentState(observations !== null),
       observations === null
-        ? "未观测到工具观测记录"
+        ? missingState("工具观测不可用", "没有工具观测")
         : `${observations.length} 条工具观测`,
     ),
     fact(
@@ -436,13 +526,13 @@ export function buildCapabilityGroups(
         ? "执行事件不可用"
         : toolCalls > 0
           ? `${toolCalls} 次真实调用`
-          : "未观测到工具调用事件",
+          : "没有工具调用事件",
     ),
     fact(
       "mcp-connections",
-      "MCP 连接来源",
+      "MCP 连接",
       "not_observed",
-      "未观测独立 MCP 连接；普通工具调用不按 MCP 计数",
+      "没有 MCP 连接",
     ),
   ];
 
@@ -456,7 +546,7 @@ export function buildCapabilityGroups(
           ? agentState
           : "not_observed",
       rulepack === null
-        ? "未观测到规则包身份"
+        ? missingState("规则包不可用", "没有规则包身份")
         : `规则包已记录（版本 ${rulepack.version}）`,
       rulepack === null
         ? undefined
@@ -474,19 +564,24 @@ export function buildCapabilityGroups(
       "知识读取",
       optionalAgentState(knowledgeReads !== null),
       knowledgeReads === null
-        ? "未观测到知识读取记录"
+        ? missingState("知识读取不可用", "没有知识读取记录")
         : `${knowledgeReads.length} 次知识读取`,
     ),
     fact(
       "knowledge-selection",
       "知识选择",
-      optionalAgentState(knowledgeSelection !== null),
-      knowledgeSelection === null
-        ? "未观测到知识选择记录"
-        : `知识选择已记录（${knowledgeSelection.policy_status}）`,
-      knowledgeSelection === null
-        ? undefined
-        : [
+      knowledgeSelection !== null || frozenSelectionKnown
+        ? "observed"
+        : agentState,
+      knowledgeSelection !== null
+        ? `知识选择已记录（${knowledgeSelection.policy_status}）`
+        : frozenSelectionKnown
+          ? frozenSelections.length > 0
+            ? `已冻结 ${frozenSelections.length} 条知识选择`
+            : "已冻结知识快照"
+          : missingState("知识选择不可用", "没有知识选择记录"),
+      knowledgeSelection !== null
+        ? [
             {
               label: "快照摘要",
               value: knowledgeSelection.snapshot_sha256,
@@ -495,13 +590,29 @@ export function buildCapabilityGroups(
               label: "选择算法",
               value: knowledgeSelection.algorithm,
             },
-          ],
+          ]
+        : frozenSelectionKnown
+          ? [
+              { label: "快照摘要", value: frozenKnowledge?.snapshot_sha256 },
+              ...frozenSelections.map((item) => ({
+                label: item.knowledge_id,
+                value: `${item.kind || "未分类"} · ${item.selection_reason || "未记录原因"}`,
+              })),
+            ]
+          : undefined,
     ),
     fact(
       "plan-rounds",
       "规划轮次",
-      optionalAgentState(planRounds !== null),
-      planRounds === null ? "未观测到规划轮次" : `${planRounds.length} 个规划轮次`,
+      planRounds !== null ? "observed" : plannerMode ? "not_observed" : agentState,
+      planRounds !== null
+        ? `${planRounds.length} 个规划轮次`
+        : plannerMode
+          ? "未执行"
+          : missingState("规划轮次不可用", "没有规划轮次记录"),
+      plannerMode && planRounds === null && frozenPlanner
+        ? [{ label: "配置上限", value: `${frozenPlanner.max_rounds} 轮` }]
+        : undefined,
     ),
   ];
 
@@ -509,38 +620,44 @@ export function buildCapabilityGroups(
     fact(
       "source-snapshot",
       "输入快照",
-      optionalAgentState(sourceSnapshot !== null),
-      sourceSnapshot === null
-        ? "未观测到输入快照"
-        : `${sourceSnapshot.document_ids.length} 份材料 / ${sourceSnapshot.parsed_document_ids.length} 份解析`,
-      sourceSnapshot === null
+      hasParseIdentity ? "observed" : agentState,
+      !hasParseIdentity
+        ? missingState("输入快照不可用", "没有输入快照")
+        : `${sourceSnapshot?.document_ids.length ?? snapshot?.document_ids.length ?? 0} 份材料 / ${sourceSnapshot?.parsed_document_ids.length ?? parsedIDs.length} 份解析`,
+      !hasParseIdentity
         ? undefined
         : [
             {
               label: "材料版本",
-              value: sourceSnapshot.document_ids.join("、") || "未记录",
+              value:
+                (sourceSnapshot?.document_ids ?? snapshot?.document_ids ?? []).join("、") ||
+                "未记录",
             },
             {
               label: "解析版本",
-              value: sourceSnapshot.parsed_document_ids.join("、") || "未记录",
+              value:
+                (sourceSnapshot?.parsed_document_ids ?? parsedIDs).join("、") || "未记录",
             },
             {
               label: "解析选择摘要",
-              value: sourceSnapshot.parse_selection_hash,
+              value: sourceSnapshot?.parse_selection_hash ?? snapshot?.parse_selection_hash,
             },
             {
               label: "解析器配置",
-              value: sourceSnapshot.parser_configuration_id,
+              value:
+                sourceSnapshot?.parser_configuration_id ?? snapshot?.parser_configuration_id,
             },
           ],
     ),
     fact(
       "evidence-items",
       "证据条目",
-      optionalAgentState(evidence !== null),
-      evidence === null
-        ? "未观测到证据条目"
-        : `${evidence.length} 条证据`,
+      evidence !== null || anchoredFindings.length > 0 ? "observed" : agentState,
+      evidence !== null
+        ? `${evidence.length} 条证据`
+        : anchoredFindings.length > 0
+          ? `${anchoredFindings.length} 条已锚定证据`
+          : missingState("证据条目不可用", "没有已锚定的审查发现"),
     ),
     fact(
       "run-snapshot",
@@ -576,13 +693,13 @@ export function buildCapabilityGroups(
       "experience-references",
       "经验引用",
       "not_observed",
-      "本页未观测到经验引用记录",
+      "没有经验引用",
     ),
     fact(
       "experience-versions",
       "已应用经验版本",
       "not_observed",
-      "未观测",
+      "没有已应用经验版本",
     ),
   ];
 
@@ -590,19 +707,19 @@ export function buildCapabilityGroups(
     capabilityGroup(
       "model",
       "模型",
-      "模型调用、已报告用量与规划模型配置；未报告的 Token 不会推算。",
+      "模型调用、已报告用量和冻结的规划配置。",
       modelFacts,
     ),
     capabilityGroup(
       "tools",
       "工具与 MCP",
-      "计划调用、工具观测与执行事件分开计数；MCP 连接不重复计入工具调用。",
+      "计划调用、工具观测、执行工具事件和 MCP 连接。",
       toolFacts,
     ),
     capabilityGroup(
       "rules",
       "规则与知识",
-      "规则包、知识读取、知识选择与规划轮次均来自本次尝试的真实记录。",
+      "规则包、冻结的知识选择、知识读取和规划轮次。",
       ruleFacts,
     ),
     capabilityGroup(
@@ -614,7 +731,7 @@ export function buildCapabilityGroups(
     capabilityGroup(
       "experience",
       "经验",
-      "人工经验引用与提炼结果；本页只展示诊断真实返回的记录。",
+      "经验引用和已应用经验版本。",
       experienceFacts,
     ),
   ];
@@ -763,7 +880,11 @@ function ModelRecords({ events }: { events: ExecutionEvent[] }) {
 
 function ToolRecords({ agentReview }: { agentReview: AgentReview | null }) {
   if (agentReview === null) {
-    return <p className="studio-empty-text">未观测到计划调用与工具观测记录。</p>;
+    return (
+      <p className="studio-empty-text">
+        没有计划调用，也没有工具观测。没有 MCP 连接。
+      </p>
+    );
   }
   const observations = agentReview.observations ?? [];
   return (
@@ -796,7 +917,7 @@ function ToolRecords({ agentReview }: { agentReview: AgentReview | null }) {
         </ul>
       )}
       {observations.length === 0 ? (
-        <p className="studio-empty-text">未观测到工具观测记录。</p>
+        <p className="studio-empty-text">没有工具观测。</p>
       ) : (
         <ul>
           {observations.map((observation) => (
@@ -817,45 +938,99 @@ function ToolRecords({ agentReview }: { agentReview: AgentReview | null }) {
           ))}
         </ul>
       )}
-      <p className="studio-mcp-note">
-        MCP：本页没有独立的 MCP 连接记录；普通工具调用不会被标记为 MCP 调用。
-      </p>
+      <p className="studio-mcp-note">没有 MCP 连接。</p>
     </section>
   );
 }
 
-function KnowledgeRecords({ agentReview }: { agentReview: AgentReview | null }) {
+function KnowledgeRecords({
+  agentReview,
+  knowledge,
+}: {
+  agentReview: AgentReview | null;
+  knowledge: RunSnapshot["governed_knowledge"];
+}) {
   const reads = agentReview?.knowledge_reads ?? [];
-  if (reads.length === 0) {
-    return <p className="studio-empty-text">未观测到知识读取记录。</p>;
+  const selections = knowledge?.selections ?? [];
+  if (reads.length === 0 && selections.length === 0) {
+    return <p className="studio-empty-text">没有知识读取记录。</p>;
   }
   return (
-    <section className="studio-records" aria-labelledby="studio-knowledge-records">
-      <h3 id="studio-knowledge-records">知识读取片段</h3>
-      <ul>
-        {reads.map((read, index) => (
-          <li key={`${read.knowledge_id}-${read.version_id}-${read.start}`}>
-            <span className="studio-record-title">知识片段 {index + 1}</span>
-            <span className="studio-record-meta">
-              区间 {read.start}–{read.end}
-            </span>
-            <TechnicalDetail
-              label="知识读取技术详情"
-              value={`${read.knowledge_id} · ${read.version_id}`}
-            >
-              <span>文本摘要 {read.text_sha256}</span>
-            </TechnicalDetail>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <>
+      {selections.length > 0 ? (
+        <section className="studio-records" aria-labelledby="studio-knowledge-selection-records">
+          <h3 id="studio-knowledge-selection-records">冻结的知识选择</h3>
+          <ul>
+            {selections.map((item) => (
+              <li key={`${item.knowledge_id}-${item.version_id}`}>
+                <span className="studio-record-title">{item.knowledge_id}</span>
+                <span className="studio-record-meta">
+                  {item.kind || "未分类"}
+                  {item.required ? " · 必需" : " · 可选"}
+                </span>
+                {item.selection_reason ? (
+                  <p className="studio-record-summary">{item.selection_reason}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {reads.length === 0 ? (
+        <p className="studio-empty-text">没有知识读取记录。</p>
+      ) : (
+        <section className="studio-records" aria-labelledby="studio-knowledge-records">
+          <h3 id="studio-knowledge-records">知识读取片段</h3>
+          <ul>
+            {reads.map((read, index) => (
+              <li key={`${read.knowledge_id}-${read.version_id}-${read.start}`}>
+                <span className="studio-record-title">知识片段 {index + 1}</span>
+                <span className="studio-record-meta">
+                  区间 {read.start}–{read.end}
+                </span>
+                <TechnicalDetail
+                  label="知识读取技术详情"
+                  value={`${read.knowledge_id} · ${read.version_id}`}
+                >
+                  <span>文本摘要 {read.text_sha256}</span>
+                </TechnicalDetail>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
   );
 }
 
-function EvidenceRecords({ agentReview }: { agentReview: AgentReview | null }) {
+function EvidenceRecords({
+  agentReview,
+  findings,
+}: {
+  agentReview: AgentReview | null;
+  findings: StudioFindingSource[];
+}) {
   const evidence = agentReview?.evidence ?? [];
+  const anchored = findings.filter((item) => item.anchorCount > 0);
+  if (evidence.length === 0 && anchored.length === 0) {
+    return <p className="studio-empty-text">没有已锚定的审查发现。</p>;
+  }
   if (evidence.length === 0) {
-    return <p className="studio-empty-text">未观测到证据条目。</p>;
+    return (
+      <section className="studio-records" aria-labelledby="studio-evidence-records">
+        <h3 id="studio-evidence-records">已锚定的审查发现</h3>
+        <ul>
+          {anchored.map((item) => (
+            <li key={item.id}>
+              <span className="studio-record-title">{item.claim}</span>
+              <span className="studio-record-meta">
+                {item.origin} · {item.anchorCount} 个锚点
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
   }
   return (
     <section className="studio-records" aria-labelledby="studio-evidence-records">
@@ -886,10 +1061,14 @@ function GroupRecords({
   group,
   agentReview,
   events,
+  snapshot,
+  findings,
 }: {
   group: StudioCapabilityGroup;
   agentReview: AgentReview | null;
   events: ExecutionEvent[];
+  snapshot: RunSnapshot | null;
+  findings: StudioFindingSource[];
 }) {
   switch (group.key) {
     case "model":
@@ -897,13 +1076,18 @@ function GroupRecords({
     case "tools":
       return <ToolRecords agentReview={agentReview} />;
     case "rules":
-      return <KnowledgeRecords agentReview={agentReview} />;
+      return (
+        <KnowledgeRecords
+          agentReview={agentReview}
+          knowledge={snapshot?.governed_knowledge}
+        />
+      );
     case "evidence":
-      return <EvidenceRecords agentReview={agentReview} />;
+      return <EvidenceRecords agentReview={agentReview} findings={findings} />;
     case "experience":
       return (
         <p className="studio-empty-text">
-          本页没有可展示的经验记录；诊断响应未提供经验引用。
+          没有经验引用，也没有已应用经验版本。
         </p>
       );
   }
@@ -915,27 +1099,47 @@ function AgentOverview({
   execution,
   eventCount,
   modeText,
+  roundsText,
+  snapshot,
 }: {
   agentReview: AgentReview | null;
   attempt: Execution["attempt"] | null;
   execution: Execution | null;
   eventCount: number;
   modeText: string;
+  roundsText: string;
+  snapshot: RunSnapshot | null;
 }) {
+  const planner = snapshot?.planner;
   const technicalFields: TechnicalField[] = [
     { label: "尝试标识", value: attempt?.id },
     { label: "规划器标识", value: agentReview?.planner.identity },
-    { label: "规划配置标识", value: agentReview?.planner.configuration_id },
+    {
+      label: "规划配置标识",
+      value: agentReview?.planner.configuration_id ?? planner?.configuration_id,
+    },
     {
       label: "模型配置标识",
-      value: agentReview?.planner.model_configuration_id,
+      value:
+        agentReview?.planner.model_configuration_id ??
+        planner?.model_configuration_id ??
+        (planner ? "无" : undefined),
     },
-    { label: "Prompt 版本", value: agentReview?.planner.prompt_version },
-    { label: "Schema 版本", value: agentReview?.planner.schema_version },
-    { label: "运行时版本", value: agentReview?.planner.runtime_version },
+    {
+      label: "Prompt 版本",
+      value: agentReview?.planner.prompt_version ?? planner?.prompt_version,
+    },
+    {
+      label: "Schema 版本",
+      value: agentReview?.planner.schema_version ?? planner?.schema_version,
+    },
+    {
+      label: "运行时版本",
+      value: agentReview?.planner.runtime_version ?? planner?.runtime_version,
+    },
     {
       label: "工具目录版本",
-      value: agentReview?.planner.tool_catalog_version,
+      value: agentReview?.planner.tool_catalog_version ?? planner?.tool_catalog_version,
     },
     {
       label: "规划回退",
@@ -954,7 +1158,11 @@ function AgentOverview({
         <div>
           <h2>Agent 执行概览</h2>
           <p>
-            本次固定尝试的真实审查状态；没有返回的记录保持“未观测”，不按执行成功处理。
+            {agentReview
+              ? "这次尝试写入了智能体审查记录。"
+              : planner
+                ? "规划配置已冻结。五域规划循环没有写入记录。"
+                : "刷新诊断后查看这次尝试保存的规划配置。"}
           </p>
         </div>
         <ObservationBadge
@@ -980,16 +1188,16 @@ function AgentOverview({
         </div>
         <div>
           <dt>计划轮次</dt>
-          <dd>
-            {agentReview ? `${agentReview.plan.rounds.length} 轮` : "未观测"}
-          </dd>
+          <dd>{roundsText}</dd>
         </div>
         <div>
           <dt>未解决缺口</dt>
           <dd>
             {agentReview
               ? `${agentReview.unresolved_gap_ids.length} 个`
-              : "未观测"}
+              : planner
+                ? "没有缺口记录"
+                : "未观测"}
           </dd>
         </div>
         <div>
@@ -1009,10 +1217,14 @@ function GroupDetail({
   group,
   agentReview,
   events,
+  snapshot,
+  findings,
 }: {
   group: StudioCapabilityGroup;
   agentReview: AgentReview | null;
   events: ExecutionEvent[];
+  snapshot: RunSnapshot | null;
+  findings: StudioFindingSource[];
 }) {
   const technicalFields = group.facts.flatMap(
     (item) => item.technical ?? [],
@@ -1037,7 +1249,13 @@ function GroupDetail({
           </div>
         ))}
       </dl>
-      <GroupRecords group={group} agentReview={agentReview} events={events} />
+      <GroupRecords
+        group={group}
+        agentReview={agentReview}
+        events={events}
+        snapshot={snapshot}
+        findings={findings}
+      />
       <TechnicalFieldGroup
         fields={technicalFields}
         label="能力来源技术详情"
@@ -1053,6 +1271,10 @@ function CapabilityView({
   execution,
   events,
   modeText,
+  roundsText,
+  agentSubtitle,
+  snapshot,
+  findings,
   selected,
   onSelect,
 }: {
@@ -1062,6 +1284,10 @@ function CapabilityView({
   execution: Execution | null;
   events: ExecutionEvent[];
   modeText: string;
+  roundsText: string;
+  agentSubtitle: string;
+  snapshot: RunSnapshot | null;
+  findings: StudioFindingSource[];
   selected: string;
   onSelect: (key: string) => void;
 }) {
@@ -1094,11 +1320,7 @@ function CapabilityView({
             </span>
             <span className="studio-agent-eyebrow">本次执行主体</span>
             <strong className="studio-agent-name">Agent</strong>
-            <span className="studio-agent-sub">
-              {agentReview
-                ? `智能体审查 · ${agentStatusLabel(agentReview.status)}`
-                : "智能体审查记录未观测"}
-            </span>
+            <span className="studio-agent-sub">{agentSubtitle}</span>
             <span className="studio-agent-stats">
               <span className="studio-agent-stat">
                 <span className="studio-agent-stat-label">规划模式</span>
@@ -1106,9 +1328,7 @@ function CapabilityView({
               </span>
               <span className="studio-agent-stat">
                 <span className="studio-agent-stat-label">计划轮次</span>
-                <span className="studio-agent-stat-value">
-                  {agentReview ? `${agentReview.plan.rounds.length} 轮` : "未观测"}
-                </span>
+                <span className="studio-agent-stat-value">{roundsText}</span>
               </span>
               <span className="studio-agent-stat">
                 <span className="studio-agent-stat-label">已保存事件</span>
@@ -1136,19 +1356,19 @@ function CapabilityView({
                 <dt>
                   <ObservationBadge state="observed" /> 已观测
                 </dt>
-                <dd>诊断或审查响应中存在对应真实记录。</dd>
+                <dd>这次尝试保存了对应来源。</dd>
               </div>
               <div>
                 <dt>
                   <ObservationBadge state="not_observed" /> 未观测
                 </dt>
-                <dd>本次响应没有该来源记录，不等同于未执行。</dd>
+                <dd>打开这张卡，看缺的是哪一项来源。</dd>
               </div>
               <div>
                 <dt>
                   <ObservationBadge state="unavailable" /> 不可用
                 </dt>
-                <dd>诊断数据未返回或读取失败，不能下结论。</dd>
+                <dd>诊断没有返回。刷新后再看。</dd>
               </div>
             </dl>
           </div>
@@ -1165,17 +1385,19 @@ function CapabilityView({
             execution={execution}
             eventCount={events.length}
             modeText={modeText}
+            roundsText={roundsText}
+            snapshot={snapshot}
           />
         ) : selectedGroup ? (
           <GroupDetail
             group={selectedGroup}
             agentReview={agentReview}
             events={events}
+            snapshot={snapshot}
+            findings={findings}
           />
         ) : (
-          <p className="studio-empty-text">
-            选择一张能力卡，查看真实来源与未观测项。
-          </p>
+          <p className="studio-empty-text">选择一张能力卡，查看这次尝试保存的来源。</p>
         )}
       </aside>
     </div>
@@ -1185,9 +1407,11 @@ function CapabilityView({
 function EventDetailPanel({
   event,
   execution,
+  runtimeVersion,
 }: {
   event: ExecutionEvent | null;
   execution: Execution | null;
+  runtimeVersion: string | null;
 }) {
   return (
     <aside className="studio-panel studio-event-detail" aria-live="polite">
@@ -1235,6 +1459,7 @@ function EventDetailPanel({
               <dt>模型 / 工具</dt>
               <dd>{event.model_ref ?? "未报告"}</dd>
             </div>
+            {isEinoToolEvent(event, runtimeVersion) ? <div><dt>调用方式</dt><dd>Eino InvokableTool</dd></div> : null}
             <div>
               <dt>调用层级</dt>
               <dd>
@@ -1253,7 +1478,7 @@ function EventDetailPanel({
               </dd>
             </div>
             <div>
-              <dt>错误代码</dt>
+              <dt>{event.event_type === "agent_review_event" && event.status !== "failed" && event.status !== "cancelled" ? "结果代码" : "错误代码"}</dt>
               <dd>{event.error_code ?? "未报告"}</dd>
             </div>
           </dl>
@@ -1282,6 +1507,12 @@ function EventDetailPanel({
               </dl>
             )}
           </section>
+          {event.trace ? <section className="studio-token-block">
+            <h3>模型输入与输出</h3>
+            <TechnicalDetail label="查看已保存输入" value={JSON.stringify(event.trace.request_messages, null, 2)} />
+            <TechnicalDetail label="查看已保存输出" value={event.trace.response_text || "未报告"} />
+            {(event.trace.request_truncated || event.trace.response_truncated) ? <p>记录已截断。</p> : null}
+          </section> : null}
           <TechnicalDetail
             label="事件技术详情"
             value={JSON.stringify({
@@ -1358,12 +1589,14 @@ function ExecutionView({
   events,
   selectedSeq,
   onSelectSeq,
+  runtimeVersion,
 }: {
   execution: Execution | null;
   attempt: Execution["attempt"] | null;
   events: ExecutionEvent[];
   selectedSeq: number | null;
   onSelectSeq: (seq: number) => void;
+  runtimeVersion: string | null;
 }) {
   if (execution === null) {
     return (
@@ -1375,7 +1608,6 @@ function ExecutionView({
       </section>
     );
   }
-  const lanes = buildStudioLanes(events);
   const selectedEvent =
     selectedSeq === null
       ? null
@@ -1386,72 +1618,15 @@ function ExecutionView({
       <div className="studio-execution-layout">
         <section className="studio-panel studio-lanes-panel">
           <header className="studio-panel-head">
-            <div>
-              <h2>Agent 泳道图</h2>
-              <p>
-                按真实阶段分泳道、按保存序号排列；每个节点都对应一条已保存的执行事件，不按显示名合并调用。
-              </p>
-            </div>
-            <StatusText tone="neutral">{lanes.length} 个泳道</StatusText>
+            <div><h2>Agent 执行图</h2><p>同一次调用按 Span 合并；框架包装省略，完整记录可在事件列表查看。</p></div>
           </header>
-          {lanes.length === 0 ? (
-            <p className="studio-empty-text">本次执行没有保存可展示的事件。</p>
-          ) : (
-            <div
-              className="studio-lanes"
-              role="group"
-              aria-label="Agent 执行泳道"
-            >
-              {lanes.map((lane) => (
-                <div className="studio-lane" key={lane.id}>
-                  <div className="studio-lane-label">
-                    <span>{lane.label}</span>
-                    <small>{lane.events.length} 条</small>
-                  </div>
-                  <div className="studio-lane-track">
-                    {lane.events.map((event) => {
-                      const kind = studioEventKind(event);
-                      return (
-                        <button
-                          key={event.seq}
-                          type="button"
-                          className="studio-lane-node"
-                          data-kind={kind}
-                          data-status={studioEventTone(event.status)}
-                          aria-pressed={selectedSeq === event.seq}
-                          aria-label={`${lane.label} 第 ${event.seq} 号事件 ${studioEventTitle(event)}`}
-                          onClick={() => onSelectSeq(event.seq)}
-                        >
-                          <span className="studio-node-top">
-                            <span className="studio-node-seq">#{event.seq}</span>
-                            <EventKindBadge kind={kind} />
-                          </span>
-                          <span className="studio-node-title">
-                            {studioEventTitle(event)}
-                          </span>
-                          <span className="studio-node-footer">
-                            <span
-                              className="studio-node-dot"
-                              aria-hidden="true"
-                            />
-                            {event.status
-                              ? eventStatusLabel(event.status)
-                              : "状态未报告"}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          <p className="studio-lane-hint">
-            点击节点查看节点类型、状态、时间、耗时、模型/工具、Span、错误码与 Token
-            明细。
-          </p>
+          <ExecutionDiagram events={events} selectedSeq={selectedSeq} onSelectSeq={onSelectSeq} />
+          {selectedEvent ? (() => {
+            const node = buildExecutionDiagram(events).find((item) => item.events.includes(selectedEvent));
+            return node && node.events.length > 1 ? <p className="studio-lane-hint">本调用的原始事件： {node.events.map((event) => <button type="button" className="studio-event-link" key={event.seq} onClick={() => onSelectSeq(event.seq)}>#{event.seq} {eventTypeLabel(event.event_type)} </button>)}</p> : null;
+          })() : null}
         </section>
-        <EventDetailPanel event={selectedEvent} execution={execution} />
+        <EventDetailPanel event={selectedEvent} execution={execution} runtimeVersion={runtimeVersion} />
       </div>
     </div>
   );
@@ -1464,6 +1639,7 @@ function EventsView({
   onQueryChange,
   selectedSeq,
   onSelectSeq,
+  runtimeVersion,
 }: {
   events: ExecutionEvent[];
   execution: Execution | null;
@@ -1471,6 +1647,7 @@ function EventsView({
   onQueryChange: (value: string) => void;
   selectedSeq: number | null;
   onSelectSeq: (seq: number) => void;
+  runtimeVersion: string | null;
 }) {
   const filtered = filterStudioEvents(events, query);
   const selectedEvent =
@@ -1561,7 +1738,7 @@ function EventsView({
             </div>
           )}
         </section>
-        <EventDetailPanel event={selectedEvent} execution={execution} />
+        <EventDetailPanel event={selectedEvent} execution={execution} runtimeVersion={runtimeVersion} />
       </div>
     </div>
   );
@@ -1616,6 +1793,16 @@ export function AgentStudioPage() {
         : source.filter((event) => event.attempt_id === attemptId);
     return [...scoped].sort((left, right) => left.seq - right.seq);
   }, [execution, selectedAttempt?.id]);
+  const studioFindings = useMemo(
+    () =>
+      (review.data?.findings ?? []).map((item) => ({
+        id: item.id,
+        claim: item.claim,
+        origin: item.origin,
+        anchorCount: item.evidence.length,
+      })),
+    [review.data?.findings],
+  );
   const capabilityGroups = useMemo(
     () =>
       buildCapabilityGroups({
@@ -1625,6 +1812,7 @@ export function AgentStudioPage() {
         snapshot,
         documentCount,
         diagnosticsLoaded,
+        findings: studioFindings,
       }),
     [
       execution,
@@ -1633,9 +1821,16 @@ export function AgentStudioPage() {
       snapshot,
       documentCount,
       diagnosticsLoaded,
+      studioFindings,
     ],
   );
-  const plannerMode = plannerModeOf(review.data, execution);
+  const plannerMode = plannerModeOf(review.data, execution, snapshot);
+  const roundsText = planRoundsText(agentReview, plannerMode);
+  const agentSubtitle = agentCardSubtitle(
+    agentReview,
+    selectedAttempt?.state ?? null,
+    plannerMode,
+  );
   const modeText = plannerModeLabel(plannerMode);
   const runState = selectedAttempt?.state ?? review.data?.run.state ?? "unknown";
   const reviewHref = `/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(runId)}${
@@ -1840,6 +2035,10 @@ export function AgentStudioPage() {
           execution={execution}
           events={events}
           modeText={modeText}
+          roundsText={roundsText}
+          agentSubtitle={agentSubtitle}
+          snapshot={snapshot}
+          findings={studioFindings}
           selected={selectedCapability}
           onSelect={setSelectedCapability}
         />
@@ -1850,6 +2049,7 @@ export function AgentStudioPage() {
           events={events}
           selectedSeq={selectedSeq}
           onSelectSeq={setSelectedSeq}
+          runtimeVersion={agentReview?.planner.runtime_version ?? snapshot?.planner?.runtime_version ?? null}
         />
       ) : (
         <EventsView
@@ -1859,6 +2059,7 @@ export function AgentStudioPage() {
           onQueryChange={setEventQuery}
           selectedSeq={selectedSeq}
           onSelectSeq={setSelectedSeq}
+          runtimeVersion={agentReview?.planner.runtime_version ?? snapshot?.planner?.runtime_version ?? null}
         />
       )}
     </section>

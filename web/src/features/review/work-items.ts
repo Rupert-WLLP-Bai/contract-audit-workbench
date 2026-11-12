@@ -3,14 +3,15 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-08
-// Revision: r2
+// Updated: 2026-11-09
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
 import type { EvidenceRequest } from "../../api/evidence-workflow";
 import type { CaseDetail, ReviewWorkspace } from "../../api/types";
 import { businessCapabilityLabel, businessDomainLabel, remediationStatusLabel } from "../../domain/business-labels";
+import { findingTitle } from "../../domain/finding-presentation";
 import { latestDecision, originLabel } from "../../domain/review";
 import { agentStage } from "./review-outcome";
 
@@ -45,7 +46,8 @@ export interface WorkProjection {
   caseKnown: boolean;
 }
 
-const returnParams = ["attempt_id", "finding", "citation", "work_filter", "work_kind", "work_item"] as const;
+const returnParams = ["attempt_id", "finding", "citation", "work_filter", "work_kind", "work_item", "review_section"] as const;
+const reviewSections = new Set(["document", "work", "coverage", "trace", "diff", "history"]);
 
 /** Keep only local review paths and opaque navigation identities, never form contents. */
 export function reviewReturnPath(path: string, caseId: string): string | null {
@@ -58,7 +60,9 @@ export function reviewReturnPath(path: string, caseId: string): string | null {
     const params = new URLSearchParams();
     for (const key of returnParams) {
       const value = url.searchParams.get(key);
-      if (value && value.length <= 512 && !/[\u0000-\u001f]/.test(value)) params.set(key, value);
+      if (!value || value.length > 512 || /[\u0000-\u001f]/.test(value)) continue;
+      if (key === "review_section" && !reviewSections.has(value)) continue;
+      params.set(key, value);
     }
     const query = params.toString();
     return `${url.pathname}${query ? `?${query}` : ""}`;
@@ -153,7 +157,7 @@ export function projectReviewWork(
       if (latestDecision(finding)) return;
       const unique = Boolean(finding.id) && findingCounts.get(finding.id) === 1;
       items.push({
-        key: unique ? JSON.stringify([caseId, runId, attemptId, "finding", finding.id]) : `invalid-finding:${index}:${finding.id}`, category: "judgment", title: finding.claim || "未命名线索",
+        key: unique ? JSON.stringify([caseId, runId, attemptId, "finding", finding.id]) : `invalid-finding:${index}:${finding.id}`, category: "judgment", title: findingTitle(finding),
         origin: originLabel(finding.origin), status: unique ? "待判断" : "身份待核对",
         verification: citationStatus(finding.verification_status, finding.evidence.length),
         sourceRunId: runId, sourceAttemptId: attemptId,

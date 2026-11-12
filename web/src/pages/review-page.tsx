@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r10
+// Updated: 2026-11-09
+// Revision: r12
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -103,6 +103,19 @@ const reviewSectionTargets = {
   history: "review-history-section",
 } as const;
 type ReviewSectionKey = keyof typeof reviewSectionTargets;
+
+function sectionForHash(hash: string): ReviewSectionKey | null {
+  const id = hash.startsWith("#") ? hash.slice(1) : hash;
+  if (id === "agent-review-gaps" || id.startsWith("agent-review")) return "coverage";
+  if (id === "review-trajectory" || id === "execution-inspector") return "trace";
+  if (id === "review-diff" || id === "review-diff-section") return "diff";
+  if (id === "review-work-section") return "work";
+  if (id === "review-history-section") return "history";
+  if (id === "review-coverage-section") return "coverage";
+  if (id === "review-document-section") return "document";
+  return null;
+}
+
 const reviewSectionLabels: Record<ReviewSectionKey, string> = {
   document: "原文核对", work: "人工办理", coverage: "覆盖范围",
   trace: "执行轨迹", diff: "复审对照", history: "来源与历史",
@@ -125,15 +138,21 @@ export function ReviewPage() {
   const navigationType = useNavigationType();
   const [params, setParams] = useSearchParams();
   const requestedReviewSection = params.get("review_section");
-  const reviewSection: ReviewSectionKey = Object.hasOwn(reviewSectionTargets, requestedReviewSection ?? "") ? requestedReviewSection as ReviewSectionKey : "document";
+  const reviewSectionFromQuery: ReviewSectionKey | null = requestedReviewSection !== null && Object.hasOwn(reviewSectionTargets, requestedReviewSection)
+    ? requestedReviewSection as ReviewSectionKey
+    : null;
+  const reviewSection = reviewSectionFromQuery ?? sectionForHash(location.hash) ?? "document";
+  const workspaceSurface = reviewSection === "trace" ? "trace" : reviewSection === "coverage" ? "coverage" : "document";
   const selectReviewSection = (key: ReviewSectionKey) => {
-    setParams((current) => {
-      const next = new URLSearchParams(current);
-      if (key === "document") next.delete("review_section"); else next.set("review_section", key);
-      return next;
-    }, { state: location.state, replace: true });
-    const target = reviewSectionTargets[key];
-    document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const next = new URLSearchParams(params);
+    if (key === "document") next.delete("review_section");
+    else next.set("review_section", key);
+    const search = next.toString();
+    void navigate(
+      { pathname: location.pathname, search: search ? `?${search}` : "", hash: "" },
+      { replace: true, state: location.state },
+    );
+    window.scrollTo({ top: 0 });
   };
   const selectedAttemptId = params.get("attempt_id");
   const [streamLive, setStreamLive] = useState(false);
@@ -641,7 +660,12 @@ export function ReviewPage() {
       const next = new URLSearchParams(current);
       next.set("work_kind", target.kind);
       next.set("work_item", target.id);
-      if (target.kind === "finding") next.set("finding", target.id);
+      if (target.kind === "finding") {
+        next.set("finding", target.id);
+        next.delete("review_section");
+      } else if (target.kind === "gap" || target.kind === "request" || target.kind === "evaluation" || target.kind === "request-source") {
+        next.set("review_section", "coverage");
+      }
       return next;
     }, { state: navigationState });
   }
@@ -850,7 +874,12 @@ export function ReviewPage() {
         </Button>
       </header>
       <ReviewSectionNav active={reviewSection} onSelect={selectReviewSection} />
-      {streamStatus === "exhausted" || streamStatus === "closed" ? (
+      {streamStatus === "closed" ? (
+        <section className="callout" role="status" aria-live="polite">
+          <span>运行状态流已关闭，不会自动重连；请刷新页面或重新登录后再试。</span>
+        </section>
+      ) : null}
+      {streamStatus === "exhausted" ? (
         <section className="callout" role="status" aria-live="polite">
           <span>运行状态更新已停止，可以重新连接以同步最新审查结果。</span>
           <Button
@@ -872,14 +901,14 @@ export function ReviewPage() {
         <p className="callout">案件已归档，历史审查仅供查看。</p>
       ) : null}
       {session.isSuccess && !session.isFetching ? (
-        <div id="review-diff-section"><ReviewDiff
+        <div id="review-diff-section" hidden={reviewSection !== "diff"}><ReviewDiff
           caseId={caseId}
           latestRunId={caseDetail.data?.latest_run?.id ?? runId}
           actorScope={JSON.stringify([session.data.id, session.data.active_context?.tenant_id, session.data.active_context?.org_id, session.data.role, session.data.audience, session.data.active_context?.context_version])}
         /></div>
       ) : null}
       {session.isSuccess && !session.isFetching && !scopeMismatch && !deniedRequests ? (
-        <div id="review-work-section"><ReviewWorkItems
+        <div id="review-work-section" hidden={reviewSection !== "work"}><ReviewWorkItems
           projection={workProjection}
           filter={workFilter}
           onFilter={(filter) => setParams((current) => {
@@ -907,7 +936,8 @@ export function ReviewPage() {
           contextKey: `${actorReadContextKey(session.data)}:${selectedAttempt?.id ?? "legacy"}`,
           digests: new Map(caseDetail.data.documents.map((document) => [document.id, document.digest])),
         } : null}>
-        <div id="review-document-section"><ReviewWorkspaceView
+        <div id="review-document-section" hidden={reviewSection !== "document" && reviewSection !== "trace" && reviewSection !== "coverage"}><ReviewWorkspaceView
+          surface={workspaceSurface}
           workspace={workspace}
           layout={layout}
           showDiagnostics={diagnosticData !== null}
@@ -998,8 +1028,8 @@ export function ReviewPage() {
         </OriginalSourceContext.Provider>
       </DecisionDraftScopeProvider>
       <DirtyLeaveGuard dirty={decisionDraftsDirty || evidenceDraftDirty} />
-      <details id="review-coverage-section" className="review-secondary-section" open={supplementOpen} onToggle={(event) => setSupplementOpen(event.currentTarget.open)}>
-        <summary>补充材料与人工处理</summary>
+      <details id="review-coverage-section" className="review-secondary-section" hidden={reviewSection !== "coverage"} open={reviewSection === "coverage"} onToggle={(event) => setSupplementOpen(event.currentTarget.open)}>
+        <summary>补充材料</summary>
         <ManualFindingsPanel
           key={`${caseId}:${runId}:${selectedAttempt?.id ?? "none"}:${session.data?.tenant_id ?? ""}:${session.data?.org_id ?? ""}:${session.data?.id ?? ""}:${session.data?.role ?? ""}`}
           caseId={caseId}
@@ -1038,8 +1068,8 @@ export function ReviewPage() {
           attemptId={selectedAttempt?.id ?? null}
         />
       </details>
-      <details id="review-history-section" className="review-secondary-section">
-        <summary>经验、审查依据与历史</summary>
+      <details id="review-history-section" className="review-secondary-section" hidden={reviewSection !== "history"} open={reviewSection === "history"}>
+        <summary>依据与历史</summary>
         <ExperienceFeedbackPanel
           caseId={caseId}
           runId={runId}

@@ -33,6 +33,27 @@ export default defineConfig(({ mode }) => {
       },
     }],
     base,
+    resolve: {
+      dedupe: ["react", "react-dom"],
+    },
+    // Optimize shared React/UI modules together before lazy routes are opened.
+    // A late optimization can otherwise leave a long-lived tab using an older
+    // renderer while a newly loaded route imports a newer React module URL.
+    optimizeDeps: {
+      include: [
+        "react",
+        "react-dom",
+        "react-dom/client",
+        "react/jsx-runtime",
+        "react/jsx-dev-runtime",
+        "antd",
+        "antd/locale/zh_CN",
+        "@ant-design/cssinjs",
+        "@ant-design/icons",
+        "@tanstack/react-query",
+        "react-router",
+      ],
+    },
     server: {
       port: 5173,
       proxy: {

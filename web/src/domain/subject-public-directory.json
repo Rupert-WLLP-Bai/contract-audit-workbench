@@ -1,0 +1,94 @@
+[
+  {
+    "name": "中国移动通信集团重庆有限公司",
+    "alias": "中国移动重庆公司",
+    "industry": "通信服务",
+    "summary": "中国移动在重庆的运营主体，提供移动通信、宽带和数据等服务。",
+    "uscc": "91500000736550152L",
+    "source_title": "中国移动官方网站 · 重庆公司证照信息",
+    "source_url": "https://www.10086.cn/zzxx/cq/?channel=0002",
+    "retrieved_at": "2026-11-09"
+  },
+  {
+    "name": "中移物联网有限公司",
+    "alias": "中移物联网",
+    "industry": "物联网",
+    "summary": "中国移动旗下的物联网专业公司，注册于重庆。",
+    "uscc": "915001080542963889",
+    "source_title": "中国移动官方网站 · 专业公司证照信息",
+    "source_url": "https://www.10086.cn/zzxx/cq/?channel=0002",
+    "retrieved_at": "2026-11-09"
+  },
+  {
+    "name": "重庆水务集团股份有限公司",
+    "alias": "重庆水务",
+    "industry": "水务服务",
+    "summary": "从事水务投资、建设、运营与专业技术服务的国有控股上市公司。",
+    "source_title": "重庆水务集团股份有限公司官网",
+    "source_url": "https://www.cncqsw.com/index.html",
+    "retrieved_at": "2026-11-09"
+  },
+  {
+    "name": "重庆渝富控股集团有限公司",
+    "alias": "渝富控股",
+    "industry": "国有资本投资运营",
+    "summary": "重庆市属国有企业，业务涉及投资、资产管理和企业重组等。",
+    "source_title": "渝富控股官网 · 基本信息",
+    "source_url": "https://www.cqyfkgjt.com/cqyfkgjt/xinxigongkai/gongsizhili1/yufujituan/jingyingxinxi1/index2.html",
+    "retrieved_at": "2026-11-09"
+  },
+  {
+    "name": "重庆农村商业银行股份有限公司",
+    "alias": "重庆农商行",
+    "industry": "银行业",
+    "summary": "总部位于重庆的农村商业银行，在香港和上海上市。",
+    "source_title": "重庆农村商业银行官网 · 我行简介",
+    "source_url": "https://www.cqrcb.com/cqrcb/aboutus/enterpriseculture/1541.html",
+    "retrieved_at": "2026-11-09"
+  },
+  {
+    "name": "重庆高速公路集团有限公司",
+    "alias": "重庆高速集团",
+    "industry": "交通基础设施",
+    "summary": "重庆市属国有企业，从事高速公路、航运枢纽投资建设和运营管理。",
+    "source_title": "重庆高速集团官网 · 集团简介",
+    "source_url": "https://www.cegc.com.cn/html/2022-08/01/content_1003732376408723456.html",
+    "retrieved_at": "2026-11-09"
+  },
+  {
+    "name": "重庆市设计院有限公司",
+    "alias": "重庆市设计院",
+    "industry": "勘察设计",
+    "summary": "重庆的勘察设计企业，前身为重庆市设计院。",
+    "source_title": "重庆市设计院官网 · 历史沿革",
+    "source_url": "https://www.cqadi.com.cn/page/history.html",
+    "retrieved_at": "2026-11-09"
+  },
+  {
+    "name": "重庆川仪自动化股份有限公司",
+    "alias": "川仪股份",
+    "industry": "工业自动化",
+    "summary": "从事工业自动化仪表与控制装置、工程技术服务等业务的上市公司。",
+    "source_title": "重庆川仪官网 · 关于我们",
+    "source_url": "https://www.sicinstruments.com/nexixi-boot/cms/portal/cqcy/about/",
+    "retrieved_at": "2026-11-09"
+  },
+  {
+    "name": "重庆银行股份有限公司",
+    "alias": "重庆银行",
+    "industry": "银行业",
+    "summary": "总部位于重庆的地方性股份制商业银行，在香港和上海上市。",
+    "source_title": "重庆银行官网 · 重行简介",
+    "source_url": "https://www.cqcbank.com/cn/jrch/chjj/index.html",
+    "retrieved_at": "2026-11-09"
+  },
+  {
+    "name": "重庆建工集团股份有限公司",
+    "alias": "重庆建工",
+    "industry": "建筑工程",
+    "summary": "重庆的建筑业上市公司，业务包括房屋建筑和基础设施建设。",
+    "source_title": "重庆建工 · 2025 年年度报告",
+    "source_url": "https://static.cninfo.com.cn/finalpage/2026-04-28/1225209908.PDF",
+    "retrieved_at": "2026-11-09"
+  }
+]

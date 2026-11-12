@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Verifies URL-backed case views, filtering the current authorized loaded collection before pagination, and retaining case-ID links after an editable business-number change.
+// Purpose: Verifies URL-backed case views, filtering the current authorized loaded collection before pagination, retaining case-ID links after an editable business-number change, and showing the create-case dialog title once.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-08
-// Revision: r3
+// Updated: 2026-11-09
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,14 +16,15 @@ import type { CaseSummary } from "../api/types";
 import { renderWithAntd as render } from "../test/antd";
 import { CasesPage } from "./cases-page";
 
-const source = vi.hoisted(() => ({ items: [] as CaseSummary[] }));
+const source = vi.hoisted(() => ({ items: [] as CaseSummary[], role: "viewer" }));
 vi.mock("../api/queries", () => ({
   useCases: () => ({ data: source.items, isLoading: false, isError: false }),
-  useSession: () => ({ data: { role: "viewer", display_name: "审查员" } }),
+  useSession: () => ({ data: { role: source.role, display_name: "审查员" } }),
   useCreateCase: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 it("filters the authorized loaded set before paging and keeps links on case ID after a number edit", async () => {
+  source.role = "viewer";
   source.items = Array.from({ length: 13 }, (_, index) => ({
     id: `case-${index}`, title: "同名案件", case_number: `BUS-${index}`,
     contract_type: index % 2 ? "framework" : "service", scenario: "telecom_dedicated_line", business_line: "ENT",
@@ -55,7 +56,30 @@ it("filters the authorized loaded set before paging and keeps links on case ID a
   expect(screen.getByRole("link", { name: "同名案件" })).toHaveAttribute("href", "/cases/case-0");
 });
 
+it("names the create dialog once from the modal title", async () => {
+  source.role = "admin";
+  source.items = [{
+    id: "case-1", title: "已有案件", case_number: "BUS-1",
+    contract_type: "service", scenario: "telecom_dedicated_line", business_line: "ENT",
+    document_count: 0, pending_decisions: 0, latest_run: null, updated_at: "2026-11-08T01:02:00Z",
+  }];
+  const user = userEvent.setup();
+  render(<MemoryRouter initialEntries={["/cases"]}><CasesPage /></MemoryRouter>);
+  await user.click(screen.getByRole("button", { name: "新建案件" }));
+  const dialog = screen.getByRole("dialog");
+  expect(dialog.querySelector(".ant-modal-title")).toHaveTextContent("新建案件");
+  expect(dialog.textContent?.match(/新建案件/g)).toEqual(["新建案件"]);
+  expect(within(dialog).queryByRole("heading", { name: "新建案件" })).not.toBeInTheDocument();
+  expect(within(dialog).getByLabelText("标题")).toBeInTheDocument();
+  expect(within(dialog).getByRole("button", { name: "使用其他已发布业务范围" })).toBeInTheDocument();
+  expect(within(dialog).getByRole("combobox", { name: "业务场景" })).toBeInTheDocument();
+  expect(within(dialog).getByRole("combobox", { name: "合同类型" })).toBeInTheDocument();
+  expect(within(dialog).getByRole("button", { name: "取消" })).toBeInTheDocument();
+  expect(within(dialog).getByRole("button", { name: "创建" })).toBeInTheDocument();
+});
+
 it("filters the visible case set by assigned owner and archived state", async () => {
+  source.role = "viewer";
   source.items = [
     {
       id: "mine-open", title: "我负责的案件", case_number: "BUS-MINE",

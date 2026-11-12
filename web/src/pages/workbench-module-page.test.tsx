@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r6
+// Updated: 2026-11-09
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -2171,6 +2171,30 @@ describe("workbench public directory, templates and audit", () => {
     expect(
       rows.queryByRole("button", { name: /审查员甲/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows Chongqing districts and English names for the legacy local demo directory", async () => {
+    const service = new WorkbenchService();
+    service.snapshot.members = [
+      { id: "demo-admin", display_name: "演示管理员", role: "admin", tenant_id: "local-demo", org_id: "demo-org" },
+      { id: "demo-clerk", display_name: "演示经办", role: "clerk", tenant_id: "local-demo", org_id: "demo-org" },
+      { id: "demo-reviewer", display_name: "演示审查员", role: "reviewer", tenant_id: "local-demo", org_id: "demo-org" },
+      { id: "demo-viewer", display_name: "演示只读", role: "viewer", tenant_id: "local-demo", org_id: "demo-org" },
+      { id: "demo-otherorg-clerk", display_name: "演示其他组织经办", role: "clerk", tenant_id: "local-demo", org_id: "demo-other-org" },
+    ];
+    const { user } = open("organization", service);
+    const rows = await list("组织与权限");
+    expect(rows.queryByRole("button", { name: "演示管理员" })).not.toBeInTheDocument();
+    await user.type(screen.getByRole("searchbox", { name: "搜索当前数据" }), "万州区");
+    expect(rows.getByRole("button", { name: "Ethan Brooks" })).toBeVisible();
+    expect(rows.getByRole("button", { name: "Grace Coleman" })).toBeVisible();
+    expectDisplayField("组织", "万州区");
+    expectDisplayField("显示姓名", "Ethan Brooks");
+    await user.clear(screen.getByRole("searchbox", { name: "搜索当前数据" }));
+    await user.type(screen.getByRole("searchbox", { name: "搜索当前数据" }), "James Carter");
+    expect(rows.getByRole("button", { name: "James Carter" })).toBeVisible();
+    expectDisplayField("组织", "两江新区");
+    expectDisplayField("显示姓名", "James Carter");
   });
 
   it("renders returned template field definitions and current version without fabricating generated documents", async () => {
