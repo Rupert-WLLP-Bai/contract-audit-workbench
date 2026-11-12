@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-10
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -198,6 +198,9 @@ to_regprocedure(format('%I.tenant_operation_fence(jsonb,text,text)',$3))::oid
 			,to_regprocedure(format('%I.tenant_review_receipt_recovery_allowed(text,text,text,text,text,text,text)',$3))::oid
 			,to_regprocedure(format('%I.stamp_review_receipt_origin()',$3))::oid
 			,to_regprocedure(format('%I.tenant_review_receipt_key_conflict(text,text,text,text,text,text)',$3))::oid
+			,to_regprocedure(format('%I.tenant_report_receipt_recovery_allowed(text,text,text,text,text,text,text)',$3))::oid
+			,to_regprocedure(format('%I.stamp_report_receipt_origin()',$3))::oid
+			,to_regprocedure(format('%I.tenant_report_receipt_key_conflict(text,text,text,text,text,text)',$3))::oid
 		]) AS oid
 	), owner_objects AS (
 		SELECT class.classid,class.objid,class.objsubid,namespace.nspname
@@ -300,6 +303,14 @@ to_regprocedure(format('%I.tenant_operation_fence(jsonb,text,text)',$3))::oid
 		('execution_write_receipts','command_origin_org','SELECT')
 	 ) AS review_receipt_key_permissions(table_name,column_name,privilege_type) WHERE EXISTS(
 		SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass(format('%I.execution_write_receipts',$2::text)) AND attname='command_origin_org' AND NOT attisdropped)
+	 UNION ALL SELECT * FROM (VALUES
+		('core_write_receipts','tenant_id','SELECT'),('core_write_receipts','org_id','SELECT'),
+		('core_write_receipts','case_id','SELECT'),('core_write_receipts','actor_id','SELECT'),
+		('core_write_receipts','route','SELECT'),('core_write_receipts','idempotency_key','SELECT'),
+		('core_write_receipts','command_session','SELECT'),('core_write_receipts','command_version','SELECT'),
+		('core_write_receipts','command_origin_org','SELECT')
+	 ) AS report_receipt_key_permissions(table_name,column_name,privilege_type) WHERE EXISTS(
+		SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass(format('%I.core_write_receipts',$2::text)) AND attname='command_origin_org' AND NOT attisdropped)
 	), actual AS (
 		SELECT namespace.nspname AS schema_name,relation.relname AS table_name,NULL::text AS column_name,acl.privilege_type,acl.is_grantable
 		FROM pg_class relation JOIN pg_namespace namespace ON namespace.oid=relation.relnamespace

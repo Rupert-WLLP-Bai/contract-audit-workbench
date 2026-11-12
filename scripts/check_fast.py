@@ -4,8 +4,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-31
-# Updated: 2026-11-04
-# Revision: r5
+# Updated: 2026-11-10
+# Revision: r6
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -124,6 +124,11 @@ REVIEW_READMISSION_TESTS = (
     "TestCaseContextFenceMigrationUpgradeAndRoleACL",
 )
 REVIEW_READMISSION_HTTP_TESTS = ("TestCancelledPreparingReadmissionHTTP",)
+REPORT_RECEIPT_TESTS = (
+    "TestReportReceiptReplayAfterNewSessionPostgres",
+    "TestReportReceiptReplayPreservesSessionOriginOrganizationPostgres",
+)
+REPORT_RECEIPT_HTTP_TESTS = ("TestReportReceiptReplayAfterLoginHTTP",)
 CONTRACT_SIGNING_TESTS = (
     "TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision",
 )
@@ -520,6 +525,27 @@ def _is_review_readmission_http(path: str) -> bool:
                     "internal/store/migrations/0043_review_receipt_origin_org.sql"}
 
 
+def _is_report_receipt_http(path: str) -> bool:
+    return path in {
+        "internal/httpapi/business.go",
+        "internal/httpapi/server.go",
+        "internal/httpapi/report_receipt_replay_test.go",
+        "internal/store/business_reports.go",
+        "internal/store/migrations/0044_report_receipt_session_recovery.sql",
+    }
+
+
+def _is_report_receipt(path: str) -> bool:
+    return _is_report_receipt_http(path) or path in {
+        "internal/store/write_idempotency.go",
+        "internal/store/report_receipt_replay_pg_test.go",
+        "internal/store/migrations.go",
+        "internal/store/table_catalog.json",
+        "internal/store/service_roles.go",
+        "internal/store/tenant_identity_role_provision.go",
+    }
+
+
 def _is_contract_signing(path: str) -> bool:
     return path in (
         "internal/store/contract_signing.go",
@@ -762,6 +788,9 @@ SENSITIVE_RULES = (
     SensitiveRule("review-readmission", _is_review_readmission, REVIEW_READMISSION_TESTS),
     SensitiveRule("review-readmission-http", _is_review_readmission_http,
                   REVIEW_READMISSION_HTTP_TESTS, package="./internal/httpapi"),
+    SensitiveRule("report-receipt", _is_report_receipt, REPORT_RECEIPT_TESTS),
+    SensitiveRule("report-receipt-http", _is_report_receipt_http,
+                  REPORT_RECEIPT_HTTP_TESTS, package="./internal/httpapi"),
     SensitiveRule("contract-signing", _is_contract_signing, CONTRACT_SIGNING_TESTS),
     SensitiveRule("contract-fulfillment", _is_contract_fulfillment, CONTRACT_FULFILLMENT_TESTS),
     SensitiveRule("contract-payment", _is_contract_payment, CONTRACT_PAYMENT_TESTS),

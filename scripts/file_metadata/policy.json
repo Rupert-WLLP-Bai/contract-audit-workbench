@@ -401,6 +401,14 @@
       ],
       "handling": "manifest-only",
       "reason": "The Docusaurus landing page is a JSX-bearing tool-consumed page entry; preserve its exact bytes without an in-band metadata header."
+    },
+    {
+      "id": "report-receipt-session-recovery-migration",
+      "paths": [
+        "internal/store/migrations/0044_report_receipt_session_recovery.sql"
+      ],
+      "handling": "manifest-only",
+      "reason": "Versioned SQL migration bytes are integrity-checked after application and must not be changed by metadata headers."
     }
   ],
   "unclassified_file_policy": "Do not infer a comment syntax or purpose. Add a reviewed class or path rule before the complete inventory is accepted.",

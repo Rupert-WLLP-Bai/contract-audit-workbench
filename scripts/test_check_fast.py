@@ -3,8 +3,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-31
-# Updated: 2026-11-04
-# Revision: r5
+# Updated: 2026-11-10
+# Revision: r6
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -391,6 +391,7 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
                 expected_http = set(check_fast.TENANT_IDENTITY_HTTP_TESTS)
                 if path == "internal/httpapi/server.go":
                     expected_http.update(check_fast.REVIEW_READMISSION_HTTP_TESTS)
+                    expected_http.update(check_fast.REPORT_RECEIPT_HTTP_TESTS)
                 self.assertEqual(set(targets["./internal/httpapi"].tests), expected_http)
                 self.assertIn("./internal/store", targets)
                 self.assertTrue(set(check_fast.TENANT_IDENTITY_TESTS).issubset(
@@ -419,6 +420,39 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
                 targets = {target.package: target for target in plan.database_tests}
                 self.assertTrue(set(check_fast.REVIEW_READMISSION_HTTP_TESTS).issubset(
                     targets["./internal/httpapi"].tests))
+
+    def test_report_receipt_sources_select_replay_regressions(self):
+        sources = (
+            "internal/store/business_reports.go",
+            "internal/store/write_idempotency.go",
+            "internal/store/report_receipt_replay_pg_test.go",
+            "internal/store/migrations/0044_report_receipt_session_recovery.sql",
+            "internal/store/migrations.go",
+            "internal/store/table_catalog.json",
+            "internal/store/service_roles.go",
+            "internal/store/tenant_identity_role_provision.go",
+            "internal/httpapi/business.go",
+            "internal/httpapi/server.go",
+            "internal/httpapi/report_receipt_replay_test.go",
+        )
+        for path in sources:
+            with self.subTest(path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                targets = {target.package: target.tests for target in plan.database_tests}
+                self.assertTrue(plan.database)
+                self.assertTrue({
+                    "TestReportReceiptReplayAfterNewSessionPostgres",
+                    "TestReportReceiptReplayPreservesSessionOriginOrganizationPostgres",
+                }.issubset(targets["./internal/store"]))
+                self.assertFalse(plan.web)
+        for path in ("internal/store/business_reports.go",
+                     "internal/store/migrations/0044_report_receipt_session_recovery.sql",
+                     "internal/httpapi/business.go", "internal/httpapi/server.go",
+                     "internal/httpapi/report_receipt_replay_test.go"):
+            with self.subTest(http_path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                targets = {target.package: target.tests for target in plan.database_tests}
+                self.assertIn("TestReportReceiptReplayAfterLoginHTTP", targets["./internal/httpapi"])
 
     def test_tenant_authority_session_and_model_paths_select_required_suites(self):
         paths = (
