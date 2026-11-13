@@ -1179,18 +1179,7 @@ func syncSnapshots(ctx context.Context, tx pgx.Tx, items []RunSnapshot) error {
 }
 
 func syncAudits(ctx context.Context, tx pgx.Tx, items []AuditRecord, owner string) error {
-	table := auditTableFor(owner)
-	for _, item := range items {
-		raw, err := jsonText(item.CorrelationIDs)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO `+table+` (event_id, run_id, actor, seq, event_type, prev_hash, hash, correlation_ids) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-			item.EventID, item.RunID, item.Actor, item.Seq, item.EventType, item.PrevHash, item.Hash, raw); err != nil {
-			return err
-		}
-	}
-	return nil
+	return persistAuditRecords(ctx, tx, items, owner)
 }
 
 type queryer interface {
@@ -1659,30 +1648,7 @@ func loadSnapshots(ctx context.Context, q queryer, caseID ...string) ([]RunSnaps
 }
 
 func loadAudits(ctx context.Context, q queryer, caseID ...string) ([]AuditRecord, error) {
-	var rows pgx.Rows
-	var err error
-	if len(caseID) == 0 {
-		rows, err = q.Query(ctx, `SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM audit_events UNION ALL SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM business_audit_events ORDER BY seq,event_id`)
-	} else {
-		rows, err = q.Query(ctx, `SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM (SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM audit_events UNION ALL SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM business_audit_events) AS audit_rows WHERE run_id IN (SELECT id FROM review_runs WHERE case_id=$1) ORDER BY seq,event_id`, caseID[0])
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []AuditRecord
-	for rows.Next() {
-		var item AuditRecord
-		var raw string
-		if err := rows.Scan(&item.EventID, &item.RunID, &item.Actor, &item.Seq, &item.EventType, &item.PrevHash, &item.Hash, &raw); err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal([]byte(raw), &item.CorrelationIDs); err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, rows.Err()
+	return readAuditRecords(ctx, q, caseID...)
 }
 
 // plannerPayloadValue persists the exact frozen planner configuration as bytea,

@@ -154,6 +154,16 @@
         "postgres": [
           "internal/asset/postgres"
         ]
+      },
+      {
+        "id": "audit",
+        "app": [
+          "internal/audit/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/audit/postgres"
+        ]
       }
     ]
   }

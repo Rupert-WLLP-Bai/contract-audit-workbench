@@ -363,28 +363,15 @@ func (s *Store) reauthorizeAttempt(ctx context.Context, tx pgx.Tx, runID, attemp
 // preceding hash always comes from PostgreSQL under the shared run/case lock;
 // full history is loaded only when the run is inspected.
 func (s *Store) loadRunAuditChain(ctx context.Context, tx pgx.Tx, runID string) (state, error) {
-	rows, err := tx.Query(ctx, `SELECT * FROM (
-		(SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM audit_events WHERE run_id=$1 ORDER BY seq DESC,event_id DESC LIMIT 1)
-		UNION ALL
-		(SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM business_audit_events WHERE run_id=$1 ORDER BY seq DESC,event_id DESC LIMIT 1)
-	) heads ORDER BY seq DESC,event_id DESC LIMIT 1`, runID)
+	item, found, err := readAuditHead(ctx, tx, runID)
 	if err != nil {
 		return state{}, err
 	}
-	defer rows.Close()
 	var chain state
-	for rows.Next() {
-		var item AuditRecord
-		var correlation string
-		if err := rows.Scan(&item.EventID, &item.RunID, &item.Actor, &item.Seq, &item.EventType, &item.PrevHash, &item.Hash, &correlation); err != nil {
-			return state{}, err
-		}
-		if err := json.Unmarshal([]byte(correlation), &item.CorrelationIDs); err != nil {
-			return state{}, err
-		}
-		chain.Audits = append(chain.Audits, item)
+	if found {
+		chain.Audits = []AuditRecord{auditRecordFromEvent(item)}
 	}
-	return chain, rows.Err()
+	return chain, nil
 }
 
 // requireLiveClaim re-checks the worker job under the attempt lock: the same
