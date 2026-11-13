@@ -215,6 +215,70 @@ func deliveryRowVersion(t *testing.T, fixture durableCaseFixture, contractID str
 	return list.RowVersion
 }
 
+func TestContractFulfillmentFactCASAndEventOutboxRollbackTogether(t *testing.T) {
+	for _, test := range []struct {
+		name, table, trigger, function, timing, failure, key string
+	}{
+		{"outbox", "clm_outbox_delivery", "test_fail_clm_outbox_delivery_insert", "test_fail_clm_outbox_delivery_insert", "BEFORE INSERT", "forced fulfillment outbox failure", "fulfillment-outbox-rollback"},
+		{"deferred receipt", "clm_contract_write_receipts", "test_fail_clm_receipt_commit", "test_fail_clm_receipt_commit", "AFTER INSERT", "forced fulfillment deferred receipt failure", "fulfillment-receipt-rollback"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture, contractID, frozen, baseMaterial, delivery := newFulfillmentDeliveryFixture(t)
+			ctx := context.Background()
+			before := deliveryRowVersion(t, fixture, contractID)
+			pool := fixture.environment.harness.pool
+			if _, err := pool.Exec(ctx, fmt.Sprintf(`CREATE FUNCTION %s() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION '%s'; END $$`, test.function, test.failure)); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				_, _ = pool.Exec(context.Background(), fmt.Sprintf(`DROP TRIGGER IF EXISTS %s ON %s`, test.trigger, test.table))
+				_, _ = pool.Exec(context.Background(), fmt.Sprintf(`DROP FUNCTION IF EXISTS %s()`, test.function))
+			})
+			trigger := fmt.Sprintf(`CREATE TRIGGER %s %s ON %s FOR EACH ROW EXECUTE FUNCTION %s()`, test.trigger, test.timing, test.table, test.function)
+			if test.name == "deferred receipt" {
+				trigger = fmt.Sprintf(`CREATE CONSTRAINT TRIGGER %s AFTER INSERT ON %s DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION %s()`, test.trigger, test.table, test.function)
+			}
+			if _, err := pool.Exec(ctx, trigger); err != nil {
+				t.Fatal(err)
+			}
+			_, err := fixture.core.CreateContractAcceptance(ctx, fixture.admin, ContractAcceptanceInput{
+				ContractID: contractID, ExpectedRowVersion: before, ContractRevisionID: frozen.Version.ContractRevisionID,
+				DeliveryID: delivery.DeliveryID, ScopeStart: "0", ScopeEnd: "10.000000", AcceptedQuantity: "10.000000",
+				ActualAt: "2026-11-02T11:30:00Z", Standard: "按冻结技术标准验收",
+				Evidence:       []MaterialRef{{MaterialID: baseMaterial.MaterialID, MaterialVersionID: baseMaterial.MaterialVersionID, SHA256: baseMaterial.SHA256, Purpose: "acceptance"}},
+				IdempotencyKey: test.key,
+			})
+			if err == nil || !strings.Contains(err.Error(), test.failure) {
+				t.Fatalf("expected injected failure %q, got %v", test.failure, err)
+			}
+			var facts, events, outbox, receipts int
+			if err := pool.QueryRow(ctx, `SELECT count(*) FROM clm_contract_acceptances WHERE tenant_id=$1 AND contract_id=$2`,
+				fixture.admin.TenantID, contractID).Scan(&facts); err != nil {
+				t.Fatal(err)
+			}
+			if err := pool.QueryRow(ctx, `SELECT count(*) FROM clm_business_events WHERE tenant_id=$1 AND contract_id=$2 AND event_type=$3`,
+				fixture.admin.TenantID, contractID, clmEventAcceptanceRecorded).Scan(&events); err != nil {
+				t.Fatal(err)
+			}
+			if err := pool.QueryRow(ctx, `SELECT count(*) FROM clm_outbox_delivery delivery JOIN clm_business_events event
+		USING (tenant_id,event_id) WHERE event.tenant_id=$1 AND event.contract_id=$2 AND event.event_type=$3`,
+				fixture.admin.TenantID, contractID, clmEventAcceptanceRecorded).Scan(&outbox); err != nil {
+				t.Fatal(err)
+			}
+			if err := pool.QueryRow(ctx, `SELECT count(*) FROM clm_contract_write_receipts
+		WHERE tenant_id=$1 AND actor_id=$2 AND route_scope=$3 AND idempotency_key=$4`,
+				fixture.admin.TenantID, fixture.admin.ID, clmRouteCreateAcceptance, test.key).Scan(&receipts); err != nil {
+				t.Fatal(err)
+			}
+			after := deliveryRowVersion(t, fixture, contractID)
+			if facts != 0 || events != 0 || outbox != 0 || receipts != 0 || after != before {
+				t.Fatalf("failed command left partial state: facts=%d events=%d outbox=%d receipts=%d row_version=%d before=%d",
+					facts, events, outbox, receipts, after, before)
+			}
+		})
+	}
+}
+
 // The actual schema migration must tolerate malformed legacy plan JSON, and
 // duplicate UUID rows must remain ambiguous rather than selecting the first.
 func TestContractFulfillmentLegacyMigrationSkipsUnknownPlans(t *testing.T) {
@@ -322,6 +386,9 @@ func TestContractFulfillmentLegacyMigrationSkipsUnknownPlans(t *testing.T) {
 		t.Fatalf("legacy summary rows=%d, want 5", len(list.Summary))
 	}
 	for _, item := range list.Summary {
+		if item.DeliveredQuantity != "0" || item.QualifiedQuantity != "0" || item.UnallocatedQuantity != "0" || item.PendingReinspectionQuantity != "0" {
+			t.Fatalf("empty summary aggregate changed wire representation: %+v", item)
+		}
 		if item.ContractRevisionID == legacyRevisionID && item.ItemID == "c6052c81-8b05-49ce-89e9-f6e9c6403c66" && (item.PlannedQuantity != "2.000000" || item.Unit != "") {
 			t.Fatalf("malformed legacy unit was inferred: %+v", item)
 		}

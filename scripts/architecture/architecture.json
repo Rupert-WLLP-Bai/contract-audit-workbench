@@ -124,6 +124,16 @@
         "postgres": [
           "internal/approval/postgres"
         ]
+      },
+      {
+        "id": "fulfillment",
+        "app": [
+          "internal/fulfillment/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/fulfillment/postgres"
+        ]
       }
     ]
   }

@@ -42,12 +42,12 @@
 
 ## 既有包与蓝图区别
 
-以下均为**扩展现有包**，不是按 14 个领域重建；包与领域不是一一映射。当前实现未必直接拥有表，持久化仍主要经 `internal/store`，以下边界不决定未审方法的归属。
+以下均为**扩展现有包**，不是按 14 个领域重建；包与领域不是一一映射。部分领域已有本域 app/postgres 实现，其余持久化仍主要经 `internal/store`；Store 的兼容入口、当前授权和事务管理不等于它继续拥有领域规则。以下边界不决定未审方法的归属。
 
 | 已有包 | 现存边界与蓝图差异 |
 | --- | --- |
-| `internal/approval` | 审批凭据签发、校验；审批持久化及事务仍在 Store，不等同完整 Approval 存储模块。 |
-| `internal/fulfillment` | 冻结输入和观察的履约评估；交付、验收写入仍在 Store。 |
+| `internal/approval` | 根包保留凭据签发、校验；model/app/postgres 已承接模板、送审、决定、转办及冻结历史读取，Store 保留当前授权、事务和公开兼容入口。源码候选的运行验收仍为 NOT_RUN。 |
+| `internal/fulfillment` | 根包保留冻结输入和观察的履约评估；CLM 交付、验收、缺陷、整改规则和自有 SQL 已迁入 app/postgres，Store 保留授权事务及旧调用方的窄兼容入口。源码候选的运行验收仍为 NOT_RUN。 |
 | `internal/audit` | 审计事件链与快照不可改规则；不等同所有审查和审计表的持久化包。 |
 | `internal/auditext` | 外部观察、证据及评估契约；横跨 Operator、Fulfillment、Evidence，非单一领域存储。 |
 | `internal/decision` | 决策建议输入、结果和校验契约；不替代人工决定历史。 |
