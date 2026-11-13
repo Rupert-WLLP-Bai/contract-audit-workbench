@@ -107,3 +107,11 @@ func VerifyApprovalFreeze(ctx context.Context, tenantID, contractID, revisionID 
 	}
 	return materials, nil
 }
+
+// ApprovalRevisionScope is the sealed revision evidence bound into approval credentials.
+type ApprovalRevisionScope struct {
+	RevisionNumber int
+	Amount         string
+	Currency       string
+	SnapshotDigest string
+}
