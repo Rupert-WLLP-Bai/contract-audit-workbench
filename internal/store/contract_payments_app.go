@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-type paymentContracts struct {
+type contractLifecyclePorts struct {
 	*contractpg.FulfillmentContracts
 	*contractpg.LifecycleFacts
 }
@@ -24,5 +24,5 @@ type paymentApplication struct {
 
 func newPaymentApplication(tx pgx.Tx, user accounts.User) paymentApplication {
 	executor := platform.Bind(tx)
-	return paymentApplication{contracts: paymentContracts{contractpg.NewFulfillmentContracts(executor), contractpg.NewLifecycleFacts(executor)}, repository: paymentpg.NewRepository(executor), acceptance: fulfillmentpg.NewRepository(executor), access: storeFulfillmentAccess{tx: tx, user: user}, events: storeVersionEventAdapter{tx: tx}}
+	return paymentApplication{contracts: contractLifecyclePorts{contractpg.NewFulfillmentContracts(executor), contractpg.NewLifecycleFacts(executor)}, repository: paymentpg.NewRepository(executor), acceptance: fulfillmentpg.NewRepository(executor), access: storeFulfillmentAccess{tx: tx, user: user}, events: storeVersionEventAdapter{tx: tx}}
 }
