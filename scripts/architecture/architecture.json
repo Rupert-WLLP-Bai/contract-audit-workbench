@@ -113,6 +113,17 @@
         "postgres": [
           "internal/execution/postgres"
         ]
+      },
+      {
+        "id": "approval",
+        "app": [
+          "internal/approval/model",
+          "internal/approval/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/approval/postgres"
+        ]
       }
     ]
   }
