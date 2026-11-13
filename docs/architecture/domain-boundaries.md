@@ -204,3 +204,11 @@ Store 继续 trustedAdmin、Core service owner、写门禁、updateAdminAs 或�
 本次不迁 #305 Resolve、接纳、retry 和 worker frozen read，既有消费者通过兼容入口继续使用精确值和规则。T14/T15/T23/T08 的规则包、知识版本、业务时间与执行尝试含义沿唯一概念源，不新增同义概念源；旧尝试不补当前知识或改写冻结身份。原跨域 state writer 的真实 load→clone→append-only/delta→persist 及适用 snapshot/run/attempt/job/Outbox 原子性不变，不能构造空 state。
 
 本过渡桥随对应领域公开 contract 就绪逐项退场，AR020 检查消费者后删除无用适配。实际包落地后登记架构路径；必要 SOURCE 补真实 CAS/history/幂等失败回滚及当前授权，不复制旧完整矩阵。全部运行检查、PG/app/browser 和真实模型/OCR 仍 NOT_RUN，整轮重构结束后统一验收。
+
+### #304 旧知识版本命名空间兼容读取
+
+状态：采纳，创建接线前的补充决策。现有 `validateKnowledgeVersionFamily` 先在同一条固定 SQL 中检查 `business_knowledge` 的 tenant/id/version 或治理 versions 的 tenant/knowledge_id/display_version 是否占用，再检查治理族是否出现其他 kind。两条 API 的版本命名空间共享冲突边界，但旧 business knowledge 不据此归入新 Knowledge PG 六表。
+
+准许一个专用 `VersionSlotOccupied` 同事务只读事实桥，输入限于服务端绑定 tenant 与精确 knowledge ID/display version，返回 bool/error；保留原两表 EXISTS OR EXISTS 的单条固定查询。app 根据该事实给出原重复版本冲突，随后才调用 Knowledge 自有 PG 的 family-kind 事实并判断。桥不执行内容、生命周期或 family-kind 决定，也不开放 SQL、scope、pool、事务或泛化 callback。此处保留旧单条查询，避免拆成 LegacyExists 与 GovernedExists 后增加查询及改变错误时序；Knowledge PG 不读取 business_knowledge，服务角色/RLS/schema 锁与原事务不变。
+
+本例外只覆盖创建/导入现有命名空间兼容的精确读取；不迁旧 API、不推定其数据 owner。相应公开所有者契约可承接同事务兼容检查后删除该 Store 桥，AR020 继续检查消费者。所有运行检查仍 NOT_RUN。
