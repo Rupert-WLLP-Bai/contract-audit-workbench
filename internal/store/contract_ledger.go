@@ -38,8 +38,6 @@ const (
 	contractLedgerMaxLimit       = ledger.MaxLimit
 	contractLedgerCursorVer      = ledger.CursorVersion
 	contractLedgerSortCreated    = ledger.SortCreated
-	contractSavedViewNameMax     = 60
-	contractSavedViewColumnsMax  = 20
 	contractExportMaxRows        = 5000
 	contractExportMaxScanned     = 20000
 	contractExportFormatCSV      = "csv"
@@ -55,31 +53,9 @@ type ContractLedgerItem = ledger.Item
 type ContractLedgerPage = ledger.Page
 type ContractLedgerQuery = ledger.Query
 type contractLedgerCursor = ledger.Cursor
-
-type ContractSavedView struct {
-	ViewID     string               `json:"view_id"`
-	Name       string               `json:"name"`
-	Filter     ContractLedgerFilter `json:"filter"`
-	Columns    []string             `json:"columns"`
-	RowVersion int64                `json:"row_version"`
-	CreatedAt  time.Time            `json:"created_at"`
-	UpdatedAt  time.Time            `json:"updated_at"`
-}
-
-type ContractSavedViewInput struct {
-	ViewID  string               `json:"-"`
-	Name    string               `json:"name"`
-	Filter  ContractLedgerFilter `json:"filter"`
-	Columns []string             `json:"columns"`
-}
-
-type ContractSavedViewUpdateInput struct {
-	ViewID             string               `json:"-"`
-	ExpectedRowVersion int64                `json:"expected_row_version"`
-	Name               string               `json:"name"`
-	Filter             ContractLedgerFilter `json:"filter"`
-	Columns            []string             `json:"columns"`
-}
+type ContractSavedView = ledger.SavedView
+type ContractSavedViewInput = ledger.SavedViewInput
+type ContractSavedViewUpdateInput = ledger.SavedViewUpdateInput
 
 // ContractExportInput freezes one export request.
 type ContractExportInput struct {
@@ -115,24 +91,6 @@ type ContractExportDownload struct {
 	ExpiresAt time.Time
 }
 
-var contractLedgerColumnLabels = map[string]string{
-	"contract_number":    "合同编号",
-	"contract_name":      "合同名称",
-	"authority_mode":     "权威模式",
-	"supplier_name":      "供应商",
-	"amount":             "金额",
-	"currency":           "币种",
-	"department_id":      "申请部门",
-	"project_type":       "项目类型",
-	"procurement_method": "采购方式",
-	"contract_state":     "合同状态",
-	"workflow_state":     "会签状态",
-	"signing_date":       "签订日期",
-	"source_system":      "来源系统",
-	"created_at":         "创建时间",
-	"updated_at":         "更新时间",
-}
-
 // Export-only keys preserve the original headers and raw values above for
 // already frozen exports. Each key's header is part of its download contract.
 var contractExportColumnLabels = map[string]string{
@@ -158,18 +116,13 @@ var contractLedgerWorkflowLabels = map[string]string{
 	"not_started": "当前无进行中会签", "in_review": "会签中", "external_observed": "外部来源已观测",
 }
 
-var contractLedgerDefaultColumns = []string{
-	"contract_number", "contract_name", "supplier_name", "amount", "currency",
-	"department_id", "contract_state", "workflow_state", "updated_at",
-}
-
 func ledgerAmountScaled(value string) (int64, bool) { return ledger.AmountScaled(value) }
 func validateContractLedgerFilter(filter *ContractLedgerFilter) error {
 	return ledger.ValidateFilter(filter)
 }
 
 func normalizeContractLedgerColumns(columns []string) ([]string, error) {
-	return normalizeContractColumns(columns, false)
+	return ledger.NormalizeSavedViewColumns(columns)
 }
 
 func normalizeContractExportColumns(columns []string) ([]string, error) {
@@ -178,15 +131,15 @@ func normalizeContractExportColumns(columns []string) ([]string, error) {
 
 func normalizeContractColumns(columns []string, allowExportOnly bool) ([]string, error) {
 	if len(columns) == 0 {
-		return append([]string(nil), contractLedgerDefaultColumns...), nil
+		return ledger.DefaultSavedViewColumns(), nil
 	}
-	if len(columns) > contractSavedViewColumnsMax {
+	if len(columns) > ledger.MaxSavedViewColumns {
 		return nil, fault.Invalid("导出或视图列最多 20 项")
 	}
 	seen := map[string]bool{}
 	out := make([]string, 0, len(columns))
 	for _, column := range columns {
-		if _, ok := contractLedgerColumnLabels[column]; !ok {
+		if !ledger.IsSavedViewColumn(column) {
 			if _, exportOnly := contractExportColumnLabels[column]; !allowExportOnly || !exportOnly {
 				return nil, fault.Invalid("不支持的台账列")
 			}
@@ -287,22 +240,10 @@ func (s *Store) ListContractSavedViews(ctx context.Context, user accounts.User) 
 		return nil, err
 	}
 	defer rollbackCLM(tx)
-	rows, err := tx.Query(ctx, `SELECT view_id,name,filter,columns,row_version,created_at,updated_at
-		FROM clm_contract_saved_views WHERE tenant_id=$1 AND owner_user_id=$2
-		ORDER BY updated_at DESC,view_id DESC`, accounts.Tenant(current), current.ID)
+	identity := ledger.SavedViewIdentity{TenantID: accounts.Tenant(current), ActorID: current.ID}
+	repository := contractpostgres.NewSavedViewCommands(platformpostgres.Bind(tx))
+	out, err := contractapp.ListSavedViews(ctx, identity, repository)
 	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []ContractSavedView{}
-	for rows.Next() {
-		item, err := scanContractSavedView(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	if _, err := trustedUser(current); err != nil {
@@ -314,70 +255,11 @@ func (s *Store) ListContractSavedViews(ctx context.Context, user accounts.User) 
 	return out, nil
 }
 
-type contractSavedViewScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanContractSavedView(row contractSavedViewScanner) (ContractSavedView, error) {
-	var item ContractSavedView
-	var filterJSON, columnsJSON []byte
-	if err := row.Scan(&item.ViewID, &item.Name, &filterJSON, &columnsJSON, &item.RowVersion, &item.CreatedAt, &item.UpdatedAt); err != nil {
-		return ContractSavedView{}, err
-	}
-	if err := unmarshalStoredDraft(filterJSON, &item.Filter); err != nil {
-		return ContractSavedView{}, fault.Conflict("保存视图的筛选条件无法读取")
-	}
-	if err := validateContractLedgerFilter(&item.Filter); err != nil {
-		return ContractSavedView{}, fault.Conflict("保存视图的筛选条件不再有效")
-	}
-	if err := json.Unmarshal(columnsJSON, &item.Columns); err != nil {
-		return ContractSavedView{}, fault.Conflict("保存视图的列设置无法读取")
-	}
-	columns, err := normalizeContractLedgerColumns(item.Columns)
-	if err != nil {
-		return ContractSavedView{}, fault.Conflict("保存视图的列设置不再有效")
-	}
-	item.Columns = columns
-	return item, nil
-}
-
-func normalizeContractSavedViewInput(name string, filter *ContractLedgerFilter, columns []string) (string, []string, error) {
-	name = strings.TrimSpace(name)
-	if name == "" || runeCount(name) > contractSavedViewNameMax {
-		return "", nil, fault.Invalid("视图名称必须为 1 到 60 个字符")
-	}
-	for _, char := range name {
-		if char < 0x20 || char == 0x7f {
-			return "", nil, fault.Invalid("视图名称不能包含控制字符")
-		}
-	}
-	if err := validateContractLedgerFilter(filter); err != nil {
-		return "", nil, err
-	}
-	normalized, err := normalizeContractLedgerColumns(columns)
-	if err != nil {
-		return "", nil, err
-	}
-	return name, normalized, nil
-}
-
 // CreateContractSavedView stores one personal view. The owner and tenant come
 // only from the authenticated session.
 func (s *Store) CreateContractSavedView(ctx context.Context, user accounts.User, input ContractSavedViewInput) (ContractSavedView, error) {
 	ctx = commandContext(ctx, user)
-	name, columns, err := normalizeContractSavedViewInput(input.Name, &input.Filter, input.Columns)
-	if err != nil {
-		return ContractSavedView{}, err
-	}
-	filterJSON, err := json.Marshal(input.Filter)
-	if err != nil {
-		return ContractSavedView{}, err
-	}
-	columnsJSON, err := json.Marshal(columns)
-	if err != nil {
-		return ContractSavedView{}, err
-	}
-	viewID, err := newContractUUID()
+	prepared, err := contractapp.PrepareSavedView(input)
 	if err != nil {
 		return ContractSavedView{}, err
 	}
@@ -386,15 +268,11 @@ func (s *Store) CreateContractSavedView(ctx context.Context, user accounts.User,
 		return ContractSavedView{}, err
 	}
 	defer rollbackCLM(tx)
-	item := ContractSavedView{ViewID: viewID, Name: name, Filter: input.Filter, Columns: columns}
-	err = tx.QueryRow(ctx, `INSERT INTO clm_contract_saved_views
-		(tenant_id,view_id,owner_user_id,name,filter,columns)
-		VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb)
-		RETURNING row_version,created_at,updated_at`,
-		accounts.Tenant(current), viewID, current.ID, name, string(filterJSON), string(columnsJSON)).Scan(
-		&item.RowVersion, &item.CreatedAt, &item.UpdatedAt)
+	identity := ledger.SavedViewIdentity{TenantID: accounts.Tenant(current), ActorID: current.ID}
+	repository := contractpostgres.NewSavedViewCommands(platformpostgres.Bind(tx))
+	item, err := contractapp.CreateSavedView(ctx, identity, prepared, repository)
 	if err != nil {
-		return ContractSavedView{}, clmUniqueViolation(err, "同一名称的保存视图已存在")
+		return ContractSavedView{}, err
 	}
 	if _, err := trustedUser(current); err != nil {
 		return ContractSavedView{}, err
@@ -409,22 +287,7 @@ func (s *Store) CreateContractSavedView(ctx context.Context, user accounts.User,
 // concurrency.
 func (s *Store) ReplaceContractSavedView(ctx context.Context, user accounts.User, input ContractSavedViewUpdateInput) (ContractSavedView, error) {
 	ctx = commandContext(ctx, user)
-	viewID, err := normalizeContractUUID(input.ViewID)
-	if err != nil {
-		return ContractSavedView{}, err
-	}
-	if input.ExpectedRowVersion < 1 {
-		return ContractSavedView{}, fault.Invalid("替换视图必须携带当前 row_version")
-	}
-	name, columns, err := normalizeContractSavedViewInput(input.Name, &input.Filter, input.Columns)
-	if err != nil {
-		return ContractSavedView{}, err
-	}
-	filterJSON, err := json.Marshal(input.Filter)
-	if err != nil {
-		return ContractSavedView{}, err
-	}
-	columnsJSON, err := json.Marshal(columns)
+	viewID, expectedRowVersion, replacement, err := contractapp.PrepareSavedViewReplacement(input)
 	if err != nil {
 		return ContractSavedView{}, err
 	}
@@ -433,18 +296,11 @@ func (s *Store) ReplaceContractSavedView(ctx context.Context, user accounts.User
 		return ContractSavedView{}, err
 	}
 	defer rollbackCLM(tx)
-	item := ContractSavedView{ViewID: viewID, Name: name, Filter: input.Filter, Columns: columns}
-	err = tx.QueryRow(ctx, `UPDATE clm_contract_saved_views
-		SET name=$4,filter=$5::jsonb,columns=$6::jsonb,row_version=row_version+1,updated_at=clock_timestamp()
-		WHERE tenant_id=$1 AND view_id=$2 AND owner_user_id=$3 AND row_version=$7
-		RETURNING row_version,created_at,updated_at`,
-		accounts.Tenant(current), viewID, current.ID, name, string(filterJSON), string(columnsJSON), input.ExpectedRowVersion).Scan(
-		&item.RowVersion, &item.CreatedAt, &item.UpdatedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ContractSavedView{}, s.savedViewMutationMiss(ctx, tx, current, viewID)
-	}
+	identity := ledger.SavedViewIdentity{TenantID: accounts.Tenant(current), ActorID: current.ID}
+	repository := contractpostgres.NewSavedViewCommands(platformpostgres.Bind(tx))
+	item, err := contractapp.ReplaceSavedView(ctx, identity, viewID, expectedRowVersion, replacement, repository)
 	if err != nil {
-		return ContractSavedView{}, clmUniqueViolation(err, "同一名称的保存视图已存在")
+		return ContractSavedView{}, err
 	}
 	if _, err := trustedUser(current); err != nil {
 		return ContractSavedView{}, err
@@ -459,49 +315,24 @@ func (s *Store) ReplaceContractSavedView(ctx context.Context, user accounts.User
 // concurrency. Preferences are not audit facts, so a hard delete is allowed.
 func (s *Store) DeleteContractSavedView(ctx context.Context, user accounts.User, viewID string, expectedRowVersion int64) error {
 	ctx = commandContext(ctx, user)
-	normalized, err := normalizeContractUUID(viewID)
+	normalized, err := contractapp.PrepareSavedViewDeletion(viewID, expectedRowVersion)
 	if err != nil {
 		return err
-	}
-	if expectedRowVersion < 1 {
-		return fault.Invalid("删除视图必须携带当前 row_version")
 	}
 	tx, current, err := s.beginCLMWrite(ctx, user, "只读模式下不能删除视图", nil)
 	if err != nil {
 		return err
 	}
 	defer rollbackCLM(tx)
-	tag, err := tx.Exec(ctx, `DELETE FROM clm_contract_saved_views
-		WHERE tenant_id=$1 AND view_id=$2 AND owner_user_id=$3 AND row_version=$4`,
-		accounts.Tenant(current), normalized, current.ID, expectedRowVersion)
-	if err != nil {
+	identity := ledger.SavedViewIdentity{TenantID: accounts.Tenant(current), ActorID: current.ID}
+	repository := contractpostgres.NewSavedViewCommands(platformpostgres.Bind(tx))
+	if err := contractapp.DeleteSavedView(ctx, identity, normalized, expectedRowVersion, repository); err != nil {
 		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return s.savedViewMutationMiss(ctx, tx, current, normalized)
 	}
 	if _, err := trustedUser(current); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
-}
-
-// savedViewMutationMiss distinguishes a missing/foreign view (404) from a
-// stale expected_row_version (409). Both mutation paths share the same miss
-// handling because ownership is rechecked in the WHERE clause.
-func (s *Store) savedViewMutationMiss(ctx context.Context, tx pgx.Tx, current accounts.User, viewID string) error {
-	ctx = commandContext(ctx, current)
-	var liveVersion int64
-	err := tx.QueryRow(ctx, `SELECT row_version FROM clm_contract_saved_views
-		WHERE tenant_id=$1 AND view_id=$2 AND owner_user_id=$3`,
-		accounts.Tenant(current), viewID, current.ID).Scan(&liveVersion)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return fault.NotFound("没有找到对应的保存视图")
-	}
-	if err != nil {
-		return err
-	}
-	return fault.Conflict("保存视图已被修改，请刷新后重试")
 }
 
 func contractLedgerRowValues(item ContractLedgerItem, columns []string) map[string]string {
@@ -874,7 +705,7 @@ func RenderContractExportCSV(columns []string, rows []map[string]string) ([]byte
 	writer := csv.NewWriter(&buffer)
 	header := make([]string, 0, len(normalized))
 	for _, column := range normalized {
-		label, ok := contractLedgerColumnLabels[column]
+		label, ok := ledger.SavedViewColumnLabel(column)
 		if !ok {
 			label = contractExportColumnLabels[column]
 		}

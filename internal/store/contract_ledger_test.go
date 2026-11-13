@@ -25,6 +25,7 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/contract/ledger"
 	"contractaudit/internal/fault"
 	"github.com/jackc/pgx/v5"
 )
@@ -259,7 +260,7 @@ func TestContractExportColumnLimitsDoNotExpandSavedViews(t *testing.T) {
 		"project_type", "procurement_method", "contract_state", "workflow_state", "signing_date", "source_system", "created_at", "updated_at",
 		"authority_mode_label", "authority_mode_code", "contract_state_label", "contract_state_code", "workflow_state_label", "workflow_state_code",
 	}
-	if _, err := normalizeContractLedgerColumns([]string{"contract_state_label"}); faultStatus(err) != 422 {
+	if _, err := ledger.NormalizeSavedViewColumns([]string{"contract_state_label"}); faultStatus(err) != 422 {
 		t.Fatalf("export-only column accepted for a saved view: %v", err)
 	}
 	if _, err := RenderContractExportCSV(allColumns[:20], nil); err != nil {
@@ -267,6 +268,79 @@ func TestContractExportColumnLimitsDoNotExpandSavedViews(t *testing.T) {
 	}
 	if _, err := RenderContractExportCSV(allColumns, nil); faultStatus(err) != 422 {
 		t.Fatalf("twenty-one requested columns should be rejected: %v", err)
+	}
+}
+
+func TestContractSavedViewRulesNormalizeAndDecodeStoredJSONStrictly(t *testing.T) {
+	filter := ContractLedgerFilter{Text: " 合同 "}
+	name, columns, err := ledger.NormalizeSavedViewInput(" 个人视图 ", &filter, nil)
+	if err != nil || name != "个人视图" || filter.Text != "合同" || len(columns) == 0 {
+		t.Fatalf("normalize saved view = %q, %+v, %+v, err=%v", name, filter, columns, err)
+	}
+	if _, _, err := ledger.NormalizeSavedViewInput("坏\x01名称", &filter, nil); faultStatus(err) != 422 {
+		t.Fatalf("saved-view control character = %v; want 422", err)
+	}
+	if _, _, err := ledger.NormalizeSavedViewInput(strings.Repeat("视", 61), &filter, nil); faultStatus(err) != 422 {
+		t.Fatalf("saved-view name over 60 code points = %v; want 422", err)
+	}
+	if _, _, err := ledger.DecodeStoredSavedView(
+		[]byte(`{"text":"合同","text":"篡改"}`), []byte(`[]`)); faultStatus(err) != 409 {
+		t.Fatalf("stored filter duplicate key = %v; want 409", err)
+	}
+	if _, _, err := ledger.DecodeStoredSavedView(
+		[]byte(`{"Text":"合同","text":"篡改"}`), []byte(`[]`)); faultStatus(err) != 409 {
+		t.Fatalf("stored filter duplicate field alias = %v; want 409", err)
+	}
+	for _, testCase := range []struct {
+		name   string
+		filter string
+	}{
+		{"long s field alias", `{"supplier_name":"A","ſupplier_name":"B"}`},
+		{"Kelvin sign field alias", `{"workflow_state":"not_started","worKflow_state":"in_review"}`},
+	} {
+		t.Run("stored duplicate Unicode "+testCase.name, func(t *testing.T) {
+			filter, _, err := ledger.DecodeStoredSavedView([]byte(testCase.filter), []byte(`[]`))
+			if faultStatus(err) != 409 {
+				t.Fatalf("stored filter duplicate Unicode alias = %v; want 409", err)
+			}
+			if filter.SupplierName != "" || filter.WorkflowState != "" {
+				t.Fatalf("failed stored filter decode returned a partial filter: %+v", filter)
+			}
+		})
+	}
+	for _, testCase := range []struct {
+		name   string
+		filter string
+	}{
+		{"ASCII case alias", `{"SUPPLIER_NAME":"供应商"}`},
+		{"long s alias", `{"ſupplier_name":"供应商"}`},
+	} {
+		t.Run("stored single field alias "+testCase.name, func(t *testing.T) {
+			filter, _, err := ledger.DecodeStoredSavedView([]byte(testCase.filter), []byte(`[]`))
+			if err != nil || filter.SupplierName != "供应商" {
+				t.Fatalf("stored single field alias = %+v, err=%v; want supplier name", filter, err)
+			}
+		})
+	}
+	if _, _, err := ledger.DecodeStoredSavedView(
+		[]byte(`{"unexpected":true}`), []byte(`[]`)); faultStatus(err) != 409 {
+		t.Fatalf("stored filter unknown field = %v; want 409", err)
+	}
+	if _, _, err := ledger.DecodeStoredSavedView(
+		[]byte(`{"text":"合同"} {}`), []byte(`[]`)); faultStatus(err) != 409 {
+		t.Fatalf("stored filter trailing value = %v; want 409", err)
+	}
+	if _, _, err := ledger.DecodeStoredSavedView(
+		[]byte(`{"amount_min":"10"}`), []byte(`[]`)); faultStatus(err) != 409 {
+		t.Fatalf("stored invalid filter = %v; want 409", err)
+	}
+	if _, _, err := ledger.DecodeStoredSavedView(
+		[]byte(`{}`), []byte(`["contract_state_label"]`)); faultStatus(err) != 409 {
+		t.Fatalf("stored export-only column = %v; want 409", err)
+	}
+	if _, _, err := ledger.DecodeStoredSavedView(
+		[]byte(`{"text":"合同"}`), []byte(`[`)); faultStatus(err) != 409 {
+		t.Fatalf("stored columns malformed JSON = %v; want 409", err)
 	}
 }
 
