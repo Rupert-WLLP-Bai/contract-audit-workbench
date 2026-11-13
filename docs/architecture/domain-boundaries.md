@@ -243,3 +243,21 @@ Retry 按原业务时间解析当前依赖，变化返回冲突要求重新发�
 准许仅为既有 Legal 依据链读取服务端绑定 tenant/org/case 与 pin 的精确 Subject 事实：case_subject_roles 当前绑定头、case_subject_role_versions 当前版本字段、指定 subjects.current_version，以及同案件/角色的 active binding 数。业务主体归 Subject，不能与登录 Identity 混同，不按此给它改物理 owner。桥返回 found/版本/subject/role/state/count 原始值，Legal 纯规则决定 stale/ambiguous；保留原 binding→subject 当前版本→仅在 pin 新鲜时请求同角色 count 的查询/错误先后、原 case scope/授权/锁、service role/RLS，不扩大成通用主体枚举或新授权入口。
 
 Legal 公共纯值可消费 Knowledge 公共值引用及 rulepack/legalnorm 契约，不导入 Knowledge app/PG 或 Store；Knowledge app 可依赖该 Legal 纯契约。A 段泛型 v1 snapshot 只承载 Legal-owned authority 值，避免把 Legal 类型永久归 Knowledge或形成 model 循环；Store 以实际具体类型实例化，Wire/tag/字节与 SHA 不变。后续最小 Legal 值抽取后仍保留这种数据所有权边界，不通过任意函数 callback 绕过验证。实际 Legal Go package 落地后登记真实角色路径；数据库 schema、服务角色及外部连接器不变，所有运行检查仍 NOT_RUN。
+
+## #306 官方来源捕获与已核验知识草稿组合
+
+状态：采纳，实施前决策。基于 #305 已审查源码候选 `c0cd498fa727110a0a1739213572c561f3b0d4fe`，以下窄能力先于 #306 实施明确。
+
+接续 #304/#305，迁移已有来源导入和精确捕获读取，不新增真实外部系统接入。Legal 拥有 `legal_source_captures` 的原始响应、提取文本、状态证据、条文 manifest、请求摘要与有序 imported refs；Knowledge 拥有自己的版本、状态与历史。Legal model/app 复用 `legalnorm.VerifyBaseline` 和现有值类型，PG adapter 只访问自有捕获表，绑定原调用者事务且不设置身份、scope 或 commit。Legal app 声明窄 Knowledge 端口，通过 Store 同事务适配调用 Knowledge app 的批量草稿准备与持久化；跨域草稿值归 Knowledge model。既有 Knowledge app 已组合 Legal app，因此 Legal app 不反向导入 Knowledge app/PG 或查询其表，避免循环；Knowledge PG 不读 Legal 表。
+
+Store 保留原 `commandContext`、trusted admin、Core/只读门禁、mutex、schema advisory lock、tenant governance scope、原 RR 读取事务/写事务及提交前 admin 复验。导入在第一次只读 replay 未命中后才验证数量、快照断言与 official baseline；第二次同事务 replay 在 verifier 和 article-version 覆盖核对之后、服务端 capture ID 和逐篇内容/namespace 校验之前。两个 replay 保留相同 tenant/actor/key、原摘要冲突和已存结果完整性规则，不为重放追加新权限或业务校验。
+
+同一事务内，Legal app 生成服务端 capture 身份、根据已核验全文构建有序条文内容；Knowledge app 先完整批量预检（重复编号、内容、已批准的单 SQL legacy-or-governed 版本槽事实、自己的 family kind），产生精确 bytes/SHA/version ID/refs，全部成功后才插入 Legal 捕获。随后按原顺序逐篇运行精确来源核验并由 Knowledge 自己插入 version、draft revision 1 和 create history。三类 Knowledge 写入与 Legal 捕获共同提交或回滚；不调用普通单篇 Create 的 pointer/read/recheck/receipt 路径，不增加逐篇幂等回执，不自动批准或发布。
+
+准许的过渡桥仅为：绑定同一事务的 Legal replay/insert/exact-capture facts；既有 Knowledge 精确 replay ref/content/capture-identity 验证；同一 tenant/id/displayVersion 的单条 legacy-or-governed namespace facts；现有服务端 ID 生成和身份/提交围栏。复用 #304 的窄 Legal capture facts 校验，保留 digest→metadata→manifest→article 的错误顺序。桥不接收任意 SQL、事务/state/scope 或旧完整业务回调。业务循环、摘要、版本计划、source内容决定和结果组装均在领域 app/model，Store 仅负责事务组合。
+
+重放结果保持原窄验证：先读取 Legal summary，再解析非空有序 refs，逐 ref 由 Knowledge 自有查询只读取精确 tenant/id/version/kind=legal/captureID 的 content SHA。不能替换成完整 LoadExactVersion 而增加正文、pointer、批准、来源或其他早期错误。完整 capture 读取与 Knowledge metadata/reference facts 读取保留各自验证顺序，不能以一种更重的读取改变另一种首错。
+
+保留现有 DTO 直接字段、JSON tags/顺序、scrubbed capture ID 后的 request digest、有序文章 manifest 原字节及摘要、raw/status bytes、DB created_at、历史字段和错误。获取捕获的案件路径仍先当前案件 Read，再查精确 published/withdrawn Knowledge 引用，最后读取指定 immutable capture；该查询经 Knowledge 自己的接口实现，不放入 Legal PG。后续 #307 迁移适用事实管理，#308 迁移 Subject，不扩大本次事务或专业结论。TextCheckStatus PASS 仅代表来源文字核验；LegalReviewStatus 继续 NOT_RUN。
+
+schema45、五个服务数据库角色、RLS、append-only 和 PostgreSQL 权威不改。whole-refactor freeze 前所有测试、编译、门禁、app/browser 与真实模型/OCR 为 NOT_RUN；草稿本身不是实施或运行验收证据。
