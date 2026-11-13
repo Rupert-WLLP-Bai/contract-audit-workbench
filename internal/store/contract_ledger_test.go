@@ -14,8 +14,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/csv"
-	"encoding/json"
 	"errors"
 	"os"
 	"reflect"
@@ -140,7 +138,8 @@ func TestContractExportAuthorizedRequiresExportForEveryRow(t *testing.T) {
 		TenantID: accounts.LocalDemoTenant, ContractID: contractID,
 		OwnerOrgID: "demo-org", CreatedBy: "demo-admin",
 	}
-	if !contractExportAuthorized(context.Background(), tx, []clmContractRecord{adminRecord}, admin) {
+	adminAccess := storeContractExportAccess{tx: tx, user: admin}
+	if !adminAccess.CanRead(context.Background(), adminRecord) || !adminAccess.CanExport(context.Background(), adminRecord) {
 		t.Fatal("case owner cannot export a visible contract")
 	}
 	reviewer, ok := accounts.ByID("demo-reviewer")
@@ -152,122 +151,12 @@ func TestContractExportAuthorizedRequiresExportForEveryRow(t *testing.T) {
 	if !authorizeContract(reviewerRecord, reviewer, "case.read") {
 		t.Fatal("reviewer should be able to read the bound contract")
 	}
-	if contractExportAuthorized(context.Background(), tx, []clmContractRecord{reviewerRecord}, reviewer) {
+	reviewerAccess := storeContractExportAccess{tx: tx, user: reviewer}
+	if reviewerAccess.CanRead(context.Background(), reviewerRecord) && reviewerAccess.CanExport(context.Background(), reviewerRecord) {
 		t.Fatal("reviewer without case.export was allowed to download")
 	}
 	if err := ReauthorizeContractExportDownload(accounts.User{ID: "missing", TenantID: accounts.LocalDemoTenant}); faultStatus(err) != 404 {
 		t.Fatalf("reauthorize revoked identity = %v; want 404", err)
-	}
-}
-
-func TestRenderContractExportCSVGuardsFormulaAndUsesBOM(t *testing.T) {
-	document, err := RenderContractExportCSV(
-		[]string{"contract_name", "amount"},
-		[]map[string]string{{"contract_name": "=HYPERLINK(\"https://example.invalid\")", "amount": "10.00"}},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.HasPrefix(document, []byte{0xEF, 0xBB, 0xBF}) {
-		t.Fatal("CSV lacks UTF-8 BOM")
-	}
-	body := string(document[3:])
-	if !strings.Contains(body, "'=HYPERLINK") {
-		t.Fatalf("CSV formula was not quoted: %q", body)
-	}
-	if _, err := RenderContractExportCSV([]string{"bank_account"}, nil); faultStatus(err) != 422 {
-		t.Fatalf("restricted column = %v; want 422", err)
-	}
-}
-
-func TestContractExportLegacyCSVExactBytes(t *testing.T) {
-	columns := []string{"workflow_state", "contract_name", "authority_mode", "contract_state", "supplier_name"}
-	rows := []map[string]string{{
-		"workflow_state": "not_started", "contract_name": "=SUM(1,2)",
-		"authority_mode": "native", "contract_state": "draft", "supplier_name": "甲,乙\"公司",
-	}}
-	want := "\xef\xbb\xbf会签状态,合同名称,权威模式,合同状态,供应商\nnot_started,\"'=SUM(1,2)\",native,draft,\"甲,乙\"\"公司\"\n"
-	got, err := RenderContractExportCSV(columns, rows)
-	if err != nil || string(got) != want {
-		t.Fatalf("legacy CSV changed: got %q, want %q, err=%v", got, want, err)
-	}
-	allColumns := []string{"updated_at", "contract_state", "authority_mode", "contract_number", "contract_name", "supplier_name", "amount", "currency", "department_id", "project_type", "procurement_method", "workflow_state", "signing_date", "source_system", "created_at"}
-	allRows := []map[string]string{{
-		"updated_at": "2026-11-05T00:00:00Z", "contract_state": "registered", "authority_mode": "external",
-		"contract_number": "HT-1", "contract_name": "合同甲", "supplier_name": "供应商甲", "amount": "1.00",
-		"currency": "CNY", "department_id": "dept", "project_type": "project", "procurement_method": "procure",
-		"workflow_state": "external_observed", "signing_date": "2026-11-01", "source_system": "system", "created_at": "2026-11-01T00:00:00Z",
-	}}
-	allWant := "\xef\xbb\xbf更新时间,合同状态,权威模式,合同编号,合同名称,供应商,金额,币种,申请部门,项目类型,采购方式,会签状态,签订日期,来源系统,创建时间\n2026-11-05T00:00:00Z,registered,external,HT-1,合同甲,供应商甲,1.00,CNY,dept,project,procure,external_observed,2026-11-01,system,2026-11-01T00:00:00Z\n"
-	allGot, err := RenderContractExportCSV(allColumns, allRows)
-	if err != nil || string(allGot) != allWant {
-		t.Fatalf("legacy all-column CSV changed: got %q, want %q, err=%v", allGot, allWant, err)
-	}
-}
-
-func TestContractExportReadableProjection(t *testing.T) {
-	columns := []string{"contract_name", "authority_mode_label", "authority_mode_code", "contract_state_label", "contract_state_code", "workflow_state_label", "workflow_state_code"}
-	data, err := os.ReadFile("../../web/src/pages/contracts-ledger-labels.fixture.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var cases []struct {
-		Name, Authority, State, Workflow, AuthorityLabel, StateLabel, WorkflowLabel string
-	}
-	if err := json.Unmarshal(data, &cases); err != nil || len(cases) == 0 {
-		t.Fatalf("read shared UI/CSV fixture: %v", err)
-	}
-	for _, tc := range cases {
-		t.Run(tc.Name, func(t *testing.T) {
-			item := ContractLedgerItem{Name: "示例合同", AuthorityMode: tc.Authority, ContractState: tc.State, WorkflowState: tc.Workflow}
-			row := contractLedgerRowValues(item, columns)
-			want := map[string]string{
-				"contract_name": "示例合同", "authority_mode_label": tc.AuthorityLabel, "authority_mode_code": tc.Authority,
-				"contract_state_label": tc.StateLabel, "contract_state_code": tc.State,
-				"workflow_state_label": tc.WorkflowLabel, "workflow_state_code": tc.Workflow,
-			}
-			if !reflect.DeepEqual(row, want) {
-				t.Fatalf("readable row = %#v, want %#v", row, want)
-			}
-			document, err := RenderContractExportCSV(columns, []map[string]string{row})
-			if err != nil {
-				t.Fatalf("render readable row: %v", err)
-			}
-			records, err := csv.NewReader(bytes.NewReader(document[3:])).ReadAll()
-			wantRecord := []string{"示例合同", tc.AuthorityLabel, tc.Authority, tc.StateLabel, tc.State, tc.WorkflowLabel, tc.Workflow}
-			if err != nil || len(records) != 2 || !reflect.DeepEqual(records[1], wantRecord) {
-				t.Fatalf("readable CSV values = %v, want %v, err=%v", records, wantRecord, err)
-			}
-		})
-	}
-}
-
-func TestContractExportReadableCodeUsesFormulaProtection(t *testing.T) {
-	columns := []string{"contract_state_label", "contract_state_code"}
-	row := contractLedgerRowValues(ContractLedgerItem{ContractState: "=future"}, columns)
-	if row["contract_state_code"] != "=future" {
-		t.Fatalf("code changed before CSV protection: %q", row["contract_state_code"])
-	}
-	document, err := RenderContractExportCSV(columns, []map[string]string{row})
-	if err != nil || string(document) != "\xef\xbb\xbf合同状态名称,合同状态代码\n待核对,'=future\n" {
-		t.Fatalf("readable CSV formula protection = %q, err=%v", document, err)
-	}
-}
-
-func TestContractExportColumnLimitsDoNotExpandSavedViews(t *testing.T) {
-	allColumns := []string{
-		"contract_number", "contract_name", "authority_mode", "supplier_name", "amount", "currency", "department_id",
-		"project_type", "procurement_method", "contract_state", "workflow_state", "signing_date", "source_system", "created_at", "updated_at",
-		"authority_mode_label", "authority_mode_code", "contract_state_label", "contract_state_code", "workflow_state_label", "workflow_state_code",
-	}
-	if _, err := ledger.NormalizeSavedViewColumns([]string{"contract_state_label"}); faultStatus(err) != 422 {
-		t.Fatalf("export-only column accepted for a saved view: %v", err)
-	}
-	if _, err := RenderContractExportCSV(allColumns[:20], nil); err != nil {
-		t.Fatalf("twenty distinct export columns should be accepted: %v", err)
-	}
-	if _, err := RenderContractExportCSV(allColumns, nil); faultStatus(err) != 422 {
-		t.Fatalf("twenty-one requested columns should be rejected: %v", err)
 	}
 }
 
@@ -451,9 +340,6 @@ func TestContractExportFrozenReadableAndLegacyPostgres(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("update live contract: %v", err)
 	}
-	originalDraftLabel := contractLedgerStateLabels["draft"]
-	contractLedgerStateLabels["draft"] = "日后更新的文案"
-	defer func() { contractLedgerStateLabels["draft"] = originalDraftLabel }()
 	for _, item := range []struct {
 		name string
 		id   string

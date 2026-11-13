@@ -11,13 +11,7 @@
 package store
 
 import (
-	"bytes"
 	"context"
-	"encoding/csv"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"strings"
 	"time"
 
 	"contractaudit/internal/access"
@@ -38,10 +32,10 @@ const (
 	contractLedgerMaxLimit       = ledger.MaxLimit
 	contractLedgerCursorVer      = ledger.CursorVersion
 	contractLedgerSortCreated    = ledger.SortCreated
-	contractExportMaxRows        = 5000
-	contractExportMaxScanned     = 20000
-	contractExportFormatCSV      = "csv"
-	contractExportRowsBatch      = 500
+	contractExportMaxRows        = ledger.ExportMaxRows
+	contractExportMaxScanned     = ledger.ExportMaxScanned
+	contractExportFormatCSV      = ledger.ExportFormatCSV
+	contractExportRowsBatch      = ledger.ExportRowsBatch
 	contractLedgerContentAmount  = ledger.ContentAmountPattern
 	contractLedgerTimeLayout     = ledger.TimeLayout
 	contractLedgerDateLayout     = ledger.DateLayout
@@ -57,64 +51,9 @@ type ContractSavedView = ledger.SavedView
 type ContractSavedViewInput = ledger.SavedViewInput
 type ContractSavedViewUpdateInput = ledger.SavedViewUpdateInput
 
-// ContractExportInput freezes one export request.
-type ContractExportInput struct {
-	Filter         ContractLedgerFilter `json:"filter"`
-	Columns        []string             `json:"columns"`
-	Format         string               `json:"format"`
-	IdempotencyKey string               `json:"-"`
-}
-
-// ContractExport is the metadata returned when an export is created or
-// replayed. Rows are never returned here.
-type ContractExport struct {
-	ExportID  string    `json:"export_id"`
-	State     string    `json:"state"`
-	Format    string    `json:"format"`
-	Columns   []string  `json:"columns"`
-	RowCount  int       `json:"row_count"`
-	CreatedAt time.Time `json:"created_at"`
-	ExpiresAt time.Time `json:"expires_at"`
-	// DownloadAvailable only reports whether the frozen record has not passed
-	// ExpiresAt at response time. It is not a current authorization result;
-	// LoadContractExportForDownload re-authorizes the identity and every row.
-	DownloadAvailable bool `json:"download_available"`
-	Replayed          bool `json:"replayed"`
-}
-
-// ContractExportDownload is a frozen export re-authorized at download time.
-type ContractExportDownload struct {
-	ExportID  string
-	Format    string
-	Columns   []string
-	Rows      []map[string]string
-	ExpiresAt time.Time
-}
-
-// Export-only keys preserve the original headers and raw values above for
-// already frozen exports. Each key's header is part of its download contract.
-var contractExportColumnLabels = map[string]string{
-	"authority_mode_label": "来源类型名称",
-	"authority_mode_code":  "来源类型代码",
-	"contract_state_label": "合同状态名称",
-	"contract_state_code":  "合同状态代码",
-	"workflow_state_label": "会签状态名称",
-	"workflow_state_code":  "会签状态代码",
-}
-
-// These presentation labels follow the ledger's existing domain values.
-// They are resolved when rows are created, never when a download is rendered.
-var contractLedgerAuthorityLabels = map[string]string{
-	"native": "本地登记", "external": "外部来源",
-}
-var contractLedgerStateLabels = map[string]string{
-	"draft": "草稿", "ready_to_sign": "待签署", "registered": "已登记",
-	"performing": "履约中", "closed": "已关闭", "terminated": "已终止",
-	"external_observed": "外部来源已观测",
-}
-var contractLedgerWorkflowLabels = map[string]string{
-	"not_started": "当前无进行中会签", "in_review": "会签中", "external_observed": "外部来源已观测",
-}
+type ContractExportInput = ledger.ExportInput
+type ContractExport = ledger.Export
+type ContractExportDownload = ledger.ExportDownload
 
 func ledgerAmountScaled(value string) (int64, bool) { return ledger.AmountScaled(value) }
 func validateContractLedgerFilter(filter *ContractLedgerFilter) error {
@@ -123,34 +62,6 @@ func validateContractLedgerFilter(filter *ContractLedgerFilter) error {
 
 func normalizeContractLedgerColumns(columns []string) ([]string, error) {
 	return ledger.NormalizeSavedViewColumns(columns)
-}
-
-func normalizeContractExportColumns(columns []string) ([]string, error) {
-	return normalizeContractColumns(columns, true)
-}
-
-func normalizeContractColumns(columns []string, allowExportOnly bool) ([]string, error) {
-	if len(columns) == 0 {
-		return ledger.DefaultSavedViewColumns(), nil
-	}
-	if len(columns) > ledger.MaxSavedViewColumns {
-		return nil, fault.Invalid("导出或视图列最多 20 项")
-	}
-	seen := map[string]bool{}
-	out := make([]string, 0, len(columns))
-	for _, column := range columns {
-		if !ledger.IsSavedViewColumn(column) {
-			if _, exportOnly := contractExportColumnLabels[column]; !allowExportOnly || !exportOnly {
-				return nil, fault.Invalid("不支持的台账列")
-			}
-		}
-		if seen[column] {
-			return nil, fault.Invalid("台账列不能重复")
-		}
-		seen[column] = true
-		out = append(out, column)
-	}
-	return out, nil
 }
 
 func validateContractLedgerSort(sort string) (string, error) { return ledger.ValidateSort(sort) }
@@ -162,12 +73,6 @@ func encodeContractLedgerCursor(current accounts.User, sort, digest string, key 
 }
 func decodeContractLedgerCursor(value string, current accounts.User, sort, digest string) (*contractLedgerCursor, error) {
 	return ledger.DecodeCursor(value, ledger.CursorIdentity{TenantID: accounts.Tenant(current), ActorID: current.ID}, sort, digest)
-}
-
-type contractLedgerRow struct {
-	record  clmContractRecord
-	item    ContractLedgerItem
-	sortKey time.Time
 }
 
 func (s *Store) beginContractLedgerRead(ctx context.Context, user accounts.User) (pgx.Tx, accounts.User, error) {
@@ -192,20 +97,6 @@ func (s *Store) beginContractLedgerRead(ctx context.Context, user accounts.User)
 
 func contractLedgerItemFrom(record clmContractRecord, content []byte, inReview bool) (ContractLedgerItem, error) {
 	return ledger.ItemFromAggregate(record, content, inReview)
-}
-
-func queryContractLedgerRows(ctx context.Context, tx pgx.Tx, tenant string, filter ContractLedgerFilter,
-	afterSet bool, afterKey time.Time, afterID string, limit int) ([]contractLedgerRow, error) {
-	rows, err := contractpostgres.NewLedgerReader(platformpostgres.Bind(tx)).Read(ctx, tenant, filter,
-		afterSet, afterKey, afterID, limit)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]contractLedgerRow, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, contractLedgerRow{record: row.Aggregate, item: row.Item, sortKey: row.SortKey})
-	}
-	return out, nil
 }
 
 // ListContractLedger returns one authorized keyset page. SQL narrows by the
@@ -335,96 +226,11 @@ func (s *Store) DeleteContractSavedView(ctx context.Context, user accounts.User,
 	return tx.Commit(ctx)
 }
 
-func contractLedgerRowValues(item ContractLedgerItem, columns []string) map[string]string {
-	values := make(map[string]string, len(columns))
-	for _, column := range columns {
-		switch column {
-		case "contract_number":
-			values[column] = ledgerStringValue(item.Number)
-		case "contract_name":
-			values[column] = item.Name
-		case "authority_mode", "authority_mode_code":
-			values[column] = item.AuthorityMode
-		case "authority_mode_label":
-			values[column] = contractLedgerDisplayLabel(item.AuthorityMode, contractLedgerAuthorityLabels)
-		case "supplier_name":
-			values[column] = ledgerStringValue(item.SupplierName)
-		case "amount":
-			values[column] = ledgerStringValue(item.Amount)
-		case "currency":
-			values[column] = ledgerStringValue(item.Currency)
-		case "department_id":
-			values[column] = ledgerStringValue(item.DepartmentID)
-		case "project_type":
-			values[column] = ledgerStringValue(item.ProjectType)
-		case "procurement_method":
-			values[column] = ledgerStringValue(item.ProcurementMethod)
-		case "contract_state", "contract_state_code":
-			values[column] = item.ContractState
-		case "contract_state_label":
-			values[column] = contractLedgerDisplayLabel(item.ContractState, contractLedgerStateLabels)
-		case "workflow_state", "workflow_state_code":
-			values[column] = item.WorkflowState
-		case "workflow_state_label":
-			values[column] = contractLedgerDisplayLabel(item.WorkflowState, contractLedgerWorkflowLabels)
-		case "signing_date":
-			values[column] = ledgerStringValue(item.SigningDate)
-		case "source_system":
-			values[column] = ledgerStringValue(item.SourceSystem)
-		case "created_at":
-			values[column] = item.CreatedAt.UTC().Format(contractLedgerTimeLayout)
-		case "updated_at":
-			values[column] = item.UpdatedAt.UTC().Format(contractLedgerTimeLayout)
-		}
-	}
-	return values
-}
-
-func contractLedgerDisplayLabel(value string, labels map[string]string) string {
-	if label, ok := labels[value]; ok {
-		return label
-	}
-	if value == "" {
-		return "未记录"
-	}
-	return "待核对"
-}
-
-func ledgerStringValue(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
-}
-
-// CreateContractExport freezes the filter, columns and visible row set, and
-// records the authorization snapshot used at creation. The same idempotency
-// key replays the original export metadata.
+// CreateContractExport keeps identity, transaction, RLS scope and commit at the
+// Store boundary; Contract app owns request and snapshot behavior.
 func (s *Store) CreateContractExport(ctx context.Context, user accounts.User, input ContractExportInput) (ContractExport, error) {
 	ctx = commandContext(ctx, user)
-	if err := validateCLMIdempotencyKey(input.IdempotencyKey); err != nil {
-		return ContractExport{}, err
-	}
-	format := strings.TrimSpace(input.Format)
-	if format == "" {
-		format = contractExportFormatCSV
-	}
-	if format != contractExportFormatCSV {
-		return ContractExport{}, fault.Invalid("本版导出只支持 csv")
-	}
-	if err := validateContractLedgerFilter(&input.Filter); err != nil {
-		return ContractExport{}, err
-	}
-	columns, err := normalizeContractExportColumns(input.Columns)
-	if err != nil {
-		return ContractExport{}, err
-	}
-	digest, err := canonicalHash(struct {
-		Schema  string               `json:"schema"`
-		Filter  ContractLedgerFilter `json:"filter"`
-		Columns []string             `json:"columns"`
-		Format  string               `json:"format"`
-	}{Schema: "clm-contract-export/v1", Filter: input.Filter, Columns: columns, Format: format})
+	prepared, err := contractapp.PrepareContractExport(input)
 	if err != nil {
 		return ContractExport{}, err
 	}
@@ -434,74 +240,15 @@ func (s *Store) CreateContractExport(ctx context.Context, user accounts.User, in
 		return ContractExport{}, err
 	}
 	defer rollbackCLM(tx)
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(current_schema()
-		|| ':clm-export:' || $1 || ':' || $2 || ':' || $3, 0))`,
-		accounts.Tenant(current), current.ID, input.IdempotencyKey); err != nil {
-		return ContractExport{}, err
+	identity := ledger.ExportIdentity{TenantID: accounts.Tenant(current), ActorID: current.ID}
+	executor := platformpostgres.Bind(tx)
+	repository := contractpostgres.NewLedgerExports(executor)
+	reader := contractpostgres.NewLedgerReader(executor)
+	accessSnapshot := contractapp.ExportAuthorizationSnapshot{
+		PolicyVersion: access.PolicyVersion, Role: current.Role, Grants: current.Grants,
 	}
-	existing, found, err := loadContractExportByKey(ctx, tx, current, input.IdempotencyKey)
-	if err != nil {
-		return ContractExport{}, err
-	}
-	if found {
-		if existing.requestDigest != digest {
-			return ContractExport{}, fault.Conflict("Idempotency-Key已用于不同导出请求")
-		}
-		if _, err := trustedUser(current); err != nil {
-			return ContractExport{}, err
-		}
-		if err := tx.Commit(ctx); err != nil {
-			return ContractExport{}, err
-		}
-		return existing.export, nil
-	}
-	rows, contractIDs, err := collectContractExportRows(ctx, tx, current, input.Filter, columns)
-	if err != nil {
-		return ContractExport{}, err
-	}
-	rowsJSON, err := json.Marshal(rows)
-	if err != nil {
-		return ContractExport{}, err
-	}
-	idsJSON, err := json.Marshal(contractIDs)
-	if err != nil {
-		return ContractExport{}, err
-	}
-	filterJSON, err := json.Marshal(input.Filter)
-	if err != nil {
-		return ContractExport{}, err
-	}
-	columnsJSON, err := json.Marshal(columns)
-	if err != nil {
-		return ContractExport{}, err
-	}
-	grantsDigest, err := canonicalHash(struct {
-		Policy string         `json:"policy"`
-		Role   string         `json:"role"`
-		Grants []access.Grant `json:"grants"`
-	}{Policy: access.PolicyVersion, Role: current.Role, Grants: current.Grants})
-	if err != nil {
-		return ContractExport{}, err
-	}
-	exportID, err := newContractUUID()
-	if err != nil {
-		return ContractExport{}, err
-	}
-	// A fresh record cannot be expired yet. This flag still says nothing
-	// about the caller's current download authorization.
-	item := ContractExport{
-		ExportID: exportID, State: "ready", Format: format, Columns: columns,
-		RowCount: len(rows), DownloadAvailable: true, Replayed: false,
-	}
-	err = tx.QueryRow(ctx, `INSERT INTO clm_contract_exports
-		(tenant_id,export_id,actor_id,idempotency_key,request_digest,filter,columns,format,
-		 contract_ids,rows,row_count,policy_version,grants_digest,expires_at)
-		VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9::jsonb,$10::jsonb,$11,$12,$13,
-			clock_timestamp()+interval '24 hours')
-		RETURNING created_at,expires_at`,
-		accounts.Tenant(current), exportID, current.ID, input.IdempotencyKey, digest,
-		string(filterJSON), string(columnsJSON), format, string(idsJSON), string(rowsJSON),
-		len(rows), access.PolicyVersion, grantsDigest).Scan(&item.CreatedAt, &item.ExpiresAt)
+	item, err := contractapp.CreateContractExport(ctx, identity, prepared, accessSnapshot,
+		repository, reader, storeContractExportAccess{tx: tx, user: current})
 	if err != nil {
 		return ContractExport{}, err
 	}
@@ -514,86 +261,12 @@ func (s *Store) CreateContractExport(ctx context.Context, user accounts.User, in
 	return item, nil
 }
 
-type loadedContractExport struct {
-	export        ContractExport
-	requestDigest string
-}
-
-func loadContractExportByKey(ctx context.Context, tx pgx.Tx, current accounts.User, key string) (loadedContractExport, bool, error) {
-	var loaded loadedContractExport
-	var columnsJSON []byte
-	err := tx.QueryRow(ctx, `SELECT export_id,format,columns,row_count,created_at,expires_at,request_digest
-		FROM clm_contract_exports WHERE tenant_id=$1 AND actor_id=$2 AND idempotency_key=$3`,
-		accounts.Tenant(current), current.ID, key).Scan(
-		&loaded.export.ExportID, &loaded.export.Format, &columnsJSON, &loaded.export.RowCount,
-		&loaded.export.CreatedAt, &loaded.export.ExpiresAt, &loaded.requestDigest)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return loadedContractExport{}, false, nil
-	}
-	if err != nil {
-		return loadedContractExport{}, false, err
-	}
-	if err := json.Unmarshal(columnsJSON, &loaded.export.Columns); err != nil {
-		return loadedContractExport{}, false, fault.Conflict("导出列设置无法读取")
-	}
-	loaded.export.State = "ready"
-	// Replay is scoped to the original actor and key, then recomputes expiry
-	// only. It deliberately does not re-check current Read/Export grants;
-	// LoadContractExportForDownload is the download authorization boundary.
-	loaded.export.DownloadAvailable = loaded.export.ExpiresAt.After(time.Now().UTC())
-	loaded.export.Replayed = true
-	return loaded, true, nil
-}
-
-func collectContractExportRows(ctx context.Context, tx pgx.Tx, current accounts.User, filter ContractLedgerFilter, columns []string) ([]map[string]string, []string, error) {
-	rowsOut := []map[string]string{}
-	ids := []string{}
-	afterSet, afterID := false, ""
-	var afterKey time.Time
-	scanned := 0
-	for {
-		rows, err := queryContractLedgerRows(ctx, tx, accounts.Tenant(current), filter, afterSet, afterKey, afterID, contractExportRowsBatch)
-		if err != nil {
-			return nil, nil, err
-		}
-		if len(rows) == 0 {
-			break
-		}
-		for _, row := range rows {
-			scanned++
-			afterSet, afterKey, afterID = true, row.sortKey, row.item.ContractID
-			if scanned > contractExportMaxScanned {
-				return nil, nil, fault.Invalid("筛选范围过大，请缩小条件后重试")
-			}
-			if !authorizeContractRead(ctx, tx, row.record, current) {
-				continue
-			}
-			if !authorizeContract(row.record, current, access.Export) {
-				return nil, nil, fault.Forbidden("当前授权不能导出筛选范围内的全部合同")
-			}
-			rowsOut = append(rowsOut, contractLedgerRowValues(row.item, columns))
-			ids = append(ids, row.item.ContractID)
-			if len(rowsOut) > contractExportMaxRows {
-				return nil, nil, fault.Invalid("导出行数超过上限，请缩小筛选范围")
-			}
-		}
-		if len(rows) < contractExportRowsBatch {
-			break
-		}
-	}
-	if len(rowsOut) == 0 {
-		return nil, nil, fault.Invalid("当前筛选条件下没有可导出的合同")
-	}
-	return rowsOut, ids, nil
-}
-
 // LoadContractExportForDownload re-authorizes every frozen contract at pickup.
-// Any lost Read/Export permission, identity change, foreign owner or expiry is
-// answered as the same 404. The metadata field DownloadAvailable is expiry-only
-// and must never be treated as this authorization decision.
+// The artifact adapter returns only the caller tenant's frozen data; Contract
+// app validates its shape before Store's current per-contract policy bridge.
 func (s *Store) LoadContractExportForDownload(ctx context.Context, user accounts.User, exportID string) (ContractExportDownload, error) {
 	ctx = commandContext(ctx, user)
-	normalized, err := normalizeContractUUID(exportID)
+	normalized, err := contractapp.NormalizeContractExportID(exportID)
 	if err != nil {
 		return ContractExportDownload{}, err
 	}
@@ -602,65 +275,14 @@ func (s *Store) LoadContractExportForDownload(ctx context.Context, user accounts
 		return ContractExportDownload{}, err
 	}
 	defer rollbackCLM(tx)
-	var actorID, format, policyVersion string
-	var columnsJSON, idsJSON, rowsJSON []byte
-	var rowCount int
-	var expiresAt time.Time
-	err = tx.QueryRow(ctx, `SELECT actor_id,format,columns,contract_ids,rows,row_count,policy_version,expires_at
-		FROM clm_contract_exports WHERE tenant_id=$1 AND export_id=$2`,
-		accounts.Tenant(current), normalized).Scan(&actorID, &format, &columnsJSON, &idsJSON, &rowsJSON, &rowCount, &policyVersion, &expiresAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ContractExportDownload{}, fault.NotFound("没有找到对应的导出")
-	}
+	identity := ledger.ExportIdentity{TenantID: accounts.Tenant(current), ActorID: current.ID}
+	executor := platformpostgres.Bind(tx)
+	repository := contractpostgres.NewLedgerExports(executor)
+	contracts := contractpostgres.NewDraftCommands(executor)
+	access := storeContractExportAccess{tx: tx, user: current}
+	item, err := contractapp.LoadContractExportForDownload(ctx, identity, normalized, repository, contracts, access)
 	if err != nil {
 		return ContractExportDownload{}, err
-	}
-	if actorID != current.ID || policyVersion == "" || !expiresAt.After(time.Now().UTC()) {
-		return ContractExportDownload{}, fault.NotFound("没有找到对应的导出")
-	}
-	if format != contractExportFormatCSV {
-		return ContractExportDownload{}, fault.Conflict("导出格式无法识别")
-	}
-	var columns []string
-	var contractIDs []string
-	var rows []map[string]string
-	if err := json.Unmarshal(columnsJSON, &columns); err != nil {
-		return ContractExportDownload{}, fault.Conflict("导出列设置无法读取")
-	}
-	normalizedColumns, err := normalizeContractExportColumns(columns)
-	if err != nil {
-		return ContractExportDownload{}, fault.Conflict("导出列设置无法读取")
-	}
-	if err := json.Unmarshal(idsJSON, &contractIDs); err != nil || len(contractIDs) != rowCount {
-		return ContractExportDownload{}, fault.Conflict("导出内容无法读取")
-	}
-	if err := json.Unmarshal(rowsJSON, &rows); err != nil || len(rows) != rowCount {
-		return ContractExportDownload{}, fault.Conflict("导出内容无法读取")
-	}
-	records := make([]clmContractRecord, 0, len(contractIDs))
-	for _, contractID := range contractIDs {
-		record, err := loadCLMContract(ctx, tx, accounts.Tenant(current), contractID)
-		if err != nil {
-			var faultErr *fault.Error
-			if errors.As(err, &faultErr) && faultErr.Status == 404 {
-				return ContractExportDownload{}, fault.NotFound("没有找到对应的导出")
-			}
-			return ContractExportDownload{}, err
-		}
-		records = append(records, record)
-	}
-	if !contractExportAuthorized(ctx, tx, records, current) {
-		return ContractExportDownload{}, fault.NotFound("没有找到对应的导出")
-	}
-	for _, row := range rows {
-		if len(row) != len(normalizedColumns) {
-			return ContractExportDownload{}, fault.Conflict("导出内容无法读取")
-		}
-		for _, column := range normalizedColumns {
-			if _, ok := row[column]; !ok {
-				return ContractExportDownload{}, fault.Conflict("导出内容无法读取")
-			}
-		}
 	}
 	if _, err := trustedUser(current); err != nil {
 		return ContractExportDownload{}, err
@@ -668,7 +290,7 @@ func (s *Store) LoadContractExportForDownload(ctx context.Context, user accounts
 	if err := tx.Commit(ctx); err != nil {
 		return ContractExportDownload{}, err
 	}
-	return ContractExportDownload{ExportID: normalized, Format: format, Columns: normalizedColumns, Rows: rows, ExpiresAt: expiresAt}, nil
+	return item, nil
 }
 
 // ReauthorizeContractExportDownload is a legacy identity-only check. It does
@@ -682,61 +304,7 @@ func ReauthorizeContractExportDownload(user accounts.User) error {
 	return nil
 }
 
-// contractExportAuthorized is the single download-time policy check. It is a
-// pure function so the revocation case can be tested without a live directory.
-func contractExportAuthorized(ctx context.Context, tx pgx.Tx, records []clmContractRecord, current accounts.User) bool {
-	for _, record := range records {
-		if !authorizeContractRead(ctx, tx, record, current) || !authorizeContract(record, current, access.Export) {
-			return false
-		}
-	}
-	return true
-}
-
-// RenderContractExportCSV writes a UTF-8 BOM CSV with Chinese headers and a
-// formula-injection guard. Frozen rows are already restricted-field free.
+// RenderContractExportCSV preserves the Store-facing helper used by HTTP.
 func RenderContractExportCSV(columns []string, rows []map[string]string) ([]byte, error) {
-	normalized, err := normalizeContractExportColumns(columns)
-	if err != nil {
-		return nil, err
-	}
-	var buffer bytes.Buffer
-	buffer.Write([]byte{0xEF, 0xBB, 0xBF})
-	writer := csv.NewWriter(&buffer)
-	header := make([]string, 0, len(normalized))
-	for _, column := range normalized {
-		label, ok := ledger.SavedViewColumnLabel(column)
-		if !ok {
-			label = contractExportColumnLabels[column]
-		}
-		header = append(header, label)
-	}
-	if err := writer.Write(header); err != nil {
-		return nil, err
-	}
-	for _, row := range rows {
-		record := make([]string, 0, len(normalized))
-		for _, column := range normalized {
-			record = append(record, csvSafeCell(row[column]))
-		}
-		if err := writer.Write(record); err != nil {
-			return nil, err
-		}
-	}
-	writer.Flush()
-	if err := writer.Error(); err != nil {
-		return nil, err
-	}
-	return buffer.Bytes(), nil
-}
-
-func csvSafeCell(value string) string {
-	if value == "" {
-		return value
-	}
-	first := rune(value[0])
-	if first == '=' || first == '+' || first == '-' || first == '@' || first == '\t' || first == '\r' || first < 0x20 {
-		return "'" + value
-	}
-	return value
+	return ledger.RenderExportCSV(columns, rows)
 }
