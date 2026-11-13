@@ -216,3 +216,22 @@ Store 继续 trustedAdmin、Core service owner、写门禁、updateAdminAs 或�
 ### #304 来源授权失败的精确读取返回值
 
 状态：采纳，兼容性例外。旧 `GetGovernedKnowledgeVersion` 在来源/祖先授权失败时仍以 `(已加载版本, error)` 返回，错误值之外可能携带受限正文；本次迁移保留新版 app 的零值返回，明确以 `(零版本, 原错误)` 收紧该路径，符合默认拒绝授权的边界。HTTP 原错误码、错误体、公开方法签名与成功响应不变，来源权限仍在原事务和原校验点复核，不改变角色、查询或冻结内容。此决定仅确认来源授权失败的精确内容读取，不据此更改其它读取/写入的错误返回值；必要 SOURCE 须证明已通过内容完整性校验后发生授权拒绝，且返回值不携带正文。运行验证仍 NOT_RUN。
+
+## #305 审查知识选择与冻结校验的过渡边界
+
+状态：采纳，实施前决策。基于 #304 源码候选 `6d3d1014e0a988d48650a0df078f7e2d774a9087`，接续其精确版本读取、纯模型与非拥有事务能力。Knowledge app 承接当前知识候选选择、mandatory/optional 覆盖、适用条件、排序与预算、精确依赖校验、快照封存、Retry 比较和冻结引用读取；不把旧 resolver 或 frozen validator 整体包装成回调。
+
+复用既有 RawVersion、LoadedVersion、VersionReader、ValidateRawVersion、LegalFactsReader 及 model 值，保留 `review-knowledge-snapshot/v1` 的字段、tag、顺序、nil/空数组、canonical bytes/SHA 和历史 Legal cutoff/fingerprint 特例。Knowledge PG 仍只访问自有六表；active-candidate 用固定 typed 查询保持原 knowledge_id/scope_key 排序和 4096 上限，不把管理分页或 Platform summary 当作执行选择接口。
+
+Review/Execution actor 来自原受信 case/run/attempt/claim 与数据库身份解析，沿原 proof、租户 epoch、generation 和当前权限复核。不能复用治理 RecheckAdmin 要求或提权；case/org/业务属性、businessAt/cutoff、依赖身份均服务端构造。准许 Store 在同 caller-owned transaction 下提供以下专用窄能力：
+
+- 当前目标、来源、祖先的 Read/Review grant 与原 blocking/try case locks。
+- 精确 RulePack identity、manifest、compiler、active/pointer 事实；不新建 RulePack 领域。
+- 精确 Legal capture、时间/身份与已有冻结依据事实；Legal 捕获和 Legal 自身适用性规则仍归 Legal，优先复用已有纯 legalnorm 契约。若实际需要跨域决策公共契约，先列明最小具体接缝，不把整段 Store 业务藏在接口内。
+- 冻结 run/attempt/snapshot 的原读取与接纳挂接：app 只返回 sealed snapshot、精确身份和 typed 决定，Store 沿真实 state writer 应用，不开放 Store.state、pgx.Tx/pool、任意 SQL/scope 或通用 mutation callback。
+
+Start 在原 receipt/config/case/assessment hook 取得 app 结果，仍经真实 loadState→hook→clone→append-only/serviceDelta/stateDelta→persist→commit，已有 run/attempt/input/snapshot/audit/job/Outbox/receipt 的原子性不拆。不构造空 state 或覆盖旧快照；独立 readiness 事务不能替代接纳同事务复核。
+
+Retry 按原业务时间解析当前依赖，变化返回冲突要求重新发起；Retry 不自动创建新 run，随后 Start 才按当前 signature 决定复用或新建，旧 snapshot 不改。worker/adoption 从数据库装载原 frozen digest/refs 并重验当前 actor/source/ancestor 权限，不按当前 pointer 重算旧引用。required 保留原 exact selection 与 raw pointer active，不机械改成派生的 Version.Active；optional adoption 不新增 active 要求，而 ReadFrozen 对所读 exact ref 另有 active 要求。原 case→attempt→live claim/generation/tenant epoch/inputHash 围栏与 #289 成功步骤的重读、比对保持。
+
+经验人工使用账本继续原 Decide/source 授权和命令事务；知识行读取接新 contract 只替换精确 facts，不迁模型预算或人工决定。Core 写治理、Execution 只读等服务角色/RLS/schema 不变；预算、租约和 Outbox 仍由 PG 决定，NATS 仍只作短通知。过渡桥随对应公开领域 contract 逐项迁出，AR020 消费审计后删无用适配。必要 SOURCE 固定 canonical 历史、Retry/新 Start 差异、optional adoption/read 差别、接纳及后续 persist 失败回滚和撤权/旧 generation 边界。整轮重构结束后统一运行检查，当前均 NOT_RUN。
