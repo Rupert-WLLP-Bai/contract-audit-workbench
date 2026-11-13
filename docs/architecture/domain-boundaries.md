@@ -161,3 +161,25 @@ Store 仅保留服务身份、写入门禁、RLS scope、事务生命周期与�
 一条观察仍为单一 PostgreSQL 事务，保留顺序：案件 `FOR KEY SHARE` → 来源事件 advisory lock → 来源合同 advisory lock → 合同聚合 `FOR UPDATE`。来源观察、可选身份/案件关联、修订/计划项、聚合与当前版本、业务事件和 Outbox 共同提交或回滚。保持事件ID与规范载荷摘要幂等、原始字节独立摘要、来源版本与序号不可变、opaque/monotonic 差异、未知金额不推进当前版本、旧序号仅归档及历史无可信 baseline 不替换当前版本。已应用迁移、append-only、RLS 与服务角色 ACL 不改。
 
 后续随 #148 迁入相应授权/持久化端口并删除过渡桥；不得把旧方法作为 app 的通用 callback，也不扩大成任意 SQL、身份或跨案件入口。源代码完成后再按固定候选执行来源幂等/序号冲突、未知金额、绑定、撤权、密文绑定和事务回滚的定点验收；当前全部 NOT_RUN。
+
+## #303 标准审查阶段与 Store 窄适配
+
+状态：采纳，实施前决策。基于 #302 源码候选 `949d78a4f00ce1f7ac38716c754f2721b6b9549d`。标准审查仍由 Store 四个阶段闭包组织规则、模型资料、引用合并及终态分类；仅把这些闭包传给 `execution.Run` 不构成迁移。Execution app 承接真实编排和纯计划，复用现有 engine、model 与 execution instrumentation。此次先迁标准路径，保留 #289 步骤恢复、#293 单原件事实 discriminator 和 telecom 冻结路由；不重建平台或变更公有 Store/HTTP 契约。
+
+冻结材料、解析及 normalized digest 由既有 Document 路径读取；run/attempt/snapshot、审计及执行输出保持当前持久化责任，不因目录改变 RLS 或数据库服务 owner。服务端构造冻结尝试身份；generation、epoch、claim 和 scope 不接受客户端声明。准备前可能没有最终 input hash，由准备结果明确返回实际摘要、document/parsed 身份及冻结文本，不从当前配置补旧尝试。引用 verified 仅表示对上冻结原文；Finding 仍是建议，人工决定历史独立追加。
+
+本次准许 Store 的专用过渡能力如下，最终方法名可随实现调整，但不能扩成任意 state、SQL 或事务 callback：
+
+- PrepareFrozenInput：复用原材料准备、验证和冻结，以及对应审计事务。
+- AppendRuleResults：仅应用 app 生成的 typed findings/evaluations，不在 Store 执行规则或分类。
+- MergeCitationDrafts：在原受锁真实前态内调用 app 纯计划并应用明确 typed delta，匹配、去重与 materialize 规则归 app。
+- ReadAttemptProgress、FinishAttempt：读取原尝试进度，并沿原 durable/inline 终态提交路径执行 typed 结果。
+- 原 attempt recorder 与受限 ID/时钟 codec：保留事件和 ID/时间语义，不暴露原 Store 业务方法或任意函数入口。
+
+引用合并保留 `scopedAttemptMutationInternal` 的 case→attempt→claim 锁序、当前授权、generation/epoch 与提交 proof。Store 私有适配闭包只把真实 fresh loaded state 的有序候选映射为 typed 输入，调用 Execution app 纯 `PlanCitationMerge`，再将显式新增 finding、字段替换及 anchor 追加 delta 应用到同一个 state。按 draft 顺序维护临时视图，保留 first-match、原 anchor 去重键、全部历史引用字段及 ID/时间生成顺序；app 不取得 Store.state，也不执行 I/O。原合并不递增 Finding.Version，不能据此新增事务外读取、版本 CAS 或重算协议。原先仅新建 finding 参与首次 verified 事件判断，仍在该次事务成功后记录。
+
+所有状态写继续从真实 `loadScopedAttemptState` 基线 clone，经原 append-only/service delta/stateDelta/persist；不构造空 state 或覆盖历史 snapshot/Decision。规则发布、引用写入、首次 verified 事件和终态各保持原提交点。适用 audit、job、Outbox 随原事务提交，并非每一步都有 Outbox。deadline 清理、父取消、recorder 失败优先和部分解析/模型错误分类保持，durable 与 inline 终态不能被新流程合并成不同提交语义。
+
+模型配置沿现有 nil 判断和 Warranty 窄协议，复用当前入口已选客户端、冻结 delegated scope 和 observer，不新增探测或 provider client。调用仍经网关预算 Reserve→重授权/dispatch→settle；trace/checkpoint 不替代账本，未知用量不记零。PostgreSQL 继续是任务/租约与业务权威，NATS 仅作短通知。本次不新增 schema、服务角色、默认外部连接器或专业结论。
+
+这些 Store 桥只覆盖本次 typed 标准流程；随 #148 相应 Document/Audit/Execution 持久化和授权 ports 逐项迁出，AR020 清理无消费者适配。SOURCE 覆盖真实规则/引用顺序、错误分类、持久失败、失权/旧 generation 以及终态兼容；并不据此宣称运行通过。整轮重构完成后统一执行检查，当前测试、编译、门禁、PG/app/browser 与真实模型/OCR 全部 NOT_RUN。
