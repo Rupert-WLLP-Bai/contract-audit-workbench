@@ -147,3 +147,17 @@ Contract PostgreSQL adapter 只读写本域聚合、修订、材料快照、封�
 终态复用 Execution 所有的 `execution_agent_reviews` 哈希投影存储及既有终态输出摘要链，但纯事实输出使用独立、带版本的 discriminator，不能伪装 `five-domain-review/v1` 或制造 Planner/五域字段。当前切片先覆盖非治理单合同路径，与既有治理审查投影互斥；每一代写入一次完整投影，保留原有同代字节幂等约束。旧五域消费者继续只接收五域投影，事实结果经独立 Workspace 字段显示；报告、补证与恢复读取也须按类型分派。日后需要同一次尝试组合两种输出时，先设计一次性组合及兼容规则，不通过覆写同代投影拼接。
 
 Store 暂保留已授权尝试的冻结材料解析、scope/租约复核、步骤 journal 和终态投影的窄适配；新增事实选择、归纳校验、引用绑定和失败语义不进入 Store 业务体。该例外不开放通用 SQL、scope 或跨案件读取，后续随 #148 迁入 Execution 持久化端口。HTTP/Web/真实语料 runner 分别展示事实建议、规划与 OCR 的实际调用，原12份与新项目材料仍分别验收。所有本批运行检查和真实模型/OCR验收均为 NOT_RUN。
+
+## #295 Contract 来源观察与历史持久化迁移
+
+状态：采纳，实施前决策。接续 #292/#294，把既有来源观察的模型、规则、应用编排及 Contract 自有持久化迁入现有 `internal/contract`。本决定迁移现有能力与历史/fixture 支持，不增加真实外部系统接入；用户取消的 #183 保持 NOT_APPLICABLE。HTTP 签名认证、服务端来源配置和公开 wire 不变，运行验收为 NOT_RUN。
+
+Contract 拥有来源到合同的身份、追加式 `clm_contract_source_observations`、合同与案件关联、聚合、修订和冻结计划项。案件的存在、归档状态及授权仍由既有案件边界负责，不新建领域分类。来源凭据、租户和允许案件集合由服务端配置解析，签名请求正文不能提供这些权限。`internal/clmsource` 继续提供来源能力与 `CompareVersion` 契约；不另建接入平台或删除已有历史。
+
+Contract model/app 承接输入校验、克隆规范化、语义及快照摘要、事件幂等、版本/序号不可变判断、归档或推进当前版本的决定与结果组装。Contract PostgreSQL adapter 仅访问本域表，使用调用者同一事务绑定的非拥有 executor；外部合同只能有一个且匹配的案件关联，由 Contract 自有持久化检查。业务事件仍由 Contract 事件端口追加，投递状态由 Platform Outbox 端口处理，禁止 adapter 查询案件表或设置身份、scope、提交与回滚。
+
+Store 仅保留服务身份、写入门禁、RLS scope、事务生命周期与提交围栏，以及两类明确窄桥：其一在同一事务内复核当前服务端允许案件集合，读取指定 tenant/org/case 的存在及非归档状态并取得 `FOR KEY SHARE`；其二复用现有字段绑定 codec 与原始来源载荷 codec。后者只封存准确原始请求字节，绑定 tenant/source/event/observation、字段 `source.raw_body`、用途 `contract.source.observation` 和现有 data epoch，不暴露密钥或任意加密上下文。既有 `clmsrc1:` 历史解码保留；冻结修订继续复用已批准的 DraftContent 字段封存桥。桥不执行来源版本决定、循环、摘要或旧 Store 完整业务体。
+
+一条观察仍为单一 PostgreSQL 事务，保留顺序：案件 `FOR KEY SHARE` → 来源事件 advisory lock → 来源合同 advisory lock → 合同聚合 `FOR UPDATE`。来源观察、可选身份/案件关联、修订/计划项、聚合与当前版本、业务事件和 Outbox 共同提交或回滚。保持事件ID与规范载荷摘要幂等、原始字节独立摘要、来源版本与序号不可变、opaque/monotonic 差异、未知金额不推进当前版本、旧序号仅归档及历史无可信 baseline 不替换当前版本。已应用迁移、append-only、RLS 与服务角色 ACL 不改。
+
+后续随 #148 迁入相应授权/持久化端口并删除过渡桥；不得把旧方法作为 app 的通用 callback，也不扩大成任意 SQL、身份或跨案件入口。源代码完成后再按固定候选执行来源幂等/序号冲突、未知金额、绑定、撤权、密文绑定和事务回滚的定点验收；当前全部 NOT_RUN。
