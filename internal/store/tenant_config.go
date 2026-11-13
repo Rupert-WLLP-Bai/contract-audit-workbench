@@ -22,6 +22,8 @@ import (
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
+	knowledgeApp "contractaudit/internal/knowledge/app"
+	knowledgePostgres "contractaudit/internal/knowledge/postgres"
 	"contractaudit/internal/model"
 	"github.com/jackc/pgx/v5"
 )
@@ -162,28 +164,16 @@ func (s *Store) readTenantConfigRow(ctx context.Context, q pgx.Tx, tenantID stri
 func (s *Store) tenantConfigCatalogs(ctx context.Context, q queryer, user accounts.User) ([]TenantConfigCatalogEntry, []TenantConfigCatalogEntry, []TenantModelCatalogEntry, []map[string]string, error) {
 	public := []TenantConfigCatalogEntry{publicTemplateCandidate()}
 	private := []TenantConfigCatalogEntry{}
-	rows, err := q.Query(ctx, `SELECT DISTINCT ON (v.knowledge_id) v.knowledge_id,v.version_id,v.content_sha256,v.display_version
-		FROM governed_knowledge_versions v JOIN governed_knowledge_state state USING(tenant_id,knowledge_id,version_id)
-		JOIN governed_knowledge_pointers pointer USING(tenant_id,knowledge_id,scope_key)
-		WHERE v.tenant_id=$1 AND v.kind='policy' AND v.scope_org_id IS NULL AND v.scope_case_id IS NULL
-		AND state.status='published' AND pointer.active ORDER BY v.knowledge_id,v.created_at DESC`, user.TenantID)
+	policies, err := knowledgeApp.ListPublishedGlobalPolicySummaries(ctx, knowledgePostgres.NewCatalogReader(q), user.TenantID)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	for rows.Next() {
-		var item TenantConfigCatalogEntry
-		if err := rows.Scan(&item.ID, &item.Version, &item.Digest, &item.Title); err != nil {
-			rows.Close()
-			return nil, nil, nil, nil, err
-		}
-		item.Kind = "private_policy"
-		private = append(private, item)
+	for _, policy := range policies {
+		private = append(private, TenantConfigCatalogEntry{
+			TenantConfigRef: TenantConfigRef{ID: policy.KnowledgeID, Version: policy.VersionID, Digest: policy.ContentSHA256},
+			Title:           policy.DisplayVersion, Kind: "private_policy",
+		})
 	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, nil, nil, nil, err
-	}
-	rows.Close()
 	models := []TenantModelCatalogEntry{}
 	credentials := []map[string]string{}
 	settings, found, err := s.LLMEndpoint(ctx)

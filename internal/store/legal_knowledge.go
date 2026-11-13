@@ -23,52 +23,16 @@ import (
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
+	knowledgeModel "contractaudit/internal/knowledge/model"
 	"contractaudit/internal/legalnorm"
 	"contractaudit/internal/rulepack"
 
 	"github.com/jackc/pgx/v5"
 )
 
-// LegalMetadata binds one governed article body to an immutable captured
-// official source and point-in-time registry observation. Legal review is
-// deliberately fixed at NOT_RUN for this product slice.
-type LegalMetadata struct {
-	SourceID                    string               `json:"source_id"`
-	NormTitle                   string               `json:"norm_title"`
-	DocumentType                string               `json:"document_type"`
-	NormVersion                 string               `json:"norm_version"`
-	ArticleNumber               int                  `json:"article_number"`
-	ArticleLabel                string               `json:"article_label"`
-	Issuer                      string               `json:"issuer"`
-	Publisher                   string               `json:"publisher"`
-	OfficialURL                 string               `json:"official_url"`
-	PromulgatedOn               string               `json:"promulgated_on"`
-	EffectiveFrom               string               `json:"effective_from"`
-	EffectiveUntil              string               `json:"effective_until,omitempty"`
-	OfficialStatusObservationID string               `json:"official_status_observation_id"`
-	OfficialStatus              string               `json:"official_status"`
-	StatusRegistryURL           string               `json:"status_registry_url"`
-	StatusObservedAt            string               `json:"status_observed_at"`
-	StatusEvidenceSHA256        string               `json:"status_evidence_sha256"`
-	StatusResponseStatus        int                  `json:"status_response_status"`
-	StatusContentType           string               `json:"status_content_type"`
-	SourceSnapshotID            string               `json:"source_snapshot_id"`
-	SourceProvenance            string               `json:"source_provenance"`
-	SourceCapturedAt            string               `json:"source_captured_at"`
-	SourceResponseStatus        int                  `json:"source_response_status"`
-	SourceContentType           string               `json:"source_content_type"`
-	SourceSHA256                string               `json:"source_sha256"`
-	NormTextSHA256              string               `json:"norm_text_sha256"`
-	CanonicalTextVersion        string               `json:"canonical_text_version"`
-	SourceTextStart             int                  `json:"source_text_start"`
-	SourceTextEnd               int                  `json:"source_text_end"`
-	ExtractorID                 string               `json:"extractor_id"`
-	ExtractorVersion            string               `json:"extractor_version"`
-	TextCheckStatus             string               `json:"text_check_status"`
-	LegalReviewStatus           string               `json:"legal_review_status"`
-	Reviewer                    *string              `json:"reviewer"`
-	ApplicabilityConditions     []KnowledgeCondition `json:"applicability_conditions,omitempty"`
-}
+// LegalMetadata is a Knowledge-owned governed article value. Legal capture
+// records and their persistence remain owned by Legal.
+type LegalMetadata = knowledgeModel.LegalMetadata
 
 type LegalArticleVersionInput struct {
 	ArticleNumber  int    `json:"article_number"`
@@ -166,42 +130,7 @@ type LegalKnowledgePage struct {
 }
 
 func validateLegalMetadata(metadata *LegalMetadata, body string) error {
-	if metadata == nil || metadata.SourceID == "" || metadata.NormTitle == "" || metadata.NormVersion == "" ||
-		metadata.ArticleNumber <= 0 || metadata.ArticleLabel == "" || metadata.Issuer == "" || metadata.Publisher == "" ||
-		metadata.OfficialURL == "" || metadata.OfficialStatusObservationID == "" || metadata.StatusRegistryURL == "" ||
-		metadata.SourceSnapshotID == "" || metadata.SourceCapturedAt == "" || metadata.StatusObservedAt == "" ||
-		!validKnowledgeHash(metadata.SourceSHA256) || !validKnowledgeHash(metadata.NormTextSHA256) ||
-		!validKnowledgeHash(metadata.StatusEvidenceSHA256) || metadata.SourceTextStart < 0 || metadata.SourceTextEnd <= metadata.SourceTextStart ||
-		metadata.SourceResponseStatus != 200 || metadata.StatusResponseStatus != 200 ||
-		metadata.TextCheckStatus != "PASS" || metadata.LegalReviewStatus != "NOT_RUN" || metadata.Reviewer != nil ||
-		metadata.SourceProvenance != "verified_official_capture" || metadata.CanonicalTextVersion != legalnorm.CanonicalTextVersion ||
-		metadata.ExtractorID == "" || metadata.ExtractorVersion == "" || !validKnowledgeHash(sha256Bytes([]byte(body))) ||
-		metadata.NormTextSHA256 != sha256Bytes([]byte(body)) {
-		return fault.Invalid("法律条文缺少服务端核验的来源、正文或效力元数据")
-	}
-	switch metadata.DocumentType {
-	case "law", "administrative_regulation", "judicial_interpretation", "normative_notice", "draft", "legislative_plan":
-	default:
-		return fault.Invalid("法律来源文件类型无效")
-	}
-	switch metadata.OfficialStatus {
-	case legalnorm.StatusEffective, legalnorm.StatusRepealed, legalnorm.StatusNotYetEffective:
-	default:
-		return fault.Invalid("官方登记效力状态无效")
-	}
-	if _, err := time.Parse(time.RFC3339, metadata.SourceCapturedAt); err != nil {
-		return fault.Invalid("法律来源抓取时间无效")
-	}
-	if _, err := time.Parse(time.RFC3339, metadata.StatusObservedAt); err != nil {
-		return fault.Invalid("法律效力观察时间无效")
-	}
-	if _, err := time.Parse("2006-01-02", metadata.PromulgatedOn); err != nil {
-		return fault.Invalid("法律公布日期无效")
-	}
-	if _, err := time.Parse("2006-01-02", metadata.EffectiveFrom); err != nil {
-		return fault.Invalid("法律生效日期无效")
-	}
-	return nil
+	return knowledgeModel.ValidateLegalMetadata(metadata, body)
 }
 
 func legalArticleManifest(articles []legalnorm.VerifiedArticle) ([]byte, error) {
@@ -275,10 +204,8 @@ func legalMetadataFor(verified legalnorm.VerifiedBaseline, article legalnorm.Ver
 }
 
 func validateKnowledgeVersionFamily(ctx context.Context, tx pgx.Tx, tenant string, content GovernedKnowledgeContent) error {
-	var exists bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM business_knowledge WHERE tenant_id=$1 AND id=$2 AND version=$3)
-		OR EXISTS(SELECT 1 FROM governed_knowledge_versions WHERE tenant_id=$1 AND knowledge_id=$2 AND display_version=$3)`,
-		tenant, content.KnowledgeID, content.Version).Scan(&exists); err != nil {
+	exists, err := knowledgeVersionSlotOccupied(ctx, tx, tenant, content.KnowledgeID, content.Version)
+	if err != nil {
 		return err
 	}
 	if exists {
@@ -293,6 +220,17 @@ func validateKnowledgeVersionFamily(ctx context.Context, tx pgx.Tx, tenant strin
 		return fault.Conflict("制度族的类型不可改变")
 	}
 	return nil
+}
+
+// knowledgeVersionSlotOccupied preserves the legacy and governed namespaces
+// as one exact, tenant-scoped fact query. Knowledge decides the conflict; this
+// bridge does not infer ownership of legacy business_knowledge rows.
+func knowledgeVersionSlotOccupied(ctx context.Context, tx pgx.Tx, tenant, knowledgeID, displayVersion string) (bool, error) {
+	var exists bool
+	err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM business_knowledge WHERE tenant_id=$1 AND id=$2 AND version=$3)
+		OR EXISTS(SELECT 1 FROM governed_knowledge_versions WHERE tenant_id=$1 AND knowledge_id=$2 AND display_version=$3)`,
+		tenant, knowledgeID, displayVersion).Scan(&exists)
+	return exists, err
 }
 
 type legalCaptureReference struct {

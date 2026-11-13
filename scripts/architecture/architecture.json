@@ -165,6 +165,17 @@
         "postgres": [
           "internal/audit/postgres"
         ]
+      },
+      {
+        "id": "knowledge",
+        "app": [
+          "internal/knowledge/model",
+          "internal/knowledge/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/knowledge/postgres"
+        ]
       }
     ]
   }

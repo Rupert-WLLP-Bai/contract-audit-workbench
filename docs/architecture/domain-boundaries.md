@@ -212,3 +212,7 @@ Store 继续 trustedAdmin、Core service owner、写门禁、updateAdminAs 或�
 准许一个专用 `VersionSlotOccupied` 同事务只读事实桥，输入限于服务端绑定 tenant 与精确 knowledge ID/display version，返回 bool/error；保留原两表 EXISTS OR EXISTS 的单条固定查询。app 根据该事实给出原重复版本冲突，随后才调用 Knowledge 自有 PG 的 family-kind 事实并判断。桥不执行内容、生命周期或 family-kind 决定，也不开放 SQL、scope、pool、事务或泛化 callback。此处保留旧单条查询，避免拆成 LegacyExists 与 GovernedExists 后增加查询及改变错误时序；Knowledge PG 不读取 business_knowledge，服务角色/RLS/schema 锁与原事务不变。
 
 本例外只覆盖创建/导入现有命名空间兼容的精确读取；不迁旧 API、不推定其数据 owner。相应公开所有者契约可承接同事务兼容检查后删除该 Store 桥，AR020 继续检查消费者。所有运行检查仍 NOT_RUN。
+
+### #304 来源授权失败的精确读取返回值
+
+状态：采纳，兼容性例外。旧 `GetGovernedKnowledgeVersion` 在来源/祖先授权失败时仍以 `(已加载版本, error)` 返回，错误值之外可能携带受限正文；本次迁移保留新版 app 的零值返回，明确以 `(零版本, 原错误)` 收紧该路径，符合默认拒绝授权的边界。HTTP 原错误码、错误体、公开方法签名与成功响应不变，来源权限仍在原事务和原校验点复核，不改变角色、查询或冻结内容。此决定仅确认来源授权失败的精确内容读取，不据此更改其它读取/写入的错误返回值；必要 SOURCE 须证明已通过内容完整性校验后发生授权拒绝，且返回值不携带正文。运行验证仍 NOT_RUN。
