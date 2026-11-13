@@ -183,3 +183,24 @@ Store 仅保留服务身份、写入门禁、RLS scope、事务生命周期与�
 模型配置沿现有 nil 判断和 Warranty 窄协议，复用当前入口已选客户端、冻结 delegated scope 和 observer，不新增探测或 provider client。调用仍经网关预算 Reserve→重授权/dispatch→settle；trace/checkpoint 不替代账本，未知用量不记零。PostgreSQL 继续是任务/租约与业务权威，NATS 仅作短通知。本次不新增 schema、服务角色、默认外部连接器或专业结论。
 
 这些 Store 桥只覆盖本次 typed 标准流程；随 #148 相应 Document/Audit/Execution 持久化和授权 ports 逐项迁出，AR020 清理无消费者适配。SOURCE 覆盖真实规则/引用顺序、错误分类、持久失败、失权/旧 generation 以及终态兼容；并不据此宣称运行通过。整轮重构完成后统一执行检查，当前测试、编译、门禁、PG/app/browser 与真实模型/OCR 全部 NOT_RUN。
+
+## #304 Knowledge 治理的精确依赖与 Store 过渡桥
+
+状态：采纳，实施前决策。基于 #303 源码候选 `45a36d766b1e57b5788bb5ec50167dde99c4f290`。治理创建、命令、版本/目录、历史和政策预览的真实规则迁入 Knowledge model/app，自有 SQL 迁入 Knowledge PG。跨域依赖仍有私有身份和授权入口；保留原单事务内的专用精确事实桥，避免拆提交或让新 adapter 越权读表。此选择是受限过渡，不以旧 Store 业务函数 callback 代替迁移。
+
+Knowledge 自有持久化限于治理 versions、state、pointers、history、idempotency、policy_rule_bindings 六表；PG adapter 只接同一 caller-owned transaction 的非拥有 Executor，不持有 pool、scope 或提交能力，不访问 RulePack、Legal capture、Case/candidate/feedback/lineage、review snapshot、job 或 Outbox 表。Legal 捕获事实仍归 Legal；RulePack 不新增领域，候选等所有权不凭旧 UNKNOWN 清单或服务授权表推定。
+
+本次准许 Store 保留以下命名明确、同事务的私有能力，最终方法名按实际契约调整：
+
+- 精确 RulePack 版本及 pointer 事实：原 manifest bytes、存储 hash/digest、状态与 pointer 身份。复用现有 rulepack 解析契约，Knowledge 自己的 binding、期限、范围、authority 与阈值判定进入 app/model，不回调旧 validateKnowledgeBinding 整体业务。
+- 精确 Legal capture 或 batch 来源事实：现有不可变来源、状态、canonical text 和文章身份及来源层完整性验证。Knowledge 判断自身内容的精确绑定，不将来源可定位解释为专业审核通过。
+- scope/source 案件及祖先的当前授权、服务端 Org 推导与原 blocking/try case locks：只返回指定身份的必要事实，不开放 scope 枚举或任意 SQL。
+- 精确 experience candidate/version/feedback/lineage 事实及当前来源授权：来源层完整性和现有 candidate 自身 completeness 契约保持；Knowledge 对所需条件、内容一致性、依赖、跨案审阅及可发布性的决定进入 app，不把整个 knowledgeCandidate 业务函数隐藏在桥内。
+
+Store 继续 trustedAdmin、Core service owner、写门禁、updateAdminAs 或原读事务、schema advisory lock、transaction-local RLS、当前 source/ancestor grant 和提交 proof。各命令分支保留原依赖读取与错误优先顺序，幂等 replay 也重验当前授权。state revision + contentSHA 与 pointer revision 双 CAS、tombstone/无 ABA、追加 history 和幂等响应在原单事务内共同提交或回滚；案件与祖先锁、case_busy 竞争语义不变。不新增 schema、角色、ACL、Outbox 或事务框架。
+
+公开 Store DTO/方法保留直接字段、keyed literal、JSON tags/顺序、canonical bytes、摘要及 wire。精确同形 alias 可减少重复 DTO 和 mapper；内部形状不同才做有界转换。LegalMetadata 在此表示 Knowledge 不可变文章内容中的 metadata 值，不将 Legal 捕获表改归 Knowledge，也不改变法律审核 NOT_RUN。旧 business knowledge API、Legal 管理分派/案件读取和 Platform 配置聚合保持；若抽取 published-policy catalog，只迁 Knowledge 行读取，不迁模型/凭据聚合。
+
+本次不迁 #305 Resolve、接纳、retry 和 worker frozen read，既有消费者通过兼容入口继续使用精确值和规则。T14/T15/T23/T08 的规则包、知识版本、业务时间与执行尝试含义沿唯一概念源，不新增同义概念源；旧尝试不补当前知识或改写冻结身份。原跨域 state writer 的真实 load→clone→append-only/delta→persist 及适用 snapshot/run/attempt/job/Outbox 原子性不变，不能构造空 state。
+
+本过渡桥随对应领域公开 contract 就绪逐项退场，AR020 检查消费者后删除无用适配。实际包落地后登记架构路径；必要 SOURCE 补真实 CAS/history/幂等失败回滚及当前授权，不复制旧完整矩阵。全部运行检查、PG/app/browser 和真实模型/OCR 仍 NOT_RUN，整轮重构结束后统一验收。
