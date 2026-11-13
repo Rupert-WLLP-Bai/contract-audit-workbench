@@ -15,6 +15,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -201,6 +202,58 @@ func TestContractPaymentEligibilityAndTrustedReceiptFacts(t *testing.T) {
 		t.Fatalf("rejected readonly receipt changed facts/events/outbox: %d/%d/%d -> %d/%d/%d", beforeFacts, beforeEvents, beforeOutbox, facts, events, outbox)
 	}
 	fixture.core.UseReadOnly(false)
+	t.Run("EligibilityDeferredReceiptRollback", func(t *testing.T) {
+		pool := fixture.environment.harness.pool
+		if _, err := pool.Exec(ctx, `CREATE FUNCTION test_payment_receipt_deferred_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced payment deferred receipt failure'; END $$`); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			_, _ = pool.Exec(context.Background(), `DROP TRIGGER IF EXISTS test_payment_receipt_deferred_failure ON clm_contract_write_receipts`)
+			_, _ = pool.Exec(context.Background(), `DROP FUNCTION IF EXISTS test_payment_receipt_deferred_failure()`)
+		})
+		if _, err := pool.Exec(ctx, `CREATE CONSTRAINT TRIGGER test_payment_receipt_deferred_failure AFTER INSERT ON clm_contract_write_receipts DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION test_payment_receipt_deferred_failure()`); err != nil {
+			t.Fatal(err)
+		}
+		_, _, _, versionBefore := readPaymentState()
+		var beforeChecks, beforeEvents, beforeOutbox, beforeReceipts int
+		if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM clm_contract_payment_eligibility_checks WHERE tenant_id=$1 AND contract_id=$2), (SELECT count(*) FROM clm_business_events WHERE tenant_id=$1 AND contract_id=$2 AND event_type='contract.payment_eligibility_checked.v1'), (SELECT count(*) FROM clm_outbox_delivery o JOIN clm_business_events e USING (tenant_id,event_id) WHERE e.tenant_id=$1 AND e.contract_id=$2 AND e.event_type='contract.payment_eligibility_checked.v1'), (SELECT count(*) FROM clm_contract_write_receipts WHERE tenant_id=$1 AND actor_id=$3 AND route_scope=$4 AND idempotency_key=$5)`, fixture.admin.TenantID, contractID, fixture.admin.ID, clmRoutePaymentEligibility, "payment-deferred-rollback").Scan(&beforeChecks, &beforeEvents, &beforeOutbox, &beforeReceipts); err != nil {
+			t.Fatal(err)
+		}
+		_, err := fixture.core.CheckContractPaymentEligibility(ctx, fixture.admin, ContractPaymentEligibilityInput{ContractID: contractID, RevisionID: frozen.Version.ContractRevisionID, Sequence: 1, ExpectedRowVersion: versionBefore, IdempotencyKey: "payment-deferred-rollback"})
+		if err == nil || !strings.Contains(err.Error(), "forced payment deferred receipt failure") {
+			t.Fatalf("expected deferred receipt failure, got %v", err)
+		}
+		var checks, events, outbox, receipts int
+		if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM clm_contract_payment_eligibility_checks WHERE tenant_id=$1 AND contract_id=$2), (SELECT count(*) FROM clm_business_events WHERE tenant_id=$1 AND contract_id=$2 AND event_type='contract.payment_eligibility_checked.v1'), (SELECT count(*) FROM clm_outbox_delivery o JOIN clm_business_events e USING (tenant_id,event_id) WHERE e.tenant_id=$1 AND e.contract_id=$2 AND e.event_type='contract.payment_eligibility_checked.v1'), (SELECT count(*) FROM clm_contract_write_receipts WHERE tenant_id=$1 AND actor_id=$3 AND route_scope=$4 AND idempotency_key=$5)`, fixture.admin.TenantID, contractID, fixture.admin.ID, clmRoutePaymentEligibility, "payment-deferred-rollback").Scan(&checks, &events, &outbox, &receipts); err != nil {
+			t.Fatal(err)
+		}
+		_, _, _, versionAfter := readPaymentState()
+		if checks != beforeChecks || events != beforeEvents || outbox != beforeOutbox || receipts != beforeReceipts || versionAfter != versionBefore {
+			t.Fatalf("deferred failure left state checks=%d events=%d outbox=%d receipts=%d version=%d", checks, events, outbox, receipts, versionAfter)
+		}
+	})
+	t.Run("TrustedReceiptOutboxRollback", func(t *testing.T) {
+		pool := fixture.environment.harness.pool
+		if _, err := pool.Exec(ctx, `CREATE FUNCTION test_payment_outbox_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced payment trusted outbox failure'; END $$`); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			_, _ = pool.Exec(context.Background(), `DROP TRIGGER IF EXISTS test_payment_outbox_failure ON clm_outbox_delivery`)
+			_, _ = pool.Exec(context.Background(), `DROP FUNCTION IF EXISTS test_payment_outbox_failure()`)
+		})
+		if _, err := pool.Exec(ctx, `CREATE TRIGGER test_payment_outbox_failure BEFORE INSERT ON clm_outbox_delivery FOR EACH ROW EXECUTE FUNCTION test_payment_outbox_failure()`); err != nil {
+			t.Fatal(err)
+		}
+		beforeFacts, beforeEvents, beforeOutbox, beforeVersion := readPaymentState()
+		_, _, err := fixture.core.RecordTrustedContractPaymentReceipt(ctx, source, ContractPaymentReceiptInput{ContractID: contractID, RevisionID: frozen.Version.ContractRevisionID, Sequence: 1, EventID: "payment-outbox-rollback", EventType: "payment", Amount: "1.00", Currency: "CNY", OccurredAt: time.Now().UTC()})
+		if err == nil || !strings.Contains(err.Error(), "forced payment trusted outbox failure") {
+			t.Fatalf("expected trusted outbox failure, got %v", err)
+		}
+		afterFacts, afterEvents, afterOutbox, afterVersion := readPaymentState()
+		if afterFacts != beforeFacts || afterEvents != beforeEvents || afterOutbox != beforeOutbox || afterVersion != beforeVersion {
+			t.Fatalf("trusted outbox failure left state facts=%d events=%d outbox=%d version=%d", afterFacts, afterEvents, afterOutbox, afterVersion)
+		}
+	})
 	t.Run("LifecycleOverviewSingleSnapshotConcurrentReceipt", func(t *testing.T) {
 		assertLifecycleSnapshotUnderConcurrentReceipt(t, fixture, contractID, frozen.Version.ContractRevisionID, source)
 	})

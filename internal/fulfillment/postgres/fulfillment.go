@@ -276,3 +276,10 @@ func (r *Repository) ListAcceptanceRectificationIDs(ctx context.Context, tenantI
 	}
 	return ids, rows.Err()
 }
+
+// SumAcceptedQuantity returns the original exact numeric aggregate for Payment.
+func (r *Repository) SumAcceptedQuantity(ctx context.Context, tenantID, contractID, revisionID, itemID string) (string, error) {
+	var quantity string
+	err := r.tx.QueryRow(ctx, `SELECT COALESCE(sum(accepted_quantity),0)::text FROM clm_contract_acceptances WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3 AND item_id=$4`, tenantID, contractID, revisionID, itemID).Scan(&quantity)
+	return quantity, err
+}

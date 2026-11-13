@@ -134,6 +134,16 @@
         "postgres": [
           "internal/fulfillment/postgres"
         ]
+      },
+      {
+        "id": "payment",
+        "app": [
+          "internal/payment/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/payment/postgres"
+        ]
       }
     ]
   }
