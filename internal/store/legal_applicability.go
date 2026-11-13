@@ -16,13 +16,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"sort"
 	"strings"
 	"time"
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
+	legalApp "contractaudit/internal/legal/app"
+	legalModel "contractaudit/internal/legal/model"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -49,14 +50,7 @@ func enumLegalValues(values ...string) map[string]bool {
 	return result
 }
 
-type LegalApplicabilityPartyPin struct {
-	Side           string `json:"side,omitempty"`
-	BindingID      string `json:"binding_id,omitempty"`
-	BindingVersion int64  `json:"binding_version,omitempty"`
-	SubjectID      string `json:"subject_id,omitempty"`
-	SubjectVersion int64  `json:"subject_version,omitempty"`
-	ScopeNote      string `json:"scope_note,omitempty"`
-}
+type LegalApplicabilityPartyPin = legalModel.LegalApplicabilityPartyPin
 
 type LegalApplicabilityFactInput struct {
 	ExpectedVersion int64                      `json:"expected_version"`
@@ -78,50 +72,9 @@ type LegalApplicabilityResolutionInput struct {
 	EvidenceCutoffAt string `json:"evidence_cutoff_at"`
 }
 
-// LegalApplicabilityResolvedFact keeps the immutable authored version separate
-// from the answer derived for one business time and evidence cutoff.
-type LegalApplicabilityResolvedFact struct {
-	Dimension     string                         `json:"dimension"`
-	Status        string                         `json:"status"`
-	Value         string                         `json:"value,omitempty"`
-	UnknownReason string                         `json:"unknown_reason,omitempty"`
-	Fact          *LegalApplicabilityFactVersion `json:"fact,omitempty"`
-}
-
-type LegalApplicabilityFactSet struct {
-	BusinessAt       time.Time                        `json:"business_at"`
-	EvidenceCutoffAt time.Time                        `json:"evidence_cutoff_at"`
-	Facts            []LegalApplicabilityResolvedFact `json:"facts"`
-}
-
-// LegalApplicabilityFactVersion is an immutable, server-recorded fact version.
-// Value is populated only for established facts; unknown versions carry a
-// controlled UnknownReason and still participate in temporal selection.
-type LegalApplicabilityFactVersion struct {
-	TenantID        string                     `json:"tenant_id,omitempty"`
-	OrgID           string                     `json:"org_id,omitempty"`
-	CaseID          string                     `json:"case_id,omitempty"`
-	FactID          string                     `json:"fact_id"`
-	Dimension       string                     `json:"dimension"`
-	Version         int64                      `json:"version"`
-	Status          string                     `json:"status"`
-	Value           string                     `json:"value,omitempty"`
-	UnknownReason   string                     `json:"unknown_reason,omitempty"`
-	TemporalBasis   string                     `json:"temporal_basis"`
-	ValidFrom       time.Time                  `json:"valid_from"`
-	ValidUntil      *time.Time                 `json:"valid_until,omitempty"`
-	BasisObtainedAt *time.Time                 `json:"basis_obtained_at,omitempty"`
-	BasisNote       string                     `json:"basis_note"`
-	BasisRefs       json.RawMessage            `json:"basis_refs"`
-	BasisSHA256     string                     `json:"basis_sha256"`
-	Party           LegalApplicabilityPartyPin `json:"party,omitempty"`
-	RequestDigest   string                     `json:"request_digest,omitempty"`
-	IdempotencyKey  string                     `json:"idempotency_key,omitempty"`
-	ActorUserID     string                     `json:"actor_user_id,omitempty"`
-	ActorIssuer     string                     `json:"actor_issuer,omitempty"`
-	ActorSubject    string                     `json:"actor_subject,omitempty"`
-	CreatedAt       time.Time                  `json:"created_at"`
-}
+type LegalApplicabilityResolvedFact = legalModel.LegalApplicabilityResolvedFact
+type LegalApplicabilityFactSet = legalModel.LegalApplicabilityFactSet
+type LegalApplicabilityFactVersion = legalModel.LegalApplicabilityFactVersion
 
 func normalizeLegalApplicabilityInput(input LegalApplicabilityFactInput, createdAt time.Time, verifiedBasisRefs json.RawMessage, basisObtainedAt *time.Time) (LegalApplicabilityFactVersion, error) {
 	values, ok := legalApplicabilityDimensions[input.Dimension]
@@ -510,12 +463,7 @@ func validateLegalApplicabilityPartyPin(ctx context.Context, tx pgx.Tx, user acc
 	return nil
 }
 
-func legalPartyRoleMatches(side, role string) bool {
-	if side == "buyer" {
-		return role == "customer"
-	}
-	return side == "seller" && (role == "supplier" || role == "contractor" || role == "service_provider")
-}
+func legalPartyRoleMatches(side, role string) bool { return legalModel.PartyRoleMatches(side, role) }
 
 func verifyLegalApplicabilityBasisManifest(raw []byte, digest string) (json.RawMessage, error) {
 	canonical, err := canonicalRawJSON(raw)
@@ -658,186 +606,11 @@ func (s *Store) ResolveLegalApplicabilityFacts(ctx context.Context, user account
 }
 
 func resolveLegalApplicabilityFactsTx(ctx context.Context, tx pgx.Tx, user accounts.User, caseID string, businessAt, factCutoffAt time.Time) ([]LegalApplicabilityResolvedFact, error) {
-	caseItem, err := loadKnowledgeCase(ctx, tx, user, caseID)
-	if err != nil {
-		return nil, err
-	}
-	if err := setLocalScope(ctx, tx, func() dbScope { scope := userScope(user); scope.CaseID = caseID; return scope }()); err != nil {
-		return nil, err
-	}
-	rows, err := tx.Query(ctx, `SELECT f.fact_id,f.dimension,f.current_version,v.version,v.status,COALESCE(v.value,''),COALESCE(v.unknown_reason,''),v.temporal_basis,v.valid_from,v.valid_until,v.basis_obtained_at,v.created_at,v.basis_note,v.basis_refs,v.basis_sha256,
-		COALESCE(v.party_side,''),v.party_binding_id,v.party_binding_version,v.party_subject_id,v.party_subject_version,COALESCE(v.party_scope_note,'')
-		FROM case_legal_applicability_facts f JOIN case_legal_applicability_fact_versions v USING (tenant_id,org_id,case_id,fact_id,dimension)
-		WHERE f.tenant_id=$1 AND f.org_id=$2 AND f.case_id=$3 ORDER BY f.dimension,v.version`, accounts.Tenant(user), caseItem.OwnerOrgID, caseID)
-	if err != nil {
-		return nil, err
-	}
-	type factFamily struct {
-		head     int64
-		versions []LegalApplicabilityFactVersion
-	}
-	families := make(map[string]*factFamily)
-	for rows.Next() {
-		var fact LegalApplicabilityFactVersion
-		var head int64
-		var until, obtained pgtype.Timestamptz
-		var side, bindingID, subjectID, scopeNote pgtype.Text
-		var bindingVersion, subjectVersion pgtype.Int8
-		if err := rows.Scan(&fact.FactID, &fact.Dimension, &head, &fact.Version, &fact.Status, &fact.Value, &fact.UnknownReason,
-			&fact.TemporalBasis, &fact.ValidFrom, &until, &obtained, &fact.CreatedAt, &fact.BasisNote, &fact.BasisRefs, &fact.BasisSHA256,
-			&side, &bindingID, &bindingVersion, &subjectID, &subjectVersion, &scopeNote); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		if until.Valid {
-			value := until.Time.UTC().Truncate(time.Microsecond)
-			fact.ValidUntil = &value
-		}
-		if obtained.Valid {
-			value := obtained.Time.UTC().Truncate(time.Microsecond)
-			fact.BasisObtainedAt = &value
-		}
-		fact.Party = LegalApplicabilityPartyPin{Side: side.String, BindingID: bindingID.String, SubjectID: subjectID.String, ScopeNote: scopeNote.String}
-		if bindingVersion.Valid {
-			fact.Party.BindingVersion = bindingVersion.Int64
-		}
-		if subjectVersion.Valid {
-			fact.Party.SubjectVersion = subjectVersion.Int64
-		}
-		canonicalBasis, err := verifyLegalApplicabilityBasisManifest(fact.BasisRefs, fact.BasisSHA256)
-		if err != nil {
-			rows.Close()
-			return nil, fault.Conflict("法律适用事实材料依据摘要不匹配")
-		}
-		fact.BasisRefs = canonicalBasis
-		fact.ValidFrom = fact.ValidFrom.UTC().Truncate(time.Microsecond)
-		fact.CreatedAt = fact.CreatedAt.UTC().Truncate(time.Microsecond)
-		fact.TenantID, fact.OrgID, fact.CaseID = accounts.Tenant(user), caseItem.OwnerOrgID, caseID
-		family := families[fact.Dimension]
-		if family == nil {
-			family = &factFamily{head: head}
-			families[fact.Dimension] = family
-		}
-		if family.head != head {
-			rows.Close()
-			return nil, errors.New("legal applicability head changed within snapshot")
-		}
-		family.versions = append(family.versions, fact)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, err
-	}
-	rows.Close()
-	dimensions := make([]string, 0, len(legalApplicabilityDimensions))
-	for dimension := range legalApplicabilityDimensions {
-		dimensions = append(dimensions, dimension)
-	}
-	sort.Strings(dimensions)
-	result := make([]LegalApplicabilityResolvedFact, 0, len(dimensions))
-	for _, dimension := range dimensions {
-		family := families[dimension]
-		if family == nil {
-			result = append(result, LegalApplicabilityResolvedFact{Dimension: dimension, Status: "unknown", UnknownReason: "missing_fact"})
-			continue
-		}
-		selection := selectLegalApplicabilityFactVersion(family.head, family.versions, businessAt, factCutoffAt)
-		selected := selection.Version
-		if selected.Version <= 0 {
-			result = append(result, LegalApplicabilityResolvedFact{Dimension: dimension, Status: "unknown", UnknownReason: "missing_fact"})
-			continue
-		}
-		selected.Dimension = dimension
-		resolved := LegalApplicabilityResolvedFact{Dimension: dimension, Status: selected.Status, Value: selected.Value, UnknownReason: selection.UnknownReason, Fact: &selected}
-		if selection.UnknownReason != "" {
-			resolved.Status, resolved.Value = "unknown", ""
-		}
-		if resolved.Status == "established" && selected.Party.BindingID != "" {
-			stale, ambiguous, err := legalApplicabilityPartyStatus(ctx, tx, user, caseItem, selected.Party)
-			if err != nil {
-				return nil, err
-			}
-			if stale {
-				resolved.Status, resolved.Value, resolved.UnknownReason = "unknown", "", "stale_party_context"
-			} else if ambiguous {
-				resolved.Status, resolved.Value, resolved.UnknownReason = "unknown", "", "party_scope_ambiguous"
-			}
-		}
-		result = append(result, resolved)
-	}
-	return result, nil
+	return legalApp.ResolveApplicability(ctx, newLegalReviewFacts(tx, user, Case{ID: caseID}, false), businessAt, factCutoffAt)
 }
 
-func legalApplicabilityPartyStatus(ctx context.Context, tx pgx.Tx, user accounts.User, item Case, pin LegalApplicabilityPartyPin) (bool, bool, error) {
-	var headVersion, pinnedSubjectVersion int64
-	var subjectID, role, bindingState string
-	err := tx.QueryRow(ctx, `SELECT h.current_version,v.subject_id,v.subject_version,v.role,v.binding_state FROM case_subject_roles h
-		JOIN case_subject_role_versions v ON v.tenant_id=h.tenant_id AND v.org_id=h.org_id AND v.case_id=h.case_id AND v.binding_id=h.binding_id AND v.version=h.current_version
-		WHERE h.tenant_id=$1 AND h.org_id=$2 AND h.case_id=$3 AND h.binding_id=$4`, accounts.Tenant(user), item.OwnerOrgID, item.ID, pin.BindingID).
-		Scan(&headVersion, &subjectID, &pinnedSubjectVersion, &role, &bindingState)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return true, false, nil
-	}
-	if err != nil {
-		return false, false, err
-	}
-	var currentSubjectVersion int64
-	if err := tx.QueryRow(ctx, `SELECT current_version FROM subjects WHERE tenant_id=$1 AND subject_id=$2`, accounts.Tenant(user), subjectID).Scan(&currentSubjectVersion); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return true, false, nil
-		}
-		return false, false, err
-	}
-	if headVersion != pin.BindingVersion || subjectID != pin.SubjectID || pinnedSubjectVersion != pin.SubjectVersion || currentSubjectVersion != pin.SubjectVersion || bindingState != "active" || !legalPartyRoleMatches(pin.Side, role) {
-		return true, false, nil
-	}
-	var count int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM case_subject_roles h JOIN case_subject_role_versions v ON v.tenant_id=h.tenant_id AND v.org_id=h.org_id AND v.case_id=h.case_id AND v.binding_id=h.binding_id AND v.version=h.current_version
-		WHERE h.tenant_id=$1 AND h.org_id=$2 AND h.case_id=$3 AND h.current_version=v.version AND v.role=$4 AND v.binding_state='active'`, accounts.Tenant(user), item.OwnerOrgID, item.ID, role).Scan(&count); err != nil {
-		return false, false, err
-	}
-	return false, count > 1 && strings.TrimSpace(pin.ScopeNote) == "", nil
-}
+type legalApplicabilitySelection = legalModel.LegalApplicabilitySelection
 
-type legalApplicabilitySelection struct {
-	Version       LegalApplicabilityFactVersion
-	UnknownReason string
-}
-
-// selectLegalApplicabilityFactVersion selects by business validity first, not
-// by append order. Evidence cutoff uses acquisition time; a current-state fact
-// also requires its server observation point to be within the cutoff.
 func selectLegalApplicabilityFactVersion(currentVersion int64, versions []LegalApplicabilityFactVersion, businessAt, factCutoffAt time.Time) legalApplicabilitySelection {
-	var selected *LegalApplicabilityFactVersion
-	for i := range versions {
-		candidate := &versions[i]
-		if candidate.Version <= 0 || candidate.Version > currentVersion ||
-			(candidate.BasisObtainedAt != nil && candidate.BasisObtainedAt.After(factCutoffAt)) || candidate.ValidFrom.After(businessAt) ||
-			(candidate.TemporalBasis == "current_state" && candidate.ValidFrom.After(factCutoffAt)) {
-			continue
-		}
-		if selected == nil || candidate.ValidFrom.After(selected.ValidFrom) ||
-			(candidate.ValidFrom.Equal(selected.ValidFrom) && candidate.Version > selected.Version) {
-			selected = candidate
-		}
-	}
-	if selected == nil {
-		return legalApplicabilitySelection{UnknownReason: "missing_fact"}
-	}
-	result := legalApplicabilitySelection{Version: *selected}
-	if selected.ValidUntil != nil && !businessAt.Before(*selected.ValidUntil) {
-		result.UnknownReason = "expired_basis"
-		return result
-	}
-	if selected.Status != "established" {
-		result.UnknownReason = selected.UnknownReason
-		if result.UnknownReason == "" {
-			result.UnknownReason = "insufficient_evidence"
-		}
-		return result
-	}
-	if selected.TemporalBasis == "current_state" && selected.BasisObtainedAt != nil && businessAt.Before(*selected.BasisObtainedAt) {
-		result.UnknownReason = "missing_fact"
-	}
-	return result
+	return legalModel.SelectLegalApplicabilityFactVersion(currentVersion, versions, businessAt, factCutoffAt)
 }

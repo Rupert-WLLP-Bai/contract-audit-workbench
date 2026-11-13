@@ -214,3 +214,27 @@ func (g *Governance) UpdatePointer(ctx context.Context, id app.CreateDraftIdenti
 	tag, err := g.db.Exec(ctx, `UPDATE governed_knowledge_pointers SET version_id=$1,active=$2,pointer_revision=pointer_revision+1,updated_by=$3,updated_at=clock_timestamp() WHERE tenant_id=$4 AND knowledge_id=$5 AND scope_key=$6 AND pointer_revision=$7`, version, active, id.ActorID, id.TenantID, knowledgeID, scopeKey, revision)
 	return tag.RowsAffected() == 1, err
 }
+
+// ActiveKnowledge returns pointer identities in the resolver's original order.
+func (g *Governance) ActiveKnowledge(ctx context.Context, tenant string) ([]app.ActiveKnowledgeIdentity, error) {
+	rows, err := g.db.Query(ctx, `SELECT knowledge_id,version_id FROM governed_knowledge_pointers WHERE tenant_id=$1 AND active ORDER BY knowledge_id,scope_key`, tenant)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []app.ActiveKnowledgeIdentity
+	for rows.Next() {
+		var id app.ActiveKnowledgeIdentity
+		if err := rows.Scan(&id.KnowledgeID, &id.VersionID); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+		if len(ids) > 4096 {
+			return nil, fault.Conflict("适用制度集合超过处理上限")
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}

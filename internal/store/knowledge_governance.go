@@ -15,8 +15,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"reflect"
-	"sort"
 	"strings"
 	"time"
 
@@ -179,65 +177,12 @@ type GovernedKnowledgeCommandInput = knowledgeModel.GovernedKnowledgeCommandInpu
 type GovernedKnowledgeVersion = knowledgeModel.GovernedKnowledgeVersion
 type GovernedKnowledgeHistoryEntry = knowledgeModel.GovernedKnowledgeHistoryEntry
 
-type GovernedRulePackRef struct {
-	PackID          string `json:"pack_id"`
-	Version         string `json:"version"`
-	ContentHash     string `json:"content_sha256"`
-	SnapshotDigest  string `json:"snapshot_sha256"`
-	CompilerRef     string `json:"compiler_ref"`
-	PointerRevision int64  `json:"pointer_revision"`
-}
+type GovernedRulePackRef = knowledgeModel.GovernedRulePackRef
+type GovernedKnowledgeSelection = knowledgeModel.GovernedKnowledgeSelection
+type GovernedKnowledgeExclusion = knowledgeModel.GovernedKnowledgeExclusion
 
-type GovernedKnowledgeSelection struct {
-	Ref                    KnowledgeRef         `json:"ref"`
-	Kind                   string               `json:"kind"`
-	SourceType             string               `json:"source_type"`
-	Scope                  KnowledgeScope       `json:"scope"`
-	Required               bool                 `json:"required"`
-	Summary                string               `json:"summary"`
-	ValidFrom              string               `json:"valid_from"`
-	ValidUntil             string               `json:"valid_until"`
-	ExceptionBasis         string               `json:"exception_basis,omitempty"`
-	PolicyRefs             []KnowledgeRef       `json:"policy_refs,omitempty"`
-	Applicability          []KnowledgeCondition `json:"applicability"`
-	Exclusions             []KnowledgeCondition `json:"exclusions"`
-	ReviewedApplicability  []string             `json:"reviewed_applicability,omitempty"`
-	ReviewedExclusions     []string             `json:"reviewed_exclusions,omitempty"`
-	CheckAction            string               `json:"check_action,omitempty"`
-	MinimumEvidence        string               `json:"minimum_evidence,omitempty"`
-	Counterexamples        []string             `json:"counterexamples,omitempty"`
-	SemanticOnly           []PolicyTextIssue    `json:"semantic_only,omitempty"`
-	RequiresFactEvaluation bool                 `json:"requires_fact_evaluation,omitempty"`
-	PointerRevision        int64                `json:"pointer_revision"`
-	Binding                PolicyRuleBinding    `json:"binding"`
-	SelectionReason        string               `json:"selection_reason"`
-}
-
-type GovernedKnowledgeExclusion struct {
-	Ref    KnowledgeRef `json:"ref"`
-	Reason string       `json:"reason"`
-}
-
-// ReviewKnowledgeSnapshot is a candidate list to freeze on an attempt. It must
-// be created inside the same locked transaction as acceptance, and revalidated
-// before reuse or adoption. Policy entries are never subject to OptionalLimit.
-type ReviewKnowledgeSnapshot struct {
-	Encoding                 string                       `json:"encoding"`
-	BusinessAt               string                       `json:"business_at"`
-	Scope                    KnowledgeScope               `json:"scope"`
-	AuthorizationRevision    string                       `json:"authorization_revision"`
-	RulePack                 GovernedRulePackRef          `json:"rule_pack"`
-	RequiredPolicies         []GovernedKnowledgeSelection `json:"required_policies"`
-	OptionalCandidates       []GovernedKnowledgeSelection `json:"optional_candidates"`
-	Excluded                 []GovernedKnowledgeExclusion `json:"excluded"`
-	OptionalTruncated        bool                         `json:"optional_truncated"`
-	SnapshotSHA256           string                       `json:"snapshot_sha256"`
-	EvidenceCutoffAt         string                       `json:"evidence_cutoff_at,omitempty"`
-	EvidenceCutoffMode       string                       `json:"evidence_cutoff_mode,omitempty"`
-	ExplicitEvidenceCutoffAt string                       `json:"explicit_evidence_cutoff_at,omitempty"`
-	LegalAuthorities         []FrozenLegalAuthority       `json:"legal_authorities,omitempty"`
-	LegalReuseFingerprint    string                       `json:"legal_reuse_fingerprint,omitempty"`
-}
+// ReviewKnowledgeSnapshot preserves the frozen v1 value and Legal-owned authority type.
+type ReviewKnowledgeSnapshot = knowledgeModel.ReviewKnowledgeSnapshot[FrozenLegalAuthority]
 
 func validKnowledgeText(value string, limit int) bool {
 	return knowledgeModel.ValidText(value, limit)
@@ -764,82 +709,12 @@ func (s *Store) ListGovernedKnowledgeHistory(user accounts.User, knowledgeID str
 	return out, err
 }
 
-func knowledgeCaseValue(item Case, field string) string {
-	switch field {
-	case "org_id":
-		return item.OwnerOrgID
-	case "case_id":
-		return item.ID
-	case "business_line":
-		return item.BusinessLine
-	case "scenario":
-		return item.Scenario
-	case "contract_type":
-		return item.ContractType
-	case "business_status":
-		return item.BusinessStatus
-	}
-	return ""
-}
-
 func knowledgeApplies(content GovernedKnowledgeContent, item Case, at time.Time) (bool, error) {
-	if item.OwnerOrgID == "" || item.ID == "" || item.BusinessLine == "" || item.Scenario == "" || item.ContractType == "" {
-		return false, fault.Conflict("案件适用范围不完整")
-	}
-	scope := content.Scope
-	if scope.OrgID != "" && scope.OrgID != item.OwnerOrgID || scope.CaseID != "" && scope.CaseID != item.ID ||
-		scope.BusinessLine != item.BusinessLine || scope.Scenario != item.Scenario || scope.ContractType != item.ContractType {
-		return false, nil
-	}
-	from, err := knowledgeTime(content.ValidFrom)
-	if err != nil {
-		return false, fault.Conflict("制度有效期无效")
-	}
-	until, err := knowledgeTime(content.ValidUntil)
-	if err != nil {
-		return false, fault.Conflict("制度有效期无效")
-	}
-	if at.Before(from) || !at.Before(until) {
-		return false, nil
-	}
-	for _, condition := range content.Applicability {
-		value := knowledgeCaseValue(item, condition.Field)
-		if value == "" {
-			return false, fault.Conflict("案件缺少判断制度适用性所需的信息")
-		}
-		if value != condition.Equals {
-			return false, nil
-		}
-	}
-	for _, condition := range content.Exclusions {
-		value := knowledgeCaseValue(item, condition.Field)
-		if value == "" {
-			return false, fault.Conflict("案件缺少判断制度排除条件所需的信息")
-		}
-		if value == condition.Equals {
-			return false, nil
-		}
-	}
-	return true, nil
+	return knowledgeModel.KnowledgeApplies(content, knowledgeModel.ReviewCaseFacts{CaseID: item.ID, OrgID: item.OwnerOrgID, BusinessLine: item.BusinessLine, Scenario: item.Scenario, ContractType: item.ContractType, BusinessStatus: item.BusinessStatus}, at)
 }
 
 func knowledgeSelection(v GovernedKnowledgeVersion) GovernedKnowledgeSelection {
-	var semanticOnly []PolicyTextIssue
-	if v.Content.Kind == "policy" {
-		_, _, statements := extractGovernedPolicyThresholds(v.Content.Body)
-		if len(statements) != 0 {
-			semanticOnly = statements
-		}
-	}
-	return GovernedKnowledgeSelection{
-		Ref: v.Ref, Kind: v.Content.Kind, SourceType: v.Content.SourceType, Scope: v.Content.Scope, Required: v.Content.Kind == "policy", Summary: v.Content.Summary,
-		ValidFrom: v.Content.ValidFrom, ValidUntil: v.Content.ValidUntil, ExceptionBasis: v.Content.ExceptionBasis, PolicyRefs: v.Content.PolicyRefs,
-		Applicability: v.Content.Applicability, Exclusions: v.Content.Exclusions, ReviewedApplicability: v.Content.ReviewedApplicability,
-		ReviewedExclusions: v.Content.ReviewedExclusions, CheckAction: v.Content.CheckAction, MinimumEvidence: v.Content.MinimumEvidence,
-		Counterexamples: v.Content.Counterexamples, SemanticOnly: semanticOnly,
-		RequiresFactEvaluation: v.Content.Kind == "experience" || v.Content.Kind == "exception" || len(semanticOnly) > 0,
-		PointerRevision:        v.PointerRevision, Binding: v.Content.Binding, SelectionReason: "published, authorized, in scope and effective at business time",
-	}
+	return knowledgeModel.KnowledgeSelection(v)
 }
 
 func knowledgeAuthorizationRevision(user accounts.User, item Case) (string, error) {
@@ -865,13 +740,7 @@ func sealKnowledgeSnapshot(snapshot ReviewKnowledgeSnapshot) (ReviewKnowledgeSna
 	if err := prepareLegalKnowledgeReuse(&snapshot); err != nil {
 		return ReviewKnowledgeSnapshot{}, err
 	}
-	snapshot.SnapshotSHA256 = ""
-	raw, err := json.Marshal(snapshot)
-	if err != nil {
-		return ReviewKnowledgeSnapshot{}, err
-	}
-	snapshot.SnapshotSHA256 = sha256Bytes(raw)
-	return snapshot, nil
+	return knowledgeModel.SealReviewSnapshot(snapshot)
 }
 
 // resolveGovernedKnowledgeTx is also the acceptance integration seam. Caller
@@ -917,157 +786,12 @@ func resolveGovernedKnowledgeWithCaseLocks(ctx context.Context, tx pgx.Tx, user 
 	if err != nil {
 		return ReviewKnowledgeSnapshot{}, fault.Conflict("规则包内容损坏")
 	}
-	manifest := parsed.Manifest()
-	type requiredRule struct{ id, version, ruleID string }
-	var required []requiredRule
-	for _, rule := range manifest.Rules {
-		if !rule.Mandatory || rule.BusinessScope.BusinessLine != item.BusinessLine || rule.BusinessScope.Scenario != item.Scenario || rule.BusinessScope.ContractType != item.ContractType {
-			continue
-		}
-		for _, authority := range rule.AuthoritySources {
-			if authority.Kind == "internal_policy" || authority.Kind == "synthetic_demo" {
-				required = append(required, requiredRule{authority.ID, authority.Version, rule.RuleID})
-			}
-		}
-	}
-	rows, err := tx.Query(ctx, `SELECT knowledge_id,version_id FROM governed_knowledge_pointers WHERE tenant_id=$1 AND active ORDER BY knowledge_id,scope_key`, item.TenantID)
-	if err != nil {
-		return ReviewKnowledgeSnapshot{}, err
-	}
-	type identity struct{ id, version string }
-	var ids []identity
-	for rows.Next() {
-		var id identity
-		if err := rows.Scan(&id.id, &id.version); err != nil {
-			rows.Close()
-			return ReviewKnowledgeSnapshot{}, err
-		}
-		ids = append(ids, id)
-		if len(ids) > 4096 {
-			rows.Close()
-			return ReviewKnowledgeSnapshot{}, fault.Conflict("适用制度集合超过处理上限")
-		}
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return ReviewKnowledgeSnapshot{}, err
-	}
-	rows.Close()
-	var policies, optional []GovernedKnowledgeVersion
-	seen := make(map[string]bool)
-	for _, id := range ids {
-		version, _, _, _, err := loadGovernedKnowledge(ctx, tx, item.TenantID, id.id, id.version)
-		if err != nil {
-			return ReviewKnowledgeSnapshot{}, fault.Conflict("无法解析生效制度的编号或内容")
-		}
-		// Legal text is searchable reference material. It is never automatically
-		// inserted into policy dependency snapshots or treated as an executable
-		// policy candidate.
-		if version.Content.Kind == "legal" {
-			continue
-		}
-		applies, err := knowledgeApplies(version.Content, item, at)
-		if err != nil {
-			return ReviewKnowledgeSnapshot{}, err
-		}
-		if !applies {
-			continue
-		}
-		if !version.Active || version.ApprovedDigest != version.Ref.ContentSHA256 || version.ApprovalActorID == "" || version.ApprovalReason == "" {
-			return ReviewKnowledgeSnapshot{}, fault.Conflict("适用制度未发布或缺少有效批准")
-		}
-		if err := authorizeKnowledgeAdoptionWithCaseLocks(ctx, tx, current, version, lockCases); err != nil {
-			var problem *fault.Error
-			if errors.As(err, &problem) && problem.Status == 404 {
-				if version.Content.Kind == "policy" {
-					return ReviewKnowledgeSnapshot{}, fault.Conflict("强制政策的来源授权不可用")
-				}
-				continue
-			}
-			return ReviewKnowledgeSnapshot{}, err
-		}
-		if seen[id.id] {
-			return ReviewKnowledgeSnapshot{}, fault.Conflict("存在多个适用的制度版本")
-		}
-		seen[id.id] = true
-		if err := validateKnowledgeBinding(ctx, tx, item.TenantID, version.Content); err != nil {
-			return ReviewKnowledgeSnapshot{}, err
-		}
-		b := version.Content.Binding
-		if b.PackID != pack.PackID || b.PackVersion != pack.Version || b.PackContentHash != pack.ContentHash || b.PackSnapshotDigest != pack.SnapshotDigest {
-			return ReviewKnowledgeSnapshot{}, fault.Conflict("制度绑定与案件适用规则包不一致")
-		}
-		if version.Content.Kind == "experience" && version.Content.SourceCaseID != item.ID && !version.CrossCaseReviewed {
-			return ReviewKnowledgeSnapshot{}, fault.Conflict("跨案经验缺少敏感内容审阅")
-		}
-		if version.Content.Kind == "policy" {
-			policies = append(policies, version)
-		} else {
-			optional = append(optional, version)
-		}
-	}
-	for _, need := range required {
-		matched := false
-		for _, policy := range policies {
-			if policy.Content.KnowledgeID != need.id || policy.Content.Version != need.version {
-				continue
-			}
-			for _, ruleID := range policy.Content.Binding.RuleIDs {
-				if ruleID == need.ruleID {
-					matched = true
-				}
-			}
-		}
-		if !matched {
-			return ReviewKnowledgeSnapshot{}, fault.Conflict("强制规则缺少适用的已发布政策绑定")
-		}
-	}
-	for _, version := range optional {
-		for _, dependency := range version.Content.PolicyRefs {
-			found := false
-			for _, policy := range policies {
-				if policy.Ref == dependency {
-					found = true
-				}
-			}
-			if !found {
-				return ReviewKnowledgeSnapshot{}, fault.Conflict("制度所依赖的精确政策未生效")
-			}
-		}
-	}
-	sort.Slice(policies, func(i, j int) bool { return policies[i].Ref.KnowledgeID < policies[j].Ref.KnowledgeID })
-	sort.Slice(optional, func(i, j int) bool { return optional[i].Ref.KnowledgeID < optional[j].Ref.KnowledgeID })
-	authorizationRevision, err := knowledgeAuthorizationRevision(current, item)
-	if err != nil {
-		return ReviewKnowledgeSnapshot{}, err
-	}
-	snapshot := ReviewKnowledgeSnapshot{Encoding: "review-knowledge-snapshot/v1", BusinessAt: at.Format(time.RFC3339Nano),
-		Scope:                 KnowledgeScope{OrgID: item.OwnerOrgID, CaseID: item.ID, BusinessLine: item.BusinessLine, Scenario: item.Scenario, ContractType: item.ContractType},
-		AuthorizationRevision: authorizationRevision, RulePack: rulePackRef(pack), RequiredPolicies: []GovernedKnowledgeSelection{}, OptionalCandidates: []GovernedKnowledgeSelection{}, Excluded: []GovernedKnowledgeExclusion{}}
-	for _, policy := range policies {
-		snapshot.RequiredPolicies = append(snapshot.RequiredPolicies, knowledgeSelection(policy))
-	}
-	for i, version := range optional {
-		if i < optionalLimit {
-			snapshot.OptionalCandidates = append(snapshot.OptionalCandidates, knowledgeSelection(version))
-		} else {
-			snapshot.OptionalTruncated = true
-			snapshot.Excluded = append(snapshot.Excluded, GovernedKnowledgeExclusion{Ref: version.Ref, Reason: "optional_budget"})
-		}
-	}
-	if !evidenceCutoff.IsZero() {
-		frozenAuthorities, err := freezeLegalAuthoritiesTx(ctx, tx, current, item, parsed, at, evidenceCutoff)
-		if err != nil {
-			return ReviewKnowledgeSnapshot{}, err
-		}
-		if len(frozenAuthorities) > 0 {
-			snapshot.EvidenceCutoffAt = evidenceCutoff.UTC().Truncate(time.Microsecond).Format(time.RFC3339Nano)
-			snapshot.EvidenceCutoffMode = cutoffMode
-			snapshot.ExplicitEvidenceCutoffAt = explicitCutoff
-			snapshot.LegalAuthorities = frozenAuthorities
-		}
-	}
-	return sealKnowledgeSnapshot(snapshot)
+	repository := knowledgePostgres.NewGovernance(platformpostgres.Bind(tx))
+	facts := newReviewKnowledgeFacts(tx, current, item, lockCases)
+	return knowledgeApp.ResolveReview(ctx, repository, facts, knowledgeApp.ReviewSelectionInput{
+		TenantID: item.TenantID, Case: knowledgeModel.ReviewCaseFacts{CaseID: item.ID, OrgID: item.OwnerOrgID, BusinessLine: item.BusinessLine, Scenario: item.Scenario, ContractType: item.ContractType, BusinessStatus: item.BusinessStatus},
+		BusinessAt: at, Pack: rulePackRef(pack), Manifest: parsed.Manifest(), OptionalLimit: optionalLimit,
+	}, newLegalReviewFacts(tx, current, item, lockCases), parsed, evidenceCutoff, cutoffMode, explicitCutoff)
 }
 
 // ResolveGovernedKnowledge resolves for a real authorized case and explicit
@@ -1127,38 +851,12 @@ func revalidateGovernedKnowledgeWithCaseLocks(ctx context.Context, tx pgx.Tx, us
 	if err != nil {
 		return err
 	}
-	if hasLegalReviewSnapshot(&frozen) || hasLegalReviewSnapshot(&current) {
-		if !hasLegalReviewSnapshot(&frozen) || !hasLegalReviewSnapshot(&current) || !validLegalReuseFingerprint(&frozen) ||
-			!validLegalReuseFingerprint(&current) || frozen.LegalReuseFingerprint != current.LegalReuseFingerprint {
-			return fault.Conflict("本次审查的法律来源或适用事实已改变，请发起新的审查")
-		}
+	legalPresent := hasLegalReviewSnapshot(&frozen) || hasLegalReviewSnapshot(&current)
+	legalValid := true
+	if legalPresent {
+		legalValid = hasLegalReviewSnapshot(&frozen) && hasLegalReviewSnapshot(&current) && validLegalReuseFingerprint(&frozen) && validLegalReuseFingerprint(&current) && frozen.LegalReuseFingerprint == current.LegalReuseFingerprint
 	}
-	if current.Scope != frozen.Scope || current.AuthorizationRevision != frozen.AuthorizationRevision || current.RulePack != frozen.RulePack || len(current.RequiredPolicies) != len(frozen.RequiredPolicies) {
-		return fault.Conflict("授权、规则包或强制政策已改变")
-	}
-	for i := range frozen.RequiredPolicies {
-		if !reflect.DeepEqual(frozen.RequiredPolicies[i], current.RequiredPolicies[i]) {
-			return fault.Conflict("强制政策已改变或撤回")
-		}
-	}
-	seenOptional := make(map[KnowledgeRef]bool, len(frozen.OptionalCandidates))
-	for _, selected := range frozen.OptionalCandidates {
-		if seenOptional[selected.Ref] {
-			return fault.Conflict("本次审查保存的制度记录包含重复候选")
-		}
-		seenOptional[selected.Ref] = true
-		found := false
-		for _, available := range current.OptionalCandidates {
-			if reflect.DeepEqual(selected, available) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fault.Conflict("本次审查选择的可选制度已发生变化或被撤回")
-		}
-	}
-	return nil
+	return knowledgeApp.CompareRetrySelections(frozen, current, legalPresent, legalValid)
 }
 
 // validateFrozenGovernedKnowledgeForWorkerTx verifies the immutable accepted
@@ -1170,12 +868,8 @@ func validateFrozenGovernedKnowledgeForWorkerTx(ctx context.Context, tx pgx.Tx, 
 }
 
 func validateFrozenGovernedKnowledgeWithCaseLocks(ctx context.Context, tx pgx.Tx, user accounts.User, caseID string, frozen ReviewKnowledgeSnapshot, lockCases bool) (accounts.User, error) {
-	if frozen.Encoding != "review-knowledge-snapshot/v1" || !validKnowledgeHash(frozen.SnapshotSHA256) {
-		return accounts.User{}, fault.Conflict("本次审查保存的制度记录无效")
-	}
-	sealed, err := sealKnowledgeSnapshot(frozen)
-	if err != nil || sealed.SnapshotSHA256 != frozen.SnapshotSHA256 {
-		return accounts.User{}, fault.Conflict("本次审查保存的制度记录摘要不一致")
+	if err := knowledgeApp.ValidateFrozenIdentity(frozen); err != nil {
+		return accounts.User{}, err
 	}
 	currentUser, err := trustedUser(user)
 	if err != nil {
@@ -1188,34 +882,10 @@ func validateFrozenGovernedKnowledgeWithCaseLocks(ctx context.Context, tx pgx.Tx
 	if !authorizeCase(item, currentUser, access.Review) {
 		return accounts.User{}, fault.NotFound("没有找到对应记录")
 	}
-	revision, err := knowledgeAuthorizationRevision(currentUser, item)
-	if err != nil || revision != frozen.AuthorizationRevision {
-		return accounts.User{}, fault.Conflict("本次审查的案件授权已改变")
-	}
-	if err := validateFrozenLegalAuthorityCapturesTx(ctx, tx, accounts.Tenant(currentUser), frozen.LegalAuthorities); err != nil {
+	repo := knowledgePostgres.NewGovernance(platformpostgres.Bind(tx))
+	facts := newReviewKnowledgeFacts(tx, currentUser, item, lockCases)
+	if err := knowledgeApp.ValidateFrozenDependencies(ctx, repo, facts, newLegalReviewFacts(tx, currentUser, item, lockCases), accounts.Tenant(currentUser), frozen); err != nil {
 		return accounts.User{}, err
-	}
-	for _, selected := range frozen.RequiredPolicies {
-		version, _, _, active, loadErr := loadGovernedKnowledge(ctx, tx, accounts.Tenant(currentUser), selected.Ref.KnowledgeID, selected.Ref.VersionID)
-		if loadErr != nil || !active || version.Ref != selected.Ref || !reflect.DeepEqual(knowledgeSelection(version), selected) {
-			return accounts.User{}, fault.Conflict("强制政策已改变或撤回")
-		}
-	}
-	for _, selected := range frozen.OptionalCandidates {
-		version, _, _, _, loadErr := loadGovernedKnowledge(ctx, tx, accounts.Tenant(currentUser), selected.Ref.KnowledgeID, selected.Ref.VersionID)
-		if loadErr != nil || version.Ref != selected.Ref {
-			return accounts.User{}, fault.Conflict("本次审查保存的可选制度无法验证")
-		}
-		// The frozen content and selection stay immutable, but a source-case
-		// grant can be revoked after acceptance. Recheck access to each exact
-		// frozen candidate before a worker adopts or returns its content.
-		if err := authorizeKnowledgeAdoptionWithCaseLocks(ctx, tx, currentUser, version, lockCases); err != nil {
-			var problem *fault.Error
-			if errors.As(err, &problem) && (problem.Status == 403 || problem.Status == 404) {
-				return accounts.User{}, fault.Conflict("本次审查可选制度的案件授权已改变")
-			}
-			return accounts.User{}, err
-		}
 	}
 	return currentUser, nil
 }
@@ -1284,24 +954,7 @@ func (s *Store) RevalidateGovernedKnowledgeSnapshot(ctx context.Context, user ac
 	return tx.Commit(ctx)
 }
 
-// GovernedKnowledgeReviewContent is the reviewed content allowed into an
-// authorized attempt. Source-case and feedback identifiers are intentionally
-// absent; source-sensitive content requires the separate source-case grant.
-type GovernedKnowledgeReviewContent struct {
-	Ref                   KnowledgeRef `json:"ref"`
-	Kind                  string       `json:"kind"`
-	Title                 string       `json:"title"`
-	Body                  string       `json:"body"`
-	Summary               string       `json:"summary"`
-	ValidFrom             string       `json:"valid_from"`
-	ValidUntil            string       `json:"valid_until"`
-	ExceptionBasis        string       `json:"exception_basis,omitempty"`
-	ReviewedApplicability []string     `json:"reviewed_applicability,omitempty"`
-	ReviewedExclusions    []string     `json:"reviewed_exclusions,omitempty"`
-	CheckAction           string       `json:"check_action,omitempty"`
-	MinimumEvidence       string       `json:"minimum_evidence,omitempty"`
-	Counterexamples       []string     `json:"counterexamples,omitempty"`
-}
+type GovernedKnowledgeReviewContent = knowledgeModel.GovernedKnowledgeReviewContent
 
 // ReadFrozenGovernedKnowledge reads only a reference from the attempt's
 // authoritative stored snapshot. Callers must supply the persisted snapshot,
@@ -1328,28 +981,12 @@ func (s *Store) ReadFrozenGovernedKnowledge(ctx context.Context, user accounts.U
 	if _, err := validateFrozenGovernedKnowledgeWithCaseLocks(ctx, tx, current, caseID, frozen, false); err != nil {
 		return GovernedKnowledgeReviewContent{}, err
 	}
-	found := false
-	for _, v := range frozen.RequiredPolicies {
-		if v.Ref == ref {
-			found = true
-		}
+	repo := knowledgePostgres.NewGovernance(platformpostgres.Bind(tx))
+	facts := governedKnowledgeFacts{tx: tx, admin: current}
+	out, err := knowledgeApp.ReadFrozenContent(ctx, repo, facts, accounts.Tenant(current), frozen, ref)
+	if err != nil {
+		return GovernedKnowledgeReviewContent{}, err
 	}
-	for _, v := range frozen.OptionalCandidates {
-		if v.Ref == ref {
-			found = true
-		}
-	}
-	if !found {
-		return GovernedKnowledgeReviewContent{}, fault.NotFound("制度不在本次审查保存的候选列表中")
-	}
-	version, _, _, _, err := loadGovernedKnowledge(ctx, tx, accounts.Tenant(current), ref.KnowledgeID, ref.VersionID)
-	if err != nil || version.Ref != ref || !version.Active {
-		return GovernedKnowledgeReviewContent{}, fault.Conflict("本次审查使用的制度已撤回，或记录编号不一致")
-	}
-	c := version.Content
-	out := GovernedKnowledgeReviewContent{Ref: ref, Kind: c.Kind, Title: c.Title, Body: c.Body, Summary: c.Summary,
-		ValidFrom: c.ValidFrom, ValidUntil: c.ValidUntil, ExceptionBasis: c.ExceptionBasis, ReviewedApplicability: c.ReviewedApplicability,
-		ReviewedExclusions: c.ReviewedExclusions, CheckAction: c.CheckAction, MinimumEvidence: c.MinimumEvidence, Counterexamples: c.Counterexamples}
 	if _, err := trustedUser(current); err != nil {
 		return GovernedKnowledgeReviewContent{}, err
 	}

@@ -18,6 +18,8 @@ import (
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
+	knowledgeApp "contractaudit/internal/knowledge/app"
+	knowledgeModel "contractaudit/internal/knowledge/model"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -26,23 +28,7 @@ const acceptanceOptionalKnowledgeLimit = 1024
 // decodeGovernedKnowledge accepts only the canonical bytes and digest produced
 // by the resolver. A nil column denotes a historical, pre-governance run.
 func decodeGovernedKnowledge(raw []byte) (*ReviewKnowledgeSnapshot, error) {
-	if len(raw) == 0 {
-		return nil, nil
-	}
-	var value ReviewKnowledgeSnapshot
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return nil, errors.New("invalid frozen governed knowledge")
-	}
-	canonical, err := json.Marshal(value)
-	if err != nil || !bytes.Equal(raw, canonical) || value.Encoding != "review-knowledge-snapshot/v1" ||
-		!validKnowledgeHash(value.SnapshotSHA256) || !validKnowledgeHash(value.AuthorizationRevision) {
-		return nil, errors.New("invalid frozen governed knowledge identity")
-	}
-	sealed, err := sealKnowledgeSnapshot(value)
-	if err != nil || sealed.SnapshotSHA256 != value.SnapshotSHA256 {
-		return nil, errors.New("frozen governed knowledge digest mismatch")
-	}
-	return &value, nil
+	return knowledgeApp.DecodeFrozenSnapshot(raw)
 }
 
 func copyGovernedKnowledge(snapshot RunSnapshot) (*ReviewKnowledgeSnapshot, error) {
@@ -83,32 +69,13 @@ func validateGovernedAttemptSnapshot(attempt Attempt, snapshot RunSnapshot) erro
 }
 
 func sameKnowledgeSnapshotIdentity(a, b *ReviewKnowledgeSnapshot) bool {
-	if a == nil || b == nil {
-		return a == nil && b == nil
+	if a == nil || b == nil || a.LegalReuseFingerprint == "" || b.LegalReuseFingerprint == "" {
+		return knowledgeModel.SameReviewSnapshotIdentity(a, b, false, false)
 	}
-	if a.LegalReuseFingerprint == "" && b.LegalReuseFingerprint == "" {
-		return a.SnapshotSHA256 == b.SnapshotSHA256
-	}
-	if a.LegalReuseFingerprint == "" || b.LegalReuseFingerprint == "" ||
-		!validLegalReuseFingerprint(a) || !validLegalReuseFingerprint(b) ||
-		a.LegalReuseFingerprint != b.LegalReuseFingerprint {
+	if !validLegalReuseFingerprint(a) || !validLegalReuseFingerprint(b) {
 		return false
 	}
-	// Acceptance-time cutoffs are sampled for each candidate snapshot. Reuse
-	// ignores that timestamp only after comparing every prior governance input.
-	// The exact selected legal dependencies remain covered by the fingerprint.
-	left, right := *a, *b
-	for _, snapshot := range []*ReviewKnowledgeSnapshot{&left, &right} {
-		snapshot.EvidenceCutoffAt = ""
-		snapshot.EvidenceCutoffMode = ""
-		snapshot.ExplicitEvidenceCutoffAt = ""
-		snapshot.LegalAuthorities = nil
-		snapshot.LegalReuseFingerprint = ""
-		snapshot.SnapshotSHA256 = ""
-	}
-	leftJSON, leftErr := json.Marshal(left)
-	rightJSON, rightErr := json.Marshal(right)
-	return leftErr == nil && rightErr == nil && bytes.Equal(leftJSON, rightJSON)
+	return knowledgeModel.SameReviewSnapshotIdentity(a, b, true, true)
 }
 
 // revalidateGovernedAttemptTx runs only with the schema lock followed by the

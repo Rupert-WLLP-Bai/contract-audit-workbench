@@ -24,6 +24,8 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
 	knowledgeModel "contractaudit/internal/knowledge/model"
+	legalApp "contractaudit/internal/legal/app"
+	legalModel "contractaudit/internal/legal/model"
 	"contractaudit/internal/legalnorm"
 	"contractaudit/internal/rulepack"
 
@@ -60,47 +62,7 @@ type LegalSourceImportResult struct {
 	Articles          []KnowledgeRef `json:"articles"`
 }
 
-type LegalSourceCapture struct {
-	CaptureSnapshotID string                      `json:"capture_snapshot_id"`
-	SourceID          string                      `json:"source_id"`
-	NormVersion       string                      `json:"norm_version"`
-	NormTitle         string                      `json:"norm_title"`
-	DocumentType      string                      `json:"document_type"`
-	Publisher         string                      `json:"publisher"`
-	Issuer            string                      `json:"issuer"`
-	OfficialURL       string                      `json:"official_url"`
-	Provenance        string                      `json:"provenance"`
-	PromulgatedOn     string                      `json:"promulgated_on"`
-	EffectiveFrom     string                      `json:"effective_from"`
-	EffectiveUntil    string                      `json:"effective_until,omitempty"`
-	SourceCapturedAt  string                      `json:"source_captured_at"`
-	ResponseStatus    int                         `json:"response_status"`
-	MediaType         string                      `json:"media_type"`
-	RawResponse       []byte                      `json:"raw_response,omitempty"`
-	RawSHA256         string                      `json:"raw_sha256"`
-	ExtractedFullText string                      `json:"extracted_full_text"`
-	ExtractedSHA256   string                      `json:"extracted_full_text_sha256"`
-	ExtractorID       string                      `json:"extractor_id"`
-	ExtractorVersion  string                      `json:"extractor_version"`
-	CanonicalVersion  string                      `json:"canonicalization_version"`
-	StatusID          string                      `json:"status_observation_id"`
-	Status            string                      `json:"observed_status"`
-	StatusRegistryURL string                      `json:"status_registry_url"`
-	StatusMethod      string                      `json:"status_request_method"`
-	StatusRequestBody []byte                      `json:"status_request_body,omitempty"`
-	StatusObservedAt  string                      `json:"status_observed_at"`
-	StatusHTTPStatus  int                         `json:"status_response_status"`
-	StatusMediaType   string                      `json:"status_media_type"`
-	StatusResponse    []byte                      `json:"status_response,omitempty"`
-	StatusSHA256      string                      `json:"status_response_sha256"`
-	StatusMapping     json.RawMessage             `json:"status_mapping_evidence"`
-	Articles          []legalnorm.VerifiedArticle `json:"articles"`
-	ImportedArticles  []KnowledgeRef              `json:"imported_articles"`
-	RequestDigest     string                      `json:"request_digest"`
-	IdempotencyKey    string                      `json:"idempotency_key"`
-	CreatedBy         string                      `json:"created_by"`
-	CreatedAt         string                      `json:"created_at"`
-}
+type LegalSourceCapture = legalModel.LegalSourceCapture
 
 type LegalSearch struct {
 	Query         string
@@ -378,11 +340,7 @@ func validateLegalAuthorityReferences(ctx context.Context, tx pgx.Tx, tenant str
 }
 
 func isPublishableLegalAuthority(version GovernedKnowledgeVersion) bool {
-	metadata := version.Content.LegalMetadata
-	return version.Content.Kind == "legal" && version.Status == "published" && metadata != nil &&
-		version.ApprovedDigest != "" && version.ApprovedDigest == version.Ref.ContentSHA256 &&
-		strings.TrimSpace(version.ApprovalActorID) != "" && strings.TrimSpace(version.ApprovalReason) != "" &&
-		metadata.DocumentType != "draft" && metadata.DocumentType != "legislative_plan"
+	return legalApp.IsPublishableLegalAuthority(version)
 }
 
 func sameTimestamp(raw string, stored time.Time) bool {
@@ -391,15 +349,7 @@ func sameTimestamp(raw string, stored time.Time) bool {
 }
 
 func legalBusinessDate(raw string) (string, error) {
-	at, err := time.Parse(time.RFC3339Nano, raw)
-	if err != nil {
-		return "", fault.Invalid("法律检索业务时间必须是带时区的 RFC3339 时间")
-	}
-	location, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
-		return "", fmt.Errorf("load legal business timezone: %w", err)
-	}
-	return at.In(location).Format("2006-01-02"), nil
+	return legalApp.BusinessDate(raw)
 }
 
 func legalEffectiveOnDate(metadata LegalMetadata, date string) bool {
