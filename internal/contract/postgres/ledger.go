@@ -31,16 +31,14 @@ func (r *LedgerReader) Read(ctx context.Context, tenant string, filter ledger.Fi
 	args = append(args, limit)
 	query := `SELECT k.tenant_id,k.contract_id,k.owner_org_id,k.authority_mode,k.contract_number,
 		k.lifecycle_state,k.validity_state,k.row_version,k.created_by,k.created_at,k.updated_at,
-		k.source_system,k.in_review,k.content,k.signing_date
+		k.source_system,k.content,k.signing_date
 	FROM (
 		SELECT c.tenant_id,c.contract_id,c.owner_org_id,c.authority_mode,c.contract_number,
 			c.lifecycle_state,c.validity_state,c.row_version,c.created_by,c.created_at,c.updated_at,
 			c.source_system,COALESCE(d.content,r.snapshot) AS content,
 			COALESCE((SELECT registration.signing_date::text FROM clm_contract_signing_registrations registration
 				WHERE registration.tenant_id=c.tenant_id AND registration.contract_id=c.contract_id),
-				COALESCE(d.content->'contract'->>'signing_date',r.snapshot->'contract'->>'signing_date')) AS signing_date,
-			EXISTS(SELECT 1 FROM clm_approval_rounds ar
-				WHERE ar.tenant_id=c.tenant_id AND ar.contract_id=c.contract_id AND ar.state='in_review') AS in_review
+				COALESCE(d.content->'contract'->>'signing_date',r.snapshot->'contract'->>'signing_date')) AS signing_date
 		FROM clm_contracts c
 		LEFT JOIN clm_contract_drafts d ON d.tenant_id=c.tenant_id AND d.contract_id=c.contract_id
 		LEFT JOIN clm_contract_revisions r ON r.tenant_id=c.tenant_id AND r.contract_id=c.contract_id
@@ -55,19 +53,13 @@ func (r *LedgerReader) Read(ctx context.Context, tenant string, filter ledger.Fi
 	for rows.Next() {
 		var record clmcontract.Aggregate
 		var content []byte
-		var inReview bool
 		var signingDate *string
 		if err := rows.Scan(&record.TenantID, &record.ContractID, &record.OwnerOrgID, &record.AuthorityMode,
 			&record.ContractNumber, &record.LifecycleState, &record.ValidityState, &record.RowVersion,
-			&record.CreatedBy, &record.CreatedAt, &record.UpdatedAt, &record.SourceSystem, &inReview, &content, &signingDate); err != nil {
+			&record.CreatedBy, &record.CreatedAt, &record.UpdatedAt, &record.SourceSystem, &content, &signingDate); err != nil {
 			return nil, err
 		}
-		item, err := ledger.ItemFromAggregate(record, content, inReview)
-		if err != nil {
-			return nil, err
-		}
-		item.SigningDate = signingDate
-		out = append(out, ledger.Row{Aggregate: record, Item: item, SortKey: record.CreatedAt})
+		out = append(out, ledger.Row{Aggregate: record, Item: ledger.Item{ContractID: record.ContractID}, Content: content, SigningDate: signingDate, SortKey: record.CreatedAt})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -107,13 +99,6 @@ func appendLedgerFilter(where *strings.Builder, args *[]any, filter ledger.Filte
 	}
 	if filter.ValidityState != "" {
 		add(` AND k.validity_state=$%d`, filter.ValidityState)
-	}
-	if filter.WorkflowState == "in_review" {
-		where.WriteString(` AND k.authority_mode='native' AND k.in_review`)
-	} else if filter.WorkflowState == "not_started" {
-		where.WriteString(` AND k.authority_mode='native' AND NOT k.in_review`)
-	} else if filter.WorkflowState == "external_observed" {
-		where.WriteString(` AND k.authority_mode='external'`)
 	}
 	if filter.AmountMin != nil {
 		add(` AND (CASE WHEN k.content->'contract'->>'amount' ~ '`+ledger.ContentAmountPattern+`' THEN (k.content->'contract'->>'amount')::numeric END) >= $%d::numeric`, *filter.AmountMin)

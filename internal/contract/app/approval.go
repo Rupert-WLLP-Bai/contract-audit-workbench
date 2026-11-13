@@ -115,3 +115,6 @@ type ApprovalRevisionScope struct {
 	Currency       string
 	SnapshotDigest string
 }
+
+// ApprovalMaterialKey identifies one exact Contract frozen material version.
+type ApprovalMaterialKey struct{ RevisionID, MaterialID, MaterialVersionID string }

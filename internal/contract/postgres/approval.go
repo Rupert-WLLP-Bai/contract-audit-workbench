@@ -64,3 +64,39 @@ func (r *Approval) CASApprovalTransition(ctx context.Context, tenantID string, r
 	}
 	return version, err
 }
+
+// LoadApprovalMaterials returns only exact whitelisted frozen versions.
+func (r *Approval) LoadApprovalMaterials(ctx context.Context, tenantID, contractID string, keys []contractapp.ApprovalMaterialKey) ([]contract.ContractVersionMaterial, error) {
+	materials := []contract.ContractVersionMaterial{}
+	for _, key := range keys {
+		var material contract.ContractVersionMaterial
+		err := r.tx.QueryRow(ctx, `SELECT material_id,material_version_id,material_version,filename,digest,purpose,case_id,case_org_id FROM clm_contract_version_materials WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3 AND material_id=$4 AND material_version_id=$5`, tenantID, contractID, key.RevisionID, key.MaterialID, key.MaterialVersionID).Scan(&material.MaterialID, &material.MaterialVersionID, &material.MaterialVersion, &material.Filename, &material.Digest, &material.Purpose, &material.CaseID, &material.CaseOrgID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		materials = append(materials, material)
+	}
+	return materials, nil
+}
+
+func (r *Approval) LoadApprovalRevisionSnapshot(ctx context.Context, tenantID, contractID, revisionID string) ([]byte, error) {
+	var content []byte
+	err := r.tx.QueryRow(ctx, `SELECT snapshot FROM clm_contract_revisions WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3`, tenantID, contractID, revisionID).Scan(&content)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, fault.NotFound("没有找到对应的合同版本")
+	}
+	return content, err
+}
+
+// LoadApprovalSnapshotOptional preserves inbox's historical LEFT JOIN semantics.
+func (r *Approval) LoadApprovalSnapshotOptional(ctx context.Context, tenantID, contractID, revisionID string) ([]byte, error) {
+	var content []byte
+	err := r.tx.QueryRow(ctx, `SELECT snapshot FROM clm_contract_revisions WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3`, tenantID, contractID, revisionID).Scan(&content)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return content, err
+}

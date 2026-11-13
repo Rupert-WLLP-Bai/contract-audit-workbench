@@ -16,6 +16,7 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	approvalpostgres "contractaudit/internal/approval/postgres"
 	contractapp "contractaudit/internal/contract/app"
 	"contractaudit/internal/contract/ledger"
 	contractpostgres "contractaudit/internal/contract/postgres"
@@ -109,7 +110,8 @@ func (s *Store) ListContractLedger(ctx context.Context, user accounts.User, quer
 	}
 	defer rollbackCLM(tx)
 	identity := ledger.CursorIdentity{TenantID: accounts.Tenant(current), ActorID: current.ID}
-	reader := contractpostgres.NewLedgerReader(platformpostgres.Bind(tx))
+	executor := platformpostgres.Bind(tx)
+	reader := contractapp.WithLedgerWorkflow(contractpostgres.NewLedgerReader(executor), approvalpostgres.NewWorkflowReader(executor))
 	page, err := contractapp.ListContractLedger(ctx, identity, query, reader, storeLedgerAccess{tx: tx, user: current})
 	if err != nil {
 		return ContractLedgerPage{}, err
@@ -243,7 +245,7 @@ func (s *Store) CreateContractExport(ctx context.Context, user accounts.User, in
 	identity := ledger.ExportIdentity{TenantID: accounts.Tenant(current), ActorID: current.ID}
 	executor := platformpostgres.Bind(tx)
 	repository := contractpostgres.NewLedgerExports(executor)
-	reader := contractpostgres.NewLedgerReader(executor)
+	reader := contractapp.WithLedgerWorkflow(contractpostgres.NewLedgerReader(executor), approvalpostgres.NewWorkflowReader(executor))
 	accessSnapshot := contractapp.ExportAuthorizationSnapshot{
 		PolicyVersion: access.PolicyVersion, Role: current.Role, Grants: current.Grants,
 	}

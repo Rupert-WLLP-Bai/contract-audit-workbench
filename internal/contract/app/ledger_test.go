@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -69,4 +70,57 @@ func TestListContractLedgerPaginatesAfterPerRowAuthorization(t *testing.T) {
 func ledgerTestRow(contractID string, createdAt time.Time) ledger.Row {
 	record := clmcontract.Aggregate{TenantID: "tenant-1", ContractID: contractID, CreatedAt: createdAt}
 	return ledger.Row{Aggregate: record, Item: ledger.Item{ContractID: contractID, CreatedAt: createdAt}, SortKey: createdAt}
+}
+
+type boundedWorkflowFacts struct {
+	inReview map[string]bool
+	maxBatch int
+	calls    int
+}
+
+func (f *boundedWorkflowFacts) InReview(_ context.Context, _ string, ids []string) (map[string]bool, error) {
+	f.calls++
+	if len(ids) > f.maxBatch {
+		f.maxBatch = len(ids)
+	}
+	result := make(map[string]bool)
+	for _, id := range ids {
+		result[id] = f.inReview[id]
+	}
+	return result, nil
+}
+
+func TestWorkflowLedgerReaderSkipsNonmatchingMalformedContentAndKeepsBatchesBounded(t *testing.T) {
+	base := time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC)
+	rows := make(ledgerRows, 0, 20003)
+	for i := 0; i < 20003; i++ {
+		id := fmt.Sprintf("00000000-0000-4000-8000-%012d", 20003-i)
+		row := ledgerTestRow(id, base.Add(time.Duration(20003-i)*time.Second))
+		row.Aggregate.AuthorityMode = "native"
+		row.Content = []byte("{")
+		if i >= 20001 {
+			row.Content = []byte("{}")
+		}
+		rows = append(rows, row)
+	}
+	facts := &boundedWorkflowFacts{inReview: map[string]bool{rows[20001].Item.ContractID: true, rows[20002].Item.ContractID: true}}
+	reader := WithLedgerWorkflow(rows, facts)
+	filter := ledger.Filter{WorkflowState: "in_review"}
+	first, err := reader.Read(context.Background(), "tenant-1", filter, false, time.Time{}, "", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 2 || first[0].Item.ContractID != rows[20001].Item.ContractID || first[1].Item.ContractID != rows[20002].Item.ContractID {
+		t.Fatalf("filtered candidates = %+v", first)
+	}
+	if facts.calls < 2 || facts.maxBatch > 50 {
+		t.Fatalf("workflow calls=%d max batch=%d", facts.calls, facts.maxBatch)
+	}
+	next, err := reader.Read(context.Background(), "tenant-1", filter, true, first[0].SortKey, first[0].Item.ContractID, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(next) != 1 || next[0].Item.ContractID != first[1].Item.ContractID {
+		t.Fatalf("cursor continuation = %+v", next)
+	}
 }

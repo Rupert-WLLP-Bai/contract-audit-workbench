@@ -73,9 +73,11 @@ type Page struct {
 }
 
 type Row struct {
-	Aggregate clmcontract.Aggregate
-	Item      Item
-	SortKey   time.Time
+	Content     []byte
+	SigningDate *string
+	Aggregate   clmcontract.Aggregate
+	Item        Item
+	SortKey     time.Time
 }
 
 type Query struct {
