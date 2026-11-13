@@ -18,6 +18,7 @@ import (
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/engine"
+	executionapp "contractaudit/internal/execution/app"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/model"
 
@@ -66,18 +67,7 @@ func decided(findings []Finding, st *state) bool {
 }
 
 func publicModelError(err error) string {
-	switch {
-	case errors.Is(err, model.ErrUnusable):
-		return "模型输出无法解析成质保结论，已保留可定位的规则结果；模型审查尚未完成。"
-	case errors.Is(err, engine.ErrRejected):
-		return "模型输出不能对应到材料原文，已保留可定位的规则结果；模型审查尚未完成。"
-	case errors.Is(err, errModelNotConfigured):
-		return "审查模型未配置，已保留可定位的规则结果；模型审查尚未完成。"
-	case errors.Is(err, model.ErrRequest):
-		return "调用审查模型失败，已保留可定位的规则结果；模型审查尚未完成。"
-	default:
-		return "审查模型没有完成质保核对，已保留可定位的规则结果。"
-	}
+	return executionapp.PublicModelError(err, errModelNotConfigured)
 }
 
 func publicAttemptFailure(code string) string {

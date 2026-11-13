@@ -107,7 +107,8 @@
       {
         "id": "execution",
         "app": [
-          "internal/execution/steps"
+          "internal/execution/steps",
+          "internal/execution/app"
         ],
         "transport": [],
         "postgres": [
