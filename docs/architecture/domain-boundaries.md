@@ -235,3 +235,11 @@ Start 在原 receipt/config/case/assessment hook 取得 app 结果，仍经真�
 Retry 按原业务时间解析当前依赖，变化返回冲突要求重新发起；Retry 不自动创建新 run，随后 Start 才按当前 signature 决定复用或新建，旧 snapshot 不改。worker/adoption 从数据库装载原 frozen digest/refs 并重验当前 actor/source/ancestor 权限，不按当前 pointer 重算旧引用。required 保留原 exact selection 与 raw pointer active，不机械改成派生的 Version.Active；optional adoption 不新增 active 要求，而 ReadFrozen 对所读 exact ref 另有 active 要求。原 case→attempt→live claim/generation/tenant epoch/inputHash 围栏与 #289 成功步骤的重读、比对保持。
 
 经验人工使用账本继续原 Decide/source 授权和命令事务；知识行读取接新 contract 只替换精确 facts，不迁模型预算或人工决定。Core 写治理、Execution 只读等服务角色/RLS/schema 不变；预算、租约和 Outbox 仍由 PG 决定，NATS 仍只作短通知。过渡桥随对应公开领域 contract 逐项迁出，AR020 消费审计后删无用适配。必要 SOURCE 固定 canonical 历史、Retry/新 Start 差异、optional adoption/read 差别、接纳及后续 persist 失败回滚和撤权/旧 generation 边界。整轮重构结束后统一运行检查，当前均 NOT_RUN。
+
+### #305 Legal 纯契约与 Subject pin 精确事实
+
+状态：采纳，选择器接线前的具体补充。当前冻结法律依据同时读取 Knowledge 精确版本、Legal 事实历史和 Subject pin，不能把原 `freezeLegalAuthoritiesTx` 整体作为新 Knowledge 回调。先提取实际依赖的最小 Legal-owned 纯值与规则到 `internal/legal/model`：事实版本/条件/缺口/冻结依据、时序选择、party stale/ambiguous 与 all_of 判定、规范化及指纹。Store 保留当前事务的来源事实读取与权限；Knowledge 组合封存知识快照。此处是已有规则的真实依赖抽取，不提前建设 Legal CRUD、平台或空包，#306/#307 仍承接剩余捕获与管理/依据路径。
+
+准许仅为既有 Legal 依据链读取服务端绑定 tenant/org/case 与 pin 的精确 Subject 事实：case_subject_roles 当前绑定头、case_subject_role_versions 当前版本字段、指定 subjects.current_version，以及同案件/角色的 active binding 数。业务主体归 Subject，不能与登录 Identity 混同，不按此给它改物理 owner。桥返回 found/版本/subject/role/state/count 原始值，Legal 纯规则决定 stale/ambiguous；保留原 binding→subject 当前版本→仅在 pin 新鲜时请求同角色 count 的查询/错误先后、原 case scope/授权/锁、service role/RLS，不扩大成通用主体枚举或新授权入口。
+
+Legal 公共纯值可消费 Knowledge 公共值引用及 rulepack/legalnorm 契约，不导入 Knowledge app/PG 或 Store；Knowledge app 可依赖该 Legal 纯契约。A 段泛型 v1 snapshot 只承载 Legal-owned authority 值，避免把 Legal 类型永久归 Knowledge或形成 model 循环；Store 以实际具体类型实例化，Wire/tag/字节与 SHA 不变。后续最小 Legal 值抽取后仍保留这种数据所有权边界，不通过任意函数 callback 绕过验证。实际 Legal Go package 落地后登记真实角色路径；数据库 schema、服务角色及外部连接器不变，所有运行检查仍 NOT_RUN。
