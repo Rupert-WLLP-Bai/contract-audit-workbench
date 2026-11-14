@@ -1134,8 +1134,11 @@ func (s *Store) executeAttempt(runID, attemptID string, models Models) {
 }
 
 func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID string, models Models) {
-	ctx, cancel := context.WithTimeout(parent, reviewExecutionLimit)
+	started := time.Now()
+	work, cancel := context.WithCancel(parent)
 	defer cancel()
+	ctx, cancelPreparation := context.WithDeadline(work, started.Add(reviewExecutionLimit))
+	defer cancelPreparation()
 	scope, bound := model.DelegatedScopeFromContext(ctx)
 	if !bound || (scope.Kind != "execution" && scope.Kind != "execution_prepare") {
 		if claim, ok := s.claimForAttempt(attemptID); ok {
@@ -1177,6 +1180,18 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
 	}
+	if err := ctx.Err(); err != nil {
+		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
+		return
+	}
+	limit := reviewExecutionLimit
+	if claim, ok := s.claimForAttempt(attemptID); ok && longFactsReview(initial, claim, runID, attemptID) {
+		limit += model.DefaultRequestTimeout
+	}
+	// Preparation is limited separately, but the chosen deadline is always
+	// measured from the original start and remains a child of the same parent.
+	ctx, cancelExecution := reviewWorkContext(work, ctx, started, limit)
+	defer cancelExecution()
 	frozenScope := initial.snapshotOf(runID)
 	if frozenScope.RuleSetHash == engine.SingleContractRuleSetHash() || frozenScope.PlaybookHash == engine.SingleContractPlaybookHash() {
 		if !isSingleContractSnapshot(frozenScope) {
@@ -1206,6 +1221,41 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 	}
 	bridge := standardExecutionBridge{store: s, parent: parent, models: models, recorder: recorder}
 	executionapp.RunStandard(parent, runCtx, attempt, warranty, errModelNotConfigured, attemptFinalizeTimeout, bridge, recorder, standardExecutionCodec{}, standardExecutionCodec{})
+}
+
+func reviewWorkContext(work, preparation context.Context, started time.Time, limit time.Duration) (context.Context, context.CancelFunc) {
+	if preparation.Err() != nil {
+		return preparation, func() {}
+	}
+	if !time.Now().Before(started.Add(reviewExecutionLimit)) {
+		return context.WithDeadline(preparation, started.Add(reviewExecutionLimit))
+	}
+	if resolvedScope, ok := model.DelegatedScopeFromContext(preparation); ok {
+		work = model.WithDelegatedScope(work, resolvedScope)
+	}
+	return context.WithDeadline(work, started.Add(limit))
+}
+
+// longFactsReview only changes the time allowance for a live durable attempt
+// whose accepted, valid configuration includes the facts capability.
+func longFactsReview(st state, claim JobClaim, runID, attemptID string) bool {
+	if claim.JobID == "" || claim.RunID != runID || claim.AttemptID != attemptID || !isSingleContractSnapshot(st.snapshotOf(runID)) {
+		return false
+	}
+	run, ok := st.runByID(runID)
+	if !ok {
+		return false
+	}
+	item, ok := st.caseByID(run.CaseID)
+	if !ok || isGovernedReviewCase(item) {
+		return false
+	}
+	attempt, ok := st.attemptByID(attemptID)
+	if !ok || attempt.RunID != runID {
+		return false
+	}
+	planner, err := FrozenPlannerConfiguration(attempt)
+	return err == nil && planner.ContractFacts != nil && planner.ContractFacts.Validate() == nil
 }
 
 func (s *Store) markAttemptStarted(ctx context.Context, runID, attemptID string) error {

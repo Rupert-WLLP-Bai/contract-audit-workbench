@@ -28,6 +28,17 @@ type factsProjectionFixtureModel struct {
 	factsConfigurationID string
 }
 
+type deadlineFactsFixtureModel struct {
+	*factsProjectionFixtureModel
+	deadline chan time.Time
+}
+
+func (m *deadlineFactsFixtureModel) ContractFacts(ctx context.Context, _ string, _ bool) (model.ContractFactsSuggestion, error) {
+	deadline, _ := ctx.Deadline()
+	m.deadline <- deadline
+	return model.ContractFactsSuggestion{}, model.ErrRequest
+}
+
 func (m *factsProjectionFixtureModel) Name() string            { return "facts-chat" }
 func (m *factsProjectionFixtureModel) ConfigurationID() string { return m.modelConfigurationID }
 func (m *factsProjectionFixtureModel) ContractFactsConfigurationID() string {
@@ -35,6 +46,140 @@ func (m *factsProjectionFixtureModel) ContractFactsConfigurationID() string {
 }
 func (m *factsProjectionFixtureModel) ContractFacts(context.Context, string, bool) (model.ContractFactsSuggestion, error) {
 	return model.ContractFactsSuggestion{}, model.ErrRequest
+}
+
+func TestLongFactsReviewRequiresValidFrozenDurableCapability(t *testing.T) {
+	t.Setenv("AGENT_PLANNER_MODE", "deterministic")
+	modelID := strings.Repeat("a", 64)
+	planner, err := agentflow.ResolvePlannerConfigurationWithContractFacts(modelID, "facts-chat", model.ContractFactsConfigurationID(modelID, "facts-chat"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(planner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := state{
+		Cases: []Case{{ID: "case"}}, Runs: []Run{{ID: "run", CaseID: "case"}},
+		Attempts:  []Attempt{{ID: "attempt", RunID: "run", PlannerConfigurationID: planner.ConfigurationID, PlannerConfiguration: payload}},
+		Snapshots: []RunSnapshot{applyReviewScope(RunSnapshot{RunID: "run"}, ReviewScopeSingleContract)},
+	}
+	claim := JobClaim{JobID: "job", RunID: "run", AttemptID: "attempt"}
+	if !longFactsReview(st, claim, "run", "attempt") {
+		t.Fatal("valid frozen facts attempt did not receive the bounded allowance")
+	}
+	for _, tc := range []struct {
+		name   string
+		mutate func(*state, *JobClaim)
+	}{
+		{"embedded", func(_ *state, c *JobClaim) { c.JobID = "" }},
+		{"different attempt", func(_ *state, c *JobClaim) { c.AttemptID = "other" }},
+		{"full review", func(s *state, _ *JobClaim) { s.Snapshots[0].RuleSetHash = "other" }},
+		{"governed case", func(s *state, _ *JobClaim) {
+			s.Cases[0].BusinessLine = "ENT"
+			s.Cases[0].Scenario = "telecom_dedicated_line"
+		}},
+		{"missing capability", func(s *state, _ *JobClaim) { s.Attempts[0].PlannerConfiguration = nil }},
+		{"changed identity", func(s *state, _ *JobClaim) { s.Attempts[0].PlannerConfigurationID = "old" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			candidate, err := st.clone()
+			if err != nil {
+				t.Fatal(err)
+			}
+			current := claim
+			tc.mutate(&candidate, &current)
+			if longFactsReview(candidate, current, "run", "attempt") {
+				t.Fatal("unqualified attempt received the facts allowance")
+			}
+		})
+	}
+}
+
+func TestReviewWorkContextPreservesParentDeadlineCancellationAndScope(t *testing.T) {
+	started := time.Now()
+	parent, cancel := context.WithDeadline(context.Background(), started.Add(2*time.Minute))
+	defer cancel()
+	preparation := model.WithDelegatedScope(parent, model.DelegatedScope{Kind: "execution", RunID: "run", AttemptID: "attempt"})
+	ctx, stop := reviewWorkContext(parent, preparation, started, reviewExecutionLimit+model.DefaultRequestTimeout)
+	defer stop()
+	deadline, ok := ctx.Deadline()
+	if !ok || !deadline.Equal(started.Add(2*time.Minute)) {
+		t.Fatalf("parent deadline was not retained: %v", deadline)
+	}
+	scope, ok := model.DelegatedScopeFromContext(ctx)
+	if !ok || scope.RunID != "run" || scope.AttemptID != "attempt" {
+		t.Fatal("resolved execution scope was not retained")
+	}
+	cancel()
+	if ctx.Err() != context.Canceled {
+		t.Fatalf("parent cancellation did not stop execution: %v", ctx.Err())
+	}
+
+	ctx, stop = reviewWorkContext(context.Background(), context.Background(), started, reviewExecutionLimit)
+	defer stop()
+	deadline, ok = ctx.Deadline()
+	if !ok || !deadline.Equal(started.Add(reviewExecutionLimit)) {
+		t.Fatalf("ordinary review deadline changed: %v", deadline)
+	}
+	preparation, cancelPreparation := context.WithCancel(context.Background())
+	cancelPreparation()
+	ctx, stop = reviewWorkContext(context.Background(), preparation, started, reviewExecutionLimit+model.DefaultRequestTimeout)
+	defer stop()
+	if ctx.Err() != context.Canceled {
+		t.Fatal("cancelled preparation was revived")
+	}
+	expired, cancelExpired := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancelExpired()
+	ctx, stop = reviewWorkContext(context.Background(), expired, started.Add(-reviewExecutionLimit), reviewExecutionLimit+model.DefaultRequestTimeout)
+	defer stop()
+	if ctx.Err() != context.DeadlineExceeded {
+		t.Fatal("expired preparation was revived")
+	}
+}
+
+func TestDurableContractFactsReceivesBoundedExtendedDeadline(t *testing.T) {
+	fixture, ok := newDurableCaseFixture(t)
+	if !ok {
+		t.Skip("isolated PostgreSQL and migrator required")
+	}
+	execution := fixture.environment.openRole(t, "execution")
+	execution.UseOperationAuthority(durableTestOperationAuthority{core: fixture.core})
+	execution.UseDocumentPreparer(fixture.document)
+	modelID := strings.Repeat("a", 64)
+	models := &deadlineFactsFixtureModel{factsProjectionFixtureModel: &factsProjectionFixtureModel{
+		frozenOCRModel: &frozenOCRModel{}, modelConfigurationID: modelID,
+		factsConfigurationID: model.ContractFactsConfigurationID(modelID, "facts-chat"),
+	}, deadline: make(chan time.Time, 1)}
+	execution.UseModels(models)
+	ctx := WithAdmissionSessionToken(context.Background(), fixture.sessionToken)
+	accepted, err := execution.StartReviewAsyncScope(ctx, fixture.admin, fixture.caseID, "", "", ReviewScopeSingleContract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, err := execution.ClaimNextJob(ctx, "facts-deadline-worker", time.Minute)
+	if err != nil || claim.JobID != accepted.JobID {
+		t.Fatalf("claim facts attempt: %+v err=%v", claim, err)
+	}
+	started := time.Now()
+	if err := execution.RunClaimedJob(ctx, claim); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case deadline := <-models.deadline:
+		if deadline.Before(started.Add(11*time.Minute)) || deadline.After(time.Now().Add(reviewExecutionLimit+model.DefaultRequestTimeout)) {
+			t.Fatalf("facts deadline outside expected execution allowance: %v", deadline.Sub(started))
+		}
+	default:
+		t.Fatal("facts model was not called")
+	}
+	var stepStatus, failureCode, attemptState string
+	if err := fixture.environment.harness.pool.QueryRow(ctx, `SELECT c.status,c.failure_code,a.state FROM execution_agent_step_checkpoints c JOIN review_attempts a ON a.id=c.attempt_id WHERE c.attempt_id=$1 AND c.step_id='contract_facts/extract'`, claim.AttemptID).Scan(&stepStatus, &failureCode, &attemptState); err != nil {
+		t.Fatal(err)
+	}
+	if stepStatus != "failed" || failureCode != "contract_facts_request_failed" || attemptState != "partial" {
+		t.Fatalf("facts failure was not persisted under the live claim: status=%q code=%q attempt=%q", stepStatus, failureCode, attemptState)
+	}
 }
 
 func TestContractFactsProjectionIsSeparatelyAuthorizedAndFrozen(t *testing.T) {
