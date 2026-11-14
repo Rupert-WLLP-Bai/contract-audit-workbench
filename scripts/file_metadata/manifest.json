@@ -1,13 +1,57 @@
 {
   "schema_version": 1,
   "inventory": {
-    "baseline_head": "d41bce5b2b9b09184e9d484fad8feca1ec8c0dc6",
-    "baseline_timestamp": "2026-11-12T09:34:30+08:00",
-    "tracked_file_count": 1563,
+    "baseline_head": "77d516c40142b049cea7957d0010e938d4f9d515",
+    "baseline_timestamp": "2026-11-02T00:24:58+08:00",
+    "tracked_file_count": 1209,
     "explicit_additions": [
+      "CHANGELOG.md",
       "CONTRIBUTING.md",
+      "cmd/identity-import/main.go",
+      "cmd/openapi-gen/main.go",
+      "cmd/qccmcpdemo/main.go",
+      "cmd/worker/authority.go",
+      "cmd/worker/authority_test.go",
+      "docs-site/README.md",
+      "docs-site/bun.lock",
+      "docs-site/docusaurus.config.js",
+      "docs-site/i18n/zh-Hans/code.json",
+      "docs-site/package.json",
+      "docs-site/sidebars.js",
+      "docs-site/src/css/custom.css",
+      "docs-site/src/pages/index.js",
+      "docs/architecture/advisory.md",
+      "docs/architecture/domain-boundaries.md",
+      "docs/architecture/execution.md",
+      "docs/architecture/overview.md",
+      "docs/architecture/store-ownership.csv",
+      "docs/engineering/community-guide.md",
+      "docs/engineering/interface-conventions.md",
+      "docs/engineering/local-development.md",
+      "docs/engineering/ui-coverage-matrix.json",
+      "docs/engineering/ui-coverage-matrix.md",
+      "docs/engineering/ui-foundation-inventory.md",
+      "docs/engineering/verification.md",
+      "docs/glossary/concepts.json",
+      "docs/glossary/system-terms.md",
+      "docs/glossary/user-terms.md",
+      "docs/index.md",
+      "docs/operations/deployment.md",
+      "docs/operations/document-processing.md",
+      "docs/operations/external-evidence.md",
+      "docs/operations/integrations.md",
+      "docs/operations/k3d.md",
+      "docs/operations/multi-company-operations.md",
+      "docs/operations/ocr-mineru.md",
+      "docs/operations/tenant-restore.md",
+      "docs/product/capabilities.md",
+      "docs/product/workflow.md",
+      "e2e/tenant_recovery_browser_test.go",
+      "internal/accounts/directory_snapshot.go",
+      "internal/accounts/directory_snapshot_test.go",
       "internal/accounts/district_directory.go",
       "internal/accounts/district_directory_test.go",
+      "internal/advisorycontract/contract.go",
       "internal/agentflow/contract_facts.go",
       "internal/agentflow/contract_facts_app.go",
       "internal/agentflow/contract_facts_app_test.go",
@@ -15,6 +59,14 @@
       "internal/agentflow/eino_tool.go",
       "internal/agentflow/eino_tool_test.go",
       "internal/agentflow/step_recovery_test.go",
+      "internal/apidocs/contracts/lifecycle.go",
+      "internal/apidocs/contracts/money_policy.go",
+      "internal/apidocs/contracts/types.go",
+      "internal/apidocs/lifecycle_routes.go",
+      "internal/apidocs/money_routes.go",
+      "internal/apidocs/route_contract.go",
+      "internal/apidocs/source_contract.go",
+      "internal/apidocs/source_contract_data.go",
       "internal/approval/app/credential.go",
       "internal/approval/app/decision.go",
       "internal/approval/app/governance.go",
@@ -50,6 +102,25 @@
       "internal/audit/app/audit.go",
       "internal/audit/app/audit_test.go",
       "internal/audit/postgres/audit.go",
+      "internal/bootstrap/embedded_integration_test.go",
+      "internal/bootstrap/embedded_models.go",
+      "internal/bootstrap/embedded_models_test.go",
+      "internal/bootstrap/embedded_watcher_boundary_test.go",
+      "internal/bootstrap/intake_session_recovery_test.go",
+      "internal/bootstrap/membership_authority_integration_test.go",
+      "internal/clmenvelope/envelope.go",
+      "internal/clmenvelope/legacy.go",
+      "internal/clmenvelope/provider.go",
+      "internal/clmenvelope/tenant_test.go",
+      "internal/clmenvelope/types.go",
+      "internal/clmoutbox/consumer/cache.go",
+      "internal/clmoutbox/consumer/cache_test.go",
+      "internal/clmoutbox/postgres/delivery.go",
+      "internal/clmoutbox/relay.go",
+      "internal/clmoutbox/relay_pg_test.go",
+      "internal/clmoutbox/relay_test.go",
+      "internal/clmsource/contract.go",
+      "internal/clmsource/contract_test.go",
       "internal/contract/app/approval.go",
       "internal/contract/app/draft_create.go",
       "internal/contract/app/draft_create_test.go",
@@ -69,6 +140,7 @@
       "internal/contract/ledger/export_test.go",
       "internal/contract/ledger/ledger.go",
       "internal/contract/ledger/saved_views.go",
+      "internal/contract/lifecycle/overview.go",
       "internal/contract/model/draft_amounts.go",
       "internal/contract/model/draft_model.go",
       "internal/contract/model/source_observation.go",
@@ -77,6 +149,7 @@
       "internal/contract/postgres/approval.go",
       "internal/contract/postgres/draft_commands.go",
       "internal/contract/postgres/draft_queries.go",
+      "internal/contract/postgres/events.go",
       "internal/contract/postgres/fulfillment.go",
       "internal/contract/postgres/ledger.go",
       "internal/contract/postgres/ledger_exports.go",
@@ -84,7 +157,14 @@
       "internal/contract/postgres/lifecycle_facts.go",
       "internal/contract/postgres/source_observations.go",
       "internal/contract/postgres/versions.go",
+      "internal/coreauthority/transport.go",
       "internal/docir/page_span_test.go",
+      "internal/documentclient/intake_test.go",
+      "internal/documentparse/ocr_source_test.go",
+      "internal/documentservice/intake_authority_client.go",
+      "internal/documentservice/intake_authority_client_test.go",
+      "internal/evidencebundle/tenant.go",
+      "internal/evidencebundle/tenant_test.go",
       "internal/execution/app/citation.go",
       "internal/execution/app/outcome.go",
       "internal/execution/app/run.go",
@@ -103,7 +183,35 @@
       "internal/fulfillment/app/rules.go",
       "internal/fulfillment/app/types.go",
       "internal/fulfillment/postgres/fulfillment.go",
+      "internal/httpapi/case_identity_present_test.go",
+      "internal/httpapi/claim_authority.go",
+      "internal/httpapi/context_session.go",
+      "internal/httpapi/context_support.go",
+      "internal/httpapi/contract_approval_admin_test.go",
+      "internal/httpapi/contract_assets.go",
+      "internal/httpapi/contract_assets_test.go",
       "internal/httpapi/contract_facts_present_test.go",
+      "internal/httpapi/contract_fulfillment.go",
+      "internal/httpapi/contract_lifecycle_overview_test.go",
+      "internal/httpapi/contract_payments.go",
+      "internal/httpapi/contract_payments_test.go",
+      "internal/httpapi/contract_signing.go",
+      "internal/httpapi/contract_sources.go",
+      "internal/httpapi/contract_sources_test.go",
+      "internal/httpapi/core_session_resolver.go",
+      "internal/httpapi/development_handler.go",
+      "internal/httpapi/development_handler_test.go",
+      "internal/httpapi/document_intake_authority.go",
+      "internal/httpapi/document_intake_authority_test.go",
+      "internal/httpapi/download_reauthentication_test.go",
+      "internal/httpapi/jurisdiction_operations.go",
+      "internal/httpapi/operation_authority.go",
+      "internal/httpapi/operation_authority_unavailable_test.go",
+      "internal/httpapi/report_receipt_replay_test.go",
+      "internal/httpapi/session_authority.go",
+      "internal/httpapi/session_authority_test.go",
+      "internal/httpapi/tenant_config.go",
+      "internal/httpapi/tenant_lifecycle.go",
       "internal/knowledge/app/command.go",
       "internal/knowledge/app/command_test.go",
       "internal/knowledge/app/create_draft.go",
@@ -158,6 +266,14 @@
       "internal/legal/postgres/reference_capture.go",
       "internal/model/contract_facts.go",
       "internal/model/contract_facts_test.go",
+      "internal/model/preparation_boundary_test.go",
+      "internal/modelgateway/embedded_ocr_boundary_test.go",
+      "internal/operationauthority/claim.go",
+      "internal/operationauthority/client.go",
+      "internal/operationauthority/client_test.go",
+      "internal/operationauthority/errors.go",
+      "internal/operationauthority/revocation_protocol_test.go",
+      "internal/operationauthority/session.go",
       "internal/operator/app/binding.go",
       "internal/operator/app/binding_test.go",
       "internal/operator/app/collection.go",
@@ -217,27 +333,79 @@
       "internal/payment/app/rules.go",
       "internal/payment/app/types.go",
       "internal/payment/postgres/payment.go",
+      "internal/platform/postgres/transaction.go",
+      "internal/qccmcp/client.go",
+      "internal/qccmcp/client_test.go",
+      "internal/qccmcp/config.go",
+      "internal/qccmcp/config_test.go",
+      "internal/qccmcp/tool.go",
+      "internal/reviewstatus/outcome.go",
+      "internal/reviewstatus/outcome_test.go",
+      "internal/store/admission_session_context.go",
       "internal/store/agent_step_checkpoints_test.go",
       "internal/store/agent_steps.go",
+      "internal/store/approval_atomicity_test.go",
       "internal/store/approval_credential_app.go",
       "internal/store/approval_read_app.go",
       "internal/store/audit_adapter_pg_test.go",
       "internal/store/audit_app.go",
+      "internal/store/case_context_migration_test.go",
+      "internal/store/case_intake_authority.go",
+      "internal/store/case_intake_membership_recovery_test.go",
+      "internal/store/case_intake_session_recovery_test.go",
+      "internal/store/case_list_identity_test.go",
+      "internal/store/clm_metrics.go",
+      "internal/store/clm_outbox.go",
+      "internal/store/clm_outbox_pg_test.go",
+      "internal/store/clm_role_provision.go",
+      "internal/store/context_fence_pg_test.go",
+      "internal/store/context_function_acl.go",
+      "internal/store/context_preparation_proof_test.go",
+      "internal/store/context_session.go",
+      "internal/store/context_support.go",
+      "internal/store/context_transaction.go",
       "internal/store/contract_approval_app.go",
       "internal/store/contract_approval_decision_app.go",
+      "internal/store/contract_assets.go",
       "internal/store/contract_assets_app.go",
+      "internal/store/contract_assets_pg_test.go",
       "internal/store/contract_draft_app.go",
       "internal/store/contract_facts_projection_test.go",
+      "internal/store/contract_fingerprint_rotation_test.go",
+      "internal/store/contract_fulfillment.go",
       "internal/store/contract_fulfillment_app.go",
+      "internal/store/contract_fulfillment_pg_test.go",
       "internal/store/contract_ledger_app.go",
       "internal/store/contract_ledger_export_access.go",
       "internal/store/contract_ledger_saved_views_pg_test.go",
+      "internal/store/contract_lifecycle_http_external_test.go",
+      "internal/store/contract_lifecycle_overview.go",
+      "internal/store/contract_lifecycle_overview_pg_test.go",
+      "internal/store/contract_payments.go",
       "internal/store/contract_payments_app.go",
+      "internal/store/contract_payments_pg_test.go",
+      "internal/store/contract_signing.go",
+      "internal/store/contract_signing_pg_test.go",
       "internal/store/contract_source_app.go",
+      "internal/store/contract_sources.go",
+      "internal/store/contract_sources_crypto.go",
+      "internal/store/contract_sources_crypto_test.go",
+      "internal/store/contract_sources_pg_test.go",
       "internal/store/contract_version_app.go",
+      "internal/store/embedded_ocr_authority.go",
+      "internal/store/embedded_ocr_authority_test.go",
+      "internal/store/embedded_preparation_authority.go",
+      "internal/store/embedded_preparation_authority_test.go",
+      "internal/store/embedded_preparation_flow.go",
+      "internal/store/embedded_preparation_flow_test.go",
+      "internal/store/embedded_preparation_state.go",
+      "internal/store/embedded_preparation_state_test.go",
       "internal/store/execution_app.go",
       "internal/store/execution_app_test.go",
       "internal/store/execution_model_aliases.go",
+      "internal/store/export_test.go",
+      "internal/store/identity_import.go",
+      "internal/store/identity_import_test.go",
       "internal/store/knowledge_acceptance_atomicity_test.go",
       "internal/store/knowledge_application.go",
       "internal/store/knowledge_governance_atomicity_test.go",
@@ -247,18 +415,59 @@
       "internal/store/legal_import_application.go",
       "internal/store/legal_import_atomicity_test.go",
       "internal/store/legal_review_application.go",
+      "internal/store/migrations/0027_contract_signing.sql",
+      "internal/store/migrations/0028_contract_fulfillment.sql",
+      "internal/store/migrations/0029_contract_payments.sql",
+      "internal/store/migrations/0030_contract_assets.sql",
+      "internal/store/migrations/0031_contract_source_observations.sql",
+      "internal/store/migrations/0032_clm_outbox_metrics.sql",
+      "internal/store/migrations/0033_tenant_membership.sql",
+      "internal/store/migrations/0034_session_context_fence.sql",
+      "internal/store/migrations/0035_tenant_runtime_fence.sql",
+      "internal/store/migrations/0036_tenant_configuration.sql",
+      "internal/store/migrations/0037_model_money_ledger.sql",
+      "internal/store/migrations/0038_tenant_provision_operations.sql",
+      "internal/store/migrations/0039_jurisdiction_operations_projection.sql",
+      "internal/store/migrations/0040_case_context_shared_fence.sql",
+      "internal/store/migrations/0041_intake_session_recovery.sql",
+      "internal/store/migrations/0042_review_receipt_session_recovery.sql",
+      "internal/store/migrations/0043_review_receipt_origin_org.sql",
+      "internal/store/migrations/0044_report_receipt_session_recovery.sql",
       "internal/store/migrations/0045_agent_step_checkpoints.sql",
+      "internal/store/offline_migrator_provision.go",
+      "internal/store/offline_migrator_provision_pg_test.go",
+      "internal/store/operation_authority.go",
+      "internal/store/operation_authority_pg_test.go",
+      "internal/store/operations_scope_recovery_pg_test.go",
       "internal/store/operator_atomicity_test.go",
       "internal/store/operator_evaluation_application.go",
       "internal/store/operator_evaluation_atomicity_test.go",
       "internal/store/operator_mapping_application.go",
       "internal/store/operator_preview_application.go",
+      "internal/store/report_receipt_replay_pg_test.go",
+      "internal/store/review_readmission_pg_test.go",
+      "internal/store/revoked_finalize_http_external_test.go",
+      "internal/store/revoked_finalize_test.go",
       "internal/store/single_contract_facts.go",
       "internal/store/subject_application.go",
       "internal/store/subject_decision_atomicity_test.go",
       "internal/store/subject_model_aliases.go",
+      "internal/store/table_catalog.go",
+      "internal/store/table_catalog.json",
       "internal/store/telecom_agent_events_test.go",
       "internal/store/telecom_model_selection_test.go",
+      "internal/store/tenant_config.go",
+      "internal/store/tenant_config_hash_test.go",
+      "internal/store/tenant_identity.go",
+      "internal/store/tenant_identity_pg_test.go",
+      "internal/store/tenant_identity_role_provision.go",
+      "internal/store/tenant_lifecycle.go",
+      "internal/store/tenant_money.go",
+      "internal/store/tenant_operations.go",
+      "internal/store/tenant_runtime.go",
+      "internal/store/tenant_runtime_epoch_test.go",
+      "internal/store/tenant_runtime_recovery_pg_test.go",
+      "internal/store/worker_claim_authority.go",
       "internal/subject/app/commands.go",
       "internal/subject/app/commands_test.go",
       "internal/subject/app/decision.go",
@@ -279,26 +488,134 @@
       "internal/telemetry/otlp_external_test_helpers_test.go",
       "internal/telemetry/otlp_internal_test_helpers_test.go",
       "internal/telemetry/otlphttp.go",
+      "internal/testsupport/oidcfixture/fixture.go",
+      "internal/toolgateway/core_claim.go",
+      "internal/toolgateway/core_claim_test.go",
+      "internal/toolgateway/core_session.go",
+      "internal/toolgateway/core_session_test.go",
       "requirements-dev.txt",
       "ruff.toml",
+      "scripts/architecture/architecture.json",
+      "scripts/architecture/architecture.schema.json",
+      "scripts/architecture/build_inventory.py",
+      "scripts/architecture/check_architecture.py",
+      "scripts/architecture/fixtures/allowed.json",
+      "scripts/architecture/fixtures/forbidden_advisorycontract_import.json",
+      "scripts/architecture/fixtures/forbidden_agentflow.json",
+      "scripts/architecture/fixtures/forbidden_store.json",
+      "scripts/architecture/fixtures/missing_advisorycontract.json",
+      "scripts/architecture/fixtures/missing_package.json",
+      "scripts/architecture/fixtures/zero_advisorycontract.json",
+      "scripts/architecture/generate_store_ownership.py",
+      "scripts/architecture/refine.py",
+      "scripts/architecture/store-call-resolver/main.go",
+      "scripts/architecture/store-declarations/main.go",
+      "scripts/architecture/store-ownership-extractor/main.go",
+      "scripts/architecture/test_check_architecture.py",
+      "scripts/check_docs.py",
+      "scripts/check_glossary.py",
+      "scripts/check_ui_terminology.py",
+      "scripts/file_metadata/gate_adapter.py",
+      "scripts/file_metadata/git_inventory.py",
+      "scripts/file_metadata/legacy_bootstrap.py",
+      "scripts/file_metadata/manifest_tool.py",
+      "scripts/file_metadata/metadata_core.py",
+      "scripts/file_metadata/test_gate_adapter.py",
+      "scripts/file_metadata/test_git_inventory.py",
+      "scripts/file_metadata/test_legacy_bootstrap.py",
+      "scripts/file_metadata/test_manifest_tool.py",
+      "scripts/file_metadata/test_metadata_core.py",
+      "scripts/file_metadata/testdata/anchor-policy.json",
+      "scripts/run_python_tests.py",
+      "scripts/test_ci_workflows.py",
+      "scripts/test_generate_openapi_types.py",
+      "scripts/test_run_python_tests.py",
+      "scripts/test_trusted_gate_runner.py",
+      "scripts/test_ui_style_scan.py",
+      "scripts/test_ui_terminology.py",
+      "scripts/trusted_gate_runner.py",
+      "scripts/ui-terminology/policy.json",
+      "scripts/ui_style_scan.py",
       "web/.prettierignore",
       "web/.prettierrc.json",
+      "web/build/original-reader-assets.ts",
+      "web/e2e/command-context.ts",
+      "web/e2e/functional/issue-233-fixtures.ts",
+      "web/e2e/functional/issue-233-navigation.spec.ts",
+      "web/e2e/functional/issue-253-contract-overflow.spec.ts",
+      "web/e2e/functional/issue-253-fixtures.ts",
+      "web/e2e/functional/ui2-contract-sections.spec.ts",
+      "web/e2e/tenant-recovery-smoke.ts",
       "web/eslint.config.mjs",
       "web/scripts/generate-openapi-types.ts",
+      "web/src/api/context-sync.ts",
       "web/src/api/contract-facts.test.ts",
       "web/src/api/contract-facts.ts",
+      "web/src/api/contracts-ledger-paths.test.ts",
+      "web/src/api/jurisdiction-operations.ts",
+      "web/src/api/original-bytes.test.ts",
+      "web/src/api/pending-memberships.ts",
+      "web/src/api/support-grants.ts",
+      "web/src/api/tenant-config.ts",
+      "web/src/api/tenant-cost-policy.ts",
+      "web/src/api/tenant-provisioning.ts",
       "web/src/bootstrap.test.tsx",
+      "web/src/components/agent-path-swimlane.tsx",
       "web/src/components/application-error.css",
       "web/src/components/application-error.tsx",
+      "web/src/components/case-select-presentation.test.tsx",
+      "web/src/components/case-select-presentation.tsx",
+      "web/src/components/collapsible-section.tsx",
+      "web/src/components/context-switcher.tsx",
+      "web/src/components/contract-assets-panel.tsx",
       "web/src/components/contract-facts-panel.tsx",
+      "web/src/components/contract-fulfillment-panel.tsx",
+      "web/src/components/contract-lifecycle-overview-panel.test.tsx",
+      "web/src/components/contract-lifecycle-overview-panel.tsx",
+      "web/src/components/contract-payments-panel.tsx",
+      "web/src/components/contract-references-panel.test.tsx",
+      "web/src/components/contract-signing-panel.tsx",
+      "web/src/components/contract-source-capability-panel.tsx",
+      "web/src/components/evidence-sla-dashboard.test.tsx",
       "web/src/components/execution-diagram.css",
       "web/src/components/execution-diagram.test.tsx",
       "web/src/components/execution-diagram.tsx",
+      "web/src/components/invalid-time-detail.tsx",
       "web/src/components/key-clause-navigator.tsx",
+      "web/src/components/original-document-reader.css",
       "web/src/components/original-document-reader.test.tsx",
+      "web/src/components/original-document-reader.tsx",
+      "web/src/components/original-page-view.test.tsx",
+      "web/src/components/original-page-view.tsx",
       "web/src/components/page-patterns.css",
       "web/src/components/page-patterns.tsx",
       "web/src/components/page-status.test.tsx",
+      "web/src/components/qcc-mcp-panel.css",
+      "web/src/components/qcc-mcp-panel.tsx",
+      "web/src/components/review-choice-select.test.tsx",
+      "web/src/components/review-diff.test.tsx",
+      "web/src/components/review-outcome-summary.tsx",
+      "web/src/components/review-outcome.test.tsx",
+      "web/src/components/review-readiness-panel.test.tsx",
+      "web/src/components/review-work-items.css",
+      "web/src/components/review-work-items.test.tsx",
+      "web/src/components/review-work-items.tsx",
+      "web/src/components/review-workspace-layout.css",
+      "web/src/components/section-navigation.test.tsx",
+      "web/src/components/section-navigation.tsx",
+      "web/src/components/technical-detail.test.tsx",
+      "web/src/components/technical-detail.tsx",
+      "web/src/components/tenant-config-panel.css",
+      "web/src/components/tenant-config-panel.tsx",
+      "web/src/components/tenant-cost-policy-panel.css",
+      "web/src/components/tenant-cost-policy-panel.tsx",
+      "web/src/components/workbench-case-next-step.tsx",
+      "web/src/domain/actor-read-context.ts",
+      "web/src/domain/business-labels.contract.json",
+      "web/src/domain/business-labels.test.ts",
+      "web/src/domain/business-labels.ts",
+      "web/src/domain/case-identity.test.ts",
+      "web/src/domain/case-identity.ts",
       "web/src/domain/demo-directory.json",
       "web/src/domain/execution-diagram.test.ts",
       "web/src/domain/execution-diagram.ts",
@@ -306,7 +623,46 @@
       "web/src/domain/finding-presentation.ts",
       "web/src/domain/key-clauses.test.ts",
       "web/src/domain/key-clauses.ts",
-      "web/src/domain/subject-public-directory.json"
+      "web/src/domain/qcc-mcp-catalog.ts",
+      "web/src/domain/source-annotation.test.ts",
+      "web/src/domain/source-annotation.ts",
+      "web/src/domain/subject-public-directory.json",
+      "web/src/domain/swimlane.ts",
+      "web/src/domain/time.test.ts",
+      "web/src/domain/time.ts",
+      "web/src/domain/workflow.test.ts",
+      "web/src/features/review/evidence-request-drafts.test.ts",
+      "web/src/features/review/evidence-request-drafts.ts",
+      "web/src/features/review/manual-findings/api.ts",
+      "web/src/features/review/manual-findings/index.ts",
+      "web/src/features/review/manual-findings/manual-findings-panel.tsx",
+      "web/src/features/review/original-source-cancel.test.ts",
+      "web/src/features/review/original-source.test.ts",
+      "web/src/features/review/original-source.ts",
+      "web/src/features/review/pdf-reader-types.d.ts",
+      "web/src/features/review/review-outcome.ts",
+      "web/src/features/review/work-items.test.ts",
+      "web/src/features/review/work-items.ts",
+      "web/src/pages/agent-studio-page.css",
+      "web/src/pages/agent-studio-page.test.tsx",
+      "web/src/pages/agent-studio-page.tsx",
+      "web/src/pages/cases-page.test.tsx",
+      "web/src/pages/contracts-ledger-labels.fixture.json",
+      "web/src/pages/contracts-page.test.tsx",
+      "web/src/pages/governed-knowledge-page.css",
+      "web/src/pages/jurisdiction-operations-page.css",
+      "web/src/pages/jurisdiction-operations-page.tsx",
+      "web/src/pages/legal-knowledge-page.css",
+      "web/src/pages/not-found-page.css",
+      "web/src/pages/operator-audit-page.css",
+      "web/src/pages/pending-membership-page.tsx",
+      "web/src/pages/review-page.css",
+      "web/src/pages/subjects-page.css",
+      "web/src/pages/support-grant-pages.tsx",
+      "web/src/pages/support-grants.css",
+      "web/src/pages/tenant-lifecycle-page.css",
+      "web/src/pages/tenant-lifecycle-page.tsx",
+      "web/src/test/antd.test.tsx"
     ],
     "excluded_untracked_paths": []
   },
@@ -7457,7 +7813,7 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "c112a0b20716fe3e01056236132dbc02d3714fba",
+          "commit": "7daee68c05d3ea65a5361aa2536de1feef340006",
           "path": "docs/architecture/domain-boundaries.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -7989,10 +8345,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ebb0c6b84b6eafe1dea43b8ecb1f2901d4987be4",
+          "commit": "1fc1b4fff6d105f670c4a9344ce5bb767bca30cf",
           "path": "docs/engineering/ui-coverage-matrix.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -8101,10 +8457,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e7f53f6d91f3b1b016637ec7ebc1f61225d69db1",
+          "commit": "d28ce2397c0ec7bc1897814a657faba2874ec293",
           "path": "docs/engineering/verification.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -8149,15 +8505,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ee245465d63cef599a9d347e200ed1213d847372",
+          "commit": "1fc1b4fff6d105f670c4a9344ce5bb767bca30cf",
           "path": "docs/glossary/concepts.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -8202,15 +8558,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ee245465d63cef599a9d347e200ed1213d847372",
+          "commit": "1fc1b4fff6d105f670c4a9344ce5bb767bca30cf",
           "path": "docs/glossary/system-terms.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -8261,15 +8617,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ee245465d63cef599a9d347e200ed1213d847372",
+          "commit": "1fc1b4fff6d105f670c4a9344ce5bb767bca30cf",
           "path": "docs/glossary/user-terms.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -11610,10 +11966,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "98eaafe4cce08465924c1af45dcef2da722ca90b",
+          "commit": "497e7f6f5e4f745094cfa48d08f2ed7deb4e440a",
           "path": "internal/agentflow/runtime.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -12572,12 +12928,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-13",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "8c28a1e9a5941e7cb7c6b5d8821c6a521cff45f2",
+          "commit": "d35dcdc9d8fa07e2e26f9d627bc26c1eec2d24ee",
           "path": "internal/approval/app/governance.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -35772,10 +36128,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "9ace4151ef1a8da49e624a25b0ac9ed2df0ea4e1",
+          "commit": "aaa289c06d4bfb9bb2d1b41372e9d063e2d18576",
           "path": "internal/objectstore/s3_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -41323,12 +41679,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "98eaafe4cce08465924c1af45dcef2da722ca90b",
+          "commit": "8e2fc62e1c56f1fb10d1976eecd95e977bdfa985",
           "path": "internal/store/agent_step_checkpoints_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -41371,12 +41727,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "98eaafe4cce08465924c1af45dcef2da722ca90b",
+          "commit": "8e2fc62e1c56f1fb10d1976eecd95e977bdfa985",
           "path": "internal/store/agent_steps.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -44430,10 +44786,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "9a88a8044dcf99074a590cb949fc14fff819743b",
+          "commit": "95ef077abc05594ceb29b71726055f81dcdd2ea5",
           "path": "internal/store/contract_draft_pg_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -44622,12 +44978,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "2994db6770d6fce11c0ebf3f0b5f09cde41d09c9",
+          "commit": "287c669bff21e25f27e2125902cd0186a0f26e5c",
           "path": "internal/store/contract_facts_projection_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -46968,12 +47324,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-13",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "45a36d766b1e57b5788bb5ec50167dde99c4f290",
+          "commit": "7d01892c6083510e8135deb01658fb31e82369e3",
           "path": "internal/store/execution_app_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -48537,12 +48893,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-13",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "c0cd498fa727110a0a1739213572c561f3b0d4fe",
+          "commit": "4af45ca5acc20fcbececef3cce4e98a98b0b5afe",
           "path": "internal/store/knowledge_acceptance_atomicity_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -49253,9 +49609,9 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "3d2129da166ebe1d17d727d7302d7c5c99bb414e",
+          "commit": "d485f0d862cc0e1e61e2b61f664eea95e60dfa2a",
           "path": "internal/store/legal_applicability_atomicity_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -49396,7 +49752,7 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "3d2129da166ebe1d17d727d7302d7c5c99bb414e",
+          "commit": "d485f0d862cc0e1e61e2b61f664eea95e60dfa2a",
           "path": "internal/store/legal_applicability_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -53513,7 +53869,7 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a3cc29697a6c06f97efb67f7a85c39470088a2f3",
+          "commit": "062618d6404abadd1cf61248512964ef09587ff3",
           "path": "internal/store/operator_atomicity_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -54984,15 +55340,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-10",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "c7d6091f1ed0dfae938f03eb0cd1e4f82a058058",
+          "commit": "be0118dbd5f0b028ac1fba415fc6529890dfe270",
           "path": "internal/store/report_receipt_replay_pg_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -55988,15 +56344,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "5bc7aa15307b8eaf8b86787d3d16078a7263cf37",
+          "commit": "7d01892c6083510e8135deb01658fb31e82369e3",
           "path": "internal/store/scoped_mutation.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -56036,15 +56392,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "56c660ab4f5b73a82270795c9184e8df7d3cad29",
+          "commit": "4af45ca5acc20fcbececef3cce4e98a98b0b5afe",
           "path": "internal/store/scoped_mutation_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -57133,7 +57489,7 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0ebc1ce5a274c8aacf6c0c1703160b91bb033ad9",
+          "commit": "7d01892c6083510e8135deb01658fb31e82369e3",
           "path": "internal/store/state.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -57512,9 +57868,9 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "edbb4ba41615597151b17ff26ea5d55a5af63526",
+          "commit": "f471afe141e3951eabf7b24d3e5a525f698f4c48",
           "path": "internal/store/subject_decision_atomicity_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -57985,15 +58341,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "faeca3938293169f9d7d190b9e4c140feb85d8ae",
+          "commit": "8224a2a322e808b831c7a7833f6002c8e7bec5a0",
           "path": "internal/store/table_catalog.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -61800,10 +62156,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "33fb5339209abe26b99c929d11642378fe074e56",
+          "commit": "7e3cc129697d55951b77c964a19583ac2f1403e5",
           "path": "internal/telemetry/otlp.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -61944,12 +62300,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "33fb5339209abe26b99c929d11642378fe074e56",
+          "commit": "7e3cc129697d55951b77c964a19583ac2f1403e5",
           "path": "internal/telemetry/otlp_internal_test_helpers_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -61992,10 +62348,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "33fb5339209abe26b99c929d11642378fe074e56",
+          "commit": "7e3cc129697d55951b77c964a19583ac2f1403e5",
           "path": "internal/telemetry/otlp_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -64172,10 +64528,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e7f53f6d91f3b1b016637ec7ebc1f61225d69db1",
+          "commit": "61d0d19ba4cb14f59b737c6e980bed6b0960419c",
           "path": "scripts/check_fast.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -64655,7 +65011,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r59",
+      "revision": "r60",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -65638,10 +65994,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "2994db6770d6fce11c0ebf3f0b5f09cde41d09c9",
+          "commit": "61d0d19ba4cb14f59b737c6e980bed6b0960419c",
           "path": "scripts/run_real_corpus.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -65828,10 +66184,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e7f53f6d91f3b1b016637ec7ebc1f61225d69db1",
+          "commit": "61d0d19ba4cb14f59b737c6e980bed6b0960419c",
           "path": "scripts/test_check_fast.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -66303,10 +66659,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "2994db6770d6fce11c0ebf3f0b5f09cde41d09c9",
+          "commit": "61d0d19ba4cb14f59b737c6e980bed6b0960419c",
           "path": "scripts/test_run_real_corpus.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -70604,10 +70960,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/e2e/functional/workflows.spec.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -70983,12 +71339,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e7f53f6d91f3b1b016637ec7ebc1f61225d69db1",
+          "commit": "d28ce2397c0ec7bc1897814a657faba2874ec293",
           "path": "web/eslint.config.mjs",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -71379,12 +71735,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e7f53f6d91f3b1b016637ec7ebc1f61225d69db1",
+          "commit": "d72e25234b24148ff76cb508b041cc54637b7025",
           "path": "web/scripts/generate-openapi-types.ts",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -73557,10 +73913,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/api/parse.test.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -73605,10 +73961,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "2994db6770d6fce11c0ebf3f0b5f09cde41d09c9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/api/parse.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -74603,10 +74959,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "2994db6770d6fce11c0ebf3f0b5f09cde41d09c9",
+          "commit": "186d500dc460353e52467f5439eb25a99deba48f",
           "path": "web/src/api/types.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -74651,10 +75007,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e7f53f6d91f3b1b016637ec7ebc1f61225d69db1",
+          "commit": "1dabd9dbb1f4ea98d1d7cab482d55a1d8de062d7",
           "path": "web/src/api/wire.generated.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -74806,10 +75162,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/app.integration.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -74902,12 +75258,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/bootstrap.test.tsx",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -74950,10 +75306,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/bootstrap.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -75094,10 +75450,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/components/agent-path-swimlane.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -77099,10 +77455,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "2994db6770d6fce11c0ebf3f0b5f09cde41d09c9",
+          "commit": "3c618a4d48339d5326cc0656aab82955a20fc74b",
           "path": "web/src/components/document-stage.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -77434,12 +77790,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/components/execution-diagram.css",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -77482,12 +77838,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/components/execution-diagram.test.tsx",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -77530,12 +77886,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/components/execution-diagram.tsx",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -77912,10 +78268,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/components/finding-panel.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -77960,10 +78316,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/components/finding-panel.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -79008,10 +79364,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/components/original-page-view.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -80109,10 +80465,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/components/review-work-items.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -81682,10 +82038,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/components/trajectory-view.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -82266,12 +82622,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/domain/execution-diagram.test.ts",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -82314,12 +82670,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/domain/execution-diagram.ts",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -82410,12 +82766,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/domain/finding-presentation.test.ts",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -82458,12 +82814,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/domain/finding-presentation.ts",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -82601,12 +82957,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4cdcba63d160612edb25a2f45694afedfd550685",
+          "commit": "f1e9fd27b6529685d839ff8ca84d7fc3ea6720e3",
           "path": "web/src/domain/key-clauses.ts",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -82790,10 +83146,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/domain/organization.test.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -82838,10 +83194,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/domain/organization.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -83172,10 +83528,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/domain/source-annotation.test.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -83220,10 +83576,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/domain/source-annotation.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -85746,10 +86102,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/features/review/work-items.test.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -85794,10 +86150,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "186d500dc460353e52467f5439eb25a99deba48f",
           "path": "web/src/features/review/work-items.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -86555,10 +86911,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/pages/cases-page.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -88190,10 +88546,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/pages/review-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -89289,10 +89645,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/src/pages/workbench-module-page.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -89915,10 +90271,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "64e9ee25dafce2b9af701f027c8380076f72def9",
+          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
           "path": "web/vite.config.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
