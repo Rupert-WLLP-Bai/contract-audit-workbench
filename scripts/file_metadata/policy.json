@@ -465,6 +465,14 @@
       ],
       "handling": "manifest-only",
       "reason": "Versioned SQL migration bytes are integrity-checked after application and must not be changed by metadata headers."
+    },
+    {
+      "id": "clause-proposals-migration",
+      "paths": [
+        "internal/store/migrations/0049_clause_proposals.sql"
+      ],
+      "handling": "manifest-only",
+      "reason": "Versioned SQL migration bytes are integrity-checked after application and must not be changed by metadata headers."
     }
   ],
   "unclassified_file_policy": "Do not infer a comment syntax or purpose. Add a reviewed class or path rule before the complete inventory is accepted.",

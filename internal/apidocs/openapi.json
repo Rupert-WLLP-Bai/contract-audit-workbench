@@ -3883,6 +3883,347 @@
         ],
         "additionalProperties": false
       },
+      "ClauseDerivedRequest": {
+        "type": "object",
+        "properties": {
+          "edited_text": {
+            "type": "string"
+          },
+          "expected_version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ]
+      },
+      "ClauseDerivedResponse": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "format"
+        ]
+      },
+      "ClauseProposal": {
+        "type": "object",
+        "properties": {
+          "after_context": {
+            "type": "string"
+          },
+          "attempt_id": {
+            "type": "string"
+          },
+          "before_context": {
+            "type": "string"
+          },
+          "case_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "document_id": {
+                "type": "string"
+              },
+              "end": {
+                "type": "integer"
+              },
+              "normalized_digest": {
+                "type": "string"
+              },
+              "parsed_document_id": {
+                "type": "string"
+              },
+              "quote": {
+                "type": "string"
+              },
+              "start": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "document_id",
+              "parsed_document_id",
+              "normalized_digest",
+              "start",
+              "end",
+              "quote"
+            ]
+          },
+          "evidence_verified": {
+            "type": "boolean"
+          },
+          "finding_id": {
+            "type": "string"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "accepted_text": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string"
+                },
+                "actor_id": {
+                  "type": "string"
+                },
+                "contract_id": {
+                  "type": "string"
+                },
+                "created_at": {
+                  "type": "string"
+                },
+                "document_id": {
+                  "type": "string"
+                },
+                "material_id": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "revision_id": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "version",
+                "action",
+                "actor_id",
+                "created_at"
+              ]
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "input_hash": {
+            "type": "string"
+          },
+          "original_text": {
+            "type": "string"
+          },
+          "playbook": {
+            "type": "object",
+            "properties": {
+              "content_sha256": {
+                "type": "string"
+              },
+              "knowledge_id": {
+                "type": "string"
+              },
+              "version_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "knowledge_id",
+              "version_id",
+              "content_sha256"
+            ]
+          },
+          "proposed_text": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "remediation_id": {
+            "type": "string"
+          },
+          "rule_pack": {
+            "type": "object",
+            "properties": {
+              "compiler_ref": {
+                "type": "string"
+              },
+              "content_hash": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "snapshot_digest": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "version",
+              "content_hash",
+              "snapshot_digest",
+              "compiler_ref"
+            ]
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "unavailable_reason": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "created_by",
+          "created_at",
+          "case_id",
+          "run_id",
+          "attempt_id",
+          "input_hash",
+          "proposed_text",
+          "reason",
+          "evidence_verified",
+          "status",
+          "version",
+          "history"
+        ]
+      },
+      "ClauseProposalCreate": {
+        "type": "object",
+        "properties": {
+          "attempt_id": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "document_id": {
+                "type": "string"
+              },
+              "end": {
+                "type": "integer"
+              },
+              "normalized_digest": {
+                "type": "string"
+              },
+              "parsed_document_id": {
+                "type": "string"
+              },
+              "quote": {
+                "type": "string"
+              },
+              "start": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "document_id",
+              "parsed_document_id",
+              "normalized_digest",
+              "start",
+              "end",
+              "quote"
+            ]
+          },
+          "finding_id": {
+            "type": "string"
+          },
+          "proposed_text": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "remediation_id": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "attempt_id",
+          "proposed_text",
+          "reason"
+        ]
+      },
+      "ClauseProposalDecision": {
+        "type": "object",
+        "properties": {
+          "accepted_text": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "confirmed": {
+            "type": "boolean"
+          },
+          "contract_id": {
+            "type": "string"
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "expected_contract_row_version": {
+            "type": "integer"
+          },
+          "expected_version": {
+            "type": "integer"
+          },
+          "material_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "confirmed",
+          "expected_version"
+        ]
+      },
+      "ClauseProposalList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClauseProposal"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
       "ContextList": {
         "type": "object",
         "properties": {
@@ -26588,6 +26929,184 @@
           },
           "503": {
             "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/api/cases/{caseID}/clause-proposals": {
+      "parameters": [
+        {
+          "name": "caseID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listClauseProposals",
+        "tags": [
+          "合同"
+        ],
+        "summary": "读取条款建议",
+        "responses": {
+          "200": {
+            "description": "建议及追加历史",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClauseProposalList"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createClauseProposal",
+        "tags": [
+          "合同"
+        ],
+        "summary": "创建冻结来源条款建议",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClauseProposalCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "已创建建议",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClauseProposal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cases/{caseID}/clause-proposals/{proposalID}/decisions": {
+      "parameters": [
+        {
+          "name": "caseID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "proposalID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "decideClauseProposal",
+        "tags": [
+          "合同"
+        ],
+        "summary": "确认或拒绝建议",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClauseProposalDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "处理结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClauseProposal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cases/{caseID}/clause-proposals/{proposalID}/derived-text": {
+      "parameters": [
+        {
+          "name": "caseID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "proposalID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "deriveClauseText",
+        "tags": [
+          "合同"
+        ],
+        "summary": "生成派生纯文本",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClauseDerivedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "供人工确认的派生文本",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClauseDerivedResponse"
+                }
+              }
+            }
           }
         }
       }

@@ -152,6 +152,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	registerContractCitationRoutes(mux, h)
 	registerEvidenceRoutes(mux, h)
 	registerManualFindingRoutes(mux, h)
+	registerClauseProposalRoutes(mux, h)
 	registerContractDraftRoutes(mux, h)
 	registerContractAuditRoutes(mux, h)
 	registerContractReferenceRoutes(mux, h)

@@ -293,3 +293,11 @@ func configureOperationAuthority(st *store.Store, service string) error {
 	st.UseOperationAuthority(client)
 	return nil
 }
+
+func configuredClauseOriginalReader() (store.ClauseOriginalReader, error) {
+	endpoint := strings.TrimSpace(os.Getenv("DOCUMENT_SERVICE_URL"))
+	if endpoint == "" {
+		return nil, nil
+	}
+	return documentclient.NewClauseOriginalReader(endpoint, 2*time.Minute)
+}

@@ -651,6 +651,9 @@ var caseRouteHandlers = map[string]caseRouteHandler{
 		return role == "core" && len(p) == 3 && (m.read || m.post)
 	},
 	"evidence-requests": evidenceRequestHandlerRoute, "profile": profileRoute,
+	"clause-proposals": func(role string, m routeMethodSet, p []string) bool {
+		return role == "core" && (len(p) == 3 && (m.read || m.post) || len(p) == 5 && m.post && (p[4] == "derived-text" || p[4] == "decisions"))
+	},
 	"tasks": taskRoute, "relations": relationRoute, "documents": documentRoute,
 	"materials":                 materialRoute,
 	"subjects":                  caseSubjectRoute,

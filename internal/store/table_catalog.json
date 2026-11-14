@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "schema_version": 48,
+  "schema_version": 49,
   "relations": [
     {
       "name": "activity",
@@ -190,6 +190,24 @@
     },
     {
       "name": "clm_business_events",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_clause_proposal_decisions",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_clause_proposal_receipts",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_clause_proposals",
       "classification": "TENANT_DATA",
       "tenant_column": true,
       "force_rls": true

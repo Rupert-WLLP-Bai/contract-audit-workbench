@@ -62,6 +62,7 @@ type Store struct {
 	advisoryProvider       advisory.Provider
 	objects                ObjectStore
 	documentPreparer       DocumentPreparer
+	clauseOriginalReader   ClauseOriginalReader
 	requireRemoteDocuments bool
 	toolEvidence           ToolEvidenceReader
 	experienceAcceptor     ExperienceResultAcceptor

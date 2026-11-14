@@ -5213,5 +5213,11 @@ func Types() map[string]reflect.Type {
 	types["OperationsCostView"] = reflect.TypeFor[OperationsCostView]()
 	types["OperationsQuotaView"] = reflect.TypeFor[OperationsQuotaView]()
 	types["OperationsPoolView"] = reflect.TypeFor[OperationsPoolView]()
+	types["ClauseProposal"] = reflect.TypeFor[ClauseProposal]()
+	types["ClauseProposalCreate"] = reflect.TypeFor[ClauseProposalCreate]()
+	types["ClauseProposalDecision"] = reflect.TypeFor[ClauseProposalDecision]()
+	types["ClauseProposalList"] = reflect.TypeFor[ClauseProposalList]()
+	types["ClauseDerivedRequest"] = reflect.TypeFor[ClauseDerivedRequest]()
+	types["ClauseDerivedResponse"] = reflect.TypeFor[ClauseDerivedResponse]()
 	return types
 }

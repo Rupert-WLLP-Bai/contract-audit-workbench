@@ -339,6 +339,13 @@ func wireRuntimeStore(ctx context.Context, st *store.Store, settings runtimeSett
 	if provider := configuredAdvisoryProvider(service, models); provider != nil {
 		st.UseAdvisory(provider)
 	}
+	if service == "core" {
+		reader, err := configuredClauseOriginalReader()
+		if err != nil {
+			return nil, 0, err
+		}
+		st.UseClauseOriginalReader(reader)
+	}
 	if service == "worker" {
 		if err := wireWorkerDependencies(st, settings.experienceAcceptor); err != nil {
 			return nil, 0, err
