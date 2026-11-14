@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-14
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -120,6 +120,29 @@ func restoreReviewReceiptVersionForTest(t *testing.T, ctx context.Context, pool 
 		if _, err := tx.Exec(ctx, `RESET ROLE`); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// Remove migration 46 objects before replaying from the historical version.
+	if _, err := tx.Exec(ctx, `DROP FUNCTION fulfillment_reminder_enqueue(text,uuid,uuid,text,text,text,bigint,text,text,integer,integer,integer,integer,boolean);
+        DROP FUNCTION fulfillment_reminder_cancel_job(text,uuid,uuid);
+        DROP FUNCTION fulfillment_reminder_lock_claim(text,text,text,text,bigint,boolean);
+        DROP FUNCTION fulfillment_reminder_finish_claim(text,text,text,text,bigint,boolean);
+        DROP TABLE clm_fulfillment_reminder_attempts, clm_fulfillment_reminder_deliveries, clm_fulfillment_reminder_history, clm_fulfillment_reminders;
+        DROP FUNCTION guard_fulfillment_reminder();
+        ALTER TABLE worker_jobs DROP CONSTRAINT worker_jobs_kind_identity;
+        ALTER TABLE worker_jobs ALTER COLUMN case_id SET NOT NULL;
+        ALTER TABLE worker_jobs ADD CONSTRAINT worker_jobs_kind_identity CHECK (
+          (kind='review' AND run_id IS NOT NULL AND run_id<>'' AND attempt_id IS NOT NULL AND attempt_id<>'') OR
+          (kind='experience_distill' AND run_id IS NULL AND attempt_id IS NULL));`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `SET LOCAL ROLE `+pgx.Identifier{tenantIdentityOwnerName(database, schema)}.Sanitize()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `DROP FUNCTION tenant_reminder_member(text,text)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `RESET ROLE`); err != nil {
+		t.Fatal(err)
 	}
 	// The historical fixture must remove objects introduced after its target
 	// version before their migrations are replayed.

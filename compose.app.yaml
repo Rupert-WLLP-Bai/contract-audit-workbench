@@ -4,7 +4,7 @@
 # Contact: +86 13617696321
 # Created: 2026-10-25
 # Updated: 2026-11-14
-# Revision: r5
+# Revision: r6
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -422,6 +422,7 @@ services:
       MODEL_OCR_IMAGE_TOKEN_UPPER_BOUND: ${MODEL_OCR_IMAGE_TOKEN_UPPER_BOUND:-}
       MODEL_GLOBAL_TOKENS_PER_MINUTE: ${MODEL_GLOBAL_TOKENS_PER_MINUTE:-2000000}
       MODEL_TENANT_TOKENS_PER_MINUTE: ${MODEL_TENANT_TOKENS_PER_MINUTE:-400000}
+      MODEL_RETRIES: ${MODEL_RETRIES:-1}
       MODEL_REQUEST_TIMEOUT: ${MODEL_REQUEST_TIMEOUT:-600s}
       TYPESAFE_JEV_BASE_URL: ${TYPESAFE_JEV_BASE_URL:-https://api.typesafe.ai}
       # The gateway is the only process that receives the provider credential.

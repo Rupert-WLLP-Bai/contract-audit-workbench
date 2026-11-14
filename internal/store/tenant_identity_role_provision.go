@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-10
-// Revision: r4
+// Updated: 2026-11-14
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -199,6 +199,7 @@ to_regprocedure(format('%I.tenant_operation_fence(jsonb,text,text)',$3))::oid
 			,to_regprocedure(format('%I.stamp_review_receipt_origin()',$3))::oid
 			,to_regprocedure(format('%I.tenant_review_receipt_key_conflict(text,text,text,text,text,text)',$3))::oid
 			,to_regprocedure(format('%I.tenant_report_receipt_recovery_allowed(text,text,text,text,text,text,text)',$3))::oid
+			,to_regprocedure(format('%I.tenant_reminder_member(text,text)',$3))::oid
 			,to_regprocedure(format('%I.stamp_report_receipt_origin()',$3))::oid
 			,to_regprocedure(format('%I.tenant_report_receipt_key_conflict(text,text,text,text,text,text)',$3))::oid
 		]) AS oid

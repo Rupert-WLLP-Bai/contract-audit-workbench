@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -214,6 +214,25 @@ func claimJobsWithAuthority(ctx context.Context, st *store.Store, workerID strin
 		}
 		retry = 0
 		if !claimed {
+			continue
+		}
+		if claim.Kind == "fulfillment_reminder" {
+			dispatcher, ok := authority.(interface {
+				DispatchReminder(context.Context, store.JobClaim) error
+			})
+			if !ok {
+				return errors.New("core reminder claim dispatcher is unavailable")
+			}
+			jobCtx, cancel := context.WithCancel(ctx)
+			heartbeatDone := make(chan error, 1)
+			go func() { heartbeatDone <- renewLease(jobCtx, cancel, st, claim, lease, heartbeat) }()
+			runErr := dispatcher.DispatchReminder(jobCtx, claim)
+			cancel()
+			heartbeatErr := <-heartbeatDone
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			logClaimOutcome(claim, runErr, heartbeatErr)
 			continue
 		}
 		if authority != nil && claim.Kind != "experience_distill" {

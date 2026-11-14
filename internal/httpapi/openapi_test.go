@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -988,8 +988,13 @@ func TestEveryPublicOperationHasExactlyOneOwningService(t *testing.T) {
 					owners++
 				}
 			}
-			if owners != 1 {
-				t.Fatalf("%s %s is owned by %d services", strings.ToUpper(method), path, owners)
+			wantOwners := 1
+			if strings.HasPrefix(path, "/internal/") {
+				// Service-authenticated callbacks are documented but never edge-routed.
+				wantOwners = 0
+			}
+			if owners != wantOwners {
+				t.Errorf("%s %s is owned by %d services, want %d", strings.ToUpper(method), path, owners, wantOwners)
 			}
 			checked++
 		}

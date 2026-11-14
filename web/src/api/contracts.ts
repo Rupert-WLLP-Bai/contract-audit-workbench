@@ -1,15 +1,22 @@
 // File metadata (manifest mirror):
-// Purpose: Defines contract registration and resumable-draft models, parses masked restricted fields and source/material references, and submits full-replacement drafts without treating client values as authoritative.
+// Purpose: Defines and parses contract lifecycle and reminder APIs using generated wire schemas, scoped mutations and server-authoritative revisions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-05
-// Revision: r5
+// Updated: 2026-11-14
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
-import { ApiError, assertCommandContextCurrent, errorFromResponse, jsonInit, requestJson, type CommandContext } from "./http";
-import { responseReader } from "./respond";
+import {
+  ApiError,
+  assertCommandContextCurrent,
+  errorFromResponse,
+  jsonInit,
+  requestJson,
+  type CommandContext,
+} from "./http";
+import { enumValue, invalidResponse, responseReader } from "./respond";
 import type { WireSchemas } from "./wire.generated";
 
 export type ContractSigningCheckResult = WireSchemas["ContractSigningCheckResult"];
@@ -31,6 +38,29 @@ export type ContractAssetList = WireSchemas["ContractAssetList"];
 export type ContractAssetHandover = WireSchemas["ContractAssetHandover"];
 export type ContractAssetHandoverRequest = WireSchemas["ContractAssetHandoverRequest"];
 export type ContractSourceCapability = WireSchemas["ContractSourceCapability"];
+
+export type ContractReminderPlanKind = "delivery" | "acceptance" | "payment";
+export type ContractReminderStatus =
+  "active" | "cancelled" | "delivered" | "stale" | "denied" | "failed";
+
+export type ContractReminderPlan = Omit<WireSchemas["ReminderPlan"], "kind"> & {
+  kind: ContractReminderPlanKind;
+};
+export type ContractReminder = Omit<WireSchemas["Reminder"], "plan_kind" | "status"> & {
+  plan_kind: ContractReminderPlanKind;
+  status: ContractReminderStatus;
+};
+export type ContractReminderList = Omit<WireSchemas["ReminderList"], "plans" | "reminders"> & {
+  plans: ContractReminderPlan[];
+  reminders: ContractReminder[];
+};
+export type ContractReminderCreateInput = Omit<WireSchemas["ReminderCreateInput"], "plan_kind"> & {
+  plan_kind: ContractReminderPlanKind;
+};
+export type ContractReminderCancelInput = WireSchemas["ReminderCancelInput"];
+export type ContractReminderInboxItem = Omit<WireSchemas["ReminderDelivery"], "plan_kind"> & {
+  plan_kind: ContractReminderPlanKind;
+};
 
 export type ContractLifecycleOverview = WireSchemas["ContractLifecycleOverview"];
 
@@ -355,8 +385,122 @@ export function isMaskedRestricted(value: string | undefined): boolean {
 const CONTRACTS_PATH = "/api/contracts";
 const CONTRACT_LEDGER_PATH = `${CONTRACTS_PATH}/ledger`;
 
-const { object, record, text, optionalText, nullableText, integer, bool, array } =
-  responseReader((path) => `合同响应中的 ${path} 无法识别`);
+const { object, record, text, optionalText, nullableText, integer, bool, array } = responseReader(
+  (path) => `合同响应中的 ${path} 无法识别`,
+);
+
+const reminderReader = responseReader((path) => {
+  invalidResponse(`合同提醒响应中的 ${path} 无法识别`);
+});
+const reminderKinds = ["delivery", "acceptance", "payment"] as const;
+const reminderStatuses = ["active", "cancelled", "delivered", "stale", "denied", "failed"] as const;
+
+function reminderDate(value: unknown, path: string): string {
+  const result = reminderReader.text(value, path);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(result)) return reminderReader.invalid(path);
+  const parsed = new Date(`${result}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== result
+    ? reminderReader.invalid(path)
+    : result;
+}
+
+function reminderInstant(value: unknown, path: string): string {
+  const result = reminderReader.text(value, path);
+  return !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(result) ||
+    Number.isNaN(Date.parse(result))
+    ? reminderReader.invalid(path)
+    : result;
+}
+
+function parseContractReminderPlan(value: unknown, path: string): ContractReminderPlan {
+  const row = reminderReader.object(value, path);
+  const kind = enumValue(row.kind, reminderKinds);
+  if (!kind) return reminderReader.invalid(`${path}.kind`);
+  return {
+    kind,
+    sequence: reminderReader.integer(row.sequence, `${path}.sequence`, 1),
+    planned_date: reminderDate(row.planned_date, `${path}.planned_date`),
+    description: reminderReader.text(row.description, `${path}.description`),
+  };
+}
+
+function parseContractReminder(value: unknown, path: string): ContractReminder {
+  const row = reminderReader.object(value, path);
+  const planKind = enumValue(row.plan_kind, reminderKinds);
+  const status = enumValue(row.status, reminderStatuses);
+  if (!planKind) return reminderReader.invalid(`${path}.plan_kind`);
+  if (!status) return reminderReader.invalid(`${path}.status`);
+  return {
+    reminder_id: reminderReader.text(row.reminder_id, `${path}.reminder_id`),
+    contract_id: reminderReader.text(row.contract_id, `${path}.contract_id`),
+    contract_revision_id: reminderReader.text(
+      row.contract_revision_id,
+      `${path}.contract_revision_id`,
+    ),
+    plan_kind: planKind,
+    plan_sequence: reminderReader.integer(row.plan_sequence, `${path}.plan_sequence`, 1),
+    planned_date: reminderDate(row.planned_date, `${path}.planned_date`),
+    timezone: reminderReader.text(row.timezone, `${path}.timezone`),
+    recipient_id: reminderReader.text(row.recipient_id, `${path}.recipient_id`),
+    lead_days: reminderReader.integer(row.lead_days, `${path}.lead_days`, 0),
+    due_at: reminderInstant(row.due_at, `${path}.due_at`),
+    status,
+    version: reminderReader.integer(row.version, `${path}.version`, 1),
+    confirmed_by: reminderReader.text(row.confirmed_by, `${path}.confirmed_by`),
+    confirmed_at: reminderInstant(row.confirmed_at, `${path}.confirmed_at`),
+  };
+}
+
+function parseContractReminderList(value: unknown): ContractReminderList {
+  const row = reminderReader.object(value, "contract_reminders");
+  return {
+    contract_revision_id: reminderReader.text(
+      row.contract_revision_id,
+      "contract_reminders.contract_revision_id",
+    ),
+    contract_row_version: reminderReader.integer(
+      row.contract_row_version,
+      "contract_reminders.contract_row_version",
+      1,
+    ),
+    plans: reminderReader.array(row.plans, "contract_reminders.plans", parseContractReminderPlan),
+    reminders: reminderReader.array(
+      row.reminders,
+      "contract_reminders.reminders",
+      parseContractReminder,
+    ),
+  };
+}
+
+function parseContractReminderInboxItem(value: unknown, path: string): ContractReminderInboxItem {
+  const row = reminderReader.object(value, path);
+  const planKind = enumValue(row.plan_kind, reminderKinds);
+  if (!planKind) return reminderReader.invalid(`${path}.plan_kind`);
+  return {
+    reminder_id: reminderReader.text(row.reminder_id, `${path}.reminder_id`),
+    contract_id: reminderReader.text(row.contract_id, `${path}.contract_id`),
+    contract_revision_id: reminderReader.text(
+      row.contract_revision_id,
+      `${path}.contract_revision_id`,
+    ),
+    plan_kind: planKind,
+    plan_sequence: reminderReader.integer(row.plan_sequence, `${path}.plan_sequence`, 1),
+    planned_date: reminderDate(row.planned_date, `${path}.planned_date`),
+    timezone: reminderReader.text(row.timezone, `${path}.timezone`),
+    delivered_at: reminderInstant(row.delivered_at, `${path}.delivered_at`),
+  };
+}
+
+function parseContractReminderInbox(value: unknown): { items: ContractReminderInboxItem[] } {
+  const row = reminderReader.object(value, "contract_reminder_inbox");
+  return {
+    items: reminderReader.array(
+      row.items,
+      "contract_reminder_inbox.items",
+      parseContractReminderInboxItem,
+    ),
+  };
+}
 
 function parseSourceRef(value: unknown, path: string): ContractDetailSourceRef {
   const row = object(value, path);
@@ -372,11 +516,7 @@ function parseSourceObservationDisposition(
   path: string,
 ): NonNullable<WireSchemas["ContractDetail"]["source_observation_disposition"]> {
   const disposition = text(value, path);
-  if (
-    disposition !== "applied" &&
-    disposition !== "observation_only" &&
-    disposition !== "unknown"
-  )
+  if (disposition !== "applied" && disposition !== "observation_only" && disposition !== "unknown")
     throw new Error(`合同响应中的 ${path} 无法识别`);
   return disposition;
 }
@@ -394,14 +534,12 @@ function parseMaterialRef(value: unknown, path: string): MaterialRef {
 
 function parseSha256(value: unknown, path: string): string {
   const sha = text(value, path);
-  if (!/^[a-f0-9]{64}$/.test(sha))
-    throw new Error(`合同响应中的 ${path} 不是 SHA-256 摘要`);
+  if (!/^[a-f0-9]{64}$/.test(sha)) throw new Error(`合同响应中的 ${path} 不是 SHA-256 摘要`);
   return sha;
 }
 
 function parseBoolean(value: unknown, path: string): boolean {
-  if (typeof value !== "boolean")
-    throw new Error(`合同响应中的 ${path} 无法识别`);
+  if (typeof value !== "boolean") throw new Error(`合同响应中的 ${path} 无法识别`);
   return value;
 }
 
@@ -417,8 +555,7 @@ function parsePartyRef(value: unknown, path: string): PartyRef {
     role: text(row.role, `${path}.role`),
     name_snapshot: text(row.name_snapshot, `${path}.name_snapshot`),
   };
-  if (row.binding_id !== undefined)
-    party.binding_id = text(row.binding_id, `${path}.binding_id`);
+  if (row.binding_id !== undefined) party.binding_id = text(row.binding_id, `${path}.binding_id`);
   if (row.reference_snapshot !== undefined && row.reference_snapshot !== null)
     party.reference_snapshot = parsePartyReferenceSnapshot(
       row.reference_snapshot,
@@ -455,9 +592,8 @@ function parseDraft(value: unknown, path: string): DraftContent {
   const draft = row as unknown as DraftContent;
   const contractRow = object(row.contract, `${path}.contract`);
   if (Array.isArray(contractRow.related_parties)) {
-    draft.contract.related_parties = contractRow.related_parties.map(
-      (entry, index) =>
-        parsePartyRef(entry, `${path}.contract.related_parties[${index}]`),
+    draft.contract.related_parties = contractRow.related_parties.map((entry, index) =>
+      parsePartyRef(entry, `${path}.contract.related_parties[${index}]`),
     );
   }
   if (
@@ -497,10 +633,7 @@ function parseSummary(value: unknown, path: string): ContractSummary {
   };
 }
 
-export function parseContractDetail(
-  value: unknown,
-  path = "contract",
-): ContractDetail {
+export function parseContractDetail(value: unknown, path = "contract"): ContractDetail {
   const row = record(
     value,
     path,
@@ -522,43 +655,33 @@ export function parseContractDetail(
   );
   return {
     summary: parseSummary(row.summary, `${path}.summary`),
-    current_revision_id: nullableText(
-      row.current_revision_id,
-      `${path}.current_revision_id`,
-    ),
+    current_revision_id: nullableText(row.current_revision_id, `${path}.current_revision_id`),
     draft:
       row.draft === undefined || row.draft === null
         ? undefined
         : parseDraft(row.draft, `${path}.draft`),
     active_round_id: nullableText(row.active_round_id, `${path}.active_round_id`),
-    allowed_commands: array(
-      row.allowed_commands,
-      `${path}.allowed_commands`,
-      (entry, entryPath) => text(entry, entryPath),
+    allowed_commands: array(row.allowed_commands, `${path}.allowed_commands`, (entry, entryPath) =>
+      text(entry, entryPath),
     ),
     source_id: optionalText(row.source_id, `${path}.source_id`) ?? undefined,
     source_ref:
       row.source_ref === undefined || row.source_ref === null
         ? undefined
         : parseSourceRef(row.source_ref, `${path}.source_ref`),
-    source_observed_at: optionalText(
-      row.source_observed_at,
-      `${path}.source_observed_at`,
-    ) ?? undefined,
-    source_observed_state: optionalText(
-      row.source_observed_state,
-      `${path}.source_observed_state`,
-    ) ?? undefined,
+    source_observed_at:
+      optionalText(row.source_observed_at, `${path}.source_observed_at`) ?? undefined,
+    source_observed_state:
+      optionalText(row.source_observed_state, `${path}.source_observed_state`) ?? undefined,
     source_observation_disposition:
-      row.source_observation_disposition === undefined || row.source_observation_disposition === null
+      row.source_observation_disposition === undefined ||
+      row.source_observation_disposition === null
         ? undefined
         : parseSourceObservationDisposition(
             row.source_observation_disposition,
             `${path}.source_observation_disposition`,
           ),
-    warnings: array(row.warnings, `${path}.warnings`, (entry, entryPath) =>
-      text(entry, entryPath),
-    ),
+    warnings: array(row.warnings, `${path}.warnings`, (entry, entryPath) => text(entry, entryPath)),
     signing_registration:
       row.signing_registration === undefined || row.signing_registration === null
         ? undefined
@@ -603,10 +726,7 @@ export function parseContractDraftList(value: unknown): ContractDraftSummary[] {
   });
 }
 
-function parsePartyReferenceSnapshot(
-  value: unknown,
-  path: string,
-): PartyReferenceSnapshot {
+function parsePartyReferenceSnapshot(value: unknown, path: string): PartyReferenceSnapshot {
   const row = record(
     value,
     path,
@@ -642,20 +762,14 @@ function parsePartyReferenceSnapshot(
     binding_state: text(row.binding_state, `${path}.binding_state`),
     subject_id: text(row.subject_id, `${path}.subject_id`),
     subject_version: integer(row.subject_version, `${path}.subject_version`, 1),
-    subject_payload_hash: parseSha256(
-      row.subject_payload_hash,
-      `${path}.subject_payload_hash`,
-    ),
+    subject_payload_hash: parseSha256(row.subject_payload_hash, `${path}.subject_payload_hash`),
     verification_state: text(row.verification_state, `${path}.verification_state`),
     display_name: text(row.display_name, `${path}.display_name`),
     captured_at: text(row.captured_at, `${path}.captured_at`),
   };
 }
 
-function parseProcurementSourceSnapshot(
-  value: unknown,
-  path: string,
-): ProcurementSourceSnapshot {
+function parseProcurementSourceSnapshot(value: unknown, path: string): ProcurementSourceSnapshot {
   const row = record(
     value,
     path,
@@ -693,10 +807,7 @@ function parseProcurementSourceSnapshot(
     package_id: text(row.package_id, `${path}.package_id`),
     snapshot_ref: text(row.snapshot_ref, `${path}.snapshot_ref`),
     material_id: text(row.material_id, `${path}.material_id`),
-    material_version_id: text(
-      row.material_version_id,
-      `${path}.material_version_id`,
-    ),
+    material_version_id: text(row.material_version_id, `${path}.material_version_id`),
     material_version: integer(row.material_version, `${path}.material_version`, 1),
     material_role: role,
     sha256: parseSha256(row.sha256, `${path}.sha256`),
@@ -704,10 +815,7 @@ function parseProcurementSourceSnapshot(
   };
 }
 
-function parseSubjectReference(
-  value: unknown,
-  path: string,
-): ContractSubjectReference {
+function parseSubjectReference(value: unknown, path: string): ContractSubjectReference {
   const row = record(
     value,
     path,
@@ -747,19 +855,13 @@ function parseSubjectReference(
     case_role: text(row.case_role, `${path}.case_role`),
     binding_state: text(row.binding_state, `${path}.binding_state`),
     subject_version: integer(row.subject_version, `${path}.subject_version`, 1),
-    subject_payload_hash: parseSha256(
-      row.subject_payload_hash,
-      `${path}.subject_payload_hash`,
-    ),
+    subject_payload_hash: parseSha256(row.subject_payload_hash, `${path}.subject_payload_hash`),
     verification_state: text(row.verification_state, `${path}.verification_state`),
     frozen: parseBoolean(row.frozen, `${path}.frozen`),
   };
 }
 
-function parseMaterialReference(
-  value: unknown,
-  path: string,
-): ContractMaterialReference {
+function parseMaterialReference(value: unknown, path: string): ContractMaterialReference {
   const row = record(
     value,
     path,
@@ -790,10 +892,7 @@ function parseMaterialReference(
   );
   return {
     material_id: text(row.material_id, `${path}.material_id`),
-    material_version_id: text(
-      row.material_version_id,
-      `${path}.material_version_id`,
-    ),
+    material_version_id: text(row.material_version_id, `${path}.material_version_id`),
     sha256: parseSha256(row.sha256, `${path}.sha256`),
     purpose: text(row.purpose, `${path}.purpose`),
     material_version: integer(row.material_version, `${path}.material_version`, 1),
@@ -805,9 +904,7 @@ function parseMaterialReference(
   };
 }
 
-export function parseContractReferenceCheck(
-  value: unknown,
-): ContractReferenceCheck {
+export function parseContractReferenceCheck(value: unknown): ContractReferenceCheck {
   const row = record(
     value,
     "contract_reference_check",
@@ -843,20 +940,13 @@ export function parseContractReferenceCheck(
       row.contract_revision_id,
       "contract_reference_check.contract_revision_id",
     ),
-    source_case_id: text(
-      row.source_case_id,
-      "contract_reference_check.source_case_id",
-    ),
+    source_case_id: text(row.source_case_id, "contract_reference_check.source_case_id"),
     checked_at: text(row.checked_at, "contract_reference_check.checked_at"),
-    subjects: array(
-      row.subjects,
-      "contract_reference_check.subjects",
-      (entry, path) => parseSubjectReference(entry, path),
+    subjects: array(row.subjects, "contract_reference_check.subjects", (entry, path) =>
+      parseSubjectReference(entry, path),
     ),
-    materials: array(
-      row.materials,
-      "contract_reference_check.materials",
-      (entry, path) => parseMaterialReference(entry, path),
+    materials: array(row.materials, "contract_reference_check.materials", (entry, path) =>
+      parseMaterialReference(entry, path),
     ),
     procurement_result:
       row.procurement_result === undefined || row.procurement_result === null
@@ -865,10 +955,8 @@ export function parseContractReferenceCheck(
             row.procurement_result,
             "contract_reference_check.procurement_result",
           ),
-    warnings: array(
-      row.warnings,
-      "contract_reference_check.warnings",
-      (entry, path) => text(entry, path),
+    warnings: array(row.warnings, "contract_reference_check.warnings", (entry, path) =>
+      text(entry, path),
     ),
   };
 }
@@ -892,9 +980,7 @@ export function createContractDraft(
   );
 }
 
-export function listMyContractDrafts(
-  signal?: AbortSignal,
-): Promise<ContractDraftSummary[]> {
+export function listMyContractDrafts(signal?: AbortSignal): Promise<ContractDraftSummary[]> {
   return requestJson(
     `${CONTRACTS_PATH}/drafts?limit=50`,
     { method: "GET", signal },
@@ -902,10 +988,7 @@ export function listMyContractDrafts(
   );
 }
 
-export function getContract(
-  contractId: string,
-  signal?: AbortSignal,
-): Promise<ContractDetail> {
+export function getContract(contractId: string, signal?: AbortSignal): Promise<ContractDetail> {
   return requestJson(
     `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}`,
     { method: "GET", signal },
@@ -923,15 +1006,25 @@ export function getContractSourceCapability(
     (value) => {
       const row = object(value, "contract_source_capability");
       const responseContractId = text(row.contract_id, "contract_source_capability.contract_id");
-      if (responseContractId !== contractId)
-        throw new Error("合同来源响应与请求的合同标识不一致");
+      if (responseContractId !== contractId) throw new Error("合同来源响应与请求的合同标识不一致");
       const sourceKind = text(row.source_kind, "contract_source_capability.source_kind");
-      const versionOrdering = text(row.version_ordering, "contract_source_capability.version_ordering");
+      const versionOrdering = text(
+        row.version_ordering,
+        "contract_source_capability.version_ordering",
+      );
       if (sourceKind !== "mock" && sourceKind !== "real" && sourceKind !== "unconfigured")
         throw new Error("合同来源响应中的 source_kind 无法识别");
-      if (versionOrdering !== "opaque" && versionOrdering !== "monotonic-sequence" && versionOrdering !== "unknown")
+      if (
+        versionOrdering !== "opaque" &&
+        versionOrdering !== "monotonic-sequence" &&
+        versionOrdering !== "unknown"
+      )
         throw new Error("合同来源响应中的 version_ordering 无法识别");
-      if (row.authority_mode !== "external" || row.read_only !== true || row.connection_status !== "not_probed")
+      if (
+        row.authority_mode !== "external" ||
+        row.read_only !== true ||
+        row.connection_status !== "not_probed"
+      )
         throw new Error("合同来源响应与只读、未探测契约不符");
       return {
         contract_id: responseContractId,
@@ -939,7 +1032,10 @@ export function getContractSourceCapability(
         source_kind: sourceKind,
         authority_mode: "external",
         read_only: true,
-        can_read_contract: parseBoolean(row.can_read_contract, "contract_source_capability.can_read_contract"),
+        can_read_contract: parseBoolean(
+          row.can_read_contract,
+          "contract_source_capability.can_read_contract",
+        ),
         version_ordering: versionOrdering,
         connection_status: "not_probed",
       };
@@ -966,7 +1062,8 @@ export async function registerContractSigning(
   return requestJson(
     `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/registrations`,
     jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
-    (value) => object(value, "contract_signing_registration") as unknown as ContractSigningRegistration,
+    (value) =>
+      object(value, "contract_signing_registration") as unknown as ContractSigningRegistration,
   );
 }
 
@@ -977,97 +1074,297 @@ export async function listContractSigningRegistrations(
   return requestJson(
     `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/registrations`,
     { method: "GET", signal },
-    (value) => array(object(value, "contract_signing_registrations").items, "contract_signing_registrations.items", (entry) => object(entry, "contract_signing_registration") as unknown as ContractSigningRegistration),
+    (value) =>
+      array(
+        object(value, "contract_signing_registrations").items,
+        "contract_signing_registrations.items",
+        (entry) =>
+          object(entry, "contract_signing_registration") as unknown as ContractSigningRegistration,
+      ),
   );
 }
 
-export function getContractLifecycleOverview(contractId: string, signal?: AbortSignal): Promise<ContractLifecycleOverview> {
-  return requestJson(`${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/lifecycle-overview`, { method: "GET", signal }, (value) => {
-    const row = record(value, "contract_lifecycle_overview",
-      ["contract", "observed_at", "completeness", "source_observed_at", "plans", "deliveries", "acceptances", "payments", "assets"]);
-    const contract = record(row.contract, "contract_lifecycle_overview.contract",
-      ["contract_id", "current_revision_id", "row_version", "authority_mode"]);
-    const contractResponseId = text(contract.contract_id, "contract_lifecycle_overview.contract.contract_id");
-    if (contractResponseId.toLowerCase() !== contractId.toLowerCase())
-      throw new Error("合同生命周期响应与请求的合同不一致");
-    const rowVersion = integer(contract.row_version, "contract_lifecycle_overview.contract.row_version", 1);
-    const revisionId = nullableText(contract.current_revision_id, "contract_lifecycle_overview.contract.current_revision_id");
-    const keys = ["plans", "deliveries", "acceptances", "payments", "assets", "disputes", "warranty", "other_obligations"] as const;
-    const completenessRow = record(row.completeness, "contract_lifecycle_overview.completeness", keys);
-    const completeness = Object.fromEntries(keys.map((key) => {
-      const state = text(completenessRow[key], `contract_lifecycle_overview.completeness.${key}`);
-      if (state !== "known" && state !== "unknown" && state !== "not_applicable")
-        throw new Error(`合同响应中的 completeness.${key} 无法识别`);
-      return [key, state];
-    })) as ContractLifecycleOverview["completeness"];
-    const sourceTimes = record(row.source_observed_at, "contract_lifecycle_overview.source_observed_at", ["finance", "erp", "contract_recorded_at"]);
-    const plansRow = row.plans === null ? null : record(row.plans, "contract_lifecycle_overview.plans", ["delivery_plans", "acceptance_plans", "payments", "assets"]);
-    const nullablePlanArray = (value: unknown, path: string) => {
-      if (value === null) return null;
-      if (!Array.isArray(value)) throw new Error(`合同响应中的 ${path} 无法识别`);
-      value.forEach((entry, index) => object(entry, `${path}[${index}]`));
-      return value;
-    };
-    const dateTime = (value: unknown, path: string): string => {
-      const parsed = text(value, path);
-      if (!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(parsed) || Number.isNaN(Date.parse(parsed)))
-        throw new Error(`合同响应中的 ${path} 不是 RFC3339 时间`);
-      return parsed;
-    };
-    const nullableDateTime = (value: unknown, path: string) => value === null ? null : dateTime(value, path);
-    const observedAt = dateTime(row.observed_at, "contract_lifecycle_overview.observed_at");
-    const deliveries = object(row.deliveries, "contract_lifecycle_overview.deliveries") as unknown as ContractDeliveryList;
-    const acceptances = object(row.acceptances, "contract_lifecycle_overview.acceptances") as unknown as ContractAcceptanceList;
-    const assets = object(row.assets, "contract_lifecycle_overview.assets") as unknown as ContractAssetList;
-    if (deliveries.row_version !== rowVersion || acceptances.row_version !== rowVersion || assets.row_version !== rowVersion ||
-      !deliveries.items.every((entry) => entry.contract_id === contractResponseId) ||
-      !acceptances.items.every((entry) => entry.contract_id === contractResponseId) || assets.contract_id !== contractResponseId)
-      throw new Error("合同生命周期响应中的事实与合同版本不一致");
-    const payments = row.payments === null ? null : array(row.payments, "contract_lifecycle_overview.payments", parseContractPaymentSummary);
-    if (payments?.some((entry) => entry.contract_id !== contractResponseId))
-      throw new Error("合同生命周期响应中的付款事实与合同不一致");
-    return {
-      contract: { contract_id: contractResponseId, current_revision_id: revisionId, row_version: rowVersion, authority_mode: text(contract.authority_mode, "contract_lifecycle_overview.contract.authority_mode") },
-      observed_at: observedAt,
-      completeness,
-      source_observed_at: { contract_recorded_at: nullableDateTime(sourceTimes.contract_recorded_at, "contract_lifecycle_overview.source_observed_at.contract_recorded_at"), finance: nullableDateTime(sourceTimes.finance, "contract_lifecycle_overview.source_observed_at.finance"), erp: nullableDateTime(sourceTimes.erp, "contract_lifecycle_overview.source_observed_at.erp") },
-      plans: plansRow === null ? null : {
-        delivery_plans: nullablePlanArray(plansRow.delivery_plans, "plans.delivery_plans"),
-        acceptance_plans: nullablePlanArray(plansRow.acceptance_plans, "plans.acceptance_plans"),
-        payments: nullablePlanArray(plansRow.payments, "plans.payments"),
-        assets: nullablePlanArray(plansRow.assets, "plans.assets"),
-      },
-      deliveries, acceptances, payments, assets,
-    };
-  });
+export function getContractLifecycleOverview(
+  contractId: string,
+  signal?: AbortSignal,
+): Promise<ContractLifecycleOverview> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/lifecycle-overview`,
+    { method: "GET", signal },
+    (value) => {
+      const row = record(value, "contract_lifecycle_overview", [
+        "contract",
+        "observed_at",
+        "completeness",
+        "source_observed_at",
+        "plans",
+        "deliveries",
+        "acceptances",
+        "payments",
+        "assets",
+      ]);
+      const contract = record(row.contract, "contract_lifecycle_overview.contract", [
+        "contract_id",
+        "current_revision_id",
+        "row_version",
+        "authority_mode",
+      ]);
+      const contractResponseId = text(
+        contract.contract_id,
+        "contract_lifecycle_overview.contract.contract_id",
+      );
+      if (contractResponseId.toLowerCase() !== contractId.toLowerCase())
+        throw new Error("合同生命周期响应与请求的合同不一致");
+      const rowVersion = integer(
+        contract.row_version,
+        "contract_lifecycle_overview.contract.row_version",
+        1,
+      );
+      const revisionId = nullableText(
+        contract.current_revision_id,
+        "contract_lifecycle_overview.contract.current_revision_id",
+      );
+      const keys = [
+        "plans",
+        "deliveries",
+        "acceptances",
+        "payments",
+        "assets",
+        "disputes",
+        "warranty",
+        "other_obligations",
+      ] as const;
+      const completenessRow = record(
+        row.completeness,
+        "contract_lifecycle_overview.completeness",
+        keys,
+      );
+      const completeness = Object.fromEntries(
+        keys.map((key) => {
+          const state = text(
+            completenessRow[key],
+            `contract_lifecycle_overview.completeness.${key}`,
+          );
+          if (state !== "known" && state !== "unknown" && state !== "not_applicable")
+            throw new Error(`合同响应中的 completeness.${key} 无法识别`);
+          return [key, state];
+        }),
+      ) as ContractLifecycleOverview["completeness"];
+      const sourceTimes = record(
+        row.source_observed_at,
+        "contract_lifecycle_overview.source_observed_at",
+        ["finance", "erp", "contract_recorded_at"],
+      );
+      const plansRow =
+        row.plans === null
+          ? null
+          : record(row.plans, "contract_lifecycle_overview.plans", [
+              "delivery_plans",
+              "acceptance_plans",
+              "payments",
+              "assets",
+            ]);
+      const nullablePlanArray = (value: unknown, path: string) => {
+        if (value === null) return null;
+        if (!Array.isArray(value)) throw new Error(`合同响应中的 ${path} 无法识别`);
+        value.forEach((entry, index) => object(entry, `${path}[${index}]`));
+        return value;
+      };
+      const dateTime = (value: unknown, path: string): string => {
+        const parsed = text(value, path);
+        if (
+          !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(parsed) ||
+          Number.isNaN(Date.parse(parsed))
+        )
+          throw new Error(`合同响应中的 ${path} 不是 RFC3339 时间`);
+        return parsed;
+      };
+      const nullableDateTime = (value: unknown, path: string) =>
+        value === null ? null : dateTime(value, path);
+      const observedAt = dateTime(row.observed_at, "contract_lifecycle_overview.observed_at");
+      const deliveries = object(
+        row.deliveries,
+        "contract_lifecycle_overview.deliveries",
+      ) as unknown as ContractDeliveryList;
+      const acceptances = object(
+        row.acceptances,
+        "contract_lifecycle_overview.acceptances",
+      ) as unknown as ContractAcceptanceList;
+      const assets = object(
+        row.assets,
+        "contract_lifecycle_overview.assets",
+      ) as unknown as ContractAssetList;
+      if (
+        deliveries.row_version !== rowVersion ||
+        acceptances.row_version !== rowVersion ||
+        assets.row_version !== rowVersion ||
+        !deliveries.items.every((entry) => entry.contract_id === contractResponseId) ||
+        !acceptances.items.every((entry) => entry.contract_id === contractResponseId) ||
+        assets.contract_id !== contractResponseId
+      )
+        throw new Error("合同生命周期响应中的事实与合同版本不一致");
+      const payments =
+        row.payments === null
+          ? null
+          : array(
+              row.payments,
+              "contract_lifecycle_overview.payments",
+              parseContractPaymentSummary,
+            );
+      if (payments?.some((entry) => entry.contract_id !== contractResponseId))
+        throw new Error("合同生命周期响应中的付款事实与合同不一致");
+      return {
+        contract: {
+          contract_id: contractResponseId,
+          current_revision_id: revisionId,
+          row_version: rowVersion,
+          authority_mode: text(
+            contract.authority_mode,
+            "contract_lifecycle_overview.contract.authority_mode",
+          ),
+        },
+        observed_at: observedAt,
+        completeness,
+        source_observed_at: {
+          contract_recorded_at: nullableDateTime(
+            sourceTimes.contract_recorded_at,
+            "contract_lifecycle_overview.source_observed_at.contract_recorded_at",
+          ),
+          finance: nullableDateTime(
+            sourceTimes.finance,
+            "contract_lifecycle_overview.source_observed_at.finance",
+          ),
+          erp: nullableDateTime(
+            sourceTimes.erp,
+            "contract_lifecycle_overview.source_observed_at.erp",
+          ),
+        },
+        plans:
+          plansRow === null
+            ? null
+            : {
+                delivery_plans: nullablePlanArray(plansRow.delivery_plans, "plans.delivery_plans"),
+                acceptance_plans: nullablePlanArray(
+                  plansRow.acceptance_plans,
+                  "plans.acceptance_plans",
+                ),
+                payments: nullablePlanArray(plansRow.payments, "plans.payments"),
+                assets: nullablePlanArray(plansRow.assets, "plans.assets"),
+              },
+        deliveries,
+        acceptances,
+        payments,
+        assets,
+      };
+    },
+  );
 }
 
-export function listContractDeliveries(contractId: string, signal?: AbortSignal): Promise<ContractDeliveryList> {
-  return requestJson(`${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/deliveries`, { method: "GET", signal },
-    (value) => object(value, "contract_deliveries") as unknown as ContractDeliveryList);
+export function listContractDeliveries(
+  contractId: string,
+  signal?: AbortSignal,
+): Promise<ContractDeliveryList> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/deliveries`,
+    { method: "GET", signal },
+    (value) => object(value, "contract_deliveries") as unknown as ContractDeliveryList,
+  );
 }
 
-export function createContractDelivery(contractId: string, input: WireSchemas["ContractDeliveryRequest"], idempotencyKey: string): Promise<ContractDelivery> {
-  return requestJson(`${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/deliveries`, jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
-    (value) => object(value, "contract_delivery") as unknown as ContractDelivery);
+export function createContractDelivery(
+  contractId: string,
+  input: WireSchemas["ContractDeliveryRequest"],
+  idempotencyKey: string,
+): Promise<ContractDelivery> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/deliveries`,
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    (value) => object(value, "contract_delivery") as unknown as ContractDelivery,
+  );
 }
 
-export function listContractAcceptances(contractId: string, signal?: AbortSignal): Promise<ContractAcceptanceList> {
-  return requestJson(`${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/acceptances`, { method: "GET", signal },
-    (value) => object(value, "contract_acceptances") as unknown as ContractAcceptanceList);
+export function listContractAcceptances(
+  contractId: string,
+  signal?: AbortSignal,
+): Promise<ContractAcceptanceList> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/acceptances`,
+    { method: "GET", signal },
+    (value) => object(value, "contract_acceptances") as unknown as ContractAcceptanceList,
+  );
 }
 
-export function createContractAcceptance(contractId: string, input: WireSchemas["ContractAcceptanceRequest"], idempotencyKey: string): Promise<ContractAcceptance> {
-  return requestJson(`${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/acceptances`, jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
-    (value) => object(value, "contract_acceptance") as unknown as ContractAcceptance);
+export function createContractAcceptance(
+  contractId: string,
+  input: WireSchemas["ContractAcceptanceRequest"],
+  idempotencyKey: string,
+): Promise<ContractAcceptance> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/acceptances`,
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    (value) => object(value, "contract_acceptance") as unknown as ContractAcceptance,
+  );
 }
 
-export function recordContractRectification(contractId: string, acceptanceId: string, input: WireSchemas["ContractRectificationRequest"], idempotencyKey: string): Promise<ContractRectification> {
-  return requestJson(`${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/acceptances/${encodeURIComponent(acceptanceId)}/rectifications`, jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
-    (value) => object(value, "contract_rectification") as unknown as ContractRectification);
+export function recordContractRectification(
+  contractId: string,
+  acceptanceId: string,
+  input: WireSchemas["ContractRectificationRequest"],
+  idempotencyKey: string,
+): Promise<ContractRectification> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/acceptances/${encodeURIComponent(acceptanceId)}/rectifications`,
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    (value) => object(value, "contract_rectification") as unknown as ContractRectification,
+  );
 }
 
-function parseContractPaymentReceipt(value: unknown, path: string): WireSchemas["ContractPaymentReceipt"] {
+export function listContractReminders(
+  contractId: string,
+  signal?: AbortSignal,
+): Promise<ContractReminderList> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/reminders`,
+    { method: "GET", signal },
+    parseContractReminderList,
+  );
+}
+
+export function createContractReminder(
+  contractId: string,
+  input: ContractReminderCreateInput,
+  idempotencyKey: string,
+): Promise<ContractReminder> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/reminders`,
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    (value) => parseContractReminder(value, "contract_reminder"),
+  );
+}
+
+export function cancelContractReminder(
+  contractId: string,
+  reminderId: string,
+  input: ContractReminderCancelInput,
+  idempotencyKey: string,
+): Promise<ContractReminder> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/reminders/${encodeURIComponent(reminderId)}/cancel`,
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    (value) => parseContractReminder(value, "contract_reminder"),
+  );
+}
+
+export function listMyContractReminderInbox(
+  signal?: AbortSignal,
+): Promise<{ items: ContractReminderInboxItem[] }> {
+  return requestJson("/api/reminders", { method: "GET", signal }, parseContractReminderInbox);
+}
+
+function parseContractPaymentReceipt(
+  value: unknown,
+  path: string,
+): WireSchemas["ContractPaymentReceipt"] {
   const row = object(value, path);
   const eventType = text(row.event_type, `${path}.event_type`);
   if (eventType !== "payment" && eventType !== "reversal")
@@ -1079,7 +1376,14 @@ function parseContractPaymentReceipt(value: unknown, path: string): WireSchemas[
     currency: text(row.currency, `${path}.currency`),
     event_type: eventType,
     occurred_at: text(row.occurred_at, `${path}.occurred_at`),
-    ...(row.original_source_event_id === undefined ? {} : { original_source_event_id: text(row.original_source_event_id, `${path}.original_source_event_id`) }),
+    ...(row.original_source_event_id === undefined
+      ? {}
+      : {
+          original_source_event_id: text(
+            row.original_source_event_id,
+            `${path}.original_source_event_id`,
+          ),
+        }),
     payload_digest: text(row.payload_digest, `${path}.payload_digest`),
     payment_sequence: integer(row.payment_sequence, `${path}.payment_sequence`, 1),
     receipt_id: text(row.receipt_id, `${path}.receipt_id`),
@@ -1101,7 +1405,9 @@ function parseContractPaymentSummary(value: unknown, path: string): ContractPaym
     ...(row.currency === undefined ? {} : { currency: text(row.currency, `${path}.currency`) }),
     net_paid: text(row.net_paid, `${path}.net_paid`),
     payment_sequence: integer(row.payment_sequence, `${path}.payment_sequence`, 1),
-    ...(row.planned_amount === undefined ? {} : { planned_amount: text(row.planned_amount, `${path}.planned_amount`) }),
+    ...(row.planned_amount === undefined
+      ? {}
+      : { planned_amount: text(row.planned_amount, `${path}.planned_amount`) }),
     receipts: array(row.receipts, `${path}.receipts`, parseContractPaymentReceipt),
     state: state as ContractPaymentSummary["state"],
   };
@@ -1118,17 +1424,35 @@ function parseContractPaymentEligibility(value: unknown): ContractPaymentEligibi
     check_id: text(row.check_id, "contract_payment_eligibility.check_id"),
     checked_at: text(row.checked_at, "contract_payment_eligibility.checked_at"),
     contract_id: text(row.contract_id, "contract_payment_eligibility.contract_id"),
-    contract_revision_id: text(row.contract_revision_id, "contract_payment_eligibility.contract_revision_id"),
-    contract_row_version: integer(row.contract_row_version, "contract_payment_eligibility.contract_row_version", 1),
-    evidence: array(row.evidence, "contract_payment_eligibility.evidence", (entry, path) => text(entry, path)),
+    contract_revision_id: text(
+      row.contract_revision_id,
+      "contract_payment_eligibility.contract_revision_id",
+    ),
+    contract_row_version: integer(
+      row.contract_row_version,
+      "contract_payment_eligibility.contract_row_version",
+      1,
+    ),
+    evidence: array(row.evidence, "contract_payment_eligibility.evidence", (entry, path) =>
+      text(entry, path),
+    ),
     initiates_payment: false,
-    payment_sequence: integer(row.payment_sequence, "contract_payment_eligibility.payment_sequence", 1),
-    reasons: array(row.reasons, "contract_payment_eligibility.reasons", (entry, path) => text(entry, path)),
+    payment_sequence: integer(
+      row.payment_sequence,
+      "contract_payment_eligibility.payment_sequence",
+      1,
+    ),
+    reasons: array(row.reasons, "contract_payment_eligibility.reasons", (entry, path) =>
+      text(entry, path),
+    ),
     status,
   };
 }
 
-export function listContractPayments(contractId: string, signal?: AbortSignal): Promise<ContractPaymentSummary[]> {
+export function listContractPayments(
+  contractId: string,
+  signal?: AbortSignal,
+): Promise<ContractPaymentSummary[]> {
   return requestJson(
     `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/payments`,
     { method: "GET", signal },
@@ -1148,7 +1472,10 @@ export function checkContractPaymentEligibility(
   );
 }
 
-export function listContractAssets(contractId: string, signal?: AbortSignal): Promise<ContractAssetList> {
+export function listContractAssets(
+  contractId: string,
+  signal?: AbortSignal,
+): Promise<ContractAssetList> {
   return requestJson(
     `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/assets`,
     { method: "GET", signal },
@@ -1236,9 +1563,8 @@ export function importLegacyContract(
         source_evidence: parseMaterialRefForSend(input.source_evidence),
         snapshot: input.snapshot,
         approval_history_status: input.approval_history_status,
-        historical_approval_materials: input.historical_approval_materials.map(
-          parseMaterialRefForSend,
-        ),
+        historical_approval_materials:
+          input.historical_approval_materials.map(parseMaterialRefForSend),
         reason: input.reason,
       },
       { "Idempotency-Key": idempotencyKey },
@@ -1282,25 +1608,31 @@ export const CONTRACT_LEDGER_COLUMNS = [
   { key: "updated_at", label: "更新时间" },
 ] as const;
 
-export type ContractLedgerColumn =
-  (typeof CONTRACT_LEDGER_COLUMNS)[number]["key"];
+export type ContractLedgerColumn = (typeof CONTRACT_LEDGER_COLUMNS)[number]["key"];
 
 const CONTRACT_EXPORT_ONLY_COLUMNS = [
-  "authority_mode_label", "authority_mode_code",
-  "contract_state_label", "contract_state_code",
-  "workflow_state_label", "workflow_state_code",
+  "authority_mode_label",
+  "authority_mode_code",
+  "contract_state_label",
+  "contract_state_code",
+  "workflow_state_label",
+  "workflow_state_code",
 ] as const;
 
 export type ContractExportColumn =
   ContractLedgerColumn | (typeof CONTRACT_EXPORT_ONLY_COLUMNS)[number];
 
-const READABLE_EXPORT_COLUMNS: Partial<Record<ContractLedgerColumn, readonly ContractExportColumn[]>> = {
+const READABLE_EXPORT_COLUMNS: Partial<
+  Record<ContractLedgerColumn, readonly ContractExportColumn[]>
+> = {
   authority_mode: ["authority_mode_label", "authority_mode_code"],
   contract_state: ["contract_state_label", "contract_state_code"],
   workflow_state: ["workflow_state_label", "workflow_state_code"],
 };
 
-export function contractLedgerExportColumns(columns: ContractLedgerColumn[]): ContractExportColumn[] {
+export function contractLedgerExportColumns(
+  columns: ContractLedgerColumn[],
+): ContractExportColumn[] {
   return columns.flatMap((column) => READABLE_EXPORT_COLUMNS[column] ?? [column]);
 }
 
@@ -1417,8 +1749,10 @@ function ledgerColumn(value: unknown, path: string): ContractLedgerColumn {
 
 function exportColumn(value: unknown, path: string): ContractExportColumn {
   const candidate = text(value, path);
-  if (!CONTRACT_LEDGER_COLUMNS.some((column) => column.key === candidate) &&
-      !(CONTRACT_EXPORT_ONLY_COLUMNS as readonly string[]).includes(candidate))
+  if (
+    !CONTRACT_LEDGER_COLUMNS.some((column) => column.key === candidate) &&
+    !(CONTRACT_EXPORT_ONLY_COLUMNS as readonly string[]).includes(candidate)
+  )
     throw new Error(`合同响应中的 ${path} 不是支持的导出列`);
   return candidate as ContractExportColumn;
 }
@@ -1513,11 +1847,15 @@ export function parseContractLedgerPage(value: unknown): ContractLedgerPage {
 }
 
 function parseContractSavedView(value: unknown, path: string): ContractSavedView {
-  const view = record(
-    value,
-    path,
-    ["view_id", "name", "filter", "columns", "row_version", "created_at", "updated_at"],
-  );
+  const view = record(value, path, [
+    "view_id",
+    "name",
+    "filter",
+    "columns",
+    "row_version",
+    "created_at",
+    "updated_at",
+  ]);
   return {
     view_id: text(view.view_id, `${path}.view_id`),
     name: text(view.name, `${path}.name`),
@@ -1548,8 +1886,7 @@ export function parseContractExport(value: unknown): ContractExport {
   ]);
   const state = text(item.state, "contract.state");
   const format = text(item.format, "contract.format");
-  if (state !== "ready" || format !== "csv")
-    throw new Error("合同导出响应的状态或格式无法识别");
+  if (state !== "ready" || format !== "csv") throw new Error("合同导出响应的状态或格式无法识别");
   return {
     export_id: text(item.export_id, "contract.export_id"),
     state,
@@ -1591,9 +1928,7 @@ export function listContractLedger(
   );
 }
 
-export function listContractSavedViews(
-  signal?: AbortSignal,
-): Promise<ContractSavedView[]> {
+export function listContractSavedViews(signal?: AbortSignal): Promise<ContractSavedView[]> {
   return requestJson(
     `${CONTRACT_LEDGER_PATH}/views`,
     { method: "GET", signal },
@@ -1632,17 +1967,13 @@ export function replaceContractSavedView(
   );
 }
 
-export function deleteContractSavedView(
-  viewId: string,
-  expectedRowVersion: number,
-): Promise<void> {
+export function deleteContractSavedView(viewId: string, expectedRowVersion: number): Promise<void> {
   return requestJson(
     `${CONTRACT_LEDGER_PATH}/views/${encodeURIComponent(viewId)}?expected_row_version=${expectedRowVersion}`,
     { method: "DELETE" },
     (value) => {
       const result = object(value, "contract");
-      if (!bool(result.deleted, "contract.deleted"))
-        throw new Error("合同视图删除响应无法识别");
+      if (!bool(result.deleted, "contract.deleted")) throw new Error("合同视图删除响应无法识别");
     },
   );
 }
@@ -1653,17 +1984,16 @@ export function createContractExport(
 ): Promise<ContractExport> {
   return requestJson(
     `${CONTRACT_LEDGER_PATH}/exports`,
-    jsonInit(
-      "POST",
-      payload,
-      { "Idempotency-Key": idempotencyKey },
-    ),
+    jsonInit("POST", payload, { "Idempotency-Key": idempotencyKey }),
     parseContractExport,
   );
 }
 
 /** Downloads are byte streams, not JSON, so they bypass requestJson. */
-export async function downloadContractExport(exportId: string, commandContext: CommandContext): Promise<Blob> {
+export async function downloadContractExport(
+  exportId: string,
+  commandContext: CommandContext,
+): Promise<Blob> {
   assertCommandContextCurrent(commandContext);
   let response: Response;
   try {

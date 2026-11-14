@@ -2,9 +2,9 @@
 // Purpose: Delegates OpenAPI schema compilation to locked openapi-typescript and its AST printer, retaining the WireSchemas alias, schema-derived runtime enums and compatibility CLI modes.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-12
+// Created: 2026-11-14
 // Updated: 2026-11-14
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -47,6 +47,13 @@ const ROOTS = [
   "ContractDeliveryList",
   "ContractDeliveryRequest",
   "ContractFulfillmentItemSummary",
+  "Reminder",
+  "ReminderPlan",
+  "ReminderCreateInput",
+  "ReminderCancelInput",
+  "ReminderDelivery",
+  "ReminderInbox",
+  "ReminderList",
   "ContractRectification",
   "ContractRectificationRequest",
   "ContractPaymentEligibilityRequest",

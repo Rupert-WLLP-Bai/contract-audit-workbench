@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "schema_version": 45,
+  "schema_version": 46,
   "relations": [
     {
       "name": "activity",
@@ -334,6 +334,30 @@
     },
     {
       "name": "clm_contracts",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_fulfillment_reminder_attempts",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_fulfillment_reminder_deliveries",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_fulfillment_reminder_history",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_fulfillment_reminders",
       "classification": "TENANT_DATA",
       "tenant_column": true,
       "force_rls": true

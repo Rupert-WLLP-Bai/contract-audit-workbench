@@ -3,8 +3,8 @@
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
-<!-- Updated: 2026-11-04 -->
-<!-- Revision: r2 -->
+<!-- Updated: 2026-11-14 -->
+<!-- Revision: r3 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -13,6 +13,22 @@
 ## 环境
 
 需要 Go 1.26.7+、Bun 1.4.3、Node.js 22.12+、Python 3.10+、Docker Engine/Desktop 与 Compose v2。PDF 解析需要 Poppler 的 `pdfinfo`、`pdftotext`、`pdfimages`、`pdftoppm` 和中日韩字符映射文件。
+
+## 单机完整功能
+
+合同审批、履约、提醒以及真实模型处理使用同一台机器上的应用服务与 Worker。已有 Compose 负责连接这些服务，无需 Kubernetes 或多节点环境：
+
+```bash
+make setup
+make app-bootstrap
+make app-config
+make infra-up
+make apps-up
+```
+
+启动前在私有 `.env` 配置实际文本/OCR模型及凭据。`make apps-up` 会执行离线迁移，启动每个服务的一个实例和业务、管理、门户前端；访问地址见命令输出。仅验证确定性业务流程时可使用明确标记的 `make apps-up-fixture`，该模式不代表真实模型验收。停止应用用 `make apps-down`，保留业务数据。
+
+履约提醒需要 Core 与 Worker 均正常运行。只启动下面的单进程开发入口时，提醒确认会明确返回服务尚未启用，不会接受永远无法投递的任务。已经持久化的提醒与投递历史仍按当前授权读取。
 
 ## 单进程开发
 
@@ -62,6 +78,12 @@ make web
 | `demo-tenant2-viewer` | `tenant2-viewer-demo` | 只读 | `local-demo-2` | `demo-org-2` |
 
 模型与 OCR 服务由部署方提供。在 `.env` 配置 `LLM_BASE_URL`、`LLM_MODEL`、`OCR_MODEL` 与 `LLM_API_KEY`。模型不可用时，相关审查会记录失败或部分完成，不自动生成模型结论。模型 ID 应与端点 `/v1/models` 返回的目录一致，不能把可接受别名当作正式模型 ID。
+
+## 本机文本与 OCR 模型
+
+`.env.example` 分别示例 DeepSeek 文本模型和 Qwen3.6 OCR 模型；已有 `.env` 不会被 bootstrap 覆盖，需按端点目录更新实际模型 ID。事实提取沿用高推理强度和 32000 输出上限，各服务的模型身份必须一致。模型网关可以使用 `MODEL_RETRIES=0` 限定为一次物理调用；Compose 会将该值传入网关，默认仍保留既有一次重试策略。
+
+图片请求的保守输入预留可能超过默认 131072 上限。应依据实际请求大小调整 `MODEL_MAX_INPUT_TOKEN_RESERVATION`，并核对输入与输出之和是否在租户和全局分钟预算内。详见[文档解析与模型预算边界](../operations/document-processing.md)；不要把请求超时、预算拒绝或未知日期当作完整解析成功。
 
 ## 会话与运营快照
 

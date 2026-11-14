@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-12
-// Revision: r9
+// Updated: 2026-11-14
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -66,6 +66,7 @@ import { ContractReferencesPanel } from "../components/contract-references-panel
 import { caseSelectPresentation } from "../components/case-select-presentation";
 import { ContractSigningPanel } from "../components/contract-signing-panel";
 import { ContractFulfillmentPanel } from "../components/contract-fulfillment-panel";
+import { ContractReminderInbox } from "../components/contract-reminder-inbox";
 import { ContractPaymentsPanel } from "../components/contract-payments-panel";
 import { ContractAssetsPanel } from "../components/contract-assets-panel";
 import { ContractLifecycleOverviewPanel } from "../components/contract-lifecycle-overview-panel";
@@ -697,6 +698,11 @@ export function ContractsPage() {
             forceRender: true,
             children: (
               <>
+                <ContractReminderInbox
+                  actor={actor}
+                  contracts={ledgerItems}
+                  onOpenContract={openContractDetail}
+                />
                 <div className="contracts-ledger-summary" aria-label="合同台账摘要">
                   <span>生效筛选</span>
                   <strong>{activeLedgerFilters}</strong>

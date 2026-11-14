@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-07
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -146,6 +146,25 @@ func TestOperationOwnedByRouteOwnershipMatrix(t *testing.T) {
 		{"contract-payment-eligibility", "/api/contracts/0a9a0dd1-98f7-4b0a-a7db-a7b4b821a001/payment-eligibility-checks", "core", []string{http.MethodPost}},
 		{"contract-asset-list", "/api/contracts/0a9a0dd1-98f7-4b0a-a7db-a7b4b821a001/assets", "core", []string{http.MethodGet}},
 		{"contract-asset-handover", "/api/contracts/0a9a0dd1-98f7-4b0a-a7db-a7b4b821a001/asset-handovers", "core", []string{http.MethodPost}},
+		{"reminder-inbox", "/api/reminders", "core", []string{http.MethodGet}},
+		{"contract-reminders", "/api/contracts/c/reminders", "core", []string{http.MethodGet, http.MethodPost}},
+		{"contract-reminder-cancel", "/api/contracts/c/reminders/r/cancel", "core", []string{http.MethodPost}},
+		{"contract-deliveries", "/api/contracts/c/deliveries", "core", []string{http.MethodGet, http.MethodPost}},
+		{"contract-acceptances", "/api/contracts/c/acceptances", "core", []string{http.MethodGet, http.MethodPost}},
+		{"contract-rectification", "/api/contracts/c/acceptances/a/rectifications", "core", []string{http.MethodPost}},
+		{"support-inbox", "/api/support-grants", "core", []string{http.MethodGet}},
+		{"contract-source-capability", "/api/contracts/c/source-capability", "core", []string{http.MethodGet}},
+		{"tenant-config", "/api/admin/tenant-config", "core", []string{http.MethodGet}},
+		{"tenant-config-preview", "/api/admin/tenant-config/preview", "core", []string{http.MethodPost}},
+		{"tenant-config-adoption", "/api/admin/tenant-config/adoption", "core", []string{http.MethodPut}},
+		{"tenant-live-control", "/api/admin/tenant-config/live-control", "core", []string{http.MethodPut}},
+		{"tenant-cost-policy", "/api/admin/tenant-cost-policy", "core", []string{http.MethodGet, http.MethodPut}},
+		{"tenant-cost-adjustment", "/api/admin/tenant-cost-adjustments", "core", []string{http.MethodPost}},
+		{"jurisdiction-operations", "/api/admin/jurisdiction/operations", "core", []string{http.MethodGet}},
+		{"platform-money-policy", "/api/admin/platform/model-money-policy", "core", []string{http.MethodGet, http.MethodPut}},
+		{"tenant-provision", "/api/admin/platform/tenant-provision-operations", "core", []string{http.MethodGet, http.MethodPost}},
+		{"tenant-provision-detail", "/api/admin/platform/tenant-provision-operations/o", "core", []string{http.MethodGet}},
+		{"tenant-provision-step", "/api/admin/platform/tenant-provision-operations/o/step", "core", []string{http.MethodPost}},
 		{"approval-inbox", "/api/approval-tasks", "core", []string{http.MethodGet}},
 		{"approval-task-detail", "/api/approval-tasks/t", "core", []string{http.MethodGet}},
 		{"approval-decision", "/api/approval-tasks/t/decisions", "core", []string{http.MethodPost}},

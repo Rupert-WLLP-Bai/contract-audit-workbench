@@ -2,13 +2,13 @@
 // Purpose: Displays bounded advisory contract facts with explicit uncertainty and actions that locate verified frozen source text without creating risk conclusions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-12
-// Updated: 2026-11-12
-// Revision: r1
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
-import { Alert, Button, Card, Tag, Typography } from "antd";
+import { Alert, Button, Collapse, Tag, Typography } from "antd";
 import type { ContractFactsCitation, ContractFactsProjection } from "../api/contract-facts";
 
 const labels: Record<ContractFactsProjection["fields"][number]["field"], string> = {
@@ -49,54 +49,85 @@ export function ContractFactsPanel({
 }) {
   if (!facts) return null;
   const structuredOutputUnavailable = facts.structured_output_status !== "valid";
+  const uncertainCount = facts.fields.filter((field) => field.status !== "known").length;
+  const incomplete =
+    structuredOutputUnavailable || facts.input_truncated || facts.status === "partial";
   return (
-    <Card size="small" title="合同事实建议" variant="outlined">
-      <Alert
-        type={structuredOutputUnavailable ? "warning" : "info"}
-        showIcon
-        message="模型建议需人工核对；它不构成风险结论或法律判断。"
-        description={
-          structuredOutputUnavailable
-            ? "请求没有形成可用的结构化事实输出，当前字段只表示未知；请核对冻结原文。"
-            : facts.input_truncated
-              ? "正文按上限截断，未提供部分保持未知；本次结果为不完整建议。"
-              : facts.status === "partial"
-                ? "本次没有达到完整覆盖；未知项不表示合同没有约定，仍需核对冻结原文。"
-                : "引用可定位到本次冻结原文，引用存在不代表事实归纳正确。"
-        }
-      />
-      <ul>
-        {facts.fields.map((field) => (
-          <li key={field.field}>
-            <Typography.Text strong>{labels[field.field]}</Typography.Text>{" "}
-            <Tag color={statusColor(field.status)}>{statusLabel(field.status)}</Tag>
-            <Typography.Paragraph>
-              {field.status === "known"
-                ? field.value
-                : field.status === "conflicting"
-                  ? "模型提示不同表述，请结合冻结原文核对。"
-                  : "没有足够依据，保持未知。"}
-            </Typography.Paragraph>
-            {field.citations.length > 0 ? (
+    <Collapse
+      key={facts.attempt_id}
+      size="small"
+      items={[
+        {
+          key: "facts",
+          label: (
+            <span>
+              <Typography.Text strong>合同事实建议</Typography.Text>
+              {" · "}
+              {facts.fields.length} 项，其中 {uncertainCount} 项未知或待核对
+              {" · "}需人工核对
+            </span>
+          ),
+          extra: incomplete ? (
+            <Tag color="warning">
+              {structuredOutputUnavailable ? "结构化建议不可用" : "未完整覆盖"}
+            </Tag>
+          ) : undefined,
+          children: (
+            <>
+              <Alert
+                type={structuredOutputUnavailable ? "warning" : "info"}
+                showIcon
+                title="模型建议需人工核对；它不构成风险结论或法律判断。"
+                description={
+                  structuredOutputUnavailable
+                    ? "请求没有形成可用的结构化事实输出，当前字段只表示未知；请核对冻结原文。"
+                    : facts.input_truncated
+                      ? "正文按上限截断，未提供部分保持未知；本次结果为不完整建议。"
+                      : facts.status === "partial"
+                        ? "本次没有达到完整覆盖；未知项不表示合同没有约定，仍需核对冻结原文。"
+                        : "引用可定位到本次冻结原文，引用存在不代表事实归纳正确。"
+                }
+              />
               <ul>
-                {field.citations.map((citation, index) => {
-                  const key = `${field.field}-${index}`;
-                  return (
-                    <li key={key}>
-                      <Typography.Text>{citation.quote}</Typography.Text>
-                      {onLocate ? (
-                        <Button type="link" size="small" onClick={() => onLocate(citation, key)}>
-                          定位冻结原文
-                        </Button>
-                      ) : null}
-                    </li>
-                  );
-                })}
+                {facts.fields.map((field) => (
+                  <li key={field.field}>
+                    <Typography.Text strong>{labels[field.field]}</Typography.Text>{" "}
+                    <Tag color={statusColor(field.status)}>{statusLabel(field.status)}</Tag>
+                    <Typography.Paragraph>
+                      {field.status === "known"
+                        ? field.value
+                        : field.status === "conflicting"
+                          ? "模型提示不同表述，请结合冻结原文核对。"
+                          : "没有足够依据，保持未知。"}
+                    </Typography.Paragraph>
+                    {field.citations.length > 0 ? (
+                      <ul>
+                        {field.citations.map((citation, index) => {
+                          const key = `${field.field}-${index}`;
+                          return (
+                            <li key={key}>
+                              <Typography.Text>{citation.quote}</Typography.Text>
+                              {onLocate ? (
+                                <Button
+                                  type="link"
+                                  size="small"
+                                  onClick={() => onLocate(citation, key)}
+                                >
+                                  定位冻结原文
+                                </Button>
+                              ) : null}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
+                  </li>
+                ))}
               </ul>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-    </Card>
+            </>
+          ),
+        },
+      ]}
+    />
   );
 }

@@ -3,8 +3,8 @@
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-10-25 -->
-<!-- Updated: 2026-11-02 -->
-<!-- Revision: r3 -->
+<!-- Updated: 2026-11-14 -->
+<!-- Revision: r4 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -30,22 +30,15 @@ make infra-up
 make infra-smoke
 ```
 
-终端一：
+完整功能在同一主机启动各应用服务和 Worker：
 
 ```bash
-set -a
-source .env
-set +a
-make dev
+make apps-up
 ```
 
-终端二：
+启动前在私有 `.env` 填写实际文本/OCR模型及凭据；前端访问地址以命令输出为准。只验证确定性业务流程时可使用 `make apps-up-fixture`，不计为真实模型验收。履约提醒需要同机 Core 与 Worker 正常运行。
 
-```bash
-make web
-```
-
-API 默认在 `http://127.0.0.1:8080`，前端在 `http://127.0.0.1:5173`。配置和演示账号见[本地开发手册](docs/engineering/local-development.md)。
+仅开发前端和离线规则时，可分别用 `make dev` 与 `make web` 启动单进程 API 和 Vite，默认地址为 `http://127.0.0.1:8080` 与 `http://127.0.0.1:5173`。完整配置和演示账号见[本地开发手册](docs/engineering/local-development.md)。
 
 单进程离线启动不要求模型网关。真实模型审查需要现有预算网关、独立的模型数据库角色 `MODEL_DATABASE_URL`，以及 `MODEL_GATEWAY_URL`、`WORKER_MODEL_TOKEN`、`DOCUMENT_MODEL_TOKEN` 和 `CORE_MODEL_AUTHORITY_TOKEN`；凭据必须彼此不同。模型网关以 `CORE_AUTHORITY_URL` 回连单进程 API 的私有授权接口；开发环境使用回环 HTTP 时须显式设置 `CORE_AUTHORITY_ALLOW_INSECURE_DEV=true`。缺少网关配置或只设置直连模型端点时，启动会给出错误。
 

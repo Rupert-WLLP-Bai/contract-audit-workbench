@@ -3,8 +3,8 @@
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
-<!-- Updated: 2026-11-12 -->
-<!-- Revision: r4 -->
+<!-- Updated: 2026-11-14 -->
+<!-- Revision: r5 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -26,6 +26,8 @@
 合同台账区分草稿、冻结修订、历史导入、会签、签署和履约事实。冻结修订不会被后续草稿编辑覆盖；每次案件审查也冻结当次材料、解析、规则与知识版本。存量来源、会签历史或外部事实没有证据时保持未知，不从当前配置补造历史。
 
 付款资格核验、可信付款/冲正回执、冻结资产计划、人工移交及可信 ERP 入账/冲正是工作台已有的业务记录。它们按当前授权流程写入本地事实，不表示银行已转账、金融或 ERP 来源已实时连接，也不执行外部系统写回。既有来源身份、观察历史及可信回执能力继续按其原始边界使用；当前文档不承诺真实外部系统接入。
+
+履约提醒从当前有效合同的冻结交付、验收或付款计划读取明确日期，由用户确认“提醒我”、时区和提前天数。站内收件箱位于合同台账；投递前及读取时再次检查当前授权。计划修改采用取消后重新确认，取消或修订失效不删除历史；提醒不批准验收、不执行付款，也不表示用户已读。未启用提醒服务时明确拒绝确认。
 
 数据库迁移兼容范围以当前源码的 [`internal/store/migrations.go`](../../internal/store/migrations.go) 和迁移目录为准；应用打开连接时核对迁移账本，不自动执行迁移（[`internal/store/pg.go`](../../internal/store/pg.go)）。源码存在某项功能，不证明目标环境已升级、已配置或完成完整候选验收。PR [#144](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/144) 合入源码 `1a9eae0` 时的历史局部 `pr-fast-gate` 证据见[原运行记录](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/actions/runs/41339271202)；它只对应当时固定源码，不代表当前源码、当前部署或完整验收结果。
 
