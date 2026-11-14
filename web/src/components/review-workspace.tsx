@@ -839,7 +839,9 @@ export function ReviewWorkspaceView({
                 remediations: matchingCaseDetail?.remediations ?? [],
                 caseDetail: matchingCaseDetail,
                 canWrite:
-                  canDecide && matchingCaseDetail !== undefined && matchingCaseDetail.archived_at === null,
+                  canDecide &&
+                  matchingCaseDetail !== undefined &&
+                  matchingCaseDetail.archived_at === null,
               }}
             />
           </div>

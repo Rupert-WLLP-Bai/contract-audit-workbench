@@ -757,11 +757,7 @@ function FindingDetail({
       <FindingDetailHeader finding={finding} showDiagnostics={showDiagnostics} />
       <EvidenceList finding={finding} documents={documents} showDiagnostics={showDiagnostics} />
       {clauseProposalContext ? (
-        <ClauseProposalPanel
-          {...clauseProposalContext}
-          finding={finding}
-          documents={documents}
-        />
+        <ClauseProposalPanel {...clauseProposalContext} finding={finding} documents={documents} />
       ) : null}
       <DecisionHistory decisions={finding.decisions} />
       <DecisionForm

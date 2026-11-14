@@ -22,7 +22,10 @@ export type ClauseProposalDerivedTextInput = WireSchemas["ClauseDerivedRequest"]
 export type ClauseProposalDerivedText = WireSchemas["ClauseDerivedResponse"] & {
   format: "derived_plain_text";
 };
-export type ClauseProposalDecisionInput = Omit<WireSchemas["ClauseProposalDecision"], "action" | "confirmed"> & {
+export type ClauseProposalDecisionInput = Omit<
+  WireSchemas["ClauseProposalDecision"],
+  "action" | "confirmed"
+> & {
   action: "accept" | "accept_edited" | "reject";
   confirmed: true;
 };
@@ -91,13 +94,19 @@ function parsePlaybook(value: unknown, path: string): ClauseProposal["playbook"]
 export function parseClauseProposal(value: unknown, path = "proposal"): ClauseProposal {
   const row = reader.object(value, path);
   const status = reader.text(row.status, `${path}.status`);
-  if (status !== "pending" && status !== "accept" && status !== "accept_edited" && status !== "reject") {
+  if (
+    status !== "pending" &&
+    status !== "accept" &&
+    status !== "accept_edited" &&
+    status !== "reject"
+  ) {
     throw new Error(`${path}.status 无效`);
   }
   const history = reader.array(row.history, `${path}.history`, parseHistory);
-  const evidence = row.evidence === undefined || row.evidence === null
-    ? undefined
-    : parseEvidence(row.evidence, `${path}.evidence`);
+  const evidence =
+    row.evidence === undefined || row.evidence === null
+      ? undefined
+      : parseEvidence(row.evidence, `${path}.evidence`);
   const findingId = reader.maybeText(row.finding_id, `${path}.finding_id`);
   const originalText = reader.maybeText(row.original_text, `${path}.original_text`);
   const beforeContext = reader.maybeText(row.before_context, `${path}.before_context`);
@@ -107,6 +116,8 @@ export function parseClauseProposal(value: unknown, path = "proposal"): ClausePr
   return {
     id: reader.text(row.id, `${path}.id`),
     case_id: reader.text(row.case_id, `${path}.case_id`),
+    created_at: reader.text(row.created_at, `${path}.created_at`),
+    created_by: reader.text(row.created_by, `${path}.created_by`),
     run_id: reader.text(row.run_id, `${path}.run_id`),
     attempt_id: reader.text(row.attempt_id, `${path}.attempt_id`),
     input_hash: reader.text(row.input_hash, `${path}.input_hash`),
@@ -147,7 +158,11 @@ export function parseClauseProposalDerivedText(value: unknown): ClauseProposalDe
 }
 
 export function listClauseProposals(caseId: string, signal?: AbortSignal) {
-  return requestJson(paths.clauseProposals(caseId), { method: "GET", signal }, parseClauseProposalList);
+  return requestJson(
+    paths.clauseProposals(caseId),
+    { method: "GET", signal },
+    parseClauseProposalList,
+  );
 }
 
 export function createClauseProposal(
