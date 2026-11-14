@@ -101,12 +101,15 @@ func TestKnowledgeAcceptanceDeferredOutboxFailureRollsBackExecutionRole(t *testi
 	if !ok {
 		t.Fatal("demo admin missing")
 	}
+	actor, sessionToken := durableSessionUser(t, core, actor)
+	documents.UseOperationAuthority(durableTestOperationAuthority{core: core})
+	execution.UseOperationAuthority(durableTestOperationAuthority{core: core})
 	pack := publishSyntheticAcceptancePack(t, core, actor)
 	publishSyntheticAcceptancePolicy(t, core, actor, pack)
 	caseID := acceptanceKnowledgeCase(t, core, documents, actor)
 	execution.UseDocumentPreparer(documents)
 	execution.UseModels(&frozenOCRModel{})
-	ctx := context.Background()
+	ctx := WithAdmissionSessionToken(context.Background(), sessionToken)
 	const firstKey = "c305-original"
 	const nextKey = "c305-deferred"
 	first, err := execution.StartReviewAsyncAt(WithReviewIdempotency(ctx, firstKey), actor, caseID, acceptanceBusinessTime)

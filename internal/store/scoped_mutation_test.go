@@ -30,6 +30,19 @@ import (
 // Keep independent test consumers on the same Core authority path as services.
 type durableTestOperationAuthority struct{ core *Store }
 
+func durableSessionUser(t *testing.T, core *Store, user accounts.User) (accounts.User, string) {
+	t.Helper()
+	token, err := core.EstablishSession(user, "client")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, _, err = core.AuthenticateSession(context.Background(), token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return user, token
+}
+
 func (a durableTestOperationAuthority) ResolveOperation(ctx context.Context, scope model.DelegatedScope) (accounts.User, error) {
 	caller := "worker"
 	if scope.Kind == "document" {
