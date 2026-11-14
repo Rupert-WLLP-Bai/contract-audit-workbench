@@ -32,6 +32,49 @@ func (revokedAgentStepAuthority) ResolveOperation(context.Context, model.Delegat
 	return accounts.User{}, errAttemptAuthorizationRevoked
 }
 
+func TestAgentStepCheckpointStartupRejectsWeakenedPolicy(t *testing.T) {
+	env, ok := newDurableRoleEnvironment(t)
+	if !ok {
+		t.Skip("TEST_DATABASE_URL and MIGRATOR_DATABASE_URL are required for isolated durable role checks")
+	}
+	ctx := context.Background()
+	core := env.openRole(t, "core")
+	table := pgx.Identifier{env.harness.schema, "execution_agent_step_checkpoints"}.Sanitize()
+	var using, check string
+	if err := env.harness.pool.QueryRow(ctx, `SELECT pg_get_expr(polqual,polrelid),pg_get_expr(polwithcheck,polrelid)
+ FROM pg_policy WHERE polrelid=$1::regclass AND polname='tenant_boundary'`, table).Scan(&using, &check); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkTableIsolationCatalog(ctx, core.pool, env.harness.schema); err != nil {
+		t.Fatalf("migration policy rejected: %v", err)
+	}
+	tenantOnly := "tenant_id=current_setting('app.tenant_id',true)"
+	for _, test := range []struct{ name, using, check string }{
+		{"tenant_only", tenantOnly, tenantOnly},
+		{"using_escape", using + " OR true", check},
+		{"lease_removed", strings.ReplaceAll(using, "claim.lease_until > clock_timestamp()", "true"), check},
+		{"generation_weakened", using, strings.ReplaceAll(check, "(generation = ", "(generation >= ")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if test.using == using && test.check == check {
+				t.Fatal("policy mutation did not change the catalog expression")
+			}
+			alter := func(using, check string) {
+				t.Helper()
+				if _, err := env.harness.pool.Exec(ctx, "ALTER POLICY tenant_boundary ON "+table+" USING ("+using+") WITH CHECK ("+check+")"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			alter(test.using, test.check)
+			defer alter(using, check)
+			err := checkTableIsolationCatalog(ctx, core.pool, env.harness.schema)
+			if err == nil || !strings.Contains(err.Error(), "execution_agent_step_checkpoints") {
+				t.Fatalf("weakened checkpoint policy accepted or wrong rejection: %v", err)
+			}
+		})
+	}
+}
+
 func TestAgentStepCheckpointTakeoverReuseAndFences(t *testing.T) {
 	ctx := context.Background()
 	fixture, ok := newDurableFixture(t)
@@ -71,7 +114,7 @@ func TestAgentStepCheckpointTakeoverReuseAndFences(t *testing.T) {
 	if err := journal.Finish(claimCtx, identity, outcome); err != nil {
 		t.Fatalf("persist first generation step: %v", err)
 	}
-	if err := fixture.execution.HeartbeatJob(ctx, fixture.claim, time.Minute); err != nil {
+	if _, err := fixture.execution.HeartbeatJob(ctx, fixture.claim, time.Minute); err != nil {
 		t.Fatalf("heartbeat before takeover: %v", err)
 	}
 	expireDurableClaim(t, fixture)
