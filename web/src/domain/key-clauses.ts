@@ -232,7 +232,7 @@ function boundedContextRanges(textIndex: CodePointTextIndex, sentence: TextOffse
     const maxLength = Math.min(MAX_FROZEN_QUOTE_LENGTH, sentence.end - sentence.start);
     const centeredStart = hit.start - Math.floor((maxLength - (hit.end - hit.start)) / 2);
     let start = Math.max(sentence.start, centeredStart);
-    let end = Math.min(sentence.end, start + maxLength);
+    const end = Math.min(sentence.end, start + maxLength);
     if (end - start < maxLength) start = Math.max(sentence.start, end - maxLength);
     return { start, end };
   });
