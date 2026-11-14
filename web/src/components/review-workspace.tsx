@@ -630,6 +630,15 @@ export function ReviewWorkspaceView({
       if (!parsedDocumentId || !attemptParsedIds.has(parsedDocumentId)) return [];
       const parsedDocument = document.parsed_document;
       if (
+        quoteScope.sourceProofs?.some(
+          (proof) =>
+            proof.documentId === document.id &&
+            proof.parsedDocumentId === parsedDocumentId &&
+            proof.originalDigest === document.digest,
+        )
+      )
+        return [parsedDocumentId];
+      if (
         !parsedDocument ||
         parsedDocument.id !== parsedDocumentId ||
         parsedDocument.document_id !== document.id ||
