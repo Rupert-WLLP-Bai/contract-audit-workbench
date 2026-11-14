@@ -36,6 +36,8 @@ func TestLegalApplicabilityRecordReplayResolveAndReopenInPostgres(t *testing.T) 
 		t.Fatal("demo admin missing")
 	}
 	core, document := env.openRole(t, "core"), env.openRole(t, "document")
+	admin, _ = durableSessionUser(t, core, admin)
+	document.UseOperationAuthority(durableTestOperationAuthority{core: core})
 	execution := env.openRole(t, "execution")
 	ctx := context.Background()
 	caseID, err := core.CreateCase(admin, "法律适用事实持久化", "procurement_ict")
@@ -394,6 +396,8 @@ func TestLegalApplicabilityHistoricalTimelineAndPartyCorrectionInPostgres(t *tes
 		t.Fatal("demo admin missing")
 	}
 	core, document := env.openRole(t, "core"), env.openRole(t, "document")
+	admin, _ = durableSessionUser(t, core, admin)
+	document.UseOperationAuthority(durableTestOperationAuthority{core: core})
 	ctx := context.Background()
 	caseID, err := core.CreateCase(admin, "法律适用历史区间与主体固定", "procurement_ict")
 	if err != nil {
