@@ -53,12 +53,17 @@ func TestGovernedPlaybookLifecycleWithRestrictedRoles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreign, ok := accounts.ByID("demo-tenant2-admin")
+	viewer, ok := accounts.ByID("demo-viewer")
 	if !ok {
-		t.Fatal("foreign tenant fixture unavailable")
+		t.Fatal("read-only fixture unavailable")
 	}
-	if _, err := core.ListCasePlaybooks(ctx, foreign, caseID); err == nil {
-		t.Fatal("foreign tenant could list case playbooks")
+	viewerSession, err := core.ResolveVerifiedOIDC(ctx, viewer, "client")
+	if err != nil {
+		t.Fatalf("authenticate read-only actor: %v", err)
+	}
+	viewerContext := WithAdmissionSessionToken(context.Background(), viewerSession.SessionToken)
+	if _, err := core.ListCasePlaybooks(viewerContext, viewerSession.User, caseID); err == nil {
+		t.Fatal("actor without review permission could list adoptable playbooks")
 	}
 	materialBody := []byte("审批引用材料")
 	upload, err := documents.UploadMaterial(ctx, actor, caseID, "attachment", "approval.txt", "text/plain", materialBody, MaterialUploadOptions{IdempotencyKey: "pb-approval-material"})
