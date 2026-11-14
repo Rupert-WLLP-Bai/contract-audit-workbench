@@ -159,11 +159,7 @@ export function listTemplates(caseId?: string, signal?: AbortSignal) {
   const query = new URLSearchParams();
   if (caseId) query.set("case_id", caseId);
   const suffix = query.size === 0 ? "" : `?${query.toString()}`;
-  return requestJson(
-    `${paths.templates}${suffix}`,
-    { method: "GET", signal },
-    parseTemplateList,
-  );
+  return requestJson(`${paths.templates}${suffix}`, { method: "GET", signal }, parseTemplateList);
 }
 
 export function createGeneration(caseId: string, input: GenerationInput, idempotencyKey: string) {

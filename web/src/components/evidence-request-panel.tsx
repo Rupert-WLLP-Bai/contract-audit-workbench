@@ -10,17 +10,49 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Select } from "antd";
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type SyntheticEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type SyntheticEvent,
+} from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import type { BusinessAgentCapability, BusinessAgentGap, BusinessAgentReview } from "../api/business-agent-review";
+import type {
+  BusinessAgentCapability,
+  BusinessAgentGap,
+  BusinessAgentReview,
+} from "../api/business-agent-review";
 import { getCase, getReview, getSession, getWorkbench } from "../api/endpoints";
-import { assertCommandContextCurrent, captureCommandContext, isForbidden, isUnauthenticated } from "../api/http";
-import { clearPendingMutationKey, fileSha256, idempotencyActorScope, newIdempotencyKey, pendingMutationKey } from "../api/idempotency";
+import {
+  assertCommandContextCurrent,
+  captureCommandContext,
+  isForbidden,
+  isUnauthenticated,
+} from "../api/http";
+import {
+  clearPendingMutationKey,
+  fileSha256,
+  idempotencyActorScope,
+  newIdempotencyKey,
+  pendingMutationKey,
+} from "../api/idempotency";
 import { actorReadContextKey } from "../domain/actor-read-context";
 import {
-  activeEvidenceSource, activateEvidenceDraft, beginEvidenceOperation, clearAllEvidenceDrafts, clearEvidenceDraft, clearRejectedEvidenceOperation,
-  evidenceDraftScope, evidenceOperationCurrent, interruptEvidenceDraft, readEvidenceDraft, updateEvidenceDraft,
-  updateEvidenceOperation, useEvidenceDraft,
+  activeEvidenceSource,
+  activateEvidenceDraft,
+  beginEvidenceOperation,
+  clearAllEvidenceDrafts,
+  clearEvidenceDraft,
+  clearRejectedEvidenceOperation,
+  evidenceDraftScope,
+  evidenceOperationCurrent,
+  interruptEvidenceDraft,
+  readEvidenceDraft,
+  updateEvidenceDraft,
+  updateEvidenceOperation,
+  useEvidenceDraft,
 } from "../features/review/evidence-request-drafts";
 import {
   createEvidenceReceipt,
@@ -38,7 +70,14 @@ import {
 } from "../api/evidence-workflow";
 import { ErrorNotice } from "./error-notice";
 import { queryKeys, useCreateWorkbenchTask, useStartReview } from "../api/queries";
-import type { Actor, CaseDetail, ConstraintEvaluation, ReviewDocument, ReviewWorkspace, WorkbenchTask } from "../api/types";
+import type {
+  Actor,
+  CaseDetail,
+  ConstraintEvaluation,
+  ReviewDocument,
+  ReviewWorkspace,
+  WorkbenchTask,
+} from "../api/types";
 import type { PlaybookRef } from "../api/playbooks";
 import { caseHref, formatDateTime, relationLabel, roleLabel } from "../domain/review";
 import { businessCapabilityLabel, businessDomainLabel } from "../domain/business-labels";
@@ -60,9 +99,21 @@ const materialRoles = [
   { value: "attachment", label: "技术附件" },
 ];
 
-const conditionLabels: Record<string, string> = { compatible: "检查结果一致", conflict: "检查结果存在冲突", resolved: "缺口已解决" };
-const statusLabels: Record<string, string> = { open: "待提交", received: "已提交，待复核", verified: "已核验" };
-const eventLabels: Record<string, string> = { created: "创建请求", received: "提交回执", verified: "完成核验" };
+const conditionLabels: Record<string, string> = {
+  compatible: "检查结果一致",
+  conflict: "检查结果存在冲突",
+  resolved: "缺口已解决",
+};
+const statusLabels: Record<string, string> = {
+  open: "待提交",
+  received: "已提交，待复核",
+  verified: "已核验",
+};
+const eventLabels: Record<string, string> = {
+  created: "创建请求",
+  received: "提交回执",
+  verified: "完成核验",
+};
 const requestKey = evidenceRequestsKey;
 
 function useOperationKeys() {
@@ -82,8 +133,13 @@ function sameObjects(before: string[], after: string[]): boolean {
   if (before.length !== after.length) return false;
   const beforeSet = new Set(before);
   const afterSet = new Set(after);
-  return before.every(Boolean) && after.every(Boolean) && beforeSet.size === before.length &&
-    afterSet.size === after.length && before.every((value) => afterSet.has(value));
+  return (
+    before.every(Boolean) &&
+    after.every(Boolean) &&
+    beforeSet.size === before.length &&
+    afterSet.size === after.length &&
+    before.every((value) => afterSet.has(value))
+  );
 }
 
 function displayGap(domain: string, capability: string): string {
@@ -98,7 +154,8 @@ function roleHasPermission(role: string | undefined, allowed: readonly string[])
 
 function requestPermissions(context: PanelContext) {
   const role = context.actor?.role;
-  const available = context.allowWrites && context.detailReady && context.detail?.archived_at === null;
+  const available =
+    context.allowWrites && context.detailReady && context.detail?.archived_at === null;
   return {
     canSubmit: available && roleHasPermission(role, ["admin", "reviewer", "clerk"]),
     canUpload: available && roleHasPermission(role, ["admin", "clerk"]),
@@ -111,10 +168,13 @@ function matchingSourceEvaluations(
   evaluations: ConstraintEvaluation[],
 ): ConstraintEvaluation[] {
   if (!source) return [];
-  return evaluations.filter((entry) =>
-    entry.domain === source.domain && entry.rule_version === source.rule_version &&
-    entry.rule_id === source.rule_id && entry.capability_id === source.capability_id &&
-    sameObjects(source.object_refs, entry.object_refs),
+  return evaluations.filter(
+    (entry) =>
+      entry.domain === source.domain &&
+      entry.rule_version === source.rule_version &&
+      entry.rule_id === source.rule_id &&
+      entry.capability_id === source.capability_id &&
+      sameObjects(source.object_refs, entry.object_refs),
   );
 }
 
@@ -126,7 +186,11 @@ function matchingSourceGap(
   if (!source || !agentReview || agentReview.attempt_id !== attemptId) return undefined;
   const matches = (agentReview.gaps ?? []).filter((gap) => gap.gap_id === source.gap_id);
   const candidate = matches.length === 1 ? matches[0] : undefined;
-  if (!candidate || candidate.domain !== source.domain || candidate.capability_id !== source.capability_id)
+  if (
+    !candidate ||
+    candidate.domain !== source.domain ||
+    candidate.capability_id !== source.capability_id
+  )
     return undefined;
   return candidate;
 }
@@ -137,10 +201,12 @@ function gapIsResolved(
 ): boolean {
   const capability = matchingGapCapability(gap, agentReview);
   if (!gap || !capability) return false;
-  return gap.status === "resolved" &&
+  return (
+    gap.status === "resolved" &&
     !(agentReview?.unresolved_gap_ids ?? []).includes(gap.gap_id) &&
     capability.status === "completed" &&
-    (capability.relation === "compatible" || capability.relation === "conflict");
+    (capability.relation === "compatible" || capability.relation === "conflict")
+  );
 }
 
 function matchingGapCapability(
@@ -161,9 +227,15 @@ function hasLaterFrozenAttempt(
   runId: string,
   sourceAttemptId: string | null,
 ): boolean {
-  return !!attemptId && attempt?.id === attemptId && attempt.run_id === runId &&
-    attempt.id !== sourceAttemptId && attempt.history_kind === "frozen" &&
-    !!attempt.finished_at && (attempt.state === "completed" || attempt.state === "partial");
+  return (
+    !!attemptId &&
+    attempt?.id === attemptId &&
+    attempt.run_id === runId &&
+    attempt.id !== sourceAttemptId &&
+    attempt.history_kind === "frozen" &&
+    !!attempt.finished_at &&
+    (attempt.state === "completed" || attempt.state === "partial")
+  );
 }
 
 function receiptFrozenDocuments(
@@ -171,11 +243,13 @@ function receiptFrozenDocuments(
   item: EvidenceRequest,
   receipt: EvidenceReceipt | undefined,
 ) {
-  return (documents ?? []).filter((document) =>
-    referenceableFrozenDocument(document) &&
-    matchesRequestMaterialRole(document, item) &&
-    matchesReceiptDocument(document, receipt) &&
-    matchesReceiptAnswer(document, receipt));
+  return (documents ?? []).filter(
+    (document) =>
+      referenceableFrozenDocument(document) &&
+      matchesRequestMaterialRole(document, item) &&
+      matchesReceiptDocument(document, receipt) &&
+      matchesReceiptAnswer(document, receipt),
+  );
 }
 
 function referenceableFrozenDocument(document: ReviewDocument): boolean {
@@ -186,11 +260,17 @@ function matchesRequestMaterialRole(document: ReviewDocument, item: EvidenceRequ
   return !item.material_role || document.role === item.material_role;
 }
 
-function matchesReceiptDocument(document: ReviewDocument, receipt: EvidenceReceipt | undefined): boolean {
+function matchesReceiptDocument(
+  document: ReviewDocument,
+  receipt: EvidenceReceipt | undefined,
+): boolean {
   return !receipt?.document_id || document.id === receipt.document_id;
 }
 
-function matchesReceiptAnswer(document: ReviewDocument, receipt: EvidenceReceipt | undefined): boolean {
+function matchesReceiptAnswer(
+  document: ReviewDocument,
+  receipt: EvidenceReceipt | undefined,
+): boolean {
   return !receipt?.answer || !!document.text?.includes(receipt.answer);
 }
 
@@ -200,16 +280,25 @@ function quoteMatchesFrozenDocument(
   document: ReviewDocument | undefined,
   receipt: EvidenceReceipt | undefined,
 ): boolean {
-  return quote !== null && frozenQuoteMatchesDocument(quote, scope, document) &&
-    (!receipt?.answer || quote.quote.includes(receipt.answer));
+  return (
+    quote !== null &&
+    frozenQuoteMatchesDocument(quote, scope, document) &&
+    (!receipt?.answer || quote.quote.includes(receipt.answer))
+  );
 }
 
 function requiresBusinessReviewTime(detail: CaseDetail | undefined): boolean {
   if (!detail) return false;
   if (detail.business_line === "ENT" && detail.scenario === "telecom_dedicated_line") return true;
-  if (detail.business_line === "ENT" && detail.scenario === "cloud_services") return detail.contract_type === "service";
-  return !!detail.business_line && detail.business_line !== "unspecified" &&
-    !!detail.scenario && detail.scenario !== "unspecified" && !!detail.contract_type;
+  if (detail.business_line === "ENT" && detail.scenario === "cloud_services")
+    return detail.contract_type === "service";
+  return (
+    !!detail.business_line &&
+    detail.business_line !== "unspecified" &&
+    !!detail.scenario &&
+    detail.scenario !== "unspecified" &&
+    !!detail.contract_type
+  );
 }
 
 function requestCardReviewFacts(
@@ -224,7 +313,8 @@ function requestCardReviewFacts(
   const matchingEvaluations = matchingSourceEvaluations(source, evaluations);
   const gap = matchingSourceGap(item.source_gap, agentReview, attemptId);
   const observed = source
-    ? matchingEvaluations.length === 1 && matchingEvaluations[0]?.relation === item.verification_condition
+    ? matchingEvaluations.length === 1 &&
+      matchingEvaluations[0]?.relation === item.verification_condition
     : gapIsResolved(gap, agentReview);
   const attempt = context.workspace?.review_attempts?.attempt;
   return {
@@ -246,8 +336,15 @@ function requestVerificationReady(
   quoteValid: boolean,
   reason: string,
 ): boolean {
-  return canVerify && itemStatus === "received" && !!receipt && frozenLater &&
-    observed && quoteValid && !!reason.trim();
+  return (
+    canVerify &&
+    itemStatus === "received" &&
+    !!receipt &&
+    frozenLater &&
+    observed &&
+    quoteValid &&
+    !!reason.trim()
+  );
 }
 
 function requestMatchDescription(
@@ -263,8 +360,8 @@ function availableRequestDocuments(
   documents: CaseDetail["documents"],
   materialRole: string | null,
 ): CaseDetail["documents"] {
-  return documents.filter((document) =>
-    !document.superseded && (!materialRole || document.role === materialRole),
+  return documents.filter(
+    (document) => !document.superseded && (!materialRole || document.role === materialRole),
   );
 }
 
@@ -277,7 +374,10 @@ function requestDocumentOptions(
     label: `${document.filename}（${roleLabel(document.role)}）`,
   }));
   if (uploaded && !options.some((option) => option.value === uploaded.id))
-    options.push({ value: uploaded.id, label: `${uploaded.filename}（${roleLabel(uploaded.role)}）` });
+    options.push({
+      value: uploaded.id,
+      label: `${uploaded.filename}（${roleLabel(uploaded.role)}）`,
+    });
   return options;
 }
 
@@ -342,7 +442,15 @@ function requestVerificationInput(
   gap: BusinessAgentGap | undefined,
   reason: string,
   expectedVersion: number,
-): { run_id: string; attempt_id: string; evaluation_id?: string; gap_id?: string; evidence: EvidenceQuote[]; reason: string; expected_version: number } | null {
+): {
+  run_id: string;
+  attempt_id: string;
+  evaluation_id?: string;
+  gap_id?: string;
+  evidence: EvidenceQuote[];
+  reason: string;
+  expected_version: number;
+} | null {
   if (!ready || !attemptId || !quote) return null;
   return {
     run_id: runId,
@@ -428,50 +536,46 @@ function RequestCardHeading({
         要求材料：{item.material_role ? roleLabel(item.material_role) : "不限材料类型"}；核验条件：
         {knownLabel(conditionLabels, item.verification_condition, "核验条件待核对")}
       </p>
-      <TechnicalDetail label="补件状态技术详情" value={[item.status, item.verification_condition, item.material_role].filter(Boolean).join(" / ")} />
+      <TechnicalDetail
+        label="补件状态技术详情"
+        value={[item.status, item.verification_condition, item.material_role]
+          .filter(Boolean)
+          .join(" / ")}
+      />
       <p>
         来源：{requestSourceDescription(item)}。{" "}
-        <Link to={caseHref(caseId, item.source_run_id, item.source_attempt_id)}>
-          查看来源审查
-        </Link>
+        <Link to={caseHref(caseId, item.source_run_id, item.source_attempt_id)}>查看来源审查</Link>
       </p>
     </>
   );
 }
 
 function RequestCardNextStep({ item }: { item: EvidenceRequest }) {
-  if (item.status === "open")
-    return <p>下一步：责任人或案件管理人提交材料或答复。</p>;
-  if (item.status === "received")
-    return <p>下一步：提交回执后发起新审查，再按新结果核对原文。</p>;
+  if (item.status === "open") return <p>下一步：责任人或案件管理人提交材料或答复。</p>;
+  if (item.status === "received") return <p>下一步：提交回执后发起新审查，再按新结果核对原文。</p>;
   if (item.status === "verified") return <p>下一步：查看核验审查与处理记录。</p>;
   return null;
 }
 
-function RequestCardVerifiedOutcome({
-  item,
-  caseId,
-}: {
-  item: EvidenceRequest;
-  caseId: string;
-}) {
+function RequestCardVerifiedOutcome({ item, caseId }: { item: EvidenceRequest; caseId: string }) {
   if (item.status !== "verified" || !item.verification) return null;
   const verification = item.verification;
   const relation = verification.relation ?? verification.gap_status ?? "";
   const result = relation ? knownLabel(conditionLabels, relation, "核验结果待核对") : "未报告";
   return (
     <div>
-      <p>核验结果：{result}；{verification.reason}</p>
+      <p>
+        核验结果：{result}；{verification.reason}
+      </p>
       <TechnicalDetail label="核验结果技术详情" value={relation} />
       {verification.evidence.map((entry, index) => (
-        <blockquote key={`${entry.document_id}-${entry.start}-${index}`}>
-          {entry.quote}
-        </blockquote>
+        <blockquote key={`${entry.document_id}-${entry.start}-${index}`}>{entry.quote}</blockquote>
       ))}
       <p>
         <Link to={caseHref(caseId, verification.run_id, verification.attempt_id)}>
           查看核验审查
-        </Link> · {formatDateTime(verification.verified_at)}
+        </Link>{" "}
+        · {formatDateTime(verification.verified_at)}
       </p>
     </div>
   );
@@ -498,9 +602,7 @@ function RequestCardReceiptSummary({
   documents: CaseDetail["documents"];
 }) {
   if (receipts.length === 0)
-    return item.status !== "open" && history.isSuccess
-      ? <p>处理记录中未报告回执。</p>
-      : null;
+    return item.status !== "open" && history.isSuccess ? <p>处理记录中未报告回执。</p> : null;
   return (
     <div>
       <p>已提交材料或答复：</p>
@@ -508,7 +610,8 @@ function RequestCardReceiptSummary({
         {receipts.map((receipt) => (
           <li key={receipt.id}>
             {receipt.document_id
-              ? documents.find((document) => document.id === receipt.document_id)?.filename ?? "材料名称未报告"
+              ? (documents.find((document) => document.id === receipt.document_id)?.filename ??
+                "材料名称未报告")
               : receipt.answer}
             {` · ${formatDateTime(receipt.created_at)}`}
           </li>
@@ -533,8 +636,12 @@ function RequestCardHistoryDetails({
       {history.data ? (
         <ol>
           {history.data.map((event) => (
-            <RequestCardHistoryEvent key={`${event.request.version}-${event.type}`}
-              event={event} context={context} documents={documents} />
+            <RequestCardHistoryEvent
+              key={`${event.request.version}-${event.type}`}
+              event={event}
+              context={context}
+              documents={documents}
+            />
           ))}
         </ol>
       ) : null}
@@ -554,7 +661,8 @@ function RequestCardHistoryEvent({
   const filename = historyReceiptFilename(event, documents);
   return (
     <li>
-      {knownLabel(eventLabels, event.type, "处理类型待核对")} · {historyActorName(event, context)} · {formatDateTime(event.occurred_at)}
+      {knownLabel(eventLabels, event.type, "处理类型待核对")} · {historyActorName(event, context)} ·{" "}
+      {formatDateTime(event.occurred_at)}
       <TechnicalDetail label="处理类型技术详情" value={event.type} />
       {event.receipt?.document_id ? <p>提交材料：{filename}</p> : null}
       {event.receipt?.answer ? <p>提交答复：{event.receipt.answer}</p> : null}
@@ -563,7 +671,9 @@ function RequestCardHistoryEvent({
 }
 
 function historyActorName(event: EvidenceRequestEvent, context: PanelContext): string {
-  const memberName = context.detail?.members.find((member) => member.id === event.actor_id)?.display_name;
+  const memberName = context.detail?.members.find(
+    (member) => member.id === event.actor_id,
+  )?.display_name;
   return memberName ?? (event.actor_id === "system" ? "系统" : "姓名未报告");
 }
 
@@ -572,7 +682,10 @@ function historyReceiptFilename(
   documents: CaseDetail["documents"],
 ): string | undefined {
   if (!event.receipt?.document_id) return undefined;
-  return documents.find((document) => document.id === event.receipt?.document_id)?.filename ?? "材料名称未报告";
+  return (
+    documents.find((document) => document.id === event.receipt?.document_id)?.filename ??
+    "材料名称未报告"
+  );
 }
 
 function RequestCardHistory({
@@ -597,7 +710,12 @@ function RequestCardHistory({
           重试读取记录
         </Button>
       ) : null}
-      <RequestCardReceiptSummary item={item} receipts={receipts} history={history} documents={documents} />
+      <RequestCardReceiptSummary
+        item={item}
+        receipts={receipts}
+        history={history}
+        documents={documents}
+      />
       <RequestCardHistoryDetails history={history} context={context} documents={documents} />
     </>
   );
@@ -639,23 +757,45 @@ function RequestFileUpload({
   uploadError,
   uploaded,
   onUpload,
-}: Pick<RequestReceiptFormProps,
-  "item" | "canUpload" | "uploadRole" | "setUploadRole" | "file" | "setFile" |
-  "uploadPending" | "uploadError" | "uploaded" | "onUpload">) {
+}: Pick<
+  RequestReceiptFormProps,
+  | "item"
+  | "canUpload"
+  | "uploadRole"
+  | "setUploadRole"
+  | "file"
+  | "setFile"
+  | "uploadPending"
+  | "uploadError"
+  | "uploaded"
+  | "onUpload"
+>) {
   if (!canUpload) return <p>如需上传新材料，请由有上传权限的案件成员登记后再选择。</p>;
   return (
     <>
       {!item.material_role ? (
-        <label className="field">上传材料类型
-          <Select<string> aria-label="上传材料类型" placeholder="选择材料类型" value={uploadRole || undefined}
-            onChange={setUploadRole} options={materialRoles} />
+        <label className="field">
+          上传材料类型
+          <Select<string>
+            aria-label="上传材料类型"
+            placeholder="选择材料类型"
+            value={uploadRole || undefined}
+            onChange={setUploadRole}
+            options={materialRoles}
+          />
         </label>
       ) : null}
-      <label className="field">上传补充文件
+      <label className="field">
+        上传补充文件
         <input type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
       </label>
       <p className="meta">同类型上传会形成新版本。上传后还需提交回执；单文件不超过 32 MiB。</p>
-      <Button htmlType="button" disabled={!file || !uploadRole || uploadPending} loading={uploadPending} onClick={onUpload}>
+      <Button
+        htmlType="button"
+        disabled={!file || !uploadRole || uploadPending}
+        loading={uploadPending}
+        onClick={onUpload}
+      >
         上传补充文件
       </Button>
       <ErrorNotice error={uploadError} />
@@ -664,14 +804,18 @@ function RequestFileUpload({
   );
 }
 
-function RequestDocumentReceiptFields({
-  ...props
-}: RequestReceiptFormProps) {
+function RequestDocumentReceiptFields({ ...props }: RequestReceiptFormProps) {
   return (
     <>
-      <label className="field">选择案件材料
-        <Select<string> aria-label="选择案件材料" placeholder="选择材料" value={props.documentId || undefined}
-          onChange={props.setDocumentId} options={props.documentOptions} />
+      <label className="field">
+        选择案件材料
+        <Select<string>
+          aria-label="选择案件材料"
+          placeholder="选择材料"
+          value={props.documentId || undefined}
+          onChange={props.setDocumentId}
+          options={props.documentOptions}
+        />
       </label>
       {props.documentOptions.length === 0 ? <p>当前没有符合材料类型的案件材料。</p> : null}
       <RequestFileUpload {...props} />
@@ -682,15 +826,28 @@ function RequestDocumentReceiptFields({
 function RequestReceiptFields(props: RequestReceiptFormProps) {
   return (
     <>
-      <label className="field">提交方式
-        <Select<"document" | "answer"> aria-label="提交方式" value={props.mode} onChange={props.setMode}
-          options={[{ value: "document", label: "案件材料" }, { value: "answer", label: "文字答复" }]} />
+      <label className="field">
+        提交方式
+        <Select<"document" | "answer">
+          aria-label="提交方式"
+          value={props.mode}
+          onChange={props.setMode}
+          options={[
+            { value: "document", label: "案件材料" },
+            { value: "answer", label: "文字答复" },
+          ]}
+        />
       </label>
       {props.mode === "document" ? (
         <RequestDocumentReceiptFields {...props} />
       ) : (
-        <label className="field">文字答复
-          <Input.TextArea maxLength={4000} value={props.answer} onChange={(event) => props.setAnswer(event.target.value)} />
+        <label className="field">
+          文字答复
+          <Input.TextArea
+            maxLength={4000}
+            value={props.answer}
+            onChange={(event) => props.setAnswer(event.target.value)}
+          />
         </label>
       )}
     </>
@@ -700,8 +857,8 @@ function RequestReceiptFields(props: RequestReceiptFormProps) {
 function RequestReceiptForm(props: RequestReceiptFormProps) {
   const { item } = props;
   if (!((item.status === "open" || item.status === "received") && props.canSubmit)) return null;
-  const disabled = props.receiptPending ||
-    (props.mode === "document" ? !props.documentId : !props.answer.trim());
+  const disabled =
+    props.receiptPending || (props.mode === "document" ? !props.documentId : !props.answer.trim());
   return (
     <form className="workflow-form" onSubmit={props.onSubmit}>
       <h4>提交材料或答复</h4>
@@ -752,8 +909,13 @@ function FollowupReview({
       <h4>发起后续审查</h4>
       <p className="meta">审查必须在回执提交之后受理，才能作为该回执的核验依据。</p>
       {requiresBusinessAt ? (
-        <label className="field">审查业务时间（北京时间）
-          <Input type="datetime-local" value={businessAt} onChange={(event) => setBusinessAt(event.target.value)} />
+        <label className="field">
+          审查业务时间（北京时间）
+          <Input
+            type="datetime-local"
+            value={businessAt}
+            onChange={(event) => setBusinessAt(event.target.value)}
+          />
         </label>
       ) : null}
       <PlaybookPicker
@@ -764,8 +926,16 @@ function FollowupReview({
         disabled={disabled}
       />
       <ErrorNotice error={startError} />
-      <Button htmlType="button" loading={startPending}
-        disabled={startPending || (requiresBusinessAt && !validBusinessAt) || (playbookRef !== undefined && !playbookRefAvailable)} onClick={onStart}>
+      <Button
+        htmlType="button"
+        loading={startPending}
+        disabled={
+          startPending ||
+          (requiresBusinessAt && !validBusinessAt) ||
+          (playbookRef !== undefined && !playbookRefAvailable)
+        }
+        onClick={onStart}
+      >
         发起后续审查
       </Button>
     </div>
@@ -782,9 +952,15 @@ function VerificationReadiness({
   matchDescription: string;
 }) {
   if (!frozenLater)
-    return <p className="callout">当前执行记录不能用于核验。请打开提交回执后已完成或部分完成、且已保存审查材料的审查。</p>;
+    return (
+      <p className="callout">
+        当前执行记录不能用于核验。请打开提交回执后已完成或部分完成、且已保存审查材料的审查。
+      </p>
+    );
   if (!observed)
-    return <p className="callout">当前审查没有唯一匹配且达到请求条件的实际检查，仍需补充或复审。</p>;
+    return (
+      <p className="callout">当前审查没有唯一匹配且达到请求条件的实际检查，仍需补充或复审。</p>
+    );
   return <p>当前审查的匹配检查：{matchDescription}。</p>;
 }
 
@@ -821,13 +997,24 @@ function VerificationEvidenceFields({
 }) {
   return (
     <>
-      <RequestReceiptSelector receiptId={receiptId} onReceiptChange={onReceiptChange}
-        receipts={receipts} documents={documents} />
-      <RequestFrozenDocumentChoice receipt={receipt} frozenDocuments={frozenDocuments}
-        quoteDocumentId={quoteDocumentId} onQuoteDocumentChange={onQuoteDocumentChange} />
-      <RequestQuoteText document={frozenDocument} onSelectQuote={onSelectQuote}
+      <RequestReceiptSelector
+        receiptId={receiptId}
+        onReceiptChange={onReceiptChange}
+        receipts={receipts}
+        documents={documents}
+      />
+      <RequestFrozenDocumentChoice
+        receipt={receipt}
+        frozenDocuments={frozenDocuments}
+        quoteDocumentId={quoteDocumentId}
+        onQuoteDocumentChange={onQuoteDocumentChange}
+      />
+      <RequestQuoteText
+        document={frozenDocument}
+        onSelectQuote={onSelectQuote}
         canUseDocumentSelection={canUseDocumentSelection}
-        onUseDocumentSelection={onUseDocumentSelection} />
+        onUseDocumentSelection={onUseDocumentSelection}
+      />
       <RequestSelectedQuote quote={quote} quoteValid={quoteValid} />
     </>
   );
@@ -838,17 +1025,28 @@ function RequestReceiptSelector({
   onReceiptChange,
   receipts,
   documents,
-}: Pick<Parameters<typeof VerificationEvidenceFields>[0], "receiptId" | "onReceiptChange" | "receipts" | "documents">) {
+}: Pick<
+  Parameters<typeof VerificationEvidenceFields>[0],
+  "receiptId" | "onReceiptChange" | "receipts" | "documents"
+>) {
   const options = receipts.map((entry) => ({
     value: entry.id,
-    label: `${entry.document_id
-      ? (documents.find((document) => document.id === entry.document_id)?.filename ?? "提交材料")
-      : `答复：${entry.answer ?? ""}`} · ${formatDateTime(entry.created_at)}`,
+    label: `${
+      entry.document_id
+        ? (documents.find((document) => document.id === entry.document_id)?.filename ?? "提交材料")
+        : `答复：${entry.answer ?? ""}`
+    } · ${formatDateTime(entry.created_at)}`,
   }));
   return (
-    <label className="field">选择提交回执
-      <Select<string> aria-label="选择提交回执" placeholder="选择回执" value={receiptId || undefined}
-        onChange={onReceiptChange} options={options} />
+    <label className="field">
+      选择提交回执
+      <Select<string>
+        aria-label="选择提交回执"
+        placeholder="选择回执"
+        value={receiptId || undefined}
+        onChange={onReceiptChange}
+        options={options}
+      />
     </label>
   );
 }
@@ -858,16 +1056,30 @@ function RequestFrozenDocumentChoice({
   frozenDocuments,
   quoteDocumentId,
   onQuoteDocumentChange,
-}: Pick<Parameters<typeof VerificationEvidenceFields>[0], "receipt" | "frozenDocuments" | "quoteDocumentId" | "onQuoteDocumentChange">) {
+}: Pick<
+  Parameters<typeof VerificationEvidenceFields>[0],
+  "receipt" | "frozenDocuments" | "quoteDocumentId" | "onQuoteDocumentChange"
+>) {
   const options = receipt
-    ? frozenDocuments.map((document) => ({ value: document.id, label: `${document.filename}（${roleLabel(document.role)}）` }))
+    ? frozenDocuments.map((document) => ({
+        value: document.id,
+        label: `${document.filename}（${roleLabel(document.role)}）`,
+      }))
     : [];
   return (
     <>
-      {receipt && frozenDocuments.length === 0 ? <p>当前审查未包含可引用的回执材料或答复原文。</p> : null}
-      <label className="field">选择本次审查材料
-        <Select<string> aria-label="选择本次审查材料" placeholder="选择本次审查材料"
-          value={quoteDocumentId || undefined} onChange={onQuoteDocumentChange} options={options} />
+      {receipt && frozenDocuments.length === 0 ? (
+        <p>当前审查未包含可引用的回执材料或答复原文。</p>
+      ) : null}
+      <label className="field">
+        选择本次审查材料
+        <Select<string>
+          aria-label="选择本次审查材料"
+          placeholder="选择本次审查材料"
+          value={quoteDocumentId || undefined}
+          onChange={onQuoteDocumentChange}
+          options={options}
+        />
       </label>
     </>
   );
@@ -887,12 +1099,24 @@ function RequestQuoteText({
   if (!document?.text) return null;
   return (
     <div className="field">
-      <label>在本次审查使用的原文中选择引用内容
-        <Input.TextArea aria-label="本次审查使用的原文" readOnly rows={8}
-          value={document.text} onSelect={onSelectQuote} />
+      <label>
+        在本次审查使用的原文中选择引用内容
+        <Input.TextArea
+          aria-label="本次审查使用的原文"
+          readOnly
+          rows={8}
+          value={document.text}
+          onSelect={onSelectQuote}
+        />
       </label>
-      <span className="meta">用鼠标或键盘选择完整原文，或填入工作区正文当前选区；引用最多 4096 个 Unicode 字符。</span>
-      <Button htmlType="button" disabled={!canUseDocumentSelection} onClick={onUseDocumentSelection}>
+      <span className="meta">
+        用鼠标或键盘选择完整原文，或填入工作区正文当前选区；引用最多 4096 个 Unicode 字符。
+      </span>
+      <Button
+        htmlType="button"
+        disabled={!canUseDocumentSelection}
+        onClick={onUseDocumentSelection}
+      >
         填入工作区正文当前选区
       </Button>
     </div>
@@ -945,17 +1169,35 @@ function RequestVerificationForm({
   return (
     <form className="workflow-form" onSubmit={onSubmit}>
       <h4>核验补充材料</h4>
-      <p className="meta">请在提交回执后的审查工作区选择回执和本次审查使用的原文。系统会核对检查结果、材料关联和审查规则。</p>
-      <VerificationReadiness frozenLater={frozenLater} observed={observed} matchDescription={matchDescription} />
+      <p className="meta">
+        请在提交回执后的审查工作区选择回执和本次审查使用的原文。系统会核对检查结果、材料关联和审查规则。
+      </p>
+      <VerificationReadiness
+        frozenLater={frozenLater}
+        observed={observed}
+        matchDescription={matchDescription}
+      />
       {historyError ? <p>无法读取回执，不能核验。</p> : null}
       <VerificationEvidenceFields {...evidence} />
-      <label className="field">核验理由
-        <Input.TextArea required maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} disabled={!canVerify} />
+      <label className="field">
+        核验理由
+        <Input.TextArea
+          required
+          maxLength={2000}
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          disabled={!canVerify}
+        />
       </label>
       {!canVerify ? <p>当前身份不能提交核验。</p> : null}
       <ErrorNotice error={verifyError} />
-      <Button aria-label="提交核验" type="primary" htmlType="submit" loading={verifyPending}
-        disabled={!verifiedReady || verifyPending}>
+      <Button
+        aria-label="提交核验"
+        type="primary"
+        htmlType="submit"
+        loading={verifyPending}
+        disabled={!verifiedReady || verifyPending}
+      >
         提交核验
       </Button>
     </form>
@@ -1003,9 +1245,14 @@ function isFrozenRequestSourceAttempt(
   attemptId: string | null,
   runId: string,
 ): boolean {
-  return !!attemptId && attempt?.id === attemptId && attempt.run_id === runId &&
-    attempt.history_kind === "frozen" && !!attempt.finished_at &&
-    (attempt.state === "completed" || attempt.state === "partial");
+  return (
+    !!attemptId &&
+    attempt?.id === attemptId &&
+    attempt.run_id === runId &&
+    attempt.history_kind === "frozen" &&
+    !!attempt.finished_at &&
+    (attempt.state === "completed" || attempt.state === "partial")
+  );
 }
 function quoteScopeForRequest(
   scope: FrozenQuoteScope | null | undefined,
@@ -1015,8 +1262,10 @@ function quoteScopeForRequest(
   workspace: ReviewWorkspace | undefined,
 ): FrozenQuoteScope | null {
   if (scope) {
-    return scope.caseId === caseId && scope.runId === runId &&
-      scope.attemptId === attemptId && scope.isFrozenAttempt
+    return scope.caseId === caseId &&
+      scope.runId === runId &&
+      scope.attemptId === attemptId &&
+      scope.isFrozenAttempt
       ? scope
       : null;
   }
@@ -1040,9 +1289,17 @@ function countRequestSourceIds<T>(items: T[], getId: (item: T) => string): Map<s
   return counts;
 }
 
-function isEligibleRequestEvaluation(entry: ConstraintEvaluation, counts: Map<string, number>): boolean {
-  return !!entry.id && !!entry.domain && !!entry.rule_version &&
-    (entry.relation === "insufficient" || entry.relation === "unknown") && counts.get(entry.id) === 1;
+function isEligibleRequestEvaluation(
+  entry: ConstraintEvaluation,
+  counts: Map<string, number>,
+): boolean {
+  return (
+    !!entry.id &&
+    !!entry.domain &&
+    !!entry.rule_version &&
+    (entry.relation === "insufficient" || entry.relation === "unknown") &&
+    counts.get(entry.id) === 1
+  );
 }
 
 function eligibleRequestEvaluations(evaluations: ConstraintEvaluation[]): ConstraintEvaluation[] {
@@ -1051,15 +1308,21 @@ function eligibleRequestEvaluations(evaluations: ConstraintEvaluation[]): Constr
 }
 
 function isEligibleRequestGap(gap: BusinessAgentGap, counts: Map<string, number>): boolean {
-  return !!gap.gap_id && !!gap.domain && !!gap.capability_id &&
-    ["insufficient", "unknown", "unsupported"].includes(gap.status) && counts.get(gap.gap_id) === 1;
+  return (
+    !!gap.gap_id &&
+    !!gap.domain &&
+    !!gap.capability_id &&
+    ["insufficient", "unknown", "unsupported"].includes(gap.status) &&
+    counts.get(gap.gap_id) === 1
+  );
 }
 
 function eligibleRequestGaps(
   agentReview: BusinessAgentReview | null,
   attemptId: string | null,
 ): BusinessAgentGap[] {
-  const reported = agentReview && agentReview.attempt_id === attemptId ? agentReview.gaps ?? [] : [];
+  const reported =
+    agentReview && agentReview.attempt_id === attemptId ? (agentReview.gaps ?? []) : [];
   const counts = countRequestSourceIds(reported, (gap) => gap.gap_id);
   return reported.filter((gap) => isEligibleRequestGap(gap, counts));
 }
@@ -1085,11 +1348,20 @@ function eligibleExistingRequestTasks(
   caseId: string,
   members: CaseDetail["members"] | undefined,
 ): WorkbenchTask[] {
-  return (tasks ?? []).filter((entry) => entry.case_id === caseId && entry.status !== "completed" && !!entry.due_at &&
-    members?.some((member) => member.id === entry.assignee_id));
+  return (tasks ?? []).filter(
+    (entry) =>
+      entry.case_id === caseId &&
+      entry.status !== "completed" &&
+      !!entry.due_at &&
+      members?.some((member) => member.id === entry.assignee_id),
+  );
 }
 
-function existingTaskControlDisabled(task: WorkbenchTask | null, pending: boolean, tasksLoading: boolean): boolean {
+function existingTaskControlDisabled(
+  task: WorkbenchTask | null,
+  pending: boolean,
+  tasksLoading: boolean,
+): boolean {
   return !!task || pending || tasksLoading;
 }
 
@@ -1098,7 +1370,7 @@ function resolveRequestTask(
   taskMode: "new" | "existing",
   existingTask: WorkbenchTask | undefined,
 ): WorkbenchTask | null {
-  return task ?? (taskMode === "existing" ? existingTask ?? null : null);
+  return task ?? (taskMode === "existing" ? (existingTask ?? null) : null);
 }
 
 function isRequestTaskReady(
@@ -1109,7 +1381,9 @@ function isRequestTaskReady(
   assignee: string,
   dueValid: boolean,
 ): boolean {
-  return !!task || (taskMode === "existing" ? !!existingTask : !!title.trim() && !!assignee && dueValid);
+  return (
+    !!task || (taskMode === "existing" ? !!existingTask : !!title.trim() && !!assignee && dueValid)
+  );
 }
 
 function canSubmitRequest(
@@ -1121,7 +1395,9 @@ function canSubmitRequest(
   taskReady: boolean,
   pending: boolean,
 ): attemptId is string {
-  return canManage && frozen && !!attemptId && validSource && !!question.trim() && taskReady && !pending;
+  return (
+    canManage && frozen && !!attemptId && validSource && !!question.trim() && taskReady && !pending
+  );
 }
 
 function isCreateRequestButtonDisabled(
@@ -1133,8 +1409,15 @@ function isCreateRequestButtonDisabled(
   return !frozen || !validSource || !question.trim() || !taskReady;
 }
 
-function createRequestButtonLabel(task: WorkbenchTask | null, taskMode: "new" | "existing"): string {
-  return task ? "重试创建补充请求" : taskMode === "existing" ? "发起补充请求" : "创建任务并发起请求";
+function createRequestButtonLabel(
+  task: WorkbenchTask | null,
+  taskMode: "new" | "existing",
+): string {
+  return task
+    ? "重试创建补充请求"
+    : taskMode === "existing"
+      ? "发起补充请求"
+      : "创建任务并发起请求";
 }
 
 function createEvidenceRequestInput(
@@ -1174,11 +1457,20 @@ function CreateRequestSourceFields({
 }) {
   return (
     <>
-      {!frozen ? <p className="callout">只有已完成或部分完成、且已保存审查材料的执行记录可以发起请求。</p> : null}
+      {!frozen ? (
+        <p className="callout">只有已完成或部分完成、且已保存审查材料的执行记录可以发起请求。</p>
+      ) : null}
       {frozen && options.length === 0 ? <p>本次审查没有返回符合条件的待补充检查。</p> : null}
-      <label className="field">缺失检查
-        <Select<string> aria-label="缺失检查" placeholder="选择缺失检查" value={source || undefined} onChange={onSourceChange}
-          options={options} disabled={!frozen || pending || options.length === 0} />
+      <label className="field">
+        缺失检查
+        <Select<string>
+          aria-label="缺失检查"
+          placeholder="选择缺失检查"
+          value={source || undefined}
+          onChange={onSourceChange}
+          options={options}
+          disabled={!frozen || pending || options.length === 0}
+        />
       </label>
     </>
   );
@@ -1189,14 +1481,26 @@ function ExistingRequestTaskLoadStatus({ context }: { context: PanelContext }) {
   return !context.tasks && !context.tasksError ? <p>案件任务尚未载入。</p> : null;
 }
 
-function ExistingRequestTaskEmptyStatus({ context, eligibleTasks }: {
+function ExistingRequestTaskEmptyStatus({
+  context,
+  eligibleTasks,
+}: {
   context: PanelContext;
   eligibleTasks: WorkbenchTask[];
 }) {
-  return context.tasks && eligibleTasks.length === 0 ? <p>暂无包含责任人和期限的未完成案件任务。</p> : null;
+  return context.tasks && eligibleTasks.length === 0 ? (
+    <p>暂无包含责任人和期限的未完成案件任务。</p>
+  ) : null;
 }
 
-function ExistingRequestTaskFields({ task, pending, existingTaskId, onExistingTaskChange, context, eligibleTasks }: {
+function ExistingRequestTaskFields({
+  task,
+  pending,
+  existingTaskId,
+  onExistingTaskChange,
+  context,
+  eligibleTasks,
+}: {
   task: WorkbenchTask | null;
   pending: boolean;
   existingTaskId: string;
@@ -1206,21 +1510,46 @@ function ExistingRequestTaskFields({ task, pending, existingTaskId, onExistingTa
 }) {
   return (
     <>
-      <label className="field">选择已有任务
-        <Select<string> aria-label="选择已有任务" placeholder="选择案件任务" value={existingTaskId || undefined}
-          onChange={onExistingTaskChange} disabled={existingTaskControlDisabled(task, pending, context.tasksLoading)} options={eligibleTasks.map((entry) => ({
-            value: entry.id, label: `${entry.title} · ${context.detail?.members.find((member) => member.id === entry.assignee_id)?.display_name ?? "责任人姓名未报告"} · ${formatDateTime(entry.due_at ?? "")}`,
-          }))} />
+      <label className="field">
+        选择已有任务
+        <Select<string>
+          aria-label="选择已有任务"
+          placeholder="选择案件任务"
+          value={existingTaskId || undefined}
+          onChange={onExistingTaskChange}
+          disabled={existingTaskControlDisabled(task, pending, context.tasksLoading)}
+          options={eligibleTasks.map((entry) => ({
+            value: entry.id,
+            label: `${entry.title} · ${context.detail?.members.find((member) => member.id === entry.assignee_id)?.display_name ?? "责任人姓名未报告"} · ${formatDateTime(entry.due_at ?? "")}`,
+          }))}
+        />
       </label>
       <ExistingRequestTaskLoadStatus context={context} />
-      <Button htmlType="button" loading={context.tasksLoading} disabled={existingTaskControlDisabled(task, pending, context.tasksLoading)} onClick={() => void context.refreshTasks()}>刷新案件任务</Button>
+      <Button
+        htmlType="button"
+        loading={context.tasksLoading}
+        disabled={existingTaskControlDisabled(task, pending, context.tasksLoading)}
+        onClick={() => void context.refreshTasks()}
+      >
+        刷新案件任务
+      </Button>
       <ErrorNotice error={context.tasksError} />
       <ExistingRequestTaskEmptyStatus context={context} eligibleTasks={eligibleTasks} />
     </>
   );
 }
 
-function NewRequestTaskFields({ context, task, pending, title, onTitleChange, assignee, onAssigneeChange, due, onDueChange }: {
+function NewRequestTaskFields({
+  context,
+  task,
+  pending,
+  title,
+  onTitleChange,
+  assignee,
+  onAssigneeChange,
+  due,
+  onDueChange,
+}: {
   context: PanelContext;
   task: WorkbenchTask | null;
   pending: boolean;
@@ -1233,24 +1562,59 @@ function NewRequestTaskFields({ context, task, pending, title, onTitleChange, as
 }) {
   return (
     <>
-      <label className="field">任务名称
-        <Input required maxLength={200} value={title} onChange={(event) => onTitleChange(event.target.value)} disabled={!!task || pending} />
+      <label className="field">
+        任务名称
+        <Input
+          required
+          maxLength={200}
+          value={title}
+          onChange={(event) => onTitleChange(event.target.value)}
+          disabled={!!task || pending}
+        />
       </label>
-      <label className="field">责任人
-        <Select<string> aria-label="责任人" placeholder="选择案件成员" value={assignee || undefined} onChange={onAssigneeChange}
-          options={(context.detail?.members ?? []).map((member) => ({ value: member.id, label: member.display_name }))}
-          disabled={!!task || pending || !context.detail} />
+      <label className="field">
+        责任人
+        <Select<string>
+          aria-label="责任人"
+          placeholder="选择案件成员"
+          value={assignee || undefined}
+          onChange={onAssigneeChange}
+          options={(context.detail?.members ?? []).map((member) => ({
+            value: member.id,
+            label: member.display_name,
+          }))}
+          disabled={!!task || pending || !context.detail}
+        />
       </label>
-      <label className="field">完成期限（本地时间）
-        <Input type="datetime-local" required value={due} onChange={(event) => onDueChange(event.target.value)} disabled={!!task || pending} />
+      <label className="field">
+        完成期限（本地时间）
+        <Input
+          type="datetime-local"
+          required
+          value={due}
+          onChange={(event) => onDueChange(event.target.value)}
+          disabled={!!task || pending}
+        />
       </label>
     </>
   );
 }
 
 function CreateRequestTaskFields({
-  taskMode, onTaskModeChange, task, pending, existingTaskId, onExistingTaskChange, context, eligibleTasks,
-  title, onTitleChange, assignee, onAssigneeChange, due, onDueChange,
+  taskMode,
+  onTaskModeChange,
+  task,
+  pending,
+  existingTaskId,
+  onExistingTaskChange,
+  context,
+  eligibleTasks,
+  title,
+  onTitleChange,
+  assignee,
+  onAssigneeChange,
+  due,
+  onDueChange,
 }: {
   taskMode: "new" | "existing";
   onTaskModeChange: (value: "new" | "existing") => void;
@@ -1269,14 +1633,41 @@ function CreateRequestTaskFields({
 }) {
   return (
     <>
-      <label className="field">关联任务
-        <Select<"new" | "existing"> aria-label="关联任务" value={taskMode} onChange={onTaskModeChange} disabled={!!task || pending}
-          options={[{ value: "new", label: "创建新任务" }, { value: "existing", label: "选择已有任务" }]} />
+      <label className="field">
+        关联任务
+        <Select<"new" | "existing">
+          aria-label="关联任务"
+          value={taskMode}
+          onChange={onTaskModeChange}
+          disabled={!!task || pending}
+          options={[
+            { value: "new", label: "创建新任务" },
+            { value: "existing", label: "选择已有任务" },
+          ]}
+        />
       </label>
-      {taskMode === "existing"
-        ? <ExistingRequestTaskFields task={task} pending={pending} existingTaskId={existingTaskId} onExistingTaskChange={onExistingTaskChange} context={context} eligibleTasks={eligibleTasks} />
-        : <NewRequestTaskFields context={context} task={task} pending={pending} title={title} onTitleChange={onTitleChange}
-          assignee={assignee} onAssigneeChange={onAssigneeChange} due={due} onDueChange={onDueChange} />}
+      {taskMode === "existing" ? (
+        <ExistingRequestTaskFields
+          task={task}
+          pending={pending}
+          existingTaskId={existingTaskId}
+          onExistingTaskChange={onExistingTaskChange}
+          context={context}
+          eligibleTasks={eligibleTasks}
+        />
+      ) : (
+        <NewRequestTaskFields
+          context={context}
+          task={task}
+          pending={pending}
+          title={title}
+          onTitleChange={onTitleChange}
+          assignee={assignee}
+          onAssigneeChange={onAssigneeChange}
+          due={due}
+          onDueChange={onDueChange}
+        />
+      )}
     </>
   );
 }
@@ -1302,24 +1693,52 @@ function CreateRequestDetailsFields({
 }) {
   return (
     <>
-      <label className="field">需要补充的问题
-        <Input.TextArea required maxLength={2000} value={question} onChange={(event) => onQuestionChange(event.target.value)} disabled={pending} />
+      <label className="field">
+        需要补充的问题
+        <Input.TextArea
+          required
+          maxLength={2000}
+          value={question}
+          onChange={(event) => onQuestionChange(event.target.value)}
+          disabled={pending}
+        />
       </label>
-      <label className="field">要求的材料类型
-        <Select<string> aria-label="要求的材料类型" value={role} onChange={onRoleChange} disabled={pending}
-          options={[{ value: "", label: "不限材料类型" }, ...materialRoles]} />
+      <label className="field">
+        要求的材料类型
+        <Select<string>
+          aria-label="要求的材料类型"
+          value={role}
+          onChange={onRoleChange}
+          disabled={pending}
+          options={[{ value: "", label: "不限材料类型" }, ...materialRoles]}
+        />
       </label>
-      {source.startsWith("gap:") ? <p>核验条件：缺口已解决。</p> : (
-        <label className="field">核验条件
-          <Select<"compatible" | "conflict"> aria-label="核验条件" value={condition} onChange={onConditionChange} disabled={pending}
-            options={[{ value: "compatible", label: "检查结果一致" }, { value: "conflict", label: "检查结果存在冲突" }]} />
+      {source.startsWith("gap:") ? (
+        <p>核验条件：缺口已解决。</p>
+      ) : (
+        <label className="field">
+          核验条件
+          <Select<"compatible" | "conflict">
+            aria-label="核验条件"
+            value={condition}
+            onChange={onConditionChange}
+            disabled={pending}
+            options={[
+              { value: "compatible", label: "检查结果一致" },
+              { value: "conflict", label: "检查结果存在冲突" },
+            ]}
+          />
         </label>
       )}
     </>
   );
 }
 
-function CreateRequestLinkedTaskFooter({ task, pending, onReplace }: {
+function CreateRequestLinkedTaskFooter({
+  task,
+  pending,
+  onReplace,
+}: {
   task: WorkbenchTask | null;
   pending: boolean;
   onReplace: () => void;
@@ -1327,8 +1746,12 @@ function CreateRequestLinkedTaskFooter({ task, pending, onReplace }: {
   if (!task) return null;
   return (
     <>
-      <p className="callout">已关联任务“{task.title}”。请求未完成时可在此重试，任务不会再次创建。</p>
-      <Button htmlType="button" disabled={pending} onClick={onReplace}>更换关联任务</Button>
+      <p className="callout">
+        已关联任务“{task.title}”。请求未完成时可在此重试，任务不会再次创建。
+      </p>
+      <Button htmlType="button" disabled={pending} onClick={onReplace}>
+        更换关联任务
+      </Button>
     </>
   );
 }
@@ -1344,18 +1767,38 @@ type CreateRequestView = {
   created: boolean;
 };
 function emptyCreateRequestView(key: string): CreateRequestView {
-  return { key, localTask: null, taskRechecked: false, error: null, deniedMutation: false,
-    confirmationError: null, pending: false, created: false };
+  return {
+    key,
+    localTask: null,
+    taskRechecked: false,
+    error: null,
+    deniedMutation: false,
+    confirmationError: null,
+    pending: false,
+    created: false,
+  };
 }
 
-function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, canManage, context, selectedSource, navigationSerial = 0, expanded = true }: Omit<EvidencePanelProps, "documents"> & { context: PanelContext }) {
+function CreateRequest({
+  caseId,
+  runId,
+  attemptId,
+  evaluations,
+  agentReview,
+  canManage,
+  context,
+  selectedSource,
+  navigationSerial = 0,
+  expanded = true,
+}: Omit<EvidencePanelProps, "documents"> & { context: PanelContext }) {
   const createTask = useCreateWorkbenchTask(caseId);
   const client = useQueryClient();
   const scope = evidenceDraftScope(context.actorScope, caseId, runId, attemptId);
   const draft = useEvidenceDraft(scope);
   const viewKey = JSON.stringify([scope, draft.source]);
   const activation = useRef({ key: viewKey, generation: 0 });
-  if (activation.current.key !== viewKey) activation.current = { key: viewKey, generation: activation.current.generation + 1 };
+  if (activation.current.key !== viewKey)
+    activation.current = { key: viewKey, generation: activation.current.generation + 1 };
   const generation = activation.current.generation;
   const [view, setView] = useState<CreateRequestView>(() => emptyCreateRequestView(viewKey));
   const { localTask, taskRechecked, error, deniedMutation, confirmationError, pending, created } =
@@ -1363,24 +1806,45 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
   function updateView(change: Partial<CreateRequestView>, operation?: number) {
     setView((previous) => {
       const current = readEvidenceDraft(scope);
-      if (activation.current.key !== viewKey || activation.current.generation !== generation || current.source !== draft.source ||
-          (operation !== undefined && current.operation !== operation)) return previous;
-      return { ...(previous.key === viewKey ? previous : emptyCreateRequestView(viewKey)), ...change };
+      if (
+        activation.current.key !== viewKey ||
+        activation.current.generation !== generation ||
+        current.source !== draft.source ||
+        (operation !== undefined && current.operation !== operation)
+      )
+        return previous;
+      return {
+        ...(previous.key === viewKey ? previous : emptyCreateRequestView(viewKey)),
+        ...change,
+      };
     });
   }
-  const setLocalTask = (value: WorkbenchTask | null, operation?: number) => updateView({ localTask: value }, operation);
-  const setTaskRechecked = (value: boolean) => updateView({ taskRechecked: value }, draft.operation);
+  const setLocalTask = (value: WorkbenchTask | null, operation?: number) =>
+    updateView({ localTask: value }, operation);
+  const setTaskRechecked = (value: boolean) =>
+    updateView({ taskRechecked: value }, draft.operation);
   const setError = (value: unknown, operation?: number) => updateView({ error: value }, operation);
-  const setConfirmationError = (value: string | null, operation?: number) => updateView({ confirmationError: value }, operation);
-  const setPending = (value: boolean, operation?: number) => updateView({ pending: value }, operation);
+  const setConfirmationError = (value: string | null, operation?: number) =>
+    updateView({ confirmationError: value }, operation);
+  const setPending = (value: boolean, operation?: number) =>
+    updateView({ pending: value }, operation);
   const setCreated = (value: boolean) => updateView({ created: value });
   const formRef = useRef<HTMLFormElement>(null);
   const recoveryKey = useRef<string | null>(null);
   const setDraft = (change: Partial<typeof draft>) => {
-    if (scope) updateEvidenceDraft(scope, (current) => ({ ...current, ...change,
-      dirty: current.dirty || Object.keys(change).some((field) => field !== "source") }));
+    if (scope)
+      updateEvidenceDraft(scope, (current) => ({
+        ...current,
+        ...change,
+        dirty: current.dirty || Object.keys(change).some((field) => field !== "source"),
+      }));
   };
-  useEffect(() => () => { if (scope) interruptEvidenceDraft(scope); }, [scope]);
+  useEffect(
+    () => () => {
+      if (scope) interruptEvidenceDraft(scope);
+    },
+    [scope],
+  );
   useEffect(() => {
     if (scope && !context.sessionReady) interruptEvidenceDraft(scope);
   }, [scope, context.sessionReady]);
@@ -1395,18 +1859,39 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
     return client.getQueryCache().subscribe((event) => {
       const query = event.query;
       const sessionQuery = query.queryKey[0] === "session" && query.queryKey[1] === "client";
-      const tasksQuery = query.queryKey[0] === "workbench" && query.queryKey[1] === "week" && query.queryKey.length === 2;
+      const tasksQuery =
+        query.queryKey[0] === "workbench" &&
+        query.queryKey[1] === "week" &&
+        query.queryKey.length === 2;
       if (sessionQuery && query.state.fetchStatus === "fetching") interruptEvidenceDraft(scope);
-      if ((sessionQuery || tasksQuery) && (isForbidden(query.state.error) || isUnauthenticated(query.state.error))) clearAllEvidenceDrafts();
+      if (
+        (sessionQuery || tasksQuery) &&
+        (isForbidden(query.state.error) || isUnauthenticated(query.state.error))
+      )
+        clearAllEvidenceDrafts();
     });
   }, [client, scope]);
-  useEffect(() => { recoveryKey.current = null; }, [scope, draft.source]);
   useEffect(() => {
-    if (!scope || !draft.needsVerification || !draft.task || !context.sessionReady || !context.detailReady) return;
+    recoveryKey.current = null;
+  }, [scope, draft.source]);
+  useEffect(() => {
+    if (
+      !scope ||
+      !draft.needsVerification ||
+      !draft.task ||
+      !context.sessionReady ||
+      !context.detailReady
+    )
+      return;
     const caseState = client.getQueryState(queryKeys.case(caseId));
     const sessionState = client.getQueryState(queryKeys.session);
-    if (caseState?.status !== "success" || caseState.fetchStatus !== "idle" ||
-        sessionState?.status !== "success" || sessionState.fetchStatus !== "idle") return;
+    if (
+      caseState?.status !== "success" ||
+      caseState.fetchStatus !== "idle" ||
+      sessionState?.status !== "success" ||
+      sessionState.fetchStatus !== "idle"
+    )
+      return;
     const identity = JSON.stringify([scope, draft.operation, draft.task?.id, draft.task?.version]);
     if (recoveryKey.current === identity) return;
     recoveryKey.current = identity;
@@ -1415,30 +1900,88 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
       const state = client.getQueryState(queryKeys.session);
       if (state?.status === "success" && state.fetchStatus === "idle") setTaskRechecked(success);
     });
-  // Only a new checkpoint or successful case/session confirmation starts a read.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, scope, caseId, draft.operation, draft.needsVerification, draft.task?.id, draft.task?.version, context.sessionReady, context.detailReady]);
+    // Only a new checkpoint or successful case/session confirmation starts a read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    client,
+    scope,
+    caseId,
+    draft.operation,
+    draft.needsVerification,
+    draft.task?.id,
+    draft.task?.version,
+    context.sessionReady,
+    context.detailReady,
+  ]);
   if (!canManage || !context.allowWrites) return null;
-  if (deniedMutation) return <div role="alert">补件办理访问受限，请重新确认当前权限。<ErrorNotice error={error} /></div>;
-  if (!scope) return <form className="workflow-form">
-    <h3>发起补充材料请求</h3>
-    <CreateRequestSourceFields frozen={false} options={[]} source="" pending={false} onSourceChange={() => {}} />
-    <Button type="primary" htmlType="button" disabled>创建任务并发起请求</Button>
-  </form>;
+  if (deniedMutation)
+    return (
+      <div role="alert">
+        补件办理访问受限，请重新确认当前权限。
+        <ErrorNotice error={error} />
+      </div>
+    );
+  if (!scope)
+    return (
+      <form className="workflow-form">
+        <h3>发起补充材料请求</h3>
+        <CreateRequestSourceFields
+          frozen={false}
+          options={[]}
+          source=""
+          pending={false}
+          onSourceChange={() => {}}
+        />
+        <Button type="primary" htmlType="button" disabled>
+          创建任务并发起请求
+        </Button>
+      </form>
+    );
 
-  const frozen = isFrozenRequestSourceAttempt(context.workspace?.review_attempts?.attempt, attemptId, runId);
-  const options = requestSourceOptions(eligibleRequestEvaluations(evaluations), eligibleRequestGaps(agentReview, attemptId));
+  const frozen = isFrozenRequestSourceAttempt(
+    context.workspace?.review_attempts?.attempt,
+    attemptId,
+    runId,
+  );
+  const options = requestSourceOptions(
+    eligibleRequestEvaluations(evaluations),
+    eligibleRequestGaps(agentReview, attemptId),
+  );
   const validSource = options.some((option) => option.value === draft.source);
-  const eligibleTasks = eligibleExistingRequestTasks(context.tasks, caseId, context.detail?.members);
+  const eligibleTasks = eligibleExistingRequestTasks(
+    context.tasks,
+    caseId,
+    context.detail?.members,
+  );
   const existingTask = eligibleTasks.find((entry) => entry.id === draft.existingTaskId);
-  const matches = draft.task ? eligibleTasks.filter((entry) => entry.id === draft.task?.id && entry.case_id === draft.task.caseId &&
-    entry.version === draft.task.version && entry.assignee_id === draft.task.assigneeId) : [];
+  const matches = draft.task
+    ? eligibleTasks.filter(
+        (entry) =>
+          entry.id === draft.task?.id &&
+          entry.case_id === draft.task.caseId &&
+          entry.version === draft.task.version &&
+          entry.assignee_id === draft.task.assigneeId,
+      )
+    : [];
   const task = draft.task
-    ? (draft.needsVerification ? (taskRechecked && matches.length === 1 ? matches[0] ?? null : null) : localTask)
+    ? draft.needsVerification
+      ? taskRechecked && matches.length === 1
+        ? (matches[0] ?? null)
+        : null
+      : localTask
     : null;
   const taskUnknown = draft.phase === "task-unknown";
-  const taskReady = !taskUnknown && (!draft.task || !!task) && isRequestTaskReady(task, draft.taskMode, existingTask,
-    draft.title, draft.assignee, validBusinessReviewTime(draft.due));
+  const taskReady =
+    !taskUnknown &&
+    (!draft.task || !!task) &&
+    isRequestTaskReady(
+      task,
+      draft.taskMode,
+      existingTask,
+      draft.title,
+      draft.assignee,
+      validBusinessReviewTime(draft.due),
+    );
   const lockedRequest = !!draft.requestKey;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -1448,11 +1991,25 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
     if (currentDraft !== draft) {
       const message = "草稿已过期或发生变化，请核对后重新填写。";
       if (activeEvidenceSource(scope) === draft.source && currentDraft.source !== draft.source) {
-        setView({ ...emptyCreateRequestView(JSON.stringify([scope, currentDraft.source])), confirmationError: message });
+        setView({
+          ...emptyCreateRequestView(JSON.stringify([scope, currentDraft.source])),
+          confirmationError: message,
+        });
       } else setConfirmationError(message);
       return;
     }
-    if (!canSubmitRequest(canManage, frozen, attemptId, validSource, draft.question, taskReady, pending)) return;
+    if (
+      !canSubmitRequest(
+        canManage,
+        frozen,
+        attemptId,
+        validSource,
+        draft.question,
+        taskReady,
+        pending,
+      )
+    )
+      return;
     setError(null);
     setConfirmationError(null);
     setCreated(false);
@@ -1465,14 +2022,35 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
       if (!linkedTask) {
         operation = beginEvidenceOperation(scope, "task-pending");
         linkedTask = await createTask.mutateAsync({
-          title: draft.title.trim(), kind: "review", assignee_id: draft.assignee, due_at: new Date(draft.due).toISOString(),
-          status: "open", priority: "high", finding_id: null,
+          title: draft.title.trim(),
+          kind: "review",
+          assignee_id: draft.assignee,
+          due_at: new Date(draft.due).toISOString(),
+          status: "open",
+          priority: "high",
+          finding_id: null,
         });
         const result = linkedTask;
         const continued = evidenceOperationCurrent(scope, operation, draft.source);
-        if (!updateEvidenceOperation(scope, operation, (current) => ({ ...current, task: {
-          id: result.id, version: result.version, caseId: result.case_id, assigneeId: result.assignee_id,
-        }, phase: "linked", needsVerification: current.interrupted || !continued }), draft.source)) return;
+        if (
+          !updateEvidenceOperation(
+            scope,
+            operation,
+            (current) => ({
+              ...current,
+              task: {
+                id: result.id,
+                version: result.version,
+                caseId: result.case_id,
+                assigneeId: result.assignee_id,
+              },
+              phase: "linked",
+              needsVerification: current.interrupted || !continued,
+            }),
+            draft.source,
+          )
+        )
+          return;
         if (!continued) return;
         setLocalTask(linkedTask);
       }
@@ -1483,8 +2061,12 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
       const currentActor = client.getQueryData<Actor>(queryKeys.session);
       const taskState = client.getQueryState(queryKeys.workbench("week"));
       if (isForbidden(taskState?.error) || isUnauthenticated(taskState?.error)) {
-        if (currentActor && actorReadContextKey(currentActor) === context.actorScope &&
-            activation.current.key === viewKey && activation.current.generation === generation) {
+        if (
+          currentActor &&
+          actorReadContextKey(currentActor) === context.actorScope &&
+          activation.current.key === viewKey &&
+          activation.current.generation === generation
+        ) {
           clearAllEvidenceDrafts();
           setView({ ...emptyCreateRequestView(JSON.stringify([scope, ""])), deniedMutation: true });
         }
@@ -1494,38 +2076,79 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
       const currentWorkspace = client.getQueryData<ReviewWorkspace>(context.workspaceKey);
       const attempt = currentWorkspace?.review_attempts?.attempt;
       const attempts = currentWorkspace?.review_attempts?.attempts ?? [];
-      const latest = attempts.reduce<typeof attempt>((value, item) => !value || item.ordinal > value.ordinal ? item : value, attempt);
-      const currentSources = requestSourceOptions(eligibleRequestEvaluations(currentWorkspace?.evaluations ?? []),
-        eligibleRequestGaps(currentWorkspace?.agent_review ?? null, attemptId));
-      if ((operation && !evidenceOperationCurrent(scope, operation, draft.source)) ||
-          caseState?.status !== "success" || caseState.fetchStatus !== "idle" ||
-          sessionState?.status !== "success" || sessionState.fetchStatus !== "idle" || currentCase?.id !== caseId ||
-          currentCase.archived_at !== null || currentCase.latest_run?.id !== runId ||
-          !eligibleExistingRequestTasks([linkedTask], caseId, currentCase.members).length ||
-          reviewState?.status !== "success" || reviewState.fetchStatus !== "idle" ||
-          currentWorkspace?.run.id !== runId || currentWorkspace.run.case_id !== caseId ||
-          !isFrozenRequestSourceAttempt(attempt, attemptId, runId) || latest?.id !== attemptId ||
-          !currentSources.some((item) => item.value === draft.source) ||
-          !currentActor || actorReadContextKey(currentActor) !== context.actorScope) {
+      const latest = attempts.reduce<typeof attempt>(
+        (value, item) => (!value || item.ordinal > value.ordinal ? item : value),
+        attempt,
+      );
+      const currentSources = requestSourceOptions(
+        eligibleRequestEvaluations(currentWorkspace?.evaluations ?? []),
+        eligibleRequestGaps(currentWorkspace?.agent_review ?? null, attemptId),
+      );
+      if (
+        (operation && !evidenceOperationCurrent(scope, operation, draft.source)) ||
+        caseState?.status !== "success" ||
+        caseState.fetchStatus !== "idle" ||
+        sessionState?.status !== "success" ||
+        sessionState.fetchStatus !== "idle" ||
+        currentCase?.id !== caseId ||
+        currentCase.archived_at !== null ||
+        currentCase.latest_run?.id !== runId ||
+        !eligibleExistingRequestTasks([linkedTask], caseId, currentCase.members).length ||
+        reviewState?.status !== "success" ||
+        reviewState.fetchStatus !== "idle" ||
+        currentWorkspace?.run.id !== runId ||
+        currentWorkspace.run.case_id !== caseId ||
+        !isFrozenRequestSourceAttempt(attempt, attemptId, runId) ||
+        latest?.id !== attemptId ||
+        !currentSources.some((item) => item.value === draft.source) ||
+        !currentActor ||
+        actorReadContextKey(currentActor) !== context.actorScope
+      ) {
         interruptEvidenceDraft(scope, draft.source);
-        setConfirmationError("关联任务已保留，但案件或登录状态尚未确认；请重试确认后继续。", operation || undefined);
+        setConfirmationError(
+          "关联任务已保留，但案件或登录状态尚未确认；请重试确认后继续。",
+          operation || undefined,
+        );
         return;
       }
       captureCommandContext(currentActor);
-      const input = createEvidenceRequestInput(linkedTask, draft.source, runId, attemptId, draft.question, draft.role, draft.condition);
+      const input = createEvidenceRequestInput(
+        linkedTask,
+        draft.source,
+        runId,
+        attemptId,
+        draft.question,
+        draft.role,
+        draft.condition,
+      );
       const operationKey = draft.requestKey ?? newIdempotencyKey();
       operation = beginEvidenceOperation(scope, "request-pending");
-      updateEvidenceOperation(scope, operation, (current) => ({ ...current, requestKey: operationKey, task: {
-        id: linkedTask!.id, version: linkedTask!.version, caseId: linkedTask!.case_id, assigneeId: linkedTask!.assignee_id,
-      } }));
+      updateEvidenceOperation(scope, operation, (current) => ({
+        ...current,
+        requestKey: operationKey,
+        task: {
+          id: linkedTask!.id,
+          version: linkedTask!.version,
+          caseId: linkedTask!.case_id,
+          assigneeId: linkedTask!.assignee_id,
+        },
+      }));
       await createEvidenceRequest(caseId, input, operationKey);
-      const active = activation.current.key === viewKey && activation.current.generation === generation &&
-        readEvidenceDraft(scope).source === draft.source && readEvidenceDraft(scope).operation === operation;
+      const active =
+        activation.current.key === viewKey &&
+        activation.current.generation === generation &&
+        readEvidenceDraft(scope).source === draft.source &&
+        readEvidenceDraft(scope).operation === operation;
       if (updateEvidenceOperation(scope, operation, (current) => current, draft.source)) {
         clearEvidenceDraft(scope, draft.source);
         if (active) {
-          updateEvidenceDraft(scope, (current) => ({ ...current, assignee: draft.assignee, due: draft.due,
-            role: draft.role, condition: draft.condition }));
+          updateEvidenceDraft(scope, (current) => ({
+            ...current,
+            assignee: draft.assignee,
+            due: draft.due,
+            role: draft.role,
+            condition: draft.condition,
+          }));
           setView({ ...emptyCreateRequestView(JSON.stringify([scope, ""])), created: true });
         }
       }
@@ -1533,16 +2156,37 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
     } catch (caught) {
       if (isForbidden(caught) || isUnauthenticated(caught)) {
         const actor = client.getQueryData<Actor>(queryKeys.session);
-        const active = operation && activation.current.key === viewKey && activation.current.generation === generation &&
-          readEvidenceDraft(scope).source === draft.source && readEvidenceDraft(scope).operation === operation &&
+        const active =
+          operation &&
+          activation.current.key === viewKey &&
+          activation.current.generation === generation &&
+          readEvidenceDraft(scope).source === draft.source &&
+          readEvidenceDraft(scope).operation === operation &&
           (!actor || actorReadContextKey(actor) === context.actorScope);
         const cleared = clearRejectedEvidenceOperation(scope, draft.source, operation);
-        if (cleared && active) setView({ ...emptyCreateRequestView(JSON.stringify([scope, ""])), deniedMutation: true, error: caught });
+        if (cleared && active)
+          setView({
+            ...emptyCreateRequestView(JSON.stringify([scope, ""])),
+            deniedMutation: true,
+            error: caught,
+          });
         return;
       }
-      if (operation) updateEvidenceOperation(scope, operation, (current) => ({ ...current,
-        phase: current.phase === "task-pending" ? "task-unknown" : current.phase === "request-pending" ? "request-unknown" : current.phase,
-      }), draft.source);
+      if (operation)
+        updateEvidenceOperation(
+          scope,
+          operation,
+          (current) => ({
+            ...current,
+            phase:
+              current.phase === "task-pending"
+                ? "task-unknown"
+                : current.phase === "request-pending"
+                  ? "request-unknown"
+                  : current.phase,
+          }),
+          draft.source,
+        );
       setError(caught, operation || undefined);
     } finally {
       setPending(false, operation || undefined);
@@ -1559,47 +2203,135 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
     if (taskUnknown && taskRechecked && chosen.length === 1 && chosen[0]) {
       const selected = chosen[0];
       setLocalTask(selected);
-      setDraft({ existingTaskId: value, task: { id: selected.id, version: selected.version, caseId: selected.case_id,
-        assigneeId: selected.assignee_id }, phase: "linked", needsVerification: false });
+      setDraft({
+        existingTaskId: value,
+        task: {
+          id: selected.id,
+          version: selected.version,
+          caseId: selected.case_id,
+          assigneeId: selected.assignee_id,
+        },
+        phase: "linked",
+        needsVerification: false,
+      });
     } else setDraft({ existingTaskId: value });
   }
 
-  const submitLabel = draft.task ? "重试创建补充请求" : createRequestButtonLabel(null, draft.taskMode);
-  const submitDisabled = isCreateRequestButtonDisabled(frozen, validSource, draft.question, taskReady) || taskUnknown;
+  const submitLabel = draft.task
+    ? "重试创建补充请求"
+    : createRequestButtonLabel(null, draft.taskMode);
+  const submitDisabled =
+    isCreateRequestButtonDisabled(frozen, validSource, draft.question, taskReady) || taskUnknown;
   return (
-    <form ref={formRef} tabIndex={-1} className="workflow-form" onSubmit={(event) => void submit(event)}>
+    <form
+      ref={formRef}
+      tabIndex={-1}
+      className="workflow-form"
+      onSubmit={(event) => void submit(event)}
+    >
       <h3>发起补充材料请求</h3>
-      <p className="meta">选择本次审查中需要补充材料的检查，再关联一项有责任人和截止时间的案件任务。</p>
-      {selectedSource && !options.some((option) => option.value === selectedSource) ? <p role="alert">所选来源不属于当前执行或身份不唯一，请返回办理列表核对。</p> : null}
-      <CreateRequestSourceFields frozen={frozen} options={options} source={validSource ? draft.source : ""} pending={pending || !!draft.task || taskUnknown || lockedRequest} onSourceChange={(source) => { if (scope) activateEvidenceDraft(scope, source); }} />
-      {taskUnknown ? <p role="alert">任务创建结果待核对。请刷新案件任务并选择已创建的任务，确认前不会重复创建。</p> : null}
-      {draft.task && !task ? <p role="status">已关联任务待核对；请确认案件任务的身份、责任人和版本后继续。</p> : null}
-      {(taskUnknown || (draft.task && !task)) && !context.tasksLoading ? <Button htmlType="button" onClick={() => {
-        setTaskRechecked(false);
-        void context.refreshRecovery().then(setTaskRechecked);
-      }}>重新核对办理信息</Button> : null}
-      <CreateRequestTaskFields
-        taskMode={draft.taskMode} onTaskModeChange={(taskMode) => setDraft({ taskMode })} task={task} pending={pending || (!!draft.task && !task) || lockedRequest || (taskUnknown && draft.taskMode === "new")}
-        existingTaskId={draft.existingTaskId} onExistingTaskChange={chooseExistingTask} context={context} eligibleTasks={eligibleTasks}
-        title={draft.title} onTitleChange={(title) => setDraft({ title })} assignee={draft.assignee} onAssigneeChange={(assignee) => setDraft({ assignee })}
-        due={draft.due} onDueChange={(due) => setDraft({ due })}
+      <p className="meta">
+        选择本次审查中需要补充材料的检查，再关联一项有责任人和截止时间的案件任务。
+      </p>
+      {selectedSource && !options.some((option) => option.value === selectedSource) ? (
+        <p role="alert">所选来源不属于当前执行或身份不唯一，请返回办理列表核对。</p>
+      ) : null}
+      <CreateRequestSourceFields
+        frozen={frozen}
+        options={options}
+        source={validSource ? draft.source : ""}
+        pending={pending || !!draft.task || taskUnknown || lockedRequest}
+        onSourceChange={(source) => {
+          if (scope) activateEvidenceDraft(scope, source);
+        }}
       />
-      {taskUnknown && draft.taskMode !== "existing" ? <Button htmlType="button" onClick={() => {
-        setDraft({ taskMode: "existing" });
-        setTaskRechecked(false);
-        void context.refreshRecovery().then(setTaskRechecked);
-      }}>核对已有任务</Button> : null}
+      {taskUnknown ? (
+        <p role="alert">
+          任务创建结果待核对。请刷新案件任务并选择已创建的任务，确认前不会重复创建。
+        </p>
+      ) : null}
+      {draft.task && !task ? (
+        <p role="status">已关联任务待核对；请确认案件任务的身份、责任人和版本后继续。</p>
+      ) : null}
+      {(taskUnknown || (draft.task && !task)) && !context.tasksLoading ? (
+        <Button
+          htmlType="button"
+          onClick={() => {
+            setTaskRechecked(false);
+            void context.refreshRecovery().then(setTaskRechecked);
+          }}
+        >
+          重新核对办理信息
+        </Button>
+      ) : null}
+      <CreateRequestTaskFields
+        taskMode={draft.taskMode}
+        onTaskModeChange={(taskMode) => setDraft({ taskMode })}
+        task={task}
+        pending={
+          pending ||
+          (!!draft.task && !task) ||
+          lockedRequest ||
+          (taskUnknown && draft.taskMode === "new")
+        }
+        existingTaskId={draft.existingTaskId}
+        onExistingTaskChange={chooseExistingTask}
+        context={context}
+        eligibleTasks={eligibleTasks}
+        title={draft.title}
+        onTitleChange={(title) => setDraft({ title })}
+        assignee={draft.assignee}
+        onAssigneeChange={(assignee) => setDraft({ assignee })}
+        due={draft.due}
+        onDueChange={(due) => setDraft({ due })}
+      />
+      {taskUnknown && draft.taskMode !== "existing" ? (
+        <Button
+          htmlType="button"
+          onClick={() => {
+            setDraft({ taskMode: "existing" });
+            setTaskRechecked(false);
+            void context.refreshRecovery().then(setTaskRechecked);
+          }}
+        >
+          核对已有任务
+        </Button>
+      ) : null}
       <ErrorNotice error={context.detailError} />
       <CreateRequestDetailsFields
-        question={draft.question} onQuestionChange={(question) => setDraft({ question })} role={draft.role} onRoleChange={(role) => setDraft({ role })}
-        source={draft.source} condition={draft.condition} onConditionChange={(condition) => setDraft({ condition })} pending={pending || lockedRequest || taskUnknown}
+        question={draft.question}
+        onQuestionChange={(question) => setDraft({ question })}
+        role={draft.role}
+        onRoleChange={(role) => setDraft({ role })}
+        source={draft.source}
+        condition={draft.condition}
+        onConditionChange={(condition) => setDraft({ condition })}
+        pending={pending || lockedRequest || taskUnknown}
       />
-      <CreateRequestLinkedTaskFooter task={task} pending={pending || lockedRequest} onReplace={replaceLinkedTask} />
-      {draft.phase === "request-unknown" ? <p role="status">请求结果待核对，可在确认任务后使用原请求继续重试。</p> : null}
-      {confirmationError ? <p className="workflow-error" role="alert">{confirmationError}</p> : null}
+      <CreateRequestLinkedTaskFooter
+        task={task}
+        pending={pending || lockedRequest}
+        onReplace={replaceLinkedTask}
+      />
+      {draft.phase === "request-unknown" ? (
+        <p role="status">请求结果待核对，可在确认任务后使用原请求继续重试。</p>
+      ) : null}
+      {confirmationError ? (
+        <p className="workflow-error" role="alert">
+          {confirmationError}
+        </p>
+      ) : null}
       <ErrorNotice error={error} />
       {created ? <p role="status">补充材料请求已创建。</p> : null}
-      <Button aria-label={submitLabel} type="primary" htmlType="submit" loading={pending} disabled={submitDisabled}>{submitLabel}</Button>
+      <Button
+        aria-label={submitLabel}
+        type="primary"
+        htmlType="submit"
+        loading={pending}
+        disabled={submitDisabled}
+      >
+        {submitLabel}
+      </Button>
     </form>
   );
 }
@@ -1633,7 +2365,9 @@ function RequestCard({
   const [answer, setAnswer] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [uploadRole, setUploadRole] = useState(item.material_role ?? "");
-  const [uploaded, setUploaded] = useState<{ id: string; filename: string; role: string } | null>(null);
+  const [uploaded, setUploaded] = useState<{ id: string; filename: string; role: string } | null>(
+    null,
+  );
   const [receiptId, setReceiptId] = useState("");
   const [quoteDocumentId, setQuoteDocumentId] = useState("");
   const [quote, setQuote] = useState<FrozenQuoteSelection | null>(null);
@@ -1648,16 +2382,33 @@ function RequestCard({
     targetRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [selectedRequestId, item.id, navigationSerial, expanded]);
   const { canSubmit, canUpload, canVerify } = requestPermissions(context);
-  const receipts = (history.data ?? []).flatMap((event) => event.receipt ? [event.receipt] : []);
+  const receipts = (history.data ?? []).flatMap((event) => (event.receipt ? [event.receipt] : []));
   const receipt = receipts.find((entry) => entry.id === receiptId);
-  const reviewFacts = requestCardReviewFacts(item, attemptId, runId, evaluations, agentReview, context);
-  const { source, matchingEvaluations, gap, observed, frozenLater, requiresBusinessAt } = reviewFacts;
+  const reviewFacts = requestCardReviewFacts(
+    item,
+    attemptId,
+    runId,
+    evaluations,
+    agentReview,
+    context,
+  );
+  const { source, matchingEvaluations, gap, observed, frozenLater, requiresBusinessAt } =
+    reviewFacts;
   const frozenDocuments = receiptFrozenDocuments(context.workspace?.documents, item, receipt);
   const frozenDocument = frozenDocuments.find((document) => document.id === quoteDocumentId);
-  const activeQuoteScope = quoteScopeForRequest(quoteScope, caseId, runId, attemptId, context.workspace);
+  const activeQuoteScope = quoteScopeForRequest(
+    quoteScope,
+    caseId,
+    runId,
+    attemptId,
+    context.workspace,
+  );
   const quoteScopeParsedIds = activeQuoteScope?.parsedDocumentIds.join("\u0000") ?? "";
   const canUseDocumentSelection = quoteMatchesFrozenDocument(
-    quoteSelection ?? null, activeQuoteScope, frozenDocument, receipt,
+    quoteSelection ?? null,
+    activeQuoteScope,
+    frozenDocument,
+    receipt,
   );
   const quoteValid = quoteMatchesFrozenDocument(quote, activeQuoteScope, frozenDocument, receipt);
   useEffect(() => {
@@ -1680,24 +2431,60 @@ function RequestCard({
     setPlaybookRef(undefined);
     setPlaybookRefAvailable(true);
   }, [caseId, item.id]);
-  const verifiedReady = requestVerificationReady(canVerify, item.status, receipt, frozenLater, observed, quoteValid, reason);
+  const verifiedReady = requestVerificationReady(
+    canVerify,
+    item.status,
+    receipt,
+    frozenLater,
+    observed,
+    quoteValid,
+    reason,
+  );
   const validBusinessAt = validBusinessReviewTime(businessAt);
   const availableDocuments = availableRequestDocuments(documents, item.material_role);
   const documentOptions = requestDocumentOptions(availableDocuments, uploaded);
 
   const upload = useMutation({
-    mutationFn: async ({ selectedFile, selectedRole }: { selectedFile: File; selectedRole: string }) => {
+    mutationFn: async ({
+      selectedFile,
+      selectedRole,
+    }: {
+      selectedFile: File;
+      selectedRole: string;
+    }) => {
       if (!context.actor) throw new Error("登录状态不可用，请刷新后重试");
       const commandContext = captureCommandContext(context.actor);
-      const payload = { role: selectedRole, name: selectedFile.name, type: selectedFile.type, size: selectedFile.size, sha256: await fileSha256(selectedFile) };
+      const payload = {
+        role: selectedRole,
+        name: selectedFile.name,
+        type: selectedFile.type,
+        size: selectedFile.size,
+        sha256: await fileSha256(selectedFile),
+      };
       assertCommandContextCurrent(commandContext);
-      const pending = await pendingMutationKey("evidence.upload", idempotencyActorScope(context.actor), caseId, payload, commandContext);
+      const pending = await pendingMutationKey(
+        "evidence.upload",
+        idempotencyActorScope(context.actor),
+        caseId,
+        payload,
+        commandContext,
+      );
       assertCommandContextCurrent(commandContext);
-      const result = await uploadEvidenceDocument(caseId, selectedFile, selectedRole, pending.key, commandContext);
+      const result = await uploadEvidenceDocument(
+        caseId,
+        selectedFile,
+        selectedRole,
+        pending.key,
+        commandContext,
+      );
       try {
         clearPendingMutationKey(pending.storageKey);
       } catch {
-        try { sessionStorage.setItem(pending.storageKey, newIdempotencyKey()); } catch { /* response already succeeded */ }
+        try {
+          sessionStorage.setItem(pending.storageKey, newIdempotencyKey());
+        } catch {
+          /* response already succeeded */
+        }
       }
       return result;
     },
@@ -1727,8 +2514,22 @@ function RequestCard({
     },
   });
   const verify = useMutation({
-    mutationFn: (input: { run_id: string; attempt_id: string; evaluation_id?: string; gap_id?: string; evidence: EvidenceQuote[]; reason: string; expected_version: number }) =>
-      verifyEvidenceRequest(caseId, item.id, receiptId, input, keyFor(`verify:${item.id}:${receiptId}`, input)),
+    mutationFn: (input: {
+      run_id: string;
+      attempt_id: string;
+      evaluation_id?: string;
+      gap_id?: string;
+      evidence: EvidenceQuote[];
+      reason: string;
+      expected_version: number;
+    }) =>
+      verifyEvidenceRequest(
+        caseId,
+        item.id,
+        receiptId,
+        input,
+        keyFor(`verify:${item.id}:${receiptId}`, input),
+      ),
     onSuccess: async () => {
       setReason("");
       setQuote(null);
@@ -1768,8 +2569,15 @@ function RequestCard({
   const matchDescription = requestMatchDescription(source, matchingEvaluations, gap);
   const receiptInput = requestReceiptInput(mode, documentId, answer, item.version);
   const verificationInput = requestVerificationInput(
-    verifiedReady, attemptId, runId, quote ? evidenceQuoteOf(quote) : null,
-    source, matchingEvaluations, gap, reason, item.version,
+    verifiedReady,
+    attemptId,
+    runId,
+    quote ? evidenceQuoteOf(quote) : null,
+    source,
+    matchingEvaluations,
+    gap,
+    reason,
+    item.version,
   );
 
   return (
@@ -1785,31 +2593,74 @@ function RequestCard({
         receipts={receipts}
       />
       <RequestReceiptForm
-        item={item} canSubmit={canSubmit} canUpload={canUpload} documents={documents}
-        documentOptions={documentOptions} mode={mode} setMode={setMode} documentId={documentId}
-        setDocumentId={setDocumentId} answer={answer} setAnswer={setAnswer} uploadRole={uploadRole}
-        setUploadRole={setUploadRole} file={file} setFile={setFile} uploadPending={upload.isPending}
-        uploadError={upload.error} uploaded={uploaded}
+        item={item}
+        canSubmit={canSubmit}
+        canUpload={canUpload}
+        documents={documents}
+        documentOptions={documentOptions}
+        mode={mode}
+        setMode={setMode}
+        documentId={documentId}
+        setDocumentId={setDocumentId}
+        answer={answer}
+        setAnswer={setAnswer}
+        uploadRole={uploadRole}
+        setUploadRole={setUploadRole}
+        file={file}
+        setFile={setFile}
+        uploadPending={upload.isPending}
+        uploadError={upload.error}
+        uploaded={uploaded}
         onUpload={() => uploadRequestFile(file, uploadRole, upload.mutate)}
-        receiptPending={submitReceipt.isPending} receiptError={submitReceipt.error}
+        receiptPending={submitReceipt.isPending}
+        receiptError={submitReceipt.error}
         onSubmit={(event) => submitRequestForm(event, receiptInput, submitReceipt.mutate)}
       />
       {item.status === "received" && context.allowWrites ? (
         <>
-          <FollowupReview caseId={caseId} canSubmit={canSubmit} requiresBusinessAt={requiresBusinessAt} businessAt={businessAt}
-            setBusinessAt={setBusinessAt} startPending={start.isPending} startError={start.error}
-            validBusinessAt={validBusinessAt} playbookRef={playbookRef} setPlaybookRef={setPlaybookRef}
-            playbookRefAvailable={playbookRefAvailable} setPlaybookRefAvailable={setPlaybookRefAvailable}
-            disabled={start.isPending} onStart={startFollowupReview} />
+          <FollowupReview
+            caseId={caseId}
+            canSubmit={canSubmit}
+            requiresBusinessAt={requiresBusinessAt}
+            businessAt={businessAt}
+            setBusinessAt={setBusinessAt}
+            startPending={start.isPending}
+            startError={start.error}
+            validBusinessAt={validBusinessAt}
+            playbookRef={playbookRef}
+            setPlaybookRef={setPlaybookRef}
+            playbookRefAvailable={playbookRefAvailable}
+            setPlaybookRefAvailable={setPlaybookRefAvailable}
+            disabled={start.isPending}
+            onStart={startFollowupReview}
+          />
           <RequestVerificationForm
-            frozenLater={frozenLater} observed={observed} matchDescription={matchDescription}
+            frozenLater={frozenLater}
+            observed={observed}
+            matchDescription={matchDescription}
             historyError={history.isError}
-            evidence={{ receiptId, onReceiptChange: changeReceipt, receipts, documents, receipt,
-              quoteDocumentId, onQuoteDocumentChange: changeQuoteDocument, frozenDocuments,
-              frozenDocument, onSelectQuote: selectQuote, quote, quoteValid,
-              canUseDocumentSelection, onUseDocumentSelection: useDocumentSelection }}
-            canVerify={canVerify} reason={reason} setReason={setReason} verifyError={verify.error}
-            verifyPending={verify.isPending} verifiedReady={verifiedReady}
+            evidence={{
+              receiptId,
+              onReceiptChange: changeReceipt,
+              receipts,
+              documents,
+              receipt,
+              quoteDocumentId,
+              onQuoteDocumentChange: changeQuoteDocument,
+              frozenDocuments,
+              frozenDocument,
+              onSelectQuote: selectQuote,
+              quote,
+              quoteValid,
+              canUseDocumentSelection,
+              onUseDocumentSelection: useDocumentSelection,
+            }}
+            canVerify={canVerify}
+            reason={reason}
+            setReason={setReason}
+            verifyError={verify.error}
+            verifyPending={verify.isPending}
+            verifiedReady={verifiedReady}
             onSubmit={(event) => submitRequestForm(event, verificationInput, verify.mutate)}
           />
         </>
@@ -1842,25 +2693,40 @@ export function EvidenceRequestPanel(props: EvidencePanelProps) {
   const scopeInvalidated = useRef(false);
   const currentScope = session.data ? actorReadContextKey(session.data) : null;
   if (currentScope && initialScope.current === null) initialScope.current = currentScope;
-  if (currentScope && initialScope.current && currentScope !== initialScope.current) scopeInvalidated.current = true;
+  if (currentScope && initialScope.current && currentScope !== initialScope.current)
+    scopeInvalidated.current = true;
   const workbench = useQuery({
     queryKey: queryKeys.workbench("week"),
     queryFn: ({ signal }) => getWorkbench("week", signal),
     enabled: false,
   });
   const context: PanelContext = {
-    workspace: workspace.data, workspaceKey: queryKeys.review(props.caseId, props.runId, selectedAttemptId),
-    detail: detail.data, detailError: detail.error,
-    detailReady: detail.isSuccess && !detail.isFetching, actor: session.isSuccess && !session.isFetching ? session.data : undefined,
-    actorScope: session.data ? actorReadContextKey(session.data) : null, sessionReady: session.isSuccess && !session.isFetching,
+    workspace: workspace.data,
+    workspaceKey: queryKeys.review(props.caseId, props.runId, selectedAttemptId),
+    detail: detail.data,
+    detailError: detail.error,
+    detailReady: detail.isSuccess && !detail.isFetching,
+    actor: session.isSuccess && !session.isFetching ? session.data : undefined,
+    actorScope: session.data ? actorReadContextKey(session.data) : null,
+    sessionReady: session.isSuccess && !session.isFetching,
     tasks: workbench.isSuccess && !workbench.isFetching ? workbench.data.tasks : undefined,
-    tasksError: workbench.error, tasksLoading: workbench.isFetching,
+    tasksError: workbench.error,
+    tasksLoading: workbench.isFetching,
     refreshTasks: async () => (await workbench.refetch()).isSuccess,
     refreshRecovery: async () => {
-      const results = await Promise.all([detail.refetch(), workspace.refetch(), workbench.refetch()]);
+      const results = await Promise.all([
+        detail.refetch(),
+        workspace.refetch(),
+        workbench.refetch(),
+      ]);
       return results.every((result) => result.isSuccess);
     },
-    allowWrites: !props.readOnly && session.isSuccess && !session.isFetching && detail.isSuccess && !detail.isFetching,
+    allowWrites:
+      !props.readOnly &&
+      session.isSuccess &&
+      !session.isFetching &&
+      detail.isSuccess &&
+      !detail.isFetching,
   };
   const requests = useQuery({
     queryKey: requestKey(props.caseId),
@@ -1868,14 +2734,27 @@ export function EvidenceRequestPanel(props: EvidencePanelProps) {
     enabled: !!props.caseId,
     retry: false,
   });
-  const denied = scopeInvalidated.current || !session.data || !detail.data ||
-    isForbidden(requests.error) || isUnauthenticated(requests.error) ||
-    isForbidden(detail.error) || isUnauthenticated(detail.error) ||
-    isForbidden(session.error) || isUnauthenticated(session.error);
+  const denied =
+    scopeInvalidated.current ||
+    !session.data ||
+    !detail.data ||
+    isForbidden(requests.error) ||
+    isUnauthenticated(requests.error) ||
+    isForbidden(detail.error) ||
+    isUnauthenticated(detail.error) ||
+    isForbidden(session.error) ||
+    isUnauthenticated(session.error);
   useLayoutEffect(() => {
-    if (scopeInvalidated.current || isForbidden(requests.error) || isUnauthenticated(requests.error) ||
-        isForbidden(detail.error) || isUnauthenticated(detail.error) ||
-        isForbidden(session.error) || isUnauthenticated(session.error)) clearAllEvidenceDrafts();
+    if (
+      scopeInvalidated.current ||
+      isForbidden(requests.error) ||
+      isUnauthenticated(requests.error) ||
+      isForbidden(detail.error) ||
+      isUnauthenticated(detail.error) ||
+      isForbidden(session.error) ||
+      isUnauthenticated(session.error)
+    )
+      clearAllEvidenceDrafts();
   }, [currentScope, requests.error, detail.error, session.error]);
   const taskDenied = isForbidden(workbench.error) || isUnauthenticated(workbench.error);
   useLayoutEffect(() => {
@@ -1884,35 +2763,88 @@ export function EvidenceRequestPanel(props: EvidencePanelProps) {
   const revalidationFailed = !denied && (session.isError || detail.isError);
   const revalidating = !denied && (session.isFetching || detail.isFetching || revalidationFailed);
   const visibleRequests = denied ? undefined : requests.data;
-  const selectedMatches = visibleRequests?.filter((item) => item.id === props.selectedRequestId) ?? [];
+  const selectedMatches =
+    visibleRequests?.filter((item) => item.id === props.selectedRequestId) ?? [];
   const selectedRequestId = selectedMatches.length === 1 ? props.selectedRequestId : null;
   const selectedEvaluation = props.selectedSource?.startsWith("evaluation:")
-    ? props.evaluations.filter((item) => item.id === props.selectedSource?.slice("evaluation:".length)) : [];
+    ? props.evaluations.filter(
+        (item) => item.id === props.selectedSource?.slice("evaluation:".length),
+      )
+    : [];
   return (
     <section className="workflow-panel" aria-label="补充材料请求">
       <header className="workflow-panel-head">
-        <div><h2>补充材料请求</h2><p className="meta">跟踪缺失检查、材料回执与后续审查核验。</p></div>
-        <Button htmlType="button" loading={requests.isFetching} onClick={() => void client.invalidateQueries({ queryKey: requestKey(props.caseId) })}>刷新请求</Button>
+        <div>
+          <h2>补充材料请求</h2>
+          <p className="meta">跟踪缺失检查、材料回执与后续审查核验。</p>
+        </div>
+        <Button
+          htmlType="button"
+          loading={requests.isFetching}
+          onClick={() => void client.invalidateQueries({ queryKey: requestKey(props.caseId) })}
+        >
+          刷新请求
+        </Button>
       </header>
       {denied ? <p role="status">无法确认登录或案件状态，暂不显示补件记录。</p> : null}
-      {revalidating && !revalidationFailed ? <p role="status">正在重新确认登录或案件状态，办理暂不可用。</p> : null}
-      {revalidationFailed ? <p role="alert">登录或案件状态重新确认失败，办理暂不可用。<Button htmlType="button" onClick={() => {
-        if (session.isError) void session.refetch();
-        if (detail.isError) void detail.refetch();
-      }}>重试确认状态</Button></p> : null}
+      {revalidating && !revalidationFailed ? (
+        <p role="status">正在重新确认登录或案件状态，办理暂不可用。</p>
+      ) : null}
+      {revalidationFailed ? (
+        <p role="alert">
+          登录或案件状态重新确认失败，办理暂不可用。
+          <Button
+            htmlType="button"
+            onClick={() => {
+              if (session.isError) void session.refetch();
+              if (detail.isError) void detail.refetch();
+            }}
+          >
+            重试确认状态
+          </Button>
+        </p>
+      ) : null}
       <div hidden={revalidating}>
-      {props.readOnly ? <p>当前工作区只读；案件级请求可在当前合法办理环境继续处理。</p> : null}
-      {props.selectedSource?.startsWith("evaluation:") && selectedEvaluation.length === 1 ? <p>所选规则来源：{selectedEvaluation[0]?.reason || "检查原因待核对"}</p> : null}
-      {taskDenied ? <p role="status">无法确认案件任务的访问权限，暂不恢复补件创建草稿。</p> : null}
-      {!denied && !taskDenied ? <CreateRequest key={`${props.caseId}:${props.runId}:${props.attemptId ?? ""}`} {...props} context={context} /> : null}
-      {requests.isLoading ? <p role="status">正在读取补充材料请求。</p> : null}
-      <ErrorNotice error={requests.error} />
-      {requests.isError ? <Button htmlType="button" onClick={() => void requests.refetch()}>重试读取请求</Button> : null}
-      {props.selectedRequestId && requests.isSuccess && selectedMatches.length !== 1 ? <p role="alert">所选补件请求不存在或身份不唯一，请返回办理列表核对。</p> : null}
-      {visibleRequests?.length === 0 && requests.isSuccess && !requests.isFetching ? <p>当前案件没有补充材料请求。</p> : null}
-      {visibleRequests && visibleRequests.length > 0 ? <ul className="workflow-record-list">{visibleRequests.map((item) =>
-        <RequestCard key={`${props.caseId}:${item.id}`} item={item} {...props} selectedRequestId={selectedRequestId} context={context} />
-      )}</ul> : null}
+        {props.readOnly ? <p>当前工作区只读；案件级请求可在当前合法办理环境继续处理。</p> : null}
+        {props.selectedSource?.startsWith("evaluation:") && selectedEvaluation.length === 1 ? (
+          <p>所选规则来源：{selectedEvaluation[0]?.reason || "检查原因待核对"}</p>
+        ) : null}
+        {taskDenied ? (
+          <p role="status">无法确认案件任务的访问权限，暂不恢复补件创建草稿。</p>
+        ) : null}
+        {!denied && !taskDenied ? (
+          <CreateRequest
+            key={`${props.caseId}:${props.runId}:${props.attemptId ?? ""}`}
+            {...props}
+            context={context}
+          />
+        ) : null}
+        {requests.isLoading ? <p role="status">正在读取补充材料请求。</p> : null}
+        <ErrorNotice error={requests.error} />
+        {requests.isError ? (
+          <Button htmlType="button" onClick={() => void requests.refetch()}>
+            重试读取请求
+          </Button>
+        ) : null}
+        {props.selectedRequestId && requests.isSuccess && selectedMatches.length !== 1 ? (
+          <p role="alert">所选补件请求不存在或身份不唯一，请返回办理列表核对。</p>
+        ) : null}
+        {visibleRequests?.length === 0 && requests.isSuccess && !requests.isFetching ? (
+          <p>当前案件没有补充材料请求。</p>
+        ) : null}
+        {visibleRequests && visibleRequests.length > 0 ? (
+          <ul className="workflow-record-list">
+            {visibleRequests.map((item) => (
+              <RequestCard
+                key={`${props.caseId}:${item.id}`}
+                item={item}
+                {...props}
+                selectedRequestId={selectedRequestId}
+                context={context}
+              />
+            ))}
+          </ul>
+        ) : null}
       </div>
     </section>
   );

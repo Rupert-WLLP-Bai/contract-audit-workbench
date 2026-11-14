@@ -355,7 +355,10 @@ function validatePlaybook(issues: KnowledgeFormIssue[], value: KnowledgeContent)
       issues.push({ id: `playbook-rule-${index}`, message: "同一规则只能出现一次" });
     seen.add(clause.rule_id);
     if (clause.rule_id && (!boundRules.has(clause.rule_id) || !sourceRules.has(clause.rule_id)))
-      issues.push({ id: `playbook-rule-${index}`, message: "规则必须同时存在于规则包绑定和正文引用中" });
+      issues.push({
+        id: `playbook-rule-${index}`,
+        message: "规则必须同时存在于规则包绑定和正文引用中",
+      });
     const fields: [keyof KnowledgePlaybookClause, string][] = [
       ["standard_clause", "标准条款"],
       ["acceptable_deviation", "可接受偏差"],
@@ -365,8 +368,7 @@ function validatePlaybook(issues: KnowledgeFormIssue[], value: KnowledgeContent)
     ];
     for (const [key, label] of fields) {
       const text = clause[key];
-      if (!text.trim())
-        issues.push({ id: `playbook-${key}-${index}`, message: `请填写${label}` });
+      if (!text.trim()) issues.push({ id: `playbook-${key}-${index}`, message: `请填写${label}` });
       else if (Array.from(text).length > 2000)
         issues.push({ id: `playbook-${key}-${index}`, message: `${label}不能超过 2000 个字符` });
     }
@@ -1454,7 +1456,9 @@ async function playbookTemplateCatalog(
       templateScopeMatches(item.scope, scope),
   );
   const versions = await Promise.all(
-    eligible.map((item) => getGovernedKnowledge(item.ref.knowledge_id, item.ref.version_id, signal)),
+    eligible.map((item) =>
+      getGovernedKnowledge(item.ref.knowledge_id, item.ref.version_id, signal),
+    ),
   );
   for (const version of versions) {
     if (
@@ -1523,7 +1527,7 @@ function PlaybookSection({ value, onChange, issues, disabled }: SectionProps) {
         <Alert
           type="error"
           showIcon
-          message="模板目录没有加载"
+          title="模板目录没有加载"
           description={lookupError(templateQuery.error)}
         />
       ) : null}
@@ -1531,7 +1535,7 @@ function PlaybookSection({ value, onChange, issues, disabled }: SectionProps) {
         <Alert
           type="warning"
           showIcon
-          message="所选模板版本已不在当前可用目录"
+          title="所选模板版本已不在当前可用目录"
           description="系统保留了原精确版本，没有改成同名的新版本。请重新选择后再提交。"
         />
       ) : null}
@@ -1540,8 +1544,7 @@ function PlaybookSection({ value, onChange, issues, disabled }: SectionProps) {
           id="knowledge-playbook-template"
           aria-label="审查手册使用的治理模板"
           style={{ width: "100%" }}
-          showSearch
-          optionFilterProp="label"
+          showSearch={{ optionFilterProp: "label" }}
           placeholder="选择平台模板或当前范围已发布的租户模板"
           value={playbook.template.template_id ? currentTemplateKey : undefined}
           loading={session.isLoading || templateQuery.isLoading}
@@ -1553,11 +1556,13 @@ function PlaybookSection({ value, onChange, issues, disabled }: SectionProps) {
               label: `${candidate.name} · ${candidate.source === "tenant" ? "租户" : "平台"}`,
             })),
             ...(playbook.template.template_id && !selectedTemplate
-              ? [{
-                  value: currentTemplateKey,
-                  label: "原选版本已不可用（需重新选择）",
-                  disabled: true,
-                }]
+              ? [
+                  {
+                    value: currentTemplateKey,
+                    label: "原选版本已不可用（需重新选择）",
+                    disabled: true,
+                  },
+                ]
               : []),
           ]}
           onChange={(key?: string) => {
@@ -1610,13 +1615,15 @@ function PlaybookSection({ value, onChange, issues, disabled }: SectionProps) {
                 onChange={(rule_id: string) => changeClause(index, { rule_id })}
               />
             </Field>
-            {([
-              ["standard_clause", "标准条款"],
-              ["acceptable_deviation", "可接受偏差"],
-              ["hard_constraint", "不可突破的底线"],
-              ["proposed_wording", "建议措辞"],
-              ["escalation_condition", "升级条件"],
-            ] as const).map(([key, label]) => (
+            {(
+              [
+                ["standard_clause", "标准条款"],
+                ["acceptable_deviation", "可接受偏差"],
+                ["hard_constraint", "不可突破的底线"],
+                ["proposed_wording", "建议措辞"],
+                ["escalation_condition", "升级条件"],
+              ] as const
+            ).map(([key, label]) => (
               <Field
                 key={key}
                 id={`playbook-${key}-${index}`}
@@ -1730,7 +1737,12 @@ export function KnowledgeEditor({
             />
             <BindingSection value={value} onChange={onChange} issues={issues} disabled={disabled} />
             {value.kind === "playbook" ? (
-              <PlaybookSection value={value} onChange={onChange} issues={issues} disabled={disabled} />
+              <PlaybookSection
+                value={value}
+                onChange={onChange}
+                issues={issues}
+                disabled={disabled}
+              />
             ) : null}
           </>
         )}
@@ -1771,7 +1783,12 @@ export function KnowledgeEditor({
           <ScopeSection value={value} onChange={onChange} issues={issues} disabled={disabled} />
           <BindingSection value={value} onChange={onChange} issues={issues} disabled={disabled} />
           {value.kind === "playbook" ? (
-            <PlaybookSection value={value} onChange={onChange} issues={issues} disabled={disabled} />
+            <PlaybookSection
+              value={value}
+              onChange={onChange}
+              issues={issues}
+              disabled={disabled}
+            />
           ) : null}
         </>
       )}

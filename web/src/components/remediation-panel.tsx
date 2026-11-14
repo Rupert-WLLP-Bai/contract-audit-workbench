@@ -36,11 +36,7 @@ import {
   runTone,
 } from "../domain/review";
 import { businessDomainLabel, remediationStatusLabel } from "../domain/business-labels";
-import {
-  reviewChoiceForKey,
-  reviewChoices,
-  type ReviewChoice,
-} from "../domain/workflow";
+import { reviewChoiceForKey, reviewChoices, type ReviewChoice } from "../domain/workflow";
 import { ReviewChoiceSelect } from "./review-choice-select";
 import { PlaybookPicker } from "./playbook-picker";
 import { StatusText } from "./status-text";
@@ -84,9 +80,7 @@ function hasCompatibleRuleEvaluations(
           evaluation.capability_id === source.capability_id &&
           uniqueObjectRefs(evaluation.object_refs) &&
           evaluation.object_refs.length === source.object_refs.length &&
-          evaluation.object_refs.every((objectRef) =>
-            source.object_refs.includes(objectRef),
-          ),
+          evaluation.object_refs.every((objectRef) => source.object_refs.includes(objectRef)),
       );
       return matching.length === 1 && matching[0]?.relation === "compatible";
     })
@@ -120,9 +114,7 @@ function RemediationCard({
   const submit = useSubmitRemediation(caseId, item.id);
   const verify = useVerifyRemediation(caseId, item.id);
   const candidateDefault =
-    choices.find((choice) => choice.runId !== item.run_id)?.key ??
-    choices[0]?.key ??
-    "";
+    choices.find((choice) => choice.runId !== item.run_id)?.key ?? choices[0]?.key ?? "";
   const [candidateKey, setCandidateKey] = useState(candidateDefault);
   const [playbookRef, setPlaybookRef] = useState<PlaybookRef>();
   const [playbookRefAvailable, setPlaybookRefAvailable] = useState(true);
@@ -141,7 +133,9 @@ function RemediationCard({
       targetRef.current?.focus();
       targetRef.current?.scrollIntoView?.({ block: "nearest" });
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [selected]);
   useEffect(() => {
     setPlaybookRef(undefined);
@@ -166,7 +160,8 @@ function RemediationCard({
       ? "原审查没有返回可用于复审的冻结业务时点。"
       : !sourceBusinessTimeValid
         ? "原审查返回的冻结业务时点无法识别，不能安全判断复核时点。"
-        : typeof candidateBusinessAt !== "string" || !Number.isFinite(Date.parse(candidateBusinessAt))
+        : typeof candidateBusinessAt !== "string" ||
+            !Number.isFinite(Date.parse(candidateBusinessAt))
           ? `所选复核没有返回可识别的冻结业务时点；来源时点为${formatDateTime(sourceBusinessAt)}。`
           : `所选复核的冻结业务时点为${formatDateTime(candidateBusinessAt)}，与来源审查的${formatDateTime(sourceBusinessAt)}不一致。`;
 
@@ -178,9 +173,7 @@ function RemediationCard({
       documentId &&
       !documents.some(
         (document) =>
-          document.id === documentId &&
-          !document.superseded &&
-          document.role === "draft_contract",
+          document.id === documentId && !document.superseded && document.role === "draft_contract",
       )
     ) {
       setDocumentId("");
@@ -196,24 +189,19 @@ function RemediationCard({
     if (startSourceReview.error) startReviewErrorRef.current?.focus();
   }, [startSourceReview.error]);
 
-  const originalFindingIds = new Set(
-    source.data?.findings.map((finding) => finding.id) ?? [],
-  );
+  const originalFindingIds = new Set(source.data?.findings.map((finding) => finding.id) ?? []);
   const selectedAttempt = candidateWorkspace.data?.review_attempts?.attempt;
-  const selectedRunIsExpected =
-    candidateWorkspace.data?.run.id === candidate?.runId;
-  const selectedAttemptIsExpected =
-    selectedAttempt?.id === candidate?.attempt.id;
-  const isNewAttempt =
-    candidate !== null && candidate.attempt.id !== item.attempt_id;
-  const comparesSourceRun =
-    candidateWorkspace.data?.previous_run_id === item.run_id;
+  const selectedRunIsExpected = candidateWorkspace.data?.run.id === candidate?.runId;
+  const selectedAttemptIsExpected = selectedAttempt?.id === candidate?.attempt.id;
+  const isNewAttempt = candidate !== null && candidate.attempt.id !== item.attempt_id;
+  const comparesSourceRun = candidateWorkspace.data?.previous_run_id === item.run_id;
   // The server only closes a remediation when the source and verification runs
   // share the same rule/model configuration. When the selected run is compared
   // against the source run, its comparison reason is the client-side signal for
   // that check; enabling the form would only produce an avoidable 409.
-  const sourceComparisonReason =
-    comparesSourceRun ? candidateWorkspace.data?.revision_comparison_reason ?? null : null;
+  const sourceComparisonReason = comparesSourceRun
+    ? (candidateWorkspace.data?.revision_comparison_reason ?? null)
+    : null;
   const comparisonRows = item.finding_ids.map((findingId) => {
     const rows =
       candidateWorkspace.data?.revisions?.filter(
@@ -245,25 +233,21 @@ function RemediationCard({
     candidateBusinessTimeMatches &&
     sourceComparisonReason === null &&
     everyFindingCompatible;
-  let verificationBlockReason =
-    "当前复审没有返回与整改来源一致的兼容规则评估。";
-  if (source.isLoading)
-    verificationBlockReason = "正在读取整改关联的原审查和执行记录。";
+  let verificationBlockReason = "当前复审没有返回与整改来源一致的兼容规则评估。";
+  if (source.isLoading) verificationBlockReason = "正在读取整改关联的原审查和执行记录。";
   else if (source.isError)
     verificationBlockReason = `无法读取整改来源：${errorMessage(source.error)}`;
-  else if (candidateWorkspace.isLoading)
-    verificationBlockReason = "正在读取所选的复核执行记录。";
+  else if (candidateWorkspace.isLoading) verificationBlockReason = "正在读取所选的复核执行记录。";
   else if (candidateWorkspace.isError)
     verificationBlockReason = `无法读取所选复核尝试：${errorMessage(candidateWorkspace.error)}`;
-  else if (sourceComparisonReason !== null)
-    verificationBlockReason = sourceComparisonReason;
-  else if (!candidateBusinessTimeMatches)
-    verificationBlockReason = businessTimeMismatchReason;
+  else if (sourceComparisonReason !== null) verificationBlockReason = sourceComparisonReason;
+  else if (!candidateBusinessTimeMatches) verificationBlockReason = businessTimeMismatchReason;
   else if (candidateWorkspace.data && !everyFindingCompatible)
     verificationBlockReason =
       "复核未为每个整改发现返回唯一、同规则版本、同能力和同业务对象的兼容评估。";
   else if (candidateWorkspace.data && !isNewAttempt && sourceBusinessTime === null)
-    verificationBlockReason = "必须选择不同于来源执行记录的新执行；来源审查未返回冻结业务时点，无法自动带入原时点发起复审。请使用服务端已确认兼容的现有复核记录或核对来源审查。";
+    verificationBlockReason =
+      "必须选择不同于来源执行记录的新执行；来源审查未返回冻结业务时点，无法自动带入原时点发起复审。请使用服务端已确认兼容的现有复核记录或核对来源审查。";
   else if (candidateWorkspace.data && !isNewAttempt)
     verificationBlockReason = "关闭整改时，必须选择不同于原审查执行记录的新执行记录。";
   else if (selectedAttempt && !isTerminalAttemptState(selectedAttempt.state))
@@ -310,13 +294,19 @@ function RemediationCard({
     );
   }
   function onStartSourceTimeReview() {
-    if (!sourceBusinessTimeValid || sourceBusinessTime === null || (playbookRef && !playbookRefAvailable)) return;
+    if (
+      !sourceBusinessTimeValid ||
+      sourceBusinessTime === null ||
+      (playbookRef && !playbookRefAvailable)
+    )
+      return;
     startSourceReview.mutate(
       {
         business_at: sourceBusinessTime,
-        scope: source.data?.snapshot?.review_scope?.id === "single_contract_precheck"
-          ? "single_contract_precheck"
-          : "full_review",
+        scope:
+          source.data?.snapshot?.review_scope?.id === "single_contract_precheck"
+            ? "single_contract_precheck"
+            : "full_review",
         ...(playbookRef ? { playbook_ref: playbookRef } : {}),
       },
       {
@@ -333,10 +323,12 @@ function RemediationCard({
         <div>
           <h4>整改记录</h4>
           <p className="meta">
-            负责人 {item.assignee_id
-              ? members.find((member) => member.id === item.assignee_id)?.display_name ?? "未返回负责人信息"
-              : "未分配"}，截止 {formatDateTime(item.due_at)}，
-            版本 {item.version}
+            负责人{" "}
+            {item.assignee_id
+              ? (members.find((member) => member.id === item.assignee_id)?.display_name ??
+                "未返回负责人信息")
+              : "未分配"}
+            ，截止 {formatDateTime(item.due_at)}， 版本 {item.version}
           </p>
         </div>
         <StatusText
@@ -356,19 +348,19 @@ function RemediationCard({
         <div>
           <dt>来源审查</dt>
           <dd>
-            <Link
-              to={caseHref(caseId, item.run_id, item.attempt_id)}
-            >
-              查看来源审查
-            </Link>
+            <Link to={caseHref(caseId, item.run_id, item.attempt_id)}>查看来源审查</Link>
           </dd>
         </div>
         <div>
           <dt>绑定发现</dt>
           <dd>
-            {item.finding_ids.map((id) =>
-              source.data?.findings.find((finding) => finding.id === id)?.claim || "发现详情未返回",
-            ).join("、") || "未提供"}
+            {item.finding_ids
+              .map(
+                (id) =>
+                  source.data?.findings.find((finding) => finding.id === id)?.claim ||
+                  "发现详情未返回",
+              )
+              .join("、") || "未提供"}
           </dd>
         </div>
         <div>
@@ -378,9 +370,11 @@ function RemediationCard({
         <div>
           <dt>修改稿文档</dt>
           <dd>
-            {item.document_ids.map((id) =>
-              documents.find((document) => document.id === id)?.filename || "材料未返回",
-            ).join("、") || "尚未绑定"}
+            {item.document_ids
+              .map(
+                (id) => documents.find((document) => document.id === id)?.filename || "材料未返回",
+              )
+              .join("、") || "尚未绑定"}
           </dd>
         </div>
         <div>
@@ -391,19 +385,18 @@ function RemediationCard({
           <dt>复核审查</dt>
           <dd>
             {item.verification_run_id && item.verification_attempt_id ? (
-              <Link
-                to={caseHref(caseId, item.verification_run_id, item.verification_attempt_id)}
-              >
+              <Link to={caseHref(caseId, item.verification_run_id, item.verification_attempt_id)}>
                 查看复核审查
               </Link>
-            ) : "未复核"}
+            ) : (
+              "未复核"
+            )}
           </dd>
         </div>
         <div>
           <dt>创建 / 更新</dt>
           <dd>
-            {formatDateTime(item.created_at)}，
-            {formatDateTime(item.updated_at)}
+            {formatDateTime(item.created_at)}，{formatDateTime(item.updated_at)}
           </dd>
         </div>
         <div>
@@ -430,16 +423,12 @@ function RemediationCard({
             title={<>本案当前的拟签合同修改稿</>}
           >
             {documents.filter(
-              (document) =>
-                !document.superseded && document.role === "draft_contract",
+              (document) => !document.superseded && document.role === "draft_contract",
             ).length === 0 ? (
               <p>当前没有可绑定的拟签合同修改稿。</p>
             ) : null}
             {documents
-              .filter(
-                (document) =>
-                  !document.superseded && document.role === "draft_contract",
-              )
+              .filter((document) => !document.superseded && document.role === "draft_contract")
               .map((document) => (
                 <div className="workflow-check" key={document.id}>
                   <Radio
@@ -467,19 +456,12 @@ function RemediationCard({
             提交会绑定当前所选材料和整改版本 {item.version}；仅上传材料不会关闭整改。
           </p>
           {submit.error ? (
-            <p
-              ref={submitErrorRef}
-              className="workflow-error"
-              role="alert"
-              tabIndex={-1}
-            >
+            <p ref={submitErrorRef} className="workflow-error" role="alert" tabIndex={-1}>
               {errorMessage(submit.error)}
             </p>
           ) : null}
           <Button
-            aria-label={String(
-              submit.isPending ? "正在提交修改稿" : "提交修改稿",
-            )}
+            aria-label={String(submit.isPending ? "正在提交修改稿" : "提交修改稿")}
             type="primary"
             htmlType="submit"
             disabled={!canWrite || archived || !documentId || submit.isPending}
@@ -499,9 +481,7 @@ function RemediationCard({
             onChange={setCandidateKey}
             disabled={!canWrite || archived || verify.isPending}
           />
-          {candidateWorkspace.isLoading ? (
-            <p role="status">正在读取复核依据。</p>
-          ) : null}
+          {candidateWorkspace.isLoading ? <p role="status">正在读取复核依据。</p> : null}
           {candidateWorkspace.isError ? (
             <p className="workflow-error" role="alert">
               {errorMessage(candidateWorkspace.error)}
@@ -534,13 +514,13 @@ function RemediationCard({
                       <p>没有返回与该来源发现对应的比较记录。</p>
                     ) : (
                       rows.map((revision, index) => (
-                        <div
-                          className="meta"
-                          key={`${revision.finding_id ?? findingId}-${index}`}
-                        >
+                        <div className="meta" key={`${revision.finding_id ?? findingId}-${index}`}>
                           {revision.mark}，{businessDomainLabel(revision.domain)}，
                           {relationLabel(revision.relation)}，{revision.claim}
-                          <TechnicalDetail label="比较记录技术详情" value={[revision.domain, revision.relation].join(" / ")} />
+                          <TechnicalDetail
+                            label="比较记录技术详情"
+                            value={[revision.domain, revision.relation].join(" / ")}
+                          />
                         </div>
                       ))
                     )}
@@ -552,13 +532,12 @@ function RemediationCard({
               </p>
             </div>
           ) : null}
-          {!verificationReady ? (
-            <p className="callout">{verificationBlockReason}</p>
-          ) : null}
+          {!verificationReady ? <p className="callout">{verificationBlockReason}</p> : null}
           {canStartSourceTimeReview && sourceBusinessTime !== null ? (
             <>
               <p className="meta">
-                新审查会使用来源冻结业务时点 {formatDateTime(sourceBusinessTime)}；材料、规则和其他依赖仍由服务端重新冻结并核验。
+                新审查会使用来源冻结业务时点 {formatDateTime(sourceBusinessTime)}
+                ；材料、规则和其他依赖仍由服务端重新冻结并核验。
               </p>
               <PlaybookPicker
                 caseId={caseId}
@@ -576,7 +555,9 @@ function RemediationCard({
                 type="primary"
                 htmlType="button"
                 loading={startSourceReview.isPending}
-                disabled={startSourceReview.isPending || Boolean(playbookRef && !playbookRefAvailable)}
+                disabled={
+                  startSourceReview.isPending || Boolean(playbookRef && !playbookRefAvailable)
+                }
                 onClick={onStartSourceTimeReview}
               >
                 按来源业务时点发起复审
@@ -589,26 +570,18 @@ function RemediationCard({
               required
               value={verifyReason}
               onChange={(event) => setVerifyReason(event.target.value)}
-              disabled={
-                !canWrite || archived || !verificationReady || verify.isPending
-              }
+              disabled={!canWrite || archived || !verificationReady || verify.isPending}
             />
           </label>
           {verify.error ? (
-            <p
-              ref={verifyErrorRef}
-              className="workflow-error"
-              role="alert"
-              tabIndex={-1}
-            >
+            <p ref={verifyErrorRef} className="workflow-error" role="alert" tabIndex={-1}>
               {errorMessage(verify.error)}
             </p>
           ) : null}
           {verify.data ? (
             <div role="status">
               服务端复核结果：
-              {remediationStatusLabel(verify.data.status)}，
-              版本 {verify.data.version}
+              {remediationStatusLabel(verify.data.status)}， 版本 {verify.data.version}
               <TechnicalDetail label="复核状态技术详情" value={verify.data.status} />
             </div>
           ) : null}
@@ -616,18 +589,14 @@ function RemediationCard({
             aria-label={String(verify.isPending ? "正在提交复核" : "提交复核")}
             type="primary"
             htmlType="submit"
-            disabled={
-              !canWrite || archived || !verificationReady || verify.isPending
-            }
+            disabled={!canWrite || archived || !verificationReady || verify.isPending}
           >
             {verify.isPending ? "正在提交复核" : "提交复核"}
           </Button>
         </form>
       ) : null}
       {archived ? (
-        <p className="callout">
-          案件已归档，整改写入会被服务端拒绝（HTTP 409）。
-        </p>
+        <p className="callout">案件已归档，整改写入会被服务端拒绝（HTTP 409）。</p>
       ) : null}
     </li>
   );
@@ -728,18 +697,12 @@ export function RemediationPanel({
       <header className="workflow-panel-head">
         <div>
           <h2 id="remediation-title">整改与复核</h2>
-          <p className="meta">
-            整改绑定来源审查和发现；关闭需单独提交新审查的真实兼容复核。
-          </p>
+          <p className="meta">整改绑定来源审查和发现；关闭需单独提交新审查的真实兼容复核。</p>
         </div>
       </header>
-      {!canWrite ? (
-        <p className="callout">当前角色没有已定义的整改写入权限。</p>
-      ) : null}
+      {!canWrite ? <p className="callout">当前角色没有已定义的整改写入权限。</p> : null}
       {archived ? (
-        <p className="callout">
-          案件已归档，整改创建、提交和复核写入会被服务端拒绝（HTTP 409）。
-        </p>
+        <p className="callout">案件已归档，整改创建、提交和复核写入会被服务端拒绝（HTTP 409）。</p>
       ) : null}
       {historyLoading ? <p role="status">正在读取审查与执行历史。</p> : null}
       {historyError ? (
@@ -760,9 +723,7 @@ export function RemediationPanel({
             }}
             disabled={choices.length === 0 || create.isPending}
           />
-          {selectedReview.isLoading ? (
-            <p role="status">正在读取所选尝试的发现。</p>
-          ) : null}
+          {selectedReview.isLoading ? <p role="status">正在读取所选尝试的发现。</p> : null}
           {selectedReview.isError ? (
             <p className="workflow-error" role="alert">
               所选尝试没有加载：{errorMessage(selectedReview.error)}
@@ -780,9 +741,7 @@ export function RemediationPanel({
                   <Checkbox
                     checked={findingIds.includes(finding.id)}
                     disabled={create.isPending}
-                    onChange={(event) =>
-                      toggleFinding(finding.id, event.target.checked)
-                    }
+                    onChange={(event) => toggleFinding(finding.id, event.target.checked)}
                   >
                     {finding.claim}，{businessDomainLabel(finding.domain)}
                   </Checkbox>
@@ -830,12 +789,7 @@ export function RemediationPanel({
             />
           </label>
           {create.error ? (
-            <p
-              ref={createErrorRef}
-              className="workflow-error"
-              role="alert"
-              tabIndex={-1}
-            >
+            <p ref={createErrorRef} className="workflow-error" role="alert" tabIndex={-1}>
               {errorMessage(create.error)}
             </p>
           ) : null}
@@ -851,7 +805,9 @@ export function RemediationPanel({
       ) : null}
       <section aria-labelledby="remediation-history-title">
         <h3 id="remediation-history-title">整改历史</h3>
-        {selectedRemediationId && selectedMatches.length !== 1 ? <p role="alert">所选整改不存在或身份不唯一，请返回办理列表核对。</p> : null}
+        {selectedRemediationId && selectedMatches.length !== 1 ? (
+          <p role="alert">所选整改不存在或身份不唯一，请返回办理列表核对。</p>
+        ) : null}
         {detail.remediations.length === 0 ? (
           <p>没有已返回的整改记录。</p>
         ) : (

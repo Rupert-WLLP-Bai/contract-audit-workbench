@@ -674,7 +674,8 @@ function RegistrationSummary({ draft }: { draft: KnowledgeContent }) {
           <div>
             <dt>规则指导</dt>
             <dd>
-              {draft.playbook?.clauses.length ?? 0} 条 · 模板 {draft.playbook?.template.template_id || "未选择"}
+              {draft.playbook?.clauses.length ?? 0} 条 · 模板{" "}
+              {draft.playbook?.template.template_id || "未选择"}
             </dd>
           </div>
         ) : null}
@@ -749,7 +750,8 @@ function SubmitReview({ draft }: { draft: KnowledgeContent }) {
               <div>
                 <dt>规则指导与模板</dt>
                 <dd>
-                  {draft.playbook?.clauses.length ?? 0} 条 · {draft.playbook?.template.template_id || "未选择模板"}
+                  {draft.playbook?.clauses.length ?? 0} 条 ·{" "}
+                  {draft.playbook?.template.template_id || "未选择模板"}
                 </dd>
               </div>
             ) : null}
@@ -1086,7 +1088,8 @@ function DetailFacts({
         <div>
           <dt>审查手册</dt>
           <dd>
-            {content.playbook?.clauses.length ?? 0} 条规则指导 · 模板 {content.playbook?.template.template_id || "未返回"}
+            {content.playbook?.clauses.length ?? 0} 条规则指导 · 模板{" "}
+            {content.playbook?.template.template_id || "未返回"}
           </dd>
         </div>
       ) : null}
@@ -1373,11 +1376,26 @@ function BodySection({ content }: { content: KnowledgeContent }) {
                 <li key={clause.rule_id}>
                   <h4>{clause.rule_id}</h4>
                   <dl>
-                    <div><dt>标准条款</dt><dd>{clause.standard_clause}</dd></div>
-                    <div><dt>可接受偏差</dt><dd>{clause.acceptable_deviation}</dd></div>
-                    <div><dt>不可突破的底线</dt><dd>{clause.hard_constraint}</dd></div>
-                    <div><dt>建议措辞</dt><dd>{clause.proposed_wording}</dd></div>
-                    <div><dt>升级条件</dt><dd>{clause.escalation_condition}</dd></div>
+                    <div>
+                      <dt>标准条款</dt>
+                      <dd>{clause.standard_clause}</dd>
+                    </div>
+                    <div>
+                      <dt>可接受偏差</dt>
+                      <dd>{clause.acceptable_deviation}</dd>
+                    </div>
+                    <div>
+                      <dt>不可突破的底线</dt>
+                      <dd>{clause.hard_constraint}</dd>
+                    </div>
+                    <div>
+                      <dt>建议措辞</dt>
+                      <dd>{clause.proposed_wording}</dd>
+                    </div>
+                    <div>
+                      <dt>升级条件</dt>
+                      <dd>{clause.escalation_condition}</dd>
+                    </div>
                   </dl>
                 </li>
               ))}

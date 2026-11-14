@@ -15,13 +15,7 @@ import { parseLegalMetadata, type LegalMetadata } from "./legal-knowledge";
 import type { WireSchemas } from "./wire.generated";
 
 export type KnowledgeKind =
-  | "policy"
-  | "guidance"
-  | "exception"
-  | "experience"
-  | "legal"
-  | "template"
-  | "playbook";
+  "policy" | "guidance" | "exception" | "experience" | "legal" | "template" | "playbook";
 export type KnowledgeTemplateFieldType = "string" | "decimal" | "date";
 export interface KnowledgeTemplateField {
   key: string;

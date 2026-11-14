@@ -34,7 +34,7 @@ export function FrozenPlaybookPanel({
       <Alert
         type="info"
         showIcon
-        message="手册正文需要来源授权后读取"
+        title="手册正文需要来源授权后读取"
         description={unavailableReason(adoption.content_unavailable_reason)}
       />
       <TechnicalDetail label="冻结手册精确身份" value={JSON.stringify(adoption.ref)} />

@@ -48,8 +48,7 @@ export function PlaybookPicker({
   const catalogReady = candidates.isSuccess && !candidates.isFetching;
   const items = catalogReady ? candidates.data.items : [];
   const selected = value && items.find((item) => selectionKey(item.ref) === selectionKey(value));
-  const selectionAvailable =
-    value === undefined || (catalogReady && selected !== undefined);
+  const selectionAvailable = value === undefined || (catalogReady && selected !== undefined);
 
   useEffect(() => {
     onAvailabilityChange?.(selectionAvailable);
@@ -65,7 +64,7 @@ export function PlaybookPicker({
         <Alert
           type="error"
           showIcon
-          message="可用手册没有加载"
+          title="可用手册没有加载"
           description={errorMessage(candidates.error)}
           action={
             <Button size="small" onClick={() => void candidates.refetch()}>
@@ -78,7 +77,7 @@ export function PlaybookPicker({
         <Alert
           type="error"
           showIcon
-          message="当前登录身份没有确认"
+          title="当前登录身份没有确认"
           description={errorMessage(session.error)}
           action={
             <Button size="small" onClick={() => void session.refetch()}>
@@ -91,15 +90,19 @@ export function PlaybookPicker({
         <Alert
           type="warning"
           showIcon
-          message="所选手册尚未重新核验"
+          title="所选手册尚未重新核验"
           description="当前不会提交该手册。可重试读取，或清除本次选择后按原审查流程继续。"
         />
       ) : null}
       {catalogReady && candidates.data.reason ? (
-        <Alert type="info" showIcon message={candidates.data.reason} />
+        <Alert type="info" showIcon title={candidates.data.reason} />
       ) : null}
       {catalogReady && items.length === 0 && !candidates.data.reason ? (
-        <Alert type="info" showIcon message="当前案件没有可采用的已发布手册；可以不选手册继续原审查流程。" />
+        <Alert
+          type="info"
+          showIcon
+          title="当前案件没有可采用的已发布手册；可以不选手册继续原审查流程。"
+        />
       ) : null}
       {value && !catalogReady && candidates.isFetching ? (
         <p role="status">正在重新确认手册版本；确认完成前不能按旧目录提交所选手册。</p>
@@ -108,7 +111,7 @@ export function PlaybookPicker({
         <Alert
           type="warning"
           showIcon
-          message="先前选择的手册版本已不在当前可用列表中"
+          title="先前选择的手册版本已不在当前可用列表中"
           description="系统没有替换为新版本。请重新选择，或清除选择后按原流程继续。"
         />
       ) : null}
@@ -118,8 +121,7 @@ export function PlaybookPicker({
           id={selectId}
           aria-label="采用的审查手册"
           allowClear
-          showSearch
-          optionFilterProp="label"
+          showSearch={{ optionFilterProp: "label" }}
           placeholder="不采用手册"
           value={value && catalogReady ? selectionKey(value) : undefined}
           loading={session.isLoading || candidates.isLoading}

@@ -61,6 +61,9 @@ export function parsePlaybookCandidateList(value: unknown): PlaybookCandidateLis
 }
 
 export function listCasePlaybooks(caseId: string, signal?: AbortSignal) {
-  return requestJson(paths.casePlaybooks(caseId), { method: "GET", signal }, parsePlaybookCandidateList);
+  return requestJson(
+    paths.casePlaybooks(caseId),
+    { method: "GET", signal },
+    parsePlaybookCandidateList,
+  );
 }
-
