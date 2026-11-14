@@ -59032,15 +59032,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-10",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a1a14f72eebbe8389c96940d35a0b923fb29f868",
+          "commit": "7f2c81ec4b37f663d92dc8f174cfe1b21cff8242",
           "path": "internal/store/tenant_identity_role_provision.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
