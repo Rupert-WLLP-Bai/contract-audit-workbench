@@ -27,23 +27,16 @@ import (
 	"contractaudit/internal/auditext"
 	"contractaudit/internal/capabilitypack"
 	"contractaudit/internal/fault"
+	operatorModel "contractaudit/internal/operator/model"
 
 	"github.com/jackc/pgx/v5"
 )
 
-// OperatorContractObject is the human-selected contract side of a mapping.
-type OperatorContractObject struct {
-	ObjectType string  `json:"object_type"`
-	ObjectID   string  `json:"object_id"`
-	Label      *string `json:"label"`
-}
+type OperatorContractObject = operatorModel.OperatorContractObject
 
 // OperatorExternalObject is the deployment-registered external side of a
 // mapping. ConnectorID is an identifier, never a URL or credential.
-type OperatorExternalObject struct {
-	ConnectorID      string `json:"connector_id"`
-	ExternalObjectID string `json:"external_object_id"`
-}
+type OperatorExternalObject = operatorModel.OperatorExternalObject
 
 // OperatorObjectBindingInput is a human confirmation. Similar names are never
 // matched automatically; Confirmed must be true.

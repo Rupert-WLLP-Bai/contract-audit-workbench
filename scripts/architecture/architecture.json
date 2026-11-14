@@ -108,7 +108,8 @@
         "id": "execution",
         "app": [
           "internal/execution/steps",
-          "internal/execution/app"
+          "internal/execution/app",
+          "internal/execution/model"
         ],
         "transport": [],
         "postgres": [
@@ -197,6 +198,17 @@
         "transport": [],
         "postgres": [
           "internal/subject/postgres"
+        ]
+      },
+      {
+        "id": "operator",
+        "app": [
+          "internal/operator/model",
+          "internal/operator/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/operator/postgres"
         ]
       }
     ]

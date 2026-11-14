@@ -11,16 +11,13 @@
 package store
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"sort"
 	"strings"
 	"time"
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	executionModel "contractaudit/internal/execution/model"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/rulepack"
 )
@@ -562,19 +559,18 @@ func frozenAttemptOutputMatches(st state, runID, attemptID string, attempt Attem
 
 func terminalRunAndAttempt(st state, caseItem Case, runID, attemptID string) (Run, Attempt, error) {
 	run, ok := st.runByID(runID)
-	if !ok || run.CaseID != caseItem.ID {
+	if !ok || !executionModel.RunMatchesCase(run, caseItem.ID) {
 		return Run{}, Attempt{}, fault.Conflict("执行记录不存在，或不属于当前案件")
 	}
 	attempt, ok := st.attemptByID(attemptID)
-	if !ok || attempt.RunID != runID || attempt.FinishedAt == nil ||
-		(attempt.State != "completed" && attempt.State != "partial") {
+	if !ok || !executionModel.AttemptTerminalForRun(attempt, runID) {
 		return Run{}, Attempt{}, fault.Conflict("这次执行尚未形成可比较的最终证据")
 	}
 	return run, attempt, nil
 }
 
 func requireFrozenAttemptHashes(attempt Attempt) error {
-	if attempt.HistoryKind != "frozen" || attempt.InputHash == nil || *attempt.InputHash == "" || attempt.OutputHash == nil || *attempt.OutputHash == "" {
+	if !executionModel.HasFrozenAttemptHashes(attempt) {
 		return fault.Conflict("之前的执行记录缺少保存的输入或输出编号")
 	}
 	return nil
@@ -588,59 +584,7 @@ func frozenAttemptInputMatches(st state, runID, attemptID string, input AttemptI
 }
 
 func validateRemediationRulePack(attempt Attempt, caseItem Case) (rulepack.Manifest, error) {
-	if attempt.RulePackCompilerRef == "" {
-		return rulepack.Manifest{}, errors.New("missing rulepack compiler identity")
-	}
-	pack, present, err := parseFrozenRemediationRulePack(attempt)
-	if err != nil {
-		return rulepack.Manifest{}, err
-	}
-	if !present {
-		return rulepack.Manifest{}, nil
-	}
-	if pack.Hash() != attempt.RulePackHash {
-		return rulepack.Manifest{}, errors.New("normalized rulepack content hash mismatch")
-	}
-	manifest := pack.Manifest()
-	if err := validateRemediationManifestScope(manifest, caseItem); err != nil {
-		return rulepack.Manifest{}, err
-	}
-	return manifest, nil
-}
-
-func parseFrozenRemediationRulePack(attempt Attempt) (*rulepack.Pack, bool, error) {
-	if len(attempt.RulePackSnapshot) == 0 {
-		if attempt.RulePackHash != "" || attempt.RulePackSnapshotDigest != "" {
-			return nil, false, errors.New("absent RulePack snapshot has invented hashes")
-		}
-		return nil, false, nil
-	}
-	if attempt.RulePackHash == "" || attempt.RulePackSnapshotDigest == "" || !json.Valid(attempt.RulePackSnapshot) {
-		return nil, false, errors.New("missing frozen rulepack identity")
-	}
-	digest := sha256.Sum256(attempt.RulePackSnapshot)
-	if hex.EncodeToString(digest[:]) != attempt.RulePackSnapshotDigest {
-		return nil, false, errors.New("raw rulepack snapshot digest mismatch")
-	}
-	pack, err := rulepack.Parse(attempt.RulePackSnapshot)
-	return pack, true, err
-}
-
-func validateRemediationManifestScope(manifest rulepack.Manifest, caseItem Case) error {
-	if manifest.TenantID != caseItem.TenantID || manifest.Lifecycle.State != rulepack.StatePublished {
-		return errors.New("rulepack scope or lifecycle mismatch")
-	}
-	for _, rule := range manifest.Rules {
-		if !remediationRuleMatchesCase(rule, caseItem) {
-			return errors.New("rulepack business scope mismatch")
-		}
-	}
-	return nil
-}
-
-func remediationRuleMatchesCase(rule rulepack.Rule, caseItem Case) bool {
-	return rule.TenantID == caseItem.TenantID && rule.BusinessScope.BusinessLine == caseItem.BusinessLine &&
-		rule.BusinessScope.Scenario == caseItem.Scenario && rule.BusinessScope.ContractType == caseItem.ContractType
+	return executionModel.FrozenRulePack(attempt, executionModel.FrozenRulePackScope{TenantID: caseItem.TenantID, BusinessLine: caseItem.BusinessLine, Scenario: caseItem.Scenario, ContractType: caseItem.ContractType})
 }
 
 func ruleCapabilities(manifest rulepack.Manifest) map[string]string {

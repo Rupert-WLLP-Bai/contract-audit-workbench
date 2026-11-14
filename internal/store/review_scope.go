@@ -17,15 +17,6 @@ import (
 
 const ReviewScopeSingleContract = "single_contract_precheck"
 
-// ReviewScopeIdentity is reconstructible from the immutable rule-set hash.
-// The hash itself is stored in the existing snapshot column at acceptance.
-type ReviewScopeIdentity struct {
-	ID             string `json:"id"`
-	RuleSetID      string `json:"rule_set_id"`
-	RuleSetVersion string `json:"rule_set_version"`
-	RuleSetHash    string `json:"rule_set_hash"`
-}
-
 func normalizeReviewScope(scope string) (string, error) {
 	switch scope {
 	case "", ReviewScopeFull:

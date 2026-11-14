@@ -12,9 +12,7 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -2333,89 +2331,6 @@ func interpretedFromFrozen(frozen []FrozenDocument) []Interpreted {
 		}
 	}
 	return out
-}
-
-func inputHashVersion(snapshot RunSnapshot) int {
-	if snapshot.InputHashVersion == 0 {
-		return 1
-	}
-	return snapshot.InputHashVersion
-}
-
-func frozenInputHash(snapshot RunSnapshot, docs []FrozenDocument) (string, error) {
-	snapshot = scopeSnapshot(snapshot)
-	snapshot.RunID = ""
-	sort.Strings(snapshot.DocumentIDs)
-	sort.Strings(snapshot.ParsedDocumentIDs)
-	var raw []byte
-	var err error
-	switch inputHashVersion(snapshot) {
-	case 1:
-		raw, err = json.Marshal(struct {
-			Snapshot  RunSnapshot      `json:"snapshot"`
-			Documents []FrozenDocument `json:"documents"`
-		}{Snapshot: snapshot, Documents: docs})
-	case 2:
-		if snapshot.AdoptedTenantConfigVersionID == "" || !validPreparationHash(snapshot.AdoptedTenantConfigDigest) {
-			return "", errors.New("invalid adopted tenant config for frozen input")
-		}
-		raw, err = json.Marshal(struct {
-			Domain          string           `json:"domain"`
-			ConfigVersionID string           `json:"config_version_id"`
-			ConfigDigest    string           `json:"config_digest"`
-			Snapshot        RunSnapshot      `json:"snapshot"`
-			Documents       []FrozenDocument `json:"documents"`
-		}{Domain: "review-frozen-input/v2", ConfigVersionID: snapshot.AdoptedTenantConfigVersionID, ConfigDigest: snapshot.AdoptedTenantConfigDigest, Snapshot: snapshot, Documents: docs})
-	default:
-		return "", errors.New("unsupported frozen input hash version")
-	}
-	if err != nil {
-		return "", err
-	}
-	digest := sha256.Sum256(raw)
-	return hex.EncodeToString(digest[:]), nil
-}
-
-func frozenInputMatchesSnapshot(snapshot RunSnapshot, docs []FrozenDocument) bool {
-	ids := make([]string, len(docs))
-	for i, doc := range docs {
-		ids[i] = doc.ParsedDocumentID
-	}
-	return sameDocumentSet(snapshot.ParsedDocumentIDs, ids) &&
-		snapshot.ParseSelectionHash == selectionHash(docs) &&
-		snapshot.ParserConfigurationID == frozenConfigHash(docs)
-}
-
-// attemptOutputHash derives the canonical output identity of one attempt. The
-// caller supplies the verified agent-review digest of the same attempt (empty
-// when the attempt has no agent-flow record), so a persisted projection is part
-// of the frozen output and can never be swapped afterwards.
-func attemptOutputHash(st state, runID, attemptID, agentReviewDigest string) (string, error) {
-	findings := st.findingsForAttempt(runID, attemptID)
-	attempt, _ := st.attemptByID(attemptID)
-	for i := range findings {
-		// Human decision concurrency versions are not part of the frozen rule output.
-		findings[i].Version = 0
-	}
-	raw, err := json.Marshal(struct {
-		Findings               []Finding        `json:"findings"`
-		Evaluations            []ConstraintEval `json:"evaluations"`
-		RulePackHash           string           `json:"rulepack_hash,omitempty"`
-		RulePackSnapshotDigest string           `json:"rulepack_snapshot_digest,omitempty"`
-		RulePackCompilerRef    string           `json:"rulepack_compiler_ref,omitempty"`
-		AgentReviewSHA256      string           `json:"agent_review_sha256,omitempty"`
-	}{
-		Findings: findings, Evaluations: st.evaluationsForAttempt(runID, attemptID),
-		RulePackHash:           attempt.RulePackHash,
-		RulePackSnapshotDigest: attempt.RulePackSnapshotDigest,
-		RulePackCompilerRef:    attempt.RulePackCompilerRef,
-		AgentReviewSHA256:      agentReviewDigest,
-	})
-	if err != nil {
-		return "", err
-	}
-	digest := sha256.Sum256(raw)
-	return hex.EncodeToString(digest[:]), nil
 }
 
 // agentReviewDigestFor reads the verified projection digest of one attempt

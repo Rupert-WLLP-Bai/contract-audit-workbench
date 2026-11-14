@@ -97,17 +97,6 @@ DROP TRIGGER IF EXISTS experience_candidate_append_only ON experience_candidate_
 CREATE TRIGGER experience_candidate_append_only BEFORE UPDATE OR DELETE ON experience_candidate_versions FOR EACH ROW EXECUTE FUNCTION forbid_append_only();
 `
 
-// ExperienceEvidenceRef points into one selected, ready parse of the attempt.
-// Offsets are Unicode code points in [Start, End), not byte indices.
-type ExperienceEvidenceRef struct {
-	DocumentID       string `json:"document_id"`
-	ParsedDocumentID string `json:"parsed_document_id"`
-	NormalizedDigest string `json:"normalized_digest"`
-	Quote            string `json:"quote"`
-	Start            int    `json:"start"`
-	End              int    `json:"end"`
-}
-
 type ExperienceFeedbackInput struct {
 	CaseID         string                  `json:"case_id"`
 	RunID          string                  `json:"run_id"`
