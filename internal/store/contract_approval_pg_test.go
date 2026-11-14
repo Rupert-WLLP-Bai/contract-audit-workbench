@@ -56,7 +56,7 @@ func TestWorkflowTemplatePublicationIsVersionedAndImmutable(t *testing.T) {
 		t.Fatalf("second template version %+v", second)
 	}
 	var templateID, version string
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT template_id,template_version FROM clm_workflow_template_pointers
+	if err := fixture.environment.harness.pool.QueryRow(ctx, `SELECT template_id,template_version FROM clm_workflow_template_pointers
 		WHERE tenant_id=$1 AND pointer_key='default'`, fixture.admin.TenantID).Scan(&templateID, &version); err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestWorkflowTemplatePublicationIsVersionedAndImmutable(t *testing.T) {
 		t.Fatalf("default pointer = %s@%s", templateID, version)
 	}
 	var oldNodes int
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT count(*) FROM clm_workflow_template_nodes
+	if err := fixture.environment.harness.pool.QueryRow(ctx, `SELECT count(*) FROM clm_workflow_template_nodes
 		WHERE tenant_id=$1 AND template_id=$2 AND template_version='1'`, fixture.admin.TenantID, input.TemplateID).Scan(&oldNodes); err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestWorkflowRoleBindingsRequireTenantDirectoryAccounts(t *testing.T) {
 		t.Fatalf("second bindings %+v", second)
 	}
 	var count int
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT count(*) FROM clm_workflow_role_bindings
+	if err := fixture.environment.harness.pool.QueryRow(ctx, `SELECT count(*) FROM clm_workflow_role_bindings
 		WHERE tenant_id=$1 AND role_code='role_legal'`, fixture.admin.TenantID).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestApprovalSubmissionRequiresARoutableRoleAndInsertsNoPartialRound(t *test
 	})
 	assertFaultStatus(t, err, 409, "missing role must block submission")
 	var rounds, tasks int
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT
+	if err := fixture.environment.harness.pool.QueryRow(ctx, `SELECT
 		(SELECT count(*) FROM clm_approval_rounds WHERE tenant_id=$1 AND contract_id=$2),
 		(SELECT count(*) FROM clm_approval_tasks WHERE tenant_id=$1 AND contract_id=$2)`,
 		fixture.admin.TenantID, contractID).Scan(&rounds, &tasks); err != nil {
@@ -169,7 +169,7 @@ func TestSubmissionRejectsDraftChangedAfterFreeze(t *testing.T) {
 	})
 	assertFaultStatus(t, err, 409, "draft changed after freeze")
 	var rounds int
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT count(*) FROM clm_approval_rounds
+	if err := fixture.environment.harness.pool.QueryRow(ctx, `SELECT count(*) FROM clm_approval_rounds
 		WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, contractID).Scan(&rounds); err != nil {
 		t.Fatal(err)
 	}
