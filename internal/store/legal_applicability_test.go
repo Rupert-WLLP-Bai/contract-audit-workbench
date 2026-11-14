@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -36,6 +36,8 @@ func TestLegalApplicabilityRecordReplayResolveAndReopenInPostgres(t *testing.T) 
 		t.Fatal("demo admin missing")
 	}
 	core, document := env.openRole(t, "core"), env.openRole(t, "document")
+	admin, _ = durableSessionUser(t, core, admin)
+	document.UseOperationAuthority(durableTestOperationAuthority{core: core})
 	execution := env.openRole(t, "execution")
 	ctx := context.Background()
 	caseID, err := core.CreateCase(admin, "法律适用事实持久化", "procurement_ict")
@@ -327,7 +329,8 @@ func TestLegalApplicabilityRechecksReadAuthorizationAndArchivedWritesInPostgres(
 	}
 	input := LegalApplicabilityFactInput{ExpectedVersion: 0, IdempotencyKey: "legal-fact-authz-revocation", Dimension: "funding_kind",
 		Status: "unknown", UnknownReason: "insufficient_evidence", TemporalBasis: "current_state", BasisNote: "尚无材料证明资金性质"}
-	if _, err := core.RecordLegalApplicabilityFact(context.Background(), admin, caseID, input); err != nil {
+	first, err := core.RecordLegalApplicabilityFact(context.Background(), admin, caseID, input)
+	if err != nil {
 		t.Fatal(err)
 	}
 	viewerWrite := input
@@ -372,6 +375,10 @@ func TestLegalApplicabilityRechecksReadAuthorizationAndArchivedWritesInPostgres(
 	}); err != nil {
 		t.Fatalf("archive case fixture: %v", err)
 	}
+	replayed, err := core.RecordLegalApplicabilityFact(context.Background(), admin, caseID, input)
+	if err != nil || !sameLegalFactWire(replayed, first) {
+		t.Fatalf("archived existing receipt did not replay: %+v %v", replayed, err)
+	}
 	input.ExpectedVersion = 1
 	input.IdempotencyKey = "legal-fact-archived-new-write"
 	if _, err := core.RecordLegalApplicabilityFact(context.Background(), admin, caseID, input); !isConflictFault(err) {
@@ -389,6 +396,8 @@ func TestLegalApplicabilityHistoricalTimelineAndPartyCorrectionInPostgres(t *tes
 		t.Fatal("demo admin missing")
 	}
 	core, document := env.openRole(t, "core"), env.openRole(t, "document")
+	admin, _ = durableSessionUser(t, core, admin)
+	document.UseOperationAuthority(durableTestOperationAuthority{core: core})
 	ctx := context.Background()
 	caseID, err := core.CreateCase(admin, "法律适用历史区间与主体固定", "procurement_ict")
 	if err != nil {

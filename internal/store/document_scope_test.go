@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -242,8 +242,8 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 		execution.UseOperationAuthority(authorityAdapter)
 		tool.UseOperationAuthority(crossOrgToolAuthority{core: core})
 		execution.UseDocumentPreparer(document)
-		gate := newHeldReviewModel(1)
-		execution.UseModels(gate)
+		models := &frozenOCRModel{}
+		execution.UseModels(models)
 		workerContext, stop := context.WithTimeout(context.Background(), 20*time.Second)
 		accepted, err := execution.StartReviewAsyncAt(WithAdmissionSessionToken(workerContext, collaboratorLogin.SessionToken), collaborator, caseID, acceptanceBusinessTime)
 		if err != nil {
@@ -255,21 +255,16 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 			stop()
 			t.Fatalf("claim accepted cross-organization job: claim=%+v err=%v", claim, err)
 		}
-		done := make(chan struct{})
-		t.Cleanup(func() {
-			stop()
-			gate.unblock()
-			select {
-			case <-done:
-			case <-time.After(10 * time.Second):
-				t.Error("cross-organization worker did not stop")
-			}
-		})
-		go func() {
-			defer close(done)
-			_ = execution.RunClaimedJob(workerContext, claim)
-		}()
-		waitSignal(t, gate.entered, "cross-organization attempt frozen before model completion")
+		defer stop()
+		execution.setClaim(claim)
+		defer execution.clearClaim(claim)
+		claimContext := withExecutionClaim(workerContext, claim)
+		if err := execution.markAttemptStarted(claimContext, claim.RunID, claim.AttemptID); err != nil {
+			t.Fatalf("start cross-organization attempt: %v", err)
+		}
+		if _, err := execution.prepareAttempt(claimContext, claim.RunID, claim.AttemptID, models); err != nil {
+			t.Fatalf("freeze cross-organization attempt: %v", err)
+		}
 		request := ToolInvocationContext{
 			TenantID: claim.TenantID, OrgID: claim.OrgID, JobID: claim.JobID,
 			WorkerID: claim.WorkerID, Generation: claim.Generation, CaseID: claim.CaseID,

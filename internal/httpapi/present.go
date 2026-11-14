@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r5
+// Updated: 2026-11-12
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -275,7 +275,7 @@ func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) ma
 	}
 	out := map[string]any{
 		"run": run, "documents": docs, "findings": findings, "evaluations": evals,
-		"review_attempts": attempts, "agent_review": review,
+		"review_attempts": attempts, "agent_review": review, "contract_facts": businessContractFactsJSON(ws.ContractFacts),
 		"snapshot":        map[string]any{"document_ids": ws.Snapshot.DocumentIDs, "business_at": snapshotBusinessAt(&ws.Snapshot), "adopted_tenant_config": nil},
 		"business_events": businessAuditJSON(ws.Audit),
 		// Older clients require these fields even though the detailed records are
@@ -298,6 +298,45 @@ func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) ma
 		out["revision_comparison_source"] = ws.RevisionComparisonSource
 	}
 	return out
+}
+
+func businessContractFactsJSON(raw json.RawMessage) any {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var projection agentflow.ContractFactsProjection
+	if err := json.Unmarshal(raw, &projection); err != nil || projection.Validate() != nil {
+		return nil
+	}
+	fields := make([]any, 0, len(projection.Fields))
+	structuredOutputStatus := "valid"
+	switch projection.FailureCode {
+	case "contract_facts_output_invalid":
+		structuredOutputStatus = "invalid"
+	case "":
+	default:
+		structuredOutputStatus = "not_returned"
+	}
+	for _, item := range projection.Fields {
+		citations := make([]any, 0, len(item.Citations))
+		for _, citation := range item.Citations {
+			citations = append(citations, map[string]any{
+				"document_id": citation.DocumentID, "parsed_document_id": citation.ParsedDocumentID,
+				"original_digest": citation.OriginalDigest, "normalized_digest": citation.NormalizedDigest,
+				"quote": citation.Quote, "start": citation.Start, "end": citation.End,
+			})
+		}
+		fields = append(fields, map[string]any{"field": item.Field, "status": item.Status, "value": item.Value, "citations": citations})
+	}
+	return map[string]any{
+		"schema_version": projection.SchemaVersion, "attempt_id": projection.AttemptID, "status": projection.Status,
+		"structured_output_status": structuredOutputStatus,
+		"source": map[string]any{
+			"document_id": projection.Source.DocumentID, "parsed_document_id": projection.Source.ParsedDocumentID,
+			"original_digest": projection.Source.OriginalDigest, "normalized_digest": projection.Source.NormalizedDigest,
+		},
+		"input_codepoints": projection.InputCodepoints, "input_truncated": projection.InputTruncated, "fields": fields,
+	}
 }
 
 func snapshotBusinessAt(snapshot *store.RunSnapshot) any {
@@ -522,7 +561,60 @@ func snapshotJSON(snap store.RunSnapshot) map[string]any {
 	if snap.ReviewScope != nil {
 		out["review_scope"] = snap.ReviewScope
 	}
+	if len(snap.ParsedDocumentIDs) > 0 {
+		parsed := make([]any, len(snap.ParsedDocumentIDs))
+		for i, id := range snap.ParsedDocumentIDs {
+			parsed[i] = id
+		}
+		out["parsed_document_ids"] = parsed
+	}
+	if snap.ParseSelectionHash != "" {
+		out["parse_selection_hash"] = snap.ParseSelectionHash
+	}
+	if snap.ParserConfigurationID != "" {
+		out["parser_configuration_id"] = snap.ParserConfigurationID
+	}
+	if planner := frozenPlannerIdentity(snap); planner != nil {
+		out["planner"] = planner
+	}
 	return out
+}
+
+// frozenPlannerIdentity projects the planner configuration frozen at acceptance.
+// A payload that does not match the stored configuration id is omitted.
+func frozenPlannerIdentity(snap store.RunSnapshot) map[string]any {
+	if snap.PlannerConfigurationID == "" || len(snap.PlannerConfiguration) == 0 {
+		return nil
+	}
+	var configuration agentflow.PlannerConfiguration
+	if err := json.Unmarshal(snap.PlannerConfiguration, &configuration); err != nil {
+		return nil
+	}
+	if configuration.ConfigurationID == "" || configuration.ConfigurationID != snap.PlannerConfigurationID {
+		return nil
+	}
+	switch configuration.Mode {
+	case agentflow.ModeFixedChain, agentflow.ModeDeterministic, agentflow.ModeModelFixture, agentflow.ModeModelLive:
+	default:
+		return nil
+	}
+	if configuration.PromptVersion == "" || configuration.SchemaVersion == "" || configuration.RuntimeVersion == "" || configuration.ToolCatalogVersion == "" {
+		return nil
+	}
+	var modelID any
+	if configuration.ModelConfigurationID != "" {
+		modelID = configuration.ModelConfigurationID
+	}
+	return map[string]any{
+		"mode":                   configuration.Mode,
+		"configuration_id":       configuration.ConfigurationID,
+		"model_configuration_id": modelID,
+		"prompt_version":         configuration.PromptVersion,
+		"schema_version":         configuration.SchemaVersion,
+		"runtime_version":        configuration.RuntimeVersion,
+		"tool_catalog_version":   configuration.ToolCatalogVersion,
+		"max_rounds":             configuration.Limits.MaxRounds,
+	}
 }
 
 func auditJSON(events []store.AuditRecord) []any {

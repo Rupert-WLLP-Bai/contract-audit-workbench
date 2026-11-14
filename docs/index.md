@@ -3,8 +3,8 @@
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
-<!-- Updated: 2026-11-08 -->
-<!-- Revision: r7 -->
+<!-- Updated: 2026-11-12 -->
+<!-- Revision: r8 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -12,9 +12,9 @@
 
 ## 快速开始
 
-1. [了解案件审查工作流](product/workflow.md)：在案件页看准备清单，把材料和规则需要的内容补齐，确认后开始审查。
-2. [开始审查与复核](product/workflow.md#审查与复核)：核对本次审查使用的材料、规则和原文引用。模型结果是建议，请对照原文再决定。
-3. [登记合同与处理会签](product/workflow.md#合同登记与会签)：在合同登记维护草稿，在合同会签处理自己的待办。审查意见和会签决定分开保存。
+1. [从工作台完成案件审查](product/workflow.md#从工作台开始)：从“案件”进入案件管理，按准备清单补材料、选审查范围并开始审查。
+2. [核对原文、人工办理与整改](product/workflow.md#原文人工决定与后续办理)：在审查工作区核对冻结原文和关键条款，再记录人工判断、办理整改。
+3. [查看合同台账和会签](product/workflow.md#合同台账来源与会签)：合同草稿、版本及会签属于合同台账，和案件审查决定分开保存。
 
 也可以先看[能力与边界](product/capabilities.md)，了解工作台能做什么。
 

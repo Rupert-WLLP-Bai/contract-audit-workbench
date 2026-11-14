@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: exports a bounded, metadata-only projection of durable events. Related `telemetry` operations include resourceAttributes, New, parseCollectorEndpoint, validateSampleRatio.
+// Purpose: Projects durable metadata events through bounded OpenTelemetry SDK providers and instruments, preserving sampling, stable identity, shutdown and honest delivery statistics.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,33 +12,41 @@
 package telemetry
 
 import (
-	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"io"
 	"log"
 	"math"
-	"mime"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"contractaudit/internal/execution"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	otlpmetric "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	otlptrace "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/metric"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/exemplar"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
-	queueCapacity        = 256
-	batchCapacity        = 64
+	spanQueueCapacity    = 256
+	spanBatchCapacity    = 64
 	responseLimit        = 64 << 10
 	metricSeriesCapacity = 256
+	exportTimeout        = 2 * time.Second
+	exportFlushTimeout   = 3 * time.Second
 )
 
 type Config struct {
@@ -52,79 +60,234 @@ type Config struct {
 	Environment string
 }
 
-// resourceAttributes builds the OTLP resource identity shared by every payload:
-// the logical service, the replica instance, and the deployment environment
-// when one is configured.
-func (e *Exporter) resourceAttributes() []attribute {
-	attributes := []attribute{
-		stringAttribute("service.name", e.service),
-		stringAttribute("service.instance.id", e.instance),
-	}
-	if e.environment != "" {
-		attributes = append(attributes, stringAttribute("deployment.environment.name", e.environment))
-	}
-	return attributes
-}
-
-// Stats separates trace delivery from metric data-point delivery. MetricsExported
-// counts accepted data points. MetricsFailed counts rejected or unacknowledged
-// data points. Both metric counters count points, not events or requests.
+// Stats reports only outcomes the SDK or this package can identify. The SDK
+// does not expose batch-queue evictions. The HTTP boundary parses official
+// protobuf acknowledgements so valid partial-success rejections remain exact;
+// pending or unconfirmed exports remain Unknown.
 type Stats struct {
-	Exported        uint64
-	Dropped         uint64
-	FailedRequests  uint64
-	SampledOut      uint64
+	Exported       uint64
+	Dropped        uint64
+	FailedRequests uint64
+	SampledOut     uint64
+	// Unknown is the number of sampled, eligible records not acknowledged or explicitly
+	// rejected. It can include spans still queued in the SDK, spans dropped
+	// from the SDK batch queue, and exports without a valid acknowledgement.
+	Unknown uint64
+
 	MetricsExported uint64
-	MetricsFailed   uint64
+	// MetricsFailed counts points explicitly rejected by a valid partial
+	// acknowledgement.
+	MetricsFailed uint64
+	// MetricsUnknown counts data-point attempts in exports with no complete
+	// acknowledgement. A later cumulative collection may resend those values.
+	MetricsUnknown       uint64
+	MetricFailedRequests uint64
 	// HTTPDropped counts HTTP RED observations that exceeded the bounded
 	// metric series allocation. They never block or fail the exchange.
 	HTTPDropped uint64
 }
 
 type Exporter struct {
-	tracesEndpoint  string
-	metricsEndpoint string
-	service         string
-	instance        string
-	environment     string
-	ratio           float64
-	client          *http.Client
-	queue           chan span
-	ctx             context.Context
-	cancel          context.CancelFunc
-	done            chan struct{}
-	mu              sync.Mutex
-	closed          bool
-	close           sync.Once
+	ratio float64
+
+	client         *http.Client
+	traceProvider  *sdktrace.TracerProvider
+	metricProvider *sdkmetric.MeterProvider
+	tracer         trace.Tracer
+
+	executionEvents metric.Int64Counter
+	executionDur    metric.Int64ObservableGauge
+	durationMu      sync.Mutex
+	durations       map[[3]string]executionDuration
+	durationReg     metric.Registration
+
+	httpRequests    metric.Int64Counter
+	httpDurations   metric.Int64Histogram
+	httpMu          sync.Mutex
+	httpRequestSet  map[httpCounterKey]struct{}
+	httpDurationSet map[[2]string]struct{}
+
+	runtime *runtimeMetrics
+
+	mu      sync.Mutex
+	closed  bool
+	close   sync.Once
+	closing atomic.Bool
+
+	recorded        atomic.Uint64
 	exported        atomic.Uint64
 	dropped         atomic.Uint64
 	failed          atomic.Uint64
 	sampled         atomic.Uint64
 	metricsExported atomic.Uint64
 	metricsFailed   atomic.Uint64
-	metricSeries    map[[3]string]*metricSeries
+	metricsUnknown  atomic.Uint64
+	metricFailed    atomic.Uint64
+	httpDropped     atomic.Uint64
+}
 
-	// httpMu guards the HTTP RED aggregates. Producers run on HTTP handler
-	// goroutines; the delivery goroutine drains the active series.
-	httpMu        sync.Mutex
-	httpRequests  map[httpCounterKey]*metricSeries
-	httpDurations map[[2]string]*httpHistogram
-	httpDropped   atomic.Uint64
+type executionDuration struct {
+	at      time.Time
+	valueMS int64
+}
 
-	runtimeMu      sync.Mutex
-	runtimeSource  func(context.Context) RuntimeSnapshot
-	queueWait      runtimeHistogram
-	queueExecution runtimeHistogram
-	sampleCtx      context.Context
-	cancelSample   context.CancelFunc
-	metricStart    string
-	queueClaims    atomic.Uint64
-	queueReclaims  atomic.Uint64
-	quotaQueue     atomic.Uint64
-	quotaModel     atomic.Uint64
-	quotaTool      atomic.Uint64
-	queueErrors    [4]atomic.Uint64
-	outboxErrors   [4]atomic.Uint64
+type spanIDsContextKey struct{}
+
+type spanIDs struct {
+	trace trace.TraceID
+	span  trace.SpanID
+}
+
+type deterministicIDGenerator struct{}
+
+func (deterministicIDGenerator) NewIDs(ctx context.Context) (trace.TraceID, trace.SpanID) {
+	if ids, ok := ctx.Value(spanIDsContextKey{}).(spanIDs); ok {
+		return ids.trace, ids.span
+	}
+	var ids spanIDs
+	_, _ = rand.Read(ids.trace[:])
+	_, _ = rand.Read(ids.span[:])
+	if !ids.trace.IsValid() {
+		ids.trace[15] = 1
+	}
+	if !ids.span.IsValid() {
+		ids.span[7] = 1
+	}
+	return ids.trace, ids.span
+}
+
+func (g deterministicIDGenerator) NewSpanID(ctx context.Context, _ trace.TraceID) trace.SpanID {
+	if ids, ok := ctx.Value(spanIDsContextKey{}).(spanIDs); ok {
+		return ids.span
+	}
+	_, span := g.NewIDs(ctx)
+	return span
+}
+
+type projectedSpan struct {
+	sdktrace.ReadOnlySpan
+	resource *resource.Resource
+}
+
+func (s projectedSpan) Resource() *resource.Resource { return s.resource }
+
+type projectedTraceExporter struct {
+	next     sdktrace.SpanExporter
+	resource *resource.Resource
+	owner    *Exporter
+}
+
+func (e *projectedTraceExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
+	projected := make([]sdktrace.ReadOnlySpan, len(spans))
+	for i, span := range spans {
+		projected[i] = projectedSpan{ReadOnlySpan: span, resource: e.resource}
+	}
+	observation := &exportObservation{kind: traceExport, expected: uint64(len(spans))}
+	ctx = context.WithValue(ctx, exportObservationContextKey{}, observation)
+	if err := e.next.ExportSpans(ctx, projected); err != nil {
+		if !observation.valid {
+			e.owner.failed.Add(1)
+			return errors.New("OTLP trace export failed")
+		}
+	}
+	if !observation.valid {
+		e.owner.failed.Add(1)
+		return errors.New("OTLP trace acknowledgement was not confirmed")
+	}
+	accepted := observation.expected - observation.rejected
+	e.owner.exported.Add(accepted)
+	e.owner.dropped.Add(observation.rejected)
+	return nil
+}
+
+func (e *projectedTraceExporter) Shutdown(ctx context.Context) error {
+	if err := e.next.Shutdown(ctx); err != nil {
+		return errors.New("OTLP trace exporter shutdown failed")
+	}
+	return nil
+}
+
+type projectedMetricExporter struct {
+	next     sdkmetric.Exporter
+	resource *resource.Resource
+	owner    *Exporter
+}
+
+func (e *projectedMetricExporter) Temporality(kind sdkmetric.InstrumentKind) metricdata.Temporality {
+	return e.next.Temporality(kind)
+}
+
+func (e *projectedMetricExporter) Aggregation(kind sdkmetric.InstrumentKind) sdkmetric.Aggregation {
+	return e.next.Aggregation(kind)
+}
+
+func (e *projectedMetricExporter) Export(ctx context.Context, data *metricdata.ResourceMetrics) error {
+	points := metricPointCount(data)
+	if points == 0 {
+		return nil
+	}
+	projected := *data
+	projected.Resource = e.resource
+	observation := &exportObservation{kind: metricExport, expected: points}
+	ctx = context.WithValue(ctx, exportObservationContextKey{}, observation)
+	if err := e.next.Export(ctx, &projected); err != nil {
+		if !observation.valid {
+			e.owner.metricFailed.Add(1)
+			e.owner.metricsUnknown.Add(points)
+			return errors.New("OTLP metric export failed")
+		}
+	}
+	if !observation.valid {
+		e.owner.metricFailed.Add(1)
+		e.owner.metricsUnknown.Add(points)
+		return errors.New("OTLP metric acknowledgement was not confirmed")
+	}
+	e.owner.metricsExported.Add(observation.expected - observation.rejected)
+	e.owner.metricsFailed.Add(observation.rejected)
+	return nil
+}
+
+func (e *projectedMetricExporter) ForceFlush(ctx context.Context) error {
+	if err := e.next.ForceFlush(ctx); err != nil {
+		return errors.New("OTLP metric exporter flush failed")
+	}
+	return nil
+}
+
+func (e *projectedMetricExporter) Shutdown(ctx context.Context) error {
+	if err := e.next.Shutdown(ctx); err != nil {
+		return errors.New("OTLP metric exporter shutdown failed")
+	}
+	return nil
+}
+
+func metricPointCount(data *metricdata.ResourceMetrics) uint64 {
+	var count uint64
+	for _, scope := range data.ScopeMetrics {
+		for _, item := range scope.Metrics {
+			switch points := item.Data.(type) {
+			case metricdata.Gauge[int64]:
+				count += uint64(len(points.DataPoints))
+			case metricdata.Gauge[float64]:
+				count += uint64(len(points.DataPoints))
+			case metricdata.Sum[int64]:
+				count += uint64(len(points.DataPoints))
+			case metricdata.Sum[float64]:
+				count += uint64(len(points.DataPoints))
+			case metricdata.Histogram[int64]:
+				count += uint64(len(points.DataPoints))
+			case metricdata.Histogram[float64]:
+				count += uint64(len(points.DataPoints))
+			case metricdata.ExponentialHistogram[int64]:
+				count += uint64(len(points.DataPoints))
+			case metricdata.ExponentialHistogram[float64]:
+				count += uint64(len(points.DataPoints))
+			case metricdata.Summary:
+				count += uint64(len(points.DataPoints))
+			}
+		}
+	}
+	return count
 }
 
 // New is disabled when Endpoint is empty. No network request is made at startup.
@@ -145,30 +308,135 @@ func New(cfg Config) (*Exporter, error) {
 		return nil, errors.New("OTLP service identity is required")
 	}
 	environment := strings.TrimSpace(cfg.Environment)
-	// service.instance.id separates replicas behind one logical service. An
-	// unset/invalid value falls back to the service identity so a misconfigured
-	// deployment stays exportable instead of silently dropping telemetry.
 	instance := metadata(cfg.InstanceID)
 	if instance == "" {
 		instance = service
 	}
 	traces, metrics := otlpEndpoints(u)
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	ctx, cancel := context.WithCancel(context.Background())
-	sampleCtx, cancelSample := context.WithCancel(ctx)
-	e := &Exporter{
-		tracesEndpoint: traces, metricsEndpoint: metrics, service: service, instance: instance,
-		environment: environment, ratio: cfg.SampleRatio,
-		client: &http.Client{Transport: transport, Timeout: 2 * time.Second,
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
-		queue: make(chan span, queueCapacity), ctx: ctx, cancel: cancel, done: make(chan struct{}),
-		sampleCtx: sampleCtx, cancelSample: cancelSample, metricStart: strconv.FormatInt(time.Now().UnixNano(), 10),
-		metricSeries:  make(map[[3]string]*metricSeries),
-		httpRequests:  make(map[httpCounterKey]*metricSeries),
-		httpDurations: make(map[[2]string]*httpHistogram),
+	baseTransport := http.DefaultTransport.(*http.Transport).Clone()
+	baseTransport.Proxy = nil
+	client := &http.Client{
+		Transport: observingTransport{next: baseTransport},
+		Timeout:   exportTimeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
-	go e.run()
+	identity := []attribute.KeyValue{
+		attribute.String("service.name", service),
+		attribute.String("service.instance.id", instance),
+	}
+	if environment != "" {
+		identity = append(identity, attribute.String("deployment.environment.name", environment))
+	}
+	identityResource := resource.NewSchemaless(identity...)
+
+	traceExporter, err := otlptrace.New(context.Background(),
+		otlptrace.WithEndpointURL(traces),
+		otlptrace.WithHTTPClient(client),
+		otlptrace.WithHeaders(map[string]string{}),
+		otlptrace.WithCompression(otlptrace.NoCompression),
+		otlptrace.WithRetry(otlptrace.RetryConfig{Enabled: false}),
+		otlptrace.WithTimeout(exportTimeout),
+		otlptrace.WithMaxResponseSize(responseLimit),
+		otlptrace.WithEncoding(otlptrace.EncodingProtobuf),
+	)
+	if err != nil {
+		client.CloseIdleConnections()
+		return nil, errors.New("OTLP trace exporter configuration failed")
+	}
+	e := &Exporter{
+		ratio:  cfg.SampleRatio,
+		client: client, durations: make(map[[3]string]executionDuration),
+		httpRequestSet: make(map[httpCounterKey]struct{}), httpDurationSet: make(map[[2]string]struct{}),
+	}
+	tracePipeline := &projectedTraceExporter{next: traceExporter, resource: identityResource, owner: e}
+	e.traceProvider = sdktrace.NewTracerProvider(
+		sdktrace.WithResource(identityResource),
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+		sdktrace.WithIDGenerator(deterministicIDGenerator{}),
+		sdktrace.WithRawSpanLimits(sdktrace.SpanLimits{
+			AttributeValueLengthLimit: 128, AttributeValueDepthLimit: 64, AttributeCountLimit: 6,
+			EventCountLimit: 0, LinkCountLimit: 0,
+			AttributePerEventCountLimit: 0, AttributePerLinkCountLimit: 0,
+		}),
+		sdktrace.WithBatcher(tracePipeline,
+			sdktrace.WithMaxQueueSize(spanQueueCapacity),
+			sdktrace.WithMaxExportBatchSize(spanBatchCapacity),
+			sdktrace.WithBatchTimeout(500*time.Millisecond),
+			sdktrace.WithExportTimeout(exportTimeout),
+		),
+	)
+	e.tracer = e.traceProvider.Tracer("contractaudit.execution")
+
+	metricExporter, err := otlpmetric.New(context.Background(),
+		otlpmetric.WithEndpointURL(metrics),
+		otlpmetric.WithHTTPClient(client),
+		otlpmetric.WithHeaders(map[string]string{}),
+		otlpmetric.WithCompression(otlpmetric.NoCompression),
+		otlpmetric.WithRetry(otlpmetric.RetryConfig{Enabled: false}),
+		otlpmetric.WithTimeout(exportTimeout),
+		otlpmetric.WithMaxResponseSize(responseLimit),
+		otlpmetric.WithTemporalitySelector(sdkmetric.CumulativeTemporalitySelector),
+	)
+	if err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), exportFlushTimeout)
+		_ = e.traceProvider.Shutdown(ctx)
+		cancel()
+		client.CloseIdleConnections()
+		return nil, errors.New("OTLP metric exporter configuration failed")
+	}
+	metricReader := sdkmetric.NewPeriodicReader(&projectedMetricExporter{
+		next: metricExporter, resource: identityResource, owner: e,
+	}, sdkmetric.WithInterval(httpFlushInterval), sdkmetric.WithTimeout(exportTimeout))
+	views := []sdkmetric.View{
+		sdkmetric.NewView(sdkmetric.Instrument{Name: "audit.http.duration_ms"}, sdkmetric.Stream{
+			Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
+				Boundaries: append([]float64(nil), httpDurationBounds[:]...), NoMinMax: true,
+			},
+		}),
+		sdkmetric.NewView(sdkmetric.Instrument{Name: "audit.queue.wait_duration_ms"}, sdkmetric.Stream{
+			Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
+				Boundaries: append([]float64(nil), queueDurationBounds[:]...), NoMinMax: true,
+			},
+		}),
+		sdkmetric.NewView(sdkmetric.Instrument{Name: "audit.queue.execution_duration_ms"}, sdkmetric.Stream{
+			Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
+				Boundaries: append([]float64(nil), queueDurationBounds[:]...), NoMinMax: true,
+			},
+		}),
+	}
+	e.metricProvider = sdkmetric.NewMeterProvider(
+		sdkmetric.WithResource(identityResource),
+		sdkmetric.WithReader(metricReader),
+		sdkmetric.WithView(views...),
+		sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter),
+		sdkmetric.WithCardinalityLimit(metricSeriesCapacity),
+	)
+	if err := e.configureExecutionMetrics(); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), exportFlushTimeout)
+		_ = e.metricProvider.Shutdown(ctx)
+		_ = e.traceProvider.Shutdown(ctx)
+		cancel()
+		client.CloseIdleConnections()
+		return nil, errors.New("OTLP metric instruments could not be configured")
+	}
+	if err := e.configureHTTPMetrics(); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), exportFlushTimeout)
+		_ = e.metricProvider.Shutdown(ctx)
+		_ = e.traceProvider.Shutdown(ctx)
+		cancel()
+		client.CloseIdleConnections()
+		return nil, errors.New("OTLP HTTP metrics could not be configured")
+	}
+	if err := e.configureRuntimeMetrics(); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), exportFlushTimeout)
+		_ = e.metricProvider.Shutdown(ctx)
+		_ = e.traceProvider.Shutdown(ctx)
+		cancel()
+		client.CloseIdleConnections()
+		return nil, errors.New("OTLP runtime metrics could not be configured")
+	}
 	return e, nil
 }
 
@@ -199,406 +467,176 @@ func otlpEndpoints(u *url.URL) (string, string) {
 	return traces.String(), metrics.String()
 }
 
-// Record never waits for the network or for queue capacity. Its event must have
-// already been committed. Provider text, model names and usage are not exported.
+func (e *Exporter) configureExecutionMetrics() error {
+	meter := e.metricProvider.Meter("contractaudit.execution")
+	var err error
+	e.executionEvents, err = meter.Int64Counter("audit.execution.events")
+	if err != nil {
+		return err
+	}
+	e.executionDur, err = meter.Int64ObservableGauge("audit.execution.duration_ms", metric.WithUnit("ms"))
+	if err != nil {
+		return err
+	}
+	e.durationReg, err = meter.RegisterCallback(func(ctx context.Context, observer metric.Observer) error {
+		e.durationMu.Lock()
+		defer e.durationMu.Unlock()
+		for key, value := range e.durations {
+			observer.ObserveInt64(e.executionDur, value.valueMS,
+				metric.WithAttributes(executionAttributes(key)...))
+		}
+		return nil
+	}, e.executionDur)
+	return err
+}
+
+func executionAttributes(values [3]string) []attribute.KeyValue {
+	attrs := make([]attribute.KeyValue, 0, len(values))
+	for i, key := range [3]string{"audit.phase", "audit.node_kind", "audit.status"} {
+		attrs = append(attrs, attribute.String(key, values[i]))
+	}
+	return attrs
+}
+
 func (e *Exporter) Record(runID, attemptID string, event execution.Event) {
 	if !recordableEvent(e, event) {
 		return
 	}
-	trace := sha256.Sum256([]byte(attemptID))
-	if e.ratio < 1 && float64(binary.BigEndian.Uint64(trace[:8]))/18446744073709551616.0 >= e.ratio {
+	traceSeed := sha256.Sum256([]byte(attemptID))
+	if e.ratio < 1 && float64(binary.BigEndian.Uint64(traceSeed[:8]))/18446744073709551616.0 >= e.ratio {
 		e.sampled.Add(1)
 		return
 	}
-	e.enqueue(buildSpan(runID, attemptID, event, trace))
+
+	e.mu.Lock()
+	e.recorded.Add(1)
+	if e.closed {
+		e.dropped.Add(1)
+		e.mu.Unlock()
+		return
+	}
+	e.recordExecutionMetrics(event)
+	e.recordSpan(runID, attemptID, event, traceSeed)
+	e.mu.Unlock()
 }
 
 func recordableEvent(e *Exporter, event execution.Event) bool {
 	return e != nil && event.DurationMS != nil && *event.DurationMS >= 0 && !event.At.IsZero() && event.SpanID != ""
 }
 
-func buildSpan(runID, attemptID string, event execution.Event, trace [32]byte) span {
-	item := span{
-		TraceID: hex.EncodeToString(trace[:16]), SpanID: spanID(event.SpanID),
-		Name: metadata(event.Phase), Kind: 1, Flags: 1,
-		Start: strconv.FormatInt(event.At.Add(-time.Duration(*event.DurationMS)*time.Millisecond).UnixNano(), 10),
-		End:   strconv.FormatInt(event.At.UnixNano(), 10),
-		Attributes: [6]attribute{
-			stringAttribute("audit.run_id", metadata(runID)),
-			stringAttribute("audit.attempt_id", metadata(attemptID)),
-			stringAttribute("audit.phase", metadata(event.Phase)),
-			stringAttribute("audit.node_kind", metadata(event.NodeKind)),
-			stringAttribute("audit.status", metadata(event.Status)),
-			stringAttribute("audit.error_code", metadata(event.ErrorCode)),
-		},
+func (e *Exporter) recordExecutionMetrics(event execution.Event) {
+	key := [3]string{
+		metricPhase(event.Phase),
+		metricNodeKind(event.NodeKind),
+		metricStatus(event.Status),
 	}
-	if event.ParentSpanID != "" && event.ParentSpanID != attemptID {
-		item.ParentSpanID = spanID(event.ParentSpanID)
+	e.durationMu.Lock()
+	if _, ok := e.durations[key]; !ok && len(e.durations) >= metricSeriesCapacity-1 {
+		key = [3]string{"__overflow__", "__overflow__", "__overflow__"}
 	}
-	switch event.Status {
-	case "completed":
-		item.Status.Code = 1
-	case "failed", "cancelled":
-		item.Status.Code = 2
+	if current, ok := e.durations[key]; !ok || !event.At.Before(current.at) {
+		e.durations[key] = executionDuration{at: event.At, valueMS: *event.DurationMS}
 	}
-	return item
+	e.durationMu.Unlock()
+	e.executionEvents.Add(context.Background(), 1, metric.WithAttributes(executionAttributes(key)...))
 }
 
-func (e *Exporter) enqueue(item span) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.closed {
-		e.dropped.Add(1)
-		return
+func (e *Exporter) recordSpan(runID, attemptID string, event execution.Event, seed [32]byte) {
+	var traceID trace.TraceID
+	var spanID trace.SpanID
+	copy(traceID[:], seed[:16])
+	spanSeed := sha256.Sum256([]byte(event.SpanID))
+	copy(spanID[:], spanSeed[:8])
+	ids := spanIDs{trace: traceID, span: spanID}
+	ctx := context.WithValue(context.Background(), spanIDsContextKey{}, ids)
+	if event.ParentSpanID != "" && event.ParentSpanID != attemptID {
+		parentSeed := sha256.Sum256([]byte(event.ParentSpanID))
+		var parentID trace.SpanID
+		copy(parentID[:], parentSeed[:8])
+		parent := trace.NewSpanContext(trace.SpanContextConfig{
+			TraceID: traceID, SpanID: parentID, TraceFlags: trace.FlagsSampled, Remote: true,
+		})
+		ctx = trace.ContextWithRemoteSpanContext(ctx, parent)
 	}
-	select {
-	case e.queue <- item:
-	default:
-		e.dropped.Add(1)
+	start := event.At.Add(-time.Duration(*event.DurationMS) * time.Millisecond)
+	_, span := e.tracer.Start(ctx, metadata(event.Phase),
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithTimestamp(start),
+		trace.WithAttributes(
+			attribute.String("audit.run_id", metadata(runID)),
+			attribute.String("audit.attempt_id", metadata(attemptID)),
+			attribute.String("audit.phase", metadata(event.Phase)),
+			attribute.String("audit.node_kind", metadata(event.NodeKind)),
+			attribute.String("audit.status", metadata(event.Status)),
+			attribute.String("audit.error_code", metadata(event.ErrorCode)),
+		),
+	)
+	switch event.Status {
+	case "completed":
+		span.SetStatus(codes.Ok, "")
+	case "failed", "cancelled":
+		span.SetStatus(codes.Error, "")
 	}
+	span.End(trace.WithTimestamp(event.At))
 }
 
 func (e *Exporter) Stats() Stats {
 	if e == nil {
 		return Stats{}
 	}
+	recorded, exported := e.recorded.Load(), e.exported.Load()
+	unknown := uint64(0)
+	resolved := exported + e.dropped.Load()
+	if recorded > resolved {
+		unknown = recorded - resolved
+	}
 	return Stats{
-		Exported: e.exported.Load(), Dropped: e.dropped.Load(), FailedRequests: e.failed.Load(), SampledOut: e.sampled.Load(),
+		Exported: exported, Dropped: e.dropped.Load(), FailedRequests: e.failed.Load(),
+		SampledOut: e.sampled.Load(), Unknown: unknown,
 		MetricsExported: e.metricsExported.Load(), MetricsFailed: e.metricsFailed.Load(),
+		MetricsUnknown: e.metricsUnknown.Load(), MetricFailedRequests: e.metricFailed.Load(),
 		HTTPDropped: e.httpDropped.Load(),
 	}
 }
 
-// Close drains within a fixed deadline, then cancels delivery and counts loss.
-// Export failures never become application shutdown errors.
+// Close drains the SDK processors within three seconds. Export failures never
+// become application shutdown errors.
 func (e *Exporter) Close() {
 	if e == nil {
 		return
 	}
 	e.close.Do(func() {
-		e.cancelSample()
+		e.closing.Store(true)
 		e.mu.Lock()
 		e.closed = true
-		close(e.queue)
 		e.mu.Unlock()
-		timer := time.AfterFunc(3*time.Second, e.cancel)
+		ctx, cancel := context.WithTimeout(context.Background(), exportFlushTimeout)
+		defer cancel()
+		done := make(chan struct{}, 2)
+		go func() {
+			_ = e.traceProvider.Shutdown(ctx)
+			done <- struct{}{}
+		}()
+		go func() {
+			_ = e.metricProvider.Shutdown(ctx)
+			done <- struct{}{}
+		}()
+		timer := time.NewTimer(exportFlushTimeout)
 		defer timer.Stop()
-		<-e.done
-		e.cancel()
+		for i := 0; i < 2; i++ {
+			select {
+			case <-done:
+			case <-ctx.Done():
+				i = 2
+			case <-timer.C:
+				i = 2
+			}
+		}
 		e.client.CloseIdleConnections()
 		stats := e.Stats()
-		log.Printf("OTLP metadata exporter stopped: exported=%d dropped=%d failed_requests=%d sampled_out=%d", stats.Exported, stats.Dropped, stats.FailedRequests, stats.SampledOut)
+		log.Printf("OTLP metadata exporter stopped: exported=%d unknown=%d dropped=%d failed_requests=%d sampled_out=%d",
+			stats.Exported, stats.Unknown, stats.Dropped, stats.FailedRequests, stats.SampledOut)
 	})
-}
-
-func (e *Exporter) run() {
-	defer close(e.done)
-	// A deployment that only serves HTTP (the edge gateway, the tool gateway)
-	// never enqueues an execution span, so RED aggregates flush on their own
-	// schedule instead of waiting for a span that may never arrive.
-	ticker := time.NewTicker(httpFlushInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case first, ok := <-e.queue:
-			if !ok {
-				e.flushMetrics(false)
-				return
-			}
-			e.deliver(e.collectBatch(first))
-		case <-ticker.C:
-			e.flushMetrics(true)
-		}
-	}
-}
-
-func (e *Exporter) collectBatch(first span) []span {
-	batch := make([]span, 0, batchCapacity)
-	batch = append(batch, first)
-drain:
-	for len(batch) < batchCapacity {
-		select {
-		case next, ok := <-e.queue:
-			if !ok {
-				break drain
-			}
-			batch = append(batch, next)
-		default:
-			break drain
-		}
-	}
-	return batch
-}
-
-func (e *Exporter) deliver(batch []span) {
-	if e.ctx.Err() != nil {
-		e.dropped.Add(uint64(len(batch)))
-		return
-	}
-	rejected, err := e.send(batch)
-	if err != nil {
-		e.dropped.Add(uint64(len(batch)))
-		if e.failed.Add(1) == 1 {
-			log.Print("OTLP metadata export failed; durable business records are unaffected")
-		}
-		return
-	}
-	e.exported.Add(uint64(len(batch) - rejected))
-	e.dropped.Add(uint64(rejected))
-	points, metricRejected, merr := e.sendMetrics(batch, nil)
-	if merr != nil {
-		metricRejected = points
-	}
-	e.metricsExported.Add(uint64(points - metricRejected))
-	if metricRejected > 0 && e.metricsFailed.Add(uint64(metricRejected)) == uint64(metricRejected) {
-		log.Print("OTLP metadata metric export failed; durable business records are unaffected")
-	}
-}
-
-func (e *Exporter) send(batch []span) (int, error) {
-	var payload exportRequest
-	payload.ResourceSpans[0].Resource.Attributes = e.resourceAttributes()
-	payload.ResourceSpans[0].ScopeSpans[0].Scope.Name = "contractaudit.execution"
-	payload.ResourceSpans[0].ScopeSpans[0].Spans = batch
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return 0, err
-	}
-	req, err := http.NewRequestWithContext(e.ctx, http.MethodPost, e.tracesEndpoint, bytes.NewReader(body))
-	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	response, err := e.client.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer response.Body.Close()
-	data, err := readOTLPResponse(response, "OTLP response was unsuccessful or exceeded its bound", "OTLP acknowledgement must be a JSON object")
-	if err != nil {
-		return 0, err
-	}
-	return traceRejection(data, len(batch))
-}
-
-func readOTLPResponse(response *http.Response, failure, objectFailure string) ([]byte, error) {
-	data, err := io.ReadAll(io.LimitReader(response.Body, responseLimit+1))
-	media, _, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
-	if err != nil || len(data) > responseLimit || response.StatusCode != http.StatusOK || media != "application/json" {
-		return nil, errors.New(failure)
-	}
-	data = bytes.TrimSpace(data)
-	if len(data) == 0 || data[0] != '{' {
-		return nil, errors.New(objectFailure)
-	}
-	return data, nil
-}
-
-func traceRejection(data []byte, count int) (int, error) {
-	var result struct {
-		PartialSuccess *struct {
-			RejectedSpans json.Number `json:"rejectedSpans"`
-		} `json:"partialSuccess"`
-	}
-	if err := json.Unmarshal(data, &result); err != nil {
-		return 0, errors.New("OTLP response was not a JSON trace acknowledgement")
-	}
-	if result.PartialSuccess == nil || result.PartialSuccess.RejectedSpans == "" {
-		return 0, nil
-	}
-	rejected, err := result.PartialSuccess.RejectedSpans.Int64()
-	if err != nil || rejected < 0 || rejected > int64(count) {
-		return 0, errors.New("OTLP rejection count was invalid")
-	}
-	return int(rejected), nil
-}
-
-// Only the delivery goroutine accesses metricSeries. Record keeps its bounded,
-// nonblocking queue path and never waits for metric aggregation or the collector.
-// The HTTP RED series and periodic runtime samples use their own scopes.
-func (e *Exporter) sendMetrics(batch []span, runtimeMetrics []metric) (int, int, error) {
-	active := e.aggregateMetrics(batch)
-	events, durations := metricPoints(active)
-	httpEvents, httpDurations := e.drainHTTPMetrics()
-	points := len(events) + len(durations) + len(httpEvents) + len(httpDurations)
-	for _, item := range runtimeMetrics {
-		if item.Sum != nil {
-			points += len(item.Sum.DataPoints)
-		}
-		if item.Gauge != nil {
-			points += len(item.Gauge.DataPoints)
-		}
-		if item.Histogram != nil {
-			points += len(item.Histogram.DataPoints)
-		}
-	}
-	if points == 0 {
-		return 0, 0, nil
-	}
-	var payload metricsRequest
-	payload.ResourceMetrics[0].Resource.Attributes = e.resourceAttributes()
-	metrics := []metric{
-		{Name: "audit.execution.events", Sum: &sumMetric{AggregationTemporality: 2, IsMonotonic: true, DataPoints: events}},
-		{Name: "audit.execution.duration_ms", Gauge: &gaugeMetric{DataPoints: durations}},
-	}
-	payload.ResourceMetrics[0].ScopeMetrics = []scopeMetrics{
-		{Scope: scopeName("contractaudit.execution"), Metrics: metrics},
-	}
-	if len(httpEvents) > 0 || len(httpDurations) > 0 {
-		payload.ResourceMetrics[0].ScopeMetrics = append(payload.ResourceMetrics[0].ScopeMetrics, scopeMetrics{
-			Scope: scopeName("contractaudit.http"), Metrics: []metric{
-				{Name: "audit.http.requests", Sum: &sumMetric{AggregationTemporality: 2, IsMonotonic: true, DataPoints: httpEvents}},
-				{Name: "audit.http.duration_ms", Unit: "ms", Histogram: &histogramMetric{AggregationTemporality: 2, DataPoints: httpDurations}},
-			},
-		})
-	}
-	if len(runtimeMetrics) > 0 {
-		payload.ResourceMetrics[0].ScopeMetrics = append(payload.ResourceMetrics[0].ScopeMetrics, scopeMetrics{
-			Scope: scopeName("contractaudit.runtime"), Metrics: runtimeMetrics,
-		})
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return points, 0, err
-	}
-	req, err := http.NewRequestWithContext(e.ctx, http.MethodPost, e.metricsEndpoint, bytes.NewReader(body))
-	if err != nil {
-		return points, 0, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	response, err := e.client.Do(req)
-	if err != nil {
-		return points, 0, err
-	}
-	defer response.Body.Close()
-	data, err := readOTLPResponse(response, "OTLP metric response was unsuccessful or exceeded its bound", "OTLP metric acknowledgement must be a JSON object")
-	if err != nil {
-		return points, 0, err
-	}
-	return metricRejection(data, points)
-}
-
-func (e *Exporter) aggregateMetrics(batch []span) []*metricSeries {
-	active := make([]*metricSeries, 0, len(batch))
-	for i := range batch {
-		item := &batch[i]
-		series := e.seriesFor(item)
-		series.count++
-		if !series.active {
-			series.active = true
-			active = append(active, series)
-		}
-		series.observeDuration(item)
-	}
-	return active
-}
-
-func (e *Exporter) seriesFor(item *span) *metricSeries {
-	key := [3]string{
-		metricPhase(attributeValue(item.Attributes[:], "audit.phase")),
-		metricNodeKind(attributeValue(item.Attributes[:], "audit.node_kind")),
-		metricStatus(attributeValue(item.Attributes[:], "audit.status")),
-	}
-	if series := e.metricSeries[key]; series != nil {
-		return series
-	}
-	return e.newMetricSeries(key, item.Start)
-}
-
-func (e *Exporter) newMetricSeries(key [3]string, start string) *metricSeries {
-	// Reserve one of the 256 series for overflow. The reserved tuple
-	// retains event totals without keeping arbitrary new label values.
-	if len(e.metricSeries) >= metricSeriesCapacity-1 {
-		key = [3]string{"__overflow__", "__overflow__", "__overflow__"}
-		if series := e.metricSeries[key]; series != nil {
-			return series
-		}
-	}
-	series := &metricSeries{attributes: metricAttributes(key), start: start}
-	e.metricSeries[key] = series
-	return series
-}
-
-func (s *metricSeries) observeDuration(item *span) {
-	startNano, startErr := strconv.ParseInt(item.Start, 10, 64)
-	endNano, endErr := strconv.ParseInt(item.End, 10, 64)
-	if startErr == nil && endErr == nil && endNano >= startNano &&
-		(!s.hasDuration || endNano >= s.latestEnd) {
-		s.duration = (endNano - startNano) / int64(time.Millisecond)
-		s.latestEnd = endNano
-		s.hasDuration = true
-	}
-}
-
-func metricPoints(active []*metricSeries) ([]numberPoint, []numberPoint) {
-	events := make([]numberPoint, 0, len(active))
-	durations := make([]numberPoint, 0, len(active))
-	now := time.Now().UnixNano()
-	for _, series := range active {
-		series.active = false
-		// Collection timestamps advance even when events arrive out of order
-		// or a later batch has the same event timestamp as an earlier batch.
-		at := max(now, series.latestEnd, series.lastTime+1)
-		series.lastTime = at
-		events = append(events, numberPoint{Attributes: series.attributes, Start: series.start,
-			Time: strconv.FormatInt(at, 10), AsInt: strconv.FormatInt(series.count, 10)})
-		if series.hasDuration {
-			durations = append(durations, numberPoint{Attributes: series.attributes,
-				Time: strconv.FormatInt(series.latestEnd, 10), AsInt: strconv.FormatInt(series.duration, 10)})
-		}
-	}
-	return events, durations
-}
-
-func metricRejection(data []byte, points int) (int, int, error) {
-	var result struct {
-		PartialSuccess *struct {
-			RejectedDataPoints json.Number `json:"rejectedDataPoints"`
-		} `json:"partialSuccess"`
-	}
-	if err := json.Unmarshal(data, &result); err != nil {
-		return points, 0, errors.New("OTLP response was not a JSON metric acknowledgement")
-	}
-	if result.PartialSuccess == nil || result.PartialSuccess.RejectedDataPoints == "" {
-		return points, 0, nil
-	}
-	rejected, err := result.PartialSuccess.RejectedDataPoints.Int64()
-	if err != nil || rejected < 0 || rejected > int64(points) {
-		return points, 0, errors.New("OTLP metric rejection count was invalid")
-	}
-	return points, int(rejected), nil
-}
-
-func metricAttributes(values [3]string) []attribute {
-	attrs := make([]attribute, 0, len(values))
-	for i, key := range [3]string{"audit.phase", "audit.node_kind", "audit.status"} {
-		if values[i] != "" {
-			attrs = append(attrs, stringAttribute(key, values[i]))
-		}
-	}
-	return attrs
-}
-
-func attributeValue(attrs []attribute, key string) string {
-	for i := range attrs {
-		if attrs[i].Key == key {
-			return attrs[i].Value.StringValue
-		}
-	}
-	return ""
-}
-
-// metricSeries is cumulative for the lifetime of the exporter, including after
-// rejected or unacknowledged sends. The next snapshot can recover its total.
-type metricSeries struct {
-	attributes  []attribute
-	start       string
-	count       int64
-	lastTime    int64
-	latestEnd   int64
-	duration    int64
-	hasDuration bool
-	active      bool
 }
 
 func metadata(value string) string {
@@ -621,117 +659,4 @@ func isASCIILetter(c rune) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
-func isASCIIDigit(c rune) bool {
-	return c >= '0' && c <= '9'
-}
-
-func spanID(value string) string {
-	sum := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(sum[:8])
-}
-
-type attribute struct {
-	Key   string `json:"key"`
-	Value struct {
-		StringValue string `json:"stringValue"`
-	} `json:"value"`
-}
-
-func stringAttribute(key, value string) attribute {
-	item := attribute{Key: key}
-	item.Value.StringValue = value
-	return item
-}
-
-type span struct {
-	TraceID      string       `json:"traceId"`
-	SpanID       string       `json:"spanId"`
-	ParentSpanID string       `json:"parentSpanId,omitempty"`
-	Name         string       `json:"name"`
-	Kind         int          `json:"kind"`
-	Flags        int          `json:"flags"`
-	Start        string       `json:"startTimeUnixNano"`
-	End          string       `json:"endTimeUnixNano"`
-	Attributes   [6]attribute `json:"attributes"`
-	Status       struct {
-		Code int `json:"code"`
-	} `json:"status"`
-}
-
-type exportRequest struct {
-	ResourceSpans [1]struct {
-		Resource struct {
-			Attributes []attribute `json:"attributes"`
-		} `json:"resource"`
-		ScopeSpans [1]struct {
-			Scope struct {
-				Name string `json:"name"`
-			} `json:"scope"`
-			Spans []span `json:"spans"`
-		} `json:"scopeSpans"`
-	} `json:"resourceSpans"`
-}
-
-type numberPoint struct {
-	Attributes []attribute `json:"attributes,omitempty"`
-	Start      string      `json:"startTimeUnixNano,omitempty"`
-	Time       string      `json:"timeUnixNano"`
-	AsInt      string      `json:"asInt,omitempty"`
-	AsDouble   *float64    `json:"asDouble,omitempty"`
-}
-
-type sumMetric struct {
-	AggregationTemporality int           `json:"aggregationTemporality"`
-	IsMonotonic            bool          `json:"isMonotonic"`
-	DataPoints             []numberPoint `json:"dataPoints"`
-}
-
-type gaugeMetric struct {
-	DataPoints []numberPoint `json:"dataPoints"`
-}
-
-type histogramPoint struct {
-	Attributes     []attribute `json:"attributes,omitempty"`
-	Start          string      `json:"startTimeUnixNano"`
-	Time           string      `json:"timeUnixNano"`
-	Count          string      `json:"count"`
-	Sum            float64     `json:"sum"`
-	BucketCounts   []string    `json:"bucketCounts"`
-	ExplicitBounds []float64   `json:"explicitBounds"`
-}
-
-type histogramMetric struct {
-	AggregationTemporality int              `json:"aggregationTemporality"`
-	DataPoints             []histogramPoint `json:"dataPoints"`
-}
-
-type metric struct {
-	Name      string           `json:"name"`
-	Unit      string           `json:"unit,omitempty"`
-	Sum       *sumMetric       `json:"sum,omitempty"`
-	Gauge     *gaugeMetric     `json:"gauge,omitempty"`
-	Histogram *histogramMetric `json:"histogram,omitempty"`
-}
-
-type metricsRequest struct {
-	ResourceMetrics [1]struct {
-		Resource struct {
-			Attributes []attribute `json:"attributes"`
-		} `json:"resource"`
-		ScopeMetrics []scopeMetrics `json:"scopeMetrics"`
-	} `json:"resourceMetrics"`
-}
-
-type scopeMetrics struct {
-	Scope struct {
-		Name string `json:"name"`
-	} `json:"scope"`
-	Metrics []metric `json:"metrics"`
-}
-
-func scopeName(name string) (scope struct {
-	Name string `json:"name"`
-}) {
-	scope.Name = name
-	return scope
-}
+func isASCIIDigit(c rune) bool { return c >= '0' && c <= '9' }

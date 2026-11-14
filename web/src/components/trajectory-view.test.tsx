@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-05
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,12 +12,7 @@ import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { parseAgentReview } from "../api/agent-review";
-import type {
-  Execution,
-  ExecutionAttempt,
-  ExecutionEvent,
-  ModelCallTrace,
-} from "../api/types";
+import type { Execution, ExecutionAttempt, ExecutionEvent, ModelCallTrace } from "../api/types";
 import { renderWithAntd as render } from "../test/antd";
 import { TrajectoryView } from "./trajectory-view";
 
@@ -215,26 +210,25 @@ describe("TrajectoryView", () => {
     await userEvent.click(radio ?? screen.getByText("列表"));
   }
 
-  it("shows the Agent path as swimlanes by default with real reported usage only", () => {
+  it("shows merged calls with reported usage in the execution diagram", async () => {
     render(<TrajectoryView execution={execution(events)} />);
     expect(screen.getByRole("region", { name: "Agent 执行路径泳道图" })).toBeInTheDocument();
-    expect(screen.getByText("4 步 / 2 泳道")).toBeInTheDocument();
-    expect(screen.getByText("有用量报告的步骤")).toBeInTheDocument();
-    expect(screen.getAllByText("1")).toHaveLength(2);
-    expect(screen.getByText("已保存 skill 事件")).toBeInTheDocument();
-    const modelNode = screen.getByRole("button", { name: /模型请求 第 4 步/ });
-    expect(modelNode).toHaveTextContent("120 tok");
-    expect(screen.getAllByText("用量未报告").length).toBeGreaterThan(0);
-    expect(screen.queryByText("本次执行没有保存可展示的轨迹记录。")).not.toBeInTheDocument();
+    expect(screen.getByText(/2 个调用 \/ 阶段/)).toBeInTheDocument();
+    await userEvent.click(screen.getByText("按顺序选择节点（键盘可用）"));
+    expect(
+      screen.getByRole("button", { name: /模型 · codex\/gpt-6-luna · #4/ }),
+    ).toBeInTheDocument();
   });
 
-  it("opens a swimlane step with tool/model, span and token details", async () => {
+  it("opens a merged call with span and reported token details", async () => {
     render(<TrajectoryView execution={execution(events)} />);
-    await userEvent.click(screen.getByRole("button", { name: /模型请求 第 4 步/ }));
-    expect(screen.getByText("输入")).toBeInTheDocument();
-    expect(screen.getByText("输出")).toBeInTheDocument();
-    expect(screen.getByText(/来源 provider_response\.usage/)).toBeInTheDocument();
-    expect(screen.getByText(/span span-model/)).toBeInTheDocument();
+    await userEvent.click(screen.getByText("按顺序选择节点（键盘可用）"));
+    await userEvent.click(screen.getByRole("button", { name: /模型 · codex\/gpt-6-luna · #4/ }));
+    expect(
+      screen.getByText(/输入 100 · 输出 20 · 合计 120 · 来源 provider_response.usage/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Span span-model/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /#3/ })).toBeInTheDocument();
   });
 
   it("shows a chronological call timeline with expandable request and output", async () => {
@@ -263,9 +257,7 @@ describe("TrajectoryView", () => {
     render(<TrajectoryView execution={execution(events)} />);
     expect(screen.getByRole("region", { name: "Agent 执行路径泳道图" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "泳道图" })).toBeChecked();
-    expect(
-      screen.getByText(/泳道图始终展示全部步骤；搜索只筛选列表/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/泳道图始终展示全部步骤；搜索只筛选列表/)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("搜索轨迹"), { target: { value: "模型" } });
 
@@ -316,9 +308,7 @@ describe("TrajectoryView", () => {
 
     expect(search).toHaveValue("模型");
     expect(screen.getByRole("region", { name: "Agent 执行路径泳道图" })).toBeInTheDocument();
-    expect(
-      screen.getByText(/当前搜索“模型”仍保留，切回列表可查看匹配记录/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/当前搜索“模型”仍保留，切回列表可查看匹配记录/)).toBeInTheDocument();
     expect(screen.queryByText(/已按“模型”筛选出/)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("radio", { name: "列表" }));
@@ -329,9 +319,7 @@ describe("TrajectoryView", () => {
 
   it("keeps duplicate tool steps distinct and read-only when filtering", () => {
     render(
-      <TrajectoryView
-        execution={{ ...execution([]), agent_review: duplicateToolReview() }}
-      />,
+      <TrajectoryView execution={{ ...execution([]), agent_review: duplicateToolReview() }} />,
     );
     const summary = screen.getByLabelText("轨迹汇总");
     expect(within(summary).getByText("2")).toBeInTheDocument();
@@ -341,12 +329,8 @@ describe("TrajectoryView", () => {
     });
 
     expect(screen.getByText("已按“evidence.lookup”筛选出 4 条记录。")).toBeInTheDocument();
-    expect(
-      screen.getAllByRole("button", { name: /evidence\.lookup/ }),
-    ).toHaveLength(4);
-    expect(
-      screen.queryByRole("button", { name: /保存|编辑|删除/ }),
-    ).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /evidence\.lookup/ })).toHaveLength(4);
+    expect(screen.queryByRole("button", { name: /保存|编辑|删除/ })).not.toBeInTheDocument();
   });
 
   it("filters entries and reports when nothing matches", async () => {
@@ -365,8 +349,6 @@ describe("TrajectoryView", () => {
     render(<TrajectoryView execution={execution([])} />);
     expect(screen.getByText("本次执行没有保存可展示的步骤。")).toBeInTheDocument();
     await showList();
-    expect(
-      screen.getByText("本次执行没有保存可展示的轨迹记录。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("本次执行没有保存可展示的轨迹记录。")).toBeInTheDocument();
   });
 });

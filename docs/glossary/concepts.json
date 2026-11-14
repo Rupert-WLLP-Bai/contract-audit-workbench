@@ -1517,8 +1517,8 @@
           "verification": "READ_CURRENT_SOURCE"
         },
         {
-          "path": "internal/store/state.go",
-          "symbol": "store.Anchor",
+          "path": "internal/execution/model/frozen.go",
+          "symbol": "model.Anchor",
           "relation": "defines_concept",
           "verification": "READ_CURRENT_SOURCE"
         }

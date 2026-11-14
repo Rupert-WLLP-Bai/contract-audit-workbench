@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-04
-// Revision: r4
+// Updated: 2026-11-12
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"contractaudit/internal/agentflow"
 	"contractaudit/internal/docir"
 	"contractaudit/internal/store"
 )
@@ -328,5 +329,70 @@ func TestBusinessWorkspaceRevisionSourceIsOptionalAndExact(t *testing.T) {
 	if current["case_id"] != "case" || current["run_id"] != "current" || current["attempt_id"] != "current-attempt" ||
 		previous["case_id"] != "case" || previous["run_id"] != "previous" || previous["attempt_id"] != "previous-retry" {
 		t.Fatalf("unexpected source: %v", source)
+	}
+}
+
+func TestSnapshotJSONProjectsFrozenPlannerIdentity(t *testing.T) {
+	configuration := agentflow.PlannerConfiguration{
+		Mode: agentflow.ModeDeterministic, ConfigurationID: "planner-id",
+		PromptVersion: "scope-tool-selection/v5", PromptSHA256: "prompt-hash",
+		SchemaVersion: "agent-plan/v4", RuntimeVersion: "operator-flow-v3/eino-0.9.22",
+		ToolCatalogVersion: "catalog-1",
+		Limits:             agentflow.PlannerLimits{MaxRounds: 2, MaxCalls: 16, MaxDurationMS: 30000, MaxEvidenceBytes: 2097152},
+	}
+	payload, err := json.Marshal(configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap := store.RunSnapshot{
+		DocumentIDs: []string{"doc-1"}, ParsedDocumentIDs: []string{"parse-1"},
+		ParseSelectionHash: "parse-hash", ParserConfigurationID: "parser-1",
+		RuleSetHash: "rules", PlaybookHash: "playbook",
+		PlannerConfigurationID: configuration.ConfigurationID, PlannerConfiguration: payload,
+	}
+	got := snapshotJSON(snap)
+	planner, ok := got["planner"].(map[string]any)
+	if !ok {
+		t.Fatalf("planner missing: %v", got)
+	}
+	if planner["mode"] != agentflow.ModeDeterministic || planner["configuration_id"] != "planner-id" ||
+		planner["model_configuration_id"] != nil || planner["max_rounds"] != 2 ||
+		planner["prompt_version"] != "scope-tool-selection/v5" {
+		t.Fatalf("planner identity: %#v", planner)
+	}
+	if _, leaked := planner["prompt_sha256"]; leaked {
+		t.Fatalf("prompt hash leaked: %#v", planner)
+	}
+	parsed, ok := got["parsed_document_ids"].([]any)
+	if !ok || len(parsed) != 1 || parsed[0] != "parse-1" || got["parse_selection_hash"] != "parse-hash" || got["parser_configuration_id"] != "parser-1" {
+		t.Fatalf("parse identity: %v", got)
+	}
+
+	mismatched := snap
+	mismatched.PlannerConfigurationID = "other-id"
+	if _, present := snapshotJSON(mismatched)["planner"]; present {
+		t.Fatal("mismatched planner configuration was projected")
+	}
+	corrupt := snap
+	corrupt.PlannerConfiguration = json.RawMessage(`{"mode":"deterministic_planner"}`)
+	if _, present := snapshotJSON(corrupt)["planner"]; present {
+		t.Fatal("incomplete planner configuration was projected")
+	}
+	legacy := store.RunSnapshot{DocumentIDs: []string{"doc-1"}, RuleSetHash: "rules", PlaybookHash: "playbook"}
+	if _, present := snapshotJSON(legacy)["planner"]; present {
+		t.Fatal("legacy snapshot invented a planner")
+	}
+	if _, present := snapshotJSON(legacy)["parsed_document_ids"]; present {
+		t.Fatal("legacy snapshot invented parsed documents")
+	}
+
+	ws := store.Workspace{Case: store.Case{ID: "case-1"}, View: store.RunView{Run: store.Run{ID: "run-1"}}, Snapshot: snap}
+	diagnostics := reviewDiagnosticsJSON(ws)
+	if diagnostics["snapshot"].(map[string]any)["planner"].(map[string]any)["mode"] != agentflow.ModeDeterministic {
+		t.Fatalf("diagnostics dropped planner: %v", diagnostics["snapshot"])
+	}
+	business := workspaceJSON(nil, ws)["snapshot"].(map[string]any)
+	if _, present := business["planner"]; present {
+		t.Fatalf("business snapshot leaked planner: %v", business)
 	}
 }

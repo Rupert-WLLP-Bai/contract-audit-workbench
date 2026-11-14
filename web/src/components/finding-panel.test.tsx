@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-08
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -116,6 +116,32 @@ function renderPanel(props: Partial<Parameters<typeof FindingPanel>[0]> = {}) {
 }
 
 describe("finding panel", () => {
+  it("explains a known insufficient rule result without changing its status or hiding its source", async () => {
+    const claim = "规则 ENT-COM-ADV-001 信息不足：缺少采购文件或中标文件中的合同依据。";
+    renderPanel({
+      findings: [
+        finding({
+          claim,
+          relation: "insufficient",
+          verification_status: "unverified",
+          unverified_reason: claim,
+          evidence: [],
+          severity: null,
+        }),
+      ],
+      selectedId: "finding-1",
+    });
+    expect(screen.getAllByText("预付款依据不足，暂无法核对").length).toBeGreaterThan(0);
+    expect(
+      within(screen.getByLabelText("当前选中线索")).getByText(
+        "缺少采购文件或中标文件中的合同依据。请补充相关文件，再核对预付款约定。",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("这条线索没有附带证据，不能视为已验证。")).toBeInTheDocument();
+    expect(screen.getByText("规则原始结果与编号")).toBeInTheDocument();
+    expect(screen.getByText(claim)).toBeInTheDocument();
+  });
+
   it("counts severities and includes an unrated bucket only when needed", () => {
     const findings = [
       finding({ id: "f1", severity: "high" }),
@@ -143,8 +169,7 @@ describe("finding panel", () => {
       />,
     );
     expect(
-      within(screen.getByLabelText("本次审查风险分级")).getByText("未分级")
-        .parentElement,
+      within(screen.getByLabelText("本次审查风险分级")).getByText("未分级").parentElement,
     ).toHaveTextContent("未分级1");
   });
 
@@ -157,10 +182,7 @@ describe("finding panel", () => {
         finding({ id: "decided", claim: "已决线索", decisions: [decision] }),
       ],
     });
-    expect(screen.getByRole("button", { name: "全部" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(screen.getByRole("button", { name: "全部" })).toHaveAttribute("aria-pressed", "true");
     await user.click(screen.getByRole("button", { name: "冲突" }));
     expect(screen.getByText("冲突线索")).toBeInTheDocument();
     expect(screen.getByText("已决线索")).toBeInTheDocument();
@@ -177,9 +199,7 @@ describe("finding panel", () => {
 
   it("explains an empty finding list without claiming the contract is clean", () => {
     renderPanel({ findings: [] });
-    expect(
-      screen.getByText("这次审查还没有生成风险线索。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("这次审查还没有生成风险线索。")).toBeInTheDocument();
     expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
   });
 
@@ -196,9 +216,7 @@ describe("finding panel", () => {
     const detail = screen.getByRole("article");
     expect(within(detail).getByRole("heading", { name: "缺证线索" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "冲突" }));
-    expect(
-      screen.getByText("当前线索不在这个筛选结果里，右侧仍保留它。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("当前线索不在这个筛选结果里，右侧仍保留它。")).toBeInTheDocument();
   });
 
   it("selects a finding from the list, clause tab and conclusion tab", async () => {
@@ -209,26 +227,21 @@ describe("finding panel", () => {
     await user.click(screen.getByRole("button", { name: "选择线索：付款期限过长" }));
     expect(onSelect).toHaveBeenCalledWith("finding-1");
     await user.click(screen.getByRole("tab", { name: "条款比对" }));
-    expect(
-      screen.getByText("下面是各条线索对应的原文片段。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("下面是各条线索对应的原文片段。")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "付款期限过长" }));
     expect(onSelect).toHaveBeenLastCalledWith("finding-1");
-    expect(screen.getByRole("tab", { name: "风险审查" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(screen.getByRole("tab", { name: "风险审查" })).toHaveAttribute("aria-selected", "true");
     await user.click(screen.getByRole("tab", { name: "审查结论" }));
-    expect(
-      screen.getByText("规则结果、模型建议和人工判断分开保存。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("规则结果、模型建议和人工判断分开保存。")).toBeInTheDocument();
     expect(screen.getByText("确认风险")).toBeInTheDocument();
   });
 
   it("names an unmatched clause source and the contract information tab", async () => {
     const user = userEvent.setup();
     renderPanel({
-      findings: [finding({ evidence: [{ ...locatedAnchor, id: "orphan", document_version_id: "missing" }] })],
+      findings: [
+        finding({ evidence: [{ ...locatedAnchor, id: "orphan", document_version_id: "missing" }] }),
+      ],
     });
     await user.click(screen.getByRole("tab", { name: "条款比对" }));
     expect(screen.getByText("来源未对应到材料")).toBeInTheDocument();
@@ -291,15 +304,9 @@ describe("finding panel", () => {
     expect(within(detail).getByText("尚未核验：模型未引用原文")).toBeInTheDocument();
     expect(within(detail).getAllByText("确认风险").length).toBeGreaterThan(0);
     expect(within(detail).getByText(/审查员甲/)).toBeInTheDocument();
-    expect(
-      within(detail).getAllByText(formatDateTime(at)).length,
-    ).toBeGreaterThan(0);
-    expect(
-      within(detail).getByText("修改判断时，之前的记录也会保留。"),
-    ).toBeInTheDocument();
-    expect(
-      within(detail).getByRole("group", { name: "更正判断" }),
-    ).toBeInTheDocument();
+    expect(within(detail).getAllByText(formatDateTime(at)).length).toBeGreaterThan(0);
+    expect(within(detail).getByText("修改判断时，之前的记录也会保留。")).toBeInTheDocument();
+    expect(within(detail).getByRole("group", { name: "更正判断" })).toBeInTheDocument();
   });
 
   it.each([
@@ -354,17 +361,13 @@ describe("finding panel", () => {
         }),
       ],
     });
-    expect(
-      screen.getByText("找不到对应来源，不能把这条引用当成已验证证据。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("找不到对应来源，不能把这条引用当成已验证证据。")).toBeInTheDocument();
     expect(screen.getByText("没有保存引用内容。")).toBeInTheDocument();
   });
 
   it("marks a finding without evidence as not verified", () => {
     renderPanel({ selectedId: "finding-1", findings: [finding({ evidence: [] })] });
-    expect(
-      screen.getByText("这条线索没有附带证据，不能视为已验证。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("这条线索没有附带证据，不能视为已验证。")).toBeInTheDocument();
   });
 
   it("disables the decision form with the supplied reason", () => {
@@ -380,9 +383,7 @@ describe("finding panel", () => {
 
   it("uses the default disabled message when no reason is supplied", () => {
     renderPanel({ selectedId: "finding-1", canDecide: false });
-    expect(
-      screen.getByText("当前角色不能提交审查判断。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("当前角色不能提交审查判断。")).toBeInTheDocument();
   });
 
   it("requires a decision and a valid reason before saving", async () => {
@@ -406,9 +407,7 @@ describe("finding panel", () => {
   it("blocks saving without a server version", () => {
     renderPanel({ selectedId: "finding-1", findings: [finding({ version: null })] });
     expect(
-      screen.getByText(
-        "服务没有返回这条线索的版本号，暂不能保存，以免覆盖其他人的决定。",
-      ),
+      screen.getByText("服务没有返回这条线索的版本号，暂不能保存，以免覆盖其他人的决定。"),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存决定" })).toBeDisabled();
   });
@@ -471,9 +470,7 @@ describe("finding panel", () => {
       ],
     });
     const detail = screen.getByRole("article");
-    expect(
-      within(detail).getByRole("heading", { name: "未命名线索" }),
-    ).toBeInTheDocument();
+    expect(within(detail).getByRole("heading", { name: "未命名线索" })).toBeInTheDocument();
     expect(within(detail).getByText(/规则，\s*冲突/)).not.toHaveTextContent("置信");
     expect(within(detail).queryByText("高风险")).not.toBeInTheDocument();
     expect(within(detail).queryByText(/尚未核验：/)).not.toBeInTheDocument();
@@ -505,11 +502,7 @@ describe("finding panel", () => {
       ],
     });
     expect(screen.getByText(/正文 SHA-256\s*未记录/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/本次使用的解析结果\s*未记录/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getAllByText("历史来源未记录解析身份或正文摘要"),
-    ).toHaveLength(1);
+    expect(screen.getByText(/本次使用的解析结果\s*未记录/)).toBeInTheDocument();
+    expect(screen.getAllByText("历史来源未记录解析身份或正文摘要")).toHaveLength(1);
   });
 });

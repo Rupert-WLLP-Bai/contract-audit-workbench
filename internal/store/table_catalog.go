@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -136,6 +136,33 @@ func normalizedTenantPolicy(raw *string) string {
 	return s
 }
 
+func exactTenantPolicy(name string, using, check *string) bool {
+	expectedUsing := "tenant_id=current_setting('app.tenant_id',true)"
+	expectedCheck := expectedUsing
+	if name == "execution_agent_step_checkpoints" {
+		// Migration 45 adds claim and service fences to the tenant boundary.
+		// Compare the entire policy: accepting a tenant prefix would also
+		// accept an OR escape or the removal of a lease/generation fence.
+		tenantAndOrg := expectedUsing + " AND org_id=current_setting('app.org_id',true)"
+		claim := ` AND EXISTS (SELECT 1 FROM service_database_roles role_binding
+ WHERE role_binding.role_name=session_user AND role_binding.service='execution')
+ AND EXISTS (SELECT 1 FROM worker_jobs claim
+ WHERE claim.id=NULLIF(current_setting('app.job_id',true),'')
+ AND claim.tenant_id=execution_agent_step_checkpoints.tenant_id
+ AND claim.org_id=execution_agent_step_checkpoints.org_id
+ AND claim.case_id=execution_agent_step_checkpoints.case_id
+ AND claim.run_id=execution_agent_step_checkpoints.run_id
+ AND claim.attempt_id=execution_agent_step_checkpoints.attempt_id
+ AND claim.worker_id=NULLIF(current_setting('app.worker_id',true),'')
+ AND claim.generation=NULLIF(current_setting('app.job_generation',true),'')::bigint
+ AND claim.state='running' AND claim.lease_until>clock_timestamp())`
+		expectedUsing = tenantAndOrg + claim
+		expectedCheck = tenantAndOrg + " AND generation=NULLIF(current_setting('app.job_generation',true),'')::bigint" + claim
+	}
+	return normalizedTenantPolicy(using) == normalizedTenantPolicy(&expectedUsing) &&
+		normalizedTenantPolicy(check) == normalizedTenantPolicy(&expectedCheck)
+}
+
 // checkTableIsolationCatalog is called only when opening an application Store.
 // Offline migrations retain their dedicated connection. This guard observes
 // actual catalog state at startup; it does not replace A/B behavioral tests.
@@ -178,8 +205,7 @@ func checkTableIsolationCatalog(ctx context.Context, q isolationQueryer, schema 
 			return fmt.Errorf("relation %q does not match its tenant/FORCE isolation classification", name)
 		}
 		if entry.Classification == "TENANT_DATA" {
-			canonical := "tenant_id=current_setting'app.tenant_id',true"
-			if permissive == nil || !*permissive || normalizedTenantPolicy(using) != canonical || normalizedTenantPolicy(check) != canonical {
+			if permissive == nil || !*permissive || !exactTenantPolicy(name, using, check) {
 				rows.Close()
 				return fmt.Errorf("tenant relation %q lacks the exact USING/WITH CHECK tenant boundary", name)
 			}

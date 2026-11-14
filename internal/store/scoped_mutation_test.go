@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r4
+// Updated: 2026-11-14
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -29,6 +29,19 @@ import (
 
 // Keep independent test consumers on the same Core authority path as services.
 type durableTestOperationAuthority struct{ core *Store }
+
+func durableSessionUser(t *testing.T, core *Store, user accounts.User) (accounts.User, string) {
+	t.Helper()
+	token, err := core.EstablishSession(user, "client")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, _, err = core.AuthenticateSession(context.Background(), token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return user, token
+}
 
 func (a durableTestOperationAuthority) ResolveOperation(ctx context.Context, scope model.DelegatedScope) (accounts.User, error) {
 	caller := "worker"

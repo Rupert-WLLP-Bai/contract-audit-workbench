@@ -2,9 +2,9 @@
 // Purpose: Verifies immutable report receipt replay across client sessions with a restricted Core PostgreSQL role.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-10
-// Updated: 2026-11-10
-// Revision: r1
+// Created: 2026-11-12
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -460,7 +460,28 @@ func restoreReportReceiptSchema43ForTest(t *testing.T, ctx context.Context, pool
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrate(ctx, pool, schema); err != nil {
+	// Reapply only the receipt migration: later independent migrations remain
+	// installed in this isolated schema and must not be replayed or removed.
+	catalog, err := migrationCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receiptMigration schemaMigration
+	for _, migration := range catalog {
+		if migration.version == 44 {
+			receiptMigration = migration
+			break
+		}
+	}
+	if receiptMigration.version != 44 {
+		t.Fatal("schema 44 receipt migration is missing")
+	}
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	if err := applyMigration(ctx, conn, schema, receiptMigration, false); err != nil {
 		t.Fatalf("reapply schema 44 to existing schema 43 receipt rows: %v", err)
 	}
 }

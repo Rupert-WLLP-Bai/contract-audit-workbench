@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -92,6 +92,61 @@ func TestEinoScopePlanReusesRulesAndPreservesInput(t *testing.T) {
 	if string(before) != string(after) {
 		t.Fatal("input was mutated")
 	}
+}
+
+func TestRuntimeDispatchesOneToolsNodeCallWithCurrentFrozenInput(t *testing.T) {
+	request := requestFixture()
+	var calls atomic.Int32
+	var observed ToolInput
+	readTool := toolFunc{spec: ToolSpec{ID: "frozen.read", Domain: Technical, Version: "v1", Effect: "read",
+		Capabilities: []string{"warranty_months"}}, run: func(_ context.Context, input ToolInput) ([]Finding, error) {
+		calls.Add(1)
+		observed = input
+		return []Finding{{Domain: Technical, Capability: "warranty_months", RuleID: "frozen.read",
+			Relation: "insufficient", Summary: "source did not establish a comparison", ReasonCode: "required_source_or_field_missing",
+			Citations: []Citation{}, Facts: []SemanticFact{}}}, nil
+	}}
+	planner := plannerFunc(func(context.Context, PlanInput) (Plan, error) {
+		return Plan{Calls: []Call{{ToolID: "frozen.read", Domain: Technical, GapID: "g-tech", Reason: "inspect frozen source"}}}, nil
+	})
+	runtime := runtimeFixture(t, planner, []Tool{readTool}, 1)
+	report, err := runtime.Run(context.Background(), request)
+	if err != nil || report.ToolCalls != 1 || calls.Load() != 1 {
+		t.Fatalf("report = %+v, calls = %d, err = %v", report, calls.Load(), err)
+	}
+	if observed.TenantID != "branch-a" || observed.CaseID != "case-a" || observed.ActorID != "alice" ||
+		observed.Gap.ID != "g-tech" || observed.Gap.Capability != "warranty_months" ||
+		len(observed.Evidence) != len(request.Evidence) || observed.Evidence[0] != request.Evidence[0] || len(observed.PriorFindings) != 0 {
+		t.Fatalf("tool input was not bound from the current frozen execution: %+v", observed)
+	}
+}
+
+func TestRuntimeToolsNodePreservesDeniedAndCancellation(t *testing.T) {
+	callPlanner := plannerFunc(func(context.Context, PlanInput) (Plan, error) {
+		return Plan{Calls: []Call{{ToolID: "failure.read", Domain: Technical, GapID: "g-tech", Reason: "bounded read"}}}, nil
+	})
+	spec := ToolSpec{ID: "failure.read", Domain: Technical, Version: "v1", Effect: "read", Capabilities: []string{"warranty_months"}}
+
+	t.Run("denied", func(t *testing.T) {
+		readTool := toolFunc{spec: spec, run: func(context.Context, ToolInput) ([]Finding, error) { return nil, ErrDenied }}
+		report, err := runtimeFixture(t, callPlanner, []Tool{readTool}, 1).Run(context.Background(), requestFixture())
+		if !errors.Is(err, ErrDenied) || report.ToolCalls != 1 {
+			t.Fatalf("denied tool error was not preserved: report = %+v, err = %v", report, err)
+		}
+	})
+
+	t.Run("cancelled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		readTool := toolFunc{spec: spec, run: func(toolCtx context.Context, _ ToolInput) ([]Finding, error) {
+			cancel()
+			return nil, toolCtx.Err()
+		}}
+		report, err := runtimeFixture(t, callPlanner, []Tool{readTool}, 1).Run(ctx, requestFixture())
+		if !errors.Is(err, context.Canceled) || report.Status != "cancelled" || report.ToolCalls != 1 {
+			t.Fatalf("tool cancellation was not preserved: report = %+v, err = %v", report, err)
+		}
+	})
 }
 
 func TestBaselineInsufficientResultRemainsAValidObservation(t *testing.T) {

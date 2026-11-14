@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -348,10 +348,11 @@ func (s *Store) scopedAttemptMutationInternal(ctx context.Context, runID, attemp
 			return err
 		}
 	}
-	if preparing {
-		canonicalizeLoadedRows(&previous)
-		previous.normalize()
-	}
+	// The JSON clone canonicalizes empty optional slices. Apply the same
+	// canonicalization to the loaded baseline for every attempt mutation, so
+	// an unchanged frozen snapshot is not mistaken for a new insert.
+	canonicalizeLoadedRows(&previous)
+	previous.normalize()
 	next, err := previous.clone()
 	if err != nil {
 		return err

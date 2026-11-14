@@ -3,8 +3,8 @@
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
-<!-- Updated: 2026-11-04 -->
-<!-- Revision: r3 -->
+<!-- Updated: 2026-11-14 -->
+<!-- Revision: r4 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -28,7 +28,11 @@ PDF 阅读器、字体、解码器及中文/英文位置识别资源由 `web/bun
 
 逐页扫描 OCR 的输出上限为 8192 tokens，文本审查输出上限为 2048 tokens；额度进入冻结模型配置身份。模型返回截断或过滤状态时，该页不会被当作完整正文。旧尝试的解析正文和模型配置身份不被重写。长文档须按实际耗时配置 `DOCUMENT_PARSE_TIMEOUT`、`GATEWAY_REQUEST_TIMEOUT` 与 `GATEWAY_UPLOAD_TIMEOUT`；解析超时上限为 30 分钟。
 
-常用预算变量：`MODEL_MAX_INPUT_TOKEN_RESERVATION`、`MODEL_TENANT_TOKENS_PER_MINUTE`、`MODEL_GLOBAL_TOKENS_PER_MINUTE`。预算还受模型调用次数、并发、租约及未知用量结算规则约束。
+合同事实提取最多请求 32000 个输出 token，使用高推理强度；这只是上限，实际用量由供应商响应记录。模型网关默认单次输入、输出预留上限分别为 131072、32000，默认请求超时为 600 秒。每次预留仍受租户和全局分钟预算、调用次数、并发、租约及金额限额约束；用量未知时按保守预留结算。
+
+持久化的单合同事实审查在冻结配置有效时，执行总时限从启动时起最多 720 秒；启动和授权阶段仍限 90 秒。其他审查保留 90 秒限制。任务受理时冻结的队列截止时间、用户取消和工作租约仍可提前终止执行。
+
+常用预算变量：`MODEL_MAX_INPUT_TOKEN_RESERVATION`、`MODEL_MAX_OUTPUT_TOKEN_RESERVATION`、`MODEL_REQUEST_TIMEOUT`、`MODEL_TENANT_TOKENS_PER_MINUTE`、`MODEL_GLOBAL_TOKENS_PER_MINUTE`。降低单次上限会拒绝超出该上限的请求。
 
 ## 可选结构化输出
 

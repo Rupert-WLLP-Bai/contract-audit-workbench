@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-13
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,10 +14,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // This focused aggregate case pins qualified-range allocation to one frozen
@@ -93,6 +96,7 @@ func TestContractAssetHandoverAndERPReceiptFacts(t *testing.T) {
 	}
 
 	firstInput := ContractAssetHandoverInput{ContractID: contractID, ExpectedRowVersion: deliveryRowVersion(t, fixture, contractID), ContractRevisionID: revisionID, AssetPlanID: draft.Assets[0].AssetPlanID, DeliveryID: delivery.DeliveryID, AcceptanceID: root.AcceptanceID, ScopeStart: "0", ScopeEnd: "3", HandedOverAt: time.Now().UTC().Format(time.RFC3339Nano), Location: "合同指定仓库", TransferNote: "首次移交三台", Evidence: []MaterialRef{material}, IdempotencyKey: "asset-handover-plan-a-0001"}
+	assertAssetHandoverDeferredRollback(t, fixture, firstInput)
 	first, err := fixture.core.CreateContractAssetHandover(ctx, fixture.admin, firstInput)
 	if err != nil {
 		t.Fatal(err)
@@ -121,6 +125,9 @@ func TestContractAssetHandoverAndERPReceiptFacts(t *testing.T) {
 	}
 
 	source := ContractAssetSource{TenantID: fixture.admin.TenantID, SourceID: "asset-system-test-fixture", KeyID: "asset-key-test-01"}
+	assertAssetReceiptOutboxRollback(t, fixture, source, ContractAssetReceiptInput{
+		ContractID: contractID, HandoverID: second.HandoverID, EventID: "asset-receipt-rollback-target", EventType: "receipt", AssetCode: "ERP-B-ROLLBACK", Quantity: "1", Unit: "台", OccurredAt: time.Now().UTC(),
+	})
 	input := ContractAssetReceiptInput{ContractID: contractID, HandoverID: first.HandoverID, EventID: "asset-receipt-event-1", EventType: "receipt", AssetCode: "ERP-A-0001", Quantity: "3.000000", Unit: "台", OccurredAt: time.Now().UTC()}
 	receipt, replayed, err := fixture.core.RecordTrustedContractAssetReceipt(ctx, source, input)
 	if err != nil || replayed || receipt.SourceEventID != input.EventID {
@@ -229,5 +236,101 @@ func rewriteAssetRevisionSnapshotForTest(t *testing.T, fixture durableCaseFixtur
 	}()
 	if _, err := pool.Exec(context.Background(), `UPDATE clm_contract_revisions SET snapshot=$1::jsonb WHERE tenant_id=$2 AND contract_id=$3 AND contract_revision_id=$4`, snapshot, fixture.admin.TenantID, contractID, revisionID); err != nil {
 		t.Fatalf("install malformed legacy snapshot fixture: %v", err)
+	}
+}
+
+type assetAtomicState struct {
+	rowVersion                                              int64
+	lifecycle                                               string
+	handovers, assetReceipts, events, outbox, writeReceipts int64
+}
+
+func readAssetAtomicState(t *testing.T, fixture durableCaseFixture, contractID string) assetAtomicState {
+	t.Helper()
+	var state assetAtomicState
+	err := fixture.environment.harness.pool.QueryRow(context.Background(), `SELECT c.row_version, c.lifecycle_state,
+ (SELECT count(*) FROM clm_contract_asset_handovers h WHERE h.tenant_id=c.tenant_id AND h.contract_id=c.contract_id),
+ (SELECT count(*) FROM clm_contract_asset_receipts r WHERE r.tenant_id=c.tenant_id AND r.contract_id=c.contract_id),
+ (SELECT count(*) FROM clm_business_events e WHERE e.tenant_id=c.tenant_id AND e.contract_id=c.contract_id),
+ (SELECT count(*) FROM clm_outbox_delivery o JOIN clm_business_events e ON e.tenant_id=o.tenant_id AND e.event_id=o.event_id WHERE e.tenant_id=c.tenant_id AND e.contract_id=c.contract_id),
+ (SELECT count(*) FROM clm_contract_write_receipts w WHERE w.tenant_id=c.tenant_id AND w.contract_id=c.contract_id)
+ FROM clm_contracts c WHERE c.tenant_id=$1 AND c.contract_id=$2`, fixture.admin.TenantID, contractID).Scan(&state.rowVersion, &state.lifecycle, &state.handovers, &state.assetReceipts, &state.events, &state.outbox, &state.writeReceipts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return state
+}
+
+func assertInjectedAssetFailure(t *testing.T, err error, message string) {
+	t.Helper()
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "P0001" || pgErr.Message != message {
+		t.Fatalf("expected unique injected PostgreSQL failure %q, got %v", message, err)
+	}
+}
+
+func assertAssetHandoverDeferredRollback(t *testing.T, fixture durableCaseFixture, input ContractAssetHandoverInput) {
+	t.Helper()
+	ctx := context.Background()
+	pool := fixture.environment.harness.pool
+	input.IdempotencyKey = "asset-deferred-rollback-target"
+	before := readAssetAtomicState(t, fixture, input.ContractID)
+	_, err := pool.Exec(ctx, `CREATE FUNCTION test_asset_deferred_receipt_failure() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+ BEGIN
+  IF NOT EXISTS (
+   SELECT 1 FROM clm_contract_asset_handovers h
+   JOIN clm_contracts c ON c.tenant_id=h.tenant_id AND c.contract_id=h.contract_id AND c.row_version=h.contract_row_version
+   JOIN clm_business_events e ON e.tenant_id=h.tenant_id AND e.contract_id=h.contract_id AND e.aggregate_version=h.contract_row_version AND e.event_type='contract.asset_handover_recorded.v1' AND e.payload->>'handover_id'=h.handover_id::text
+   JOIN clm_outbox_delivery o ON o.tenant_id=e.tenant_id AND o.event_id=e.event_id
+   WHERE h.tenant_id=NEW.tenant_id AND h.contract_id=NEW.contract_id AND h.handover_id::text=NEW.response_json->>'handover_id'
+  ) THEN RAISE EXCEPTION 'asset deferred precondition missing'; END IF;
+  RAISE EXCEPTION 'asset deferred receipt injected failure';
+ END $$;
+ CREATE CONSTRAINT TRIGGER test_asset_deferred_receipt_failure AFTER INSERT ON clm_contract_write_receipts DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION test_asset_deferred_receipt_failure()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DROP TRIGGER IF EXISTS test_asset_deferred_receipt_failure ON clm_contract_write_receipts; DROP FUNCTION IF EXISTS test_asset_deferred_receipt_failure()`)
+	})
+	_, err = fixture.core.CreateContractAssetHandover(ctx, fixture.admin, input)
+	assertInjectedAssetFailure(t, err, "asset deferred receipt injected failure")
+	if after := readAssetAtomicState(t, fixture, input.ContractID); after != before {
+		t.Fatalf("deferred rollback changed asset facts/CAS/events/outbox/receipts: before=%+v after=%+v", before, after)
+	}
+	if _, err = pool.Exec(ctx, `DROP TRIGGER test_asset_deferred_receipt_failure ON clm_contract_write_receipts; DROP FUNCTION test_asset_deferred_receipt_failure()`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertAssetReceiptOutboxRollback(t *testing.T, fixture durableCaseFixture, source ContractAssetSource, input ContractAssetReceiptInput) {
+	t.Helper()
+	ctx := context.Background()
+	pool := fixture.environment.harness.pool
+	before := readAssetAtomicState(t, fixture, input.ContractID)
+	_, err := pool.Exec(ctx, `CREATE FUNCTION test_asset_outbox_receipt_failure() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+ BEGIN
+  IF NOT EXISTS (
+   SELECT 1 FROM clm_contract_asset_receipts r
+   JOIN clm_contracts c ON c.tenant_id=r.tenant_id AND c.contract_id=r.contract_id
+   JOIN clm_business_events e ON e.tenant_id=r.tenant_id AND e.contract_id=r.contract_id AND e.aggregate_version=c.row_version AND e.event_type='contract.asset_erp_receipt_recorded.v1' AND e.payload->>'receipt_id'=r.receipt_id::text
+   WHERE r.tenant_id=NEW.tenant_id AND e.event_id=NEW.event_id AND r.source_event_id='asset-receipt-rollback-target'
+  ) THEN RAISE EXCEPTION 'asset outbox precondition missing'; END IF;
+  RAISE EXCEPTION 'asset receipt outbox injected failure';
+ END $$;
+ CREATE TRIGGER test_asset_outbox_receipt_failure BEFORE INSERT ON clm_outbox_delivery FOR EACH ROW EXECUTE FUNCTION test_asset_outbox_receipt_failure()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DROP TRIGGER IF EXISTS test_asset_outbox_receipt_failure ON clm_outbox_delivery; DROP FUNCTION IF EXISTS test_asset_outbox_receipt_failure()`)
+	})
+	_, _, err = fixture.core.RecordTrustedContractAssetReceipt(ctx, source, input)
+	assertInjectedAssetFailure(t, err, "asset receipt outbox injected failure")
+	if after := readAssetAtomicState(t, fixture, input.ContractID); after != before {
+		t.Fatalf("outbox rollback changed asset facts/CAS/events/outbox/receipts: before=%+v after=%+v", before, after)
+	}
+	if _, err = pool.Exec(ctx, `DROP TRIGGER test_asset_outbox_receipt_failure ON clm_outbox_delivery; DROP FUNCTION test_asset_outbox_receipt_failure()`); err != nil {
+		t.Fatal(err)
 	}
 }

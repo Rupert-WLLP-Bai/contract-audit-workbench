@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-03 */
-/* Updated: 2026-11-03 */
-/* Revision: r1 */
+/* Updated: 2026-11-12 */
+/* Revision: r2 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -16,7 +16,7 @@
 }
 
 .review-secondary-section {
-  margin: var(--space-3) var(--space-4);
+  margin: var(--space-3) 0;
   border: 1px solid var(--border-default);
   background: var(--surface-raised);
 }
@@ -99,5 +99,124 @@
 
   .review-workspace-layout.workspace-view-evidence .workspace-resize-handle {
     display: none;
+  }
+}
+
+/* Keep one scrolling surface per pane; long findings wrap within the pane. */
+.review-workspace-layout .col-doc,
+.review-workspace-layout .col-findings,
+.review-workspace-layout .col-nav {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.review-workspace-layout .finding-list {
+  max-height: none;
+  overflow: visible;
+}
+
+@media (max-width: 700px) {
+  .review-workspace-layout.workspace-view-context .col-nav,
+  .review-workspace-layout.workspace-view-context .col-doc,
+  .review-workspace-layout.workspace-view-evidence .col-doc,
+  .review-workspace-layout.workspace-view-evidence .col-findings {
+    height: auto;
+    min-height: 0;
+  }
+}
+
+.review-run-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+.review-run-controls .field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+.review-run-controls .field > * {
+  min-width: 200px;
+}
+.review-selected-finding {
+  display: grid;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--action-primary);
+  background: var(--surface-subtle);
+  overflow-wrap: anywhere;
+}
+.review-selected-finding p {
+  margin: 0;
+}
+.key-clause-navigator {
+  display: grid;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  background: var(--surface-raised);
+}
+.key-clause-navigator h3,
+.key-clause-navigator p {
+  margin: 0;
+}
+.key-clause-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.key-clause-choice {
+  display: grid;
+  width: 100%;
+  gap: var(--space-1);
+  text-align: start;
+  white-space: normal;
+}
+.key-clause-choice[aria-pressed="true"] {
+  border-color: var(--state-progress);
+  background: var(--state-progress-bg);
+}
+.key-clause-source,
+.key-clause-categories,
+.key-clause-page {
+  color: var(--state-neutral);
+  font-size: var(--font-size-ui);
+}
+.key-clause-selection {
+  padding-inline-start: var(--space-2);
+  border-inline-start: 2px solid var(--state-progress);
+  color: var(--text-primary);
+}
+.review-workspace-layout .hit-key-clause {
+  background: var(--state-progress-bg);
+  border-bottom: 2px dashed var(--state-progress);
+  color: var(--text-primary);
+}
+.review-workspace-layout .hit-key-clause.hit-find {
+  background: var(--state-progress-bg);
+}
+.review-workspace-layout .hit-evidence.key-clause-overlap {
+  outline: 2px dashed var(--state-progress);
+  outline-offset: 1px;
+}
+.review-workspace-layout .finding-severity-counts {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.review-workspace-layout .finding-severity-counts > div {
+  min-width: 0;
+  padding: var(--space-1);
+}
+.review-workspace-layout .finding-severity-counts dd {
+  color: var(--text-primary);
+}
+@media (max-width: 700px) {
+  .review-workspace-layout .finding-severity-counts {
+    grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
   }
 }

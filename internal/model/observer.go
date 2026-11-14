@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -17,6 +17,24 @@ import (
 )
 
 type callObserverKey struct{}
+type callPurposeKey struct{}
+
+const (
+	CallPurposePlanner       = "planner"
+	CallPurposeContractFacts = "contract_facts"
+	CallPurposeOCR           = "ocr"
+)
+
+// WithCallPurpose marks the actual use of one physical model request for the
+// execution observer. It is telemetry only; it grants no model authority.
+func WithCallPurpose(ctx context.Context, purpose string) context.Context {
+	return context.WithValue(ctx, callPurposeKey{}, purpose)
+}
+
+func CallPurpose(ctx context.Context) string {
+	purpose, _ := ctx.Value(callPurposeKey{}).(string)
+	return purpose
+}
 
 // CallObservation contains bounded completion metadata from one physical request.
 type CallObservation struct {

@@ -409,6 +409,38 @@
       ],
       "handling": "manifest-only",
       "reason": "Versioned SQL migration bytes are integrity-checked after application and must not be changed by metadata headers."
+    },
+    {
+      "id": "pinned-python-development-tool-list",
+      "paths": [
+        "requirements-dev.txt"
+      ],
+      "handling": "manifest-only",
+      "reason": "requirements-dev.txt is the exact pip input for pinned development tools; preserve requirement bytes and record attribution only in the manifest."
+    },
+    {
+      "id": "frontend-prettier-ignore-input",
+      "paths": [
+        "web/.prettierignore"
+      ],
+      "handling": "manifest-only",
+      "reason": "web/.prettierignore is a reviewed tool-owned pattern input without a previously approved native header classification; preserve its exact patterns and keep metadata in the manifest."
+    },
+    {
+      "id": "frontend-eslint-esm-configuration",
+      "paths": [
+        "web/eslint.config.mjs"
+      ],
+      "handling": "manifest-only",
+      "reason": "web/eslint.config.mjs uses ESM syntax while the trusted metadata mapper does not yet recognize .mjs as JavaScript; avoid a hash-style header and keep metadata in the manifest."
+    },
+    {
+      "id": "agent-step-checkpoints-migration",
+      "paths": [
+        "internal/store/migrations/0045_agent_step_checkpoints.sql"
+      ],
+      "handling": "manifest-only",
+      "reason": "Versioned SQL migration bytes are integrity-checked after application and must not be changed by metadata headers."
     }
   ],
   "unclassified_file_policy": "Do not infer a comment syntax or purpose. Add a reviewed class or path rule before the complete inventory is accepted.",

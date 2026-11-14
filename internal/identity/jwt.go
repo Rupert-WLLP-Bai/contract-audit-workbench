@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Parses and verifies OIDC ID tokens against trusted issuer keys, signature, issuer, audience and time claims before exposing a typed authenticated identity; malformed or untrusted tokens fail closed.
+// Purpose: Uses go-oidc verification with bounded JWKS retrieval while preserving strict issuer, nonce, audience, authorized-party, time and signing-key policies.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,9 +13,7 @@ package identity
 import (
 	"bytes"
 	"context"
-	"crypto"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
@@ -25,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/coreos/go-oidc/v3/oidc"
 )
 
 type idTokenClaims struct {
@@ -60,45 +60,48 @@ type jwk struct {
 }
 
 func (m *Manager) verifyIDToken(ctx context.Context, metadata providerMetadata, token, clientID, expectedNonce string) (idTokenClaims, error) {
-	header, claims, signingInput, signature, err := parseIDToken(token)
+	return m.verifyIDTokenWithClock(ctx, metadata, token, clientID, expectedNonce, time.Now)
+}
+
+func (m *Manager) verifyIDTokenWithClock(ctx context.Context, metadata providerMetadata, token, clientID, expectedNonce string, now func() time.Time) (idTokenClaims, error) {
+	header, claims, err := parseIDToken(token)
 	if err != nil {
 		return idTokenClaims{}, ErrAuthentication
 	}
-	document, err := m.fetchJWKS(ctx, metadata.JWKSURI)
-	if err != nil {
+	ctx = oidc.ClientContext(ctx, m.client)
+	ctx = context.WithValue(ctx, jwksValidationKey{}, jwksValidation{uri: metadata.JWKSURI, kid: header.KeyID})
+	ctx = context.WithValue(ctx, jwksOriginalContextKey{}, ctx)
+	keySet := oidc.NewRemoteKeySet(ctx, metadata.JWKSURI)
+	verifier := oidc.NewVerifier(metadata.Issuer, keySet, &oidc.Config{
+		ClientID:             clientID,
+		SupportedSigningAlgs: []string{oidc.RS256},
+		// go-oidc truncates NumericDate fractions. Match the existing
+		// second-resolution policy before the full-precision claims check below.
+		Now: func() time.Time { return time.Unix(now().Unix(), 0) },
+	})
+	if _, err := verifier.Verify(ctx, token); err != nil {
 		return idTokenClaims{}, ErrAuthentication
 	}
-	publicKey, err := rsaKeyForID(document.Keys, header.KeyID)
-	if err != nil {
-		return idTokenClaims{}, ErrAuthentication
-	}
-	if !validIDTokenSignature(publicKey, signingInput, signature) {
-		return idTokenClaims{}, ErrAuthentication
-	}
-	if !validIDClaims(claims, metadata.Issuer, clientID, expectedNonce, time.Now()) {
+	if !validIDClaims(claims, metadata.Issuer, clientID, expectedNonce, now()) {
 		return idTokenClaims{}, ErrAuthentication
 	}
 	return claims, nil
 }
 
-func parseIDToken(token string) (jwtHeader, idTokenClaims, string, []byte, error) {
+func parseIDToken(token string) (jwtHeader, idTokenClaims, error) {
 	if !validJWTShape(token) {
-		return jwtHeader{}, idTokenClaims{}, "", nil, ErrAuthentication
+		return jwtHeader{}, idTokenClaims{}, ErrAuthentication
 	}
 	parts := strings.Split(token, ".")
 	header, err := decodeJWTHeader(parts[0])
 	if err != nil {
-		return jwtHeader{}, idTokenClaims{}, "", nil, ErrAuthentication
+		return jwtHeader{}, idTokenClaims{}, ErrAuthentication
 	}
 	claims, err := decodeJWTPayload(parts[1])
 	if err != nil {
-		return jwtHeader{}, idTokenClaims{}, "", nil, ErrAuthentication
+		return jwtHeader{}, idTokenClaims{}, ErrAuthentication
 	}
-	signature, err := decodeJWTSignature(parts[2])
-	if err != nil {
-		return jwtHeader{}, idTokenClaims{}, "", nil, ErrAuthentication
-	}
-	return header, claims, parts[0] + "." + parts[1], signature, nil
+	return header, claims, nil
 }
 
 func validJWTShape(token string) bool {
@@ -133,29 +136,15 @@ func decodeJWTPayload(encoded string) (idTokenClaims, error) {
 	return claims, nil
 }
 
-func decodeJWTSignature(encoded string) ([]byte, error) {
-	signature, err := base64.RawURLEncoding.DecodeString(encoded)
-	if err != nil {
-		return nil, ErrAuthentication
-	}
-	return signature, nil
-}
-
-func (m *Manager) fetchJWKS(ctx context.Context, uri string) (jwksDocument, error) {
-	jwksBytes, err := m.getJSON(ctx, uri)
-	if err != nil {
-		return jwksDocument{}, ErrAuthentication
-	}
+func validateJWKSForID(jwksBytes []byte, keyID string) error {
 	var document jwksDocument
 	if err := json.Unmarshal(jwksBytes, &document); err != nil || len(document.Keys) == 0 || len(document.Keys) > 4096 {
-		return jwksDocument{}, ErrAuthentication
+		return ErrAuthentication
 	}
-	return document, nil
-}
-
-func validIDTokenSignature(publicKey *rsa.PublicKey, signingInput string, signature []byte) bool {
-	digest := sha256.Sum256([]byte(signingInput))
-	return rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, digest[:], signature) == nil
+	if _, err := rsaKeyForID(document.Keys, keyID); err != nil {
+		return ErrAuthentication
+	}
+	return nil
 }
 
 func decodeIDClaims(data []byte) (idTokenClaims, error) {

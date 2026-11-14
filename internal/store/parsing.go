@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: DocumentParseKind returns the parser capacity class derived from the filename and server-recorded media type used by the parser. Related `store` operations include parseFailurePersistenceContext, parserConfiguration, DocumentParseKind, parserConfigurationFor.
+// Purpose: Maintains immutable parser selection and document proof IO while forwarding frozen selection and parser-configuration identities to Execution.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
-	"slices"
 	"strings"
 	"time"
 
@@ -609,23 +608,6 @@ func frozenFromSelection(doc Document, selection AttemptParseSelection) FrozenDo
 	}
 }
 
-func selectionHash(docs []FrozenDocument) string {
-	pairs := make([][]string, len(docs))
-	for i, item := range docs {
-		pairs[i] = []string{
-			item.Document.ID, item.ParsedDocumentID, fmt.Sprint(item.SelectionOrder),
-			item.ConfigHash, item.ParserID, item.ParserVersion, item.NormalizationVersion,
-		}
-	}
-	for i := 1; i < len(pairs); i++ {
-		for j := i; j > 0 && pairs[j][0] < pairs[j-1][0]; j-- {
-			pairs[j], pairs[j-1] = pairs[j-1], pairs[j]
-		}
-	}
-	hash, _ := canonicalDigest(pairs)
-	return hash
-}
-
 func parsedSelectionCurrent(st state, docs []FrozenDocument) bool {
 	for _, frozen := range docs {
 		if frozen.ParsedDocumentID == "" || frozen.SelectionOrder <= 0 {
@@ -640,15 +622,6 @@ func parsedSelectionCurrent(st state, docs []FrozenDocument) bool {
 	return true
 }
 
-func frozenConfigHash(docs []FrozenDocument) string {
-	configurations := make([]string, len(docs))
-	for i, item := range docs {
-		configurations[i] = item.ConfigHash
-	}
-	slices.Sort(configurations)
-	hash, _ := canonicalDigest(slices.Compact(configurations))
-	return hash
-}
 func (s *Store) acceptanceParsePlan(ctx context.Context, st state, docs []Document, models Models) ([]FrozenDocument, []AttemptParseSelection, error) {
 	previous := map[string]AttemptParseSelection{}
 	mayReusePrevious := false
@@ -729,30 +702,6 @@ func (s *Store) acceptanceParsePlan(ctx context.Context, st state, docs []Docume
 		}
 	}
 	return frozen, selections, nil
-}
-
-func attemptSelectionsMatchFrozen(selections []AttemptParseSelection, docs []FrozenDocument) bool {
-	if len(selections) != len(docs) {
-		return false
-	}
-	byDocument := make(map[string]AttemptParseSelection, len(selections))
-	for _, selection := range selections {
-		if _, exists := byDocument[selection.DocumentID]; exists {
-			return false
-		}
-		byDocument[selection.DocumentID] = selection
-	}
-	for _, frozen := range docs {
-		selection, ok := byDocument[frozen.Document.ID]
-		if !ok || selection.OriginalDigest != frozen.Document.Digest || selection.ParsedDocumentID != frozen.ParsedDocumentID ||
-			selection.SelectionOrder != frozen.SelectionOrder || selection.ParserID != frozen.ParserID ||
-			selection.ParserVersion != frozen.ParserVersion || selection.ConfigHash != frozen.ConfigHash ||
-			selection.NormalizationVersion != frozen.NormalizationVersion ||
-			(selection.ArtifactDigest != "" && selection.ArtifactDigest != frozen.ParsedArtifactDigest) {
-			return false
-		}
-	}
-	return true
 }
 
 func (s *Store) validateLoadedParseHistory(st state) error {

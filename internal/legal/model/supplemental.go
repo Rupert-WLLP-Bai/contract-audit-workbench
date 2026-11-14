@@ -1,14 +1,14 @@
 // File metadata (manifest mirror):
-// Purpose: These are research cues from the archived supplemental article manifest, not adjudicated conditions and not substitutes for RulePack fact gates. Keeping them in the governed… Related `store` operations include supplementalLegalSummary.
+// Purpose: Preserves supplemental Legal source summary text and article-specific research cues without changing immutable content or professional-review status.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
-package store
+package model
 
 import "fmt"
 
@@ -43,7 +43,7 @@ var contractGeneralNotes = map[int]string{
 // not adjudicated conditions and not substitutes for RulePack fact gates.
 // Keeping them in the governed summary makes them part of the immutable
 // content hash without introducing an unreviewed machine-applicability model.
-func supplementalLegalSummary(sourceID, versionID string, articleNumber int, label string) string {
+func SupplementalLegalSummary(sourceID, versionID string, articleNumber int, label string) string {
 	var edition string
 	var notes map[int]string
 	switch {

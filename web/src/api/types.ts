@@ -3,12 +3,13 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r6
+// Updated: 2026-11-14
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
 import type { BusinessAgentReview } from "./business-agent-review";
+import type { ContractFactsProjection } from "./contract-facts";
 import type { FrozenLegalReviewProjection } from "./legal-citations";
 import type { WireSchemas } from "./wire.generated";
 
@@ -163,11 +164,7 @@ export interface BoundingBox {
   height: number;
 }
 
-export type AnchorStatus =
-  | "located"
-  | "anchor_mismatch"
-  | "unlocatable"
-  | "missing";
+export type AnchorStatus = "located" | "anchor_mismatch" | "unlocatable" | "missing";
 
 export interface EvidenceAnchor {
   id: string;
@@ -184,7 +181,8 @@ export interface EvidenceAnchor {
 
 // The UI displays only these fields of the server's decision history.
 export type HumanDecision = Pick<
-  WireSchemas["Decision"], "id" | "action" | "reason" | "actor" | "decided_at"
+  WireSchemas["Decision"],
+  "id" | "action" | "reason" | "actor" | "decided_at"
 >;
 
 export interface FindingSeveritySource {
@@ -230,7 +228,6 @@ export interface ReviewScopeIdentity {
   rule_set_version: string;
   rule_set_hash: string;
 }
-
 
 export interface ExecutionAttempt {
   id: string;
@@ -317,16 +314,9 @@ export interface ExecutionEvent {
 }
 
 export type AgentReviewDomain =
-  | "compliance"
-  | "commercial"
-  | "technical"
-  | "fulfillment"
-  | "counterparty";
+  "compliance" | "commercial" | "technical" | "fulfillment" | "counterparty";
 export type AgentPlannerMode =
-  | "fixed_chain"
-  | "deterministic_planner"
-  | "model_fixture"
-  | "model_live";
+  "fixed_chain" | "deterministic_planner" | "model_fixture" | "model_live";
 export type AgentReviewStatus =
   | "queued"
   | "planning"
@@ -345,16 +335,9 @@ export type AgentReviewCapabilityStatus =
   | "unknown"
   | "unsupported"
   | "not_applicable";
-export type AgentReviewDomainStatus =
-  | "not_requested"
-  | AgentReviewCapabilityStatus;
+export type AgentReviewDomainStatus = "not_requested" | AgentReviewCapabilityStatus;
 export type AgentReviewGapStatus =
-  | "open"
-  | "resolved"
-  | "completed"
-  | "insufficient"
-  | "unsupported"
-  | "unknown";
+  "open" | "resolved" | "completed" | "insufficient" | "unsupported" | "unknown";
 export type AgentReviewCallStatus =
   | "planned"
   | "running"
@@ -382,10 +365,7 @@ export type AgentReviewPlanStatus =
   | "partial"
   | "fallback";
 export type AgentReviewEvidenceVerification =
-  | "verified"
-  | "typed_semantic_and_frozen_quote_verified"
-  | "unknown"
-  | "rejected";
+  "verified" | "typed_semantic_and_frozen_quote_verified" | "unknown" | "rejected";
 export type AgentReviewAnchorStatus = "located" | "unlocatable";
 export type AgentReviewEventKind =
   | "planning"
@@ -411,11 +391,7 @@ export type AgentReviewEventKind =
   | "plan_accepted"
   | "tool_failed"
   | "tool_completed";
-export type AgentReviewRelation =
-  | "compatible"
-  | "conflict"
-  | "insufficient"
-  | "not_applicable";
+export type AgentReviewRelation = "compatible" | "conflict" | "insufficient" | "not_applicable";
 
 export interface AgentReviewSourceSnapshot {
   document_ids: string[];
@@ -582,18 +558,11 @@ export type AgentReviewAdvisoryStatus =
   | "persistence_failed"
   | "config_mismatch";
 
-export type AgentReviewAdvisoryBand =
-  | "relevant"
-  | "uncertain"
-  | "not_relevant"
-  | "unknown";
+export type AgentReviewAdvisoryBand = "relevant" | "uncertain" | "not_relevant" | "unknown";
 
 export type AgentReviewAdvisoryMode = "advisory" | "fixture";
 
-export type AgentReviewAdvisoryProvider =
-  | "model-gateway"
-  | "local-fixture"
-  | "direct";
+export type AgentReviewAdvisoryProvider = "model-gateway" | "local-fixture" | "direct";
 
 export interface AgentReviewKnowledgeAdvisoryCandidate {
   knowledge_id: string;
@@ -690,7 +659,6 @@ export interface ReviewDiagnostics {
   audit_events: AuditEvent[];
 }
 
-
 export interface AcceptedReview {
   id: string;
   attempt_id: string;
@@ -727,6 +695,7 @@ export interface ReviewWorkspace {
   /** True only when the response explicitly returned top-level review_attempts: null. */
   review_attempts_explicit_null?: boolean;
   agent_review?: BusinessAgentReview | null;
+  contract_facts?: ContractFactsProjection | null;
   execution: Execution | null;
   snapshot?: RunSnapshot | null;
   evaluations?: ConstraintEvaluation[];
@@ -748,8 +717,42 @@ export type DecisionInput = Omit<WireSchemas["DecisionRequest"], "expected_versi
   expectedVersion: WireSchemas["DecisionRequest"]["expected_version"];
 };
 
+export interface FrozenPlannerIdentity {
+  mode: string;
+  configuration_id: string;
+  model_configuration_id: string | null;
+  prompt_version: string;
+  schema_version: string;
+  runtime_version: string;
+  tool_catalog_version: string;
+  max_rounds: number;
+}
+
+export interface FrozenRulePackIdentity {
+  id: string;
+  version: string;
+  content_sha256: string;
+}
+
+export interface FrozenKnowledgeSelectionView {
+  knowledge_id: string;
+  version_id: string;
+  kind: string;
+  selection_reason: string;
+  required: boolean;
+}
+
+export interface FrozenKnowledgeView {
+  snapshot_sha256: string;
+  rulepack: FrozenRulePackIdentity | null;
+  selections: FrozenKnowledgeSelectionView[];
+}
+
 export interface RunSnapshot {
   document_ids: string[];
+  parsed_document_ids?: string[];
+  parse_selection_hash?: string;
+  parser_configuration_id?: string;
   business_at?: string | null;
   rule_set_hash: string;
   playbook_hash: string;
@@ -757,6 +760,8 @@ export interface RunSnapshot {
   review_scope?: ReviewScopeIdentity;
   comparator_ref: string | null;
   adopted_tenant_config?: { version_id: string; digest: string } | null;
+  planner?: FrozenPlannerIdentity;
+  governed_knowledge?: FrozenKnowledgeView | null;
 }
 
 export interface ConstraintEvaluation {
@@ -945,21 +950,10 @@ export type WorkbenchPeriod = "day" | "week" | "month";
 
 export type CaseProfile = WireSchemas["CaseProfile"];
 
-export type SubjectRole =
-  | "customer"
-  | "supplier"
-  | "contractor"
-  | "service_provider"
-  | "other";
+export type SubjectRole = "customer" | "supplier" | "contractor" | "service_provider" | "other";
 export type SubjectVerificationState = "pending_verification" | "verified";
-export type SubjectBindingState =
-  | "active"
-  | "inactive"
-  | "pending_confirmation";
-export type SubjectSourceKind =
-  | "user_asserted"
-  | "official_identifier"
-  | "authorized_correction";
+export type SubjectBindingState = "active" | "inactive" | "pending_confirmation";
+export type SubjectSourceKind = "user_asserted" | "official_identifier" | "authorized_correction";
 export type SubjectClaimSourceKind = SubjectSourceKind | "synthetic_controlled_snapshot";
 export type SubjectVerificationScope = "synthetic_controlled" | "official_controlled" | "ordinary";
 export type SubjectAliasKind = "legal" | "trade" | "former" | "other";
@@ -998,8 +992,7 @@ export interface MaskedSubjectIdentifier extends SubjectIdentifierProjection {
   masked_value: string;
 }
 
-export interface SubjectIdentityClaim extends SubjectIdentifierProjection {
-}
+export type SubjectIdentityClaim = SubjectIdentifierProjection;
 
 export interface SubjectCreateInput {
   display_name: string;
@@ -1329,16 +1322,17 @@ interface SubjectChangeProposalBase {
   basis_refs: SubjectChangeBasisInput[];
 }
 
-export type SubjectChangeProposalInput = SubjectChangeProposalBase & (
-  | {
-      target: { kind: "subject"; subject_id: string; binding_id: null };
-      patch: SubjectIdentityChangePatch;
-    }
-  | {
-      target: { kind: "case_subject_role"; subject_id: string; binding_id: string };
-      patch: CaseRoleChangePatch;
-    }
-);
+export type SubjectChangeProposalInput = SubjectChangeProposalBase &
+  (
+    | {
+        target: { kind: "subject"; subject_id: string; binding_id: null };
+        patch: SubjectIdentityChangePatch;
+      }
+    | {
+        target: { kind: "case_subject_role"; subject_id: string; binding_id: string };
+        patch: CaseRoleChangePatch;
+      }
+  );
 
 export interface SubjectChangeProposalResult {
   request_id: string;

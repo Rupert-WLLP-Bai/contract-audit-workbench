@@ -3,12 +3,13 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-28
-# Updated: 2026-11-03
-# Revision: r3
+# Updated: 2026-11-12
+# Revision: r4
 # Copyright: See LICENSE
 # End file metadata.
 
 """Tests for verify.py stage selection, evidence cleanup, and CI diagnostics."""
+
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import json
@@ -31,25 +32,23 @@ def make_check(name, stage, **options):
 class StageSelectionTests(unittest.TestCase):
     def test_all_without_browser_skips_browser_checks(self):
         checks = [make_check("go-tests", "go"), make_check("browser-warranty", "browser")]
-        selected = [check.name for check in checks
-                    if verify.selected_check(check, "all", False)]
+        selected = [check.name for check in checks if verify.selected_check(check, "all", False)]
         self.assertEqual(selected, ["go-tests"])
 
     def test_all_with_browser_includes_browser_checks(self):
         checks = [make_check("go-tests", "go"), make_check("browser-warranty", "browser")]
-        selected = [check.name for check in checks
-                    if verify.selected_check(check, "all", True)]
+        selected = [check.name for check in checks if verify.selected_check(check, "all", True)]
         self.assertEqual(selected, ["go-tests", "browser-warranty"])
 
     def test_specific_stage_selects_only_its_checks(self):
         checks = [make_check("vet", "static"), make_check("go-tests", "go")]
-        selected = [check.name for check in checks
-                    if verify.selected_check(check, "static", False)]
+        selected = [check.name for check in checks if verify.selected_check(check, "static", False)]
         self.assertEqual(selected, ["vet"])
 
     def test_browser_stage_runs_without_the_browser_flag(self):
-        self.assertTrue(verify.selected_check(make_check("browser-telecom", "browser"),
-                                              "browser", False))
+        self.assertTrue(
+            verify.selected_check(make_check("browser-telecom", "browser"), "browser", False)
+        )
 
     def test_version_probes_run_only_in_all(self):
         probe = make_check("go-version", "all")
@@ -123,19 +122,28 @@ class CleanupOwnershipTests(unittest.TestCase):
 class DeliveryPathTests(unittest.TestCase):
     def test_default_delivery_path_is_outside_source_tree(self):
         root = Path("/workspace/app")
-        self.assertEqual(verify.default_output(root, {}),
-                         Path("/workspace/contract-audit-delivery/verification"))
+        self.assertEqual(
+            verify.default_output(root, {}), Path("/workspace/contract-audit-delivery/verification")
+        )
 
     def test_explicit_delivery_path_wins_over_ci_artifact_compatibility(self):
         root = Path("/workspace/app")
-        self.assertEqual(verify.default_output(root, {
-            "CAW_DELIVERY_DIR": "/tmp/release-evidence", "GITHUB_ACTIONS": "true",
-        }), Path("/tmp/release-evidence/verification"))
+        self.assertEqual(
+            verify.default_output(
+                root,
+                {
+                    "CAW_DELIVERY_DIR": "/tmp/release-evidence",
+                    "GITHUB_ACTIONS": "true",
+                },
+            ),
+            Path("/tmp/release-evidence/verification"),
+        )
 
     def test_ci_keeps_legacy_artifact_collection_path(self):
         root = Path("/workspace/app")
-        self.assertEqual(verify.default_output(root, {"GITHUB_ACTIONS": "true"}),
-                         root / "artifacts")
+        self.assertEqual(
+            verify.default_output(root, {"GITHUB_ACTIONS": "true"}), root / "artifacts"
+        )
 
     def test_external_run_rewrites_generated_paths_and_coverage_inputs(self):
         original_out = verify.OUT
@@ -145,33 +153,51 @@ class DeliveryPathTests(unittest.TestCase):
         verify.OUT_IS_EXTERNAL = True
         self.addCleanup(setattr, verify, "OUT", original_out)
         self.addCleanup(setattr, verify, "OUT_IS_EXTERNAL", original_external)
-        go = verify.Check("go-tests", "go", ("go", "test", "-coverprofile=artifacts/go-coverage.out"))
-        self.assertEqual(verify.command_with_output_dir(go)[-1],
-                         f"-coverprofile={delivery}/go-coverage.out")
-        web = verify.Check("web-tests", "web", ("bun", "test", "--outputFile=../artifacts/vitest-results.json"),
-                           cwd=verify.ROOT / "web")
+        go = verify.Check(
+            "go-tests", "go", ("go", "test", "-coverprofile=artifacts/go-coverage.out")
+        )
+        self.assertEqual(
+            verify.command_with_output_dir(go)[-1], f"-coverprofile={delivery}/go-coverage.out"
+        )
+        web = verify.Check(
+            "web-tests",
+            "web",
+            ("bun", "test", "--outputFile=../artifacts/vitest-results.json"),
+            cwd=verify.ROOT / "web",
+        )
         web_command = verify.command_with_output_dir(web)
         self.assertEqual(web_command[2], f"--outputFile={delivery}/vitest-results.json")
         self.assertIn(f"--coverage.reportsDirectory={delivery}/web-coverage", web_command)
-        coverage = verify.Check("coverage-gates", "coverage",
-                                ("python3", "scripts/check_coverage.py"))
+        coverage = verify.Check(
+            "coverage-gates", "coverage", ("python3", "scripts/check_coverage.py")
+        )
         command = verify.command_with_output_dir(coverage)
         self.assertIn(f"--web {delivery}/web-coverage/coverage-summary.json", " ".join(command))
 
 
 class DecoderTests(unittest.TestCase):
     def test_mixed_jsonl_and_plain_text(self):
-        text = "\n".join([
-            json.dumps({"Action": "output", "Output": "=== RUN   TestOne\n"}),
-            "plain diagnostic",
-            "[1, 2]",
-            json.dumps({"Action": "pass", "Test": "TestOne", "Package": "p"}),
-            json.dumps({"Action": "fail", "Test": "TestOne", "Package": "p"}),
-            json.dumps({"Action": "fail", "Package": "p"}),
-        ])
-        self.assertEqual(verify.decode_go_test_log(text), "\n".join([
-            "=== RUN   TestOne", "plain diagnostic", "[1, 2]", "FAIL\tp",
-        ]))
+        text = "\n".join(
+            [
+                json.dumps({"Action": "output", "Output": "=== RUN   TestOne\n"}),
+                "plain diagnostic",
+                "[1, 2]",
+                json.dumps({"Action": "pass", "Test": "TestOne", "Package": "p"}),
+                json.dumps({"Action": "fail", "Test": "TestOne", "Package": "p"}),
+                json.dumps({"Action": "fail", "Package": "p"}),
+            ]
+        )
+        self.assertEqual(
+            verify.decode_go_test_log(text),
+            "\n".join(
+                [
+                    "=== RUN   TestOne",
+                    "plain diagnostic",
+                    "[1, 2]",
+                    "FAIL\tp",
+                ]
+            ),
+        )
 
     def test_output_without_trailing_newline_is_preserved(self):
         text = json.dumps({"Action": "output", "Output": "no newline"})
@@ -179,8 +205,9 @@ class DecoderTests(unittest.TestCase):
 
     def test_truncated_timeout_text_is_preserved(self):
         text = "partial\npanic: test timed out after 20m\n"
-        self.assertEqual(verify.decode_go_test_log(text),
-                         "partial\npanic: test timed out after 20m")
+        self.assertEqual(
+            verify.decode_go_test_log(text), "partial\npanic: test timed out after 20m"
+        )
 
 
 class RunCheckExitSemanticsTests(unittest.TestCase):
@@ -217,8 +244,9 @@ class RunCheckExitSemanticsTests(unittest.TestCase):
         self.assertNotIn("error_kind", record)
 
     def test_timeout_preserves_real_returncode_and_timeout_status(self):
-        check = verify.Check("timeout", "go",
-                             (sys.executable, "-c", "import time; time.sleep(10)"), timeout=0.05)
+        check = verify.Check(
+            "timeout", "go", (sys.executable, "-c", "import time; time.sleep(10)"), timeout=0.05
+        )
         passed, record = self.run_check(check)
         self.assertFalse(passed)
         self.assertEqual(record["status"], "FAIL")
@@ -232,7 +260,7 @@ class RunCheckExitSemanticsTests(unittest.TestCase):
         stat = Path(f"/proc/{pid}/stat")
         if stat.exists():
             value = stat.read_text()
-            fields = value[value.rfind(")") + 2:].split()
+            fields = value[value.rfind(")") + 2 :].split()
             return bool(fields) and fields[0] != "Z"
         try:
             os.kill(pid, 0)
@@ -275,7 +303,9 @@ class RunCheckExitSemanticsTests(unittest.TestCase):
             f"pathlib.Path({str(pid_path)!r}).write_text(str(p.pid))\n"
             "time.sleep(60)\n"
         )
-        check = verify.Check("timeout-child", "go", (sys.executable, "-c", parent_code), timeout=0.2)
+        check = verify.Check(
+            "timeout-child", "go", (sys.executable, "-c", parent_code), timeout=0.2
+        )
         before = time.monotonic()
         passed, record = self.run_check(check)
         elapsed = time.monotonic() - before
@@ -301,8 +331,12 @@ class RunCheckExitSemanticsTests(unittest.TestCase):
         def reject_evidence(_path):
             raise ValueError("expected evidence marker is missing")
 
-        check = verify.Check("bad-evidence", "go",
-                             (sys.executable, "-c", "raise SystemExit(0)"), validate=reject_evidence)
+        check = verify.Check(
+            "bad-evidence",
+            "go",
+            (sys.executable, "-c", "raise SystemExit(0)"),
+            validate=reject_evidence,
+        )
         passed, record = self.run_check(check)
         self.assertFalse(passed)
         self.assertEqual(record["status"], "FAIL")
@@ -319,11 +353,12 @@ class AnnotationTests(unittest.TestCase):
     def test_raw_playwright_annotation_is_reemitted(self):
         display = "before\n::error file=web/e2e/c1b-journey.ts,line=491::boom\nafter"
         output = StringIO()
-        with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=False), \
-                redirect_stdout(output):
+        with (
+            patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=False),
+            redirect_stdout(output),
+        ):
             verify.emit_failure_annotations("browser-telecom", display)
-        self.assertIn("::error file=web/e2e/c1b-journey.ts,line=491::boom",
-                      output.getvalue())
+        self.assertIn("::error file=web/e2e/c1b-journey.ts,line=491::boom", output.getvalue())
 
     def test_stack_frame_synthesizes_file_annotation(self):
         display = (
@@ -348,8 +383,10 @@ class AnnotationTests(unittest.TestCase):
             "FAIL\texample/internal/thing\n"
         )
         output = StringIO()
-        with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=False), \
-                redirect_stdout(output):
+        with (
+            patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=False),
+            redirect_stdout(output),
+        ):
             verify.emit_failure_annotations("go-tests", display)
         value = output.getvalue()
         self.assertIn("title=go-tests::--- FAIL: TestThing", value)
@@ -357,8 +394,10 @@ class AnnotationTests(unittest.TestCase):
 
     def test_no_annotation_outside_actions(self):
         output = StringIO()
-        with patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}, clear=False), \
-                redirect_stdout(output):
+        with (
+            patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}, clear=False),
+            redirect_stdout(output),
+        ):
             verify.emit_failure_annotations("x", "--- FAIL: TestX")
         self.assertEqual(output.getvalue(), "")
 
@@ -372,15 +411,17 @@ class StepSummaryTests(unittest.TestCase):
                 "passed": False,
                 "source_identity": {"digest": "abc"},
                 "checks": [
-                    {"name": "go-tests", "status": "PASS", "seconds": 1.5,
-                     "log": "artifacts/logs/go-tests.txt"},
-                    {"name": "web-tests", "status": "NOT_RUN", "seconds": 0,
-                     "log": ""},
+                    {
+                        "name": "go-tests",
+                        "status": "PASS",
+                        "seconds": 1.5,
+                        "log": "artifacts/logs/go-tests.txt",
+                    },
+                    {"name": "web-tests", "status": "NOT_RUN", "seconds": 0, "log": ""},
                 ],
                 "error": "go-tests failed",
             }
-            with patch.dict(os.environ,
-                            {"GITHUB_STEP_SUMMARY": str(destination)}, clear=False):
+            with patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(destination)}, clear=False):
                 verify.write_step_summary(report)
             text = destination.read_text(encoding="utf-8")
             self.assertIn("## go gate: FAIL", text)
@@ -405,18 +446,27 @@ class MainReportIdentityTests(unittest.TestCase):
             def capture_report(report):
                 reports.append(json.loads(json.dumps(report)))
 
-            check = verify.Check("browser-fixture", "browser", ("true",), cwd=root,
-                                 timeout=5, continue_on_failure=True)
-            with patch.object(verify, "ROOT", root), \
-                    patch.object(verify, "OUT", output), \
-                    patch.object(verify, "OUT_IS_EXTERNAL", True), \
-                    patch.object(verify, "build_checks", return_value=(check,)), \
-                    patch.object(verify, "source_identity", side_effect=identity_values), \
-                    patch.object(verify, "prepare_browser", side_effect=prepare_error), \
-                    patch.object(verify, "save_report", side_effect=capture_report), \
-                    patch.object(verify, "write_step_summary"), \
-                    patch("sys.argv", ["verify.py", "--stage", "browser"]), \
-                    redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            check = verify.Check(
+                "browser-fixture",
+                "browser",
+                ("true",),
+                cwd=root,
+                timeout=5,
+                continue_on_failure=True,
+            )
+            with (
+                patch.object(verify, "ROOT", root),
+                patch.object(verify, "OUT", output),
+                patch.object(verify, "OUT_IS_EXTERNAL", True),
+                patch.object(verify, "build_checks", return_value=(check,)),
+                patch.object(verify, "source_identity", side_effect=identity_values),
+                patch.object(verify, "prepare_browser", side_effect=prepare_error),
+                patch.object(verify, "save_report", side_effect=capture_report),
+                patch.object(verify, "write_step_summary"),
+                patch("sys.argv", ["verify.py", "--stage", "browser"]),
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
                 result = verify.main()
             return result, reports[-1]
 
@@ -449,8 +499,7 @@ class ReportPathTests(unittest.TestCase):
 
 class RegistryTests(unittest.TestCase):
     def setUp(self):
-        self.checks = {check.name: check
-                       for check in verify.build_checks("go", "bun")}
+        self.checks = {check.name: check for check in verify.build_checks("go", "bun")}
 
     def test_expected_checks_and_stages(self):
         expected = {
@@ -463,6 +512,10 @@ class RegistryTests(unittest.TestCase):
             "workflow-syntax": "static",
             "architecture-dependencies": "static",
             "format": "static",
+            "python-ruff-lint": "static",
+            "python-ruff-format": "static",
+            "web-eslint": "static",
+            "web-prettier": "static",
             "modules": "static",
             "vet": "static",
             "go-tests": "go",
@@ -486,8 +539,7 @@ class RegistryTests(unittest.TestCase):
             "browser-d3-subject": "browser",
             "browser-object-history": "browser",
         }
-        self.assertEqual({name: check.stage
-                          for name, check in self.checks.items()}, expected)
+        self.assertEqual({name: check.stage for name, check in self.checks.items()}, expected)
 
     def test_browser_delivery_directory_respects_config_and_runner_temp(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -496,14 +548,18 @@ class RegistryTests(unittest.TestCase):
             runner_temp = Path(tmp) / "runner-temp"
             root.mkdir()
             runner_temp.mkdir()
-            explicit = verify.browser_delivery_directory(root, {"CAW_DELIVERY_DIR": str(configured)})
+            explicit = verify.browser_delivery_directory(
+                root, {"CAW_DELIVERY_DIR": str(configured)}
+            )
             self.assertEqual(explicit, configured.resolve())
             self.assertTrue(explicit.is_dir())
             fallback = verify.browser_delivery_directory(root, {"RUNNER_TEMP": str(runner_temp)})
             self.assertEqual(fallback, (runner_temp / "caw-delivery").resolve())
             self.assertTrue(fallback.is_dir())
             with self.assertRaisesRegex(RuntimeError, "outside the source checkout"):
-                verify.browser_delivery_directory(root, {"CAW_DELIVERY_DIR": str(root / "artifacts")})
+                verify.browser_delivery_directory(
+                    root, {"CAW_DELIVERY_DIR": str(root / "artifacts")}
+                )
 
     def test_browser_checks_continue_after_failure(self):
         self.assertTrue(self.checks["browser-warranty"].continue_on_failure)
@@ -514,21 +570,41 @@ class RegistryTests(unittest.TestCase):
         self.assertTrue(self.checks["browser-object-history"].continue_on_failure)
 
     def test_browser_checks_are_split(self):
-        names = [name for name, check in self.checks.items()
-                 if check.stage == "browser"]
-        self.assertEqual(names, ["web-c1b-clock-tests", "browser-warranty", "browser-telecom",
-                                 "browser-telecom-compatible", "browser-telecom-insufficient",
-                                 "browser-d3-subject", "browser-object-history"])
+        names = [name for name, check in self.checks.items() if check.stage == "browser"]
+        self.assertEqual(
+            names,
+            [
+                "web-c1b-clock-tests",
+                "browser-warranty",
+                "browser-telecom",
+                "browser-telecom-compatible",
+                "browser-telecom-insufficient",
+                "browser-d3-subject",
+                "browser-object-history",
+            ],
+        )
 
     def test_jsonl_checks_keep_raw_log(self):
-        for name in ("go-tests", "browser-warranty", "browser-telecom",
-                     "browser-telecom-compatible", "browser-telecom-insufficient",
-                     "browser-d3-subject", "browser-object-history"):
+        for name in (
+            "go-tests",
+            "browser-warranty",
+            "browser-telecom",
+            "browser-telecom-compatible",
+            "browser-telecom-insufficient",
+            "browser-d3-subject",
+            "browser-object-history",
+        ):
             self.assertTrue(self.checks[name].jsonl)
 
     def test_all_six_browser_journeys_are_release_only_and_no_skip_checked(self):
-        names = ("browser-warranty", "browser-telecom", "browser-telecom-compatible",
-                 "browser-telecom-insufficient", "browser-d3-subject", "browser-object-history")
+        names = (
+            "browser-warranty",
+            "browser-telecom",
+            "browser-telecom-compatible",
+            "browser-telecom-insufficient",
+            "browser-d3-subject",
+            "browser-object-history",
+        )
         for name in names:
             check = self.checks[name]
             self.assertEqual(check.stage, "browser")

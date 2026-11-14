@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -69,16 +69,17 @@ type PlannerLimits struct {
 // PlannerConfiguration identifies all request behavior that can change a plan.
 // The caller persists ConfigurationID alongside the existing model config ID.
 type PlannerConfiguration struct {
-	Mode                 string                 `json:"mode"`
-	ModelConfigurationID string                 `json:"model_configuration_id,omitempty"`
-	ConfigurationID      string                 `json:"configuration_id"`
-	PromptVersion        string                 `json:"prompt_version"`
-	PromptSHA256         string                 `json:"prompt_sha256"`
-	SchemaVersion        string                 `json:"schema_version"`
-	RuntimeVersion       string                 `json:"runtime_version"`
-	ToolCatalogVersion   string                 `json:"tool_catalog_version"`
-	Limits               PlannerLimits          `json:"limits"`
-	Advisory             *AdvisoryConfiguration `json:"advisory,omitempty"`
+	Mode                 string                      `json:"mode"`
+	ModelConfigurationID string                      `json:"model_configuration_id,omitempty"`
+	ConfigurationID      string                      `json:"configuration_id"`
+	PromptVersion        string                      `json:"prompt_version"`
+	PromptSHA256         string                      `json:"prompt_sha256"`
+	SchemaVersion        string                      `json:"schema_version"`
+	RuntimeVersion       string                      `json:"runtime_version"`
+	ToolCatalogVersion   string                      `json:"tool_catalog_version"`
+	Limits               PlannerLimits               `json:"limits"`
+	Advisory             *AdvisoryConfiguration      `json:"advisory,omitempty"`
+	ContractFacts        *ContractFactsConfiguration `json:"contract_facts,omitempty"`
 }
 
 // ResolvePlannerConfiguration is safe to call at acceptance time. It reads the
@@ -431,6 +432,11 @@ func (configuration PlannerConfiguration) Validate() error {
 	if err := validatePlannerAdvisory(configuration.Advisory); err != nil {
 		return err
 	}
+	if configuration.ContractFacts != nil {
+		if err := configuration.ContractFacts.Validate(); err != nil {
+			return err
+		}
+	}
 	if !matchesPlannerConfigurationID(configuration) {
 		return errors.New("planner configuration identity is invalid")
 	}
@@ -442,6 +448,9 @@ func validPlannerMode(mode string) bool {
 }
 
 func matchesPlannerImplementation(configuration PlannerConfiguration) bool {
+	if configuration.ContractFacts != nil && configuration.ContractFacts.Validate() != nil {
+		return false
+	}
 	return configuration.PromptVersion == PlannerPromptVersion && configuration.PromptSHA256 == plannerPromptSHA256() &&
 		configuration.SchemaVersion == PlannerSchemaVersion && configuration.RuntimeVersion == RuntimeVersion &&
 		configuration.ToolCatalogVersion == ToolCatalogVersion()

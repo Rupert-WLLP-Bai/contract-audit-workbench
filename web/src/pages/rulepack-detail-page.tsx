@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -34,25 +34,21 @@ import type {
   RulePackMutationResult,
 } from "../api/rulepacks";
 import { PageStatus } from "../components/page-status";
+import { ObjectDetailPage } from "../components/page-patterns";
 import { DirtyLeaveGuard } from "../components/dirty-leave-guard";
 import { RulePackErrorSummary } from "../components/rulepack-error-summary";
 import { RulePackManifestEditor } from "../components/rulepack-manifest-editor";
 import { RulePackTestPanel } from "../components/rulepack-test-panel";
 import { RulePackSuitePanel } from "../components/rulepack-suite-panel";
 import { RulePackShadowPanel } from "../components/rulepack-shadow-panel";
-import {
-  validateRulePackDraft,
-  type RulePackFormIssue,
-} from "../domain/rulepack-form";
+import { validateRulePackDraft, type RulePackFormIssue } from "../domain/rulepack-form";
 
 function editableManifest(manifest: RulePackManifest): RulePackManifestInput {
   const { lifecycle: _lifecycle, ...content } = manifest;
   return content;
 }
 
-function detailFromMutation(
-  result: RulePackMutationResult | undefined,
-): result is RulePackDetail {
+function detailFromMutation(result: RulePackMutationResult | undefined): result is RulePackDetail {
   return result !== undefined && "manifest" in result;
 }
 
@@ -216,18 +212,10 @@ export function RulePackDetailPage() {
     return (
       <PageStatus
         kind={isForbidden(detail.error) ? "denied" : "error"}
-        title={
-          isForbidden(detail.error)
-            ? "当前管理身份无权读取此规则包"
-            : "规则包详情没有加载"
-        }
+        title={isForbidden(detail.error) ? "当前管理身份无权读取此规则包" : "规则包详情没有加载"}
         detail={errorMessage(detail.error)}
         action={
-          <Button
-            aria-label={"返回规则包列表"}
-            type="primary"
-            href="/admin/rulepacks"
-          >
+          <Button aria-label={"返回规则包列表"} type="primary" href="/admin/rulepacks">
             返回规则包列表
           </Button>
         }
@@ -239,9 +227,7 @@ export function RulePackDetailPage() {
       <PageStatus
         kind="denied"
         title="无法确认管理会话"
-        detail={
-          session.error ? errorMessage(session.error) : "请重新登录管理工作台。"
-        }
+        detail={session.error ? errorMessage(session.error) : "请重新登录管理工作台。"}
         action={
           <Button aria-label={"重新登录"} type="primary" href="/admin/login">
             重新登录
@@ -250,20 +236,16 @@ export function RulePackDetailPage() {
       />
     );
   }
-  if (!detail.data || !draft)
-    return <PageStatus kind="empty" title="没有规则包详情" />;
+  if (!detail.data || !draft) return <PageStatus kind="empty" title="没有规则包详情" />;
 
   const { pack, manifest } = detail.data;
-  const isTenantOwner =
-    pack.tenant_id === tenantId && manifest.tenant_id === tenantId;
+  const isTenantOwner = pack.tenant_id === tenantId && manifest.tenant_id === tenantId;
   const canEdit = isTenantOwner && pack.status === "draft";
   const hasCurrentRevision = expectedRevision === pack.revision;
   const historyEntries = history.data ?? [];
   const versionsInHistory = [
     ...new Set(
-      historyEntries
-        .filter((entry) => entry.action === "publish")
-        .map((entry) => entry.version),
+      historyEntries.filter((entry) => entry.action === "publish").map((entry) => entry.version),
     ),
   ];
 
@@ -290,9 +272,7 @@ export function RulePackDetailPage() {
           setExpectedRevision(result.pack.revision);
           setDirty(false);
           setActionError(null);
-          setActionMessage(
-            "草稿已保存；先前的验证和批准状态已由服务器按内容变化重置。",
-          );
+          setActionMessage("草稿已保存；先前的验证和批准状态已由服务器按内容变化重置。");
         },
         onError: recordFailure,
       },
@@ -337,25 +317,19 @@ export function RulePackDetailPage() {
   const editPending = edit.isPending;
   const showStaleWarning =
     dirty &&
-    (expectedRevision !== pack.revision ||
-      (edit.error !== null && isConflict(edit.error)));
+    (expectedRevision !== pack.revision || (edit.error !== null && isConflict(edit.error)));
 
   return (
-    <section className="page page-rulepack-detail">
-      <nav className="page-back" aria-label="规则包导航">
-        <Link to="/admin/rulepacks">返回规则包</Link>
-      </nav>
-      <header className="page-head">
-        <div>
-          <h1>
-            {pack.id}，v{pack.version}
-          </h1>
-          <p>
-            租户 {pack.tenant_id}，状态 {pack.status}，行修订 {pack.revision}{" "}
-          ，指针修订 {pack.active_pointer_revision}
-            {pack.is_active ? "，当前生效" : "，当前未生效"}
-          </p>
-        </div>
+    <ObjectDetailPage
+      className="page-rulepack-detail"
+      before={
+        <nav className="page-back" aria-label="规则包导航">
+          <Link to="/admin/rulepacks">返回规则包</Link>
+        </nav>
+      }
+      title={`${pack.id}，v${pack.version}`}
+      description={`租户 ${pack.tenant_id}，状态 ${pack.status}，行修订 ${pack.revision}，指针修订 ${pack.active_pointer_revision}${pack.is_active ? "，当前生效" : "，当前未生效"}`}
+      actions={
         <Button
           aria-label={"基于此版本修改"}
           type="primary"
@@ -363,15 +337,18 @@ export function RulePackDetailPage() {
         >
           基于此版本修改
         </Button>
-      </header>
-      <nav className="rulepack-detail-nav" aria-label="规则包详情章节">
-        <a href="#rulepack-content">规则内容</a>
-        <a href="#rulepack-provenance">版本来源</a>
-        <a href="#rulepack-lifecycle">验证与发布</a>
-        <a href="#rulepack-history">历史与回滚</a>
-        <a href="#rulepack-test">规则试算</a>
-        <a href="#rulepack-shadow">影子对比</a>
-      </nav>
+      }
+      navigation={
+        <nav className="rulepack-detail-nav" aria-label="规则包详情章节">
+          <a href="#rulepack-content">规则内容</a>
+          <a href="#rulepack-provenance">版本来源</a>
+          <a href="#rulepack-lifecycle">验证与发布</a>
+          <a href="#rulepack-history">历史与回滚</a>
+          <a href="#rulepack-test">规则试算</a>
+          <a href="#rulepack-shadow">影子对比</a>
+        </nav>
+      }
+    >
       {!isTenantOwner ? (
         <p className="workflow-error" role="alert">
           当前会话的可信租户与规则包不一致，页面只读。
@@ -417,10 +394,8 @@ export function RulePackDetailPage() {
                       <div>
                         <dt>验证</dt>
                         <dd>
-                          {manifest.lifecycle.verification.passed
-                            ? "通过"
-                            : "未通过"}{" "}
-                        ，{manifest.lifecycle.verification.verifier_version}，
+                          {manifest.lifecycle.verification.passed ? "通过" : "未通过"} ，
+                          {manifest.lifecycle.verification.verifier_version}，
                           {manifest.lifecycle.verification.manifest_hash}
                         </dd>
                       </div>
@@ -437,9 +412,7 @@ export function RulePackDetailPage() {
                     {manifest.lifecycle.release ? (
                       <div>
                         <dt>发布证明</dt>
-                        <dd>
-                          发布摘要 {manifest.lifecycle.release.release_hash}
-                        </dd>
+                        <dd>发布摘要 {manifest.lifecycle.release.release_hash}</dd>
                       </div>
                     ) : null}
                   </dl>
@@ -463,13 +436,7 @@ export function RulePackDetailPage() {
                 编辑只允许用于草稿版本。身份和版本固定；内容修改会使服务端重新要求验证与批准。
               </p>
             </div>
-            <span
-              className={
-                dirty
-                  ? "status-text status-conflict"
-                  : "status-text status-active"
-              }
-            >
+            <span className={dirty ? "status-text status-conflict" : "status-text status-active"}>
               {dirty ? "有未保存修改" : "与服务端一致"}
             </span>
           </header>
@@ -478,7 +445,7 @@ export function RulePackDetailPage() {
             <div className="workflow-error" role="status">
               <p>
                 你的本地修改仍保留。服务器当前为修订 {pack.revision}
-               ，本地提交使用修订 {expectedRevision}。
+                ，本地提交使用修订 {expectedRevision}。
               </p>
               <div className="workflow-links">
                 <Button
@@ -491,9 +458,7 @@ export function RulePackDetailPage() {
                 </Button>
                 {expectedRevision !== pack.revision ? (
                   <Button
-                    aria-label={
-                      "下一次保存使用服务器修订 " + String(pack.revision)
-                    }
+                    aria-label={"下一次保存使用服务器修订 " + String(pack.revision)}
                     htmlType="button"
                     onClick={() => setExpectedRevision(pack.revision)}
                   >
@@ -552,8 +517,7 @@ export function RulePackDetailPage() {
                           {rule.domain}，{rule.capability_id}
                         </strong>
                         <span className="meta">
-                          {rule.rule_id}，v{rule.version}，
-                          {rule.mandatory ? "必检" : "非必检"}
+                          {rule.rule_id}，v{rule.version}，{rule.mandatory ? "必检" : "非必检"}
                         </span>
                       </>
                     ),
@@ -563,44 +527,36 @@ export function RulePackDetailPage() {
                           <div>
                             <dt>规则</dt>
                             <dd>
-                              {rule.rule_id} v{rule.version}，
-                              {rule.mandatory ? "必检" : "非必检"}
+                              {rule.rule_id} v{rule.version}，{rule.mandatory ? "必检" : "非必检"}
                             </dd>
                           </div>
                           <div>
                             <dt>适用范围</dt>
                             <dd>
-                              {rule.business_scope.business_line} /{" "}
-                              {rule.business_scope.scenario} /{" "}
+                              {rule.business_scope.business_line} / {rule.business_scope.scenario} /{" "}
                               {rule.business_scope.contract_type}
                             </dd>
                           </div>
                           <div>
                             <dt>比较器与阈值</dt>
                             <dd>
-                              {rule.comparator}，{rule.threshold.value}{" "}
-                              {rule.threshold.unit}
-                              {rule.threshold.basis
-                                ? `，基数 ${rule.threshold.basis}`
-                                : ""}
+                              {rule.comparator}，{rule.threshold.value} {rule.threshold.unit}
+                              {rule.threshold.basis ? `，基数 ${rule.threshold.basis}` : ""}
                             </dd>
                           </div>
                           <div>
                             <dt>所需事实</dt>
                             <dd>
                               {rule.required_fact.dimension}，角色{" "}
-                              {rule.required_fact.source_roles.join("、")}，
-                              单位族 {rule.required_fact.unit_family}
+                              {rule.required_fact.source_roles.join("、")}， 单位族{" "}
+                              {rule.required_fact.unit_family}
                             </dd>
                           </div>
                           <div>
                             <dt>规则依据来源</dt>
                             <dd>
                               {rule.authority_sources
-                                .map(
-                                  (source) =>
-                                    `${source.id} v${source.version}，${source.kind}`,
-                                )
+                                .map((source) => `${source.id} v${source.version}，${source.kind}`)
                                 .join("；")}
                             </dd>
                           </div>
@@ -615,12 +571,7 @@ export function RulePackDetailPage() {
         </section>
       )}
       {actionError ? (
-        <p
-          className="workflow-error"
-          role="alert"
-          tabIndex={-1}
-          ref={serverError}
-        >
+        <p className="workflow-error" role="alert" tabIndex={-1} ref={serverError}>
           {actionError}
           {isConflict(edit.error)
             ? " 本地草稿及表单值已保留；请重读服务器版本，并明确采用新修订号后再保存。"
@@ -646,18 +597,14 @@ export function RulePackDetailPage() {
           </div>
         </header>
         {dirty ? (
-          <p className="callout">
-            存在未保存草稿修改；先保存后才能验证、批准或发布。
-          </p>
+          <p className="callout">存在未保存草稿修改；先保存后才能验证、批准或发布。</p>
         ) : null}
         <div className="workflow-links">
           {pack.status === "draft" ? (
             <Button
               aria-label={String(validate.isPending ? "正在验证" : "验证草稿")}
               htmlType="button"
-              disabled={
-                !isTenantOwner || dirty || !hasCurrentRevision || actionPending
-              }
+              disabled={!isTenantOwner || dirty || !hasCurrentRevision || actionPending}
               onClick={() => applyTransition("validate")}
             >
               {validate.isPending ? "正在验证" : "验证草稿"}
@@ -665,13 +612,9 @@ export function RulePackDetailPage() {
           ) : null}
           {pack.status === "validated" ? (
             <Button
-              aria-label={String(
-                approve.isPending ? "正在批准" : "批准此内容摘要",
-              )}
+              aria-label={String(approve.isPending ? "正在批准" : "批准此内容摘要")}
               htmlType="button"
-              disabled={
-                !isTenantOwner || dirty || !hasCurrentRevision || actionPending
-              }
+              disabled={!isTenantOwner || dirty || !hasCurrentRevision || actionPending}
               onClick={() => applyTransition("approve")}
             >
               {approve.isPending ? "正在批准" : "批准此内容摘要"}
@@ -682,9 +625,7 @@ export function RulePackDetailPage() {
               aria-label={String(publish.isPending ? "正在发布" : "发布此版本")}
               type="primary"
               htmlType="button"
-              disabled={
-                !isTenantOwner || dirty || !hasCurrentRevision || actionPending
-              }
+              disabled={!isTenantOwner || dirty || !hasCurrentRevision || actionPending}
               onClick={publishCurrent}
             >
               {publish.isPending ? "正在发布" : "发布此版本"}
@@ -692,9 +633,7 @@ export function RulePackDetailPage() {
           ) : null}
           {pack.status === "published" && pack.is_active ? (
             <Button
-              aria-label={String(
-                disable.isPending ? "正在停用" : "停用活动指针",
-              )}
+              aria-label={String(disable.isPending ? "正在停用" : "停用活动指针")}
               htmlType="button"
               disabled={!isTenantOwner || !hasCurrentRevision || actionPending}
               onClick={() => applyTransition("disable")}
@@ -756,15 +695,10 @@ export function RulePackDetailPage() {
           </label>
         </div>
         <Button
-          aria-label={String(
-            rollback.isPending ? "正在回滚" : "回滚到所选版本",
-          )}
+          aria-label={String(rollback.isPending ? "正在回滚" : "回滚到所选版本")}
           htmlType="button"
           disabled={
-            !isTenantOwner ||
-            rollbackVersion === "" ||
-            !hasCurrentRevision ||
-            actionPending
+            !isTenantOwner || rollbackVersion === "" || !hasCurrentRevision || actionPending
           }
           onClick={rollbackToSelected}
         >
@@ -784,8 +718,7 @@ export function RulePackDetailPage() {
                   #{entry.sequence}，{entry.action}
                 </strong>
                 <span>
-                  v{entry.version}，操作者 {entry.actor_id}，指针修订{" "}
-                  {entry.pointer_revision}
+                  v{entry.version}，操作者 {entry.actor_id}，指针修订 {entry.pointer_revision}
                   {pointerTransition(entry)}
                 </span>
                 <time dateTime={entry.created_at}>{entry.created_at}</time>
@@ -797,7 +730,13 @@ export function RulePackDetailPage() {
           <p>还没有生命周期历史。</p>
         ) : null}
       </section>
-      <RulePackSuitePanel packId={pack.id} version={pack.version} revision={pack.revision} contentHash={pack.content_hash} available={manifest.fixture_suite !== undefined} />
+      <RulePackSuitePanel
+        packId={pack.id}
+        version={pack.version}
+        revision={pack.revision}
+        contentHash={pack.content_hash}
+        available={manifest.fixture_suite !== undefined}
+      />
       <div id="rulepack-test">
         <RulePackTestPanel
           packId={pack.id}
@@ -818,6 +757,6 @@ export function RulePackDetailPage() {
         dirty={dirty}
         description="规则包草稿修改尚未保存。离开或刷新页面都会丢失这些修改，先保存草稿再离开。"
       />
-    </section>
+    </ObjectDetailPage>
   );
 }

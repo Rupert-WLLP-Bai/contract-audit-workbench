@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -212,6 +212,10 @@ func TestStructuredRequestRestrictions(t *testing.T) {
 	valid := []byte(`{"response_format":` + format + `}`)
 	if !validStructuredRequest(valid, true, "review", "review", scope, true) {
 		t.Fatal("fixed review schema rejected")
+	}
+	facts := []byte(`{"reasoning_effort":"high","max_tokens":32000,"response_format":` + string(model.StructuredResponseFormat("contract_facts")) + `}`)
+	if !validStructuredRequest(facts, true, "review", "review", scope, true) || validStructuredRequest(facts, true, "review", "review", scope, false) {
+		t.Fatal("facts schema did not retain frozen execution identity fencing")
 	}
 	for _, tt := range []struct {
 		body      []byte

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-10
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -120,6 +120,11 @@ func restoreReviewReceiptVersionForTest(t *testing.T, ctx context.Context, pool 
 		if _, err := tx.Exec(ctx, `RESET ROLE`); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// The historical fixture must remove objects introduced after its target
+	// version before their migrations are replayed.
+	if _, err := tx.Exec(ctx, `DROP TABLE execution_agent_step_checkpoints; DROP FUNCTION guard_execution_agent_step_checkpoint()`); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM schema_migrations WHERE version>$1`, version); err != nil {
 		t.Fatal(err)

@@ -3,8 +3,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-25
-# Updated: 2026-11-03
-# Revision: r6
+# Updated: 2026-11-12
+# Revision: r7
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -100,6 +100,9 @@ jobs:
           ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
@@ -115,6 +118,8 @@ jobs:
       - name: Prepare TypeScript test prerequisites
         working-directory: web
         run: bun install --frozen-lockfile
+      - name: Install pinned Ruff
+        run: python3 -m pip install --disable-pip-version-check --requirement requirements-dev.txt
       - name: Install pinned workflow syntax checker
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
       - name: Load fixed BASE gate controller

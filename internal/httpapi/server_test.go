@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -36,7 +36,7 @@ func TestReviewFlow(t *testing.T) {
 	api := newAPI(t)
 
 	admin := api.login(t, "demo-admin", "admin-demo")
-	if admin["role"] != "admin" || admin["display_name"] != "演示管理员" {
+	if admin["role"] != "admin" || admin["display_name"] != "James Carter" {
 		t.Fatalf("actor %+v", admin)
 	}
 	status, session := api.do(t, http.MethodGet, "/api/session", nil)
@@ -163,7 +163,7 @@ func TestReviewFlow(t *testing.T) {
 		t.Fatalf("after decide %+v", finding)
 	}
 	row := history[0].(map[string]any)
-	if row["old_disposition"] != "pending" || row["new_disposition"] != "confirmed" || row["actor"] != "演示管理员" {
+	if row["old_disposition"] != "pending" || row["new_disposition"] != "confirmed" || row["actor"] != "James Carter" {
 		t.Fatalf("decision %+v", row)
 	}
 	if ws["run"].(map[string]any)["state"] != "completed" {

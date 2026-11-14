@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Contract references are resolved inside the contract's own transaction. The subject, material and document tables are owned by their services; this file only reads them and pins… Related `store` operations include CheckContractReferences, loadContractReferenceContent, loadContractReferenceAnchor, loadCLMCaseByID.
+// Purpose: Resolves authorized Contract references and maps exact Subject-owned current or frozen binding facts within the original transaction.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -21,6 +21,8 @@ import (
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
+	platformpostgres "contractaudit/internal/platform/postgres"
+	subjectPostgres "contractaudit/internal/subject/postgres"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -390,39 +392,21 @@ func contractReferenceNow(ctx context.Context, tx pgx.Tx) (time.Time, error) {
 	return now.UTC(), nil
 }
 
+func mapSubjectContractBinding(v subjectPostgres.ContractBinding) resolvedSubjectBinding {
+	return resolvedSubjectBinding{BindingID: v.BindingID, BindingVersion: v.BindingVersion, CaseRole: v.CaseRole, BindingState: v.BindingState, SubjectID: v.SubjectID, SubjectVersion: v.SubjectVersion, SubjectPayloadHash: v.SubjectPayloadHash, VerificationState: v.VerificationState, DisplayName: v.DisplayName}
+}
+
 // resolveCurrentContractSubject selects the active current binding prepared by
 // the subject service. Inactive and pending-confirmation bindings are not
 // ready versions and never become frozen contract references.
 func resolveCurrentContractSubject(ctx context.Context, tx pgx.Tx, tenantID string, anchor Case, party *PartyRef) (resolvedSubjectBinding, error) {
-	rows, err := tx.Query(ctx, `SELECT r.binding_id, r.version, r.subject_id,
-			r.subject_version, r.role, r.binding_state,
-			sv.payload->>'display_name', sv.payload->>'verification_state', sv.payload_hash
-		FROM case_subject_roles head
-		JOIN case_subject_role_versions r
-		  ON r.tenant_id=head.tenant_id AND r.org_id=head.org_id AND r.case_id=head.case_id
-		 AND r.binding_id=head.binding_id AND r.version=head.current_version
-		JOIN subject_versions sv
-		  ON sv.tenant_id=r.tenant_id AND sv.subject_id=r.subject_id AND sv.version=r.subject_version
-		WHERE head.tenant_id=$1 AND head.org_id=$2 AND head.case_id=$3
-		  AND r.subject_id=$4 AND ($5='' OR head.binding_id=$5)
-		ORDER BY head.binding_id`,
-		tenantID, anchor.OwnerOrgID, anchor.ID, party.PartyID, party.BindingID)
+	raw, err := subjectPostgres.ListContractBindings(ctx, platformpostgres.Bind(tx), tenantID, anchor.OwnerOrgID, anchor.ID, party.PartyID, party.BindingID)
 	if err != nil {
 		return resolvedSubjectBinding{}, err
 	}
-	defer rows.Close()
-	candidates := []resolvedSubjectBinding{}
-	for rows.Next() {
-		var binding resolvedSubjectBinding
-		if err := rows.Scan(&binding.BindingID, &binding.BindingVersion, &binding.SubjectID,
-			&binding.SubjectVersion, &binding.CaseRole, &binding.BindingState,
-			&binding.DisplayName, &binding.VerificationState, &binding.SubjectPayloadHash); err != nil {
-			return resolvedSubjectBinding{}, err
-		}
-		candidates = append(candidates, binding)
-	}
-	if err := rows.Err(); err != nil {
-		return resolvedSubjectBinding{}, err
+	candidates := make([]resolvedSubjectBinding, 0, len(raw))
+	for _, v := range raw {
+		candidates = append(candidates, mapSubjectContractBinding(v))
 	}
 	ready := candidates[:0]
 	for _, binding := range candidates {
@@ -461,25 +445,14 @@ func resolveFrozenContractSubject(ctx context.Context, tx pgx.Tx, tenantID strin
 		strings.TrimSpace(party.NameSnapshot) != pin.DisplayName {
 		return resolvedSubjectBinding{}, frozenReferenceConflict()
 	}
-	var binding resolvedSubjectBinding
-	err := tx.QueryRow(ctx, `SELECT r.binding_id, r.version, r.subject_id, r.subject_version,
-			r.role, r.binding_state, sv.payload_hash,
-			sv.payload->>'display_name', sv.payload->>'verification_state'
-		FROM case_subject_role_versions r
-		JOIN subject_versions sv
-		  ON sv.tenant_id=r.tenant_id AND sv.subject_id=r.subject_id AND sv.version=r.subject_version
-		WHERE r.tenant_id=$1 AND r.org_id=$2 AND r.case_id=$3
-		  AND r.binding_id=$4 AND r.version=$5`,
-		tenantID, anchor.OwnerOrgID, anchor.ID, pin.BindingID, pin.BindingVersion).Scan(
-		&binding.BindingID, &binding.BindingVersion, &binding.SubjectID, &binding.SubjectVersion,
-		&binding.CaseRole, &binding.BindingState, &binding.SubjectPayloadHash,
-		&binding.DisplayName, &binding.VerificationState)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return resolvedSubjectBinding{}, frozenReferenceConflict()
-	}
+	raw, found, err := subjectPostgres.ReadExactContractBinding(ctx, platformpostgres.Bind(tx), tenantID, anchor.OwnerOrgID, anchor.ID, pin.BindingID, pin.BindingVersion)
 	if err != nil {
 		return resolvedSubjectBinding{}, err
 	}
+	if !found {
+		return resolvedSubjectBinding{}, frozenReferenceConflict()
+	}
+	binding := mapSubjectContractBinding(raw)
 	if binding.SubjectID != pin.SubjectID || binding.BindingState != pin.BindingState ||
 		binding.CaseRole != pin.CaseRole || binding.SubjectVersion != pin.SubjectVersion ||
 		binding.SubjectPayloadHash != pin.SubjectPayloadHash ||

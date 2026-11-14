@@ -3,18 +3,24 @@
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
-<!-- Updated: 2026-11-10 -->
-<!-- Revision: r4 -->
+<!-- Updated: 2026-11-12 -->
+<!-- Revision: r5 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
 # 部署模式
 
+## OIDC 身份提供方兼容要求
+
+Core 使用授权码流程和 S256 PKCE。提供方的 token endpoint 必须接受表单中的 `client_id`、`client_secret` 和 `code_verifier`，并一次性完成 code exchange；系统固定使用 `client_secret_post`，不会探测后重试。成功响应须是包含非空 `access_token` 和 `id_token` 的标准 JSON token response。只返回 `id_token` 的非标准响应会被拒绝。
+
+Discovery、token 和 JWKS 响应体各限制为 1 MiB，provider endpoint 不跟随重定向。生产 issuer 与其授权、token、JWKS endpoint 必须使用 HTTPS；仅 loopback 开发端点允许 HTTP。Core 启动时不会访问 issuer，发现请求在登录开始时进行。
+
 ## 主线版本与升级
 
-历史固定基线 `0421831c5ca86fdf56ea6d32939da4f825f08c3d` 的应用兼容 schema 为 `[26,26]`；PR [#140](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/140) 合入后的固定源码 `595fe2f` 接受 `[28,28]`。PR [#144](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/144) 合入 main `1a9eae0` 时，固定源码接受 schema `[30,30]`：0029 增加本地付款资格核验和可信付款/冲正事实，0030 增加冻结资产计划、人工移交及可信 ERP 入账/冲正事实。当前源码的兼容范围为 `[44,44]`，对应迁移 [0044](../../internal/store/migrations/0044_report_receipt_session_recovery.sql)。0043 为审查受理回执分别记录发起会话组织与案件所属组织；0044 对报告生成回执采用同样的来源区分，并重新检查当前 Export 权限、会话、租户和案件状态。升级后需重新配置服务角色函数权限。
+历史固定基线 `0421831c5ca86fdf56ea6d32939da4f825f08c3d` 的应用兼容 schema 为 `[26,26]`；PR [#140](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/140) 合入后的固定源码 `595fe2f` 接受 `[28,28]`。PR [#144](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/144) 合入 main `1a9eae0` 时，固定源码接受 schema `[30,30]`：0029 增加本地付款资格核验和可信付款/冲正事实，0030 增加冻结资产计划、人工移交及可信 ERP 入账/冲正事实。当前源码的兼容范围为 `[45,45]`，对应迁移 [0045](../../internal/store/migrations/0045_agent_step_checkpoints.sql)。0043 为审查受理回执分别记录发起会话组织与案件所属组织；0044 对报告生成回执采用同样的来源区分，并重新检查当前 Export 权限、会话、租户和案件状态；0045 增加带强制 RLS 和 Execution 专属 ACL 的 Agent planner、tool 与知识读取步骤检查点，恢复前复核当前 claim、generation、冻结输入和授权；started 未确认步骤保持 ambiguous。升级后需重新配置服务角色权限。
 
-0043 以前的审查回执和 0044 以前的报告回执缺少可信来源组织，迁移不会从可变会话推测或回填。原会话及其原上下文仍可重放；新会话遇到来源不明的旧报告键会收到受控冲突，可按当前权限查看既有报告。报告 JSON/HTML、请求摘要、原命令印记和回执响应保持原样。完整迁移目录和兼容范围以 [`internal/store/migrations.go`](../../internal/store/migrations.go) 为准。应用连接通过 [`internal/store/pg.go`](../../internal/store/pg.go) 校验迁移名称、校验和与兼容范围，不会在应用启动时自动迁移；源码版本不能证明演示数据库已经升级，数据库状态须以目标环境证据确认。独立迁移作业由部署流程运行（本地编排见 [`deployments/local.py`](../../deployments/local.py)）。Schema 是数据库兼容边界，不是产品发布版本。PR #144 的 `pr-fast-gate` 为 `PASS`；目标环境数据库升级、部署、回退演练和完整候选验收仍为 `NOT_RUN`。真实 finance/ERP 来源接入仍为 `BLOCKED`，本地可信回执处理不代表生产来源已连接。升级前停写并保留数据库与对象存储恢复点，迁移后使用兼容同一 schema 的服务。旧二进制不可直接对已升级数据库继续写入；回退只能使用已验证兼容版本或恢复同批快照，不支持删除迁移记录伪造降级。服务 `/ready` 仅确认服务数据库连接可用（[`internal/httpapi/health.go`](../../internal/httpapi/health.go)），不代表完整业务验收。
+0043 以前的审查回执和 0044 以前的报告回执缺少可信来源组织，迁移不会从可变会话推测或回填。原会话及其原上下文仍可重放；新会话遇到来源不明的旧报告键会收到受控冲突，可按当前权限查看既有报告。报告 JSON/HTML、请求摘要、原命令印记和回执响应保持原样。完整迁移目录和兼容范围以 [`internal/store/migrations.go`](../../internal/store/migrations.go) 为准。应用连接通过 [`internal/store/pg.go`](../../internal/store/pg.go) 校验迁移名称、校验和与兼容范围，不会在应用启动时自动迁移；源码版本不能证明演示数据库已经升级，数据库状态须以目标环境证据确认。独立迁移作业由部署流程运行（本地编排见 [`deployments/local.py`](../../deployments/local.py)）。Schema 是数据库兼容边界，不是产品发布版本。PR #144 的 `pr-fast-gate` 为 `PASS`；目标环境数据库升级、部署、回退演练和完整候选验收仍为 `NOT_RUN`。当前独立部署不包含真实 finance/ERP 来源接入，相关接入验收为 `NOT_APPLICABLE`；本地可信回执处理不代表生产来源已连接。升级前停写并保留数据库与对象存储恢复点，迁移后使用兼容同一 schema 的服务。旧二进制不可直接对已升级数据库继续写入；回退只能使用已验证兼容版本或恢复同批快照，不支持删除迁移记录伪造降级。服务 `/ready` 仅确认服务数据库连接可用（[`internal/httpapi/health.go`](../../internal/httpapi/health.go)），不代表完整业务验收。
 
 <a id="clm-maintenance-owner-前置配置"></a>
 ## CLM 维护负责人前置配置
@@ -107,6 +113,8 @@ APP_ENV=<target> DATABASE_SCHEMA=<application_schema> \
 Compose 只向 Core API 传递 `CLM_ENVELOPE_KEYS` 和 `CLM_LEGACY_DATA_KEY_REF`。Kubernetes 使用 `contract-audit-clm` Secret，Core workload 只挂载这两个值及旧版 `CLM_DATA_KEY`。本地 k3d `secrets.json` 中这两个新字段默认为空且可由操作者受控填写；工具不会自动创建或变换密钥。缺少所需的 wrap、fingerprint 或 legacy key 配置时，相关受限字段操作或旧值读取会失败关闭，不得用空密钥或未验证回退替代。
 
 ## 本地 Compose
+
+应用通过官方 OpenTelemetry SDK 发送 OTLP/HTTP protobuf 到 Collector 的 /v1/traces 与 /v1/metrics；Collector 应返回 HTTP 200 和 protobuf acknowledgement。Exporter 不自动重试，也不使用环境代理。
 
 `make apps-up` 通过 `deployments/local.py` 和 `compose.app.yaml` 迁移数据库并启动 Gateway、Core、Document、Execution、Worker、Model/Tool Gateway 以及三个前端站点。先完成[本地开发](../engineering/local-development.md)中的基础设施和私有配置步骤，并确认容器能够访问模型端点。容器内 `127.0.0.1` 指向容器自身；模型服务若在宿主机运行，应配置容器可达地址。
 

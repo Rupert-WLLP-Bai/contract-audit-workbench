@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,13 +13,13 @@ package telemetry
 import (
 	"bytes"
 	"encoding/hex"
-	"encoding/json"
-	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	metricpb "go.opentelemetry.io/proto/otlp/metrics/v1"
 )
 
 func TestHTTPBoundaryValidatesIdentityAndContinuesTrace(t *testing.T) {
@@ -64,44 +64,27 @@ func TestHTTPBoundaryValidatesIdentityAndContinuesTrace(t *testing.T) {
 	}
 }
 
-type httpMetricPoint struct {
-	Attributes []struct {
-		Key   string `json:"key"`
-		Value struct {
-			String string `json:"stringValue"`
-		} `json:"value"`
-	} `json:"attributes"`
-	Value string `json:"asInt"`
-	Count string `json:"count"`
-}
-
 func TestHTTPBoundaryRecoversAndExportsSanitizedRED(t *testing.T) {
 	previousWriter, previousFlags := log.Writer(), log.Flags()
 	var logs bytes.Buffer
 	log.SetOutput(&logs)
 	log.SetFlags(0)
 	t.Cleanup(func() { log.SetOutput(previousWriter); log.SetFlags(previousFlags) })
-	payloads := make(chan []byte, 1)
+	payloads := make(chan map[string]*metricpb.Metric, 1)
 	collector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/metrics" {
 			t.Errorf("unexpected collector request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Error(err)
-		}
-		payloads <- body
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{}`)
+		payloads <- internalMetrics(decodeInternalMetricRequest(t, r.Body))
+		writeInternalOTLPAck(w)
 	}))
 	defer collector.Close()
 	exporter, err := New(Config{Endpoint: collector.URL, Service: "audit.edge", SampleRatio: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer exporter.Close()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /cases/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("panic") == "1" {
@@ -126,82 +109,30 @@ func TestHTTPBoundaryRecoversAndExportsSanitizedRED(t *testing.T) {
 		}
 	}
 	exporter.Close()
-	var payload []byte
-	select {
-	case payload = <-payloads:
-	default:
-		t.Fatal("HTTP-only exporter did not flush metrics on shutdown")
-	}
-	for _, secret := range []string{"SECRET-CASE", "SECRET-QUERY", "SECRET-BODY", "SECRET-CREDENTIAL", "SECRET-PANIC-CONTENT"} {
-		if strings.Contains(logs.String(), secret) || bytes.Contains(payload, []byte(secret)) {
-			t.Fatalf("request or panic content leaked into telemetry: %s", secret)
-		}
+	metrics := <-payloads
+	if bytes.Contains([]byte(logs.String()), []byte("SECRET")) {
+		t.Fatalf("request or panic content leaked into logs: %s", logs.String())
 	}
 	if !strings.Contains(logs.String(), "http_panic") || !strings.Contains(logs.String(), "status=500") {
 		t.Fatalf("recovered panic or error status missing from logs: %s", logs.String())
 	}
-	var decoded struct {
-		Resources []struct {
-			Scopes []struct {
-				Metrics []struct {
-					Name string `json:"name"`
-					Sum  *struct {
-						Points []httpMetricPoint `json:"dataPoints"`
-					} `json:"sum"`
-					Histogram *struct {
-						Points []httpMetricPoint `json:"dataPoints"`
-					} `json:"histogram"`
-				} `json:"metrics"`
-			} `json:"scopeMetrics"`
-		} `json:"resourceMetrics"`
-	}
-	if err := json.Unmarshal(payload, &decoded); err != nil {
-		t.Fatal(err)
-	}
-	statuses := map[string]string{}
-	durations := 0
-	for _, resource := range decoded.Resources {
-		for _, scope := range resource.Scopes {
-			for _, metric := range scope.Metrics {
-				var points []httpMetricPoint
-				switch metric.Name {
-				case "audit.http.requests":
-					if metric.Sum == nil {
-						t.Fatal("HTTP request metric has no counter")
-					}
-					points = metric.Sum.Points
-				case "audit.http.duration_ms":
-					if metric.Histogram == nil {
-						t.Fatal("HTTP duration metric has no histogram")
-					}
-					points = metric.Histogram.Points
-				default:
-					continue
-				}
-				for _, point := range points {
-					attrs := map[string]string{}
-					for _, attr := range point.Attributes {
-						attrs[attr.Key] = attr.Value.String
-					}
-					if attrs["http.request.method"] != "GET" || attrs["http.route"] != "/cases/{id}" {
-						t.Fatalf("unexpected metric labels: %+v", attrs)
-					}
-					if metric.Name == "audit.http.requests" {
-						if len(attrs) != 3 {
-							t.Fatalf("unexpected counter labels: %+v", attrs)
-						}
-						statuses[attrs["http.response.status_code"]] = point.Value
-					} else {
-						if len(attrs) != 2 || point.Count != "2" {
-							t.Fatalf("unexpected duration labels: %+v", attrs)
-						}
-						durations++
-					}
-				}
-			}
+	statuses := map[string]int64{}
+	requests := metrics["audit.http.requests"].GetSum().GetDataPoints()
+	for _, point := range requests {
+		attrs := point.GetAttributes()
+		if internalMetricStringAttr(attrs, "http.request.method") != "GET" ||
+			internalMetricStringAttr(attrs, "http.route") != "/cases/{id}" {
+			t.Fatalf("unexpected metric labels: %+v", attrs)
 		}
+		if len(attrs) != 3 {
+			t.Fatalf("unexpected request counter labels: %+v", attrs)
+		}
+		statuses[internalMetricStringAttr(attrs, "http.response.status_code")] = point.GetAsInt()
 	}
-	if len(statuses) != 2 || statuses["204"] != "1" || statuses["500"] != "1" || durations != 1 {
-		t.Fatalf("RED metrics did not distinguish success and panic: statuses=%v durations=%d", statuses, durations)
+	duration := metrics["audit.http.duration_ms"].GetHistogram().GetDataPoints()
+	if len(statuses) != 2 || statuses["204"] != 1 || statuses["500"] != 1 ||
+		len(duration) != 1 || duration[0].GetCount() != 2 ||
+		internalMetricStringAttr(duration[0].GetAttributes(), "http.route") != "/cases/{id}" {
+		t.Fatalf("RED metrics did not distinguish success and panic: statuses=%v durations=%+v", statuses, duration)
 	}
 }

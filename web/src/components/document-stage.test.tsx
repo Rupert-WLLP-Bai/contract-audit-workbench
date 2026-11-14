@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,6 +12,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
+import type { ContractFactsCitation, ContractFactsProjection } from "../api/contract-facts";
 import type { Finding, ReviewDocument } from "../api/types";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { DocumentStage, type ReviewCaseContext } from "./document-stage";
@@ -19,24 +20,46 @@ import { OriginalSourceContext } from "./original-document-reader";
 import type { SourceQuote } from "../domain/source-annotation";
 
 vi.mock("./original-page-view", () => ({
-  default: ({ quotes }: { quotes: readonly SourceQuote[] }) =>
-    <div data-testid="original-page-quotes">{quotes.map((quote) => quote.quote).join("；")}</div>,
+  default: ({ quotes }: { quotes: readonly SourceQuote[] }) => (
+    <div data-testid="original-page-quotes">{quotes.map((quote) => quote.quote).join("；")}</div>
+  ),
 }));
 
 const at = "2026-10-21T06:00:00Z";
 
 it("connects a frozen finding to original-page annotations and keeps unfrozen history on the text reader", async () => {
   const document = documentOf("doc-pdf", "draft_contract", "合同.pdf", "甲方支付100万元。", {
-    parsed_document_id: "parsed-pdf", media_type: "application/pdf",
+    parsed_document_id: "parsed-pdf",
+    media_type: "application/pdf",
   });
   const finding = findingWith([locatedAnchor(document.id, "100万元", 4, 9)]);
-  const scope = { caseId: "case-1", contextKey: "reviewer:attempt-1", digests: new Map([[document.id, "a".repeat(64)]]) };
-  const quoteScope = { caseId: "case-1", runId: "run-1", attemptId: "attempt-1", isFrozenAttempt: true,
-    parsedDocumentIds: ["parsed-pdf"] };
-  const element = (frozen: boolean) => <MemoryRouter><OriginalSourceContext.Provider value={scope}>
-    <DocumentStage documents={[document]} finding={finding} findings={[finding]} selectedFindingId={finding.id}
-      onSelectFinding={() => undefined} layout="switch" quoteScope={{ ...quoteScope, isFrozenAttempt: frozen }} />
-  </OriginalSourceContext.Provider></MemoryRouter>;
+  const scope = {
+    caseId: "case-1",
+    contextKey: "reviewer:attempt-1",
+    digests: new Map([[document.id, document.digest]]),
+  };
+  const quoteScope = {
+    caseId: "case-1",
+    runId: "run-1",
+    attemptId: "attempt-1",
+    isFrozenAttempt: true,
+    parsedDocumentIds: ["parsed-pdf"],
+  };
+  const element = (frozen: boolean) => (
+    <MemoryRouter>
+      <OriginalSourceContext.Provider value={scope}>
+        <DocumentStage
+          documents={[document]}
+          finding={finding}
+          findings={[finding]}
+          selectedFindingId={finding.id}
+          onSelectFinding={() => undefined}
+          layout="switch"
+          quoteScope={{ ...quoteScope, isFrozenAttempt: frozen }}
+        />
+      </OriginalSourceContext.Provider>
+    </MemoryRouter>
+  );
   const view = render(element(true));
   expect(await screen.findByTestId("original-page-quotes")).toHaveTextContent("100万元");
   await userEvent.setup().click(screen.getByRole("button", { name: "文字原文" }));
@@ -145,16 +168,10 @@ const caseContext: ReviewCaseContext = {
 };
 
 function containerDocumentId(container: HTMLElement): string | null {
-  return (
-    container
-      .querySelector(".doc-pane")
-      ?.getAttribute("data-document-version-id") ?? null
-  );
+  return container.querySelector(".doc-pane")?.getAttribute("data-document-version-id") ?? null;
 }
 
-function renderStage(
-  overrides: Partial<Parameters<typeof DocumentStage>[0]> = {},
-) {
+function renderStage(overrides: Partial<Parameters<typeof DocumentStage>[0]> = {}) {
   const onSelectFinding = vi.fn();
   const onCreateRelation = vi.fn().mockResolvedValue(undefined);
   const onDeleteRelation = vi.fn();
@@ -182,10 +199,7 @@ describe("document stage case context", () => {
     expect(screen.getByText("案件上下文")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "云服务协议" })).toBeInTheDocument();
     expect(screen.getByText("CN-1")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "案件详情" })).toHaveAttribute(
-      "href",
-      "/cases/case-1",
-    );
+    expect(screen.getByRole("link", { name: "案件详情" })).toHaveAttribute("href", "/cases/case-1");
     expect(screen.getByText("甲方")).toBeInTheDocument();
     expect(screen.getByText("乙方")).toBeInTheDocument();
     expect(screen.getByText("采购合同")).toBeInTheDocument();
@@ -227,9 +241,7 @@ describe("document stage case context", () => {
     view.unmount();
     renderStage({ caseContext: { ...caseContext, collaborators: [] } });
     await user.click(screen.getByRole("tab", { name: /审查成员/ }));
-    expect(
-      screen.getByText("当前没有可显示的案件成员。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("当前没有可显示的案件成员。")).toBeInTheDocument();
   });
 
   it("lists related cases and edits relations", async () => {
@@ -248,11 +260,7 @@ describe("document stage case context", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("关联失败");
     await user.click(screen.getByRole("button", { name: "解除关联" }));
     expect(onDeleteRelation).toHaveBeenCalledWith("relation-1");
-    await chooseOption(
-      user,
-      screen.getByRole("combobox", { name: "关联可见案件" }),
-      "续签协议",
-    );
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联可见案件" }), "续签协议");
     await user.type(screen.getByLabelText("关联原因"), "同一客户");
     await user.click(screen.getByRole("button", { name: "建立关联" }));
     expect(onCreateRelation).toHaveBeenCalledWith({
@@ -275,9 +283,7 @@ describe("document stage case context", () => {
       canEditRelations: true,
     });
     await user.click(screen.getByRole("tab", { name: /相关案件/ }));
-    expect(
-      screen.getByText("当前身份可见范围内没有可新增的案件。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("当前身份可见范围内没有可新增的案件。")).toBeInTheDocument();
     second.unmount();
     renderStage({ caseContext });
     await user.click(screen.getByRole("tab", { name: /相关案件/ }));
@@ -286,6 +292,303 @@ describe("document stage case context", () => {
 });
 
 describe("document stage materials and search", () => {
+  it("locates a facts citation by Unicode codepoint in its matching frozen source", async () => {
+    const text = "甲方应支付金额💰元。";
+    const document = documentOf("doc-facts", "draft_contract", "合同.txt", text, {
+      digest: "",
+      parsed_document_id: "parsed-facts",
+      parsed_document: null,
+    });
+    const citation: ContractFactsCitation = {
+      document_id: document.id,
+      parsed_document_id: "parsed-facts",
+      original_digest: "a".repeat(64),
+      normalized_digest: "b".repeat(64),
+      quote: "金额💰",
+      start: 5,
+      end: 8,
+    };
+    const projection: ContractFactsProjection = {
+      schema_version: "contract-facts/v1",
+      attempt_id: "attempt-facts",
+      status: "partial",
+      structured_output_status: "valid",
+      source: {
+        document_id: document.id,
+        parsed_document_id: "parsed-facts",
+        original_digest: "a".repeat(64),
+        normalized_digest: "b".repeat(64),
+      },
+      input_codepoints: Array.from(text).length,
+      input_truncated: false,
+      fields: [
+        {
+          field: "contract_amount",
+          status: "known",
+          value: "金额💰",
+          citations: [citation],
+        },
+        ...(
+          [
+            "parties",
+            "tax_treatment",
+            "business_dates",
+            "term",
+            "payment_schedule",
+            "subject_matter",
+            "exceptions",
+          ] as const
+        ).map((field) => ({ field, status: "unknown" as const, value: "", citations: [] })),
+      ],
+    };
+    const { container } = renderStage({
+      documents: [document],
+      contractFactsCitation: citation,
+      contractFactsLocationScope: {
+        caseId: "case-facts",
+        runId: "run-facts",
+        attemptId: "attempt-facts",
+        historyKind: "frozen",
+        parsedDocumentIds: ["parsed-facts"],
+        projection,
+      },
+    });
+
+    const mark = await waitFor(() => {
+      const selected = container.querySelector("mark.hit-find");
+      expect(selected).not.toBeNull();
+      return selected;
+    });
+    expect(mark?.textContent).toBe("金额💰");
+    expect(container.querySelector(".doc-pane")?.getAttribute("data-document-version-id")).toBe(
+      "doc-facts",
+    );
+  });
+
+  it("does not highlight facts when the parsed identity is outside the selected frozen attempt", () => {
+    const text = "甲方应支付金额💰元。";
+    const document = documentOf("doc-facts", "draft_contract", "合同.txt", text, {
+      digest: "",
+      parsed_document_id: "parsed-facts",
+      parsed_document: null,
+    });
+    const citation: ContractFactsCitation = {
+      document_id: document.id,
+      parsed_document_id: "parsed-facts",
+      original_digest: "a".repeat(64),
+      normalized_digest: "b".repeat(64),
+      quote: "金额💰",
+      start: 5,
+      end: 8,
+    };
+    const projection: ContractFactsProjection = {
+      schema_version: "contract-facts/v1",
+      attempt_id: "attempt-facts",
+      status: "partial",
+      structured_output_status: "valid",
+      source: {
+        document_id: document.id,
+        parsed_document_id: "parsed-facts",
+        original_digest: citation.original_digest,
+        normalized_digest: citation.normalized_digest,
+      },
+      input_codepoints: Array.from(text).length,
+      input_truncated: false,
+      fields: [
+        { field: "contract_amount", status: "known", value: "金额💰", citations: [citation] },
+        ...(
+          [
+            "parties",
+            "tax_treatment",
+            "business_dates",
+            "term",
+            "payment_schedule",
+            "subject_matter",
+            "exceptions",
+          ] as const
+        ).map((field) => ({ field, status: "unknown" as const, value: "", citations: [] })),
+      ],
+    };
+    const { container } = renderStage({
+      documents: [document],
+      contractFactsCitation: citation,
+      contractFactsLocationScope: {
+        caseId: "case-facts",
+        runId: "run-facts",
+        attemptId: "attempt-facts",
+        historyKind: "frozen",
+        parsedDocumentIds: ["another-parsed-document"],
+        projection,
+      },
+    });
+    expect(container.querySelector("mark.hit-find")).toBeNull();
+  });
+
+  it("navigates to frozen key clauses without a finding and marks them separately", async () => {
+    const user = userEvent.setup();
+    const text = "😀第一条 付款约定：甲方应支付预付款。";
+    const quote = "第一条 付款约定：甲方应支付预付款。";
+    const points = Array.from(text);
+    const start = points.findIndex((_, index) =>
+      Array.from(quote).every((character, quoteIndex) => points[index + quoteIndex] === character),
+    );
+    const document = documentOf("doc-key", "procurement", "合同.txt", text, {
+      parsed_document_id: "parsed-key",
+      parsed_document: {
+        id: "parsed-key",
+        document_id: "doc-key",
+        original_digest: "abc12345",
+        parser_id: "parser",
+        parser_version: "1",
+        config_hash: "config",
+        normalization_version: "v1",
+        normalized_digest: "normalized",
+        ir_digest: "ir",
+        artifact_digest: "artifact",
+        created_at: at,
+        status: "ready",
+      },
+      clauses: [
+        {
+          id: "clause-payment",
+          heading: "付款约定",
+          text_offset: { start, end: start + Array.from(quote).length },
+          page: null,
+        },
+      ],
+    });
+    const { container, onSelectFinding } = renderStage({
+      documents: [document],
+      quoteScope: {
+        caseId: "case-1",
+        runId: "run-1",
+        attemptId: "attempt-1",
+        isFrozenAttempt: true,
+        parsedDocumentIds: ["parsed-key"],
+      },
+    });
+
+    expect(screen.getByRole("heading", { name: "关键条款导航" })).toBeInTheDocument();
+    expect(screen.getByText(/关键词分类只用于查找，不表示风险判断/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /付款约定.*页码未记录/ }));
+
+    const mark = container.querySelector("mark.hit-key-clause[data-selected-key-clause='true']");
+    expect(mark?.textContent).toBe(quote);
+    expect(mark).not.toHaveClass("hit-evidence");
+    expect(screen.getByText(/原件页码未记录，只定位冻结文字/)).toBeInTheDocument();
+    expect(onSelectFinding).not.toHaveBeenCalled();
+  });
+
+  it("shows unstructured body fragments as text-only candidates when clauses are absent", async () => {
+    const user = userEvent.setup();
+    const text = "😀前言说明。\n甲方付款约定：乙方应支付预付款。";
+    const document = documentOf("doc-body", "procurement", "扫描件.txt", text, {
+      parsed_document_id: "parsed-body",
+      parsed_document: {
+        id: "parsed-body",
+        document_id: "doc-body",
+        original_digest: "abc12345",
+        parser_id: "parser",
+        parser_version: "1",
+        config_hash: "config",
+        normalization_version: "v1",
+        normalized_digest: "normalized",
+        ir_digest: "ir",
+        artifact_digest: "artifact",
+        created_at: at,
+        status: "ready",
+      },
+      clauses: [],
+    });
+    const { container } = renderStage({
+      documents: [document],
+      quoteScope: {
+        caseId: "case-1",
+        runId: "run-1",
+        attemptId: "attempt-1",
+        isFrozenAttempt: true,
+        parsedDocumentIds: ["parsed-body"],
+      },
+    });
+    const choice = screen.getByRole("button", {
+      name: /正文片段\/标题未识别.*付款.*页码未记录/,
+    });
+
+    expect(choice).toBeInTheDocument();
+    await user.click(choice);
+
+    const mark = container.querySelector("mark.hit-key-clause[data-selected-key-clause='true']");
+    expect(mark?.textContent).toContain("支付预付款");
+    expect(mark).not.toHaveClass("hit-evidence");
+    expect(screen.getByText(/正文片段，不是已解析的完整结构化条款/)).toBeInTheDocument();
+    expect(screen.getByText(/原件页码未记录，只定位冻结文字/)).toBeInTheDocument();
+  });
+
+  it("clears an auxiliary clause highlight when the selected material changes", async () => {
+    const user = userEvent.setup();
+    const firstText = "第一条 付款约定：甲方支付预付款。";
+    const firstQuote = firstText;
+    const first = documentOf("doc-key", "procurement", "合同.txt", firstText, {
+      parsed_document_id: "parsed-key",
+      parsed_document: {
+        id: "parsed-key",
+        document_id: "doc-key",
+        original_digest: "abc12345",
+        parser_id: "parser",
+        parser_version: "1",
+        config_hash: "config",
+        normalization_version: "v1",
+        normalized_digest: "normalized",
+        ir_digest: "ir",
+        artifact_digest: "artifact",
+        created_at: at,
+        status: "ready",
+      },
+      clauses: [
+        {
+          id: "clause-payment",
+          heading: "付款约定",
+          text_offset: { start: 0, end: Array.from(firstQuote).length },
+          page: 1,
+        },
+      ],
+    });
+    const second = documentOf("doc-plain", "attachment", "附件.txt", "仅供阅读的说明文本", {
+      parsed_document_id: "parsed-plain",
+      parsed_document: {
+        id: "parsed-plain",
+        document_id: "doc-plain",
+        original_digest: "abc12345",
+        parser_id: "parser",
+        parser_version: "1",
+        config_hash: "config",
+        normalization_version: "v1",
+        normalized_digest: "normalized",
+        ir_digest: "ir",
+        artifact_digest: "artifact",
+        created_at: at,
+        status: "ready",
+      },
+      clauses: [],
+    });
+    const { container } = renderStage({
+      documents: [first, second],
+      quoteScope: {
+        caseId: "case-1",
+        runId: "run-1",
+        attemptId: "attempt-1",
+        isFrozenAttempt: true,
+        parsedDocumentIds: ["parsed-key", "parsed-plain"],
+      },
+    });
+    await user.click(screen.getByRole("button", { name: /付款约定.*第 1 页/ }));
+    expect(container.querySelector(".hit-key-clause")).not.toBeNull();
+
+    await user.click(screen.getByRole("tab", { name: "技术附件" }));
+    expect(container.querySelector(".hit-key-clause")).toBeNull();
+    expect(screen.getByText("当前材料中没有可定位的关键条款。")).toBeInTheDocument();
+  });
+
   it("labels duplicate material versions and linked findings", async () => {
     const user = userEvent.setup();
     const finding = findingWith([locatedAnchor("doc-1", "质保三十六个月", 4, 11)]);
@@ -314,21 +617,14 @@ describe("document stage materials and search", () => {
     const user = userEvent.setup();
     const { container } = renderStage({
       documents: [
-        documentOf(
-          "doc-1",
-          "procurement",
-          "采购文件.txt",
-          "质保三十六个月。质保二十四个月。",
-        ),
+        documentOf("doc-1", "procurement", "采购文件.txt", "质保三十六个月。质保二十四个月。"),
       ],
     });
     await user.type(screen.getByLabelText("文内搜索"), "质保");
     expect(screen.getByText("正文匹配 2 处")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "搜索下一处" }));
     expect(container.querySelectorAll(".hit-find").length).toBe(1);
-    expect(
-      screen.getByRole("button", { name: "第 2 页，第一条 质保" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "起始页第 2 页，第一条 质保" })).toBeInTheDocument();
     await user.clear(screen.getByLabelText("文内搜索"));
     expect(screen.getByText("输入后在当前材料中查找")).toBeInTheDocument();
   });
@@ -337,9 +633,7 @@ describe("document stage materials and search", () => {
     renderStage({ documents: [] });
     expect(screen.getByText("本次运行没有带上材料。")).toBeInTheDocument();
     expect(screen.getByText("这次运行没有带上材料。")).toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("文内搜索"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("文内搜索")).not.toBeInTheDocument();
   });
 
   it("filters clause headings without a match", async () => {
@@ -348,9 +642,7 @@ describe("document stage materials and search", () => {
       documents: [documentOf("doc-1", "procurement", "采购文件.txt", "正文")],
     });
     await user.type(screen.getByLabelText("文内搜索"), "没有此条款");
-    expect(
-      screen.getByText("这份材料没有可在原文中找到的已保存条款。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("这份材料没有可在原文中找到的已保存条款。")).toBeInTheDocument();
   });
 });
 
@@ -368,9 +660,7 @@ describe("document stage rendering states", () => {
       findings: [finding],
     });
     expect(screen.getByText("解析失败")).toBeInTheDocument();
-    expect(
-      screen.getByText("这份材料解析失败，不能据此给出无风险结论。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("这份材料解析失败，请先处理解析问题再继续审查。")).toBeInTheDocument();
     expect(screen.getByText("解析器失败")).toBeInTheDocument();
     expect(screen.getByText("保存的引用")).toBeInTheDocument();
   });
@@ -413,9 +703,7 @@ describe("document stage rendering states", () => {
       findings: [finding],
     });
     expect(
-      screen.getByText(
-        "正文尚未返回。下面只显示保存下来的引用快照，没有在文档中定位。",
-      ),
+      screen.getByText("正文尚未返回。下面只显示保存下来的引用快照，没有在文档中定位。"),
     ).toBeInTheDocument();
     expect(screen.getByText("历史引用")).toBeInTheDocument();
   });
@@ -432,11 +720,7 @@ describe("document stage rendering states", () => {
       finding,
       findings: [finding],
     });
-    expect(
-      screen.getByText(
-        "找不到对应来源，不能把这条引用当成已验证证据。",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText("找不到对应来源，不能把这条引用当成已验证证据。")).toBeInTheDocument();
   });
 
   it("highlights a located quote and otherwise renders readable text offsets", () => {
@@ -453,9 +737,7 @@ describe("document stage rendering states", () => {
     const second = renderStage({
       documents: [documentOf("doc-2", "attachment", "附件.txt", "一段正文")],
     });
-    expect(second.container.querySelector(".doc-text")?.textContent).toBe(
-      "一段正文",
-    );
+    expect(second.container.querySelector(".doc-text")?.textContent).toBe("一段正文");
   });
 
   it("shows a legacy parsed id in data attributes", () => {
@@ -466,9 +748,9 @@ describe("document stage rendering states", () => {
         }),
       ],
     });
-    expect(
-      container.querySelector(".doc-pane")?.getAttribute("data-parsed-document-id"),
-    ).toBe("legacy-parsed");
+    expect(container.querySelector(".doc-pane")?.getAttribute("data-parsed-document-id")).toBe(
+      "legacy-parsed",
+    );
   });
 });
 
@@ -509,15 +791,11 @@ describe("document stage comparison modes", () => {
       findings: [finding],
       layout: "switch",
     });
-    expect(
-      screen.queryByRole("button", { name: "双来源对照" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "双来源对照" })).not.toBeInTheDocument();
     const group = screen.getByRole("group", { name: "证据来源" });
     expect(within(group).getAllByRole("button")).toHaveLength(2);
     await user.click(within(group).getByRole("button", { name: "拟签合同" }));
-    expect(container.querySelector("mark.hit-evidence")?.textContent).toBe(
-      "质保二十四个月",
-    );
+    expect(container.querySelector("mark.hit-evidence")?.textContent).toBe("质保二十四个月");
   });
 
   it("does not offer comparison with a single evidence source", () => {
@@ -528,9 +806,7 @@ describe("document stage comparison modes", () => {
       findings: [finding],
       layout: "split",
     });
-    expect(
-      screen.queryByRole("button", { name: "双来源对照" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "双来源对照" })).not.toBeInTheDocument();
   });
 
   it("moves to the evidence source when the selected finding changes", async () => {

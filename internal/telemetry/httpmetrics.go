@@ -1,47 +1,29 @@
 // File metadata (manifest mirror):
-// Purpose: The HTTP RED series extend the same bounded, metadata-only projection the execution exporter already maintains: rate and duration per bounded route template, with the response… Related `telemetry` operations include httpDurationKey, observeHTTP, drainHTTPMetrics, flushMetrics.
+// Purpose: Records bounded HTTP RED observations in official SDK counter and histogram instruments while preserving route, status and millisecond bucket semantics.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 package telemetry
 
 import (
-	"log"
+	"context"
 	"strconv"
-	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
-// The HTTP RED series extend the same bounded, metadata-only projection the
-// execution exporter already maintains: rate and duration per bounded route
-// template, with the response status only on the rate series. No case, user,
-// tenant, worker, or any other high-cardinality business identifier is part of
-// a series key, and nothing here replaces the durable audit events.
+// HTTP dimensions are deliberately bounded: methods use a fixed vocabulary,
+// route templates are sanitized, and the allocation guard caps each instrument.
+const httpSeriesCapacity = 256
 
-const (
-	// httpSeriesCapacity bounds how many distinct method/route/status
-	// combinations the boundary may allocate. A deployment serving more shapes
-	// than the bound keeps answering, and the excess observations are counted
-	// as dropped instead of growing memory.
-	httpSeriesCapacity = 256
-)
-
-// Explicit, inclusive upper bounds in milliseconds. The final bucket is +Inf.
+// Explicit inclusive upper bounds in milliseconds. The SDK adds the +Inf bucket.
 var httpDurationBounds = [...]float64{1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000}
-
-type httpHistogram struct {
-	attributes []attribute
-	start      string
-	lastTime   int64
-	count      uint64
-	sum        float64
-	buckets    [len(httpDurationBounds) + 1]uint64
-	active     bool
-}
 
 type httpObservation struct {
 	method     string
@@ -60,9 +42,19 @@ func httpDurationKey(o httpObservation) [2]string {
 	return [2]string{o.method, o.route}
 }
 
-// observeHTTP records one completed HTTP exchange. It never blocks on the
-// delivery goroutine or the collector: a bounded mutex around map access is
-// the only shared cost, mirroring the nonblocking queue path of Record.
+func (e *Exporter) configureHTTPMetrics() error {
+	meter := e.metricProvider.Meter("contractaudit.http")
+	var err error
+	e.httpRequests, err = meter.Int64Counter("audit.http.requests")
+	if err != nil {
+		return err
+	}
+	e.httpDurations, err = meter.Int64Histogram("audit.http.duration_ms", metric.WithUnit("ms"))
+	return err
+}
+
+// observeHTTP records one completed exchange. It never waits for the collector;
+// the bounded mutex only protects the finite per-process series allocation.
 func (e *Exporter) observeHTTP(o httpObservation) {
 	if e == nil || o.status < 100 || o.status > 599 || o.durationMS < 0 {
 		return
@@ -73,100 +65,52 @@ func (e *Exporter) observeHTTP(o httpObservation) {
 	if o.route = sanitizeRoute(o.route); o.route == "" {
 		o.route = "unmatched"
 	}
-	now := time.Now().UnixNano()
+
 	e.httpMu.Lock()
 	defer e.httpMu.Unlock()
-	key := httpCounterKey{method: o.method, route: o.route, status: o.status}
-	counter, ok := e.httpRequests[key]
-	if !ok && len(e.httpRequests) >= httpSeriesCapacity {
-		e.httpDropped.Add(1)
-		return
+	requestKey := httpCounterKey{method: o.method, route: o.route, status: o.status}
+	if _, ok := e.httpRequestSet[requestKey]; !ok {
+		if len(e.httpRequestSet) >= httpSeriesCapacity {
+			e.httpDropped.Add(1)
+			return
+		}
+		e.httpRequestSet[requestKey] = struct{}{}
 	}
-	if !ok {
-		counter = &metricSeries{attributes: []attribute{
-			stringAttribute("http.request.method", o.method),
-			stringAttribute("http.route", o.route),
-			stringAttribute("http.response.status_code", strconv.Itoa(o.status)),
-		}, start: strconv.FormatInt(now, 10)}
-		e.httpRequests[key] = counter
+	durationKey := httpDurationKey(o)
+	if _, ok := e.httpDurationSet[durationKey]; !ok {
+		if len(e.httpDurationSet) >= httpSeriesCapacity {
+			e.httpDropped.Add(1)
+			return
+		}
+		e.httpDurationSet[durationKey] = struct{}{}
 	}
-	counter.count++
-	counter.latestEnd = now
-	counter.active = true
-	duration, ok := e.httpDurations[httpDurationKey(o)]
-	if !ok && len(e.httpDurations) >= httpSeriesCapacity {
-		e.httpDropped.Add(1)
-		return
+	attrs := []attribute.KeyValue{
+		attribute.String("http.request.method", o.method),
+		attribute.String("http.route", o.route),
 	}
-	if !ok {
-		duration = &httpHistogram{attributes: []attribute{
-			stringAttribute("http.request.method", o.method),
-			stringAttribute("http.route", o.route),
-		}, start: strconv.FormatInt(now, 10)}
-		e.httpDurations[httpDurationKey(o)] = duration
-	}
-	duration.count++
-	duration.sum += float64(o.durationMS)
-	bucket := 0
-	for bucket < len(httpDurationBounds) && float64(o.durationMS) > httpDurationBounds[bucket] {
-		bucket++
-	}
-	duration.buckets[bucket]++
-	duration.active = true
+	e.httpRequests.Add(context.Background(), 1, metric.WithAttributes(append(attrs,
+		attribute.String("http.response.status_code", strconv.Itoa(o.status)),
+	)...))
+	e.httpDurations.Record(context.Background(), o.durationMS, metric.WithAttributes(attrs...))
 }
 
-// drainHTTPMetrics snapshots and clears the active flag of every HTTP series
-// that observed exchanges since the last send. The snapshot runs under the
-// producer mutex, so producers either see the pre-send or the post-send state
-// and no observation is lost between copy and reset.
-func (e *Exporter) drainHTTPMetrics() ([]numberPoint, []histogramPoint) {
-	now := time.Now().UnixNano()
-	e.httpMu.Lock()
-	events := make([]numberPoint, 0, len(e.httpRequests))
-	points := make([]histogramPoint, 0, len(e.httpDurations))
-	for _, series := range e.httpRequests {
-		if !series.active {
-			continue
-		}
-		series.active = false
-		// Collection timestamps advance monotonically per series even when
-		// observations arrive out of order across concurrent requests.
-		at := max(now, series.lastTime+1)
-		series.lastTime = at
-		events = append(events, numberPoint{Attributes: series.attributes, Start: series.start,
-			Time: strconv.FormatInt(at, 10), AsInt: strconv.FormatInt(series.count, 10)})
-	}
-	for _, series := range e.httpDurations {
-		if !series.active {
-			continue
-		}
-		series.active = false
-		at := max(now, series.lastTime+1)
-		series.lastTime = at
-		buckets := make([]string, len(series.buckets))
-		for i, count := range series.buckets {
-			buckets[i] = strconv.FormatUint(count, 10)
-		}
-		points = append(points, histogramPoint{Attributes: series.attributes, Start: series.start,
-			Time: strconv.FormatInt(at, 10), Count: strconv.FormatUint(series.count, 10), Sum: series.sum,
-			BucketCounts: buckets, ExplicitBounds: httpDurationBounds[:]})
-	}
-	e.httpMu.Unlock()
-	return events, points
-}
-
-// flushMetrics sends pending HTTP observations and, on the periodic tick only,
-// collects runtime state. Shutdown exports counters without starting a new query.
+// flushMetrics remains a small lifecycle hook for package consumers that need
+// to request SDK collection. PeriodicReader owns the collection and export.
 func (e *Exporter) flushMetrics(collectRuntime bool) {
-	if e == nil || e.ctx.Err() != nil {
+	if e == nil || e.metricProvider == nil {
 		return
 	}
-	points, rejected, err := e.sendMetrics(nil, e.collectRuntimeMetrics(collectRuntime))
-	if err != nil {
-		rejected = points
+	if collectRuntime && e.runtime != nil {
+		e.runtime.skip.Store(false)
+	} else if e.runtime != nil {
+		e.runtime.skip.Store(true)
 	}
-	e.metricsExported.Add(uint64(points - rejected))
-	if rejected > 0 && e.metricsFailed.Add(uint64(rejected)) == uint64(rejected) {
-		log.Print("OTLP metadata metric export failed; durable business records are unaffected")
+	if e.runtime != nil {
+		defer e.runtime.skip.Store(false)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), exportTimeout)
+	defer cancel()
+	if err := e.metricProvider.ForceFlush(ctx); err != nil {
+		e.metricFailed.Add(1)
 	}
 }

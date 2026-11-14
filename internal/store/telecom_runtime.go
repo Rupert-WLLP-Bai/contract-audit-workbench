@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -28,6 +28,7 @@ import (
 	"contractaudit/internal/docir"
 	"contractaudit/internal/engine"
 	"contractaudit/internal/execution"
+	"contractaudit/internal/execution/steps"
 	"contractaudit/internal/model"
 	"contractaudit/internal/rulepack"
 	"contractaudit/internal/telecom"
@@ -399,6 +400,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 	var toolEvidenceNote string
 	var agentReviewIncomplete bool
 	var agentReviewFailed bool
+	agentReviewFailureCode := "agent_review_failed"
 	if _, _, _, err := s.authorizeTelecomStage(ctx, runID, attemptID); err != nil {
 		if parent.Err() == nil {
 			code := "execution_failed"
@@ -727,7 +729,9 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 			modelErr = engine.ErrRejected
 		}
 	} else {
-		modelErr = s.runTelecomModelReview(ctx, runID, attemptID, models, docs, caseItem, recorder)
+		modelErr = runApplicableTelecomModelReview(caseItem, func() error {
+			return s.runTelecomModelReview(ctx, runID, attemptID, models, docs, caseItem, recorder)
+		})
 	}
 	if parent.Err() != nil {
 		return
@@ -752,6 +756,9 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 			if executionScopeRequiresClaim(ctx) && (!durable || !claimMatchesExecutionScope(ctx, claim)) {
 				return
 			}
+			if !durable || claim.JobID == "" || claim.RunID != runID {
+				agentReviewIncomplete = true
+			}
 			if durable && claim.JobID != "" && claim.RunID == runID {
 				agentEvents := latest.executionEvents(attemptID)
 				if stageStatus, done := telecomStageTerminal(agentEvents, "agent_review"); done {
@@ -763,7 +770,11 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 						_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", resultCode)
 						return
 					}
-					agentReviewFailed = resultStatus == "partial" && resultCode == "agent_review_failed"
+					agentReviewFailed = resultStatus == "partial" && (resultCode == "agent_review_failed" ||
+						resultCode == "agent_step_failed" || resultCode == "agent_step_ambiguous")
+					if agentReviewFailed {
+						agentReviewFailureCode = resultCode
+					}
 					agentReviewIncomplete = stageStatus != "completed" || telecomAgentReviewWasPartial(agentEvents)
 				} else {
 					reviewRunErr := execution.Run(ctx, recorder, execution.Stage{Name: "agent_review", Run: func(stageCtx context.Context) error {
@@ -786,19 +797,18 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 						return
 					}
 					if reviewRunErr != nil {
-						if errors.Is(reviewRunErr, errAttemptTerminal) {
+						if errors.Is(reviewRunErr, errAttemptTerminal) || errors.Is(reviewRunErr, errLeaseLost) || ctx.Err() != nil ||
+							errors.Is(reviewRunErr, context.Canceled) || errors.Is(reviewRunErr, context.DeadlineExceeded) {
 							return
 						}
 						status, errorCode := "partial", "agent_review_failed"
 						switch {
-						case errors.Is(reviewRunErr, errAttemptAuthorizationRevoked):
-							status, errorCode = "failed", "authorization_revoked"
-						case errors.Is(reviewRunErr, rulepack.ErrUnauthorized):
-							status, errorCode = "failed", "authorization_denied"
-						case errors.Is(reviewRunErr, errAgentReviewScopeChanged):
-							status, errorCode = "failed", "agent_review_scope_changed"
-						case errors.Is(reviewRunErr, errAgentReviewPersistence):
-							status, errorCode = "failed", "agent_review_persistence_failed"
+						case isFatalAgentReviewBoundaryError(reviewRunErr):
+							status, errorCode = agentReviewFatalResult(reviewRunErr)
+						case errors.Is(reviewRunErr, steps.ErrAmbiguous):
+							status, errorCode = "partial", "agent_step_ambiguous"
+						case errors.Is(reviewRunErr, steps.ErrPriorFailure):
+							status, errorCode = "partial", "agent_step_failed"
 						}
 						if eventErr := recordTelecomAgentReviewResult(ctx, recorder, status, errorCode); eventErr != nil {
 							failureCode := "execution_persistence_failed"
@@ -816,6 +826,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 						}
 						agentReviewIncomplete = true
 						agentReviewFailed = true
+						agentReviewFailureCode = errorCode
 					}
 				}
 			}
@@ -856,15 +867,18 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 	} else if agentReviewFailed {
 		terminalState = "partial"
 		partialReason = "五域补充审查执行失败；专线必检规则结果保持独立。"
-		errorCode = "agent_review_failed"
+		errorCode = agentReviewFailureCode
+	} else if readyCount(docs) < len(docs) {
+		terminalState = "partial"
+		partialReason = "有材料解析失败，结果不能当成完整审查。"
+		if agentReviewIncomplete {
+			partialReason += "五域补充审查也存在未解决或未执行的能力缺口。"
+		}
+		errorCode = "document_parse_incomplete"
 	} else if agentReviewIncomplete {
 		terminalState = "partial"
 		partialReason = "五域补充审查存在未解决或未执行的能力缺口；专线必检规则结果保持独立。"
 		errorCode = "agent_review_incomplete"
-	} else if readyCount(docs) < len(docs) {
-		terminalState = "partial"
-		partialReason = "有材料解析失败，结果不能当成完整审查。"
-		errorCode = "document_parse_incomplete"
 	}
 	_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, terminalState, partialReason, errorCode)
 }
@@ -1430,6 +1444,15 @@ func telecomEvaluationsPresent(st state, attemptID string) (int, error) {
 		return 0, errors.New("incomplete persisted governed result set")
 	}
 	return count, nil
+}
+
+// Dedicated-line reviews use their frozen rules and agent tools; the legacy
+// non-cloud model entry point is a warranty-specific contract.
+func runApplicableTelecomModelReview(caseItem Case, run func() error) error {
+	if isTelecomDedicatedLineCase(caseItem) {
+		return nil
+	}
+	return run()
 }
 
 func (s *Store) runTelecomModelReview(ctx context.Context, runID, attemptID string, models Models, docs []Interpreted, caseItem Case, recorder attemptRecorder) error {

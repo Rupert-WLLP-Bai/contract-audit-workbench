@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,12 +14,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"os"
 	"strconv"
 	"strings"
 
 	"contractaudit/internal/clmenvelope"
+	clmcontract "contractaudit/internal/contract/model"
 	"contractaudit/internal/fault"
 
 	"github.com/jackc/pgx/v5"
@@ -208,15 +208,7 @@ func canonicalStoredJSON(ctx context.Context, tx pgx.Tx, raw []byte) ([]byte, er
 // unmarshalStoredDraft decodes persisted content bytes strictly; a corrupted
 // or unexpectedly shaped row fails instead of projecting partially.
 func unmarshalStoredDraft(raw []byte, target any) error {
-	decoder := json.NewDecoder(strings.NewReader(string(raw)))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		return errors.New("stored contract content is not a single object")
-	}
-	return nil
+	return clmcontract.UnmarshalStoredDraft(raw, target)
 }
 
 // unsealStoredDraft loads persisted content and restores restricted fields.

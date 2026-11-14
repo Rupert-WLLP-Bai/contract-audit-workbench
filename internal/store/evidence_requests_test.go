@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,6 +24,22 @@ import (
 	"contractaudit/internal/agentflow"
 	"contractaudit/internal/fault"
 )
+
+func TestEvidenceReviewReaderTreatsFactsProjectionAsNoFiveDomainReview(t *testing.T) {
+	raw := []byte(`{"schema_version":"contract-facts/v1","attempt_id":"attempt-1"}`)
+	if _, err := decodeEvidenceAgentReview(raw, "attempt-1"); err == nil ||
+		!strings.Contains(err.Error(), "没有可补充的五域智能审查") || strings.Contains(err.Error(), "格式或编号无效") {
+		t.Fatalf("facts-only projection was treated as malformed five-domain review: %v", err)
+	}
+	if _, err := decodeEvidenceAgentReview([]byte(`{"schema_version":"future-review/v1"}`), "attempt-1"); err == nil ||
+		!strings.Contains(err.Error(), "格式或编号无效") {
+		t.Fatalf("unknown discriminator did not fail closed: %v", err)
+	}
+	if _, err := decodeEvidenceAgentReview([]byte(`{"attempt_id":"attempt-1"}`), "attempt-1"); err == nil ||
+		!strings.Contains(err.Error(), "格式或编号无效") {
+		t.Fatalf("missing discriminator did not fail closed: %v", err)
+	}
+}
 
 type evidenceRequestFixture struct {
 	store       *Store

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-25
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -73,7 +73,7 @@ func TestExporterFailurePreservesReviewDecisionAndAuditAfterReload(t *testing.T)
 	originalSnapshot, originalFindings, originalDecisions := snapshotRow(t, st, runID), findingRow(t, st, runID), decisionRow(t, st, runID)
 	st.UseTelemetry(nil)
 	stats := exporter.Stats()
-	if requests.Load() == 0 || stats.FailedRequests == 0 || stats.Exported != 0 || stats.Dropped == 0 {
+	if requests.Load() == 0 || stats.FailedRequests == 0 || stats.Exported != 0 || stats.Unknown == 0 {
 		t.Fatalf("the collector failure was not exercised: requests=%d stats=%+v", requests.Load(), stats)
 	}
 	reloaded, err := st.Reopen()

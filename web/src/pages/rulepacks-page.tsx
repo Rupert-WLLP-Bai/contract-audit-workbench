@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,6 +16,7 @@ import { Link } from "react-router";
 import { errorMessage, isForbidden } from "../api/http";
 import { useRulePacks } from "../api/queries";
 import { PageStatus } from "../components/page-status";
+import { ListPage } from "../components/page-patterns";
 import { StatusText } from "../components/status-text";
 
 const STATE_LABELS = {
@@ -30,8 +31,7 @@ export function RulePacksPage() {
   const [query, setQuery] = useState("");
   const [state, setState] = useState("all");
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
-  if (packs.isLoading)
-    return <PageStatus kind="loading" title="正在读取规则包" />;
+  if (packs.isLoading) return <PageStatus kind="loading" title="正在读取规则包" />;
   if (packs.isError) {
     const forbidden = isForbidden(packs.error);
     return (
@@ -41,11 +41,7 @@ export function RulePacksPage() {
         detail={errorMessage(packs.error)}
         action={
           forbidden ? (
-            <Button
-              aria-label={"返回管理首页"}
-              type="primary"
-              href="/admin/settings"
-            >
+            <Button aria-label={"返回管理首页"} type="primary" href="/admin/settings">
               返回管理首页
             </Button>
           ) : (
@@ -64,22 +60,18 @@ export function RulePacksPage() {
   }
 
   const rows = [...(packs.data ?? [])].sort(
-    (left, right) =>
-      left.id.localeCompare(right.id) ||
-      right.version.localeCompare(left.version),
+    (left, right) => left.id.localeCompare(right.id) || right.version.localeCompare(left.version),
   );
   const needle = query.trim().toLocaleLowerCase();
   const filtered = rows.filter(
     (pack) =>
-      (state === "all" ||
-        (state === "active" ? pack.is_active : pack.status === state)) &&
+      (state === "all" || (state === "active" ? pack.is_active : pack.status === state)) &&
       `${pack.id} ${pack.version} ${pack.authority_sources.join(" ")}`
         .toLocaleLowerCase()
         .includes(needle),
   );
   const selected =
-    filtered.find((pack) => `${pack.id}:${pack.version}` === selectedVersion) ??
-    filtered[0];
+    filtered.find((pack) => `${pack.id}:${pack.version}` === selectedVersion) ?? filtered[0];
   const filters = [
     { id: "all", label: "全部版本", count: rows.length },
     {
@@ -154,9 +146,7 @@ export function RulePacksPage() {
             type="text"
             htmlType="button"
             aria-label={`预览 ${pack.id} v${pack.version}`}
-            aria-pressed={
-              selected?.id === pack.id && selected.version === pack.version
-            }
+            aria-pressed={selected?.id === pack.id && selected.version === pack.version}
             onClick={() => setSelectedVersion(`${pack.id}:${pack.version}`)}
           >
             预览
@@ -171,22 +161,21 @@ export function RulePacksPage() {
     },
   ];
   return (
-    <section className="page page-rulepacks">
-      <header className="page-head">
-        <div>
-          <h1>规则库 / RulePack 治理</h1>
-          <p>
-            管理规则版本、验证与发布。已发布内容保持不可变，活动版本用于后续新审查。
-          </p>
-        </div>
-        <Button
-          aria-label={"创建草稿"}
-          type="primary"
-          href="/admin/rulepacks/new"
-        >
+    <ListPage
+      className="page-rulepacks"
+      title="规则库 / RulePack 治理"
+      description="管理规则版本、验证与发布。已发布内容保持不可变，活动版本用于后续新审查。"
+      actions={
+        <Button aria-label={"创建草稿"} type="primary" href="/admin/rulepacks/new">
           创建草稿
         </Button>
-      </header>
+      }
+      summary={
+        <p className="meta" role="status">
+          {filtered.length} / {rows.length} 个版本
+        </p>
+      }
+    >
       <div className="governance-workspace">
         <nav className="governance-state-nav" aria-label="规则包版本分类">
           <h2>版本状态</h2>
@@ -230,9 +219,6 @@ export function RulePacksPage() {
                 ]}
               />
             </label>
-            <p className="meta" role="status">
-              {filtered.length} / {rows.length} 个版本
-            </p>
           </div>
           {rows.length === 0 ? (
             <PageStatus
@@ -255,9 +241,7 @@ export function RulePacksPage() {
                 rowKey={(pack) => `${pack.id}:${pack.version}`}
                 pagination={false}
                 onRow={(pack) => ({
-                  "aria-current":
-                    selected?.id === pack.id &&
-                    selected.version === pack.version,
+                  "aria-current": selected?.id === pack.id && selected.version === pack.version,
                 })}
               />
             </div>
@@ -279,9 +263,7 @@ export function RulePacksPage() {
               <div>
                 <dt>状态</dt>
                 <dd>
-                  <StatusText
-                    tone={selected.status === "published" ? "good" : "neutral"}
-                  >
+                  <StatusText tone={selected.status === "published" ? "good" : "neutral"}>
                     {STATE_LABELS[selected.status]}
                   </StatusText>
                 </dd>
@@ -323,6 +305,6 @@ export function RulePacksPage() {
           </aside>
         ) : null}
       </div>
-    </section>
+    </ListPage>
   );
 }

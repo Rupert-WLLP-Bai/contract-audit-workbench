@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -22,6 +22,14 @@ type Models interface {
 	ConfigurationID() string
 	Warranty(ctx context.Context, docs []model.Material) (model.Warranty, error)
 	Transcribe(ctx context.Context, media string, body []byte) (string, error)
+}
+
+// contractFactsModel is an optional, strictly typed capability. Keeping it
+// separate from Models preserves legacy fixtures and model adapters that do
+// not implement this newly admitted facts path.
+type contractFactsModel interface {
+	ContractFacts(ctx context.Context, text string, truncated bool) (model.ContractFactsSuggestion, error)
+	ContractFactsConfigurationID() string
 }
 
 // UseModels installs the caller. Call it before serving, or from the endpoint

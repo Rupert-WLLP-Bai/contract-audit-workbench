@@ -1,22 +1,21 @@
 // File metadata (manifest mirror):
-// Purpose: AudienceClient and AudienceAdmin identify the supported OIDC session audiences. Related `identity` operations include NewManager, validateOIDCConfig, validateOIDCEndpoints, validateOIDCCredentials.
+// Purpose: Coordinates SDK-backed OIDC discovery, authorization-code and PKCE flows, bounded provider responses and trusted membership/session establishment.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
 package identity
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +26,9 @@ import (
 	"time"
 
 	"contractaudit/internal/accounts"
+
+	"github.com/coreos/go-oidc/v3/oidc"
+	"golang.org/x/oauth2"
 )
 
 // AudienceClient and AudienceAdmin identify the supported OIDC session audiences.
@@ -135,8 +137,13 @@ func validateOIDCCredentials(config *Config) error {
 }
 
 func oidcHTTPClient(client *http.Client) *http.Client {
+	var transport http.RoundTripper = http.DefaultTransport
 	if client != nil {
 		cloned := *client
+		if cloned.Transport != nil {
+			transport = cloned.Transport
+		}
+		cloned.Transport = boundedProviderTransport{base: transport}
 		cloned.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		if cloned.Timeout <= 0 {
 			cloned.Timeout = 10 * time.Second
@@ -145,8 +152,70 @@ func oidcHTTPClient(client *http.Client) *http.Client {
 	}
 	return &http.Client{
 		Timeout:       10 * time.Second,
+		Transport:     boundedProviderTransport{base: transport},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
+}
+
+type jwksValidationKey struct{}
+type jwksOriginalContextKey struct{}
+type exactStatusValidationKey struct{}
+
+type jwksValidation struct {
+	uri string
+	kid string
+}
+
+type exactStatusValidation struct {
+	uri    string
+	status int
+}
+
+type boundedProviderTransport struct {
+	base http.RoundTripper
+}
+
+func (t boundedProviderTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if original, ok := request.Context().Value(jwksOriginalContextKey{}).(context.Context); ok {
+		requestContext, cancel := context.WithCancel(request.Context())
+		stop := context.AfterFunc(original, cancel)
+		defer func() {
+			stop()
+			cancel()
+		}()
+		request = request.WithContext(requestContext)
+	}
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	response, err := base.RoundTrip(request)
+	if err != nil || response == nil || response.Body == nil {
+		return response, err
+	}
+	body, readErr := readBounded(response.Body, maxProviderJSON)
+	_ = response.Body.Close()
+	if readErr != nil {
+		return nil, ErrAuthentication
+	}
+	if validation, ok := request.Context().Value(jwksValidationKey{}).(jwksValidation); ok {
+		if request.URL.String() != normalizedProviderURL(validation.uri) {
+			return nil, ErrAuthentication
+		}
+		if response.StatusCode == http.StatusOK {
+			if err := validateJWKSForID(body, validation.kid); err != nil {
+				return nil, ErrAuthentication
+			}
+		}
+	}
+	if validation, ok := request.Context().Value(exactStatusValidationKey{}).(exactStatusValidation); ok {
+		if request.URL.String() != normalizedProviderURL(validation.uri) || response.StatusCode != validation.status {
+			return nil, ErrAuthentication
+		}
+	}
+	response.Body = io.NopCloser(bytes.NewReader(body))
+	response.ContentLength = int64(len(body))
+	return response, nil
 }
 
 // Begin creates the provider authorization URL and an authenticated encrypted
@@ -175,29 +244,14 @@ func (m *Manager) Begin(ctx context.Context, audience string) (string, string, e
 	if err != nil {
 		return "", "", ErrAuthentication
 	}
-	challengeBytes := sha256.Sum256([]byte(verifier))
-	challenge := base64.RawURLEncoding.EncodeToString(challengeBytes[:])
 	cookie, err := m.sealState(statePayload{
 		State: state, Nonce: nonce, Verifier: verifier, Audience: audience, IssuedAt: time.Now().Unix(),
 	})
 	if err != nil {
 		return "", "", ErrAuthentication
 	}
-	authorizationURL, err := url.Parse(metadata.AuthorizationEndpoint)
-	if err != nil {
-		return "", "", ErrAuthentication
-	}
-	query := authorizationURL.Query()
-	query.Set("client_id", clientID)
-	query.Set("response_type", "code")
-	query.Set("redirect_uri", m.redirectURL(audience))
-	query.Set("scope", "openid profile email")
-	query.Set("state", state)
-	query.Set("nonce", nonce)
-	query.Set("code_challenge", challenge)
-	query.Set("code_challenge_method", "S256")
-	authorizationURL.RawQuery = query.Encode()
-	return authorizationURL.String(), cookie, nil
+	config := oauthConfig(metadata, clientID, "", m.redirectURL(audience))
+	return config.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier), oidc.Nonce(nonce)), cookie, nil
 }
 
 // Complete validates the one-time state cookie, exchanges the authorization
@@ -338,13 +392,12 @@ func (m *Manager) redirectURL(audience string) string {
 }
 
 func (m *Manager) discover(ctx context.Context) (providerMetadata, error) {
-	discoveryURL := strings.TrimRight(m.config.Issuer, "/") + "/.well-known/openid-configuration"
-	body, err := m.getJSON(ctx, discoveryURL)
+	provider, err := oidc.NewProvider(oidc.ClientContext(ctx, m.client), m.config.Issuer)
 	if err != nil {
-		return providerMetadata{}, err
+		return providerMetadata{}, ErrAuthentication
 	}
 	var metadata providerMetadata
-	if err := json.Unmarshal(body, &metadata); err != nil || metadata.Issuer != m.config.Issuer {
+	if err := provider.Claims(&metadata); err != nil || metadata.Issuer != m.config.Issuer {
 		return providerMetadata{}, ErrAuthentication
 	}
 	if !validProviderEndpoints(metadata, m.config.Issuer) {
@@ -372,58 +425,41 @@ func providerEndpointAllowed(endpoint string, loopbackIssuer bool) bool {
 	return parsed.Scheme != "http" || loopbackIssuer
 }
 
-func (m *Manager) exchangeCode(ctx context.Context, metadata providerMetadata, clientID, clientSecret, code, verifier, redirectURL string) (string, error) {
-	form := url.Values{
-		"grant_type":    {"authorization_code"},
-		"code":          {code},
-		"redirect_uri":  {redirectURL},
-		"client_id":     {clientID},
-		"client_secret": {clientSecret},
-		"code_verifier": {verifier},
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, metadata.TokenEndpoint, strings.NewReader(form.Encode()))
+func normalizedProviderURL(raw string) string {
+	parsed, err := url.Parse(raw)
 	if err != nil {
-		return "", ErrAuthentication
+		return ""
 	}
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	request.Header.Set("Accept", "application/json")
-	response, err := m.client.Do(request)
-	if err != nil {
-		return "", ErrAuthentication
-	}
-	defer response.Body.Close()
-	body, err := readBounded(response.Body, maxProviderJSON)
-	if err != nil || response.StatusCode != http.StatusOK {
-		return "", ErrAuthentication
-	}
-	var result struct {
-		IDToken string `json:"id_token"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil || result.IDToken == "" {
-		return "", ErrAuthentication
-	}
-	return result.IDToken, nil
+	return parsed.String()
 }
 
-func (m *Manager) getJSON(ctx context.Context, target string) ([]byte, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
-	if err != nil {
-		return nil, ErrAuthentication
+func (m *Manager) exchangeCode(ctx context.Context, metadata providerMetadata, clientID, clientSecret, code, verifier, redirectURL string) (string, error) {
+	config := oauthConfig(metadata, clientID, clientSecret, redirectURL)
+	ctx = oidc.ClientContext(ctx, m.client)
+	ctx = context.WithValue(ctx, exactStatusValidationKey{}, exactStatusValidation{uri: metadata.TokenEndpoint, status: http.StatusOK})
+	token, err := config.Exchange(ctx, code, oauth2.VerifierOption(verifier))
+	if err != nil || token == nil {
+		return "", ErrAuthentication
 	}
-	request.Header.Set("Accept", "application/json")
-	response, err := m.client.Do(request)
-	if err != nil {
-		return nil, ErrAuthentication
+	idToken, ok := token.Extra("id_token").(string)
+	if !ok || idToken == "" {
+		return "", ErrAuthentication
 	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return nil, ErrAuthentication
+	return idToken, nil
+}
+
+func oauthConfig(metadata providerMetadata, clientID, clientSecret, redirectURL string) *oauth2.Config {
+	return &oauth2.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		RedirectURL:  redirectURL,
+		Scopes:       []string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail},
+		Endpoint: oauth2.Endpoint{
+			AuthURL:   metadata.AuthorizationEndpoint,
+			TokenURL:  metadata.TokenEndpoint,
+			AuthStyle: oauth2.AuthStyleInParams,
+		},
 	}
-	body, err := readBounded(response.Body, maxProviderJSON)
-	if err != nil {
-		return nil, ErrAuthentication
-	}
-	return body, nil
 }
 
 func readBounded(reader io.Reader, limit int64) ([]byte, error) {

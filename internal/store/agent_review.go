@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -184,9 +184,115 @@ func (s *Store) SyncAgentReviewRecord(ctx context.Context, claim JobClaim, recor
 // never projected. It first checks the caller's case grant, then reads using the
 // authorized case's owner organization under the tenant RLS policy.
 func (s *Store) AgentReviewForAttempt(ctx context.Context, user accounts.User, caseID, runID, attemptID string) (json.RawMessage, bool, error) {
+	payload, present, err := s.executionProjectionForAttempt(ctx, user, caseID, runID, attemptID)
+	if err != nil || !present {
+		return nil, false, err
+	}
+	schema, err := executionProjectionSchema(payload)
+	if err != nil {
+		return nil, false, err
+	}
+	if schema == agentflow.ContractFactsProjectionSchema {
+		return nil, false, nil
+	}
+	if schema != agentflow.AgentReviewSchemaVersion {
+		return nil, false, fmt.Errorf("execution projection %q has an unknown schema", attemptID)
+	}
+	return payload, true, nil
+}
+
+// ContractFactsForAttempt returns only the facts-only discriminator. It is
+// independently authorized and never passes facts to five-domain consumers.
+func (s *Store) ContractFactsForAttempt(ctx context.Context, user accounts.User, caseID, runID, attemptID string) (json.RawMessage, bool, error) {
+	payload, present, err := s.executionProjectionForAttempt(ctx, user, caseID, runID, attemptID)
+	if err != nil || !present {
+		return nil, false, err
+	}
+	schema, err := executionProjectionSchema(payload)
+	if err != nil {
+		return nil, false, err
+	}
+	if schema == agentflow.AgentReviewSchemaVersion {
+		return nil, false, nil
+	}
+	if schema != agentflow.ContractFactsProjectionSchema {
+		return nil, false, fmt.Errorf("execution projection %q has an unknown schema", attemptID)
+	}
+	var projection agentflow.ContractFactsProjection
+	if err := json.Unmarshal(payload, &projection); err != nil {
+		return nil, false, fmt.Errorf("contract facts projection %q is invalid", attemptID)
+	}
+	if err := s.validateContractFactsFrozenProjection(ctx, user, caseID, runID, attemptID, projection); err != nil {
+		return nil, false, err
+	}
+	return payload, true, nil
+}
+
+func (s *Store) validateContractFactsFrozenProjection(ctx context.Context, user accounts.User, caseID, runID, attemptID string, projection agentflow.ContractFactsProjection) error {
+	st, err := s.snapshotWorkspace(ctx, user, caseID, runID, attemptID)
+	if err != nil {
+		return err
+	}
+	snapshot := st.snapshotOf(runID)
+	run, ok := st.runByID(runID)
+	if !ok || run.CaseID != caseID {
+		return fmt.Errorf("contract facts projection %q has no matching run", attemptID)
+	}
+	caseItem, ok := st.caseByID(caseID)
+	if !ok || !isSingleContractSnapshot(snapshot) || isGovernedReviewCase(caseItem) {
+		return fmt.Errorf("contract facts projection %q is outside its admitted scope", attemptID)
+	}
+	attempt, ok := st.attemptByID(attemptID)
+	if !ok || attempt.RunID != runID || attempt.HistoryKind != "frozen" {
+		return fmt.Errorf("contract facts projection %q has no matching attempt", attemptID)
+	}
+	planner, err := FrozenPlannerConfiguration(attempt)
+	if err != nil || planner.ContractFacts == nil {
+		return fmt.Errorf("contract facts projection %q has no frozen facts capability", attemptID)
+	}
+	configuration := planner.ContractFacts
+	input, ok := st.attemptInput(attemptID)
+	if !ok || input.RunID != runID || input.AttemptID != attemptID || input.InputHash == "" ||
+		!frozenInputMatchesSnapshot(snapshot, input.Documents) {
+		return fmt.Errorf("contract facts projection %q has no valid frozen input", attemptID)
+	}
+	inputHash, err := frozenInputHash(snapshot, input.Documents)
+	if err != nil || inputHash != input.InputHash {
+		return fmt.Errorf("contract facts projection %q frozen input hash is invalid", attemptID)
+	}
+	candidates := make([]agentflow.ContractFactsMaterialCandidate, 0, len(input.Documents))
+	for _, frozen := range input.Documents {
+		candidate := agentflow.ContractFactsMaterialCandidate{
+			Role: frozen.Document.Role, Ready: frozen.Ready, Frozen: true, Text: frozen.Text,
+		}
+		if frozen.NormalizedHash != nil {
+			candidate.Source = agentflow.ContractFactsSource{
+				DocumentID: frozen.Document.ID, ParsedDocumentID: frozen.ParsedDocumentID,
+				OriginalDigest: frozen.Document.Digest, NormalizedDigest: *frozen.NormalizedHash,
+			}
+		}
+		candidates = append(candidates, candidate)
+	}
+	if err := agentflow.ValidateContractFactsFrozenProjection(projection, attemptID, *configuration, candidates); err != nil {
+		return fmt.Errorf("contract facts projection %q failed frozen-source validation: %w", attemptID, err)
+	}
+	return nil
+}
+
+func executionProjectionSchema(payload []byte) (string, error) {
+	var header struct {
+		SchemaVersion string `json:"schema_version"`
+	}
+	if err := json.Unmarshal(payload, &header); err != nil {
+		return "", fmt.Errorf("execution projection schema is invalid: %w", err)
+	}
+	return header.SchemaVersion, nil
+}
+
+func (s *Store) executionProjectionForAttempt(ctx context.Context, user accounts.User, caseID, runID, attemptID string) (json.RawMessage, bool, error) {
 	ctx = commandContext(ctx, user)
 	if ctx == nil {
-		return nil, false, errors.New("agent review context is nil")
+		return nil, false, errors.New("execution projection context is nil")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
@@ -200,7 +306,7 @@ func (s *Store) AgentReviewForAttempt(ctx context.Context, user accounts.User, c
 		return nil, false, err
 	}
 	if caseItem.TenantID != accounts.Tenant(current) {
-		return nil, false, errors.New("agent review case tenant does not match the trusted user")
+		return nil, false, errors.New("execution projection case tenant does not match the trusted user")
 	}
 	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
@@ -229,7 +335,7 @@ func (s *Store) AgentReviewForAttempt(ctx context.Context, user accounts.User, c
 		return nil, false, err
 	}
 	if sha256Bytes(payload) != digest {
-		return nil, false, fmt.Errorf("agent review %q payload digest mismatch", attemptID)
+		return nil, false, fmt.Errorf("execution projection %q payload digest mismatch", attemptID)
 	}
 	return append(json.RawMessage(nil), payload...), true, nil
 }

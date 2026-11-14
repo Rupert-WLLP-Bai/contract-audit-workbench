@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-03
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -18,8 +18,13 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
+	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/clmenvelope"
+	contractapp "contractaudit/internal/contract/app"
+	clmcontract "contractaudit/internal/contract/model"
 	"contractaudit/internal/fault"
 )
 
@@ -139,12 +144,12 @@ func TestContractDraftCreateRecoverReplayAndReplace(t *testing.T) {
 
 	// Restricted field values stay sealed in every stored representation.
 	var storedContent, storedReceipt string
-	if err := fixture.core.pool.QueryRow(ctx,
+	if err := fixture.environment.harness.pool.QueryRow(ctx,
 		`SELECT content::text FROM clm_contract_drafts WHERE tenant_id=$1 AND contract_id=$2`,
 		admin.TenantID, detail.Summary.ContractID).Scan(&storedContent); err != nil {
 		t.Fatal(err)
 	}
-	if err := fixture.core.pool.QueryRow(ctx,
+	if err := fixture.environment.harness.pool.QueryRow(ctx,
 		`SELECT response_json::text FROM clm_contract_write_receipts
 		 WHERE tenant_id=$1 AND actor_id=$2 AND route_scope=$3 AND idempotency_key=$4`,
 		admin.TenantID, admin.ID, clmRouteCreateDraft, "create-recover-0001").Scan(&storedReceipt); err != nil {
@@ -155,7 +160,7 @@ func TestContractDraftCreateRecoverReplayAndReplace(t *testing.T) {
 			t.Fatal("plaintext bank account reached persistent storage")
 		}
 	}
-	if !strings.Contains(storedContent, "clmv1:") {
+	if !strings.Contains(storedContent, clmenvelope.PrefixV2) {
 		t.Fatal("restricted field was not sealed at rest")
 	}
 }
@@ -213,6 +218,73 @@ func TestContractDraftTenantAndGrantBoundaries(t *testing.T) {
 	}
 }
 
+func TestContractDraftRecoveryRequiresCurrentReadGrant(t *testing.T) {
+	now := time.Now().UTC()
+	queries := contractDraftRecoveryRowsStub{rows: []clmcontract.DraftRecoveryRow{{
+		Record: clmcontract.Aggregate{
+			TenantID: "read-tenant", ContractID: "read-contract", OwnerOrgID: "read-org",
+			AuthorityMode: "native", ContractNumber: contractDraftStringPointer("READ-001"),
+			LifecycleState: "draft", ValidityState: "active", RowVersion: 1,
+			CreatedBy: "draft-owner", CreatedAt: now, UpdatedAt: now,
+		},
+		Name: "授权后可见的草稿标题", Amount: contractDraftStringPointer("987654.00"),
+		Currency: contractDraftStringPointer("CNY"), UpdatedAt: now,
+	}}}
+	reader := accounts.MembershipUser("draft-owner", "合同经办人", "clerk", "read-tenant", "read-org",
+		"draft-test", "owner", []access.Grant{{Role: "case_owner", Scope: "self"}})
+	list := func() ([]clmcontract.ContractDraftSummary, error) {
+		return contractapp.ListMyDrafts(context.Background(), "read-tenant", reader.ID, 25, queries,
+			storeDraftAccess{user: reader})
+	}
+
+	items, err := list()
+	if err != nil || len(items) != 1 || items[0].Name != "授权后可见的草稿标题" ||
+		items[0].Amount == nil || *items[0].Amount != "987654.00" {
+		t.Fatalf("current self Read grant should expose the own draft: items=%+v err=%v", items, err)
+	}
+
+	for _, revokedOrExpired := range []struct {
+		name   string
+		grants []access.Grant
+	}{
+		{name: "revoked", grants: nil},
+		{name: "expired", grants: []access.Grant{{
+			Role: "case_owner", Scope: "self", ExpiresAt: now.Add(-time.Minute),
+		}}},
+	} {
+		t.Run(revokedOrExpired.name, func(t *testing.T) {
+			reader.Grants = revokedOrExpired.grants
+			items, err := list()
+			if err != nil || len(items) != 0 {
+				t.Fatalf("draft without current Read authority was listed: items=%+v err=%v", items, err)
+			}
+			encoded, err := json.Marshal(items)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, forbidden := range []string{"授权后可见的草稿标题", "987654.00"} {
+				if strings.Contains(string(encoded), forbidden) {
+					t.Fatalf("draft list leaked protected summary data: %s", encoded)
+				}
+			}
+		})
+	}
+}
+
+type contractDraftRecoveryRowsStub struct {
+	rows []clmcontract.DraftRecoveryRow
+}
+
+func (r contractDraftRecoveryRowsStub) LoadDraftDetailFacts(context.Context, clmcontract.Aggregate) (clmcontract.DraftDetailFacts, error) {
+	return clmcontract.DraftDetailFacts{}, nil
+}
+
+func (r contractDraftRecoveryRowsStub) ListMyDraftRows(context.Context, string, string, int) ([]clmcontract.DraftRecoveryRow, error) {
+	return r.rows, nil
+}
+
+func contractDraftStringPointer(value string) *string { return &value }
+
 func TestLegacyImportKeepsHistoryUnknownAndVerifiesMaterial(t *testing.T) {
 	fixture, recovery := newContractDraftTestEnv(t)
 	ctx := context.Background()
@@ -246,11 +318,12 @@ func TestLegacyImportKeepsHistoryUnknownAndVerifiesMaterial(t *testing.T) {
 		ExpectedRowVersion: 0, AuthorityMode: "native",
 		SourceRef:             SourceRef{System: "legacy-erp", ID: "HT-2019-077", SourceVersion: "1"},
 		SourceEvidence:        sourceRef,
-		Snapshot:              sampleDraftContent(),
+		Snapshot:              freezeCompleteDraft(),
 		ApprovalHistoryStatus: "evidence_attached",
 		Reason:                "2019年签订的存量合同补录台账",
 		IdempotencyKey:        "legacy-import-0001",
 	}
+	input.Snapshot.Supplier.BankAccount = testRestrictedBankAccount
 	_, err = fixture.core.ImportLegacySignedContract(ctx, admin, input)
 	assertFaultStatus(t, err, 422, "evidence_attached requires materials")
 
@@ -295,7 +368,7 @@ func TestLegacyImportKeepsHistoryUnknownAndVerifiesMaterial(t *testing.T) {
 	var historyStatus string
 	var historicalRaw string
 	var rounds int
-	if err := fixture.core.pool.QueryRow(ctx,
+	if err := fixture.environment.harness.pool.QueryRow(ctx,
 		`SELECT approval_history_status, historical_approval_materials::text FROM clm_legacy_imports
 		 WHERE tenant_id=$1 AND contract_id=$2`, admin.TenantID, detail.Summary.ContractID).
 		Scan(&historyStatus, &historicalRaw); err != nil {
@@ -304,7 +377,7 @@ func TestLegacyImportKeepsHistoryUnknownAndVerifiesMaterial(t *testing.T) {
 	if historyStatus != "unknown" || historicalRaw != "[]" {
 		t.Fatalf("unknown history mutated: %s %s", historyStatus, historicalRaw)
 	}
-	if err := fixture.core.pool.QueryRow(ctx,
+	if err := fixture.environment.harness.pool.QueryRow(ctx,
 		`SELECT count(*) FROM clm_approval_rounds WHERE tenant_id=$1 AND contract_id=$2`,
 		admin.TenantID, detail.Summary.ContractID).Scan(&rounds); err != nil {
 		t.Fatal(err)
@@ -313,7 +386,7 @@ func TestLegacyImportKeepsHistoryUnknownAndVerifiesMaterial(t *testing.T) {
 		t.Fatalf("legacy import fabricated %d approval rounds", rounds)
 	}
 	var caseLinks, events int
-	if err := fixture.core.pool.QueryRow(ctx,
+	if err := fixture.environment.harness.pool.QueryRow(ctx,
 		`SELECT count(*) FROM clm_contract_cases WHERE tenant_id=$1 AND contract_id=$2 AND case_id=$3`,
 		admin.TenantID, detail.Summary.ContractID, fixture.caseID).Scan(&caseLinks); err != nil {
 		t.Fatal(err)
@@ -321,7 +394,7 @@ func TestLegacyImportKeepsHistoryUnknownAndVerifiesMaterial(t *testing.T) {
 	if caseLinks != 1 {
 		t.Fatalf("source case link count %d", caseLinks)
 	}
-	if err := fixture.core.pool.QueryRow(ctx,
+	if err := fixture.environment.harness.pool.QueryRow(ctx,
 		`SELECT count(*) FROM clm_business_events e JOIN clm_outbox_delivery o
 		 ON o.tenant_id=e.tenant_id AND o.event_id=e.event_id
 		 WHERE e.tenant_id=$1 AND e.contract_id=$2 AND e.event_type=$3`,
@@ -371,7 +444,7 @@ func TestLegacyImportKeepsHistoryUnknownAndVerifiesMaterial(t *testing.T) {
 		t.Fatalf("evidence_attached must not warn: %v", withHistoryDetail.Warnings)
 	}
 	var historicalCount int
-	if err := fixture.core.pool.QueryRow(ctx,
+	if err := fixture.environment.harness.pool.QueryRow(ctx,
 		`SELECT jsonb_array_length(historical_approval_materials) FROM clm_legacy_imports
 		 WHERE tenant_id=$1 AND contract_id=$2`, admin.TenantID, withHistoryDetail.Summary.ContractID).
 		Scan(&historicalCount); err != nil {
@@ -382,7 +455,7 @@ func TestLegacyImportKeepsHistoryUnknownAndVerifiesMaterial(t *testing.T) {
 	}
 
 	var snapshotText string
-	if err := fixture.core.pool.QueryRow(ctx,
+	if err := fixture.environment.harness.pool.QueryRow(ctx,
 		`SELECT r.snapshot::text FROM clm_contract_revisions r
 		 WHERE r.tenant_id=$1 AND r.contract_id=$2`,
 		admin.TenantID, detail.Summary.ContractID).Scan(&snapshotText); err != nil {
@@ -436,7 +509,7 @@ func TestContractDraftReceiptScopeIsolation(t *testing.T) {
 		t.Fatal("receipt keys leaked across tenants")
 	}
 	var responseStatus int
-	if err := fixture.core.pool.QueryRow(ctx,
+	if err := fixture.environment.harness.pool.QueryRow(ctx,
 		`SELECT response_status FROM clm_contract_write_receipts
 		 WHERE tenant_id=$1 AND actor_id=$2 AND route_scope=$3 AND idempotency_key=$4`,
 		admin.TenantID, admin.ID, clmRouteCreateDraft, "replay-scope-0001").Scan(&responseStatus); err != nil {
@@ -484,7 +557,8 @@ func TestLegacyImportPinsReferenceChainAndCheckReusesOriginalEndpoint(t *testing
 		SHA256: hex.EncodeToString(sourceDigest[:]), Purpose: "signed_contract",
 	}
 
-	snapshot := sampleDraftContent()
+	snapshot := freezeCompleteDraft()
+	snapshot.Supplier.BankAccount = testRestrictedBankAccount
 	snapshot.Contract.RelatedParties = []PartyRef{{
 		PartyID: subject.SubjectID, Role: "buyer", NameSnapshot: bound.DisplayName, BindingID: bound.BindingID,
 	}}
@@ -512,7 +586,7 @@ func TestLegacyImportPinsReferenceChainAndCheckReusesOriginalEndpoint(t *testing
 	}
 
 	var storedSnapshot string
-	if err := fixture.core.pool.QueryRow(ctx,
+	if err := fixture.environment.harness.pool.QueryRow(ctx,
 		`SELECT snapshot::text FROM clm_contract_revisions
 		 WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3`,
 		admin.TenantID, detail.Summary.ContractID, *detail.CurrentRevisionID).Scan(&storedSnapshot); err != nil {
