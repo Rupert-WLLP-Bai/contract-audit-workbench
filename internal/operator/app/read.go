@@ -85,8 +85,9 @@ type MappingLineageRow struct {
 }
 
 type MappingBindingRow struct {
-	Payload      model.ServiceObjectMappingBindingPayload
-	ResponseBody []byte
+	RequestSHA256 string
+	Payload       model.ServiceObjectMappingBindingPayload
+	ResponseBody  []byte
 }
 
 type ReadRepository interface {
@@ -365,12 +366,11 @@ func readResolvedMapping(ctx context.Context, repo ReadRepository, id ReadIdenti
 	if !found {
 		return out, false, fault.NotFound("没有找到对象映射版本")
 	}
-	out.binding = row.Payload
-	if len(row.ResponseBody) > 0 {
-		if err := json.Unmarshal(row.ResponseBody, &out.binding); err != nil {
-			return out, false, fault.New(500, "integrity_error", "对象映射响应回执损坏")
-		}
+	record, err := DecodeBindingRecord(row, "对象映射响应回执损坏")
+	if err != nil {
+		return out, false, err
 	}
+	out.binding = record.Value
 	out.identity, err = ReadServiceObjectVersionExact(ctx, repo, id, out.head.ServiceObjectID, out.binding.ObjectVersion)
 	if err != nil {
 		return out, false, err

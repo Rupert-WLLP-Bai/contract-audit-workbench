@@ -174,7 +174,6 @@ func (p *Reads) ReadMappingLineage(ctx context.Context, id app.ReadIdentity, map
 
 func (p *Reads) ReadMappingBinding(ctx context.Context, id app.ReadIdentity, bindingVersion string) (app.MappingBindingRow, bool, error) {
 	var row app.MappingBindingRow
-	var privateRequestSHA string
 	err := p.tx.QueryRow(ctx, `SELECT case_id,binding_id,binding_version,status,contract_object,external_object,
 		source_system,confirmed_by,confirmed_at,effective_from,effective_until,created_at,request_sha256,
 		COALESCE(mapping_id,''),COALESCE(mapping_version,0),COALESCE(service_object_id,''),COALESCE(object_version,0),COALESCE(association_version,0),response_body
@@ -182,7 +181,7 @@ func (p *Reads) ReadMappingBinding(ctx context.Context, id app.ReadIdentity, bin
 		id.TenantID, id.OrgID, id.CaseID, bindingVersion).Scan(&row.Payload.CaseID, &row.Payload.BindingID, &row.Payload.Version,
 		&row.Payload.Status, &row.Payload.ContractObject, &row.Payload.ExternalObject, &row.Payload.SourceSystem,
 		&row.Payload.ConfirmedBy, &row.Payload.ConfirmedAt, &row.Payload.EffectiveFrom, &row.Payload.EffectiveUntil,
-		&row.Payload.CreatedAt, &privateRequestSHA, &row.Payload.MappingID, &row.Payload.MappingVersion,
+		&row.Payload.CreatedAt, &row.RequestSHA256, &row.Payload.MappingID, &row.Payload.MappingVersion,
 		&row.Payload.ServiceObjectID, &row.Payload.ObjectVersion, &row.Payload.AssociationVersion, &row.ResponseBody)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return app.MappingBindingRow{}, false, nil
