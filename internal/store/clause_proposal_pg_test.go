@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	contract "contractaudit/internal/contract/model"
 )
@@ -37,6 +38,19 @@ func TestClauseProposalRestrictedRoleLifecycle(t *testing.T) {
 	accepted, err := execution.StartReviewAsync(ctx, actor, fixture.caseID)
 	if err != nil {
 		t.Fatalf("accept review: %v", err)
+	}
+	claim, err := execution.ClaimNextJob(ctx, "clause-proposal-worker", time.Minute)
+	if err != nil || claim.JobID != accepted.JobID {
+		t.Fatalf("claim review job: %+v %v", claim, err)
+	}
+	execution.setClaim(claim)
+	defer execution.clearClaim(claim)
+	claimCtx := withExecutionClaim(ctx, claim)
+	if err := execution.markAttemptStarted(claimCtx, claim.RunID, claim.AttemptID); err != nil {
+		t.Fatalf("start review attempt: %v", err)
+	}
+	if _, err := execution.prepareAttempt(claimCtx, claim.RunID, claim.AttemptID, execution.currentModels()); err != nil {
+		t.Fatalf("freeze review attempt: %v", err)
 	}
 	var documentsJSON []byte
 	if err := fixture.environment.harness.pool.QueryRow(ctx, `SELECT documents FROM review_attempt_inputs WHERE tenant_id=$1 AND run_id=$2 AND attempt_id=$3`, actor.TenantID, accepted.RunID, accepted.AttemptID).Scan(&documentsJSON); err != nil {
