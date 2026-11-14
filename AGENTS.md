@@ -59,6 +59,8 @@ Valkey、Temporal、Kafka、独立搜索引擎、服务网格和微前端不进�
 
 ## 检查节奏
 
+当前优先验收单机关键业务闭环：登录与授权、合同/案件建档、材料解析、冻结审查与引用、人工处理、整改、报告，以及合同审批、履约和付款资格。先完成本批实现，再复用现有确定性旅程及必要定点检查；明确区分确定性夹具、真实模型和实际部署证据。多节点、分布式故障、扩缩容及 K3D 暂缓测试，保留在原专项，不作为单机功能合并前置。
+
 - PR 到 `main` 只跑 `pr-fast-gate`：`make check-fast` 从 `BASE_REF`（默认 `origin/main`，PR 使用实际目标分支 SHA，也可用 `CAW_FAST_BASE`）的 merge-base 开始，连同本地未提交和新增文件计算差异，正确处理删除、重命名和带空格路径；只跑受影响范围的 Python、Go、web 检查，失败返回非零。
 - 快速 Go 只做格式、编译和受影响无数据库包单测，不跑 `go vet`。`--plan` 的 `go`/`web`/`python`/`database`/`poppler`/`legal_assets` 决定条件准备；只有 `database=true` 才启动 PostgreSQL 18，并用 `scripts/provision_test_db.sh` 做鉴权、迁移、冻结证据等敏感路径定点检查；Poppler 和法律资产各按对应输出准备。快速路径不跑浏览器。
 - 完整五阶段（static、go、web、coverage、browser）只由 `quality.yml` 的 `workflow_dispatch` 手动入口执行；入口固定目标 SHA，所有阶段都是 `success` 才算 PASS，`skipped`、`cancelled` 或未运行的阶段不能冒充完整 PASS。

@@ -70,6 +70,20 @@ go run ./cmd/legalstatuscheck -capture-dir /tmp/legal-status-<ts>
 
 在线模式只请求 `internal/legalnorm` 登记的 HTTPS 端点，拒绝跨主机重定向；响应限制 8 MiB，失败重试一次。原始响应和观察元数据输出到仓外目录。它不会自动导入新法律来源版本。核对命令的 `decision`（例如 `UNCHANGED`、`CHANGED_NEW_CAPTURE_REQUIRED`、`CAPTURE_FAILED`）不是验收状态。
 
+## 单机关键流程
+
+日常优先打通同一主机上的业务闭环。应用可以使用本机的独立服务进程；单机通过不代表多副本、跨节点或高可用已验收。分布式故障、扩缩容和 K3D 按专项后置，不能阻塞已完成的单机功能修复。
+
+已有审查主旅程可单独运行：
+
+```bash
+go test -tags browser -run '^TestBrowserTelecomC1BFullJourney$' -count=1 -v ./e2e
+```
+
+此旅程使用确定性模型夹具与本地测试服务，覆盖登录、材料、冻结审查、人工决定、报告、整改和复审；它验证业务与界面衔接，不证明真实模型质量。需要已安装的 Chromium 和 Web 依赖，产物由 `CAW_DELIVERY_DIR` 指向仓外。真实模型复用相同源码与配置的已有实测，只有相关修复或未覆盖输入才追加定点调用。
+
+合同审批、交付验收、付款资格和提醒按本批变动补必要的授权/数据库定点证据及页面操作。付款资格通过或读取回执不等于实际付款。保留每次源码、配置、模型身份和原始结果，避免把不同范围的局部结果合为整体验收。
+
 ## 固定候选完整检查
 
 完整 `static`、`go`、`web`、`coverage`、`browser` 五阶段由 GitHub Actions 的 `workflow_dispatch` 执行。入口固定目标 SHA；五个阶段全部 `success` 才是完整 PASS。`skipped`、`cancelled`、失败和未运行阶段都不能算完整通过。普通 `main` 推送不自动执行完整五阶段。
