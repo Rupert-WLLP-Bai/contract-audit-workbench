@@ -108,7 +108,7 @@ func TestAgentStepCheckpointTakeoverReuseAndFences(t *testing.T) {
 	if err != nil || !execute || started.Status != steps.StatusStarted {
 		t.Fatalf("begin first generation step: record=%+v execute=%v err=%v", started, execute, err)
 	}
-	observedAt := time.Now().UTC()
+	observedAt := time.Now().UTC().Truncate(time.Microsecond)
 	outcome := steps.Outcome{Status: steps.StatusSucceeded, Payload: []byte(`{"finding":"bounded"}`),
 		ObservedAt: observedAt, ElapsedMS: 17, CallsConsumed: 1, Usage: steps.Usage{Status: steps.UsageUnknown}}
 	if err := journal.Finish(claimCtx, identity, outcome); err != nil {
@@ -188,7 +188,11 @@ func TestAgentStepCheckpointTakeoverReuseAndFences(t *testing.T) {
 		PlannerID: "planner-test", PlannerConfigurationID: "planner-config-test", ToolCatalogVersion: "catalog-test",
 		ToolCatalogSHA256: strings.Repeat("a", 64), ToolID: "test.read", ToolVersion: "v1",
 		ToolConfigurationSHA256: strings.Repeat("b", 64), InputSHA256: strings.Repeat("d", 64),
-	}); !errors.Is(err, errAttemptTerminal) {
+	}); !errors.Is(err, errAttemptTerminal) && !errors.Is(err, ErrToolScopeUnavailable) {
 		t.Fatalf("terminal attempt accepted a new Agent step: %v", err)
+	}
+	var terminalSteps int
+	if err := fixture.environment.harness.pool.QueryRow(ctx, `SELECT count(*) FROM execution_agent_step_checkpoints WHERE attempt_id=$1 AND step_id='tool/after-terminal'`, fixture.attemptID).Scan(&terminalSteps); err != nil || terminalSteps != 0 {
+		t.Fatalf("terminal attempt persisted a new Agent step: count=%d err=%v", terminalSteps, err)
 	}
 }

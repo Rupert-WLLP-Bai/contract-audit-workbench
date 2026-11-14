@@ -103,7 +103,9 @@ func (journal *agentStepJournal) withAuthorizedTransaction(ctx context.Context, 
 	}
 	var currentState string
 	var currentCaseID string
-	if err := tx.QueryRow(ctx, `SELECT state,case_id FROM review_attempts WHERE id=$1 AND run_id=$2 FOR UPDATE`,
+	if err := tx.QueryRow(ctx, `SELECT a.state,r.case_id FROM review_attempts a
+		JOIN review_runs r ON r.id=a.run_id AND r.tenant_id=a.tenant_id AND r.org_id=a.org_id
+		WHERE a.id=$1 AND a.run_id=$2 FOR UPDATE OF a`,
 		current.AttemptID, current.RunID).Scan(&currentState, &currentCaseID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errAttemptMissing
