@@ -320,3 +320,18 @@ Execution 拥有上述输入/输出的纯身份与哈希规则；既有 standard
 审查 context 继续按 object ID 排序读取 current head→exact identity→optional exact association→mapping pin 并校验一致性，按明确业务时间及 [from,until) 规划，不能用服务器时钟代替 businessAt。原 no source 且无 governed knowledge 的 nil、受理前 inventory_pending/Complete=false、unresolved原因与精确候选范围保留。Store 仅将 typed context/hash 映射入原 RunSnapshot，受理/Retry 沿原真实前态 clone/append-only/stateDelta/persist 与 run/attempt/snapshot/job/Outbox/receipt 同事务；Operator PG 不写 Execution 表，旧 attempt 不按当前对象或解析重算。
 
 必要 SOURCE 覆盖 exact parse、撤权、版本/association/双head/receipt 已写后的唯一失败与完整行回滚、同键恢复，以及接纳 snapshot/job/outbox/receipt 的真实完整前置。schema45、五个DB服务角色、RLS、预算/租约/Outbox与PG权威保持；synthetic示例不等于真实来源验证。元信息与所有测试、编译、门禁、数据库、app/browser、真实模型/OCR仍待整轮源码冻结后集中执行，当前NOT_RUN。
+
+
+### #309 Execution 冻结值的具体接缝
+
+状态：采纳，冻结值抽取前补充。依据前置 edbb4ba 的实际 Run/Attempt、state.go/parsing.go/execution.go 和已落地 Operator 纯 context 值，不将现有 standard pipeline 的简化值替换持久 frozen DTO。只建立有真实数据和规则的 internal/execution/model；Store 按原直接字段、类型、tag/顺序及隐藏标记做具体 alias，不迁行查询、事务、当前权限或整个 Execution Store。
+
+Execution model 拥有 Run、Attempt、ReviewScopeIdentity、AttemptParseSelection、FrozenMaterialSelection、冻结 input/output 的 Finding/Anchor/SeveritySource/ConstraintEval/EvaluationEvidence 等具体值。原 ExperienceEvidenceRef 是相同冻结引用值时用直接 alias 保持原公开形状，不另镜像第二份字段。RunSnapshot 只引入三个具名静态值槽 RunSnapshot[PartyItem,KnowledgeSnapshot,OperatorContext]，仍按旧字段位置保存 party slice、knowledge pointer、operator context pointer；Store 固定实例化既有 Subject、Knowledge+Legal 和 Operator model 值。FrozenDocument[OriginalDocument] 与 AttemptInput[OriginalDocument] 保留原件为首字段、完整原字段/IR/provenance，Store 固定 alias 到自己的 Document；不引入任意 map、插件、无类型 payload 或跨域 model 循环。
+
+原件数据仍由 Document/Store 边界拥有，Document 原结构、字段、JSON与StorageBackend隐藏标记不变。准许 Store 为自有 Document 增一个无IO、无授权含义的 OriginalProof() 字段投影，满足 Execution model 的小接口，返回 OriginalDocumentProof{ID,Digest,TenantID,OrgID,CaseID,Role,CreatedAt}，七项原值逐字拷贝，无规范化。该 proof 是读取证明所需标识，不替代或写进持久 FrozenDocument；JSON仍编码完整具体 Document。SelectionHash 只读 proof.ID，AttemptSelectionsMatchFrozen 只读 proof.ID/Digest；Operator 后续候选读取该明确 proof 与必要 frozen material/parse/ready/normalizedHash 值，不能把 proof 当grant或把全部原件改放Execution。
+
+只抽 frozen input v1/v2 canonical hash、input/snapshot/selection匹配、终态/hash存在性纯谓词、ordered output hash和 frozen RulePack纯scope/identity规则。v1/v2 envelope、omitempty/nil/空数组、config version/digest、artifact digest为空的历史兼容、所有旧JSON字节/SHA保持。scopeSnapshot/engine mapping、原 state 的精确run/attempt/snapshot/selection/finding/evaluation选择、Document artifact/original证明IO、agent-review同事务SQL仍Store窄桥；各旧完整validator及其消费者继续原事务/错误映射，不用单个verified结果替代分阶段事实。
+
+兼容排序副作用单独约定：旧 frozenInputHash 在 scopeSnapshot 后按值复制snapshot但对两组ID的共享slice原地sort，部分调用者可能观察到同次流程顺序。Store旧同名forwarder继续在原位置执行这两次sort以保持调用者行为；新的纯model计算在自有拷贝排序，保留同样canonical bytes与document输入次序，不通过本次迁移修改旧acceptance的持久行或扩大纯函数写入。Finding Version清零用于输出hash时同样只处理用于计算的拷贝，不引入对旧人工决定/冻结输出的写回。
+
+实际新增Execution model路径在真实接线后由root登记到已有Execution领域，Operator仍待实际纵切收口再登记；不新增服务角色/表/schema或互相导入app/PG。必要SOURCE固定v1/v2历史bytes、静态槽实例化的wire、精确selection/空artifact兼容、output人工Version排除及model不改输入；所有执行仍NOT_RUN，待整轮源码冻结后统一验收。
