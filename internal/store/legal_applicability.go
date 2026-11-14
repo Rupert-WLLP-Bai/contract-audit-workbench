@@ -12,10 +12,7 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"strings"
 	"time"
 
@@ -24,164 +21,37 @@ import (
 	"contractaudit/internal/fault"
 	legalApp "contractaudit/internal/legal/app"
 	legalModel "contractaudit/internal/legal/model"
+	legalPostgres "contractaudit/internal/legal/postgres"
+	platformpostgres "contractaudit/internal/platform/postgres"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
-var legalApplicabilityDimensions = map[string]map[string]bool{
-	"buyer_kind":             enumLegalValues("state_organ", "institution", "social_organization", "enterprise", "natural_person"),
-	"seller_kind":            enumLegalValues("state_organ", "institution", "social_organization", "enterprise", "natural_person"),
-	"buyer_enterprise_size":  enumLegalValues("large", "sme", "not_enterprise"),
-	"seller_enterprise_size": enumLegalValues("large", "sme", "not_enterprise"),
-	"funding_kind":           enumLegalValues("fiscal", "mixed_with_fiscal", "state_owned_non_fiscal", "private"),
-	"procurement_scope":      enumLegalValues("centralized_catalog", "above_limit", "catalog_and_above_limit", "outside_catalog_and_below_limit"),
-	"project_kind":           enumLegalValues("construction", "construction_related_goods", "construction_related_services", "standalone_goods", "standalone_services"),
-	"contract_clause_kind":   enumLegalValues("standard_form", "negotiated"),
-	"transaction_kind":       enumLegalValues("civil_contract", "non_civil"),
-}
-
-var legalApplicabilityUnknownReasons = enumLegalValues("conflicting_evidence", "uncertain_evidence", "unsupported_basis", "insufficient_evidence", "expired_basis", "stale_party_context", "party_scope_ambiguous", "historical_transition_basis_required")
-
-func enumLegalValues(values ...string) map[string]bool {
-	result := make(map[string]bool, len(values))
-	for _, value := range values {
-		result[value] = true
-	}
-	return result
-}
-
 type LegalApplicabilityPartyPin = legalModel.LegalApplicabilityPartyPin
-
-type LegalApplicabilityFactInput struct {
-	ExpectedVersion int64                      `json:"expected_version"`
-	IdempotencyKey  string                     `json:"idempotency_key"`
-	Dimension       string                     `json:"dimension"`
-	Status          string                     `json:"status"`
-	Value           string                     `json:"value,omitempty"`
-	UnknownReason   string                     `json:"unknown_reason,omitempty"`
-	TemporalBasis   string                     `json:"temporal_basis"`
-	ValidFrom       string                     `json:"valid_from,omitempty"`
-	ValidUntil      string                     `json:"valid_until,omitempty"`
-	BasisNote       string                     `json:"basis_note"`
-	BasisRefs       json.RawMessage            `json:"basis_refs"`
-	Party           LegalApplicabilityPartyPin `json:"party,omitempty"`
-}
-
-type LegalApplicabilityResolutionInput struct {
-	BusinessAt       string `json:"business_at"`
-	EvidenceCutoffAt string `json:"evidence_cutoff_at"`
-}
+type LegalApplicabilityFactInput = legalModel.LegalApplicabilityFactInput
+type LegalApplicabilityResolutionInput = legalModel.LegalApplicabilityResolutionInput
 
 type LegalApplicabilityResolvedFact = legalModel.LegalApplicabilityResolvedFact
 type LegalApplicabilityFactSet = legalModel.LegalApplicabilityFactSet
 type LegalApplicabilityFactVersion = legalModel.LegalApplicabilityFactVersion
 
 func normalizeLegalApplicabilityInput(input LegalApplicabilityFactInput, createdAt time.Time, verifiedBasisRefs json.RawMessage, basisObtainedAt *time.Time) (LegalApplicabilityFactVersion, error) {
-	values, ok := legalApplicabilityDimensions[input.Dimension]
-	if !ok {
-		return LegalApplicabilityFactVersion{}, fault.Invalid("法律适用事实维度无效")
+	fact, err := legalModel.NormalizeLegalApplicabilityInput(input, createdAt, verifiedBasisRefs, basisObtainedAt)
+	if err != nil {
+		return LegalApplicabilityFactVersion{}, fault.Invalid(err.Error())
 	}
-	if input.Status != "established" && input.Status != "unknown" {
-		return LegalApplicabilityFactVersion{}, fault.Invalid("法律适用事实状态无效")
-	}
-	if strings.TrimSpace(input.BasisNote) == "" || len([]rune(input.BasisNote)) > 2000 {
-		return LegalApplicabilityFactVersion{}, fault.Invalid("法律适用事实必须说明依据")
-	}
-	if createdAt.Location() != time.UTC {
-		createdAt = createdAt.UTC()
-	}
-	createdAt = createdAt.Truncate(time.Microsecond)
-	validFrom, validUntil := createdAt, (*time.Time)(nil)
-	switch input.TemporalBasis {
-	case "current_state":
-		if input.ValidFrom != "" || input.ValidUntil != "" {
-			return LegalApplicabilityFactVersion{}, fault.Invalid("当前状态的有效起点由服务端记录，不接受回填日期")
-		}
-	case "historical_interval":
-		var err error
-		validFrom, err = parseLegalFactTime(input.ValidFrom)
-		if err != nil {
-			return LegalApplicabilityFactVersion{}, fault.Invalid("历史事实必须提供明确有效起点")
-		}
-		until, err := parseLegalFactTime(input.ValidUntil)
-		if err != nil || !validFrom.Before(until) {
-			return LegalApplicabilityFactVersion{}, fault.Invalid("历史事实必须提供晚于起点的排他有效终点")
-		}
-		validFrom = validFrom.Truncate(time.Microsecond)
-		until = until.Truncate(time.Microsecond)
-		validUntil = &until
-		if len(verifiedBasisRefs) == 0 || string(verifiedBasisRefs) == "[]" {
-			return LegalApplicabilityFactVersion{}, fault.Invalid("历史事实必须引用已核验的材料依据")
-		}
-	default:
-		return LegalApplicabilityFactVersion{}, fault.Invalid("法律适用事实时间依据无效")
-	}
-	if basisObtainedAt != nil {
-		obtained := basisObtainedAt.UTC().Truncate(time.Microsecond)
-		basisObtainedAt = &obtained
-		if obtained.After(createdAt) {
-			return LegalApplicabilityFactVersion{}, fault.Invalid("依据取得时间不能晚于事实记录时间")
-		}
-	}
-	value, unknownReason := strings.TrimSpace(input.Value), strings.TrimSpace(input.UnknownReason)
-	switch input.Status {
-	case "established":
-		if !values[value] || unknownReason != "" || len(verifiedBasisRefs) == 0 || string(verifiedBasisRefs) == "[]" {
-			return LegalApplicabilityFactVersion{}, fault.Invalid("已确认事实必须有枚举值和已核验的材料依据")
-		}
-	case "unknown":
-		if value != "" || !legalApplicabilityUnknownReasons[unknownReason] {
-			return LegalApplicabilityFactVersion{}, fault.Invalid("未知事实必须使用受控原因且不能携带结论值")
-		}
-		if unknownReason != "insufficient_evidence" && (len(verifiedBasisRefs) == 0 || string(verifiedBasisRefs) == "[]") {
-			return LegalApplicabilityFactVersion{}, fault.Invalid("该未知原因必须保留已核验的材料依据")
-		}
-	}
-	party := input.Party
-	party.Side, party.BindingID, party.SubjectID, party.ScopeNote = strings.TrimSpace(party.Side), strings.TrimSpace(party.BindingID), strings.TrimSpace(party.SubjectID), strings.TrimSpace(party.ScopeNote)
-	partyDimension := input.Dimension == "buyer_kind" || input.Dimension == "buyer_enterprise_size" || input.Dimension == "seller_kind" || input.Dimension == "seller_enterprise_size"
-	if !partyDimension {
-		if party != (LegalApplicabilityPartyPin{}) {
-			return LegalApplicabilityFactVersion{}, fault.Invalid("非主体维度不能绑定买方或卖方主体")
-		}
-	} else {
-		anyPin := party.Side != "" || party.BindingID != "" || party.BindingVersion != 0 || party.SubjectID != "" || party.SubjectVersion != 0 || party.ScopeNote != ""
-		allPin := party.Side != "" && party.BindingID != "" && party.BindingVersion > 0 && party.SubjectID != "" && party.SubjectVersion > 0 && party.ScopeNote != ""
-		if anyPin && !allPin {
-			return LegalApplicabilityFactVersion{}, fault.Invalid("主体事实的关联版本必须全部提供或全部省略")
-		}
-		expectedSide := "buyer"
-		if strings.HasPrefix(input.Dimension, "seller_") {
-			expectedSide = "seller"
-		}
-		if allPin && party.Side != expectedSide {
-			return LegalApplicabilityFactVersion{}, fault.Invalid("事实主体侧与维度不一致")
-		}
-		if input.Status == "established" && !allPin {
-			return LegalApplicabilityFactVersion{}, fault.Invalid("已确认买卖方事实必须固定案件主体及版本")
-		}
-	}
-	refs, err := canonicalRawJSON(verifiedBasisRefs)
-	if err != nil || len(refs) == 0 {
-		return LegalApplicabilityFactVersion{}, fault.Invalid("事实依据格式无效")
-	}
-	return LegalApplicabilityFactVersion{
-		Dimension: input.Dimension, Status: input.Status, Value: value, UnknownReason: unknownReason,
-		TemporalBasis: input.TemporalBasis, ValidFrom: validFrom, ValidUntil: validUntil,
-		BasisObtainedAt: basisObtainedAt, BasisNote: strings.TrimSpace(input.BasisNote), BasisRefs: refs,
-		BasisSHA256: sha256Bytes(refs), Party: party, CreatedAt: createdAt,
-	}, nil
+	return fact, nil
 }
 
 func parseLegalFactTime(raw string) (time.Time, error) {
-	if raw == "" || strings.TrimSpace(raw) != raw {
-		return time.Time{}, errors.New("time missing or padded")
-	}
-	parsed, err := time.Parse(time.RFC3339Nano, raw)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return parsed.UTC().Truncate(time.Microsecond), nil
+	return legalModel.ParseFactTime(raw)
+}
+
+func legalApplicabilityBasisProvided(raw json.RawMessage) (bool, error) {
+	return legalModel.LegalApplicabilityBasisProvided(raw)
+}
+
+func legalApplicabilityRequestDigest(tenantID, orgID, caseID, actorID, key string, input LegalApplicabilityFactInput) (string, error) {
+	return legalModel.LegalApplicabilityRequestDigest(tenantID, orgID, caseID, actorID, key, input)
 }
 
 func legalFactBasisObtainedAt(st state, caseItem Case, refs json.RawMessage) (*time.Time, error) {
@@ -212,48 +82,6 @@ func legalFactBasisObtainedAt(st state, caseItem Case, refs json.RawMessage) (*t
 		return nil, fault.Invalid("材料依据没有对应的服务端记录")
 	}
 	return &latest, nil
-}
-
-func legalApplicabilityRequestDigest(tenantID, orgID, caseID, actorID, key string, input LegalApplicabilityFactInput) (string, error) {
-	canonicalInput := input
-	hasBasis, err := legalApplicabilityBasisProvided(input.BasisRefs)
-	if err != nil {
-		return "", err
-	}
-	if !hasBasis {
-		canonicalInput.BasisRefs = json.RawMessage("[]")
-	} else {
-		refs, err := canonicalRawJSON(input.BasisRefs)
-		if err != nil {
-			return "", err
-		}
-		canonicalInput.BasisRefs = refs
-	}
-	canonical, err := json.Marshal(struct {
-		TenantID string                      `json:"tenant_id"`
-		OrgID    string                      `json:"org_id"`
-		CaseID   string                      `json:"case_id"`
-		ActorID  string                      `json:"actor_id"`
-		Key      string                      `json:"idempotency_key"`
-		Input    LegalApplicabilityFactInput `json:"input"`
-	}{tenantID, orgID, caseID, actorID, key, canonicalInput})
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(canonical)
-	return hex.EncodeToString(sum[:]), nil
-}
-
-func legalApplicabilityBasisProvided(raw json.RawMessage) (bool, error) {
-	trimmed := strings.TrimSpace(string(raw))
-	if trimmed == "" || trimmed == "null" {
-		return false, nil
-	}
-	canonical, err := canonicalRawJSON(raw)
-	if err != nil {
-		return false, err
-	}
-	return string(canonical) != "[]", nil
 }
 
 // RecordLegalApplicabilityFact appends a human-confirmed fact version. The
@@ -306,22 +134,13 @@ func (s *Store) RecordLegalApplicabilityFact(ctx context.Context, user accounts.
 	if !authorizeCase(caseItem, current, access.Manage) {
 		return LegalApplicabilityFactVersion{}, fault.Forbidden("当前授权不能确认该案件的法律适用事实")
 	}
-	digest, err := legalApplicabilityRequestDigest(accounts.Tenant(current), caseItem.OwnerOrgID, caseID, current.ID, input.IdempotencyKey, input)
+	id := legalApp.RecordIdentity{TenantID: accounts.Tenant(current), OrgID: caseItem.OwnerOrgID, CaseID: caseID, ActorID: current.ID, Issuer: current.Issuer, Subject: current.Subject}
+	repo := legalPostgres.NewApplicability(platformpostgres.Bind(tx))
+	stored, digest, found, err := legalApp.FindRecordReplay(ctx, repo, id, input)
 	if err != nil {
 		return LegalApplicabilityFactVersion{}, err
 	}
-	var replayVersion int64
-	err = tx.QueryRow(ctx, `SELECT version FROM case_legal_applicability_fact_versions
-		WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND dimension=$4 AND actor_user_id=$5 AND idempotency_key=$6`,
-		accounts.Tenant(current), caseItem.OwnerOrgID, caseID, input.Dimension, current.ID, input.IdempotencyKey).Scan(&replayVersion)
-	if err == nil {
-		stored, loadErr := loadLegalApplicabilityVersion(ctx, tx, accounts.Tenant(current), caseItem.OwnerOrgID, caseID, input.Dimension, replayVersion)
-		if loadErr != nil {
-			return LegalApplicabilityFactVersion{}, loadErr
-		}
-		if stored.RequestDigest != digest {
-			return LegalApplicabilityFactVersion{}, fault.Conflict("同一幂等键不能用于不同法律适用事实")
-		}
+	if found {
 		if !authorizeCase(caseItem, current, access.Manage) {
 			return LegalApplicabilityFactVersion{}, fault.Forbidden("当前授权不能读取该案件的法律适用事实")
 		}
@@ -330,80 +149,13 @@ func (s *Store) RecordLegalApplicabilityFact(ctx context.Context, user accounts.
 		}
 		return stored, nil
 	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return LegalApplicabilityFactVersion{}, err
-	}
 	if err := businessWritable(caseItem); err != nil {
 		return LegalApplicabilityFactVersion{}, err
 	}
-	stateSnapshot, err := loadState(ctx, tx, true)
+	facts := legalRecordFacts{tx: tx, user: current, item: caseItem}
+	fact, err := legalApp.RecordNewFact(ctx, repo, facts, facts, legalRecordClock{}, id, input, digest)
 	if err != nil {
 		return LegalApplicabilityFactVersion{}, err
-	}
-	caseFromState, ok := stateSnapshot.caseByID(caseID)
-	if !ok || caseFromState.TenantID != accounts.Tenant(current) || caseFromState.OwnerOrgID != caseItem.OwnerOrgID {
-		return LegalApplicabilityFactVersion{}, fault.NotFound("没有找到对应案件")
-	}
-	refs := json.RawMessage("[]")
-	hasBasis, err := legalApplicabilityBasisProvided(input.BasisRefs)
-	if err != nil {
-		return LegalApplicabilityFactVersion{}, fault.Invalid("法律适用事实依据格式无效")
-	}
-	if hasBasis {
-		verifiedRefs, verifyErr := validateSubjectBasisRefs(stateSnapshot, &caseFromState, input.BasisRefs)
-		if verifyErr != nil {
-			return LegalApplicabilityFactVersion{}, fault.Invalid("法律适用事实依据不是本案已冻结的材料原文")
-		}
-		refs = verifiedRefs
-	}
-	obtainedAt, err := legalFactBasisObtainedAt(stateSnapshot, caseFromState, refs)
-	if err != nil {
-		return LegalApplicabilityFactVersion{}, err
-	}
-	now := time.Now().UTC().Truncate(time.Microsecond)
-	fact, err := normalizeLegalApplicabilityInput(input, now, refs, obtainedAt)
-	if err != nil {
-		return LegalApplicabilityFactVersion{}, err
-	}
-	if fact.Party.BindingID != "" {
-		if err := validateLegalApplicabilityPartyPin(ctx, tx, current, caseItem, fact); err != nil {
-			return LegalApplicabilityFactVersion{}, err
-		}
-	}
-	factID, currentVersion, err := lockLegalApplicabilityFact(ctx, tx, accounts.Tenant(current), caseItem.OwnerOrgID, caseID, input.Dimension)
-	if err != nil {
-		return LegalApplicabilityFactVersion{}, err
-	}
-	if currentVersion != input.ExpectedVersion {
-		return LegalApplicabilityFactVersion{}, fault.Conflict("法律适用事实已变化，请刷新后重试")
-	}
-	if factID == "" {
-		factID, err = newID("laf_")
-		if err != nil {
-			return LegalApplicabilityFactVersion{}, err
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO case_legal_applicability_facts
-			(tenant_id,org_id,case_id,fact_id,dimension,current_version,created_by_user_id,created_by_issuer,created_by_subject,created_at)
-			VALUES ($1,$2,$3,$4,$5,1,$6,$7,$8,$9)`, accounts.Tenant(current), caseItem.OwnerOrgID, caseID, factID, input.Dimension, current.ID, current.Issuer, current.Subject, now); err != nil {
-			return LegalApplicabilityFactVersion{}, err
-		}
-		currentVersion = 0
-	}
-	nextVersion := currentVersion + 1
-	fact.TenantID, fact.OrgID, fact.CaseID, fact.FactID = accounts.Tenant(current), caseItem.OwnerOrgID, caseID, factID
-	fact.Version, fact.RequestDigest, fact.IdempotencyKey, fact.ActorUserID = nextVersion, digest, input.IdempotencyKey, current.ID
-	fact.ActorIssuer, fact.ActorSubject = current.Issuer, current.Subject
-	if err := insertLegalApplicabilityFactVersion(ctx, tx, fact); err != nil {
-		return LegalApplicabilityFactVersion{}, err
-	}
-	if currentVersion > 0 {
-		tag, err := tx.Exec(ctx, `UPDATE case_legal_applicability_facts SET current_version=$1 WHERE tenant_id=$2 AND org_id=$3 AND case_id=$4 AND fact_id=$5 AND current_version=$6`, nextVersion, accounts.Tenant(current), caseItem.OwnerOrgID, caseID, factID, currentVersion)
-		if err != nil {
-			return LegalApplicabilityFactVersion{}, err
-		}
-		if tag.RowsAffected() != 1 {
-			return LegalApplicabilityFactVersion{}, fault.Conflict("法律适用事实已变化，请刷新后重试")
-		}
 	}
 	if _, err := trustedUser(current); err != nil {
 		return LegalApplicabilityFactVersion{}, err
@@ -417,126 +169,11 @@ func (s *Store) RecordLegalApplicabilityFact(ctx context.Context, user accounts.
 	return fact, nil
 }
 
-func lockLegalApplicabilityFact(ctx context.Context, tx pgx.Tx, tenantID, orgID, caseID, dimension string) (string, int64, error) {
-	var factID string
-	var version int64
-	err := tx.QueryRow(ctx, `SELECT fact_id,current_version FROM case_legal_applicability_facts
-		WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND dimension=$4 FOR UPDATE`, tenantID, orgID, caseID, dimension).Scan(&factID, &version)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", 0, nil
-	}
-	return factID, version, err
-}
-
-func validateLegalApplicabilityPartyPin(ctx context.Context, tx pgx.Tx, user accounts.User, item Case, fact LegalApplicabilityFactVersion) error {
-	pin := fact.Party
-	var headVersion, bindingSubjectVersion int64
-	var subjectID string
-	var role, bindingState string
-	var subjectHead int64
-	err := tx.QueryRow(ctx, `SELECT h.current_version,v.subject_id,v.subject_version,v.role,v.binding_state,sv.current_version
-		FROM case_subject_roles h JOIN case_subject_role_versions v ON v.tenant_id=h.tenant_id AND v.org_id=h.org_id AND v.case_id=h.case_id AND v.binding_id=h.binding_id AND v.version=h.current_version
-		JOIN subjects sv ON sv.tenant_id=v.tenant_id AND sv.subject_id=v.subject_id
-		WHERE h.tenant_id=$1 AND h.org_id=$2 AND h.case_id=$3 AND h.binding_id=$4`, accounts.Tenant(user), item.OwnerOrgID, item.ID, pin.BindingID).
-		Scan(&headVersion, &subjectID, &bindingSubjectVersion, &role, &bindingState, &subjectHead)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return fault.Conflict("买卖方主体关联已变化，请重新确认事实")
-	}
-	if err != nil {
-		return err
-	}
-	if headVersion != pin.BindingVersion || subjectID != pin.SubjectID || bindingSubjectVersion != pin.SubjectVersion || subjectHead != pin.SubjectVersion || bindingState != "active" {
-		return fault.Conflict("买卖方主体关联已变化，请重新确认事实")
-	}
-	if !legalPartyRoleMatches(pin.Side, role) {
-		return fault.Invalid("事实主体角色与当前案件关联不一致")
-	}
-	var sameRoleCount int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM case_subject_roles h JOIN case_subject_role_versions v ON v.tenant_id=h.tenant_id AND v.org_id=h.org_id AND v.case_id=h.case_id AND v.binding_id=h.binding_id AND v.version=h.current_version
-		WHERE h.tenant_id=$1 AND h.org_id=$2 AND h.case_id=$3 AND h.current_version=v.version AND v.role=$4 AND v.binding_state='active'`,
-		accounts.Tenant(user), item.OwnerOrgID, item.ID, role).Scan(&sameRoleCount); err != nil {
-		return err
-	}
-	if sameRoleCount > 1 && strings.TrimSpace(pin.ScopeNote) == "" {
-		return fault.Invalid("案件存在多个同角色主体，必须说明本事实的主体范围")
-	}
-	return nil
-}
-
-func legalPartyRoleMatches(side, role string) bool { return legalModel.PartyRoleMatches(side, role) }
-
 func verifyLegalApplicabilityBasisManifest(raw []byte, digest string) (json.RawMessage, error) {
-	canonical, err := canonicalRawJSON(raw)
-	if err != nil || sha256Bytes(canonical) != digest {
-		return nil, errors.New("legal applicability basis digest mismatch")
-	}
-	return canonical, nil
+	return legalModel.VerifyApplicabilityBasisManifest(raw, digest)
 }
-
-func insertLegalApplicabilityFactVersion(ctx context.Context, tx pgx.Tx, fact LegalApplicabilityFactVersion) error {
-	var until any
-	if fact.ValidUntil != nil {
-		until = *fact.ValidUntil
-	}
-	var obtained any
-	if fact.BasisObtainedAt != nil {
-		obtained = *fact.BasisObtainedAt
-	}
-	p := fact.Party
-	var side, bindingID, subjectID, scopeNote any
-	var bindingVersion, subjectVersion any
-	if p.BindingID != "" {
-		side, bindingID, bindingVersion, subjectID, subjectVersion, scopeNote = p.Side, p.BindingID, p.BindingVersion, p.SubjectID, p.SubjectVersion, p.ScopeNote
-	}
-	_, err := tx.Exec(ctx, `INSERT INTO case_legal_applicability_fact_versions
-		(tenant_id,org_id,case_id,fact_id,version,dimension,status,value,unknown_reason,temporal_basis,valid_from,valid_until,basis_note,basis_refs,basis_sha256,basis_obtained_at,
-		 party_side,party_binding_id,party_binding_version,party_subject_id,party_subject_version,party_scope_note,request_digest,idempotency_key,actor_user_id,actor_issuer,actor_subject,created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,NULLIF($8,''),NULLIF($9,''),$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)`,
-		fact.TenantID, fact.OrgID, fact.CaseID, fact.FactID, fact.Version, fact.Dimension, fact.Status, fact.Value, fact.UnknownReason,
-		fact.TemporalBasis, fact.ValidFrom, until, fact.BasisNote, string(fact.BasisRefs), fact.BasisSHA256, obtained,
-		side, bindingID, bindingVersion, subjectID, subjectVersion, scopeNote, fact.RequestDigest, fact.IdempotencyKey,
-		fact.ActorUserID, fact.ActorIssuer, fact.ActorSubject, fact.CreatedAt)
-	return err
-}
-
 func loadLegalApplicabilityVersion(ctx context.Context, tx pgx.Tx, tenantID, orgID, caseID, dimension string, version int64) (LegalApplicabilityFactVersion, error) {
-	var fact LegalApplicabilityFactVersion
-	var until, obtained pgtype.Timestamptz
-	var side, bindingID, subjectID, scopeNote pgtype.Text
-	var bindingVersion, subjectVersion pgtype.Int8
-	err := tx.QueryRow(ctx, `SELECT fact_id,version,dimension,status,COALESCE(value,''),COALESCE(unknown_reason,''),temporal_basis,valid_from,valid_until,basis_note,basis_refs,basis_sha256,basis_obtained_at,
-		COALESCE(party_side,''),party_binding_id,party_binding_version,party_subject_id,party_subject_version,COALESCE(party_scope_note,''),request_digest,idempotency_key,actor_user_id,actor_issuer,actor_subject,created_at
-		FROM case_legal_applicability_fact_versions WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND dimension=$4 AND version=$5`,
-		tenantID, orgID, caseID, dimension, version).Scan(&fact.FactID, &fact.Version, &fact.Dimension, &fact.Status, &fact.Value, &fact.UnknownReason, &fact.TemporalBasis,
-		&fact.ValidFrom, &until, &fact.BasisNote, &fact.BasisRefs, &fact.BasisSHA256, &obtained,
-		&side, &bindingID, &bindingVersion, &subjectID, &subjectVersion, &scopeNote, &fact.RequestDigest, &fact.IdempotencyKey, &fact.ActorUserID, &fact.ActorIssuer, &fact.ActorSubject, &fact.CreatedAt)
-	if err != nil {
-		return LegalApplicabilityFactVersion{}, err
-	}
-	fact.ValidFrom = fact.ValidFrom.UTC().Truncate(time.Microsecond)
-	fact.CreatedAt = fact.CreatedAt.UTC().Truncate(time.Microsecond)
-	fact.TenantID, fact.OrgID, fact.CaseID = tenantID, orgID, caseID
-	if until.Valid {
-		value := until.Time.UTC().Truncate(time.Microsecond)
-		fact.ValidUntil = &value
-	}
-	if obtained.Valid {
-		value := obtained.Time.UTC().Truncate(time.Microsecond)
-		fact.BasisObtainedAt = &value
-	}
-	canonicalBasis, err := verifyLegalApplicabilityBasisManifest(fact.BasisRefs, fact.BasisSHA256)
-	if err != nil {
-		return LegalApplicabilityFactVersion{}, fault.Conflict("法律适用事实材料依据摘要不匹配")
-	}
-	fact.BasisRefs = canonicalBasis
-	fact.Party = LegalApplicabilityPartyPin{Side: side.String, BindingID: bindingID.String, SubjectID: subjectID.String, ScopeNote: scopeNote.String}
-	if bindingVersion.Valid {
-		fact.Party.BindingVersion = bindingVersion.Int64
-	}
-	if subjectVersion.Valid {
-		fact.Party.SubjectVersion = subjectVersion.Int64
-	}
-	return fact, nil
+	return legalApp.ReadRecordVersion(ctx, legalPostgres.NewApplicability(platformpostgres.Bind(tx)), legalApp.RecordIdentity{TenantID: tenantID, OrgID: orgID, CaseID: caseID}, dimension, version)
 }
 
 // ResolveLegalApplicabilityFacts returns selected immutable versions alongside

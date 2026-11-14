@@ -228,10 +228,7 @@ func isPublishableLegalAuthority(version GovernedKnowledgeVersion) bool {
 	return legalApp.IsPublishableLegalAuthority(version)
 }
 
-func sameTimestamp(raw string, stored time.Time) bool {
-	parsed, err := time.Parse(time.RFC3339Nano, raw)
-	return err == nil && parsed.Equal(stored)
-}
+func sameTimestamp(raw string, stored time.Time) bool { return legalModel.SameTimestamp(raw, stored) }
 
 func legalBusinessDate(raw string) (string, error) {
 	return legalApp.BusinessDate(raw)

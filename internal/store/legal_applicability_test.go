@@ -327,7 +327,8 @@ func TestLegalApplicabilityRechecksReadAuthorizationAndArchivedWritesInPostgres(
 	}
 	input := LegalApplicabilityFactInput{ExpectedVersion: 0, IdempotencyKey: "legal-fact-authz-revocation", Dimension: "funding_kind",
 		Status: "unknown", UnknownReason: "insufficient_evidence", TemporalBasis: "current_state", BasisNote: "尚无材料证明资金性质"}
-	if _, err := core.RecordLegalApplicabilityFact(context.Background(), admin, caseID, input); err != nil {
+	first, err := core.RecordLegalApplicabilityFact(context.Background(), admin, caseID, input)
+	if err != nil {
 		t.Fatal(err)
 	}
 	viewerWrite := input
@@ -371,6 +372,10 @@ func TestLegalApplicabilityRechecksReadAuthorizationAndArchivedWritesInPostgres(
 		return errors.New("legal fact archive fixture case missing")
 	}); err != nil {
 		t.Fatalf("archive case fixture: %v", err)
+	}
+	replayed, err := core.RecordLegalApplicabilityFact(context.Background(), admin, caseID, input)
+	if err != nil || !sameLegalFactWire(replayed, first) {
+		t.Fatalf("archived existing receipt did not replay: %+v %v", replayed, err)
 	}
 	input.ExpectedVersion = 1
 	input.IdempotencyKey = "legal-fact-archived-new-write"

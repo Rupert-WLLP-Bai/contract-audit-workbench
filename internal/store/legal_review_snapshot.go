@@ -15,7 +15,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"sort"
 	"strings"
 	"time"
 
@@ -50,14 +49,11 @@ func frozenLegalCitationID(a FrozenLegalAuthority) (string, error) {
 	return legalModel.FrozenLegalCitationID(a)
 }
 func validLegalReuseFingerprint(snapshot *ReviewKnowledgeSnapshot) bool {
-	if snapshot == nil || snapshot.LegalReuseFingerprint == "" {
+	if snapshot == nil {
 		return false
 	}
-	copy := *snapshot
-	if err := prepareLegalKnowledgeReuse(&copy); err != nil {
-		return false
-	}
-	return copy.LegalReuseFingerprint == snapshot.LegalReuseFingerprint
+	fields := legalModel.LegalReuseFields{EvidenceCutoffAt: snapshot.EvidenceCutoffAt, EvidenceCutoffMode: snapshot.EvidenceCutoffMode, ExplicitEvidenceCutoffAt: snapshot.ExplicitEvidenceCutoffAt, LegalReuseFingerprint: snapshot.LegalReuseFingerprint, LegalAuthorities: snapshot.LegalAuthorities}
+	return legalModel.ValidLegalReuseFingerprint(&fields)
 }
 
 func hasLegalReviewSnapshot(snapshot *ReviewKnowledgeSnapshot) bool {
@@ -103,83 +99,11 @@ func evaluateLegalAuthorityApplicability(refs []rulepack.LegalAuthorityReference
 // rulepackAuthorityGates converts the exact per-reference result in an
 // accepted snapshot into the conservative all_of gate consumed by RulePack.
 func rulepackAuthorityGates(snapshot *ReviewKnowledgeSnapshot) ([]rulepack.AuthorityGate, error) {
-	if snapshot == nil || len(snapshot.LegalAuthorities) == 0 {
-		return nil, nil
+	if snapshot == nil {
+		return legalModel.RulepackAuthorityGates(legalModel.LegalReuseFields{})
 	}
-	if !validLegalReuseFingerprint(snapshot) {
-		return nil, errors.New("frozen legal authority snapshot seal is invalid")
-	}
-	type key struct{ ruleID, sourceID, sourceVersion string }
-	type aggregate struct {
-		gate             rulepack.AuthorityGate
-		unknown          bool
-		unknownWhy       string
-		notApplicable    bool
-		referenceMissing bool
-	}
-	byKey := make(map[key]*aggregate)
-	for _, authority := range snapshot.LegalAuthorities {
-		k := key{authority.RuleID, authority.AuthoritySourceID, authority.AuthoritySourceVersion}
-		item := byKey[k]
-		if item == nil {
-			item = &aggregate{gate: rulepack.AuthorityGate{RuleID: k.ruleID, SourceID: k.sourceID, SourceVersion: k.sourceVersion, Outcome: "applicable"}}
-			byKey[k] = item
-		}
-		if authority.LegacyRuleGap {
-			item.referenceMissing = true
-			item.unknownWhy = "legal_reference_missing"
-			continue
-		}
-		switch authority.Outcome {
-		case "applicable":
-		case "not_applicable":
-			item.notApplicable = true
-		case "unknown":
-			item.unknown = true
-			reason := authority.OutcomeReason
-			if reason == "" {
-				reason = "legal_authority_unknown"
-			}
-			if item.unknownWhy == "" || reason < item.unknownWhy {
-				item.unknownWhy = reason
-			}
-		default:
-			return nil, errors.New("frozen legal authority has an invalid outcome")
-		}
-	}
-	keys := make([]key, 0, len(byKey))
-	for k := range byKey {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		if keys[i].ruleID != keys[j].ruleID {
-			return keys[i].ruleID < keys[j].ruleID
-		}
-		if keys[i].sourceID != keys[j].sourceID {
-			return keys[i].sourceID < keys[j].sourceID
-		}
-		return keys[i].sourceVersion < keys[j].sourceVersion
-	})
-	out := make([]rulepack.AuthorityGate, 0, len(keys))
-	for _, k := range keys {
-		item := byKey[k]
-		if item.referenceMissing {
-			item.gate.Outcome = "unknown"
-			item.gate.Reason = "legal_reference_missing"
-			item.gate.ReferenceMissing = true
-		} else if item.notApplicable {
-			item.gate.Outcome = "not_applicable"
-			item.gate.Reason = "legal_authority_not_applicable"
-		} else if item.unknown {
-			item.gate.Outcome = "unknown"
-			item.gate.Reason = item.unknownWhy
-			if item.gate.Reason == "" {
-				item.gate.Reason = "legal_authority_unknown"
-			}
-		}
-		out = append(out, item.gate)
-	}
-	return out, nil
+	fields := legalModel.LegalReuseFields{EvidenceCutoffAt: snapshot.EvidenceCutoffAt, EvidenceCutoffMode: snapshot.EvidenceCutoffMode, ExplicitEvidenceCutoffAt: snapshot.ExplicitEvidenceCutoffAt, LegalReuseFingerprint: snapshot.LegalReuseFingerprint, LegalAuthorities: snapshot.LegalAuthorities}
+	return legalModel.RulepackAuthorityGates(fields)
 }
 
 func validateFrozenLegalAuthorityCapturesTx(ctx context.Context, tx pgx.Tx, tenant string, authorities []FrozenLegalAuthority) error {

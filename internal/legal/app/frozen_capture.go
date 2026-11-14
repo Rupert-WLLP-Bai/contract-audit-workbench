@@ -70,7 +70,6 @@ func ValidateFrozenCaptures(ctx context.Context, facts FrozenCaptureFacts, autho
 }
 
 func sameTimestamp(raw string, stored time.Time) bool {
-	parsed, err := time.Parse(time.RFC3339Nano, raw)
-	return err == nil && parsed.Equal(stored)
+	return legalModel.SameTimestamp(raw, stored)
 }
 func parseCaptureTime(raw string) time.Time { at, _ := time.Parse(time.RFC3339Nano, raw); return at }

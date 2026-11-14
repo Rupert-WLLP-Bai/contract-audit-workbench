@@ -181,16 +181,7 @@ func BusinessDate(raw string) (string, error) {
 	}
 	return at.In(loc).Format("2006-01-02"), nil
 }
-func parseLegalFactTime(raw string) (time.Time, error) {
-	if raw == "" || strings.TrimSpace(raw) != raw {
-		return time.Time{}, errors.New("time missing or padded")
-	}
-	parsed, err := time.Parse(time.RFC3339Nano, raw)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return parsed.UTC().Truncate(time.Microsecond), nil
-}
+func parseLegalFactTime(raw string) (time.Time, error) { return legalModel.ParseFactTime(raw) }
 func legalSourceEvidenceGap(c legalModel.LegalSourceCapture, cutoff time.Time) string {
 	source, err1 := parseLegalFactTime(c.SourceCapturedAt)
 	status, err2 := parseLegalFactTime(c.StatusObservedAt)

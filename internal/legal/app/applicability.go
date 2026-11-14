@@ -4,7 +4,6 @@ package app
 import (
 	"context"
 	legal "contractaudit/internal/legal/model"
-	"sort"
 	"time"
 )
 
@@ -34,8 +33,7 @@ func ResolveApplicability(ctx context.Context, facts ApplicabilityFacts, busines
 	for _, f := range families {
 		byDimension[f.Dimension] = f
 	}
-	dimensions := []string{"buyer_kind", "seller_kind", "buyer_enterprise_size", "seller_enterprise_size", "funding_kind", "procurement_scope", "project_kind", "contract_clause_kind", "transaction_kind"}
-	sort.Strings(dimensions)
+	dimensions := legal.ApplicabilityDimensions()
 	out := make([]legal.LegalApplicabilityResolvedFact, 0, len(dimensions))
 	for _, dimension := range dimensions {
 		family, ok := byDimension[dimension]
