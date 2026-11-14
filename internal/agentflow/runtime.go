@@ -387,9 +387,6 @@ func plannerStepUsage(observation PlannerObservation, providerObserved, provider
 	}
 	if observation.InputTokens == nil || observation.OutputTokens == nil || observation.TotalTokens == nil ||
 		*observation.InputTokens < 0 || *observation.OutputTokens < 0 || *observation.TotalTokens < 0 {
-		if !providerExpected {
-			return steps.Usage{Status: steps.UsageNotApplicable}
-		}
 		return steps.Usage{Status: steps.UsageUnknown}
 	}
 	return steps.Usage{Status: steps.UsageObserved,
