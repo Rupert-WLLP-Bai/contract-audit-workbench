@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r11
+// Revision: r12
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -18,7 +18,9 @@ import {
   useParams,
   useSearchParams,
 } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { listMaterialParsedDocuments } from "../api/endpoints";
+import { frozenSourceProof } from "../domain/frozen-source-proof";
 import {
   errorMessage,
   isConflict,
@@ -329,18 +331,88 @@ export function ReviewPage() {
 
   const execution = review.data?.review_attempts;
   const selectedAttempt = execution?.attempt ?? null;
-  const quoteScope = useMemo<FrozenQuoteScope>(
-    () => ({
-      caseId,
-      runId,
-      attemptId: selectedAttempt?.id ?? null,
-      isFrozenAttempt: selectedAttempt?.history_kind === "frozen",
-      parsedDocumentIds: (review.data?.documents ?? []).flatMap((document) =>
-        document.parsed_document_id ? [document.parsed_document_id] : [],
-      ),
-    }),
-    [caseId, runId, selectedAttempt?.history_kind, selectedAttempt?.id, review.data?.documents],
+  const proofEligible = Boolean(
+    actorScope &&
+    caseDetail.isSuccess &&
+    !caseDetail.isFetching &&
+    caseDetail.data.id === caseId &&
+    review.isSuccess &&
+    !review.isFetching &&
+    review.data.run.id === runId &&
+    review.data.run.case_id === caseId &&
+    selectedAttempt?.run_id === runId &&
+    selectedAttempt.history_kind === "frozen" &&
+    (!selectedAttemptId || selectedAttemptId === selectedAttempt.id),
   );
+  const historyTargets = proofEligible
+    ? (review.data?.documents ?? []).flatMap((document) => {
+        const parsedId = document.parsed_document_id;
+        const original = caseDetail.data?.documents.filter((item) => item.id === document.id) ?? [];
+        if (
+          !parsedId ||
+          !selectedAttempt?.parsed_document_ids.includes(parsedId) ||
+          original.length !== 1 ||
+          original[0]?.parsed_document?.id === parsedId
+        )
+          return [];
+        const versions = (caseDetail.data?.material_versions ?? []).filter(
+          (item) => item.document_id === document.id,
+        );
+        return versions.length === 1 ? [{ documentId: document.id, ...versions[0]! }] : [];
+      })
+    : [];
+  const historyQueries = useQueries({
+    queries: historyTargets.map((target) => ({
+      queryKey: [
+        "frozen-source-proof",
+        actorScope,
+        caseId,
+        runId,
+        selectedAttempt?.id,
+        target.material_id,
+        target.version,
+      ],
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        listMaterialParsedDocuments(caseId, target.material_id, target.version, signal),
+      retry: false,
+    })),
+  });
+  const sourceProofs = proofEligible
+    ? (review.data?.documents ?? []).flatMap((document) => {
+        const targetIndex = historyTargets.findIndex((target) => target.documentId === document.id);
+        const query = historyQueries[targetIndex];
+        const history = query?.isSuccess && !query.isFetching ? query.data : undefined;
+        const proof = frozenSourceProof(
+          caseDetail.data,
+          document,
+          selectedAttempt?.parsed_document_ids ?? [],
+          history,
+        );
+        return proof ? [proof] : [];
+      })
+    : [];
+  const quoteScope: FrozenQuoteScope = {
+    caseId,
+    runId,
+    attemptId: selectedAttempt?.id ?? null,
+    isFrozenAttempt: proofEligible,
+    parsedDocumentIds: sourceProofs.map((proof) => proof.parsedDocumentId),
+    sourceProofs,
+    sourceFailureMessages: Object.fromEntries(
+      (review.data?.documents ?? []).flatMap((document) => {
+        if (sourceProofs.some((proof) => proof.documentId === document.id)) return [];
+        const targetIndex = historyTargets.findIndex((target) => target.documentId === document.id);
+        const query = historyQueries[targetIndex];
+        const reason =
+          query?.isPending || query?.isFetching
+            ? "正在核验冻结材料解析版本，请稍候。"
+            : query?.isError
+              ? "无法读取冻结材料解析版本，请检查材料访问权限后重试。"
+              : "无法核验冻结材料的解析版本、材料映射或原件摘要，不能定位。";
+        return [[document.id, reason]];
+      }),
+    ),
+  };
   useEffect(() => setQuoteSelection(null), [caseId, runId, session.data?.id, selectedAttempt?.id]);
   const decisionDraftScope = useMemo(
     () =>
@@ -778,6 +850,13 @@ export function ReviewPage() {
       : null;
   const workspace = {
     ...review.data,
+    documents: review.data.documents.map((document) => {
+      const proof = sourceProofs.find(
+        (item) =>
+          item.documentId === document.id && item.parsedDocumentId === document.parsed_document_id,
+      );
+      return proof ? { ...document, digest: proof.originalDigest } : document;
+    }),
     execution: diagnosticData?.execution ?? null,
     snapshot: diagnosticData?.snapshot ?? review.data.snapshot,
     audit_events: diagnosticData?.audit_events ?? review.data.audit_events,

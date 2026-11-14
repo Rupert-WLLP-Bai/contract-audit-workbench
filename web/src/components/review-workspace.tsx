@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-12
-// Revision: r9
+// Updated: 2026-11-14
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -629,6 +629,15 @@ export function ReviewWorkspaceView({
       const parsedDocumentId = document.parsed_document_id;
       if (!parsedDocumentId || !attemptParsedIds.has(parsedDocumentId)) return [];
       const parsedDocument = document.parsed_document;
+      if (
+        quoteScope.sourceProofs?.some(
+          (proof) =>
+            proof.documentId === document.id &&
+            proof.parsedDocumentId === parsedDocumentId &&
+            proof.originalDigest === document.digest,
+        )
+      )
+        return [parsedDocumentId];
       if (
         !parsedDocument ||
         parsedDocument.id !== parsedDocumentId ||

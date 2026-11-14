@@ -2,9 +2,9 @@
 // Purpose: Checks frozen document and attempt binding, exact Unicode offsets, long-text fallback and non-risk key clause selection.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-12
-// Updated: 2026-11-12
-// Revision: r1
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -233,5 +233,87 @@ describe("key clause navigation", () => {
     expect(candidate?.quote).toBe(
       Array.from(text).slice(candidate?.range.start, candidate?.range.end).join(""),
     );
+  });
+});
+
+describe("frozen source proof", () => {
+  it("binds current and historical parse proofs to the same frozen document and original digest", async () => {
+    const { frozenSourceProof } = await import("./frozen-source-proof");
+    const digest = "a".repeat(64);
+    const frozen = documentOf({ digest: "", parsed_document: null });
+    const current = documentOf({
+      digest,
+      parsed_document: { ...documentOf().parsed_document!, original_digest: digest },
+    });
+    const detail = {
+      id: "case-1",
+      documents: [current],
+      material_versions: [{ document_id: "doc-1", material_id: "material-1", version: 1 }],
+    } as unknown as import("../api/types").CaseDetail;
+    const proof = frozenSourceProof(detail, frozen, ["parsed-1"], undefined);
+    expect(proof).toEqual({
+      documentId: "doc-1",
+      parsedDocumentId: "parsed-1",
+      originalDigest: digest,
+    });
+    const provedDocument = { ...frozen, digest };
+    expect(
+      keyClauseNavigationFor({ ...scope, sourceProofs: [proof!] }, provedDocument).candidates,
+    ).toHaveLength(2);
+    expect(
+      keyClauseNavigationFor({ ...scope, sourceProofs: [] }, provedDocument).candidates,
+    ).toHaveLength(0);
+    expect(frozenSourceProof(detail, frozen, ["other"], undefined)).toBeNull();
+    expect(
+      frozenSourceProof(detail, { ...frozen, digest: "b".repeat(64) }, ["parsed-1"], undefined),
+    ).toBeNull();
+    for (const metadata of [
+      { ...current.parsed_document!, id: "other-parse" },
+      { ...current.parsed_document!, document_id: "other-document" },
+      { ...current.parsed_document!, original_digest: "b".repeat(64) },
+      { ...current.parsed_document!, status: "failed" as const },
+    ]) {
+      expect(
+        frozenSourceProof(
+          detail,
+          { ...frozen, parsed_document: metadata },
+          ["parsed-1"],
+          undefined,
+        ),
+      ).toBeNull();
+    }
+    const oldDetail = {
+      ...detail,
+      documents: [
+        { ...current, parsed_document: { ...current.parsed_document!, id: "parsed-new" } },
+      ],
+    };
+    const history = {
+      material_id: "material-1",
+      material_version: 1,
+      document_id: "doc-1",
+      items: [
+        {
+          parsed_document_id: "parsed-1",
+          status: "ready" as const,
+          parser_id: "p",
+          parser_version: "1",
+          created_at: "",
+          original_digest: digest,
+          normalized_digest: null,
+        },
+      ],
+    };
+    expect(frozenSourceProof(oldDetail, frozen, ["parsed-1"], undefined)).toBeNull();
+    expect(frozenSourceProof(oldDetail, frozen, ["parsed-1"], history)).toEqual(proof);
+    expect(
+      frozenSourceProof(oldDetail, frozen, ["parsed-1"], { ...history, document_id: "other" }),
+    ).toBeNull();
+    expect(
+      frozenSourceProof(oldDetail, frozen, ["parsed-1"], {
+        ...history,
+        items: [{ ...history.items[0]!, original_digest: "b".repeat(64) }],
+      }),
+    ).toBeNull();
   });
 });

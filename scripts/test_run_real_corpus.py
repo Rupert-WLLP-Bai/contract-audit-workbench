@@ -4,11 +4,13 @@
 # Contact: +86 13617696321
 # Created: 2026-10-27
 # Updated: 2026-11-14
-# Revision: r2
+# Revision: r3
 # Copyright: See LICENSE
 # End file metadata.
 
 import hashlib
+import http.server
+import threading
 import json
 import os
 from pathlib import Path
@@ -118,6 +120,80 @@ class RealCorpusRunnerTest(unittest.TestCase):
                 self.assertIn("--model-record-dir", completed.stderr)
                 self.assertFalse(delivery.exists())
 
+    def test_http_session_proof_is_sent_only_on_later_writes_without_retry(self):
+        observed = []
+        csrf = "c" * 32
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+
+            def handle_request(self):
+                observed.append((self.command, self.path, dict(self.headers)))
+                size = int(self.headers.get("Content-Length", "0"))
+                self.rfile.read(size)
+                status = 409 if self.path == "/stale" else 200
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                if self.path == "/api/session":
+                    self.send_header("Set-Cookie", "session=test; Path=/")
+                self.end_headers()
+                body = {
+                    "actor": {"id": "actor"},
+                    "active_context": {"context_version": "7"},
+                    "csrf_token": csrf,
+                }
+                self.wfile.write(json.dumps(body).encode())
+
+            do_GET = handle_request
+            do_POST = handle_request
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        api = runner.API(f"http://127.0.0.1:{server.server_port}", 5)
+        session = api.request("POST", "/api/session", {"username": "actor"})
+        api.context_version = session["active_context"]["context_version"]
+        api.csrf = session["csrf_token"]
+        api.request("GET", "/api/cases")
+        api.request("POST", "/api/cases", {"title": "case"})
+        with self.assertRaisesRegex(runner.RunnerError, "HTTP 409"):
+            api.request("POST", "/stale", {})
+        self.assertEqual(len(observed), 4)
+        for _, _, headers in observed[:2]:
+            self.assertNotIn("X-Context-Version", headers)
+            self.assertNotIn("X-Csrf-Token", headers)
+        for _, _, headers in observed[2:]:
+            self.assertEqual(headers.get("X-Context-Version"), "7")
+            self.assertEqual(headers.get("X-Csrf-Token"), csrf)
+            self.assertEqual(headers.get("Cookie"), "session=test")
+
+    def test_runner_rejects_missing_session_proof_before_case_creation(self):
+        for session in (
+            {"actor": {"id": "actor"}, "csrf_token": "x" * 32},
+            {"actor": {"id": "actor"}, "active_context": {"context_version": "1"}},
+        ):
+            with self.subTest(session=session):
+
+                class FakeAPI:
+                    def __init__(self, _base, _timeout):
+                        pass
+
+                    def request(self, _method, path, *_args, **_kwargs):
+                        if path != "/api/session":
+                            raise AssertionError("case creation reached without proof")
+                        return session
+
+                with (
+                    patch.dict(os.environ, {"CAW_DELIVERY_DIR": str(self.root / "delivery")}),
+                    patch.object(runner, "API", FakeAPI),
+                    self.assertRaisesRegex(runner.RunnerError, "context version or CSRF"),
+                ):
+                    runner.run(self.args())
+
     def test_pending_parsed_once_and_review_evidence_retained(self):
         class FakeAPI:
             def __init__(self, base, timeout):
@@ -130,7 +206,11 @@ class RealCorpusRunnerTest(unittest.TestCase):
 
             def request(self, method, path, payload=None, **kwargs):
                 if path == "/api/session":
-                    return {"actor": {"id": "actor"}}
+                    return {
+                        "actor": {"id": "actor"},
+                        "active_context": {"context_version": "1"},
+                        "csrf_token": "x" * 32,
+                    }
                 if path == "/api/cases":
                     return {"id": "case"}
                 if path.endswith("/parse"):
@@ -197,7 +277,11 @@ class RealCorpusRunnerTest(unittest.TestCase):
 
             def request(self, method, path, payload=None, **kwargs):
                 if path == "/api/session":
-                    return {"actor": {"id": "actor"}}
+                    return {
+                        "actor": {"id": "actor"},
+                        "active_context": {"context_version": "1"},
+                        "csrf_token": "x" * 32,
+                    }
                 if path == "/api/cases":
                     return {"id": "case"}
                 if path == "/api/cases/case":
@@ -511,7 +595,11 @@ class RealCorpusRunnerTest(unittest.TestCase):
 
             def request(self, method, path, payload=None, **kwargs):
                 if path == "/api/session":
-                    return {"actor": {"id": "actor"}}
+                    return {
+                        "actor": {"id": "actor"},
+                        "active_context": {"context_version": "1"},
+                        "csrf_token": "x" * 32,
+                    }
                 if path == "/api/cases":
                     return {"id": "case"}
                 if path == "/api/cases/case":
@@ -582,7 +670,11 @@ class RealCorpusRunnerTest(unittest.TestCase):
 
             def request(self, method, path, payload=None, **kwargs):
                 if path == "/api/session":
-                    return {"actor": {"id": "actor"}}
+                    return {
+                        "actor": {"id": "actor"},
+                        "active_context": {"context_version": "1"},
+                        "csrf_token": "x" * 32,
+                    }
                 if path == "/api/cases":
                     return {"id": "case"}
                 if path == "/api/cases/case":

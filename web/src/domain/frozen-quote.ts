@@ -3,11 +3,12 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
+import type { FrozenSourceProof } from "./frozen-source-proof";
 import type { ReviewDocument, TextOffset } from "../api/types";
 import { sliceByCodePoints, type CodePointTextIndex } from "./text";
 
@@ -29,28 +30,37 @@ export interface FrozenQuoteScope {
   attemptId: string | null;
   isFrozenAttempt: boolean;
   parsedDocumentIds: readonly string[];
+  sourceProofs?: readonly FrozenSourceProof[];
+  sourceFailureMessages?: Readonly<Record<string, string>>;
 }
 
 function parsedDocumentIdOf(document: ReviewDocument): string | null {
   const parsedId = document.parsed_document_id;
   if (!parsedId || parsedId.trim() === "") return null;
-  if (document.parsed_document && (
-    document.parsed_document.id !== parsedId ||
-    document.parsed_document.document_id !== document.id ||
-    document.parsed_document.status !== "ready"
-  )) return null;
+  if (
+    document.parsed_document &&
+    (document.parsed_document.id !== parsedId ||
+      document.parsed_document.document_id !== document.id ||
+      document.parsed_document.status !== "ready")
+  )
+    return null;
   return parsedId;
 }
 
-function scopeMatchesDocument(
-  scope: FrozenQuoteScope,
-  document: ReviewDocument,
-): string | null {
+function scopeMatchesDocument(scope: FrozenQuoteScope, document: ReviewDocument): string | null {
   const parsedDocumentId = parsedDocumentIdOf(document);
-  if (!scope.isFrozenAttempt || !scope.caseId.trim() || !scope.runId.trim() ||
-    !scope.attemptId?.trim() || document.parse_status !== "ready" ||
-    document.text === null || document.text === "" ||
-    !parsedDocumentId || !scope.parsedDocumentIds.includes(parsedDocumentId)) return null;
+  if (
+    !scope.isFrozenAttempt ||
+    !scope.caseId.trim() ||
+    !scope.runId.trim() ||
+    !scope.attemptId?.trim() ||
+    document.parse_status !== "ready" ||
+    document.text === null ||
+    document.text === "" ||
+    !parsedDocumentId ||
+    !scope.parsedDocumentIds.includes(parsedDocumentId)
+  )
+    return null;
   return parsedDocumentId;
 }
 
@@ -83,9 +93,11 @@ export function frozenQuoteMatchesDocument(
   scope: FrozenQuoteScope | null,
   document: ReviewDocument | undefined,
 ): document is ReviewDocument {
-  if (selection === null || scope === null || document === undefined || document.text === null) return false;
+  if (selection === null || scope === null || document === undefined || document.text === null)
+    return false;
   const parsedDocumentId = scopeMatchesDocument(scope, document);
-  return parsedDocumentId !== null &&
+  return (
+    parsedDocumentId !== null &&
     selection.caseId === scope.caseId &&
     selection.runId === scope.runId &&
     selection.attemptId === scope.attemptId &&
@@ -93,5 +105,6 @@ export function frozenQuoteMatchesDocument(
     selection.parsedDocumentId === parsedDocumentId &&
     selection.digest === document.digest &&
     Array.from(selection.quote).length <= 4096 &&
-    sliceByCodePoints(document.text, selection.start, selection.end) === selection.quote;
+    sliceByCodePoints(document.text, selection.start, selection.end) === selection.quote
+  );
 }

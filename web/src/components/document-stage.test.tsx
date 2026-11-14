@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-12
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -355,11 +355,12 @@ describe("document stage materials and search", () => {
     });
 
     const mark = await waitFor(() => {
-      const selected = container.querySelector("mark.hit-find");
+      const selected = container.querySelector(".hit-find");
       expect(selected).not.toBeNull();
       return selected;
     });
     expect(mark?.textContent).toBe("金额💰");
+    expect(mark?.getAttribute("data-offset")).toBe("5");
     expect(container.querySelector(".doc-pane")?.getAttribute("data-document-version-id")).toBe(
       "doc-facts",
     );

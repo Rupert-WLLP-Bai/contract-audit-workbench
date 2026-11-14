@@ -2,9 +2,9 @@
 // Purpose: Derives exact frozen key clauses or Intl.Segmenter source fragments, revalidating original quote and document identities.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-12
+// Created: 2026-11-14
 // Updated: 2026-11-14
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -78,10 +78,19 @@ interface FragmentPlan {
   sourceLabel: string;
 }
 
-function parsedDocumentIdOf(document: ReviewDocument): string | null {
+function parsedDocumentIdOf(document: ReviewDocument, scope: FrozenQuoteScope): string | null {
   const parsedDocumentId = document.parsed_document_id;
   if (!parsedDocumentId || parsedDocumentId.trim() === "") return null;
   const metadata = document.parsed_document;
+  if (
+    scope.sourceProofs?.some(
+      (proof) =>
+        proof.documentId === document.id &&
+        proof.parsedDocumentId === parsedDocumentId &&
+        proof.originalDigest === document.digest,
+    )
+  )
+    return parsedDocumentId;
   if (
     !metadata ||
     metadata.id !== parsedDocumentId ||
@@ -313,9 +322,12 @@ export function keyClauseNavigationFor(
     return unavailable("当前未选择可核验的冻结审查尝试，无法生成条款定位。");
   }
   if (!document) return unavailable("当前没有选中的审查材料。");
-  const parsedDocumentId = parsedDocumentIdOf(document);
+  const parsedDocumentId = parsedDocumentIdOf(document, scope);
   if (!parsedDocumentId || !scope.parsedDocumentIds.includes(parsedDocumentId)) {
-    return unavailable("当前材料不属于所选冻结尝试的解析版本，无法生成条款定位。");
+    return unavailable(
+      scope.sourceFailureMessages?.[document.id] ??
+        "当前材料不属于所选冻结尝试的解析版本，无法生成条款定位。",
+    );
   }
   if (document.parse_status !== "ready" || document.text === null || document.text === "") {
     return unavailable("当前冻结材料没有可定位正文。");
