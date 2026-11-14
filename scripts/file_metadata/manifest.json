@@ -621,6 +621,7 @@
       "web/src/domain/execution-diagram.ts",
       "web/src/domain/finding-presentation.test.ts",
       "web/src/domain/finding-presentation.ts",
+      "web/src/domain/frozen-source-proof.ts",
       "web/src/domain/key-clauses.test.ts",
       "web/src/domain/key-clauses.ts",
       "web/src/domain/qcc-mcp-catalog.ts",
@@ -65014,7 +65015,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r60",
+      "revision": "r61",
       "copyright": [
         {
           "holder": "Bai Junhao",
