@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/coreauthority"
@@ -48,8 +49,11 @@ func NewCoreSessionResolver(origin, caFile, appEnv string, allowInsecureDev bool
 }
 
 func (resolver *coreSessionResolver) AuthenticateSession(ctx context.Context, token string) (accounts.User, string, error) {
-	if resolver == nil || ctx == nil || token == "" || len(token) > 4096 || strings.ContainsAny(token, " \t\r\n") {
-		return accounts.User{}, "", errors.New("session token is unavailable")
+	if resolver == nil || ctx == nil {
+		return accounts.User{}, "", errors.New("Core session resolver or context is unavailable")
+	}
+	if token == "" || len(token) > 4096 || strings.IndexFunc(token, unicode.IsSpace) >= 0 {
+		return accounts.User{}, "", fault.New(http.StatusUnauthorized, "session_invalid", "会话已失效")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, resolver.endpoint, nil)
 	if err != nil {
