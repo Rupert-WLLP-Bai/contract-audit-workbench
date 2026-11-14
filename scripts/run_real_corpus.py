@@ -139,12 +139,19 @@ class API:
         self.base = base.rstrip("/")
         self.origin = f"{parsed.scheme}://{parsed.netloc}"
         self.timeout = timeout
+        self.context_version = ""
+        self.csrf = ""
         self.client = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
         )
 
     def request(self, method, path, payload=None, content_type=None, timeout=None):
         headers = {"Accept": "application/json", "Origin": self.origin}
+        if method.upper() not in {"GET", "HEAD", "OPTIONS"} and path != "/api/session":
+            if self.context_version:
+                headers["X-Context-Version"] = self.context_version
+            if self.csrf:
+                headers["X-CSRF-Token"] = self.csrf
         if payload is not None and not isinstance(payload, bytes):
             payload = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             headers["Content-Type"] = "application/json"
@@ -615,6 +622,17 @@ def run(args):
         )
         if not session.get("actor", {}).get("id"):
             raise RunnerError("login response lacks actor ID")
+        active = session.get("active_context")
+        version = active.get("context_version") if isinstance(active, dict) else None
+        csrf = session.get("csrf_token")
+        if (
+            not isinstance(version, str)
+            or not version
+            or not isinstance(csrf, str)
+            or len(csrf) < 32
+        ):
+            raise RunnerError("login response lacks context version or CSRF token")
+        api.context_version, api.csrf = version, csrf
         result["actor_id"] = session["actor"]["id"]
         save(result_path, result)
         for case_id in selected:
