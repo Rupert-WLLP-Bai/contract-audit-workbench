@@ -1,10 +1,10 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: 说明“文档解析与模型预算边界”的操作或技术边界：本页整理扫描件 OCR、请求限制和 DOCX 可见文本处理约束。具体部署前按真实模型服务能力配置并验收；不要从少量样本推算 token 上界。 -->
+<!-- Purpose: Documents frozen document parsing, model budgets, original-source reading and optional same-host MinerU deployment boundaries. -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
 <!-- Updated: 2026-11-14 -->
-<!-- Revision: r5 -->
+<!-- Revision: r6 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -37,6 +37,28 @@ PDF 阅读器、字体、解码器及中文/英文位置识别资源由 `web/bun
 默认输入预留按 JSON 请求体字节计算，并非图片 token 数：一次实测合同内图片的 OCR 请求为 317987 字节，会被默认 131072 上限拒绝。本机隔离测试将单次输入预留设为 360000，并保持租户每分钟 400000、全局每分钟 2000000 和图片专用上界关闭；这一配置只证明所测请求可进入预算流程，不代表所有 PDF 或图片均可通过。调整时须同时核对单次输入与输出预留之和是否能放入租户和全局剩余额度，不应仅为提高单次上限而盲目增加分钟预算。
 
 常用预算变量：`MODEL_MAX_INPUT_TOKEN_RESERVATION`、`MODEL_MAX_OUTPUT_TOKEN_RESERVATION`、`MODEL_REQUEST_TIMEOUT`、`MODEL_TENANT_TOKENS_PER_MINUTE`、`MODEL_GLOBAL_TOKENS_PER_MINUTE`。降低单次上限会拒绝超出该上限的请求。
+
+## 可选本机 MinerU OCR
+
+同机原生进程部署可选择 MinerU 4.2.2 的 `flash`、`ocr`、ONNX CPU 组合：MinerU 负责图片转文字，现有 DeepSeek 负责文字事实建议。默认 `DOCUMENT_OCR_ENGINE=model` 继续使用配置的视觉模型；选择本地引擎后，失败会明确返回，不自动改用另一种引擎。
+
+在源码仓外的 Python 3.12 虚拟环境安装固定版本 `mineru==4.2.2`，将权重、缓存、服务状态和输出保存在私有目录。官方 `mineru-kit api-server` 和 `mineru-kit file-parse-server` 都只监听 `127.0.0.1`；后者连接前者并使用独立的 `--state-dir`。设置 `MINERU_TELEMETRY_DISABLED=1`、`MINERU_MODEL_SMALL_BACKEND=onnx` 和 `MINERU_MODEL_ONNX_DEVICE=cpu`。本配置不适用于让应用容器通过宿主机回环地址访问服务。
+
+所有参与解析及审查受理的应用进程使用相同配置：
+
+```dotenv
+DOCUMENT_OCR_ENGINE=mineru
+DOCUMENT_MINERU_URL=http://127.0.0.1:8003
+DOCUMENT_MINERU_PYTHON=/absolute/private/ocr/.venv/bin/python
+DOCUMENT_MINERU_MANIFEST=/absolute/private/ocr/assets-manifest.json
+DOCUMENT_MINERU_ASSET_ROOT=/absolute/private/ocr/models
+```
+
+资产清单使用 `repository`、`revision` 和 `files`；仓库名固定为 `opendatalab/MinerU-4_models_onnx`，每个文件记录相对 `path` 和 `sha256`，覆盖该版本 flash 所需的版面配置及三个 ONNX 权重。启动时核验清单与本机文件摘要。这是同机受信部署的配置核验，不是 HTTP 服务对实际加载权重的密码学证明；服务必须使用同一份资产。
+
+解析采用官方 Middle JSON 和 SDK 的 `RenderMode.FULL`，保留默认 Markdown 导出会省略的页眉、页脚等内容。转写文字与新解析身份一起冻结；它包含官方排版标记，不代表原图逐字符副本。升级引擎、权重或导出方式会改变解析身份，旧审查保留原结果。文字识别成功、引用匹配和事实覆盖分别验收，手写日期、金额、缺页及模糊内容仍须对照原件。
+
+本地 OCR 调用前后都核验原操作授权；大模型调用仍经过原模型预算账本。本地服务没有访问鉴权，状态目录应仅服务账号可读写（权限 `0700`），不得公开端口。官方任务在客户端取消后可能继续计算；应用不接收取消后的结果。状态目录可能保留上传图片和结果，停用服务后按部署方保留策略清理，不能把它当作业务权威存储或提交到源码仓。
 
 ## 可选结构化输出
 

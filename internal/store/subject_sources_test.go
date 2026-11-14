@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -79,7 +79,7 @@ func TestSubjectSourceAndPinnedParseMarshalFixtures(t *testing.T) {
 		"subject-source-snapshot-detail.json": SubjectSourceSnapshotDetail{SubjectSourceSnapshotResult: SubjectSourceSnapshotResult{SnapshotID: "ssnap_01", SourceID: syntheticSubjectSourceID, SourceVersion: 3, SourceDigest: strings.Repeat("0", 64), SourceScope: "synthetic_controlled", CapturedAt: captured, RecordCount: 2, Label: "演示受控主体目录"}, CaseID: "case_01"},
 		"subject-source-verify-match.json":    SubjectSourceVerifyResult{RequestID: &requestID, State: "pending_decision", MatchOutcome: "exact_match", SnapshotID: "ssnap_01", SourceCatalogID: syntheticSubjectSourceID, SourceVersion: 3, SourceDigest: strings.Repeat("0", 64), SourceScope: "synthetic_controlled", SourceAsOf: &asOfPtr, ValidFrom: &validFromPtr, MatchedRecord: &SubjectSourceMatchedRecord{DisplayName: "示例甲公司", MaskedIdentifier: "9135••••••••••0Y43"}},
 		"material-parses.json":                MaterialParseListResult{MaterialID: "mat_01", MaterialVersion: 2, DocumentID: "doc_02", Items: []MaterialParseSummary{{ParsedDocumentID: "parse_03", Status: "ready", ParserID: "text", ParserVersion: "1", CreatedAt: "2026-10-31T01:00:00Z", OriginalDigest: strings.Repeat("a", 64), NormalizedDigest: strings.Repeat("b", 64)}}},
-		"material-parsed-chunk.json":          MaterialParsedChunk{MaterialID: "mat_01", MaterialVersion: 2, DocumentID: "doc_02", ParsedDocumentID: "parse_03", Filename: "合同.txt", OriginalDigest: strings.Repeat("a", 64), ParseDigest: strings.Repeat("b", 64), TotalRunes: 3, Offset: 1, Text: "约", NextOffset: intPointer(2)},
+		"material-parsed-chunk.json":          MaterialParsedChunk{MaterialID: "mat_01", MaterialVersion: 2, DocumentID: "doc_02", ParsedDocumentID: "parse_03", Filename: "合同.txt", OriginalDigest: strings.Repeat("a", 64), ParseDigest: strings.Repeat("b", 64), TotalRunes: 3, Offset: 1, Text: "约", NextOffset: new(2)},
 	}
 	for name, value := range fixtures {
 		t.Run(name, func(t *testing.T) {
@@ -98,7 +98,8 @@ func TestSubjectSourceAndPinnedParseMarshalFixtures(t *testing.T) {
 	}
 }
 
-func intPointer(value int) *int { return &value }
+//go:fix inline
+func intPointer(value int) *int { return new(value) }
 
 func TestSubjectSourceDirectoryWireOmitsRecordIdentity(t *testing.T) {
 	body, err := json.Marshal(SubjectSourceDirectoryResult{Items: []SubjectSourceDirectoryItem{{

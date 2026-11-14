@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-14
 // Updated: 2026-11-14
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -475,13 +476,7 @@ func NeedsReassociation(association *ServiceObjectAssociationPin, facts ServiceO
 	if association == nil || facts.Pending {
 		return true
 	}
-	selected := false
-	for _, documentID := range facts.SelectedDocumentIDs {
-		if documentID == association.DocumentID {
-			selected = true
-			break
-		}
-	}
+	selected := slices.Contains(facts.SelectedDocumentIDs, association.DocumentID)
 	if !selected {
 		return true
 	}

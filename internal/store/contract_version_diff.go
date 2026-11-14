@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -555,15 +555,15 @@ func flattenSliceField(path string, value reflect.Value, out map[string]any) {
 
 func sliceKeyField(element reflect.Type) string {
 	switch element {
-	case reflect.TypeOf(DraftItem{}):
+	case reflect.TypeFor[DraftItem]():
 		return "item_id"
-	case reflect.TypeOf(DraftAssetPlan{}):
+	case reflect.TypeFor[DraftAssetPlan]():
 		return "asset_plan_id"
-	case reflect.TypeOf(PartyRef{}):
+	case reflect.TypeFor[PartyRef]():
 		return "party_id"
-	case reflect.TypeOf(MaterialRef{}):
+	case reflect.TypeFor[MaterialRef]():
 		return "material_id"
-	case reflect.TypeOf(DraftPaymentPlan{}), reflect.TypeOf(DraftDeliveryPlan{}), reflect.TypeOf(DraftAcceptancePlan{}):
+	case reflect.TypeFor[DraftPaymentPlan](), reflect.TypeFor[DraftDeliveryPlan](), reflect.TypeFor[DraftAcceptancePlan]():
 		return "sequence"
 	default:
 		return ""

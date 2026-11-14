@@ -2,9 +2,9 @@
 // Purpose: Coordinates authorized submission replay, frozen contract verification, routing, approval tasks and atomic contract event/outbox/write receipts.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-13
-// Updated: 2026-11-13
-// Revision: r1
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -150,7 +150,7 @@ func Submit(ctx context.Context, p PreparedSubmission, tenantID, actorID string,
 		if receipt.ContractID != p.ContractID {
 			return empty, fault.Conflict("Idempotency-Key已用于其他合同")
 		}
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			record, err := contracts.LoadContract(ctx, tenantID, p.ContractID)
 			if err != nil {
 				return empty, err

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -69,7 +69,7 @@ func TestReviewDiagnosticsRequiresRoleAndCurrentCaseAccess(t *testing.T) {
 	cacheControl := res.Header.Values("Cache-Control")
 	noStore := false
 	for _, value := range cacheControl {
-		for _, directive := range strings.Split(value, ",") {
+		for directive := range strings.SplitSeq(value, ",") {
 			if strings.EqualFold(strings.TrimSpace(directive), "no-store") {
 				noStore = true
 			}

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -143,7 +143,7 @@ func TestChooseSendsBoundedChoiceRequest(t *testing.T) {
 			question.Criteria["bandwidth"] == "" {
 			t.Errorf("request question = %+v", body.Questions)
 		}
-		_, _ = w.Write([]byte(answerBody("bandwidth", validProbabilities(), floatPointer(0.91))))
+		_, _ = w.Write([]byte(answerBody("bandwidth", validProbabilities(), new(0.91))))
 	})
 
 	answer, err := client.Choose(context.Background(), "合成审核摘要", "review_focus", "选择核查重点", testCriteria())
@@ -213,7 +213,7 @@ func TestChooseRejectsInvalidInputBeforeNetwork(t *testing.T) {
 }
 
 func TestChooseRejectsUnusableResponses(t *testing.T) {
-	valid := answerBody("bandwidth", validProbabilities(), floatPointer(0.91))
+	valid := answerBody("bandwidth", validProbabilities(), new(0.91))
 	notMaximum := validProbabilities()
 	notMaximum["monthly_sla"] = 0.9
 	notMaximum["bandwidth"] = 0.06
@@ -243,7 +243,7 @@ func TestChooseRejectsUnusableResponses(t *testing.T) {
 		{name: "unknown choice", status: http.StatusOK, body: strings.Replace(valid, `"choice":"bandwidth"`, `"choice":"other"`, 1), want: ErrInvalidAnswer},
 		{name: "wrong answer type", status: http.StatusOK, body: strings.Replace(valid, `"type":"choice"`, `"type":"score"`, 1), want: ErrInvalidAnswer},
 		{name: "invalid observed model", status: http.StatusOK, body: strings.Replace(valid, `"model":"jev-1.14.0"`, `"model":"bad model"`, 1), want: ErrInvalidAnswer},
-		{name: "confidence above one", status: http.StatusOK, body: answerBody("bandwidth", validProbabilities(), floatPointer(1.1)), want: ErrInvalidAnswer},
+		{name: "confidence above one", status: http.StatusOK, body: answerBody("bandwidth", validProbabilities(), new(1.1)), want: ErrInvalidAnswer},
 		{name: "negative usage", status: http.StatusOK, body: strings.Replace(valid, `"input_tokens":100`, `"input_tokens":-1`, 1), want: ErrInvalidAnswer},
 		{name: "incomplete probabilities", status: http.StatusOK, body: answerBody("bandwidth", incomplete, nil), want: ErrInvalidProbabilities},
 		{name: "probability sum", status: http.StatusOK, body: answerBody("bandwidth", badSum, nil), want: ErrInvalidProbabilities},
@@ -331,7 +331,8 @@ func TestChooseDoesNotLeakKeyInErrors(t *testing.T) {
 	}
 }
 
-func floatPointer(value float64) *float64 { return &value }
+//go:fix inline
+func floatPointer(value float64) *float64 { return new(value) }
 
 func testNoulQuestions() map[string]NoulQuestion {
 	return map[string]NoulQuestion{

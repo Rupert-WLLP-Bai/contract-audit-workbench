@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-08
-// Updated: 2026-11-08
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -251,8 +251,8 @@ func decodeSSE(body io.Reader) (json.RawMessage, error) {
 	var data []string
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasPrefix(line, "data:") {
-			data = append(data, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+		if after, ok := strings.CutPrefix(line, "data:"); ok {
+			data = append(data, strings.TrimSpace(after))
 			continue
 		}
 		if line == "" && len(data) > 0 {

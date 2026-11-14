@@ -4,16 +4,15 @@
 // Contact: +86 13617696321
 // Created: 2026-11-14
 // Updated: 2026-11-14
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Alert, Button, Empty, Form, InputNumber, Select, Tag } from "antd";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   cancelContractReminder,
   createContractReminder,
-  listContractReminders,
   type ContractDetail,
   type ContractReminder,
   type ContractReminderCreateInput,
@@ -27,6 +26,7 @@ import {
   pendingMutationKey,
 } from "../api/idempotency";
 import type { Actor } from "../api/types";
+import { useContractRemindersQuery } from "../features/contracts/queries";
 
 type ReminderFormValues = {
   planKey: string;
@@ -143,55 +143,33 @@ export function ContractRemindersPanel({
 }) {
   const contractId = detail.summary.contract_id;
   const currentRevisionId = detail.current_revision_id;
-  const actorKey = actor
-    ? [actor.audience, actor.tenant_id, actor.org_id, actor.id, actor.role].join("\u0000")
-    : "anonymous";
   const active =
     detail.summary.contract_state === "registered" ||
     detail.summary.contract_state === "performing";
   const isNative = detail.summary.authority_mode === "native";
+  const remindersQuery = useContractRemindersQuery(
+    contractId,
+    currentRevisionId,
+    detail.summary.row_version,
+    actor,
+    active,
+    isNative,
+  );
+  const reminders = remindersQuery.isError ? null : (remindersQuery.data ?? null);
+  const loading = remindersQuery.isFetching;
+  const readError = remindersQuery.error ? friendlyError(remindersQuery.error) : null;
   const canWrite = Boolean(actor && canManage);
   const [form] = Form.useForm<ReminderFormValues>();
-  const [reminders, setReminders] = useState<Awaited<
-    ReturnType<typeof listContractReminders>
-  > | null>(null);
-  const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const initialTimezone = useMemo(() => browserTimezone(), []);
+  const error = actionError ?? readError;
 
-  const load = useCallback(
-    async (signal?: AbortSignal) => {
-      if (!actor || !isNative) {
-        setReminders(null);
-        setLoading(false);
-        setError(null);
-        return;
-      }
-      setLoading(true);
-      setError(null);
-      setReminders(null);
-      try {
-        const result = await listContractReminders(contractId, signal);
-        if (!signal?.aborted) setReminders(result);
-      } catch (caught) {
-        if (!signal?.aborted) {
-          setReminders(null);
-          setError(friendlyError(caught));
-        }
-      } finally {
-        if (!signal?.aborted) setLoading(false);
-      }
-    },
-    [actor, actorKey, contractId, isNative],
-  );
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
-  }, [load, currentRevisionId, active]);
+  function retryRead() {
+    setActionError(null);
+    void remindersQuery.refetch();
+  }
 
   const timezoneOptions = useMemo(
     () =>
@@ -243,7 +221,7 @@ export function ContractRemindersPanel({
       values.leadDays < 0 ||
       values.leadDays > 365
     ) {
-      setError("请选择有效的冻结计划，并将提前天数设置为 0 到 365 的整数。");
+      setActionError("请选择有效的冻结计划，并将提前天数设置为 0 到 365 的整数。");
       return;
     }
     const input: ContractReminderCreateInput = {
@@ -256,7 +234,7 @@ export function ContractRemindersPanel({
       expected_contract_row_version: reminders.contract_row_version,
     };
     setBusyId("create");
-    setError(null);
+    setActionError(null);
     setMessage(null);
     let pending: Awaited<ReturnType<typeof pendingMutationKey>> | null = null;
     try {
@@ -272,9 +250,9 @@ export function ContractRemindersPanel({
         `已为${actor.display_name}确认提醒。日期来自当前冻结修订，服务端会按所选时区计算提醒时刻。`,
       );
       await onRefresh();
-      await load();
+      await remindersQuery.refetch();
     } catch (caught) {
-      setError(friendlyError(caught));
+      setActionError(friendlyError(caught));
     } finally {
       setBusyId(null);
     }
@@ -284,7 +262,7 @@ export function ContractRemindersPanel({
     if (!actor || !canManage) return;
     const input = { expected_version: reminder.version };
     setBusyId(reminder.reminder_id);
-    setError(null);
+    setActionError(null);
     setMessage(null);
     let pending: Awaited<ReturnType<typeof pendingMutationKey>> | null = null;
     try {
@@ -300,9 +278,9 @@ export function ContractRemindersPanel({
         "提醒已取消；原确认记录仍保留在履约历史中。需要更改时，请按当前冻结修订重新创建。 ",
       );
       await onRefresh();
-      await load();
+      await remindersQuery.refetch();
     } catch (caught) {
-      setError(friendlyError(caught));
+      setActionError(friendlyError(caught));
     } finally {
       setBusyId(null);
     }
@@ -478,15 +456,13 @@ export function ContractRemindersPanel({
             </div>
           ) : null}
           {canWrite && !currentRevisionAligned ? (
-            <Button onClick={() => void load()} loading={loading}>
+            <Button onClick={retryRead} loading={loading}>
               刷新提醒与冻结修订
             </Button>
           ) : null}
         </>
       ) : null}
-      {!loading && error && actor ? (
-        <Button onClick={() => void load()}>重试读取提醒</Button>
-      ) : null}
+      {!loading && error && actor ? <Button onClick={retryRead}>重试读取提醒</Button> : null}
     </section>
   );
 }

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-12
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -470,7 +470,7 @@ func TestTwoDigitIdentifiersPinned(t *testing.T) {
 	}
 
 	var paged strings.Builder
-	for i := 0; i < 12; i++ {
+	for i := range 12 {
 		if i > 0 {
 			paged.WriteString("\f")
 		}

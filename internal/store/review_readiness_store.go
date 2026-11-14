@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -317,7 +317,7 @@ func currentReadinessMaterials(ctx context.Context, s *Store, st state, caseID s
 				item.Purpose = purpose
 			}
 		}
-		parserID, parserVersion, configHash := parserConfigurationFor(doc, models)
+		parserID, parserVersion, configHash := s.parserConfigurationWithModels(doc, models)
 		parsed, found := st.latestParsed(doc.ID, configHash)
 		if !found {
 			if prior, exists := st.latestParsed(doc.ID, ""); exists {

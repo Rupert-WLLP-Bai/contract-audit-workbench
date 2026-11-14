@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -23,6 +23,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -227,12 +228,7 @@ func normalizeMode(raw string) (string, error) {
 }
 
 func shared(name string, blocked ...string) bool {
-	for _, other := range blocked {
-		if name == other {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(blocked, name)
 }
 
 func first(value, fallback string) string {

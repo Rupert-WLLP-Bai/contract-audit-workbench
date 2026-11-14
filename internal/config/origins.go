@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -20,7 +20,7 @@ func BrowserOrigins(raw, mode string) []string {
 	if normalized, err := normalizeMode(mode); err == nil && (normalized == ModeDevelopment || normalized == ModeTest) {
 		origins = append(origins, "http://localhost:5173", "http://127.0.0.1:5173")
 	}
-	for _, origin := range strings.Split(raw, ",") {
+	for origin := range strings.SplitSeq(raw, ",") {
 		if origin = strings.TrimSpace(origin); origin != "" {
 			origins = append(origins, origin)
 		}

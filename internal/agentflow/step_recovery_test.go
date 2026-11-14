@@ -2,9 +2,9 @@
 // Purpose: Checks durable planner, tool and knowledge replay across lease takeovers, identity mismatches, ambiguity, persistence failures and observed budget accounting.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-12
-// Updated: 2026-11-12
-// Revision: r1
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -149,7 +149,7 @@ func TestStepJournalRecoversKnowledgeAndToolAcrossTwoTakeovers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for takeover := int64(0); takeover < 3; takeover++ {
+	for takeover := range int64(3) {
 		if takeover > 0 {
 			journal.generation++
 			request.PriorKnowledgeReadCount = 1
@@ -210,7 +210,8 @@ func TestStepJournalRecoversKnowledgeAndToolAcrossTwoTakeovers(t *testing.T) {
 	}
 }
 
-func int64Pointer(value int64) *int64 { return &value }
+//go:fix inline
+func int64Pointer(value int64) *int64 { return new(value) }
 
 func TestRecoveredElapsedBudgetAddsPriorAttemptAndCurrentAttemptMaximum(t *testing.T) {
 	priorAttempt := int64(900)

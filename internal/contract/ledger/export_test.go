@@ -2,9 +2,9 @@
 // Purpose: Preserves exact legacy CSV bytes and verifies export-only columns, formula safety, row projection and frozen label materialization.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-13
-// Updated: 2026-11-13
-// Revision: r1
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -144,7 +144,7 @@ func TestExportColumnLimitsDoNotExpandSavedViews(t *testing.T) {
 
 func TestExportProjectionMaterializesLabelsAndOnlySelectedFields(t *testing.T) {
 	columns := []string{"contract_state_label", "supplier_name"}
-	item := Item{ContractState: "draft", SupplierName: stringPointer("供应商")}
+	item := Item{ContractState: "draft", SupplierName: new("供应商")}
 	row := ExportRowValues(item, columns)
 	if len(row) != len(columns) || row["supplier_name"] != "供应商" {
 		t.Fatalf("projection shape = %#v", row)
@@ -161,4 +161,5 @@ func TestExportProjectionMaterializesLabelsAndOnlySelectedFields(t *testing.T) {
 	}
 }
 
-func stringPointer(value string) *string { return &value }
+//go:fix inline
+func stringPointer(value string) *string { return new(value) }

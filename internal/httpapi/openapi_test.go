@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,6 +16,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"maps"
 	"math"
 	"net/http"
 	"net/http/cookiejar"
@@ -763,9 +764,7 @@ func wireShape(schema map[string]any, value any, schemas map[string]any, path st
 			}
 			matched = true
 			branch := make(map[string]any, len(schema))
-			for keyword, definition := range schema {
-				branch[keyword] = definition
-			}
+			maps.Copy(branch, schema)
 			branch["type"] = name
 			if err := wireShape(branch, value, schemas, path); err == nil {
 				return nil

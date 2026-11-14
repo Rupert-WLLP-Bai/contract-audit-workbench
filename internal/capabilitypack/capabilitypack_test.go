@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -603,7 +603,7 @@ func TestParseRejectsInvalidManifests(t *testing.T) {
 			name: "too many capabilities",
 			mutate: func(document map[string]any) {
 				capabilities := make([]any, 0, 17)
-				for i := 0; i < 17; i++ {
+				for i := range 17 {
 					capabilities = append(capabilities, map[string]any{
 						"id":            fmt.Sprintf("operator.cap%d", i),
 						"effect":        "read",
@@ -636,7 +636,7 @@ func TestParseRejectsInvalidManifests(t *testing.T) {
 			name: "too many checks",
 			mutate: func(document map[string]any) {
 				checks := make([]any, 0, 17)
-				for i := 0; i < 17; i++ {
+				for i := range 17 {
 					checks = append(checks, map[string]any{
 						"id":             fmt.Sprintf("check.c%d", i),
 						"comparator_ref": "builtin.configured_bandwidth_at_least/v1",
@@ -842,7 +842,7 @@ func TestRegistryListStable(t *testing.T) {
 		"operator.dedicated_line@1.0.0",
 		"zeta.pack@1.0.0",
 	}
-	for attempt := 0; attempt < 3; attempt++ {
+	for range 3 {
 		listed := registry.List()
 		got := make([]string, len(listed))
 		for i, manifest := range listed {

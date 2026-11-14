@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -210,7 +210,7 @@ func TestImageOCRFeedsReview(t *testing.T) {
 func quotesFromPrompt(prompt string) []map[string]string {
 	var quotes []map[string]string
 	var id string
-	for _, line := range strings.Split(prompt, "\n") {
+	for line := range strings.SplitSeq(prompt, "\n") {
 		if _, rest, ok := strings.Cut(line, "document_id="); ok {
 			id, _, _ = strings.Cut(rest, " ")
 			id = strings.TrimSpace(id)

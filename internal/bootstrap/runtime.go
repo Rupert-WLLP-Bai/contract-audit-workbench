@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -24,6 +24,7 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/config"
 	"contractaudit/internal/identity"
+	"contractaudit/internal/localocr"
 	"contractaudit/internal/model"
 	"contractaudit/internal/objectstore"
 	"contractaudit/internal/process"
@@ -109,6 +110,17 @@ func openConfigured(ctx context.Context, includeOIDC bool, service string) (*Run
 	}
 	if err := configureOperationAuthority(st, service); err != nil {
 		return closeOnFailure(err)
+	}
+	localConfig, enabled, err := localocr.FromEnv()
+	if err != nil {
+		return closeOnFailure(err)
+	}
+	if enabled {
+		engine, localErr := localocr.NewEngine(localConfig)
+		if localErr != nil {
+			return closeOnFailure(localErr)
+		}
+		st.UseLocalOCR(engine)
 	}
 	models, revision, err := wireRuntimeStore(ctx, st, settings, service)
 	if err != nil {

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-25
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -44,7 +44,7 @@ func ready(id, role, text string) engine.Source {
 // not the identity.
 func piAgentIdentity(raw string) string {
 	var blocks []string
-	for _, part := range strings.Split(raw, "\n\n") {
+	for part := range strings.SplitSeq(raw, "\n\n") {
 		if strings.TrimSpace(part) == "" {
 			continue
 		}

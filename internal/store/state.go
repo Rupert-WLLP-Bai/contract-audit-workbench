@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -51,6 +51,7 @@ type Store struct {
 	claimMu                sync.Mutex
 	claims                 map[string]JobClaim
 	operationAuthority     OperationAuthorityResolver
+	localOCR               LocalOCR
 	operationContexts      map[string]model.DelegatedScope
 	dir                    string
 	st                     state

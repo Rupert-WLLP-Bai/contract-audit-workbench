@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-12
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -480,10 +481,8 @@ func evidenceResolvedGap(review agentflow.AgentReview, gap agentflow.GapReport) 
 	if gap.Status != "resolved" {
 		return false
 	}
-	for _, id := range review.UnresolvedGapIDs {
-		if id == gap.GapID {
-			return false
-		}
+	if slices.Contains(review.UnresolvedGapIDs, gap.GapID) {
+		return false
 	}
 	count := 0
 	valid := false

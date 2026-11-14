@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -63,12 +63,12 @@ func TestOperatorObservationsForEvaluationRequiresCutoffAndTemporalProof(t *test
 			Kind: auditext.TemporalProofCurrentState, SourceAsOf: &cutoff}, "historical_proof_missing"},
 		{"source as-of after cutoff", collectedAt, &auditext.TemporalProof{
 			Kind: auditext.TemporalProofHistoricalInterval, SourceCatalogID: "catalog-oss", DatasetVersion: "dataset-v1",
-			RecordVersion: recordVersion, SourceAsOf: timePointer(cutoff.Add(time.Microsecond)),
+			RecordVersion: recordVersion, SourceAsOf: new(cutoff.Add(time.Microsecond)),
 			ValidFrom: &validFrom, ValidUntil: &validUntil}, "temporal_proof_unavailable"},
 		{"interval does not cover business time", collectedAt, &auditext.TemporalProof{
 			Kind: auditext.TemporalProofHistoricalInterval, SourceCatalogID: "catalog-oss", DatasetVersion: "dataset-v1",
 			RecordVersion: recordVersion, SourceAsOf: &sourceAsOf,
-			ValidFrom: timePointer(businessAt.Add(time.Hour)), ValidUntil: &validUntil}, "historical_proof_unavailable"},
+			ValidFrom: new(businessAt.Add(time.Hour)), ValidUntil: &validUntil}, "historical_proof_unavailable"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -128,4 +128,5 @@ func TestOperatorObservationsForEvaluationRequiresCutoffAndTemporalProof(t *test
 	}
 }
 
-func timePointer(value time.Time) *time.Time { return &value }
+//go:fix inline
+func timePointer(value time.Time) *time.Time { return new(value) }

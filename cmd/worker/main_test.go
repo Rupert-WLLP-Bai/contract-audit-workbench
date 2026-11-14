@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -312,7 +312,7 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 		go func() {
 			done <- claimJobs(ctx, env.worker.Store, workerID, 5*time.Second, time.Second, 10*time.Millisecond, nil)
 		}()
-		for job := 0; job < 2; job++ {
+		for job := range 2 {
 			select {
 			case <-modelCalls:
 			case err := <-done:

@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-29
 // Updated: 2026-11-14
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -314,7 +314,7 @@ func TestDurableOperatorAuditFlow(t *testing.T) {
 	}
 
 	bindingInput := OperatorObjectBindingInput{
-		ContractObject:  OperatorContractObject{ObjectType: "service", ObjectID: "LINE-001", Label: strPtr("专线 LINE-001")},
+		ContractObject:  OperatorContractObject{ObjectType: "service", ObjectID: "LINE-001", Label: new("专线 LINE-001")},
 		ExternalObject:  OperatorExternalObject{ConnectorID: "fixture.oss", ExternalObjectID: "fixture-line-001"},
 		ServiceObjectID: serviceObject.ServiceObjectID, ExpectedObjectVersion: serviceObject.Version + 1, ExpectedAssociationVersion: 1,
 		EffectiveFrom: businessAt.Add(-24 * time.Hour), EffectiveUntil: businessAt.Add(24 * time.Hour), Confirmed: true,
@@ -376,7 +376,6 @@ func TestDurableOperatorAuditFlow(t *testing.T) {
 	}
 	proposalAttempts := make(chan mappingProposalAttempt, 2)
 	for _, proposalStore := range []*Store{core, coreProposalRetry} {
-		proposalStore := proposalStore
 		go func() {
 			value, replayed, err := proposalStore.ProposeOperatorMappingChange(ctx, admin, caseID, binding.MappingID,
 				proposalInput, "operator-mapping-proposal-1")
@@ -426,7 +425,6 @@ func TestDurableOperatorAuditFlow(t *testing.T) {
 		actor accounts.User
 		key   string
 	}{{reviewer, "operator-mapping-decision-1"}, {reviewerTwo, "operator-mapping-decision-2"}} {
-		candidate := candidate
 		go func() {
 			value, _, err := core.DecideOperatorMappingChange(ctx, candidate.actor, caseID, proposal.RequestID, decisionInput, candidate.key)
 			attempts <- mappingDecisionAttempt{actor: candidate.actor, key: candidate.key, value: value, err: err}
@@ -982,4 +980,5 @@ func operatorManifestForRulePack(t *testing.T, rulePackID, rulePackVersion strin
 	return manifest
 }
 
-func strPtr(value string) *string { return &value }
+//go:fix inline
+func strPtr(value string) *string { return new(value) }

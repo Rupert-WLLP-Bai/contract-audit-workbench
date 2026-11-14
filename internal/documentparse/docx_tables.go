@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,6 +12,7 @@ package documentparse
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"unicode/utf8"
 
@@ -283,10 +284,5 @@ func docxHasVisibility(node *docxNode) bool {
 	if node.word("vanish") || node.word("specVanish") {
 		return true
 	}
-	for _, child := range node.children {
-		if docxHasVisibility(child) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(node.children, docxHasVisibility)
 }

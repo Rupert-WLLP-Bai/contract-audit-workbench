@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -173,7 +173,7 @@ func docxChoiceSupported(node *docxNode) (bool, error) {
 	if requires == "" {
 		return false, fmt.Errorf("DOCX: AlternateContent choice has no Requires")
 	}
-	for _, prefix := range strings.Fields(requires) {
+	for prefix := range strings.FieldsSeq(requires) {
 		uri, bound := node.namespaces[prefix]
 		if !bound || uri == "" {
 			return false, fmt.Errorf("DOCX: AlternateContent requires undeclared prefix %q", prefix)

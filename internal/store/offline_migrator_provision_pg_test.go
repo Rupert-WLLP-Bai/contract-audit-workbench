@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -92,7 +92,7 @@ func TestOfflineMigratorFreshAndControlledLegacyBootstrap(t *testing.T) {
 				t.Log("upgrading existing isolated schema 42 with the actual offline migrator")
 				t.Setenv("MIGRATOR_DATABASE_URL", migratorDSN)
 			}
-			for round := 0; round < 2; round++ {
+			for round := range 2 {
 				if round > 0 {
 					var version int
 					want := schemaMaxCompatibleVersion

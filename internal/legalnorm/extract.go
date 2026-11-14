@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -502,10 +502,7 @@ func verifyArticleAssertions(input CaptureInput, extracted []extractedArticle) (
 
 func firstRuneDifference(left, right string) int {
 	a, b := []rune(left), []rune(right)
-	limit := len(a)
-	if len(b) < limit {
-		limit = len(b)
-	}
+	limit := min(len(b), len(a))
 	for i := 0; i < limit; i++ {
 		if a[i] != b[i] {
 			return i

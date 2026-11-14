@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -127,7 +127,6 @@ func TestLegalWireContractFixtures(t *testing.T) {
 		{name: "frozen-legal-authorities.json", value: frozenLegalProjection},
 	}
 	for _, fixture := range fixtures {
-		fixture := fixture
 		t.Run(fixture.name, func(t *testing.T) {
 			encoded, err := json.MarshalIndent(fixture.value, "", "  ")
 			if err != nil {

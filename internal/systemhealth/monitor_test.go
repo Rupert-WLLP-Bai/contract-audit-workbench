@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -150,7 +150,7 @@ func TestDockerInspectionIsBoundedAndKeepsPartialResults(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/containers/json" {
 			items := make([]any, 0, total)
-			for i := 0; i < total; i++ {
+			for i := range total {
 				id := "svc-" + strconv.Itoa(i)
 				items = append(items, map[string]any{
 					"Id": id + "-id", "Names": []string{"/ours-" + id + "-1"}, "Image": "image:" + id,

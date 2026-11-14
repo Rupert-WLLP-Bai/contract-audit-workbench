@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r6
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1086,12 +1087,7 @@ func fixtureCallForGap(gapID, domain, capability string, tools []struct {
 }
 
 func hasFixtureCapability(capabilities []string, wanted string) bool {
-	for _, capability := range capabilities {
-		if capability == wanted {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(capabilities, wanted)
 }
 
 // fixtureWarrantyAnswer answers a review prompt with the evidence lines that
@@ -1131,7 +1127,7 @@ func fixtureWarrantyQuotes(messages []fixtureWarrantyMessage) []map[string]strin
 	quotes := make([]map[string]string, 0, len(messages))
 	var documentID string
 	for _, message := range messages {
-		for _, line := range strings.Split(message.Content, "\n") {
+		for line := range strings.SplitSeq(message.Content, "\n") {
 			if _, rest, ok := strings.Cut(line, "document_id="); ok {
 				documentID, _, _ = strings.Cut(strings.TrimSpace(rest), " ")
 				continue
@@ -1415,10 +1411,10 @@ func validEmbeddedOCRRequest(body []byte, originalDigest string) bool {
 	const png = "data:image/png;base64,"
 	const jpeg = "data:image/jpeg;base64,"
 	media := ""
-	if strings.HasPrefix(url, png) {
-		url, media = strings.TrimPrefix(url, png), "image/png"
-	} else if strings.HasPrefix(url, jpeg) {
-		url, media = strings.TrimPrefix(url, jpeg), "image/jpeg"
+	if after, ok := strings.CutPrefix(url, png); ok {
+		url, media = after, "image/png"
+	} else if after, ok := strings.CutPrefix(url, jpeg); ok {
+		url, media = after, "image/jpeg"
 	} else {
 		return false
 	}

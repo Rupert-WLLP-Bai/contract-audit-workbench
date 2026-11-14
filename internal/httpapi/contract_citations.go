@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,6 +12,7 @@ package httpapi
 
 import (
 	"net/http"
+	"slices"
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/agentflow"
@@ -154,12 +155,7 @@ func findVerifiedEvidence(items []agentflow.VerifiedEvidence, evidenceID string)
 }
 
 func containsString(items []string, value string) bool {
-	for _, item := range items {
-		if item == value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(items, value)
 }
 
 // frozenAttemptDocument returns the only document of this case whose frozen

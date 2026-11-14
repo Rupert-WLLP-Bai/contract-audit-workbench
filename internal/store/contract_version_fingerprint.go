@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 
 	"contractaudit/internal/clmenvelope"
 	"contractaudit/internal/fault"
@@ -59,12 +60,7 @@ type clmRestrictedFingerprintSet struct {
 }
 
 func clmRestrictedFieldPath(path string) bool {
-	for _, candidate := range clmRestrictedFieldPaths {
-		if path == candidate {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(clmRestrictedFieldPaths, path)
 }
 
 // computeRestrictedFingerprints is called on the plaintext snapshot inside the

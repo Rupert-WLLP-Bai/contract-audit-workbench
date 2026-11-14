@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -250,15 +250,9 @@ func parsePoolConfig(dsn string, defaultMaxConns int32) (*pgxpool.Config, error)
 		return nil, err
 	}
 	if _, explicit := connConfig.RuntimeParams["pool_max_conns"]; !explicit {
-		cfg.MaxConns = defaultMaxConns
 		// Explicit minimums also express a connection requirement; do not leave
 		// them unattainable just because no maximum was supplied.
-		if cfg.MinConns > cfg.MaxConns {
-			cfg.MaxConns = cfg.MinConns
-		}
-		if cfg.MinIdleConns > cfg.MaxConns {
-			cfg.MaxConns = cfg.MinIdleConns
-		}
+		cfg.MaxConns = max(cfg.MinConns, cfg.MinIdleConns, defaultMaxConns)
 	}
 	return cfg, nil
 }

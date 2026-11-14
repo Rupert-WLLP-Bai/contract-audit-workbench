@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-12
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,6 +15,7 @@ package agentflow
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"contractaudit/internal/access"
@@ -39,12 +40,7 @@ func Domains() []Domain {
 }
 
 func validDomain(domain Domain) bool {
-	for _, value := range Domains() {
-		if domain == value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(Domains(), domain)
 }
 
 var (

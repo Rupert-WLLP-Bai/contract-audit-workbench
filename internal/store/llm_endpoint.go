@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 
 	"contractaudit/internal/accounts"
@@ -238,10 +239,5 @@ func (s *Store) SaveLLMModelSelection(ctx context.Context, user accounts.User, r
 }
 
 func containsModelID(models []string, want string) bool {
-	for _, model := range models {
-		if model == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(models, want)
 }

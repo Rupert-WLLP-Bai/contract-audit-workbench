@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-01
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -120,10 +120,7 @@ func Dial(ctx context.Context, config Config) (*JetStreamBroker, error) {
 // NATS cluster does not make the stream replicated by itself; Replicas must be
 // set to 3 on a cluster with three peers.
 func streamConfig(config Config) jetstream.StreamConfig {
-	replicas := config.Replicas
-	if replicas < 1 {
-		replicas = 1
-	}
+	replicas := max(config.Replicas, 1)
 	return jetstream.StreamConfig{
 		Name:        config.Stream,
 		Subjects:    []string{config.Subject},

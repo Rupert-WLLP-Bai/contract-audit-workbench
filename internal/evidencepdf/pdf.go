@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -111,7 +111,7 @@ func writeText(ctx context.Context, pdf *gopdf.GoPdf, text string, y *float64, l
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	for _, paragraph := range strings.Split(text, "\n") {
+	for paragraph := range strings.SplitSeq(text, "\n") {
 		if paragraph == "" {
 			*y += lineHeight
 			continue

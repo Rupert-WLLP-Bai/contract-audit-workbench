@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -79,7 +79,21 @@ type parsedPayload struct {
 }
 
 func (s *Store) parserConfiguration(doc Document) (string, string, string) {
-	return parserConfigurationFor(doc, s.currentModels())
+	return s.parserConfigurationWithModels(doc, s.currentModels())
+}
+
+func (s *Store) parserConfigurationWithModels(doc Document, models Models) (string, string, string) {
+	id, version, hash := parserConfigurationFor(doc, models)
+	if s.localOCR != nil && DocumentParseKind(doc.Filename, doc.MediaType) == "ocr" {
+		profile := s.localOCR.ProfileID()
+		if fileKind(doc.Filename, doc.MediaType) == kindImage {
+			version = profile
+		} else {
+			version += "+" + profile
+		}
+		hash = ocrConfigurationHash(id, version, docir.NormalizationVersion, profile)
+	}
+	return id, version, hash
 }
 
 // DocumentParseKind returns the parser capacity class derived from the
@@ -138,7 +152,7 @@ func (s *Store) ensureParsed(ctx context.Context, user accounts.User, doc Docume
 
 func (s *Store) ensureParsedWithModels(ctx context.Context, user accounts.User, doc Document, force bool, models Models) (ParsedDocument, error) {
 	ctx = commandContext(ctx, user)
-	if DocumentParseKind(doc.Filename, doc.MediaType) == "ocr" {
+	if DocumentParseKind(doc.Filename, doc.MediaType) == "ocr" && s.localOCR == nil {
 		if err := validateReviewModelConfiguration(models); err != nil {
 			return ParsedDocument{}, err
 		}
@@ -152,7 +166,7 @@ func (s *Store) ensureParsedWithModels(ctx context.Context, user accounts.User, 
 			s.releaseParseLock()
 		}
 	}()
-	_, _, configHash := parserConfigurationFor(doc, models)
+	_, _, configHash := s.parserConfigurationWithModels(doc, models)
 	if !force {
 		st, err := s.snapshotScoped(ctx, userScope(user))
 		if err != nil {
@@ -219,7 +233,7 @@ func (s *Store) reserveSelectionOrder(ctx context.Context) (int64, error) {
 }
 
 func (s *Store) newParseSelection(ctx context.Context, doc Document, models Models) (AttemptParseSelection, error) {
-	if DocumentParseKind(doc.Filename, doc.MediaType) == "ocr" {
+	if DocumentParseKind(doc.Filename, doc.MediaType) == "ocr" && s.localOCR == nil {
 		if err := validateReviewModelConfiguration(models); err != nil {
 			return AttemptParseSelection{}, err
 		}
@@ -232,7 +246,7 @@ func (s *Store) newParseSelection(ctx context.Context, doc Document, models Mode
 	if err != nil {
 		return AttemptParseSelection{}, err
 	}
-	parserID, parserVersion, configHash := parserConfigurationFor(doc, models)
+	parserID, parserVersion, configHash := s.parserConfigurationWithModels(doc, models)
 	return AttemptParseSelection{
 		DocumentID: doc.ID, OriginalDigest: doc.Digest, ParsedDocumentID: id, SelectionOrder: order,
 		ParserID: parserID, ParserVersion: parserVersion, ConfigHash: configHash,
@@ -548,9 +562,9 @@ func (s *Store) interpretUnpersistedWithModels(ctx context.Context, doc Document
 		var ocr documentparse.OCR
 		if callback, ok := ctx.Value(embeddedOCRCallbackKey{}).(documentparse.OCR); ok {
 			ocr = callback
-		} else if models != nil {
+		} else if models != nil || s.localOCR != nil {
 			ocr = func(ctx context.Context, media string, body []byte) (string, error) {
-				return transcribe(ctx, models, Document{MediaType: media}, body)
+				return s.transcribe(ctx, models, Document{MediaType: media}, body)
 			}
 		}
 		parse := documentparse.ParsePDF
@@ -630,7 +644,7 @@ func (s *Store) acceptanceParsePlan(ctx context.Context, st state, docs []Docume
 			previousSnapshot := st.snapshotOf(run.ID)
 			configuration := make([]FrozenDocument, len(docs))
 			for i, doc := range docs {
-				_, _, configHash := parserConfigurationFor(doc, models)
+				_, _, configHash := s.parserConfigurationWithModels(doc, models)
 				configuration[i].ConfigHash = configHash
 			}
 			compilerRef := ""
@@ -662,7 +676,7 @@ func (s *Store) acceptanceParsePlan(ctx context.Context, st state, docs []Docume
 	frozen := make([]FrozenDocument, len(docs))
 	selections := make([]AttemptParseSelection, len(docs))
 	for i, doc := range docs {
-		parserID, parserVersion, configHash := parserConfigurationFor(doc, models)
+		parserID, parserVersion, configHash := s.parserConfigurationWithModels(doc, models)
 		parsed, hasParsed := st.latestParsed(doc.ID, configHash)
 		prior, hasPrior := previous[doc.ID]
 		reusePrior := mayReusePrevious && hasPrior && prior.OriginalDigest == doc.Digest && prior.ConfigHash == configHash &&

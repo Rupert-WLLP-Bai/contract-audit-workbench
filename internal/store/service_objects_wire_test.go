@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -34,7 +34,7 @@ func TestServiceObjectWireFixtures(t *testing.T) {
 		ID: "fact-wire-1", RuleID: "minimum-bandwidth", Dimension: "minimum_bandwidth", ObjectRef: "LINE-A",
 		Value: "100", Unit: "Mbit/s", SourceRole: "draft_contract", MeasurementWindow: "calendar_month",
 		TimeZone: "Asia/Shanghai", Calendar: "gregorian", OutageDefinition: "all_service_unavailability",
-		Exclusions: []string{"planned_maintenance"}, Basis: "最低保障带宽为100 Mbit/s", Applicable: boolPtrWire(true),
+		Exclusions: []string{"planned_maintenance"}, Basis: "最低保障带宽为100 Mbit/s", Applicable: new(true),
 		Citations: []rulepack.Citation{{SourceID: "doc-wire-1", SourceVersion: "parse-wire-1", TenantID: "local-demo",
 			CaseID: "case-wire-1", SourceDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 			Start: 8, End: 28, Quote: "最低保障带宽 100 Mbit/s"}},
@@ -103,4 +103,5 @@ func TestServiceObjectWireFixtures(t *testing.T) {
 	}
 }
 
-func boolPtrWire(v bool) *bool { return &v }
+//go:fix inline
+func boolPtrWire(v bool) *bool { return new(v) }

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -182,7 +182,7 @@ func advisoryEnvValue(key, fallback string) string {
 
 func advisoryFeaturesFromEnv() []string {
 	features := []string{}
-	for _, item := range strings.Split(os.Getenv("TYPESAFE_JEV_FEATURES"), ",") {
+	for item := range strings.SplitSeq(os.Getenv("TYPESAFE_JEV_FEATURES"), ",") {
 		if feature := strings.TrimSpace(item); feature != "" {
 			features = append(features, feature)
 		}
@@ -238,7 +238,7 @@ func ParseExpectedReplicas(raw string) (map[string]int, error) {
 	if raw == "" {
 		return result, nil
 	}
-	for _, item := range strings.Split(raw, ",") {
+	for item := range strings.SplitSeq(raw, ",") {
 		id, value, err := parseReplicaDeclaration(item)
 		if err != nil {
 			return nil, err

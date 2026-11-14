@@ -2,9 +2,9 @@
 // Purpose: Keeps exact decimal, time, frozen-plan, item-metadata and evidence-order rules within the CLM fulfillment domain.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-13
-// Updated: 2026-11-13
-// Revision: r1
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"math/big"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -201,10 +202,8 @@ func acceptancePlanForItem(draft clmcontract.DraftContent, sequence *int, itemID
 			continue
 		}
 		if len(plan.ItemIDs) > 0 {
-			for _, candidate := range plan.ItemIDs {
-				if candidate == itemID {
-					return plan, nil
-				}
+			if slices.Contains(plan.ItemIDs, itemID) {
+				return plan, nil
 			}
 			return nil, fault.Invalid("验收计划不覆盖该冻结商品行")
 		}

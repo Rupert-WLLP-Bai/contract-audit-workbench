@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -170,12 +170,12 @@ func TestPartyContextFreezesCurrentBindingsAndSyntheticProvenance(t *testing.T) 
 			SubjectID: "subject-a", Version: 2, DisplayName: "演示企业", VerificationState: "verified", VerificationScope: "synthetic_controlled",
 			IdentityClaims: []SubjectIdentityClaim{{
 				VerificationState: "verified", VerificationScope: "synthetic_controlled", SourceCatalogID: "synthetic.uscc.demo",
-				SourceSnapshotID: "snapshot-1", SourceDigest: "digest-1", SourceValidFrom: timePtr(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)),
+				SourceSnapshotID: "snapshot-1", SourceDigest: "digest-1", SourceValidFrom: new(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)),
 			}},
 		}, {
 			SubjectID: "subject-a", Version: 1, DisplayName: "旧版本演示企业", VerificationState: "verified", VerificationScope: "synthetic_controlled",
 			IdentityClaims: []SubjectIdentityClaim{{VerificationState: "verified", VerificationScope: "synthetic_controlled", SourceCatalogID: "synthetic.uscc.demo",
-				SourceSnapshotID: "snapshot-1", SourceDigest: "digest-1", SourceValidFrom: timePtr(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC))}},
+				SourceSnapshotID: "snapshot-1", SourceDigest: "digest-1", SourceValidFrom: new(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC))}},
 		}},
 		CaseSubjectRoles: []CaseSubjectRole{
 			{CaseID: "case-1", BindingID: "b-active", CurrentVersion: 1},
@@ -285,7 +285,8 @@ func TestSubjectPaginationHandlesSmallAndOutOfRangePages(t *testing.T) {
 	}
 }
 
-func timePtr(value time.Time) *time.Time { return &value }
+//go:fix inline
+func timePtr(value time.Time) *time.Time { return new(value) }
 
 func TestSubjectPatchUsesFlatTypedUnionAndPreservesOmittedArrays(t *testing.T) {
 	current := SubjectVersion{
@@ -377,7 +378,7 @@ func TestSubjectNameCorrectionInvalidatesOnlyNewVersionVerification(t *testing.T
 			Namespace: "cn.gov.samr.uscc", IdentifierType: "unified_social_credit_code", Value: "91350100M000100Y43",
 			VerificationState: "verified", VerificationScope: "synthetic_controlled", SourceKind: "synthetic_controlled_snapshot",
 			SourceTime: &sourceTime, SourceCatalogID: "synthetic.uscc.demo", SourceSnapshotID: "snapshot-1", SourceDigest: "digest-1",
-			SourceValidFrom: timePtr(sourceTime.Add(-time.Hour)), SourceValidUntil: timePtr(sourceTime.Add(time.Hour)),
+			SourceValidFrom: new(sourceTime.Add(-time.Hour)), SourceValidUntil: new(sourceTime.Add(time.Hour)),
 		}},
 	}
 	got, err := applySubjectPatch(current, json.RawMessage(`{"display_name":"新名"}`))

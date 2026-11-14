@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -178,7 +178,7 @@ func TestToolCallTenantMinuteBudgetIsSharedAcrossPoolsAndAttempts(t *testing.T) 
 	start := make(chan struct{})
 	var workers sync.WaitGroup
 	const workerCount = 8
-	for workerIndex := 0; workerIndex < workerCount; workerIndex++ {
+	for workerIndex := range workerCount {
 		workers.Add(1)
 		go func(offset int) {
 			defer workers.Done()

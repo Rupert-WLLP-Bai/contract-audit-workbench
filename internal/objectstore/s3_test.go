@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -260,7 +260,7 @@ func TestPutDoesNotRetryServiceFailure(t *testing.T) {
 }
 
 func signedHeaderNames(authorization string) string {
-	for _, field := range strings.Split(authorization, ",") {
+	for field := range strings.SplitSeq(authorization, ",") {
 		name, value, ok := strings.Cut(strings.TrimSpace(field), "=")
 		if ok && name == "SignedHeaders" {
 			return value

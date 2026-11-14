@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Classifies source media and image payloads, bounds image decoding and reports explicit unsupported/corrupt-input reasons to the document parsing pipeline.
+// Purpose: Classifies document media and bridges configured OCR calls through current operation authorization before and after local transcription.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -73,7 +73,7 @@ func (s *Store) interpretImage(ctx context.Context, doc Document, body []byte) I
 }
 
 func (s *Store) interpretImageWithModels(ctx context.Context, doc Document, body []byte, models Models) Interpreted {
-	text, err := transcribe(ctx, models, doc, body)
+	text, err := s.transcribe(ctx, models, doc, body)
 	if err != nil {
 		msg := err.Error()
 		if errors.Is(err, errNoOCR) {
@@ -86,6 +86,44 @@ func (s *Store) interpretImageWithModels(ctx context.Context, doc Document, body
 		return Interpreted{Document: doc, ParseError: "图片转写没有得到可定位的正文。"}
 	}
 	return Interpreted{Document: doc, Ready: true, FromOCR: true, Text: ir.NormalizedText, IR: ir}
+}
+
+// LocalOCR is installed at startup and preserves the normal operation fence.
+type LocalOCR interface {
+	ProfileID() string
+	Transcribe(context.Context, string, []byte) (string, error)
+}
+
+func (s *Store) UseLocalOCR(ocr LocalOCR) { s.localOCR = ocr }
+
+func (s *Store) transcribe(ctx context.Context, models Models, doc Document, body []byte) (string, error) {
+	if s.localOCR == nil {
+		return transcribe(ctx, models, doc, body)
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	scope, ok := model.DelegatedScopeFromContext(ctx)
+	if !ok || scope.Kind != "document" {
+		return "", errAttemptAuthorizationRevoked
+	}
+	if _, err := s.operationUser(ctx, scope); err != nil {
+		return "", errAttemptAuthorizationRevoked
+	}
+	text, err := s.localOCR.Transcribe(ctx, doc.MediaType, body)
+	if err != nil {
+		return "", err
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if _, err = s.operationUser(ctx, scope); err != nil {
+		return "", errAttemptAuthorizationRevoked
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	return text, nil
 }
 
 var errNoOCR = errors.New("ocr model is not configured")

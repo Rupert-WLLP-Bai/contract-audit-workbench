@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-12
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -138,7 +138,7 @@ func buildText(raw string) (string, []Block, []Page) {
 		page := pageMarker(paged, i)
 		pageStart := offset
 		wrote := false
-		for _, part := range strings.Split(segment, "\n\n") {
+		for part := range strings.SplitSeq(segment, "\n\n") {
 			text := strings.TrimSpace(part)
 			if text == "" {
 				continue

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -509,7 +509,7 @@ func validObjectID(objectID string) bool {
 	if strings.Contains(objectID, urlSchemeSeparator) {
 		return false
 	}
-	for _, segment := range strings.Split(objectID, "/") {
+	for segment := range strings.SplitSeq(objectID, "/") {
 		if segment == "." || segment == ".." {
 			return false
 		}

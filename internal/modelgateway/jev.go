@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -85,7 +86,7 @@ func configuredJevFeatures(rawValue, problem string) ([]string, string) {
 	}
 	seen := map[string]bool{}
 	features := make([]string, 0)
-	for _, raw := range strings.Split(rawValue, ",") {
+	for raw := range strings.SplitSeq(rawValue, ",") {
 		feature := strings.ToLower(strings.TrimSpace(raw))
 		if feature == "" {
 			continue
@@ -482,12 +483,7 @@ func singleHeader(r *http.Request, name string) (string, bool) {
 }
 
 func (s *Service) jevSupports(feature string) bool {
-	for _, enabled := range s.jev.Features {
-		if enabled == feature {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s.jev.Features, feature)
 }
 
 func decodeSystemOneRequest(body []byte) (string, string, map[string]jev.NoulQuestion, error) {

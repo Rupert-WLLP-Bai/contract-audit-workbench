@@ -2,9 +2,9 @@
 // Purpose: Exercises exact checkpoint reuse, non-repeated model dispatch and stable failed-step projections in the single-contract facts application.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-12
-// Updated: 2026-11-12
-// Revision: r1
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -77,5 +77,36 @@ func TestExtractContractFactsFailedCheckpointKeepsItsProjectionFailureCode(t *te
 	second, err := ExtractContractFacts(context.Background(), input, configuration, caller, journal)
 	if err != nil || !reflect.DeepEqual(first, second) || caller.calls != 1 {
 		t.Fatalf("failed checkpoint changed its projection on takeover: first=%#v second=%#v calls=%d error=%v", first, second, caller.calls, err)
+	}
+}
+
+func TestHistoricalFactsProjectionAndCheckpointRemainFrozen(t *testing.T) {
+	caller := &factsAppFixtureCaller{suggestion: factsTestSuggestion(model.ContractFactsField{})}
+	input, current := factsAppFixture(t, caller)
+	historical := current
+	historical.PromptVersion = model.LegacyContractFactsPromptVersion
+	historical.ConfigurationID = model.ContractFactsConfigurationIDForVersion(historical.ModelConfigurationID, historical.ChatModel, historical.PromptVersion)
+	if historical.ConfigurationID == current.ConfigurationID || historical.Validate() != nil {
+		t.Fatal("historical configuration must remain valid and distinct")
+	}
+	caller.factsID = historical.ConfigurationID
+	journal := newMemoryStepJournal()
+	projection, err := ExtractContractFacts(context.Background(), input, historical, caller, journal)
+	if err != nil || caller.calls != 1 || projection.Validate() != nil {
+		t.Fatalf("historical projection failed: calls=%d err=%v", caller.calls, err)
+	}
+	caller.factsID = current.ConfigurationID
+	replayed, err := ExtractContractFacts(context.Background(), input, historical, caller, journal)
+	if err != nil || caller.calls != 1 || !reflect.DeepEqual(projection, replayed) {
+		t.Fatalf("historical checkpoint was not reused: calls=%d err=%v", caller.calls, err)
+	}
+	freshCaller := &factsAppFixtureCaller{modelID: current.ModelConfigurationID, factsID: current.ConfigurationID}
+	_, err = ExtractContractFacts(context.Background(), input, historical, freshCaller, newMemoryStepJournal())
+	if err != nil || freshCaller.calls != 0 {
+		t.Fatalf("current client executed historical prompt: calls=%d err=%v", freshCaller.calls, err)
+	}
+	historical.PromptVersion = current.PromptVersion
+	if historical.Validate() == nil {
+		t.Fatal("historical identity accepted with current prompt version")
 	}
 }

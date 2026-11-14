@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,6 +13,7 @@ package agentflow
 import (
 	"context"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -190,12 +191,7 @@ func compareCandidateValues(left, right semanticCandidate) (string, string, stri
 }
 
 func containsCapability(capabilities []string, want string) bool {
-	for _, capability := range capabilities {
-		if capability == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(capabilities, want)
 }
 
 func comparisonSources(domain Domain, capability string, evidence []Evidence) (left, right []Evidence) {

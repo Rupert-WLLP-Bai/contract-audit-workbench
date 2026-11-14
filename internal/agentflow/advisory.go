@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-01
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,6 +14,7 @@ import (
 	"errors"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -226,7 +227,7 @@ func advisoryFeatures(raw string) ([]string, string) {
 	}
 	seen := map[string]bool{}
 	features := []string{}
-	for _, item := range strings.Split(raw, ",") {
+	for item := range strings.SplitSeq(raw, ",") {
 		feature := strings.ToLower(strings.TrimSpace(item))
 		if feature == "" {
 			continue
@@ -326,10 +327,5 @@ func (configuration *AdvisoryConfiguration) Supports(feature string) bool {
 	if configuration == nil {
 		return false
 	}
-	for _, enabled := range configuration.Features {
-		if enabled == feature {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(configuration.Features, feature)
 }

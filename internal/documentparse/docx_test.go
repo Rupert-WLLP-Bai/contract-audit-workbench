@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -284,7 +284,7 @@ func TestDOCXRejectsIncompleteAndUnboundedPackages(t *testing.T) {
 func TestDOCXEnforcesZIPEntryAndExpansionLimits(t *testing.T) {
 	plain := docxFixture(t, "plain.docx")
 	tooMany := make(map[string][]byte, docxMaxEntries-2)
-	for index := 0; index < docxMaxEntries-2; index++ {
+	for index := range docxMaxEntries - 2 {
 		tooMany[fmt.Sprintf("extra/%04d.xml", index)] = nil
 	}
 	largeTotal := bytes.Repeat([]byte{'x'}, 13<<20)

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -149,7 +149,7 @@ func TestReviewExecutionCapacityIsBounded(t *testing.T) {
 	st.UseModels(gate)
 	caseIDs := []string{createExecutionCase(t, st, admin), createExecutionCase(t, st, admin), createExecutionCase(t, st, admin)}
 	runIDs := make([]string, 2)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		var err error
 		runIDs[i], err = st.StartReview(context.Background(), admin, caseIDs[i])
 		if err != nil {
@@ -174,7 +174,7 @@ func TestReviewExecutionCapacityIsBounded(t *testing.T) {
 		t.Fatalf("operational metadata misreported the bounded executor: %+v", metadata)
 	}
 	gate.unblock()
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		waitSignal(t, gate.returned, "model slot release")
 	}
 	for i := range runIDs {

@@ -3,12 +3,14 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 package systemhealth
+
+import "maps"
 
 import "fmt"
 
@@ -39,9 +41,7 @@ func mergeExpectations(configured map[string]int, deployments map[string]replica
 	for id, count := range configured {
 		result[id] = replicaExpectation{desired: count, source: "config"}
 	}
-	for id, expectation := range deployments {
-		result[id] = expectation
-	}
+	maps.Copy(result, deployments)
 	return result
 }
 

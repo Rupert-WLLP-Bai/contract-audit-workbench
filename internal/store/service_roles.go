@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r7
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"contractaudit/internal/config"
@@ -76,12 +77,7 @@ func ownedTable(owner, table string) bool {
 	if owner == "worker" {
 		owner = "execution"
 	}
-	for _, owned := range serviceOwnedTables[owner] {
-		if owned == table {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(serviceOwnedTables[owner], table)
 }
 
 func (s *Store) ValidateServiceDatabaseRole(ctx context.Context, service string) error {

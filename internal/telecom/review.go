@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -480,7 +480,7 @@ func contractAmount(request rulepack.Request, object string, authority bool) (*b
 		if !amountSourceRole(source.Role, authority) {
 			continue
 		}
-		for _, line := range strings.Split(source.Text, "\n") {
+		for line := range strings.SplitSeq(source.Text, "\n") {
 			current, currentTax, ok := parseContractAmountLine(line, object)
 			if !ok {
 				continue

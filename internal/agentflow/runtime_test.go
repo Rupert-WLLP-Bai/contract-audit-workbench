@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-12
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -428,7 +428,7 @@ func TestCancellationAndGrantExpiry(t *testing.T) {
 func TestRuntimeConcurrentInvocationsDoNotShareReports(t *testing.T) {
 	r := runtimeFixture(t, ScopePlanner{}, BaselineTools(), 5)
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

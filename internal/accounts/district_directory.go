@@ -2,13 +2,15 @@
 // Purpose: Adds fixed local demonstration district identities while preserving the existing account roles, credentials and case grant rules.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-12
-// Updated: 2026-11-12
-// Revision: r1
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 package accounts
+
+import "maps"
 
 // additionalDistrictLogins is the number of district accounts appended to the
 // nine fixed demonstration logins. Their case-scoped grants follow the same
@@ -16,9 +18,7 @@ package accounts
 const additionalDistrictLogins = 47
 
 func appendDistrictLogins(current []record) []record {
-	for id, hash := range districtPasswordHashes {
-		demoHashes[id] = hash
-	}
+	maps.Copy(demoHashes, districtPasswordHashes)
 	for _, item := range districtLogins {
 		current = append(current, seedIn(item.id, item.name, item.role, item.id+"-demo", LocalDemoTenant, item.orgID))
 	}

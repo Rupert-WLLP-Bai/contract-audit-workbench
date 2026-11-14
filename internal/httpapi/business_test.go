@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -286,9 +287,7 @@ func TestGeneratedMaterialHTTPIdempotencyAndExplicitReplacement(t *testing.T) {
 		t.Fatalf("replay generated material: status=%d first=%v replay=%v", status, first, replay)
 	}
 	changed := map[string]string{}
-	for key, value := range fields {
-		changed[key] = value
-	}
+	maps.Copy(changed, fields)
 	changed["bandwidth_mbps"] = "200"
 	status, conflict := api.send(t, http.MethodPost, path, map[string]any{"template_id": templateID, "fields": changed}, "generation-add-key")
 	if status != http.StatusConflict {

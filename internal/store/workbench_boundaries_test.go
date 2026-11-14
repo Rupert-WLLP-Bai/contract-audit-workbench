@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -187,7 +187,7 @@ func TestWorkbenchProfileTenantNumberOwnershipAndVersionBoundaries(t *testing.T)
 		{"foreign owner", actors.owner, func(in *CaseProfileInput) { in.OwnerID = actors.foreign.ID }, 422, "invalid"},
 		{"reader cannot manage", actors.reviewer, func(in *CaseProfileInput) {}, 403, "forbidden"},
 		{"nonmember cannot read", actors.clerk, func(in *CaseProfileInput) {}, 404, "not_found"},
-		{"invalid due time", actors.owner, func(in *CaseProfileInput) { in.DueAt = stringPointer("next week") }, 422, "invalid"},
+		{"invalid due time", actors.owner, func(in *CaseProfileInput) { in.DueAt = new("next week") }, 422, "invalid"},
 		{"negative version", actors.owner, func(in *CaseProfileInput) { in.ExpectedVersion = -1 }, 422, "invalid"},
 		{"missing customer", actors.owner, func(in *CaseProfileInput) { in.Customer = " " }, 422, "invalid"},
 		{"oversized number", actors.owner, func(in *CaseProfileInput) { in.Number = strings.Repeat("案", 65) }, 422, "invalid"},
@@ -207,7 +207,7 @@ func TestWorkbenchProfileTenantNumberOwnershipAndVersionBoundaries(t *testing.T)
 	workbenchBoundaryFault(t, err, 409, "conflict")
 	workbenchBoundaryUnchanged(t, st, actors.owner, before)
 
-	input.ExpectedVersion, input.Customer, input.DueAt = 1, "变更后的采购方", stringPointer(" \t ")
+	input.ExpectedVersion, input.Customer, input.DueAt = 1, "变更后的采购方", new(" \t ")
 	updated, err := st.UpdateCaseProfile(actors.owner, caseID, input)
 	if err != nil {
 		t.Fatal(err)
@@ -233,10 +233,10 @@ func TestWorkbenchTaskAuthorizationReferencesAndOptimisticUpdates(t *testing.T) 
 		Attempt{ID: "task-attempt", Ordinal: 1, State: "completed"})
 	workbenchBoundaryRun(t, st, actors.owner, otherID, "other-task-run", "completed", "2026-10-01T00:00:00Z",
 		Attempt{ID: "other-task-attempt", Ordinal: 1, State: "completed"})
-	workbenchBoundaryFinding(t, st, actors.owner, caseID, "task-run", "task-attempt", "task-finding", stringPointer("high"))
+	workbenchBoundaryFinding(t, st, actors.owner, caseID, "task-run", "task-attempt", "task-finding", new("high"))
 	workbenchBoundaryFinding(t, st, actors.owner, otherID, "other-task-run", "other-task-attempt", "foreign-case-finding", nil)
 	input := WorkbenchTaskInput{Title: " 复核付款条款 ", Kind: " review ", AssigneeID: " " + actors.reviewer.ID + " ",
-		Status: " open ", Priority: " high ", DueAt: stringPointer(" 2026-11-02T09:00:00+08:00 "), FindingID: stringPointer(" task-finding ")}
+		Status: " open ", Priority: " high ", DueAt: new(" 2026-11-02T09:00:00+08:00 "), FindingID: new(" task-finding ")}
 	created, err := st.CreateWorkbenchTask(actors.owner, " "+caseID+" ", input)
 	if err != nil {
 		t.Fatal(err)
@@ -264,13 +264,13 @@ func TestWorkbenchTaskAuthorizationReferencesAndOptimisticUpdates(t *testing.T) 
 		{"nonmember assignee", actors.owner, func(in *WorkbenchTaskInput) { in.AssigneeID = actors.clerk.ID }, 422, "invalid"},
 		{"disabled assignee", actors.owner, func(in *WorkbenchTaskInput) { in.AssigneeID = actors.disabled.ID }, 422, "invalid"},
 		{"foreign assignee", actors.owner, func(in *WorkbenchTaskInput) { in.AssigneeID = actors.foreign.ID }, 422, "invalid"},
-		{"missing finding", actors.owner, func(in *WorkbenchTaskInput) { in.FindingID = stringPointer("missing-finding") }, 422, "invalid"},
-		{"finding from other case", actors.owner, func(in *WorkbenchTaskInput) { in.FindingID = stringPointer("foreign-case-finding") }, 422, "invalid"},
+		{"missing finding", actors.owner, func(in *WorkbenchTaskInput) { in.FindingID = new("missing-finding") }, 422, "invalid"},
+		{"finding from other case", actors.owner, func(in *WorkbenchTaskInput) { in.FindingID = new("foreign-case-finding") }, 422, "invalid"},
 		{"invalid title", actors.owner, func(in *WorkbenchTaskInput) { in.Title = " " }, 422, "invalid"},
 		{"invalid kind", actors.owner, func(in *WorkbenchTaskInput) { in.Kind = "upload" }, 422, "invalid"},
 		{"invalid status", actors.owner, func(in *WorkbenchTaskInput) { in.Status = "cancelled" }, 422, "invalid"},
 		{"invalid priority", actors.owner, func(in *WorkbenchTaskInput) { in.Priority = "urgent" }, 422, "invalid"},
-		{"invalid due time", actors.owner, func(in *WorkbenchTaskInput) { in.DueAt = stringPointer("tomorrow") }, 422, "invalid"},
+		{"invalid due time", actors.owner, func(in *WorkbenchTaskInput) { in.DueAt = new("tomorrow") }, 422, "invalid"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			candidate := input
@@ -309,7 +309,7 @@ func TestWorkbenchTaskAuthorizationReferencesAndOptimisticUpdates(t *testing.T) 
 		{"in_progress", "decision", "medium"}, {"completed", "remediation", "low"}, {"open", "general", "high"},
 	} {
 		input.ExpectedVersion, input.Status, input.Kind, input.Priority = i+1, step.status, step.kind, step.priority
-		input.DueAt, input.FindingID = stringPointer(" "), stringPointer(" \t ")
+		input.DueAt, input.FindingID = new(" "), new(" \t ")
 		updated, err := st.UpdateWorkbenchTask(actors.owner, caseID, " "+created.ID+" ", input)
 		if err != nil {
 			t.Fatal(err)
@@ -521,7 +521,7 @@ func TestWorkbenchSnapshotRejectsInvalidTaskReferences(t *testing.T) {
 	}
 	check(false)
 	input.ExpectedVersion = task.Version + 1
-	input.FindingID = stringPointer("missing-finding")
+	input.FindingID = new("missing-finding")
 	_, err = st.UpdateWorkbenchTask(actors.owner, caseID, task.ID, input)
 	workbenchBoundaryFault(t, err, 422, "invalid")
 }
@@ -729,7 +729,7 @@ func TestWorkbenchKnowledgeVersionsAreImmutableIdempotentAndTenantScoped(t *test
 		t.Fatal(err)
 	}
 	input := KnowledgeInput{ID: " shared-policy ", Title: " 当前制度 ", Version: " 2.0 ", Body: "应保留采购审批依据。",
-		SourceType: "synthetic_policy", EffectiveAt: stringPointer(" 2026-11-01T08:00:00+08:00 ")}
+		SourceType: "synthetic_policy", EffectiveAt: new(" 2026-11-01T08:00:00+08:00 ")}
 	created, err := st.CreateKnowledge(actors.owner, input)
 	if err != nil {
 		t.Fatal(err)
@@ -744,7 +744,7 @@ func TestWorkbenchKnowledgeVersionsAreImmutableIdempotentAndTenantScoped(t *test
 		t.Fatalf("creating a version rewrote or lost history: %+v", before.Knowledge)
 	}
 	idempotent := input
-	idempotent.EffectiveAt = stringPointer("2026-11-01T00:00:00Z")
+	idempotent.EffectiveAt = new("2026-11-01T00:00:00Z")
 	duplicate, err := st.CreateKnowledge(actors.otherOrg, idempotent)
 	if err != nil || !reflect.DeepEqual(duplicate, created) {
 		t.Fatalf("identical content from another author must return the original version: got=%+v err=%v", duplicate, err)
@@ -850,7 +850,7 @@ func TestWorkbenchKnowledgeVersionsAreImmutableIdempotentAndTenantScoped(t *test
 		func(in *KnowledgeInput) { in.Title = " " },
 		func(in *KnowledgeInput) { in.Body = " \n " },
 		func(in *KnowledgeInput) { in.SourceType = "untrusted" },
-		func(in *KnowledgeInput) { in.EffectiveAt = stringPointer("tomorrow") },
+		func(in *KnowledgeInput) { in.EffectiveAt = new("tomorrow") },
 	} {
 		candidate := input
 		mutate(&candidate)
@@ -867,7 +867,7 @@ func TestWorkbenchKnowledgeVersionsAreImmutableIdempotentAndTenantScoped(t *test
 	}
 	st.UseReadOnly(false)
 	generated := input
-	generated.ID, generated.EffectiveAt = " ", stringPointer(" \t ")
+	generated.ID, generated.EffectiveAt = " ", new(" \t ")
 	auto, err := st.CreateKnowledge(actors.owner, generated)
 	if err != nil || !strings.HasPrefix(auto.ID, "knowledge_") || auto.EffectiveAt != nil {
 		t.Fatalf("auto ID or absent effective date not normalized: got=%+v err=%v", auto, err)
@@ -921,19 +921,19 @@ func TestWorkbenchDashboardUsesPersistedLatestAttemptsAndTimeWindows(t *testing.
 		name, runState, attemptState string
 		started, finished            *string
 	}{
-		{"day", "completed", "completed", stringPointer("2026-04-14T15:59:58Z"), stringPointer("2026-04-14T16:00:00Z")},
-		{"week", "completed", "completed", stringPointer("2026-04-12T15:59:56Z"), stringPointer("2026-04-12T16:00:00Z")},
-		{"month", "completed", "completed", stringPointer("2026-03-31T15:59:54Z"), stringPointer("2026-03-31T16:00:00Z")},
-		{"before-month", "completed", "completed", stringPointer("2026-03-31T15:59:51Z"), stringPointer("2026-03-31T15:59:59Z")},
-		{"no-start", "completed", "completed", nil, stringPointer("2026-04-15T00:00:00Z")},
-		{"backwards", "completed", "completed", stringPointer("2026-04-15T00:00:02Z"), stringPointer("2026-04-15T00:00:00Z")},
-		{"bad-start", "completed", "completed", stringPointer("legacy-unknown"), stringPointer("2026-04-15T00:00:00Z")},
-		{"bad-finish", "completed", "completed", stringPointer("2026-04-15T00:00:00Z"), stringPointer("legacy-unknown")},
+		{"day", "completed", "completed", new("2026-04-14T15:59:58Z"), new("2026-04-14T16:00:00Z")},
+		{"week", "completed", "completed", new("2026-04-12T15:59:56Z"), new("2026-04-12T16:00:00Z")},
+		{"month", "completed", "completed", new("2026-03-31T15:59:54Z"), new("2026-03-31T16:00:00Z")},
+		{"before-month", "completed", "completed", new("2026-03-31T15:59:51Z"), new("2026-03-31T15:59:59Z")},
+		{"no-start", "completed", "completed", nil, new("2026-04-15T00:00:00Z")},
+		{"backwards", "completed", "completed", new("2026-04-15T00:00:02Z"), new("2026-04-15T00:00:00Z")},
+		{"bad-start", "completed", "completed", new("legacy-unknown"), new("2026-04-15T00:00:00Z")},
+		{"bad-finish", "completed", "completed", new("2026-04-15T00:00:00Z"), new("legacy-unknown")},
 		{"no-finish", "completed", "completed", nil, nil},
-		{"future", "completed", "completed", stringPointer("2026-04-15T04:00:00Z"), stringPointer("2026-04-15T04:00:01Z")},
-		{"at-now", "completed", "completed", stringPointer("2026-04-15T03:59:58Z"), stringPointer("2026-04-15T04:00:00Z")},
+		{"future", "completed", "completed", new("2026-04-15T04:00:00Z"), new("2026-04-15T04:00:01Z")},
+		{"at-now", "completed", "completed", new("2026-04-15T03:59:58Z"), new("2026-04-15T04:00:00Z")},
 		{"accepted", "accepted", "accepted", nil, nil},
-		{"running", "running", "running", stringPointer("2026-04-15T00:00:00Z"), nil},
+		{"running", "running", "running", new("2026-04-15T00:00:00Z"), nil},
 		{"human", "awaiting_human", "", nil, nil},
 		{"empty", "", "", nil, nil},
 	}
@@ -952,12 +952,12 @@ func TestWorkbenchDashboardUsesPersistedLatestAttemptsAndTimeWindows(t *testing.
 		caseID, assignee, status string
 		dueAt                    *string
 	}{
-		{caseIDs["day"], owner.ID, "open", stringPointer("2026-04-15T03:59:59Z")},
+		{caseIDs["day"], owner.ID, "open", new("2026-04-15T03:59:59Z")},
 		{caseIDs["day"], owner.ID, "in_progress", nil},
-		{caseIDs["day"], reviewer.ID, "open", stringPointer("2026-04-15T04:00:00Z")},
-		{caseIDs["day"], owner.ID, "completed", stringPointer("2026-04-14T00:00:00Z")},
-		{caseIDs["month"], reviewer.ID, "open", stringPointer("2026-04-16T00:00:00Z")},
-		{hidden, clerk.ID, "open", stringPointer("2026-04-14T00:00:00Z")},
+		{caseIDs["day"], reviewer.ID, "open", new("2026-04-15T04:00:00Z")},
+		{caseIDs["day"], owner.ID, "completed", new("2026-04-14T00:00:00Z")},
+		{caseIDs["month"], reviewer.ID, "open", new("2026-04-16T00:00:00Z")},
+		{hidden, clerk.ID, "open", new("2026-04-14T00:00:00Z")},
 	} {
 		actor := owner
 		if task.caseID == hidden {
@@ -977,8 +977,8 @@ func TestWorkbenchDashboardUsesPersistedLatestAttemptsAndTimeWindows(t *testing.
 	// SQL fixtures retain legacy missing timestamps and old attempts exactly as a
 	// persisted dashboard consumer can encounter them, without running a worker.
 	workbenchBoundaryRun(t, st, owner, caseIDs["day"], "dashboard-old-run", "completed", "2026-02-01T00:00:00Z",
-		Attempt{ID: "dashboard-old-attempt", Ordinal: 1, State: "completed", StartedAt: stringPointer("2026-04-15T00:00:00Z"), FinishedAt: stringPointer("2026-04-15T00:01:30Z")})
-	workbenchBoundaryFinding(t, st, owner, caseIDs["day"], "dashboard-old-run", "dashboard-old-attempt", "old-run-risk", stringPointer("high"))
+		Attempt{ID: "dashboard-old-attempt", Ordinal: 1, State: "completed", StartedAt: new("2026-04-15T00:00:00Z"), FinishedAt: new("2026-04-15T00:01:30Z")})
+	workbenchBoundaryFinding(t, st, owner, caseIDs["day"], "dashboard-old-run", "dashboard-old-attempt", "old-run-risk", new("high"))
 	for _, fixture := range fixtures {
 		if fixture.runState == "" {
 			continue
@@ -991,21 +991,21 @@ func TestWorkbenchDashboardUsesPersistedLatestAttemptsAndTimeWindows(t *testing.
 		if fixture.name == "accepted" {
 			attempts[0].Ordinal = 2
 			attempts = append(attempts, Attempt{ID: "dashboard-obsolete-attempt", Ordinal: 1, State: "completed",
-				StartedAt: stringPointer("2026-04-15T00:00:00Z"), FinishedAt: stringPointer("2026-04-15T00:02:00Z")})
+				StartedAt: new("2026-04-15T00:00:00Z"), FinishedAt: new("2026-04-15T00:02:00Z")})
 		}
 		workbenchBoundaryRun(t, st, owner, caseIDs[fixture.name], "dashboard-"+fixture.name+"-run", fixture.runState, "2026-03-01T00:00:00Z", attempts...)
 	}
 	workbenchBoundaryRun(t, st, clerk, hidden, "dashboard-hidden-run", "completed", "2026-03-01T00:00:00Z",
-		Attempt{ID: "dashboard-hidden-attempt", Ordinal: 1, State: "completed", StartedAt: stringPointer("2026-04-15T00:00:00Z"), FinishedAt: stringPointer("2026-04-15T00:10:00Z")})
+		Attempt{ID: "dashboard-hidden-attempt", Ordinal: 1, State: "completed", StartedAt: new("2026-04-15T00:00:00Z"), FinishedAt: new("2026-04-15T00:10:00Z")})
 	for i, severity := range []string{"high", "low", "info"} {
-		workbenchBoundaryFinding(t, st, owner, caseIDs["day"], "dashboard-day-run", "dashboard-day-attempt", fmt.Sprintf("day-risk-%d", i), stringPointer(severity))
+		workbenchBoundaryFinding(t, st, owner, caseIDs["day"], "dashboard-day-run", "dashboard-day-attempt", fmt.Sprintf("day-risk-%d", i), new(severity))
 	}
-	workbenchBoundaryFinding(t, st, owner, caseIDs["accepted"], "dashboard-accepted-run", "dashboard-obsolete-attempt", "old-attempt-risk", stringPointer("high"))
-	for i, severity := range []*string{stringPointer("medium"), nil, stringPointer("legacy-unrated")} {
+	workbenchBoundaryFinding(t, st, owner, caseIDs["accepted"], "dashboard-accepted-run", "dashboard-obsolete-attempt", "old-attempt-risk", new("high"))
+	for i, severity := range []*string{new("medium"), nil, new("legacy-unrated")} {
 		workbenchBoundaryFinding(t, st, owner, caseIDs["accepted"], "dashboard-accepted-run", "dashboard-accepted-attempt", fmt.Sprintf("current-risk-%d", i), severity)
 	}
 	workbenchBoundaryFinding(t, st, owner, caseIDs["no-start"], "dashboard-no-start-run", "dashboard-no-start-attempt", "unrated-risk", nil)
-	workbenchBoundaryFinding(t, st, clerk, hidden, "dashboard-hidden-run", "dashboard-hidden-attempt", "hidden-risk", stringPointer("high"))
+	workbenchBoundaryFinding(t, st, clerk, hidden, "dashboard-hidden-run", "dashboard-hidden-attempt", "hidden-risk", new("high"))
 	workbenchBoundaryRemediation(t, st, owner, caseIDs["day"], "dashboard-day-run", "dashboard-day-attempt", "open-one", "open")
 	workbenchBoundaryRemediation(t, st, owner, caseIDs["day"], "dashboard-day-run", "dashboard-day-attempt", "open-two", "open")
 	workbenchBoundaryRemediation(t, st, owner, caseIDs["month"], "dashboard-month-run", "dashboard-month-attempt", "closed-one", "closed")

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-25
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -46,9 +46,9 @@ func TestEventStreamReceivesLaterDecisionsAndResumesWithoutReplay(t *testing.T) 
 	caseID, runID, findingID := reviewFixture(t, api)
 	path := "/api/cases/" + caseID + "/reviews/" + runID
 	cursor := 0
-	for _, line := range strings.Split(api.events(t, path+"/events"), "\n") {
-		if strings.HasPrefix(line, "id: ") {
-			seq, err := strconv.Atoi(strings.TrimPrefix(line, "id: "))
+	for line := range strings.SplitSeq(api.events(t, path+"/events"), "\n") {
+		if after, ok := strings.CutPrefix(line, "id: "); ok {
+			seq, err := strconv.Atoi(after)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -90,8 +90,8 @@ func TestEventStreamReceivesLaterDecisionsAndResumesWithoutReplay(t *testing.T) 
 		var id, data string
 		for scan.Scan() {
 			line := scan.Text()
-			if strings.HasPrefix(line, "id: ") {
-				id = strings.TrimPrefix(line, "id: ")
+			if after, ok := strings.CutPrefix(line, "id: "); ok {
+				id = after
 			}
 			if strings.HasPrefix(line, "data: ") {
 				data = line

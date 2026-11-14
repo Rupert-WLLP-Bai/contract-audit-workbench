@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -173,7 +173,7 @@ func (s *Store) withEmbeddedDerivedOCR(ctx context.Context, user accounts.User, 
 			return "", err
 		}
 		childCtx := model.WithDelegatedScope(pageCtx, modelScope(child, models))
-		text, err := transcribe(childCtx, models, Document{MediaType: media}, body)
+		text, err := s.transcribe(childCtx, models, Document{MediaType: media}, body)
 		if err != nil {
 			return "", err
 		}

@@ -2,9 +2,9 @@
 // Purpose: Validates exact contract draft and final-stage amount reconciliation without floating point money arithmetic.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-12
-// Updated: 2026-11-12
-// Revision: r1
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,6 +12,7 @@ package contract
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 
 	"contractaudit/internal/contractmoney"
@@ -115,13 +116,7 @@ func draftRatioBase(payments []DraftPaymentPlan, stage contractmoney.Stage) (str
 		if plan.RatioBase == "" {
 			continue
 		}
-		known := false
-		for _, value := range distinct {
-			if value == plan.RatioBase {
-				known = true
-				break
-			}
-		}
+		known := slices.Contains(distinct, plan.RatioBase)
 		if !known {
 			distinct = append(distinct, plan.RatioBase)
 		}

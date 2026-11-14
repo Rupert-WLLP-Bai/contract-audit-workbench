@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-10-29
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -241,7 +241,6 @@ func TestOperatorGoldenCases(t *testing.T) {
 	seen := make(map[string]bool, len(file.Cases))
 	evaluator := fulfillment.New()
 	for _, tc := range file.Cases {
-		tc := tc
 		t.Run(tc.ID, func(t *testing.T) {
 			seen[tc.ID] = true
 			if tc.DataClass != auditext.DataClassSynthetic {
@@ -685,7 +684,6 @@ func TestOperatorImpactPlan(t *testing.T) {
 	seen := make(map[string]bool, len(file.Cases))
 
 	for _, tc := range file.Cases {
-		tc := tc
 		t.Run(tc.ID, func(t *testing.T) {
 			seen[tc.ID] = true
 			if tc.DataClass != auditext.DataClassSynthetic {

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -34,8 +34,8 @@ func (s *Store) readUploadReceipt(ctx context.Context, user accounts.User, caseI
 	if err := setLocalScope(ctx, tx, userScope(user)); err != nil {
 		return DocumentUploadResult{}, false, err
 	}
-	if strings.HasPrefix(key, "intake-upload-") {
-		operationID := "intake_" + strings.TrimPrefix(key, "intake-upload-")
+	if after, ok := strings.CutPrefix(key, "intake-upload-"); ok {
+		operationID := "intake_" + after
 		if validCaseIntakeID(operationID) {
 			if err := setIntakeRecoverySelector(ctx, tx, operationID, "", key); err != nil {
 				return DocumentUploadResult{}, false, err

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -93,9 +93,9 @@ func TestTenantIdentityResolverAndPendingMembershipCoreRole(t *testing.T) {
 		Version:       1,
 		Jurisdictions: []IdentityJurisdictionMap{{ID: "region-test", DisplayName: "Test region", Status: "active"}},
 		Tenants: []IdentityTenantMap{
-			{ID: "tenant-a", DisplayName: "Tenant A", JurisdictionID: stringPtr("region-test"), Status: "active"},
-			{ID: "tenant-b", DisplayName: "Tenant B", JurisdictionID: stringPtr("region-test"), Status: "active"},
-			{ID: "tenant-single", DisplayName: "Tenant Single", JurisdictionID: stringPtr("region-test"), Status: "active"},
+			{ID: "tenant-a", DisplayName: "Tenant A", JurisdictionID: new("region-test"), Status: "active"},
+			{ID: "tenant-b", DisplayName: "Tenant B", JurisdictionID: new("region-test"), Status: "active"},
+			{ID: "tenant-single", DisplayName: "Tenant Single", JurisdictionID: new("region-test"), Status: "active"},
 		},
 		OrgUnits: []IdentityOrgUnitMap{
 			{TenantID: "tenant-a", ID: "org-a", DisplayName: "Org A", Status: "active"},
@@ -692,7 +692,8 @@ func waitForTenantIdentityLockWaiters(t *testing.T, ctx context.Context, st *Sto
 	t.Fatalf("identity advisory lock had fewer than %d blocked operations", count)
 }
 
-func stringPtr(value string) *string { return &value }
+//go:fix inline
+func stringPtr(value string) *string { return new(value) }
 
 // Exercise the policy under its actual definer owner, not the superuser bypass.
 func assertAuthOwnerSessionScopeGuard(t *testing.T, ctx context.Context, st *Store) {

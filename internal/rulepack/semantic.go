@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -592,14 +592,8 @@ func runeContext(text string, start, end, before, after int) string {
 	runes := []rune(text)
 	startRune := utf8.RuneCountInString(text[:start])
 	endRune := utf8.RuneCountInString(text[:end])
-	left := startRune - before
-	if left < 0 {
-		left = 0
-	}
-	right := endRune + after
-	if right > len(runes) {
-		right = len(runes)
-	}
+	left := max(startRune-before, 0)
+	right := min(endRune+after, len(runes))
 	return string(runes[left:right])
 }
 

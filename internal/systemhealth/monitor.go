@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -276,7 +276,6 @@ func (m *Monitor) inspectDockerTargets(ctx context.Context, targets []dockerTarg
 	var inspections errgroup.Group
 	inspections.SetLimit(dockerInspectLimit)
 	for i := range targets {
-		i := i
 		inspections.Go(func() error {
 			inspectCtx, cancel := context.WithTimeout(ctx, dockerInspectTimeout)
 			defer cancel()

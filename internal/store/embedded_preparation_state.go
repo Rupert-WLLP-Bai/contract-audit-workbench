@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -222,7 +222,7 @@ func applyEmbeddedPreparationTerminal(st *state, runID, attemptID, stateName, er
 	if stateName == "failed" {
 		st.Runs[0].FailureMessage = "这次运行未能完成。"
 	}
-	appendExecutionEvent(st, ExecutionEvent{AttemptID: attemptID, SpanID: stringPointer(attemptID), NodeKind: "attempt", Phase: "terminal_persistence", EventType: "attempt_finished", At: now, Status: stateName, ErrorCode: &errorCode})
+	appendExecutionEvent(st, ExecutionEvent{AttemptID: attemptID, SpanID: new(attemptID), NodeKind: "attempt", Phase: "terminal_persistence", EventType: "attempt_finished", At: now, Status: stateName, ErrorCode: &errorCode})
 	appendRunEvent(st, runID, stateName)
 	return appendAudit(st, runID, "system", "attempt_preparation_"+stateName, []string{attemptID})
 }

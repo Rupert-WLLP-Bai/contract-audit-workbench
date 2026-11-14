@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -17,6 +17,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"maps"
 	"net/url"
 	"path"
 	"strings"
@@ -402,8 +403,8 @@ func docxTarget(source, target string) (string, error) {
 		return "", fmt.Errorf("DOCX: invalid or external relationship target")
 	}
 	name := path.Clean(path.Join(path.Dir(source), u.Path))
-	if strings.HasPrefix(u.Path, "/") {
-		name = path.Clean(strings.TrimPrefix(u.Path, "/"))
+	if after, ok := strings.CutPrefix(u.Path, "/"); ok {
+		name = path.Clean(after)
 	}
 	if docxPackagePathEscapes(name) {
 		return "", fmt.Errorf("DOCX: relationship escapes package")
@@ -542,9 +543,7 @@ func docxNamespaceScope(parent map[string]string, attrs []xml.Attr) map[string]s
 		return parent
 	}
 	scope := make(map[string]string, len(parent)+declared)
-	for prefix, uri := range parent {
-		scope[prefix] = uri
-	}
+	maps.Copy(scope, parent)
 	for _, attr := range attrs {
 		switch {
 		case attr.Name.Space == "xmlns":

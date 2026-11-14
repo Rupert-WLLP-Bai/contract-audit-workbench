@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -31,7 +31,8 @@ func validScope() auditext.AuthorizedScope {
 	}
 }
 
-func strPtr(value string) *string { return &value }
+//go:fix inline
+func strPtr(value string) *string { return new(value) }
 
 func documentEvidence(value string) auditext.EvidenceRef {
 	return auditext.EvidenceRef{
@@ -79,13 +80,13 @@ func validObservation() auditext.Observation {
 		ObjectBindingVersion: "binding-v1",
 		ExternalObjectID:     "line-001",
 		RecordID:             "record-001",
-		RecordVersion:        strPtr("rev-1"),
+		RecordVersion:        new("rev-1"),
 		ObservedAt:           businessAt,
 		EffectiveFrom:        time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
 		EffectiveUntil:       time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC),
 		Availability:         auditext.AvailabilityAvailable,
 		ReasonCode:           "read_succeeded",
-		PayloadRef:           strPtr("fixture://oss/record-001.json"),
+		PayloadRef:           new("fixture://oss/record-001.json"),
 		Fields: []auditext.Field{{
 			Name:          fulfillment.ExternalFieldConfiguredBandwidth,
 			Value:         "80",
