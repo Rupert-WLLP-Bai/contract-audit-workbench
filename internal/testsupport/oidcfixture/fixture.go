@@ -204,7 +204,7 @@ func (p *Provider) tokenRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not sign ID token", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, map[string]string{"id_token": idToken})
+	writeJSON(w, map[string]string{"access_token": "fixture-access-token", "token_type": "Bearer", "id_token": idToken})
 }
 
 func (p *Provider) jwks(w http.ResponseWriter) {
