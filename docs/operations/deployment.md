@@ -78,7 +78,7 @@ APP_ENV=<target> DATABASE_SCHEMA=<application_schema> \
   SERVICE_DATABASE_ROLES=true go run ./cmd/migrate
 ```
 
-显式 identity crosswalk 的真实组织映射须由授权方提供并单独审阅；本命令仅准备数据库 owner，不导入或推断任何人员、租户、组织、角色或案件授权。当前实现不表示生产 crosswalk 已导入或多租户切换已启用；#128 的事务围栏完成前，生产上下文切换保持关闭。当前源码迁移为 0040；实际数据库升级与部署状态由目标环境执行证据确认。
+显式 identity crosswalk 的真实组织映射须由授权方提供并单独审阅；本命令仅准备数据库 owner，不导入或推断任何人员、租户、组织、角色或案件授权。当前实现不表示生产 crosswalk 已导入或多租户切换已启用；#128 的事务围栏完成前，生产上下文切换保持关闭。当前迁移编号及运行兼容范围以 `internal/store/migrations.go` 为准；实际数据库升级与部署状态由目标环境执行证据确认。
 
 Crosswalk 导入使用单独的离线管理命令，不从用户目录中的显示名、邮箱、角色或租户字段推导授权。JSON 必须显式列出 jurisdiction、tenant、org unit、principal（稳定 actor ID + 精确 issuer/subject）和 membership（tenant、组织、角色及 grants）；principal 的 issuer/subject 必须与 `IDENTITY_DIRECTORY_FILE` 中启用的同一 actor 完全一致。先对经过授权方审阅的文件执行默认 dry-run，再由受控管理员显式 `--apply`：
 

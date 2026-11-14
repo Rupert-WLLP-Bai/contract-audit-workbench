@@ -1241,6 +1241,59 @@ export interface components {
             reason: string;
             run_id: string;
         };
+        Reminder: {
+            confirmed_at: string;
+            confirmed_by: string;
+            contract_id: string;
+            contract_revision_id: string;
+            due_at: string;
+            lead_days: number;
+            plan_kind: string;
+            plan_sequence: number;
+            planned_date: string;
+            recipient_id: string;
+            reminder_id: string;
+            status: string;
+            timezone: string;
+            version: number;
+        };
+        ReminderCancelInput: {
+            expected_version: number;
+        };
+        ReminderCreateInput: {
+            contract_revision_id: string;
+            expected_contract_row_version: number;
+            lead_days: number;
+            plan_kind: string;
+            plan_sequence: number;
+            recipient_id: string;
+            timezone: string;
+        };
+        ReminderDelivery: {
+            contract_id: string;
+            contract_revision_id: string;
+            delivered_at: string;
+            plan_kind: string;
+            plan_sequence: number;
+            planned_date: string;
+            reminder_id: string;
+            timezone: string;
+        };
+        ReminderInbox: {
+            items: components["schemas"]["ReminderDelivery"][];
+        };
+        ReminderList: {
+            contract_revision_id: string;
+            contract_row_version: number;
+            plans: components["schemas"]["ReminderPlan"][];
+            reminders: components["schemas"]["Reminder"][];
+        };
+        ReminderPlan: {
+            description: string;
+            kind: string;
+            planned_date: string;
+            sequence: number;
+        };
         ReviewScopeIdentity: {
             /** @constant */
             id: "single_contract_precheck";

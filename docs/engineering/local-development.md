@@ -14,6 +14,22 @@
 
 需要 Go 1.26.7+、Bun 1.4.3、Node.js 22.12+、Python 3.10+、Docker Engine/Desktop 与 Compose v2。PDF 解析需要 Poppler 的 `pdfinfo`、`pdftotext`、`pdfimages`、`pdftoppm` 和中日韩字符映射文件。
 
+## 单机完整功能
+
+合同审批、履约、提醒以及真实模型处理使用同一台机器上的应用服务与 Worker。已有 Compose 负责连接这些服务，无需 Kubernetes 或多节点环境：
+
+```bash
+make setup
+make app-bootstrap
+make app-config
+make infra-up
+make apps-up
+```
+
+启动前在私有 `.env` 配置实际文本/OCR模型及凭据。`make apps-up` 会执行离线迁移，启动每个服务的一个实例和业务、管理、门户前端；访问地址见命令输出。仅验证确定性业务流程时可使用明确标记的 `make apps-up-fixture`，该模式不代表真实模型验收。停止应用用 `make apps-down`，保留业务数据。
+
+履约提醒需要 Core 与 Worker 均正常运行。只启动下面的单进程开发入口时，提醒确认会明确返回服务尚未启用，不会接受永远无法投递的任务。已经持久化的提醒与投递历史仍按当前授权读取。
+
 ## 单进程开发
 
 在仓库根目录执行：
