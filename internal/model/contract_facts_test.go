@@ -108,7 +108,7 @@ func TestContractFactsSupportsStrictPlainModeAndFreezesNativeSchemaMode(t *testi
 	if nativeFactsID == "" || nativeFactsID == plainFactsID || native.ConfigurationID() == plain.ConfigurationID() {
 		t.Fatal("changing native structured mode did not create a new frozen facts configuration")
 	}
-	_, nativePayload, err := native.newChatRequest(ctx, cfg.ChatModel, []chatMessage{{Role: "user", Content: "facts"}}, 100, "")
+	_, nativePayload, err := native.newChatRequest(ctx, cfg.ChatModel, []chatMessage{{Role: "user", Content: "facts"}}, contractFactsTokenLimit, contractFactsReasoningEffort)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,6 +118,9 @@ func TestContractFactsSupportsStrictPlainModeAndFreezesNativeSchemaMode(t *testi
 	}
 	if _, found := nativeBody["response_format"]; !found {
 		t.Fatal("native facts mode omitted the allowlisted response schema")
+	}
+	if string(nativeBody["response_format"]) != contractFactsResponseFormat || string(nativeBody["reasoning_effort"]) != `"none"` {
+		t.Fatal("native facts mode changed the frozen response schema or reasoning effort")
 	}
 }
 
@@ -158,6 +161,13 @@ func TestContractFactsPlainModeSendsBoundedRequestAndTracksPurpose(t *testing.T)
 	}
 	if observer.purpose != CallPurposeContractFacts || requestBody["response_format"] != nil || !strings.Contains(string(requestBody["messages"]), contractText) {
 		t.Fatalf("facts request purpose or plain mode changed: purpose=%q body=%s", observer.purpose, requestBody)
+	}
+	var messages []chatMessage
+	if err := json.Unmarshal(requestBody["messages"], &messages); err != nil || len(messages) != 2 || messages[0].Content != contractFactsSystemPrompt || !strings.Contains(messages[0].Content.(string), contractFactsResponseSchema) {
+		t.Fatalf("plain facts request omitted the shared response schema: %v", err)
+	}
+	if string(requestBody["reasoning_effort"]) != `"none"` || string(requestBody["max_tokens"]) != "4096" {
+		t.Fatal("facts request changed its frozen reasoning or token limit")
 	}
 }
 

@@ -21,10 +21,11 @@ import (
 )
 
 const (
-	ContractFactsPromptVersion = "single-contract-facts/v2"
-	ContractFactsSchemaVersion = "contract-facts-response/v2"
-	ContractFactsMaxRunes      = 32000
-	contractFactsTokenLimit    = 4096
+	ContractFactsPromptVersion   = "single-contract-facts/v3"
+	ContractFactsSchemaVersion   = "contract-facts-response/v2"
+	ContractFactsMaxRunes        = 32000
+	contractFactsTokenLimit      = 4096
+	contractFactsReasoningEffort = "none"
 )
 
 const contractFactsSystemPrompt = "Extract only proposed facts from the supplied single contract text. " +
@@ -35,7 +36,7 @@ const contractFactsSystemPrompt = "Extract only proposed facts from the supplied
 	"For each citation return only an exact quote copied from the supplied text; do not calculate or return positions. The server will locate a quote only when it occurs exactly once in the supplied prefix. " +
 	"Do not cite or infer text outside the supplied prefix. If input_truncated is true, do not claim complete coverage; unknown means not evidenced within the supplied prefix, not absent from the omitted remainder. " +
 	"For known facts include one to three exact citations. For conflicting facts include at least two exact citations. Unknown facts have an empty value and no citations. " +
-	"Return JSON only, with no additional keys or explanation."
+	"Return JSON only, with no additional keys or explanation. The response must conform to this JSON Schema: " + contractFactsResponseSchema
 
 // ContractFactsField is a bounded, typed suggestion for one contract fact.
 // Citations are quote claims from the model; the caller locates each exact
@@ -80,10 +81,10 @@ func ContractFactsConfigurationID(modelConfigurationID, chatModel string) string
 		return ""
 	}
 	payload, _ := json.Marshal([]string{
-		"audit-single-contract-facts/v2", modelConfigurationID, chatModel,
+		"audit-single-contract-facts/v3", modelConfigurationID, chatModel,
 		ContractFactsPromptVersion, ContractFactsSchemaVersion, contractFactsSystemPrompt,
 		contractFactsResponseFormat, fmt.Sprintf("max_input_codepoints=%d;max_output_tokens=%d", ContractFactsMaxRunes, contractFactsTokenLimit),
-		"strict-json-and-unique-server-quote-binding/v2",
+		"reasoning_effort=" + contractFactsReasoningEffort, "strict-json-and-unique-server-quote-binding/v2",
 	})
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
@@ -122,7 +123,7 @@ func (c *Client) ContractFacts(ctx context.Context, text string, truncated bool)
 	completion, err := c.postChatMessages(ctx, c.cfg.ChatModel, []chatMessage{
 		{Role: "system", Content: contractFactsSystemPrompt},
 		{Role: "user", Content: string(request)},
-	}, contractFactsTokenLimit, "")
+	}, contractFactsTokenLimit, contractFactsReasoningEffort)
 	if err != nil {
 		return ContractFactsSuggestion{}, err
 	}
