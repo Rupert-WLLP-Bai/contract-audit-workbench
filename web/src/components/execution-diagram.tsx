@@ -130,13 +130,11 @@ export function ExecutionDiagram({
           };
         }),
       ],
-      edges: visibleNodes
-        .slice(1)
-        .map((node, index) => ({
-          type: "polyline",
-          sourceNodeId: visibleNodes[index]!.id,
-          targetNodeId: node.id,
-        })),
+      edges: visibleNodes.slice(1).map((node, index) => ({
+        type: "polyline",
+        sourceNodeId: visibleNodes[index]!.id,
+        targetNodeId: node.id,
+      })),
     });
     lf.fitView(30, 30);
     const observer =
