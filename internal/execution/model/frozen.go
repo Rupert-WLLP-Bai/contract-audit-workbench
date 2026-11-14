@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-14
 // Updated: 2026-11-14
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -114,8 +114,16 @@ type FrozenMaterialSelection struct {
 	Version    int    `json:"version"`
 }
 
+// FrozenTemplateRef binds a generated document to its immutable template.
+type FrozenTemplateRef struct {
+	ID      string `json:"id"`
+	Version string `json:"version"`
+	Digest  string `json:"digest"`
+}
+
 // FrozenDocument stores parser output bound to an immutable original and parse identity.
 type FrozenDocument[Original OriginalDocument] struct {
+	Template             *FrozenTemplateRef       `json:"template,omitempty"`
 	Document             Original                 `json:"document"`
 	Material             *FrozenMaterialSelection `json:"material,omitempty"`
 	Ready                bool                     `json:"ready"`

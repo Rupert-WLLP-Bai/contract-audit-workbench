@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Defines governed Knowledge content, version, command and history values with canonical identity, metadata, lifecycle, source, and resource identifier rules.
+// Purpose: Defines immutable governed knowledge content, bounded typed contract templates, canonical identity, scope and lifecycle validation while preserving historical encodings.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-13
+// Created: 2026-11-14
 // Updated: 2026-11-14
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -21,6 +21,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"contractaudit/internal/contracttemplate"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/legalnorm"
 )
@@ -128,36 +129,37 @@ type LegalMetadata struct {
 // GovernedKnowledgeContent is the complete immutable, versioned hash input.
 // SourceCaseID identifies the authorized source case, not a grant to its contents.
 type GovernedKnowledgeContent struct {
-	Encoding              string               `json:"encoding"`
-	KnowledgeID           string               `json:"knowledge_id"`
-	Version               string               `json:"version"`
-	Kind                  string               `json:"kind"`
-	Title                 string               `json:"title"`
-	Body                  string               `json:"body"`
-	Summary               string               `json:"summary"`
-	SourceType            string               `json:"source_type"`
-	SourceReference       string               `json:"source_reference"`
-	SourceCaseID          string               `json:"source_case_id,omitempty"`
-	SourceOrgID           string               `json:"source_org_id,omitempty"`
-	SourceFeedbackID      string               `json:"source_feedback_id,omitempty"`
-	CandidateID           string               `json:"candidate_id,omitempty"`
-	CandidateVersionID    string               `json:"candidate_version_id,omitempty"`
-	CandidateSHA256       string               `json:"candidate_content_sha256,omitempty"`
-	CandidateReviewDiff   string               `json:"candidate_review_diff,omitempty"`
-	ReviewedApplicability []string             `json:"reviewed_applicability,omitempty"`
-	ReviewedExclusions    []string             `json:"reviewed_exclusions,omitempty"`
-	Scope                 KnowledgeScope       `json:"scope"`
-	ValidFrom             string               `json:"valid_from"`
-	ValidUntil            string               `json:"valid_until"`
-	Applicability         []KnowledgeCondition `json:"applicability"`
-	Exclusions            []KnowledgeCondition `json:"exclusions"`
-	Binding               PolicyRuleBinding    `json:"binding"`
-	ExceptionBasis        string               `json:"exception_basis,omitempty"`
-	CheckAction           string               `json:"check_action,omitempty"`
-	MinimumEvidence       string               `json:"minimum_evidence,omitempty"`
-	Counterexamples       []string             `json:"counterexamples,omitempty"`
-	PolicyRefs            []KnowledgeRef       `json:"policy_refs,omitempty"`
-	LegalMetadata         *LegalMetadata       `json:"legal_metadata,omitempty"`
+	Encoding              string                    `json:"encoding"`
+	KnowledgeID           string                    `json:"knowledge_id"`
+	Version               string                    `json:"version"`
+	Kind                  string                    `json:"kind"`
+	Title                 string                    `json:"title"`
+	Body                  string                    `json:"body"`
+	Summary               string                    `json:"summary"`
+	SourceType            string                    `json:"source_type"`
+	SourceReference       string                    `json:"source_reference"`
+	SourceCaseID          string                    `json:"source_case_id,omitempty"`
+	SourceOrgID           string                    `json:"source_org_id,omitempty"`
+	SourceFeedbackID      string                    `json:"source_feedback_id,omitempty"`
+	CandidateID           string                    `json:"candidate_id,omitempty"`
+	CandidateVersionID    string                    `json:"candidate_version_id,omitempty"`
+	CandidateSHA256       string                    `json:"candidate_content_sha256,omitempty"`
+	CandidateReviewDiff   string                    `json:"candidate_review_diff,omitempty"`
+	ReviewedApplicability []string                  `json:"reviewed_applicability,omitempty"`
+	ReviewedExclusions    []string                  `json:"reviewed_exclusions,omitempty"`
+	Scope                 KnowledgeScope            `json:"scope"`
+	ValidFrom             string                    `json:"valid_from"`
+	ValidUntil            string                    `json:"valid_until"`
+	Applicability         []KnowledgeCondition      `json:"applicability"`
+	Exclusions            []KnowledgeCondition      `json:"exclusions"`
+	Binding               PolicyRuleBinding         `json:"binding"`
+	ExceptionBasis        string                    `json:"exception_basis,omitempty"`
+	CheckAction           string                    `json:"check_action,omitempty"`
+	MinimumEvidence       string                    `json:"minimum_evidence,omitempty"`
+	Counterexamples       []string                  `json:"counterexamples,omitempty"`
+	PolicyRefs            []KnowledgeRef            `json:"policy_refs,omitempty"`
+	Template              *contracttemplate.Content `json:"template,omitempty"`
+	LegalMetadata         *LegalMetadata            `json:"legal_metadata,omitempty"`
 }
 
 type CreateGovernedKnowledgeInput struct {
@@ -350,7 +352,7 @@ func ValidateContent(content GovernedKnowledgeContent) error {
 		return fault.Invalid("制度内容或来源无效")
 	}
 	switch content.Kind {
-	case "policy", "guidance", "exception", "experience", "legal":
+	case "policy", "guidance", "exception", "experience", "legal", "template":
 	default:
 		return fault.Invalid("制度类型无效")
 	}
@@ -358,6 +360,9 @@ func ValidateContent(content GovernedKnowledgeContent) error {
 	case "reference", "synthetic_policy", "human_feedback":
 	default:
 		return fault.Invalid("制度来源类型无效")
+	}
+	if content.Kind != "template" && content.Template != nil {
+		return fault.Invalid("只有正文范本可以包含范本字段")
 	}
 	if content.Kind == "legal" {
 		return ValidateLegalContent(content)
@@ -428,6 +433,15 @@ func ValidateContent(content GovernedKnowledgeContent) error {
 	}
 	if content.Kind != "experience" && content.SourceCaseID != "" && content.Scope.CaseID != content.SourceCaseID {
 		return fault.Invalid("包含案件来源的制度必须限定该案件")
+	}
+	if content.Kind == "template" {
+		if content.Template == nil || contracttemplate.ReservedID(content.KnowledgeID) || content.Template.Body != content.Body || contracttemplate.Validate(*content.Template) != nil ||
+			!reflect.DeepEqual(content.Binding, PolicyRuleBinding{}) || len(content.PolicyRefs) != 0 || len(content.Applicability) != 0 ||
+			len(content.Exclusions) != 0 || content.ExceptionBasis != "" || content.CheckAction != "" || content.MinimumEvidence != "" ||
+			len(content.Counterexamples) != 0 || len(content.ReviewedApplicability) != 0 || len(content.ReviewedExclusions) != 0 {
+			return fault.Invalid("正文范本结构或内容无效")
+		}
+		return nil
 	}
 	binding := content.Binding
 	if !validRulePackIdentifier(binding.PackID) || !validRulePackIdentifier(binding.PackVersion) || !ValidHash(binding.PackContentHash) ||

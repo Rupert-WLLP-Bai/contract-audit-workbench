@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-28
 // Updated: 2026-11-14
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -455,6 +455,10 @@ func validateGovernedKnowledgeRow(ctx context.Context, tx pgx.Tx, tenant string,
 				return GovernedKnowledgeVersion{}, "", "", false, err
 			}
 		}
+	} else if out.Content.Kind == "template" {
+		if len(binding) != 0 || bindingPackID != "" || bindingPackVersion != "" {
+			return GovernedKnowledgeVersion{}, "", "", false, fault.Conflict("正文范本不得包含规则绑定")
+		}
 	} else {
 		bindingBytes, err := json.Marshal(out.Content.Binding)
 		if err != nil || !bytes.Equal(binding, bindingBytes) || bindingPackID != out.Content.Binding.PackID || bindingPackVersion != out.Content.Binding.PackVersion {
@@ -538,6 +542,9 @@ func knowledgeNullableString(value *string) string {
 // validateKnowledgeBinding checks the exact published, active RulePack and the
 // rule/source mapping, under the same transaction and schema lock as a publish.
 func validateKnowledgeBinding(ctx context.Context, tx pgx.Tx, tenant string, content GovernedKnowledgeContent) error {
+	if content.Kind == "template" {
+		return knowledgeModel.ValidateContent(content)
+	}
 	if content.Kind == "legal" {
 		return validateLegalCaptureReference(ctx, tx, tenant, content)
 	}

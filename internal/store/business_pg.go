@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -199,7 +199,7 @@ func loadBusinessState(ctx context.Context, q queryer, st *state) error {
 
 func loadBusinessGenerations(ctx context.Context, q queryer, caseID ...string) ([]generationRecord, error) {
 	rows, err := queryCaseRows(ctx, q, `SELECT g.id, g.tenant_id, g.org_id, g.case_id, g.document_id, g.template_id, g.template_version,
-        g.digest, d.digest, g.created_at FROM business_generations g JOIN documents d
+        g.digest, d.digest, g.created_at, g.template_digest FROM business_generations g JOIN documents d
         ON d.tenant_id=g.tenant_id AND d.org_id=g.org_id AND d.case_id=g.case_id AND d.id=g.document_id`, `g.case_id=$1`, ` ORDER BY g.seq`, caseID...)
 	if err != nil {
 		return nil, fmt.Errorf("load business generations: %w", err)
@@ -210,7 +210,7 @@ func loadBusinessGenerations(ctx context.Context, q queryer, caseID ...string) (
 		var item generationRecord
 		var documentDigest string
 		if err := rows.Scan(&item.Record.ID, &item.TenantID, &item.OrgID, &item.CaseID,
-			&item.Record.DocumentID, &item.Record.TemplateID, &item.Record.TemplateVersion, &item.Record.Digest, &documentDigest, &item.Record.CreatedAt); err != nil {
+			&item.Record.DocumentID, &item.Record.TemplateID, &item.Record.TemplateVersion, &item.Record.Digest, &documentDigest, &item.Record.CreatedAt, &item.Record.TemplateDigest); err != nil {
 			return nil, fmt.Errorf("scan business generation: %w", err)
 		}
 		if item.Record.Digest != documentDigest {
@@ -440,10 +440,10 @@ func syncBusinessGenerations(ctx context.Context, tx pgx.Tx, items []generationR
 	for _, item := range items {
 		record := item.Record
 		if _, err := tx.Exec(ctx, `INSERT INTO business_generations
-			(id, tenant_id, org_id, case_id, document_id, template_id, template_version, digest, created_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+			(id, tenant_id, org_id, case_id, document_id, template_id, template_version, digest, created_at, template_digest)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 			record.ID, item.TenantID, item.OrgID, item.CaseID, record.DocumentID, record.TemplateID,
-			record.TemplateVersion, record.Digest, record.CreatedAt); err != nil {
+			record.TemplateVersion, record.Digest, record.CreatedAt, record.TemplateDigest); err != nil {
 			return fmt.Errorf("insert business generation %q: %w", record.ID, err)
 		}
 	}

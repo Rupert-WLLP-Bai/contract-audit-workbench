@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -201,6 +201,7 @@ func buildServiceHandler(st *store.Store, opt Options, role, credential string) 
 		mux.HandleFunc("/internal/v1/session-operation-ticket", sessionOperationTicketHandler(st))
 		if opt.DocumentIntakeCredential != "" {
 			mux.HandleFunc("/internal/v1/document/operation-ticket", documentOperationTicketHandler(st, opt.DocumentIntakeCredential))
+			mux.HandleFunc("/internal/v1/document/templates", documentTemplatesHandler(st, opt.DocumentIntakeCredential))
 		}
 		for _, entry := range []struct{ caller, secret string }{{"worker", opt.ExperienceWorkerCredential}, {"document", opt.DocumentIntakeCredential}, {"model", opt.ModelAuthorityCredential}} {
 			if entry.secret != "" {

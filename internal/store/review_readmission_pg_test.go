@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-14
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -120,6 +120,12 @@ func restoreReviewReceiptVersionForTest(t *testing.T, ctx context.Context, pool 
 		if _, err := tx.Exec(ctx, `RESET ROLE`); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// Reconstruct the pre-47 generation and Knowledge schema before replay.
+	if _, err := tx.Exec(ctx, `ALTER TABLE business_generations DROP COLUMN template_digest;
+		ALTER TABLE governed_knowledge_versions DROP CONSTRAINT governed_knowledge_versions_kind_check;
+		ALTER TABLE governed_knowledge_versions ADD CONSTRAINT governed_knowledge_versions_kind_check CHECK (kind IN ('policy','guidance','exception','experience','legal'))`); err != nil {
+		t.Fatal(err)
 	}
 	// Remove migration 46 objects before replaying from the historical version.
 	if _, err := tx.Exec(ctx, `DROP FUNCTION fulfillment_reminder_enqueue(text,uuid,uuid,text,text,text,bigint,text,text,integer,integer,integer,integer,boolean);

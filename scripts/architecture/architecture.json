@@ -87,7 +87,8 @@
           "internal/contract/lifecycle",
           "internal/contract/model",
           "internal/contract/app",
-          "internal/contract/ledger"
+          "internal/contract/ledger",
+          "internal/contracttemplate"
         ],
         "transport": [],
         "postgres": [

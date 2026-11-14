@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r6
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1062,18 +1062,29 @@ export function parseContextList(value: unknown): ContextList {
 function parseTemplate(value: unknown): Template {
   const record = recordOf(value, "template");
   if (!Array.isArray(record.fields)) fail("模板缺少 fields");
+  const source = record.source;
+  if (source !== undefined && source !== "builtin" && source !== "tenant") fail("模板来源无效");
   return {
     id: requiredString(record, "id"),
     name: requiredString(record, "name"),
     version: requiredString(record, "version"),
     digest: requiredString(record, "digest"),
+    ...(source === undefined ? {} : { source }),
     fields: record.fields.map((field) => {
       const item = recordOf(field, "template field");
+      const type = requiredString(item, "type");
+      const required = requiredBoolean(item, "required");
+      if (
+        source === "tenant" &&
+        (!required || (type !== "string" && type !== "decimal" && type !== "date"))
+      ) {
+        fail("租户模板字段仅支持必填文本、数字或日期");
+      }
       return {
         key: requiredString(item, "key"),
         label: requiredString(item, "label"),
-        required: requiredBoolean(item, "required"),
-        type: requiredString(item, "type"),
+        required,
+        type,
       };
     }),
   };
@@ -1093,6 +1104,7 @@ export function parseGenerationRecord(value: unknown): GenerationRecord {
   ]);
   const record = recordOf(value, "generation");
   const materialId = optionalString(record, "material_id");
+  const templateDigest = optionalString(record, "template_digest");
   const version = record.version === undefined ? null : numberOrNull(record.version);
   if (
     record.version !== undefined &&
@@ -1103,6 +1115,7 @@ export function parseGenerationRecord(value: unknown): GenerationRecord {
     fail("generation.replayed 无效");
   return {
     ...parsed,
+    ...(templateDigest === null ? {} : { template_digest: templateDigest }),
     ...(materialId === null ? {} : { material_id: materialId }),
     ...(version === null ? {} : { version }),
     ...(record.replayed === undefined ? {} : { replayed: record.replayed as boolean }),

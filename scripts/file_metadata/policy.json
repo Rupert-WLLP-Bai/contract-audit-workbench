@@ -449,6 +449,14 @@
       ],
       "handling": "manifest-only",
       "reason": "Versioned SQL migration bytes are integrity-checked after application and must not be changed by metadata headers."
+    },
+    {
+      "id": "governed-contract-templates-migration",
+      "paths": [
+        "internal/store/migrations/0047_governed_contract_templates.sql"
+      ],
+      "handling": "manifest-only",
+      "reason": "Versioned SQL migration bytes are integrity-checked after application and must not be changed by metadata headers."
     }
   ],
   "unclassified_file_policy": "Do not infer a comment syntax or purpose. Add a reviewed class or path rule before the complete inventory is accepted.",

@@ -158,6 +158,8 @@
       "internal/contract/postgres/lifecycle_facts.go",
       "internal/contract/postgres/source_observations.go",
       "internal/contract/postgres/versions.go",
+      "internal/contracttemplate/template.go",
+      "internal/contracttemplate/template_test.go",
       "internal/coreauthority/transport.go",
       "internal/docir/page_span_test.go",
       "internal/documentclient/intake_test.go",
@@ -214,6 +216,7 @@
       "internal/httpapi/report_receipt_replay_test.go",
       "internal/httpapi/session_authority.go",
       "internal/httpapi/session_authority_test.go",
+      "internal/httpapi/template_authority_test.go",
       "internal/httpapi/tenant_config.go",
       "internal/httpapi/tenant_lifecycle.go",
       "internal/knowledge/app/command.go",
@@ -226,6 +229,7 @@
       "internal/knowledge/app/review_resolve.go",
       "internal/knowledge/app/review_resolve_test.go",
       "internal/knowledge/app/rulepack_binding.go",
+      "internal/knowledge/app/templates.go",
       "internal/knowledge/app/verified_legal.go",
       "internal/knowledge/app/verified_legal_test.go",
       "internal/knowledge/model/governance.go",
@@ -283,6 +287,7 @@
       "internal/operationauthority/errors.go",
       "internal/operationauthority/revocation_protocol_test.go",
       "internal/operationauthority/session.go",
+      "internal/operationauthority/template_client_test.go",
       "internal/operator/app/binding.go",
       "internal/operator/app/binding_test.go",
       "internal/operator/app/collection.go",
@@ -402,6 +407,7 @@
       "internal/store/contract_sources_crypto.go",
       "internal/store/contract_sources_crypto_test.go",
       "internal/store/contract_sources_pg_test.go",
+      "internal/store/contract_template_lifecycle_pg_test.go",
       "internal/store/contract_version_app.go",
       "internal/store/embedded_ocr_authority.go",
       "internal/store/embedded_ocr_authority_test.go",
@@ -415,6 +421,8 @@
       "internal/store/execution_app_test.go",
       "internal/store/execution_model_aliases.go",
       "internal/store/export_test.go",
+      "internal/store/generation_template_proof.go",
+      "internal/store/governed_templates.go",
       "internal/store/identity_import.go",
       "internal/store/identity_import_test.go",
       "internal/store/knowledge_acceptance_atomicity_test.go",
@@ -447,6 +455,7 @@
       "internal/store/migrations/0044_report_receipt_session_recovery.sql",
       "internal/store/migrations/0045_agent_step_checkpoints.sql",
       "internal/store/migrations/0046_fulfillment_reminders.sql",
+      "internal/store/migrations/0047_governed_contract_templates.sql",
       "internal/store/offline_migrator_provision.go",
       "internal/store/offline_migrator_provision_pg_test.go",
       "internal/store/operation_authority.go",
@@ -7832,12 +7841,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0e81479ec2075009b6a7ee1a16f6a819fbe0fef5",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "docs/architecture/domain-boundaries.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -8085,12 +8094,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "10b7d37e71f50b44488f2e373d7eca70a6acd8b4",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "docs/engineering/contributing.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -9178,12 +9187,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "3f1a01d8872bdc7fc530daa498c73a457f05806e",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "docs/product/workflow.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -12422,12 +12431,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "10b7d37e71f50b44488f2e373d7eca70a6acd8b4",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/apidocs/contracts/types.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r12",
+      "revision": "r13",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -12614,12 +12623,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "01cbd82a061280c1cbeaf64ff083aa12634e9315",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/apidocs/openapi.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r14",
+      "revision": "r15",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -12712,15 +12721,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-07",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "f0ff50751549637a43f106bb139e12372684337b",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/apidocs/route_contract.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r8",
+      "revision": "r9",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -23973,7 +23982,7 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-first-introduction",
-          "commit": "0ebc1ce5a274c8aacf6c0c1703160b91bb033ad9",
+          "commit": "5dbf4d63e0a72010ef4989c4a361b2aa653b6d71",
           "path": "internal/execution/model/frozen.go",
           "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -23982,12 +23991,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0ebc1ce5a274c8aacf6c0c1703160b91bb033ad9",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/execution/model/frozen.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -24069,7 +24078,7 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-first-introduction",
-          "commit": "0ebc1ce5a274c8aacf6c0c1703160b91bb033ad9",
+          "commit": "5dbf4d63e0a72010ef4989c4a361b2aa653b6d71",
           "path": "internal/execution/model/frozen_hash_test.go",
           "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -24078,12 +24087,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0ebc1ce5a274c8aacf6c0c1703160b91bb033ad9",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/execution/model/frozen_hash_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -25265,14 +25274,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/httpapi/business.go",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -28314,15 +28324,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "406bf64745912c1aa6d89697902fb413e432b860",
+          "commit": "ffa42d0c0dd749f78be5d7f8c90cdc46cf44b726",
           "path": "internal/httpapi/operation_authority.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -29500,12 +29510,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a0a40f50440fb3586375aec7f157e8361252cd27",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/httpapi/services.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -30917,24 +30927,24 @@
         }
       ],
       "created": {
-        "value": "2026-11-13",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-first-introduction",
-          "commit": "6d3d1014e0a988d48650a0df078f7e2d774a9087",
+          "commit": "5dbf4d63e0a72010ef4989c4a361b2aa653b6d71",
           "path": "internal/knowledge/app/command.go",
           "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-11-13",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6d3d1014e0a988d48650a0df078f7e2d774a9087",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/knowledge/app/command.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -31013,10 +31023,10 @@
         }
       ],
       "created": {
-        "value": "2026-11-13",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-first-introduction",
-          "commit": "6d3d1014e0a988d48650a0df078f7e2d774a9087",
+          "commit": "5dbf4d63e0a72010ef4989c4a361b2aa653b6d71",
           "path": "internal/knowledge/app/create_draft.go",
           "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -31025,12 +31035,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "29639c95e297287cb3b26d287bfe5ecec835b938",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/knowledge/app/create_draft.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -31253,24 +31263,24 @@
         }
       ],
       "created": {
-        "value": "2026-11-13",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-first-introduction",
-          "commit": "c0cd498fa727110a0a1739213572c561f3b0d4fe",
+          "commit": "5dbf4d63e0a72010ef4989c4a361b2aa653b6d71",
           "path": "internal/knowledge/app/review_resolve.go",
           "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-11-13",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "c0cd498fa727110a0a1739213572c561f3b0d4fe",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/knowledge/app/review_resolve.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -31475,7 +31485,7 @@
       "header_state": "pending-header-application"
     },
     "internal/knowledge/model/governance.go": {
-      "purpose": "Defines governed Knowledge content, version, command and history values with canonical identity, metadata, lifecycle, source, and resource identifier rules.",
+      "purpose": "Defines immutable governed knowledge content, bounded typed contract templates, canonical identity, scope and lifecycle validation while preserving historical encodings.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -31493,10 +31503,10 @@
         }
       ],
       "created": {
-        "value": "2026-11-13",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-first-introduction",
-          "commit": "6d3d1014e0a988d48650a0df078f7e2d774a9087",
+          "commit": "5dbf4d63e0a72010ef4989c4a361b2aa653b6d71",
           "path": "internal/knowledge/model/governance.go",
           "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -31505,12 +31515,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "29639c95e297287cb3b26d287bfe5ecec835b938",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/knowledge/model/governance.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -31925,10 +31935,10 @@
         }
       ],
       "created": {
-        "value": "2026-11-13",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-first-introduction",
-          "commit": "6d3d1014e0a988d48650a0df078f7e2d774a9087",
+          "commit": "5dbf4d63e0a72010ef4989c4a361b2aa653b6d71",
           "path": "internal/knowledge/postgres/governance.go",
           "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -31937,12 +31947,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "29639c95e297287cb3b26d287bfe5ecec835b938",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/knowledge/postgres/governance.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -36274,15 +36284,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-03",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "406bf64745912c1aa6d89697902fb413e432b860",
+          "commit": "ffa42d0c0dd749f78be5d7f8c90cdc46cf44b726",
           "path": "internal/operationauthority/client.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -42424,7 +42434,7 @@
       "header_state": "pending-header-application"
     },
     "internal/store/business_cases.go": {
-      "purpose": "CreateCaseWithBusinessContext records an optional request key in the same transaction as the case and its creation activity. Related `store` operations include CreateCaseWithBusiness, CreateCaseWithBusinessContext, businessWritable, requireBusinessWrite.",
+      "purpose": "Coordinates authorized case creation, primary-material generation and idempotent receipts, preserving exact template adoption, explicit replacement and immutable generated history.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -42451,15 +42461,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/store/business_cases.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -42499,14 +42509,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/store/business_pg.go",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -42615,7 +42626,7 @@
       "header_state": "pending-header-application"
     },
     "internal/store/business_templates.go": {
-      "purpose": "Templates returns detached metadata for each immutable published template. Related `store` operations include Templates, versionedTemplate, renderBusinessTemplate, renderTelecomTemplate.",
+      "purpose": "Exposes detached immutable platform template metadata with explicit builtin origin and preserves bounded rendering and business validation for the two compatibility templates.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -42642,14 +42653,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-30",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0d82b02b299acb8119e92f75331724bfca9e21d1",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/store/business_templates.go",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -42737,15 +42749,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "2994db6770d6fce11c0ebf3f0b5f09cde41d09c9",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/store/business_types.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -46569,12 +46581,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "10b7d37e71f50b44488f2e373d7eca70a6acd8b4",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/store/document_prepare.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -46617,12 +46629,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ad20118735900315b03e3181c556fe40f52698e2",
+          "commit": "76024bb16a04126a607521be9de9e392f0055b27",
           "path": "internal/store/document_scope_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -47287,12 +47299,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "10b7d37e71f50b44488f2e373d7eca70a6acd8b4",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/store/execution.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -49191,12 +49203,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "9ed7c616b70d3f3e1be5ac446d22623d87cbe5a9",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/store/knowledge_governance.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -50902,12 +50914,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "01cbd82a061280c1cbeaf64ff083aa12634e9315",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/store/migrations.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r7",
+      "revision": "r8",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -55645,12 +55657,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "01cbd82a061280c1cbeaf64ff083aa12634e9315",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/store/review_readmission_pg_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -56410,12 +56422,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "7d01892c6083510e8135deb01658fb31e82369e3",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/store/scoped_mutation.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -58460,12 +58472,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "01cbd82a061280c1cbeaf64ff083aa12634e9315",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "internal/store/table_catalog.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -63623,12 +63635,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0ebc1ce5a274c8aacf6c0c1703160b91bb033ad9",
+          "commit": "19029b1b77c05c43f093a17c8305f37b66a5718f",
           "path": "scripts/architecture/architecture.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -65085,7 +65097,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r63",
+      "revision": "r64",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -65234,12 +65246,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "db99942e894e173bb8ecf3e606789267c36e25dc",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
           "path": "scripts/file_metadata/policy.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r9",
+      "revision": "r10",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -72664,15 +72676,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-05",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "f1edc83f597a40ebe39a982cc97d11f7c4e96c5d",
+          "commit": "39518984e065671b157b091e7e392cca86a80dc7",
           "path": "web/src/api/endpoints.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -73015,7 +73027,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/governed-knowledge.ts": {
-      "purpose": "Defines typed governed-knowledge content, scope, conditions, citations and lifecycle actions; routes reads and mutations through the authenticated governance API.",
+      "purpose": "Defines and parses governed knowledge and typed contract templates, and routes lifecycle reads and commands through the authenticated governance API.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -73042,14 +73054,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "7e53ed3c139fd7c833b6acad41655245636fb4c2",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "39518984e065671b157b091e7e392cca86a80dc7",
+          "path": "web/src/api/governed-knowledge.ts",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -74039,12 +74052,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
+          "commit": "39518984e065671b157b091e7e392cca86a80dc7",
           "path": "web/src/api/parse.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -74227,15 +74240,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-05",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a347e411059365b28925d1544d0791d9467ddccc",
+          "commit": "39518984e065671b157b091e7e392cca86a80dc7",
           "path": "web/src/api/queries.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -74275,15 +74288,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-05",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a347e411059365b28925d1544d0791d9467ddccc",
+          "commit": "39518984e065671b157b091e7e392cca86a80dc7",
           "path": "web/src/api/queries.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -75037,12 +75050,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "186d500dc460353e52467f5439eb25a99deba48f",
+          "commit": "39518984e065671b157b091e7e392cca86a80dc7",
           "path": "web/src/api/types.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r7",
+      "revision": "r8",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -75085,12 +75098,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "3f1a01d8872bdc7fc530daa498c73a457f05806e",
+          "commit": "39518984e065671b157b091e7e392cca86a80dc7",
           "path": "web/src/api/wire.generated.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -78554,7 +78567,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/governed-knowledge-editor.tsx": {
-      "purpose": "Renders KnowledgeEditor, the governed knowledge editor workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
+      "purpose": "Edits governed knowledge content and bounded contract-template fields with type-specific validation, exact source bindings and accessible form feedback.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -78581,15 +78594,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-08",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "62ca2e5ca5b9d34ca440f834e46962e725eef7c8",
+          "commit": "39518984e065671b157b091e7e392cca86a80dc7",
           "path": "web/src/components/governed-knowledge-editor.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -81729,15 +81742,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ea7ebdb703ae2da175eef84a8bfdfb93163dce64",
+          "commit": "39518984e065671b157b091e7e392cca86a80dc7",
           "path": "web/src/components/template-generation-panel.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -81750,7 +81763,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/template-generation-panel.tsx": {
-      "purpose": "Renders TemplateGenerationPanel, the template generation panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
+      "purpose": "Lets authorized users explicitly choose an exact case template version, generate or replace primary materials through idempotent commands, and inspect immutable generation history.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -81777,15 +81790,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ea7ebdb703ae2da175eef84a8bfdfb93163dce64",
+          "commit": "39518984e065671b157b091e7e392cca86a80dc7",
           "path": "web/src/components/template-generation-panel.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -87663,15 +87676,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ebb0c6b84b6eafe1dea43b8ecb1f2901d4987be4",
+          "commit": "39518984e065671b157b091e7e392cca86a80dc7",
           "path": "web/src/pages/governed-knowledge-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -89769,15 +89782,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ebb0c6b84b6eafe1dea43b8ecb1f2901d4987be4",
+          "commit": "39518984e065671b157b091e7e392cca86a80dc7",
           "path": "web/src/pages/workbench-module-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r7",
+      "revision": "r8",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -91330,6 +91343,443 @@
       ],
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
+    },
+    "internal/contracttemplate/template.go": {
+      "purpose": "Validates bounded tenant contract-template fields and renders nonrecursive plain-text placeholders; defines exact template projections for the authenticated Core/Document boundary.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/contracttemplate/template.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/contracttemplate/template.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/contracttemplate/template_test.go": {
+      "purpose": "Checks that plain-text template rendering rejects malformed field sets, nested placeholders, invalid dates/decimals and control-character injection while preserving repeated substitutions.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/contracttemplate/template_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/contracttemplate/template_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/httpapi/template_authority_test.go": {
+      "purpose": "Verifies the Document-to-Core template authority rejects untrusted service credentials, client-supplied actors, malformed identities and oversized bodies before accessing storage.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "User-confirmed #115 project-author instruction; not inferred from Git author metadata."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/httpapi/template_authority_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/httpapi/template_authority_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE identifies Bai Junhao as rights holder for project-owned materials; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/knowledge/app/templates.go": {
+      "purpose": "Resolves explicitly selected or listed governed contract templates through exact immutable versions, case applicability, publication approval and source authorization.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/knowledge/app/templates.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/knowledge/app/templates.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/operationauthority/template_client_test.go": {
+      "purpose": "Verifies template authority HTTP calls preserve exact request identity and distinguish authorization, unavailable-template and conflict refusals from infrastructure failure.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "User-confirmed #115 project-author instruction; not inferred from Git author metadata."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "ffa42d0c0dd749f78be5d7f8c90cdc46cf44b726",
+          "path": "internal/operationauthority/template_client_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "ffa42d0c0dd749f78be5d7f8c90cdc46cf44b726",
+          "path": "internal/operationauthority/template_client_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE identifies Bai Junhao as rights holder for project-owned materials; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/store/contract_template_lifecycle_pg_test.go": {
+      "purpose": "Exercises governed template publication, exact adoption, scenario isolation, withdrawal, authorized idempotent replay and immutable history using restricted Core and Document database roles.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/store/contract_template_lifecycle_pg_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "3017774aefc7f320b6c1ef7163800d1e8021038e",
+          "path": "internal/store/contract_template_lifecycle_pg_test.go",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/store/generation_template_proof.go": {
+      "purpose": "Attaches immutable template identity from Document-owned generation records to frozen originals, verifying document digests while preserving absent provenance for legacy rows.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/store/generation_template_proof.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/store/generation_template_proof.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/store/governed_templates.go": {
+      "purpose": "Bridges current session/case authorization and caller-owned transactions to Knowledge template resolution, and exposes authorized case template metadata to Document generation.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/store/governed_templates.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/store/governed_templates.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/store/migrations/0047_governed_contract_templates.sql": {
+      "purpose": "Adds the governed contract-template content kind and an optional immutable generation template digest without backfilling legacy provenance or changing service grants.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/store/migrations/0047_governed_contract_templates.sql",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-14",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "path": "internal/store/migrations/0047_governed_contract_templates.sql",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "manifest-only",
+      "header_state": "manifest-only",
+      "exception": {
+        "rule_id": "governed-contract-templates-migration",
+        "source": "internal/store/migrations/0047_governed_contract_templates.sql",
+        "reason": "Versioned SQL migration bytes are integrity-checked after application and must not be changed by metadata headers."
+      }
     }
   }
 }

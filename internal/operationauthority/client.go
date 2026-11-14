@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -22,7 +22,9 @@ import (
 	"time"
 
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/contracttemplate"
 	"contractaudit/internal/coreauthority"
+	"contractaudit/internal/fault"
 	"contractaudit/internal/model"
 )
 
@@ -157,4 +159,47 @@ func (c *OperationClient) CloseIdleConnections() {
 	if c != nil && c.http != nil {
 		c.http.CloseIdleConnections()
 	}
+}
+
+// ResolveDocumentTemplates uses the already authenticated Document/Core
+// channel and sends no raw browser session token.
+func (c *OperationClient) ResolveDocumentTemplates(ctx context.Context, input contracttemplate.ResolveRequest) ([]contracttemplate.Resolved, error) {
+	body, err := json.Marshal(input)
+	if err != nil {
+		return nil, errors.New("template request unavailable")
+	}
+	endpoint := strings.TrimSuffix(c.endpoint, "/operation-authority") + "/templates"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, errors.New("template request unavailable")
+	}
+	req.Header.Set("Authorization", "Bearer "+c.credential)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, errors.New("template authority unavailable")
+	}
+	defer res.Body.Close()
+	switch res.StatusCode {
+	case http.StatusOK:
+	case http.StatusForbidden:
+		return nil, fault.Forbidden("当前会话不能采用正文范本")
+	case http.StatusNotFound:
+		return nil, fault.NotFound("正文范本不可用，请刷新后重新选择")
+	case http.StatusConflict:
+		return nil, fault.Conflict("正文范本状态已变化，请刷新后重新选择")
+	default:
+		return nil, errors.New("template authority unavailable or refused")
+	}
+	raw, err := io.ReadAll(io.LimitReader(res.Body, 4<<20+1))
+	if err != nil || len(raw) > 4<<20 {
+		return nil, errors.New("template authority response unavailable")
+	}
+	var out []contracttemplate.Resolved
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&out) != nil || decoder.Decode(new(any)) != io.EOF {
+		return nil, errors.New("template authority response invalid")
+	}
+	return out, nil
 }

@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -81,7 +81,14 @@ func (s *Store) PrepareAttemptDocument(ctx context.Context, request PrepareDocum
 		if err := s.recheckDocumentPrepareAuthority(ctx, request, authority.Parsed.ArtifactDigest); err != nil {
 			return FrozenDocument{}, err
 		}
-		return frozenFromParsed(authority.Document, *authority.Parsed), nil
+		frozen := frozenFromParsed(authority.Document, *authority.Parsed)
+		if err := s.attachGenerationTemplate(ctx, authority.User, &frozen); err != nil {
+			return FrozenDocument{}, err
+		}
+		if err := s.recheckDocumentPrepareAuthority(ctx, request, authority.Parsed.ArtifactDigest); err != nil {
+			return FrozenDocument{}, err
+		}
+		return frozen, nil
 	}
 	models := s.currentModels()
 	if DocumentParseKind(authority.Document.Filename, authority.Document.MediaType) == "ocr" && s.localOCR == nil {
@@ -119,7 +126,14 @@ func (s *Store) PrepareAttemptDocument(ctx context.Context, request PrepareDocum
 	if err := verifyParsed(winner, authority.Document); err != nil {
 		return FrozenDocument{}, err
 	}
-	return frozenFromParsed(authority.Document, winner), nil
+	frozen := frozenFromParsed(authority.Document, winner)
+	if err := s.attachGenerationTemplate(ctx, authority.User, &frozen); err != nil {
+		return FrozenDocument{}, err
+	}
+	if err := s.recheckDocumentPrepareAuthority(ctx, request, winner.ArtifactDigest); err != nil {
+		return FrozenDocument{}, err
+	}
+	return frozen, nil
 }
 
 const documentPrepareAuthoritySQL = `SELECT

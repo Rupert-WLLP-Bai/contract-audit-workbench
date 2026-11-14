@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-12
-// Revision: r4
+// Updated: 2026-11-14
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,6 +14,7 @@ import "encoding/json"
 
 // Template is one immutable, versioned document generator.
 type Template struct {
+	Source  string          `json:"source"`
 	ID      string          `json:"id"`
 	Name    string          `json:"name"`
 	Version string          `json:"version"`
@@ -29,15 +30,16 @@ type TemplateField struct {
 }
 
 type GenerationRecord struct {
-	ID              string `json:"id"`
-	DocumentID      string `json:"document_id"`
-	MaterialID      string `json:"material_id"`
-	Version         int    `json:"version"`
-	Replayed        bool   `json:"replayed"`
-	TemplateID      string `json:"template_id"`
-	TemplateVersion string `json:"template_version"`
-	Digest          string `json:"digest"`
-	CreatedAt       string `json:"created_at"`
+	ID              string  `json:"id"`
+	DocumentID      string  `json:"document_id"`
+	MaterialID      string  `json:"material_id"`
+	Version         int     `json:"version"`
+	Replayed        bool    `json:"replayed"`
+	TemplateID      string  `json:"template_id"`
+	TemplateVersion string  `json:"template_version"`
+	TemplateDigest  *string `json:"template_digest,omitempty"`
+	Digest          string  `json:"digest"`
+	CreatedAt       string  `json:"created_at"`
 }
 
 type Remediation struct {

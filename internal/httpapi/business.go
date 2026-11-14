@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -22,10 +22,16 @@ import (
 )
 
 func (h *handler) templates(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.actor(w, r); !ok {
+	user, ok := h.actor(w, r)
+	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": h.store.Templates()})
+	items, err := h.store.TemplatesForCase(r.Context(), user, r.URL.Query().Get("case_id"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func (h *handler) generate(w http.ResponseWriter, r *http.Request) {
@@ -35,6 +41,8 @@ func (h *handler) generate(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		TemplateID         string            `json:"template_id"`
+		TemplateVersion    string            `json:"template_version,omitempty"`
+		TemplateDigest     string            `json:"template_digest,omitempty"`
 		Fields             map[string]string `json:"fields"`
 		Intent             string            `json:"intent,omitempty"`
 		MaterialID         string            `json:"material_id,omitempty"`
@@ -50,7 +58,7 @@ func (h *handler) generate(w http.ResponseWriter, r *http.Request) {
 		return h.store.GenerationParseKind(ctx, user, caseID)
 	}, func(ctx context.Context) error {
 		var err error
-		item, err = h.store.GenerateWithOptions(ctx, user, caseID, body.TemplateID, body.Fields, store.MaterialUploadOptions{Intent: body.Intent, MaterialID: body.MaterialID, ReplacesDocumentID: body.ReplacesDocumentID, IdempotencyKey: r.Header.Get("Idempotency-Key")})
+		item, err = h.store.GenerateWithTemplateOptions(ctx, user, caseID, body.TemplateID, body.TemplateVersion, body.TemplateDigest, body.Fields, store.MaterialUploadOptions{Intent: body.Intent, MaterialID: body.MaterialID, ReplacesDocumentID: body.ReplacesDocumentID, IdempotencyKey: r.Header.Get("Idempotency-Key")})
 		return err
 	})
 	if err != nil {

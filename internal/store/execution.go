@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r6
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1506,6 +1506,9 @@ func (s *Store) prepareAttemptResult(ctx context.Context, runID, attemptID strin
 			return preparedAttempt{}, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
 		}
 		frozen[i] = frozenFromParsed(doc, parsed)
+		if err := bindGenerationTemplate(&st, &frozen[i]); err != nil {
+			return preparedAttempt{}, err
+		}
 		bindFrozenMaterialIdentity(st, &frozen[i])
 	}
 	if !frozenInputMatchesSnapshot(snapshot, frozen) {

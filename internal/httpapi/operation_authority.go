@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -18,6 +18,8 @@ import (
 	"io"
 	"net/http"
 
+	"contractaudit/internal/contracttemplate"
+	"contractaudit/internal/fault"
 	"contractaudit/internal/model"
 	"contractaudit/internal/operationauthority"
 	"contractaudit/internal/store"
@@ -147,5 +149,31 @@ func documentOperationTicketHandler(st *store.Store, credential string) http.Han
 			return
 		}
 		writeJSON(w, 200, map[string]string{"ticket": ticket})
+	}
+}
+
+func documentTemplatesHandler(st *store.Store, credential string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		if r.Method != http.MethodPost || r.URL.RawQuery != "" || !claimAuthorityBearer(r.Header.Values("Authorization"), credential) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		var in contracttemplate.ResolveRequest
+		d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384))
+		d.DisallowUnknownFields()
+		if d.Decode(&in) != nil || d.Decode(new(any)) != io.EOF || in.CaseID == "" || (in.ID == "") != (in.Version == "") || (in.ID == "") != (in.Digest == "") {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		items, err := st.ResolveDocumentTemplates(r.Context(), in.SessionDigest, in.ContextVersion, in.CaseID, in.ID, in.Version, in.Digest)
+		if err != nil {
+			if errors.Is(err, operationauthority.ErrDenied) {
+				err = fault.Forbidden("当前会话不能采用正文范本")
+			}
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, items)
 	}
 }

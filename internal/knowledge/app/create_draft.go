@@ -2,9 +2,9 @@
 // Purpose: Coordinates immutable Knowledge draft creation, original request digests, source facts and transactional history/idempotency without owning scope or transaction lifetime.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-13
+// Created: 2026-11-14
 // Updated: 2026-11-14
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -277,7 +277,7 @@ func CreateGovernedKnowledge(ctx context.Context, repository CreateDraftReposito
 	if err := repository.InsertInitialState(ctx, identity, content.KnowledgeID, versionID); err != nil {
 		return model.GovernedKnowledgeVersion{}, err
 	}
-	if content.Kind != "legal" {
+	if content.Kind != "legal" && content.Kind != "template" {
 		if err := repository.InsertPolicyBinding(ctx, identity, content, versionID, binding); err != nil {
 			return model.GovernedKnowledgeVersion{}, err
 		}

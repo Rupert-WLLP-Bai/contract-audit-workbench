@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r7
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -852,6 +852,7 @@ export interface GenerationRecord {
   replayed?: boolean;
   template_id: string;
   template_version: string;
+  template_digest?: string;
   digest: string;
   created_at: string;
 }
@@ -907,6 +908,7 @@ export interface Template {
   name: string;
   version: string;
   digest: string;
+  source?: "builtin" | "tenant";
   fields: TemplateField[];
 }
 

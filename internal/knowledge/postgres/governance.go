@@ -2,9 +2,9 @@
 // Purpose: Persists Knowledge-owned governed versions, states, pointers, bindings, history, and receipts and reads exact active and imported Legal reference facts.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-13
+// Created: 2026-11-14
 // Updated: 2026-11-14
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -264,4 +264,28 @@ func (g *Governance) HasPublishedLegalCapture(ctx context.Context, tenant, captu
 	var referenced bool
 	err := g.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM governed_knowledge_versions v JOIN governed_knowledge_state s USING (tenant_id,knowledge_id,version_id) WHERE v.tenant_id=$1 AND v.kind='legal' AND v.legal_capture_snapshot_id=$2 AND s.status IN ('published','withdrawn'))`, tenant, captureID).Scan(&referenced)
 	return referenced, err
+}
+
+// ActiveTemplates returns only active template identities within one tenant.
+func (g *Governance) ActiveTemplates(ctx context.Context, tenant string, item model.ReviewCaseFacts, id, version, digest string) ([]app.ActiveKnowledgeIdentity, error) {
+	rows, err := g.db.Query(ctx, `SELECT v.knowledge_id,v.version_id FROM governed_knowledge_pointers p JOIN governed_knowledge_versions v ON v.tenant_id=p.tenant_id AND v.knowledge_id=p.knowledge_id AND v.version_id=p.version_id AND v.scope_key=p.scope_key WHERE p.tenant_id=$1 AND p.active AND v.kind='template' AND (v.scope_org_id IS NULL OR v.scope_org_id=$5) AND (v.scope_case_id IS NULL OR v.scope_case_id=$6) AND convert_from(v.content,'UTF8')::jsonb->'scope'->>'business_line'=$7 AND convert_from(v.content,'UTF8')::jsonb->'scope'->>'scenario'=$8 AND convert_from(v.content,'UTF8')::jsonb->'scope'->>'contract_type'=$9 AND ($2='' OR (v.knowledge_id=$2 AND v.version_id=$3 AND v.content_sha256=$4)) ORDER BY v.knowledge_id,v.version_id LIMIT 257`, tenant, id, version, digest, item.OrgID, item.CaseID, item.BusinessLine, item.Scenario, item.ContractType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []app.ActiveKnowledgeIdentity
+	for rows.Next() {
+		var x app.ActiveKnowledgeIdentity
+		if err = rows.Scan(&x.KnowledgeID, &x.VersionID); err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) > 256 {
+		return nil, fault.Conflict("可用正文范本过多")
+	}
+	return out, nil
 }

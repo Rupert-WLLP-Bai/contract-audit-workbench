@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-12
-// Revision: r7
+// Updated: 2026-11-14
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -52,6 +52,22 @@ import {
 import { knownOrganizationName, presentOrganizationMembers } from "../domain/organization";
 import { SettingsPage } from "./settings-page";
 import "./workbench-module-page.css";
+
+function TenantTemplateMaintenanceLink() {
+  const adminSession = useSession("admin");
+  if (
+    !adminSession.isSuccess ||
+    adminSession.isFetching ||
+    adminSession.isError ||
+    adminSession.data.role !== "admin"
+  )
+    return null;
+  return (
+    <Button type="text" href="/admin/governed-knowledge/new?kind=template">
+      维护租户模板
+    </Button>
+  );
+}
 
 export const WORKBENCH_MODULES = {
   tasks: {
@@ -1638,6 +1654,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         {createOpen ? "关闭新建" : "新增知识"}
       </Button>
     );
+  if (module === "templates") headerAction = <TenantTemplateMaintenanceLink />;
 
   return (
     <>

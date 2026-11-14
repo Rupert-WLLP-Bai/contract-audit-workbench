@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Templates returns detached metadata for each immutable published template. Related `store` operations include Templates, versionedTemplate, renderBusinessTemplate, renderTelecomTemplate.
+// Purpose: Exposes detached immutable platform template metadata with explicit builtin origin and preserves bounded rendering and business validation for the two compatibility templates.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -76,7 +76,7 @@ func versionedTemplate(id, name, version string, sourceFields []TemplateField, s
 		Source  string          `json:"source"`
 	}{ID: id, Version: version, Fields: fields, Source: source})
 	digest := sha256.Sum256(identity)
-	return Template{ID: id, Name: name, Version: version, Digest: hex.EncodeToString(digest[:]), Fields: fields}
+	return Template{Source: "builtin", ID: id, Name: name, Version: version, Digest: hex.EncodeToString(digest[:]), Fields: fields}
 }
 
 func renderBusinessTemplate(templateID string, input map[string]string) ([]byte, error) {
