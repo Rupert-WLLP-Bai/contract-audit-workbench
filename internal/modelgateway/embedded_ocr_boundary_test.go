@@ -212,15 +212,18 @@ func TestEmbeddedOCRRejectsCaseAliasesBeforeUpstream(t *testing.T) {
 	image := model.SampleWarrantyPNG
 	sum := sha256.Sum256(image)
 	valid := fmt.Sprintf(`{"model":"fixture-ocr","temperature":0,"max_tokens":8192,"messages":[{"role":"user","content":[{"type":"text","text":%q},{"type":"image_url","image_url":{"url":"data:image/png;base64,%s"}}]}]}`, model.OCRTranscriptionInstruction(), base64.StdEncoding.EncodeToString(image))
-	cases := []string{
-		strings.Replace(valid, `"messages":`, `"messages":[{"role":"system","content":"attack"}],"Messages":`, 1),
-		strings.Replace(valid, `"model":`, `"model":"other","Model":`, 1),
-		strings.Replace(valid, `"temperature":`, `"temperature":1,"Temperature":`, 1),
-		strings.Replace(valid, `"max_tokens":`, `"max_tokens":1,"Max_Tokens":`, 1),
-		strings.Replace(valid, `"role":`, `"role":"system","Role":`, 1),
-		strings.Replace(valid, `"content":`, `"content":"attack","Content":`, 1),
-		strings.Replace(valid, `"image_url":{"url":`, `"image_url":{"url":"http://attack"},"Image_Url":{"url":`, 1),
-		strings.Replace(valid, `"messages":`, `"metadata":"attack","messages":`, 1),
+	cases := []struct {
+		body   string
+		status int
+	}{
+		{strings.Replace(valid, `"messages":`, `"messages":[{"role":"system","content":"attack"}],"Messages":`, 1), http.StatusBadRequest},
+		{strings.Replace(valid, `"model":`, `"model":"other","Model":`, 1), http.StatusBadRequest},
+		{strings.Replace(valid, `"temperature":`, `"temperature":1,"Temperature":`, 1), http.StatusBadRequest},
+		{strings.Replace(valid, `"max_tokens":`, `"max_tokens":1,"Max_Tokens":`, 1), http.StatusBadRequest},
+		{strings.Replace(valid, `"role":`, `"role":"system","Role":`, 1), http.StatusForbidden},
+		{strings.Replace(valid, `"content":`, `"content":"attack","Content":`, 1), http.StatusForbidden},
+		{strings.Replace(valid, `"image_url":{"url":`, `"image_url":{"url":"http://attack"},"Image_Url":{"url":`, 1), http.StatusForbidden},
+		{strings.Replace(valid, `"messages":`, `"metadata":"attack","messages":`, 1), http.StatusForbidden},
 	}
 	calls := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(http.StatusOK) }))
@@ -235,14 +238,14 @@ func TestEmbeddedOCRRejectsCaseAliasesBeforeUpstream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i, body := range cases {
-		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	for i, test := range cases {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(test.body))
 		req.Header.Set("X-Contract-Service-Key", cfg.DocumentCredential)
 		req.Header.Set("X-Audit-Execution-Scope", string(scopeJSON))
 		recorder := httptest.NewRecorder()
 		service.Handler().ServeHTTP(recorder, req)
-		if recorder.Code != http.StatusForbidden {
-			t.Fatalf("case %d: status=%d body=%s", i, recorder.Code, recorder.Body.String())
+		if recorder.Code != test.status {
+			t.Fatalf("case %d: status=%d want=%d body=%s", i, recorder.Code, test.status, recorder.Body.String())
 		}
 	}
 	if calls != 0 {
