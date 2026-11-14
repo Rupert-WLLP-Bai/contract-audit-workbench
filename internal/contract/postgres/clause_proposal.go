@@ -84,7 +84,7 @@ func (r *ClauseProposals) AppendDecision(ctx context.Context, tenant, org, id st
 		return err
 	}
 	tag, err := r.tx.Exec(ctx, `INSERT INTO clm_clause_proposal_decisions(tenant_id,org_id,proposal_id,version,decision_json)
- SELECT $1,$2,$3,$4,$5 WHERE $4=$6+1 AND COALESCE((SELECT max(version) FROM clm_clause_proposal_decisions WHERE tenant_id=$1 AND proposal_id=$3),1)=$6`, tenant, org, id, history.Version, raw, expected)
+ SELECT $1,$2,$3,$4::bigint,$5 WHERE $4::bigint=$6::bigint+1 AND COALESCE((SELECT max(version) FROM clm_clause_proposal_decisions WHERE tenant_id=$1 AND proposal_id=$3),1)=$6::bigint`, tenant, org, id, history.Version, raw, expected)
 	if err != nil {
 		return err
 	}
