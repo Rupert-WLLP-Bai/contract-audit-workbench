@@ -299,6 +299,7 @@ func (st state) clone() (state, error) {
 			break
 		}
 		out.Snapshots[i].RulePackSnapshot = append([]byte(nil), st.Snapshots[i].RulePackSnapshot...)
+		out.Snapshots[i].PlannerConfigurationID = st.Snapshots[i].PlannerConfigurationID
 		out.Snapshots[i].PlannerConfiguration = append(json.RawMessage(nil), st.Snapshots[i].PlannerConfiguration...)
 		out.Snapshots[i].AdoptedTenantConfigVersionID = st.Snapshots[i].AdoptedTenantConfigVersionID
 		out.Snapshots[i].AdoptedTenantConfigDigest = st.Snapshots[i].AdoptedTenantConfigDigest

@@ -348,10 +348,11 @@ func (s *Store) scopedAttemptMutationInternal(ctx context.Context, runID, attemp
 			return err
 		}
 	}
-	if preparing {
-		canonicalizeLoadedRows(&previous)
-		previous.normalize()
-	}
+	// The JSON clone canonicalizes empty optional slices. Apply the same
+	// canonicalization to the loaded baseline for every attempt mutation, so
+	// an unchanged frozen snapshot is not mistaken for a new insert.
+	canonicalizeLoadedRows(&previous)
+	previous.normalize()
 	next, err := previous.clone()
 	if err != nil {
 		return err

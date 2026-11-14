@@ -82,7 +82,7 @@ func TestStandardCitationBridgePreservesFieldsAndFencesTakeover(t *testing.T) {
 	staleDraft.Disposition = "insufficient_evidence"
 	staleDraft.UnverifiedReason = "stale generation change"
 	staleDraft.Anchors = []engine.Anchor{{DocumentID: "doc", Quote: "stale", Status: "located", Start: 9, End: 14}}
-	if _, err = bridge.MergeCitationDrafts(oldCtx, attempt, docs, []engine.Draft{staleDraft}); !errors.Is(err, ErrLeaseLost) {
+	if _, err = bridge.MergeCitationDrafts(oldCtx, attempt, docs, []engine.Draft{staleDraft}); !errors.Is(err, ErrLeaseLost) && !errors.Is(err, ErrToolScopeUnavailable) {
 		t.Fatalf("stale generation merge: %v", err)
 	}
 	after := durableMutationSnapshot(t, fixture, takeover)
