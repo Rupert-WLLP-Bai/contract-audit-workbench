@@ -42,7 +42,10 @@ afterEach(async () => {
 
 it("recovers a render failure after browser Back with a reload of the same evidence address", async () => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
-  vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({ matches: false })),
+  );
   const createRoot = vi.mocked(client.createRoot);
   const reload = vi.spyOn(window.location, "reload").mockImplementation(() => undefined);
   const evidenceAddress = "/workbench/evidence?case_id=case_fixture&tab=citations#source";
@@ -78,5 +81,7 @@ it("recovers a render failure after browser Back with a reload of the same evide
   expect(screen.queryByText("Unexpected Application Error!")).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "重新加载当前页面" }));
   await waitFor(() => expect(reload).toHaveBeenCalledOnce());
-  expect(window.location.pathname + window.location.search + window.location.hash).toBe(evidenceAddress);
+  expect(window.location.pathname + window.location.search + window.location.hash).toBe(
+    evidenceAddress,
+  );
 });

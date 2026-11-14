@@ -136,9 +136,7 @@ export function mountApplication(
       />
     );
   if (options.queries !== false)
-    content = (
-      <QueryClientProvider client={queryClient}>{content}</QueryClientProvider>
-    );
+    content = <QueryClientProvider client={queryClient}>{content}</QueryClientProvider>;
   createRoot(rootElement()).render(
     <StrictMode>
       <StyleProvider layer>

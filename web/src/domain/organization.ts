@@ -70,7 +70,8 @@ export function presentedPersonName(id: string, displayName: string): string {
 
 export function presentOrganizationMembers(members: DirectoryMember[]): DirectoryMember[] {
   const legacy = new Set<string>(LEGACY_LOCAL_DEMO_IDS);
-  if (members.length !== legacy.size || members.some((member) => !legacy.has(member.id))) return members;
+  if (members.length !== legacy.size || members.some((member) => !legacy.has(member.id)))
+    return members;
   const tenant = members[0]?.tenant_id;
   const presented = directory.users.filter((user) => user.tenant_id === tenant);
   return presented.length > 0 ? presented : members;

@@ -69,20 +69,11 @@ function SeverityCounts({ findings }: { findings: Finding[] }) {
     ...(findings.some((item) => item.severity === null) ? ["unrated"] : []),
   ];
   return (
-    <dl
-      className="finding-counts finding-severity-counts"
-      aria-label="本次审查风险分级"
-    >
+    <dl className="finding-counts finding-severity-counts" aria-label="本次审查风险分级">
       {severities.map((severity) => (
         <div key={severity} data-severity={severity}>
           <dt>{SEVERITY_LABELS[severity]}</dt>
-          <dd>
-            {
-              findings.filter(
-                (item) => (item.severity ?? "unrated") === severity,
-              ).length
-            }
-          </dd>
+          <dd>{findings.filter((item) => (item.severity ?? "unrated") === severity).length}</dd>
         </div>
       ))}
     </dl>
@@ -134,38 +125,31 @@ function FindingListRow({
   return (
     <li>
       <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-2)" }}>
-      <Checkbox
-        aria-label={`批量选择线索：${findingTitle(finding)}`}
-        title={selectionHint}
-        checked={checked}
-        disabled={selectionDisabled}
-        onChange={(event) => onToggleSelection(event.target.checked)}
-      />
-      <Button
-        htmlType="button"
-        className="finding-button"
-        data-relation={finding.relation}
-        data-severity={finding.severity ?? "unrated"}
-        aria-label={`选择线索：${findingTitle(finding)}`}
-        aria-current={finding.id === selectedId}
-        onClick={() => onSelect(finding.id)}
-      >
-        <span className="finding-card-title">
-          {findingTitle(finding)}
-        </span>
-        <span
-          className="finding-grade"
+        <Checkbox
+          aria-label={`批量选择线索：${findingTitle(finding)}`}
+          title={selectionHint}
+          checked={checked}
+          disabled={selectionDisabled}
+          onChange={(event) => onToggleSelection(event.target.checked)}
+        />
+        <Button
+          htmlType="button"
+          className="finding-button"
+          data-relation={finding.relation}
           data-severity={finding.severity ?? "unrated"}
+          aria-label={`选择线索：${findingTitle(finding)}`}
+          aria-current={finding.id === selectedId}
+          onClick={() => onSelect(finding.id)}
         >
-          {SEVERITY_LABELS[finding.severity ?? "unrated"] ?? "未分级"}
-        </span>
-        <span className="meta">
-          {originLabel(finding.origin)}， {relationLabel(finding.relation)}
-          {decision
-            ? `，已记录${decisionLabel(decision.action)}`
-            : "，待裁决"}
-        </span>
-      </Button>
+          <span className="finding-card-title">{findingTitle(finding)}</span>
+          <span className="finding-grade" data-severity={finding.severity ?? "unrated"}>
+            {SEVERITY_LABELS[finding.severity ?? "unrated"] ?? "未分级"}
+          </span>
+          <span className="meta">
+            {originLabel(finding.origin)}， {relationLabel(finding.relation)}
+            {decision ? `，已记录${decisionLabel(decision.action)}` : "，待裁决"}
+          </span>
+        </Button>
       </div>
     </li>
   );
@@ -201,9 +185,8 @@ function ClauseComparisonTab({
             <blockquote key={anchor.id}>
               {anchor.quote}
               <small>
-                {documents.find(
-                  (document) => document.id === anchor.document_version_id,
-                )?.filename ?? "来源未对应到材料"}
+                {documents.find((document) => document.id === anchor.document_version_id)
+                  ?.filename ?? "来源未对应到材料"}
               </small>
             </blockquote>
           ))}
@@ -241,7 +224,10 @@ function ContractInfoTab({
               </>
             ) : null}
           </dl>
-          <TechnicalDetail label="材料状态技术详情" value={JSON.stringify({ role: document.role, parse_status: document.parse_status })} />
+          <TechnicalDetail
+            label="材料状态技术详情"
+            value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
+          />
         </section>
       ))}
     </div>
@@ -258,7 +244,14 @@ function ConclusionTab({ findings }: { findings: Finding[] }) {
           <p>
             {originLabel(item.origin)}，{relationLabel(item.relation)}
           </p>
-          <TechnicalDetail label="发现类型技术详情" value={JSON.stringify({ origin: item.origin, relation: item.relation, domain: item.domain })} />
+          <TechnicalDetail
+            label="发现类型技术详情"
+            value={JSON.stringify({
+              origin: item.origin,
+              relation: item.relation,
+              domain: item.domain,
+            })}
+          />
           {item.decisions.length === 0 ? (
             <p>尚未记录审查判断。</p>
           ) : (
@@ -280,12 +273,9 @@ function ConclusionTab({ findings }: { findings: Finding[] }) {
 }
 
 function FindingCircuit({ finding }: { finding: Finding }) {
-  const located = finding.evidence.filter(
-    (anchor) => anchor.status === "located",
-  ).length;
+  const located = finding.evidence.filter((anchor) => anchor.status === "located").length;
   const decision = latestDecision(finding);
-  const sourceOpen =
-    finding.evidence.length === 0 || located !== finding.evidence.length;
+  const sourceOpen = finding.evidence.length === 0 || located !== finding.evidence.length;
   const nodes = [
     {
       label: "本次审查原文",
@@ -344,23 +334,33 @@ function FindingDetailHeader({
         {finding.domain ? `，${businessDomainLabel(finding.domain)}` : ""}
       </p>
       {presentation ? <p className="callout">{presentation.nextStep}</p> : null}
-      {presentation ? <TechnicalDetail label="规则原始结果与编号" value={presentation.raw} /> : null}
-      <TechnicalDetail label="发现类型技术详情" value={JSON.stringify({ domain: finding.domain, origin: finding.origin, relation: finding.relation, confidence: finding.confidence })} />
+      {presentation ? (
+        <TechnicalDetail label="规则原始结果与编号" value={presentation.raw} />
+      ) : null}
+      <TechnicalDetail
+        label="发现类型技术详情"
+        value={JSON.stringify({
+          domain: finding.domain,
+          origin: finding.origin,
+          relation: finding.relation,
+          confidence: finding.confidence,
+        })}
+      />
       <FindingCircuit finding={finding} />
       {finding.severity_source ? (
         <p className="finding-grade-source">
           {SEVERITY_LABELS[finding.severity ?? "unrated"]}，{" "}
           {showDiagnostics ? (
             <>
-              {finding.severity_source.policy_id} v
-              {finding.severity_source.policy_version} 第
+              {finding.severity_source.policy_id} v{finding.severity_source.policy_version} 第
               {finding.severity_source.clause}条：
             </>
           ) : null}
           {finding.severity_source.reason}
         </p>
       ) : null}
-      {finding.unverified_reason && !(presentation && finding.unverified_reason === finding.claim) ? (
+      {finding.unverified_reason &&
+      !(presentation && finding.unverified_reason === finding.claim) ? (
         <p className="callout">尚未核验：{finding.unverified_reason}</p>
       ) : null}
     </>
@@ -401,8 +401,7 @@ function EvidenceDiagnostics({ anchor }: { anchor: EvidenceAnchor }) {
       data-evidence-normalized-digest={anchor.normalized_digest ?? ""}
       data-evidence-document-version-id={anchor.document_version_id}
     >
-      {anchor.parsed_document_id === null &&
-      anchor.normalized_digest === null ? (
+      {anchor.parsed_document_id === null && anchor.normalized_digest === null ? (
         "历史来源未记录解析身份或正文摘要"
       ) : (
         <>
@@ -410,17 +409,13 @@ function EvidenceDiagnostics({ anchor }: { anchor: EvidenceAnchor }) {
           {anchor.parsed_document_id === null ? (
             "未记录"
           ) : (
-            <span title={anchor.parsed_document_id}>
-              {shortDigest(anchor.parsed_document_id)}
-            </span>
+            <span title={anchor.parsed_document_id}>{shortDigest(anchor.parsed_document_id)}</span>
           )}
           {"，"}正文 SHA-256{" "}
           {anchor.normalized_digest === null ? (
             "未记录"
           ) : (
-            <span title={anchor.normalized_digest}>
-              {shortDigest(anchor.normalized_digest)}
-            </span>
+            <span title={anchor.normalized_digest}>{shortDigest(anchor.normalized_digest)}</span>
           )}
         </>
       )}
@@ -428,10 +423,7 @@ function EvidenceDiagnostics({ anchor }: { anchor: EvidenceAnchor }) {
   );
 }
 
-function resolveEvidence(
-  anchor: EvidenceAnchor,
-  source: ReviewDocument | null,
-) {
+function resolveEvidence(anchor: EvidenceAnchor, source: ReviewDocument | null) {
   return resolveAnchor(
     source?.text ?? null,
     anchor,
@@ -454,18 +446,10 @@ function EvidenceResolution({
       {resolved.kind === "snapshot" && !anchor.mismatch_reason ? (
         <p className="callout">{resolved.reason}</p>
       ) : null}
-      {resolved.kind === "unavailable" ? (
-        <p className="callout">{resolved.reason}</p>
-      ) : null}
-      {located && anchor.page !== null ? (
-        <p className="meta">第 {anchor.page} 页</p>
-      ) : null}
+      {resolved.kind === "unavailable" ? <p className="callout">{resolved.reason}</p> : null}
+      {located && anchor.page !== null ? <p className="meta">第 {anchor.page} 页</p> : null}
       {anchor.mismatch_reason ? <p>{anchor.mismatch_reason}</p> : null}
-      {anchor.quote ? (
-        <blockquote>{anchor.quote}</blockquote>
-      ) : (
-        <p>没有保存引用内容。</p>
-      )}
+      {anchor.quote ? <blockquote>{anchor.quote}</blockquote> : <p>没有保存引用内容。</p>}
     </>
   );
 }
@@ -489,11 +473,7 @@ function EvidenceCard({
       </header>
       {source ? <p className="meta">{source.filename}</p> : null}
       {showDiagnostics ? <EvidenceDiagnostics anchor={anchor} /> : null}
-      <EvidenceResolution
-        anchor={anchor}
-        resolved={resolved}
-        located={located}
-      />
+      <EvidenceResolution anchor={anchor} resolved={resolved} located={located} />
     </section>
   );
 }
@@ -510,9 +490,7 @@ function EvidenceList({
   return (
     <>
       <h4>证据</h4>
-      {finding.evidence.length === 0 ? (
-        <p>这条线索没有附带证据，不能视为已验证。</p>
-      ) : null}
+      {finding.evidence.length === 0 ? <p>这条线索没有附带证据，不能视为已验证。</p> : null}
       <div className="evidence-stack">
         {finding.evidence.map((anchor) => (
           <EvidenceCard
@@ -531,18 +509,13 @@ function DecisionHistory({ decisions }: { decisions: HumanDecision[] }) {
   return (
     <>
       <h4>决定记录</h4>
-      {decisions.length === 0 ? (
-        <p>还没有人工判断。</p>
-      ) : null}
+      {decisions.length === 0 ? <p>还没有人工判断。</p> : null}
       <ol className="history">
         {decisions.map((decision) => (
           <li key={decision.id}>
             <p>
-              <strong>{decisionLabel(decision.action)}</strong>，{" "}
-              {decision.actor}，{" "}
-              <time dateTime={decision.decided_at}>
-                {formatDateTime(decision.decided_at)}
-              </time>
+              <strong>{decisionLabel(decision.action)}</strong>， {decision.actor}，{" "}
+              <time dateTime={decision.decided_at}>{formatDateTime(decision.decided_at)}</time>
             </p>
             <p>{decision.reason}</p>
             <TechnicalDetail label="决定类型技术详情" value={decision.action} />
@@ -583,9 +556,7 @@ function DecisionAlerts({
   return (
     <>
       {version === null ? (
-        <p role="status">
-          服务没有返回这条线索的版本号，暂不能保存，以免覆盖其他人的决定。
-        </p>
+        <p role="status">服务没有返回这条线索的版本号，暂不能保存，以免覆盖其他人的决定。</p>
       ) : null}
       {reasonError ? <p role="alert">{reasonError}</p> : null}
       {conflictMessage ? <p role="alert">{conflictMessage}</p> : null}
@@ -612,9 +583,7 @@ function DecisionCard({
       aria-label={String(correction ? "更正判断" : "审查判断")}
       title={<>{correction ? "更正判断" : "审查判断"}</>}
     >
-      {correction ? (
-        <p className="meta">修改判断时，之前的记录也会保留。</p>
-      ) : null}
+      {correction ? <p className="meta">修改判断时，之前的记录也会保留。</p> : null}
       {DECISION_ACTIONS.map((item) => (
         <div key={item.action} className="choice">
           <Radio
@@ -632,13 +601,7 @@ function DecisionCard({
   );
 }
 
-function DecisionSubmit({
-  pending,
-  canSubmit,
-}: {
-  pending: boolean;
-  canSubmit: boolean;
-}) {
+function DecisionSubmit({ pending, canSubmit }: { pending: boolean; canSubmit: boolean }) {
   return (
     <Button
       aria-label={String(pending ? "正在保存" : "保存决定")}
@@ -691,16 +654,7 @@ function DecisionForm({
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAttempted(true);
-    if (
-      !canSubmitDecision(
-        canDecide,
-        draft.action,
-        finding.version,
-        draft.reason,
-        pending,
-      )
-    )
-      return;
+    if (!canSubmitDecision(canDecide, draft.action, finding.version, draft.reason, pending)) return;
     if (draft.action === null || finding.version === null) return;
     const saved = await onDecide({
       findingId: finding.id,
@@ -719,22 +673,23 @@ function DecisionForm({
     <form
       onSubmit={onSubmit}
       onKeyDown={(event) => {
-        if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+        if (
+          event.key === "Enter" &&
+          (event.ctrlKey || event.metaKey) &&
+          !event.altKey &&
+          !event.shiftKey
+        ) {
           event.preventDefault();
           event.currentTarget.requestSubmit();
         }
       }}
     >
-      {!canDecide ? (
-        <p>{decisionDisabledReason ?? "当前角色不能提交审查判断。"}</p>
-      ) : null}
+      {!canDecide ? <p>{decisionDisabledReason ?? "当前角色不能提交审查判断。"}</p> : null}
       <DecisionCard
         finding={finding}
         action={draft.action}
         canDecide={canDecide && !pending}
-        onAction={(action) =>
-          draft.update((current) => ({ ...current, action }))
-        }
+        onAction={(action) => draft.update((current) => ({ ...current, action }))}
       />
       <label className="field" htmlFor={reasonId}>
         理由
@@ -797,11 +752,7 @@ function FindingDetail({
   return (
     <article className="finding-detail" aria-live="polite">
       <FindingDetailHeader finding={finding} showDiagnostics={showDiagnostics} />
-      <EvidenceList
-        finding={finding}
-        documents={documents}
-        showDiagnostics={showDiagnostics}
-      />
+      <EvidenceList finding={finding} documents={documents} showDiagnostics={showDiagnostics} />
       <DecisionHistory decisions={finding.decisions} />
       <DecisionForm
         finding={finding}
@@ -858,7 +809,10 @@ export function FindingPanel({
   const [filter, setFilter] = useState<FindingFilter>("all");
   const [panel, setPanel] = useState("风险审查");
   useEffect(() => {
-    if (requestedFindingId && findings.filter((finding) => finding.id === requestedFindingId).length === 1)
+    if (
+      requestedFindingId &&
+      findings.filter((finding) => finding.id === requestedFindingId).length === 1
+    )
       setPanel("风险审查");
   }, [requestedFindingId, navigationSerial, findings]);
   const visible = findingQueue(findings, filter);
@@ -873,35 +827,78 @@ export function FindingPanel({
     selectedRef.current = selectedId;
     scopeRef.current = batch.scopeKey;
   }, [selectedId, batch.scopeKey]);
-  useEffect(() => () => { scopeEpoch.current += 1; }, [batch.scopeKey]);
+  useEffect(
+    () => () => {
+      scopeEpoch.current += 1;
+    },
+    [batch.scopeKey],
+  );
   const selectedForBatch = batch.selectedIds.flatMap((id) => {
     const finding = findings.find((item) => item.id === id);
     return finding ? [finding] : [];
   });
   const group = selectedForBatch[0] ? findingBatchGroup(selectedForBatch[0], evaluations) : null;
-  const membersValid = selectedForBatch.length === batch.selectedIds.length &&
-    selectedForBatch.length > 0 && group !== null &&
-    selectedForBatch.every((finding) => finding.version !== null && sameFindingBatchGroup(group, findingBatchGroup(finding, evaluations)));
-  const retryingSingle = batch.selectedIds.length === 1 && batch.results.some((result) =>
-    result.findingId === batch.selectedIds[0] && result.status !== "success");
+  const membersValid =
+    selectedForBatch.length === batch.selectedIds.length &&
+    selectedForBatch.length > 0 &&
+    group !== null &&
+    selectedForBatch.every(
+      (finding) =>
+        finding.version !== null &&
+        sameFindingBatchGroup(group, findingBatchGroup(finding, evaluations)),
+    );
+  const retryingSingle =
+    batch.selectedIds.length === 1 &&
+    batch.results.some(
+      (result) => result.findingId === batch.selectedIds[0] && result.status !== "success",
+    );
   const needsReconfirmation = batch.results.some((result) => {
     if (result.status === "success" || !batch.selectedIds.includes(result.findingId)) return false;
     const current = findings.find((finding) => finding.id === result.findingId);
     return current?.version == null || result.confirmedVersion !== current.version;
   });
-  const canBatchSubmit = Boolean(onBatchDecide) && canDecide && !pending && !batchPending &&
-    (batch.selectedIds.length >= 2 || retryingSingle) && membersValid && !needsReconfirmation && batch.action !== null &&
+  const canBatchSubmit =
+    Boolean(onBatchDecide) &&
+    canDecide &&
+    !pending &&
+    !batchPending &&
+    (batch.selectedIds.length >= 2 || retryingSingle) &&
+    membersValid &&
+    !needsReconfirmation &&
+    batch.action !== null &&
     validateDecisionReason(batch.reason) === null;
-  const navigate = useCallback((direction: -1 | 1) => {
-    const next = adjacentFindingId(visible, selectedId, direction);
-    if (next !== null) onSelect(next);
-  }, [visible, selectedId, onSelect]);
+  const navigate = useCallback(
+    (direction: -1 | 1) => {
+      const next = adjacentFindingId(visible, selectedId, direction);
+      if (next !== null) onSelect(next);
+    },
+    [visible, selectedId, onSelect],
+  );
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.isComposing || event.repeat || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || panel !== "风险审查" || pending || batchPending) return;
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.repeat ||
+        !event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        panel !== "风险审查" ||
+        pending ||
+        batchPending
+      )
+        return;
       const target = event.target;
-      if (target instanceof Element && target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='dialog']")) return;
-      const direction = event.key.toLowerCase() === "j" ? 1 : event.key.toLowerCase() === "k" ? -1 : null;
+      if (
+        target instanceof Element &&
+        target.closest(
+          "input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='dialog']",
+        )
+      )
+        return;
+      const direction =
+        event.key.toLowerCase() === "j" ? 1 : event.key.toLowerCase() === "k" ? -1 : null;
       if (direction === null) return;
       event.preventDefault();
       navigate(direction);
@@ -916,7 +913,15 @@ export function FindingPanel({
     const items: { finding: Finding; input: FindingDecisionInput }[] = [];
     for (const finding of selectedForBatch) {
       if (finding.version === null) return;
-      items.push({ finding, input: { findingId: finding.id, action, reason: batch.reason.trim(), expectedVersion: finding.version } });
+      items.push({
+        finding,
+        input: {
+          findingId: finding.id,
+          action,
+          reason: batch.reason.trim(),
+          expectedVersion: finding.version,
+        },
+      });
     }
     const epoch = scopeEpoch.current;
     if (submittingScopes.current.has(batch.scopeKey)) return;
@@ -933,15 +938,30 @@ export function FindingPanel({
         try {
           outcome = await onBatchDecide(input);
         } catch (error) {
-          outcome = { status: "failed", message: error instanceof Error ? error.message : "请求没有完成" };
+          outcome = {
+            status: "failed",
+            message: error instanceof Error ? error.message : "请求没有完成",
+          };
         }
       }
       if (outcome.stop) stopped = true;
       if (outcome.status === "success") successes.add(finding.id);
       batch.update((current) => ({
         ...current,
-        selectedIds: outcome.status === "success" ? current.selectedIds.filter((id) => id !== finding.id) : current.selectedIds,
-        results: [...current.results.filter((result) => result.findingId !== finding.id), { findingId: finding.id, claim: findingTitle(finding), status: outcome.status, message: outcome.message, confirmedVersion: null }],
+        selectedIds:
+          outcome.status === "success"
+            ? current.selectedIds.filter((id) => id !== finding.id)
+            : current.selectedIds,
+        results: [
+          ...current.results.filter((result) => result.findingId !== finding.id),
+          {
+            findingId: finding.id,
+            claim: findingTitle(finding),
+            status: outcome.status,
+            message: outcome.message,
+            confirmedVersion: null,
+          },
+        ],
       }));
     }
     if (successes.size === items.length) {
@@ -950,14 +970,19 @@ export function FindingPanel({
     submittingScopes.current.delete(batch.scopeKey);
     if (scopeEpoch.current !== epoch) return;
     setBusyScope(null);
-    if (startingSelection && selectedRef.current === startingSelection && successes.has(startingSelection)) {
-      const remaining = visible.filter((finding) => finding.id === startingSelection || !successes.has(finding.id));
+    if (
+      startingSelection &&
+      selectedRef.current === startingSelection &&
+      successes.has(startingSelection)
+    ) {
+      const remaining = visible.filter(
+        (finding) => finding.id === startingSelection || !successes.has(finding.id),
+      );
       const next = nextUndecidedFindingId(remaining, startingSelection);
       if (next !== null) onSelect(next);
     }
   }
-  const selected =
-    findings.find((finding) => finding.id === selectedId) ?? null;
+  const selected = findings.find((finding) => finding.id === selectedId) ?? null;
   const selectedHidden =
     selected !== null && !visible.some((finding) => finding.id === selected.id);
 
@@ -967,39 +992,67 @@ export function FindingPanel({
       <Tabs
         activeKey={panel}
         onChange={setPanel}
-        items={["风险审查", "条款比对", "合同信息", "审查结论"].map(
-          (label) => ({ key: label, label }),
-        )}
+        items={["风险审查", "条款比对", "合同信息", "审查结论"].map((label) => ({
+          key: label,
+          label,
+        }))}
       />
       <div hidden={panel !== "风险审查"}>
-        {selected ? <div className="review-selected-finding" aria-label="当前选中线索">
-          <span className="meta">当前线索</span>
-          <strong>{findingTitle(selected)}</strong>
-          {findingPresentation(selected) ? <p>{findingPresentation(selected)?.nextStep}</p> : null}
-        </div> : null}
+        {selected ? (
+          <div className="review-selected-finding" aria-label="当前选中线索">
+            <span className="meta">当前线索</span>
+            <strong>{findingTitle(selected)}</strong>
+            {findingPresentation(selected) ? (
+              <p>{findingPresentation(selected)?.nextStep}</p>
+            ) : null}
+          </div>
+        ) : null}
         <SeverityCounts findings={findings} />
         <FindingFilterButtons filter={filter} onChange={setFilter} />
-        <p className="meta" aria-live="polite">当前筛选显示 {visible.length} / {findings.length} 条线索。</p>
+        <p className="meta" aria-live="polite">
+          当前筛选显示 {visible.length} / {findings.length} 条线索。
+        </p>
         <div className="filter-row" role="group" aria-label="浏览线索队列">
-          <Button htmlType="button" disabled={pending || batchPending || adjacentFindingId(visible, selectedId, -1) === null} onClick={() => navigate(-1)}>上一条</Button>
-          <Button htmlType="button" disabled={pending || batchPending || adjacentFindingId(visible, selectedId, 1) === null} onClick={() => navigate(1)}>下一条</Button>
+          <Button
+            htmlType="button"
+            disabled={
+              pending || batchPending || adjacentFindingId(visible, selectedId, -1) === null
+            }
+            onClick={() => navigate(-1)}
+          >
+            上一条
+          </Button>
+          <Button
+            htmlType="button"
+            disabled={pending || batchPending || adjacentFindingId(visible, selectedId, 1) === null}
+            onClick={() => navigate(1)}
+          >
+            下一条
+          </Button>
         </div>
         <p className="meta">待裁决优先，再按严重度排序。Alt+J 下一条，Alt+K 上一条。</p>
-        {findings.length === 0 ? (
-          <p>这次审查还没有生成风险线索。</p>
-        ) : null}
+        {findings.length === 0 ? <p>这次审查还没有生成风险线索。</p> : null}
         {findings.length > 0 && visible.length === 0 ? <p>当前筛选条件下没有线索。</p> : null}
         <ul className="finding-list">
           {visible.map((finding) => {
             const checked = batch.selectedIds.includes(finding.id);
             const candidateGroup = findingBatchGroup(finding, evaluations);
-            const compatible = candidateGroup !== null && (batch.selectedIds.length === 0 || sameFindingBatchGroup(group, candidateGroup));
-            const selectionDisabled = pending || batchPending || (!checked && (!canDecide || !onBatchDecide || finding.version === null || !compatible));
-            const selectionHint = candidateGroup === null
-              ? "缺少唯一关联规则，不能批量裁决"
-              : finding.version === null
-                ? "缺少版本号，不能批量裁决"
-                : !compatible ? "只能选择同一规则、同类结论的线索" : "勾选参与批量裁决";
+            const compatible =
+              candidateGroup !== null &&
+              (batch.selectedIds.length === 0 || sameFindingBatchGroup(group, candidateGroup));
+            const selectionDisabled =
+              pending ||
+              batchPending ||
+              (!checked &&
+                (!canDecide || !onBatchDecide || finding.version === null || !compatible));
+            const selectionHint =
+              candidateGroup === null
+                ? "缺少唯一关联规则，不能批量裁决"
+                : finding.version === null
+                  ? "缺少版本号，不能批量裁决"
+                  : !compatible
+                    ? "只能选择同一规则、同类结论的线索"
+                    : "勾选参与批量裁决";
             return (
               <FindingListRow
                 key={finding.id}
@@ -1009,12 +1062,16 @@ export function FindingPanel({
                 checked={checked}
                 selectionDisabled={selectionDisabled}
                 selectionHint={selectionHint}
-                onToggleSelection={(nextChecked) => batch.update((current) => ({
-                  ...current,
-                  selectedIds: nextChecked
-                    ? current.selectedIds.includes(finding.id) ? current.selectedIds : [...current.selectedIds, finding.id]
-                    : current.selectedIds.filter((id) => id !== finding.id),
-                }))}
+                onToggleSelection={(nextChecked) =>
+                  batch.update((current) => ({
+                    ...current,
+                    selectedIds: nextChecked
+                      ? current.selectedIds.includes(finding.id)
+                        ? current.selectedIds
+                        : [...current.selectedIds, finding.id]
+                      : current.selectedIds.filter((id) => id !== finding.id),
+                  }))
+                }
               />
             );
           })}
@@ -1033,9 +1090,7 @@ export function FindingPanel({
           onSelect={onSelect}
           onSubmit={() => void submitBatch()}
         />
-        {selectedHidden ? (
-          <p className="meta">当前线索不在这个筛选结果里，右侧仍保留它。</p>
-        ) : null}
+        {selectedHidden ? <p className="meta">当前线索不在这个筛选结果里，右侧仍保留它。</p> : null}
         {selected ? (
           <FindingDetail
             key={selected.id}

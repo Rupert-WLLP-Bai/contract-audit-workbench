@@ -9,9 +9,40 @@
 // End file metadata.
 
 import { describe, expect, it } from "vitest";
-import { DISTRICT_ORGANIZATION_NAMES, organizationName, presentedPersonName, presentOrganizationMembers } from "./organization";
+import {
+  DISTRICT_ORGANIZATION_NAMES,
+  organizationName,
+  presentedPersonName,
+  presentOrganizationMembers,
+} from "./organization";
 
-const DISTRICTS = ["万州区", "黔江区", "涪陵区", "渝中区", "大渡口区", "沙坪坝区", "九龙坡区", "南岸区", "北碚区", "巴南区", "长寿区", "江津区", "合川区", "永川区", "南川区", "綦江区", "大足区", "璧山区", "铜梁区", "潼南区", "荣昌区", "开州区", "梁平区", "武隆区", "两江新区"];
+const DISTRICTS = [
+  "万州区",
+  "黔江区",
+  "涪陵区",
+  "渝中区",
+  "大渡口区",
+  "沙坪坝区",
+  "九龙坡区",
+  "南岸区",
+  "北碚区",
+  "巴南区",
+  "长寿区",
+  "江津区",
+  "合川区",
+  "永川区",
+  "南川区",
+  "綦江区",
+  "大足区",
+  "璧山区",
+  "铜梁区",
+  "潼南区",
+  "荣昌区",
+  "开州区",
+  "梁平区",
+  "武隆区",
+  "两江新区",
+];
 
 describe("organizationName", () => {
   it("names the demonstration organisation without hiding unknown scopes", () => {
@@ -25,21 +56,62 @@ describe("organizationName", () => {
 
   it("presents the district roster for the legacy local demo directory only", () => {
     const legacy = [
-      { id: "demo-admin", display_name: "演示管理员", role: "admin", tenant_id: "local-demo", org_id: "demo-org" },
-      { id: "demo-clerk", display_name: "演示经办", role: "clerk", tenant_id: "local-demo", org_id: "demo-org" },
-      { id: "demo-reviewer", display_name: "演示审查员", role: "reviewer", tenant_id: "local-demo", org_id: "demo-org" },
-      { id: "demo-viewer", display_name: "演示只读", role: "viewer", tenant_id: "local-demo", org_id: "demo-org" },
-      { id: "demo-otherorg-clerk", display_name: "演示其他组织经办", role: "clerk", tenant_id: "local-demo", org_id: "demo-other-org" },
+      {
+        id: "demo-admin",
+        display_name: "演示管理员",
+        role: "admin",
+        tenant_id: "local-demo",
+        org_id: "demo-org",
+      },
+      {
+        id: "demo-clerk",
+        display_name: "演示经办",
+        role: "clerk",
+        tenant_id: "local-demo",
+        org_id: "demo-org",
+      },
+      {
+        id: "demo-reviewer",
+        display_name: "演示审查员",
+        role: "reviewer",
+        tenant_id: "local-demo",
+        org_id: "demo-org",
+      },
+      {
+        id: "demo-viewer",
+        display_name: "演示只读",
+        role: "viewer",
+        tenant_id: "local-demo",
+        org_id: "demo-org",
+      },
+      {
+        id: "demo-otherorg-clerk",
+        display_name: "演示其他组织经办",
+        role: "clerk",
+        tenant_id: "local-demo",
+        org_id: "demo-other-org",
+      },
     ];
     const presented = presentOrganizationMembers(legacy);
     expect(presented.some((member) => member.display_name.includes("演示"))).toBe(false);
-    expect(presented.find((member) => member.id === "demo-admin")).toMatchObject({ display_name: "James Carter", org_id: "demo-org" });
+    expect(presented.find((member) => member.id === "demo-admin")).toMatchObject({
+      display_name: "James Carter",
+      org_id: "demo-org",
+    });
     for (const district of ["cq-wanzhou", "demo-org", "demo-other-org"]) {
       const count = presented.filter((member) => member.org_id === district).length;
       expect(count).toBeGreaterThanOrEqual(2);
       expect(count).toBeLessThanOrEqual(4);
     }
-    const supplied = [{ id: "reviewer-1", display_name: "审查员甲", role: "reviewer", tenant_id: "tenant-public", org_id: "org-alpha" }];
+    const supplied = [
+      {
+        id: "reviewer-1",
+        display_name: "审查员甲",
+        role: "reviewer",
+        tenant_id: "tenant-public",
+        org_id: "org-alpha",
+      },
+    ];
     expect(presentOrganizationMembers(supplied)).toEqual(supplied);
   });
 
