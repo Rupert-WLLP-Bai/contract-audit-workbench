@@ -7813,7 +7813,7 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a30433635eb9f88677bb2765a85368af8d9b06d8",
+          "commit": "60321ada65b5d57e8b6f53d054b3089f5a410c5b",
           "path": "docs/architecture/domain-boundaries.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -8775,7 +8775,7 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "cdc7cba59c97693cb72b4eba185f1efa92e97bf2",
+          "commit": "89d73bb3d1916a62b0295171d0957cb960ed696d",
           "path": "docs/operations/document-processing.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -44983,7 +44983,7 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "287c669bff21e25f27e2125902cd0186a0f26e5c",
+          "commit": "89d73bb3d1916a62b0295171d0957cb960ed696d",
           "path": "internal/store/contract_facts_projection_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -47233,7 +47233,7 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0ebc1ce5a274c8aacf6c0c1703160b91bb033ad9",
+          "commit": "89d73bb3d1916a62b0295171d0957cb960ed696d",
           "path": "internal/store/execution.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
