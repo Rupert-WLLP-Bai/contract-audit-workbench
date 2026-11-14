@@ -21,11 +21,11 @@ import (
 )
 
 const (
-	ContractFactsPromptVersion   = "single-contract-facts/v3"
+	ContractFactsPromptVersion   = "single-contract-facts/v4"
 	ContractFactsSchemaVersion   = "contract-facts-response/v2"
 	ContractFactsMaxRunes        = 32000
-	contractFactsTokenLimit      = 4096
-	contractFactsReasoningEffort = "none"
+	ContractFactsMaxOutputTokens = 32000
+	contractFactsReasoningEffort = "high"
 )
 
 const contractFactsSystemPrompt = "Extract only proposed facts from the supplied single contract text. " +
@@ -81,9 +81,9 @@ func ContractFactsConfigurationID(modelConfigurationID, chatModel string) string
 		return ""
 	}
 	payload, _ := json.Marshal([]string{
-		"audit-single-contract-facts/v3", modelConfigurationID, chatModel,
+		"audit-single-contract-facts/v4", modelConfigurationID, chatModel,
 		ContractFactsPromptVersion, ContractFactsSchemaVersion, contractFactsSystemPrompt,
-		contractFactsResponseFormat, fmt.Sprintf("max_input_codepoints=%d;max_output_tokens=%d", ContractFactsMaxRunes, contractFactsTokenLimit),
+		contractFactsResponseFormat, fmt.Sprintf("max_input_codepoints=%d;max_output_tokens=%d", ContractFactsMaxRunes, ContractFactsMaxOutputTokens),
 		"reasoning_effort=" + contractFactsReasoningEffort, "strict-json-and-unique-server-quote-binding/v2",
 	})
 	sum := sha256.Sum256(payload)
@@ -123,7 +123,7 @@ func (c *Client) ContractFacts(ctx context.Context, text string, truncated bool)
 	completion, err := c.postChatMessages(ctx, c.cfg.ChatModel, []chatMessage{
 		{Role: "system", Content: contractFactsSystemPrompt},
 		{Role: "user", Content: string(request)},
-	}, contractFactsTokenLimit, contractFactsReasoningEffort)
+	}, ContractFactsMaxOutputTokens, contractFactsReasoningEffort)
 	if err != nil {
 		return ContractFactsSuggestion{}, err
 	}

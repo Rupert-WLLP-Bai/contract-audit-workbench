@@ -136,9 +136,14 @@ type Client struct {
 	configurationID string
 }
 
+// DefaultProviderRequestTimeout bounds a provider call through the gateway.
+// DefaultRequestTimeout adds time for gateway processing and response delivery.
+const DefaultProviderRequestTimeout = 10 * time.Minute
+const DefaultRequestTimeout = DefaultProviderRequestTimeout + 30*time.Second
+
 // New returns a client. The timeout covers one review or one image.
 func New(cfg Config) *Client {
-	return NewWithHTTPClient(cfg, &http.Client{Timeout: 120 * time.Second})
+	return NewWithHTTPClient(cfg, &http.Client{Timeout: DefaultRequestTimeout})
 }
 
 // NewWithHTTPClient returns a client that sends every call through the

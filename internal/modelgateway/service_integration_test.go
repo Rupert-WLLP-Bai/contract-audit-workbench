@@ -1374,6 +1374,10 @@ func TestGatewayFromEnvOverridesAndRejectsInvalidValues(t *testing.T) {
 	t.Setenv("DOCUMENT_MODEL_TOKEN", tokenFor("document"))
 
 	t.Setenv("MODEL_GATEWAY_MODE", "fixture")
+	defaults, err := FromEnv()
+	if err != nil || defaults.RequestTimeout != 600*time.Second || defaults.Budget.LeaseDuration != 630*time.Second || defaults.Budget.MaxInputTokenReservation != 131072 || defaults.Budget.MaxOutputTokenReservation != 32000 || defaults.Budget.TenantTokensPerMinute != 400000 || defaults.Budget.GlobalTokensPerMinute != 2000000 {
+		t.Fatalf("gateway defaults do not preserve the bounded facts profile and minute budgets: %+v err=%v", defaults.Budget, err)
+	}
 	t.Setenv("LLM_BASE_URL", "http://127.0.0.1:9999/v1/")
 	t.Setenv("LLM_API_KEY", "provider-secret")
 	t.Setenv("LLM_MODEL", "custom-chat")

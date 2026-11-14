@@ -213,7 +213,7 @@ func TestStructuredRequestRestrictions(t *testing.T) {
 	if !validStructuredRequest(valid, true, "review", "review", scope, true) {
 		t.Fatal("fixed review schema rejected")
 	}
-	facts := []byte(`{"reasoning_effort":"none","max_tokens":4096,"response_format":` + string(model.StructuredResponseFormat("contract_facts")) + `}`)
+	facts := []byte(`{"reasoning_effort":"high","max_tokens":32000,"response_format":` + string(model.StructuredResponseFormat("contract_facts")) + `}`)
 	if !validStructuredRequest(facts, true, "review", "review", scope, true) || validStructuredRequest(facts, true, "review", "review", scope, false) {
 		t.Fatal("facts schema did not retain frozen execution identity fencing")
 	}

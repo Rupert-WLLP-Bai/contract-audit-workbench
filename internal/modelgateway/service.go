@@ -81,7 +81,7 @@ func FromEnv() (Config, error) {
 		FixtureOCRContent:       os.Getenv("MODEL_GATEWAY_FIXTURE_OCR_CONTENT"),
 		MaxConcurrency:          8,
 		QueueCapacity:           32,
-		RequestTimeout:          120 * time.Second,
+		RequestTimeout:          model.DefaultProviderRequestTimeout,
 		Retries:                 1,
 		CircuitFailureThreshold: 5,
 		CircuitCooldown:         30 * time.Second,
@@ -89,7 +89,7 @@ func FromEnv() (Config, error) {
 			GlobalMaxInFlight: 32, TenantMaxInFlight: 4,
 			GlobalCallsPerMinute: 600, TenantCallsPerMinute: 120,
 			GlobalTokensPerMinute: 2_000_000, TenantTokensPerMinute: 400_000,
-			MaxInputTokenReservation: 64_000, MaxOutputTokenReservation: 8_192,
+			MaxInputTokenReservation: 131_072, MaxOutputTokenReservation: model.ContractFactsMaxOutputTokens,
 		},
 	}
 	if config.Mode == "" {

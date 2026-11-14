@@ -39,6 +39,15 @@ func TestContractFactsRejectsPreviousFrozenProtocol(t *testing.T) {
 	if err := configuration.Validate(); err == nil {
 		t.Fatal("previous facts identity was accepted with a rewritten prompt version")
 	}
+	configuration.ConfigurationID = "821b099ed8ab1ecb8d979799b7d4958f0bef1f46552539507d859e1db5aa3068"
+	configuration.PromptVersion = "single-contract-facts/v3"
+	if err := configuration.Validate(); err == nil {
+		t.Fatal("v3 frozen facts protocol was accepted for the current call")
+	}
+	configuration.PromptVersion = model.ContractFactsPromptVersion
+	if err := configuration.Validate(); err == nil {
+		t.Fatal("v3 facts identity was accepted with a rewritten prompt version")
+	}
 }
 
 func factsTestSource() ContractFactsSource {

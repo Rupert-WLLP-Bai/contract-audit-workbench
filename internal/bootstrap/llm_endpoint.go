@@ -71,13 +71,10 @@ func applyStoredLLMEndpoint(base model.Config, service string, settings store.LL
 // operator-supplied endpoints.
 func newModelClient(config model.Config, storedDirect bool) *model.Client {
 	if storedDirect {
-		return model.NewWithHTTPClient(config, llmendpoint.GuardedClient(modelCallTimeout))
+		return model.NewWithHTTPClient(config, llmendpoint.GuardedClient(model.DefaultRequestTimeout))
 	}
 	return model.New(config)
 }
-
-// modelCallTimeout mirrors the request timeout of the default model client.
-const modelCallTimeout = 120 * time.Second
 
 // loadStoredLLMEndpoint returns the deployment configuration with a complete
 // platform endpoint applied. A missing or incomplete row leaves the deployment
