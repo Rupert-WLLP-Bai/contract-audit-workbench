@@ -32,6 +32,7 @@ import (
 	"contractaudit/internal/fault"
 	"contractaudit/internal/fulfillment"
 	"contractaudit/internal/reviewimpact"
+	"github.com/jackc/pgx/v5"
 )
 
 type operatorFixedConnector struct {
@@ -93,6 +94,9 @@ func TestDurableOperatorAuditFlow(t *testing.T) {
 	coreProposalRetry := environment.openRole(t, "core")
 	document := environment.openRole(t, "document")
 	execution := environment.openRole(t, "execution")
+	authority := durableTestOperationAuthority{core: core}
+	document.UseOperationAuthority(authority)
+	execution.UseOperationAuthority(authority)
 
 	pack := publishSyntheticAcceptancePack(t, core, admin)
 	publishSyntheticAcceptancePolicy(t, core, admin, pack)
@@ -152,6 +156,27 @@ func TestDurableOperatorAuditFlow(t *testing.T) {
 	if !found {
 		t.Fatal("second reviewer missing from the trusted directory fixture")
 	}
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	dbConfig, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	crosswalk := IdentityCrosswalk{
+		Version:     1,
+		Tenants:     []IdentityTenantMap{{ID: admin.TenantID, DisplayName: "Operator tenant", Status: "active"}},
+		OrgUnits:    []IdentityOrgUnitMap{{TenantID: admin.TenantID, ID: admin.OrgID, DisplayName: "Operator organization", Status: "active"}},
+		Principals:  []IdentityPrincipalMap{{ID: "a1111111-1111-4111-8111-111111111111", ActorID: admin.ID, Issuer: admin.Issuer, Subject: admin.Subject, Status: "active"}},
+		Memberships: []IdentityMembershipMap{{ID: "b1111111-1111-4111-8111-111111111111", ActorID: admin.ID, TenantID: admin.TenantID, OrgUnitID: admin.OrgID, RoleCode: admin.Role, Grants: admin.Grants, Status: "active"}},
+	}
+	if _, err := ImportIdentityCrosswalk(ctx, dsn, environment.harness.schema, dbConfig.Database, crosswalk, true); err != nil {
+		t.Fatalf("import operator fixture membership: %v", err)
+	}
+	login, err := core.ResolveVerifiedOIDC(ctx, admin, "client")
+	if err != nil {
+		t.Fatalf("establish operator fixture membership session: %v", err)
+	}
+	admin = login.User
+	ctx = WithAdmissionSessionToken(ctx, login.SessionToken)
 	setReviewerTwoCaseGrant := func(enabled bool) {
 		currentUsers := accounts.List()
 		for i := range currentUsers {
