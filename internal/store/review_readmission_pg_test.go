@@ -121,6 +121,11 @@ func restoreReviewReceiptVersionForTest(t *testing.T, ctx context.Context, pool 
 			t.Fatal(err)
 		}
 	}
+	// The historical fixture must remove objects introduced after its target
+	// version before their migrations are replayed.
+	if _, err := tx.Exec(ctx, `DROP TABLE execution_agent_step_checkpoints; DROP FUNCTION guard_execution_agent_step_checkpoint()`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM schema_migrations WHERE version>$1`, version); err != nil {
 		t.Fatal(err)
 	}
