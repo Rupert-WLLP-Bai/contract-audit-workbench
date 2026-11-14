@@ -223,6 +223,9 @@ func (e *projectedMetricExporter) Aggregation(kind sdkmetric.InstrumentKind) sdk
 
 func (e *projectedMetricExporter) Export(ctx context.Context, data *metricdata.ResourceMetrics) error {
 	points := metricPointCount(data)
+	if points == 0 {
+		return nil
+	}
 	projected := *data
 	projected.Resource = e.resource
 	observation := &exportObservation{kind: metricExport, expected: points}

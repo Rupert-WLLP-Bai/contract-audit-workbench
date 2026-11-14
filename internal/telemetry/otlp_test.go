@@ -301,7 +301,7 @@ func TestExporterExecutionMetricsRemainCumulative(t *testing.T) {
 	}
 	first := completedEvent("first", "attempt")
 	exporter.Record("run", "attempt", first)
-	exporter.flushMetrics(true)
+	telemetry.FlushMetricsForTest(exporter)
 	firstMetrics := metrics(<-metricRequests)
 	firstPoints := firstMetrics["audit.execution.events"].GetSum().GetDataPoints()
 	if len(firstPoints) != 1 || firstPoints[0].GetAsInt() != 1 ||
@@ -321,7 +321,7 @@ func TestExporterExecutionMetricsRemainCumulative(t *testing.T) {
 	failed.At = first.At.Add(8 * time.Second)
 	failed.Status = "failed"
 	exporter.Record("run", "attempt", failed)
-	exporter.flushMetrics(true)
+	telemetry.FlushMetricsForTest(exporter)
 	secondMetrics := metrics(<-metricRequests)
 	points := secondMetrics["audit.execution.events"].GetSum().GetDataPoints()
 	var completedCount, failedCount int64

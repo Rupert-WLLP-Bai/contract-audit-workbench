@@ -21,6 +21,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func FlushMetricsForTest(exporter *Exporter) { exporter.flushMetrics(true) }
+
 func writeInternalOTLPAck(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/x-protobuf")
 	body, _ := proto.Marshal(&metriccollectorpb.ExportMetricsServiceResponse{})
