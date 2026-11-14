@@ -104,6 +104,98 @@ export interface components {
             reason: string;
             related_case_id: string;
         };
+        ClauseDerivedRequest: {
+            edited_text?: string;
+            expected_version: number;
+        };
+        ClauseDerivedResponse: {
+            format: string;
+            text: string;
+        };
+        ClauseProposal: {
+            after_context?: string;
+            attempt_id: string;
+            before_context?: string;
+            case_id: string;
+            created_at: string;
+            created_by: string;
+            evidence?: {
+                document_id: string;
+                end: number;
+                normalized_digest: string;
+                parsed_document_id: string;
+                quote: string;
+                start: number;
+            };
+            evidence_verified: boolean;
+            finding_id?: string;
+            history: {
+                accepted_text?: string;
+                action: string;
+                actor_id: string;
+                contract_id?: string;
+                created_at: string;
+                document_id?: string;
+                material_id?: string;
+                reason?: string;
+                revision_id?: string;
+                sha256?: string;
+                version: number;
+            }[];
+            id: string;
+            input_hash: string;
+            original_text?: string;
+            playbook?: {
+                content_sha256: string;
+                knowledge_id: string;
+                version_id: string;
+            };
+            proposed_text: string;
+            reason: string;
+            remediation_id?: string;
+            rule_pack?: {
+                compiler_ref: string;
+                content_hash: string;
+                id: string;
+                snapshot_digest: string;
+                version: string;
+            };
+            run_id: string;
+            status: string;
+            unavailable_reason?: string;
+            version: number;
+        };
+        ClauseProposalCreate: {
+            attempt_id: string;
+            evidence?: {
+                document_id: string;
+                end: number;
+                normalized_digest: string;
+                parsed_document_id: string;
+                quote: string;
+                start: number;
+            };
+            finding_id?: string;
+            proposed_text: string;
+            reason: string;
+            remediation_id?: string;
+            run_id: string;
+        };
+        ClauseProposalDecision: {
+            accepted_text?: string;
+            action: string;
+            confirmed: boolean;
+            contract_id?: string;
+            document_id?: string;
+            expected_contract_row_version?: number;
+            expected_version: number;
+            material_id?: string;
+            reason?: string;
+            sha256?: string;
+        };
+        ClauseProposalList: {
+            items: components["schemas"]["ClauseProposal"][];
+        };
         ContextList: {
             context_switch_enabled: boolean;
             memberships: components["schemas"]["MembershipChoice"][];

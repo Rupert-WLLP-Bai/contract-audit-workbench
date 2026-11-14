@@ -20,6 +20,7 @@ import {
 import { Button, Select } from "antd";
 import type { ContractFactsCitation } from "../api/contract-facts";
 import type {
+  CaseDetail,
   CaseRelationInput,
   DecisionAction,
   Finding,
@@ -531,6 +532,7 @@ function DocumentRunStatus({
 
 export function ReviewWorkspaceView({
   workspace,
+  caseDetail,
   layout,
   selectedId,
   streamStatus,
@@ -569,6 +571,7 @@ export function ReviewWorkspaceView({
   surface = "full",
 }: {
   workspace: ReviewWorkspace;
+  caseDetail?: CaseDetail;
   layout: ReviewLayout;
   selectedId: string | null;
   streamStatus: StreamStatus;
@@ -613,6 +616,9 @@ export function ReviewWorkspaceView({
 }) {
   const { run } = workspace;
   const { selected, attempts } = attemptsOf(workspace);
+  const matchingCaseDetail = caseDetail?.id === run.case_id ? caseDetail : undefined;
+  const frozenAttempt =
+    selected?.history_kind === "frozen" && selected.run_id === run.id ? selected : null;
   const stageQuoteScope = useMemo<FrozenQuoteScope | null>(() => {
     if (
       !quoteScope ||
@@ -825,6 +831,16 @@ export function ReviewWorkspaceView({
               onBatchDecide={onBatchDecide}
               requestedFindingId={workTarget?.kind === "finding" ? workTarget.id : null}
               navigationSerial={navigationSerial}
+              clauseProposalContext={{
+                caseId: run.case_id,
+                runId: run.id,
+                attemptId: frozenAttempt?.id ?? "",
+                frozenParsedDocumentIds: frozenAttempt?.parsed_document_ids ?? [],
+                remediations: matchingCaseDetail?.remediations ?? [],
+                caseDetail: matchingCaseDetail,
+                canWrite:
+                  canDecide && matchingCaseDetail !== undefined && matchingCaseDetail.archived_at === null,
+              }}
             />
           </div>
         </>

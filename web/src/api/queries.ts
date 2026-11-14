@@ -77,6 +77,15 @@ import { actorReadContextKey } from "../domain/actor-read-context";
 import { clearAllDecisionDrafts } from "../hooks/decision-drafts";
 import { clearAllEvidenceDrafts } from "../features/review/evidence-request-drafts";
 import type { RulePackManifestInput, RulePackTestInput } from "./rulepacks";
+import {
+  createClauseProposal,
+  decideClauseProposal,
+  deriveClauseProposalText,
+  listClauseProposals,
+  type ClauseProposalDecisionInput,
+  type ClauseProposalDerivedTextInput,
+  type CreateClauseProposalInput,
+} from "./clause-proposals";
 
 export const queryKeys = {
   session: ["session", "client"] as const,
@@ -101,6 +110,8 @@ export const queryKeys = {
     [...queryKeys.reviewPrefix(caseId, runId), "diagnostics", attemptId ?? null] as const,
   reviewHistory: (caseId: string, latestRunId: string) =>
     ["cases", caseId, "review-history", latestRunId] as const,
+  clauseProposals: (caseId: string, actorScope: string) =>
+    ["cases", caseId, "clause-proposals", actorScope] as const,
   templatesFor: (actorScope: string, caseId: string) => ["templates", actorScope, caseId] as const,
   settings: ["settings", "client"] as const,
   settingsFor: (audience: SessionAudience) =>
@@ -555,6 +566,51 @@ export function useCaseDetail(caseId: string) {
     queryKey: queryKeys.case(caseId),
     queryFn: ({ signal }) => api.getCase(caseId, signal),
     enabled: caseId !== "",
+  });
+}
+
+export function useCaseClauseProposals(caseId: string, actorScope: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.clauseProposals(caseId, actorScope),
+    queryFn: ({ signal }) => listClauseProposals(caseId, signal),
+    enabled: enabled && caseId !== "" && actorScope !== "",
+    retry: false,
+  });
+}
+
+export function useCreateClauseProposal(caseId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { value: CreateClauseProposalInput; idempotencyKey: string }) =>
+      createClauseProposal(caseId, input.value, input.idempotencyKey),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["cases", caseId, "clause-proposals"],
+      }),
+  });
+}
+
+export function useDeriveClauseProposalText(caseId: string, proposalId: string) {
+  return useMutation({
+    mutationFn: (input: ClauseProposalDerivedTextInput) =>
+      deriveClauseProposalText(caseId, proposalId, input),
+  });
+}
+
+export function useDecideClauseProposal(caseId: string, proposalId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { value: ClauseProposalDecisionInput; idempotencyKey: string }) =>
+      decideClauseProposal(caseId, proposalId, input.value, input.idempotencyKey),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["cases", caseId, "clause-proposals"],
+        }),
+        invalidateCaseViews(queryClient, caseId, { caseList: true, workbench: true }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.contractLedgerPrefix }),
+      ]);
+    },
   });
 }
 

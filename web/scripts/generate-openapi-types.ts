@@ -19,6 +19,12 @@ const defaultSchema = resolve(repositoryRoot, "internal/apidocs/openapi.json");
 const defaultOutput = resolve(repositoryRoot, "web/src/api/wire.generated.ts");
 
 const ROOTS = [
+  "ClauseProposal",
+  "ClauseProposalCreate",
+  "ClauseProposalDecision",
+  "ClauseProposalList",
+  "ClauseDerivedRequest",
+  "ClauseDerivedResponse",
   "PlaybookOptions",
   "GovernedPlaybook",
   "AdoptedPlaybookView",

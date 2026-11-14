@@ -1354,6 +1354,11 @@ export function ReviewPage() {
                 <ReviewWorkspaceView
                   surface={workspaceSurface}
                   workspace={workspace}
+                  caseDetail={
+                    caseDetail.isSuccess && !caseDetail.isFetching && caseDetail.data.id === caseId
+                      ? caseDetail.data
+                      : undefined
+                  }
                   layout={layout}
                   showDiagnostics={diagnosticData !== null}
                   quoteScope={quoteScope}
