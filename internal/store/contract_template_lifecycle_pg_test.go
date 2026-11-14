@@ -102,7 +102,9 @@ func TestGovernedTemplateLifecycleWithDocumentRole(t *testing.T) {
 	if !foundBuiltin {
 		t.Fatal("built-in template unavailable after withdrawal")
 	}
-	if _, err := document.Generate(ctx, actor, caseID, telecomTemplateID, validTelecomTemplateFields()); err != nil {
+	if _, err := document.GenerateWithOptions(ctx, actor, caseID, telecomTemplateID, validTelecomTemplateFields(), MaterialUploadOptions{
+		Intent: "replace", MaterialID: first.MaterialID, ReplacesDocumentID: first.DocumentID,
+	}); err != nil {
 		t.Fatalf("built-in generation after withdrawal: %v", err)
 	}
 	_, after, err := document.Original(actor, caseID, first.DocumentID)
