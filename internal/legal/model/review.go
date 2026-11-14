@@ -2,9 +2,9 @@
 // Purpose: Defines frozen Legal authority values and pure all-of applicability, citation identity, cutoff, validation, and reuse fingerprint rules.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-13
-// Updated: 2026-11-13
-// Revision: r1
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 

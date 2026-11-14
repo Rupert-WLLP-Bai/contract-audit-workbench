@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Requests bounded single-contract fact suggestions through the existing model transport, pins prompt and schema identity, and strictly decodes advisory field and quote responses.
+// Purpose: Defines bounded source-grounded contract fact extraction prompts and validates current and historical frozen model capability identities.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-12
+// Created: 2026-11-14
 // Updated: 2026-11-14
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 

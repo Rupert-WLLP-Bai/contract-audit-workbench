@@ -1,10 +1,10 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: 说明“文档解析与模型预算边界”的操作或技术边界：本页整理扫描件 OCR、请求限制和 DOCX 可见文本处理约束。具体部署前按真实模型服务能力配置并验收；不要从少量样本推算 token 上界。 -->
+<!-- Purpose: Documents frozen document parsing, model budgets, original-source reading and optional same-host MinerU deployment boundaries. -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
 <!-- Updated: 2026-11-14 -->
-<!-- Revision: r5 -->
+<!-- Revision: r6 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 

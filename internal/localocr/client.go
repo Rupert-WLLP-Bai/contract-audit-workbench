@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Calls the loopback MinerU file-parse API with bounded requests, stable polling identity and explicit cancellation.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package localocr integrates the explicitly configured local OCR service.
 package localocr
 

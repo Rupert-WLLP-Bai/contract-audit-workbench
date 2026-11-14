@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Provides contract-specific React Query reads with authorization-scoped cache keys and abort propagation.
+// Purpose: Provides contract-specific React Query reads with actor-scoped cache keys and cancellation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
