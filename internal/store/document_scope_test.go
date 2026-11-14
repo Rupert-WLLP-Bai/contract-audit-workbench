@@ -17,6 +17,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -134,7 +135,7 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if detail.Case.OwnerOrgID != owner.OrgID || len(detail.Generations) != 2 || detail.Generations[0] != first || detail.Generations[1] != second {
+	if detail.Case.OwnerOrgID != owner.OrgID || !reflect.DeepEqual(detail.Generations, []GenerationRecord{first, second}) {
 		t.Fatalf("case organization or immutable generation history changed: %+v", detail)
 	}
 	for _, generation := range []GenerationRecord{first, second} {
