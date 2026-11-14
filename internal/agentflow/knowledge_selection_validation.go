@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -143,10 +143,14 @@ func (v *knowledgeSelectionValidation) collectReferences() bool {
 }
 
 func (v *knowledgeSelectionValidation) collectReferenceContent(ref KnowledgeReference) bool {
-	for _, value := range []string{ref.Summary, ref.Applicability, ref.Exclusions, ref.CheckAction,
+	for index, value := range []string{ref.Summary, ref.Applicability, ref.Exclusions, ref.CheckAction,
 		ref.MinimumEvidence, ref.Counterexamples, ref.SemanticChecks, ref.SourceSpans} {
 		v.contentBytes += len(value)
-		if len(value) > PlannerKnowledgeFieldBytes {
+		limit := PlannerKnowledgeFieldBytes
+		if index == 0 && ref.Kind == "playbook" && ref.Required {
+			limit = AdoptedPlaybookFieldBytes
+		}
+		if len(value) > limit {
 			return false
 		}
 	}
@@ -176,6 +180,7 @@ type knowledgeCandidateRule struct {
 
 var knowledgeCandidateRules = map[string]knowledgeCandidateRule{
 	"required_policy":            {required: true, decision: "selected", kinds: []string{"policy"}},
+	"adopted_playbook":           {required: true, decision: "selected", kinds: []string{"playbook"}},
 	"relevance":                  {decision: "selected", kinds: []string{"guidance", "experience", "exception"}, minimumScore: 1, optional: true},
 	"no_relevance":               {decision: "omitted", kinds: []string{"guidance", "experience", "exception"}, zeroScore: true, untruncated: true, optional: true, omitted: true},
 	"planner_budget":             {decision: "omitted", kinds: []string{"guidance", "experience", "exception"}, minimumScore: 1, untruncated: true, optional: true, omitted: true},

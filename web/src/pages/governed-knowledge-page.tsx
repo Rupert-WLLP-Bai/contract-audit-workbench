@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-28
 // Updated: 2026-11-14
-// Revision: r7
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -59,6 +59,7 @@ const labels: Record<string, string> = {
   experience: "审查经验",
   legal: "法律规范",
   template: "合同模板",
+  playbook: "审查手册",
   draft: "草稿",
   submitted: "已提交",
   validated: "已校验",
@@ -296,6 +297,7 @@ export function GovernedKnowledgeListPage() {
                   { value: "experience", label: "审查经验" },
                   { value: "legal", label: "法律规范" },
                   { value: "template", label: "合同模板" },
+                  { value: "playbook", label: "审查手册" },
                 ]}
               />
             </label>
@@ -378,6 +380,7 @@ function contentForCreate(value: KnowledgeContent): KnowledgeContent {
   } else {
     result.template = undefined;
   }
+  if (value.kind !== "playbook") result.playbook = undefined;
   return result;
 }
 
@@ -390,6 +393,15 @@ function candidateLink(params: URLSearchParams): boolean {
 function initialDraft(params: URLSearchParams): KnowledgeContent {
   if (!candidateLink(params)) {
     const draft = emptyKnowledgeContent();
+    if (params.get("kind") === "playbook")
+      return {
+        ...draft,
+        kind: "playbook",
+        playbook: {
+          template: { template_id: "", template_version: "", template_digest: "" },
+          clauses: [],
+        },
+      };
     if (params.get("kind") !== "template") return draft;
     return {
       ...draft,
@@ -658,6 +670,15 @@ function RegistrationSummary({ draft }: { draft: KnowledgeContent }) {
             </dd>
           </div>
         ) : null}
+        {draft.kind === "playbook" ? (
+          <div>
+            <dt>规则指导</dt>
+            <dd>
+              {draft.playbook?.clauses.length ?? 0} 条 · 模板{" "}
+              {draft.playbook?.template.template_id || "未选择"}
+            </dd>
+          </div>
+        ) : null}
         <div>
           <dt>生效时间</dt>
           <dd>{validFromText(draft.valid_from)}</dd>
@@ -725,6 +746,15 @@ function SubmitReview({ draft }: { draft: KnowledgeContent }) {
               <dt>正文引用</dt>
               <dd>{draft.binding.source_spans?.length ?? 0} 条</dd>
             </div>
+            {draft.kind === "playbook" ? (
+              <div>
+                <dt>规则指导与模板</dt>
+                <dd>
+                  {draft.playbook?.clauses.length ?? 0} 条 ·{" "}
+                  {draft.playbook?.template.template_id || "未选择模板"}
+                </dd>
+              </div>
+            ) : null}
           </>
         )}
       </dl>
@@ -1054,6 +1084,15 @@ function DetailFacts({
           </dd>
         </div>
       ) : null}
+      {content.kind === "playbook" ? (
+        <div>
+          <dt>审查手册</dt>
+          <dd>
+            {content.playbook?.clauses.length ?? 0} 条规则指导 · 模板{" "}
+            {content.playbook?.template.template_id || "未返回"}
+          </dd>
+        </div>
+      ) : null}
     </dl>
   );
 }
@@ -1300,7 +1339,11 @@ function BodySection({ content }: { content: KnowledgeContent }) {
   return (
     <section className="rulepack-editor-section" aria-labelledby="knowledge-body-heading">
       <h2 id="knowledge-body-heading">
-        {content.kind === "template" ? "合同模板正文与字段" : "正文与适用条件"}
+        {content.kind === "template"
+          ? "合同模板正文与字段"
+          : content.kind === "playbook"
+            ? "审查手册与规则指导"
+            : "正文与适用条件"}
       </h2>
       <h3>摘要</h3>
       <p style={{ whiteSpace: "pre-wrap" }}>{content.summary}</p>
@@ -1319,6 +1362,46 @@ function BodySection({ content }: { content: KnowledgeContent }) {
             </ul>
           ) : (
             <p>字段定义未返回。</p>
+          )}
+        </>
+      ) : content.kind === "playbook" ? (
+        <>
+          <h3>逐规则审查指导</h3>
+          <p className="meta">
+            下列内容是供审查人参考的标准和升级提示，不表示规则已满足、偏差已接受或风险结论已确认。
+          </p>
+          {content.playbook?.clauses.length ? (
+            <ol className="playbook-clause-list">
+              {content.playbook.clauses.map((clause) => (
+                <li key={clause.rule_id}>
+                  <h4>{clause.rule_id}</h4>
+                  <dl>
+                    <div>
+                      <dt>标准条款</dt>
+                      <dd>{clause.standard_clause}</dd>
+                    </div>
+                    <div>
+                      <dt>可接受偏差</dt>
+                      <dd>{clause.acceptable_deviation}</dd>
+                    </div>
+                    <div>
+                      <dt>不可突破的底线</dt>
+                      <dd>{clause.hard_constraint}</dd>
+                    </div>
+                    <div>
+                      <dt>建议措辞</dt>
+                      <dd>{clause.proposed_wording}</dd>
+                    </div>
+                    <div>
+                      <dt>升级条件</dt>
+                      <dd>{clause.escalation_condition}</dd>
+                    </div>
+                  </dl>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p>规则指导尚未返回。</p>
           )}
         </>
       ) : (
@@ -1369,6 +1452,11 @@ function VerificationSection({
         </p>
         {content.kind === "template" ? (
           <p>模板使用受限字段和占位符，不绑定规则包。</p>
+        ) : content.kind === "playbook" ? (
+          <>
+            <p>手册绑定精确模板版本，并通过规则包和正文引用标明来源；采用后仍需逐条人工核对。</p>
+            <DetailBinding content={content} />
+          </>
         ) : content.kind !== "legal" ? (
           <DetailBinding content={content} />
         ) : (
@@ -1385,6 +1473,14 @@ function ReferenceSection({ content }: { content: KnowledgeContent }) {
       <h2 id="knowledge-reference-heading">依据引用</h2>
       {content.kind === "template" ? (
         <p>合同模板不声明政策依赖。</p>
+      ) : content.kind === "playbook" ? (
+        <>
+          <p>手册采用一个精确版本的合同模板：</p>
+          <TechnicalDetail
+            label="手册绑定的模板版本"
+            value={JSON.stringify(content.playbook?.template ?? null)}
+          />
+        </>
       ) : content.policy_refs?.length ? (
         <PolicyRefList content={content} />
       ) : (

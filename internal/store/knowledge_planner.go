@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -112,7 +112,11 @@ func governedPlannerKnowledgeWithAdvisory(ctx context.Context, snapshot *ReviewK
 	if snapshot == nil {
 		return []agentflow.KnowledgeReference{}, record, nil
 	}
-	if len(snapshot.RequiredPolicies)+len(snapshot.OptionalCandidates)+len(snapshot.Excluded) > agentflow.MaxKnowledgeRecords {
+	adoptedCount := 0
+	if snapshot.AdoptedPlaybook != nil {
+		adoptedCount = 1
+	}
+	if len(snapshot.RequiredPolicies)+len(snapshot.OptionalCandidates)+len(snapshot.Excluded)+adoptedCount > agentflow.MaxKnowledgeRecords {
 		return nil, nil, errors.New("frozen governed knowledge exceeds the planner identity limit")
 	}
 	if snapshot.OptionalTruncated != (len(snapshot.Excluded) > 0) {
@@ -279,6 +283,20 @@ func governedPlannerKnowledgeWithAdvisory(ctx context.Context, snapshot *ReviewK
 	}
 	for _, item := range policies {
 		appendSelected(item, "required_policy", nil)
+	}
+	if adopted := snapshot.AdoptedPlaybook; adopted != nil {
+		if adopted.Content.Playbook == nil {
+			return nil, nil, errors.New("frozen adopted playbook is invalid")
+		}
+		payload, err := json.Marshal(adopted.Content.Playbook)
+		if err != nil || len(payload) > agentflow.AdoptedPlaybookFieldBytes || len(payload) > remaining {
+			return nil, nil, errors.New("adopted playbook exceeds planner context budget")
+		}
+		remaining -= len(payload)
+		ref := agentflow.KnowledgeReference{KnowledgeID: adopted.Ref.KnowledgeID, VersionID: adopted.Ref.VersionID, ContentSHA256: adopted.Ref.ContentSHA256, Kind: "playbook", Required: true, RequiresFactEvaluation: true, Summary: string(payload)}
+		refs = append(refs, ref)
+		record.Candidates = append(record.Candidates, agentflow.KnowledgeCandidate{KnowledgeID: ref.KnowledgeID, VersionID: ref.VersionID, ContentSHA256: ref.ContentSHA256, Kind: ref.Kind, Required: true, Decision: "selected", Reason: "adopted_playbook", RequiresFactEvaluation: true})
+		record.Budget.RequiredCount++
 	}
 	if len(policies) > 0 {
 		record.PolicyStatus, record.PolicyReason = "available", ""

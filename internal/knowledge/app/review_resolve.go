@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-14
 // Updated: 2026-11-14
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -70,7 +70,7 @@ func ResolveCurrent(ctx context.Context, repo ReviewRepository, facts ReviewFact
 			return ReviewSnapshot{}, fault.Conflict("无法解析生效制度的编号或内容")
 		}
 		v := loaded.Version
-		if v.Content.Kind == "legal" || v.Content.Kind == "template" {
+		if v.Content.Kind == "legal" || v.Content.Kind == "template" || v.Content.Kind == "playbook" {
 			continue
 		}
 		applies, err := model.KnowledgeApplies(v.Content, in.Case, in.BusinessAt)

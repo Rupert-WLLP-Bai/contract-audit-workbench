@@ -4,27 +4,32 @@
 // Contact: +86 13617696321
 // Created: 2026-10-28
 // Updated: 2026-11-14
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
-import { Button, Input, Select } from "antd";
+import { Alert, Button, Input, Select } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { ApiError, errorMessage, statusLabel } from "../api/http";
 import {
+  getGovernedKnowledge,
   listGovernedKnowledge,
   type KnowledgeCondition,
   type KnowledgeContent,
   type KnowledgeKind,
+  type KnowledgePlaybookClause,
   type KnowledgeRef,
   type KnowledgeSpan,
   type KnowledgeSummary,
+  type PlaybookTemplateRef,
   type KnowledgeTemplateField,
   type KnowledgeTemplateFieldType,
 } from "../api/governed-knowledge";
-import { useRulePack, useRulePacks } from "../api/queries";
+import { listTemplates } from "../api/endpoints";
+import { useRulePack, useRulePacks, useSession } from "../api/queries";
 import type { RulePackSummary } from "../api/rulepacks";
+import { actorReadContextKey } from "../domain/actor-read-context";
 import {
   businessCapabilityLabel,
   businessScopeLabel,
@@ -44,6 +49,7 @@ const kinds: { value: KnowledgeKind; label: string }[] = [
   { value: "exception", label: "例外" },
   { value: "experience", label: "审查经验" },
   { value: "template", label: "合同模板" },
+  { value: "playbook", label: "审查手册" },
 ];
 const conditionFields = [
   { value: "org_id", label: "组织 ID" },
@@ -291,6 +297,7 @@ function validateTemplate(issues: KnowledgeFormIssue[], value: KnowledgeContent)
       issues.push({ id: `template-field-key-${index}`, message: "每个字段都必须在正文中使用" });
   });
   if (
+    value.playbook ||
     value.binding.pack_id ||
     value.binding.pack_version ||
     value.binding.pack_content_hash ||
@@ -323,6 +330,51 @@ function validateTemplate(issues: KnowledgeFormIssue[], value: KnowledgeContent)
   }
 }
 
+function validatePlaybook(issues: KnowledgeFormIssue[], value: KnowledgeContent): void {
+  if (value.kind !== "playbook") return;
+  const playbook = value.playbook;
+  if (!playbook) {
+    issues.push({ id: "knowledge-playbook-clauses", message: "请填写手册规则并选择精确模板版本" });
+    return;
+  }
+  const template = playbook.template;
+  if (!template.template_id || !template.template_version || !template.template_digest)
+    issues.push({ id: "knowledge-playbook-template", message: "请选择一个可用的精确模板版本" });
+  if (value.template)
+    issues.push({ id: "knowledge-playbook-template", message: "审查手册不能同时携带内嵌模板内容" });
+  if (playbook.clauses.length < 1 || playbook.clauses.length > 32)
+    issues.push({ id: "knowledge-playbook-clauses", message: "审查手册需要 1 至 32 条规则指导" });
+
+  const boundRules = new Set(value.binding.rule_ids ?? []);
+  const sourceRules = new Set((value.binding.source_spans ?? []).map((span) => span.rule_id));
+  const seen = new Set<string>();
+  playbook.clauses.forEach((clause, index) => {
+    if (!clause.rule_id)
+      issues.push({ id: `playbook-rule-${index}`, message: "请选择已绑定规则及其来源引用" });
+    if (seen.has(clause.rule_id))
+      issues.push({ id: `playbook-rule-${index}`, message: "同一规则只能出现一次" });
+    seen.add(clause.rule_id);
+    if (clause.rule_id && (!boundRules.has(clause.rule_id) || !sourceRules.has(clause.rule_id)))
+      issues.push({
+        id: `playbook-rule-${index}`,
+        message: "规则必须同时存在于规则包绑定和正文引用中",
+      });
+    const fields: [keyof KnowledgePlaybookClause, string][] = [
+      ["standard_clause", "标准条款"],
+      ["acceptable_deviation", "可接受偏差"],
+      ["hard_constraint", "不可突破的底线"],
+      ["proposed_wording", "建议措辞"],
+      ["escalation_condition", "升级条件"],
+    ];
+    for (const [key, label] of fields) {
+      const text = clause[key];
+      if (!text.trim()) issues.push({ id: `playbook-${key}-${index}`, message: `请填写${label}` });
+      else if (Array.from(text).length > 2000)
+        issues.push({ id: `playbook-${key}-${index}`, message: `${label}不能超过 2000 个字符` });
+    }
+  });
+}
+
 export function validateKnowledgeDraft(value: KnowledgeContent): KnowledgeFormIssue[] {
   const issues: KnowledgeFormIssue[] = [];
   validateRequiredFields(issues, value);
@@ -334,6 +386,7 @@ export function validateKnowledgeDraft(value: KnowledgeContent): KnowledgeFormIs
     validateBinding(issues, value);
     validateSpans(issues, value);
   }
+  validatePlaybook(issues, value);
   validateConditions(issues, value);
   validateException(issues, value);
   validateExperience(issues, value);
@@ -365,7 +418,29 @@ function withSpans(value: KnowledgeContent, spans: KnowledgeSpan[]): KnowledgeCo
 }
 
 function forKind(value: KnowledgeContent, kind: KnowledgeKind): KnowledgeContent {
-  if (kind !== "template") return { ...value, kind, template: undefined };
+  if (kind === "playbook")
+    return {
+      ...value,
+      kind,
+      template: undefined,
+      exception_basis: undefined,
+      check_action: undefined,
+      minimum_evidence: undefined,
+      counterexamples: undefined,
+      policy_refs: undefined,
+      reviewed_applicability: undefined,
+      reviewed_exclusions: undefined,
+      candidate_id: undefined,
+      candidate_version_id: undefined,
+      candidate_content_sha256: undefined,
+      candidate_review_diff: undefined,
+      legal_metadata: undefined,
+      playbook: value.playbook ?? {
+        template: { template_id: "", template_version: "", template_digest: "" },
+        clauses: [],
+      },
+    };
+  if (kind !== "template") return { ...value, kind, template: undefined, playbook: undefined };
   return {
     ...value,
     kind,
@@ -383,6 +458,7 @@ function forKind(value: KnowledgeContent, kind: KnowledgeKind): KnowledgeContent
       validation_evidence: "",
     },
     template: { body: value.body, fields: [] },
+    playbook: undefined,
     exception_basis: undefined,
     check_action: undefined,
     minimum_evidence: undefined,
@@ -1330,6 +1406,275 @@ function PolicyRefsSection({ value, onChange, issues, disabled }: SectionProps) 
   );
 }
 
+interface PlaybookTemplateOption {
+  ref: PlaybookTemplateRef;
+  name: string;
+  source: "builtin" | "tenant";
+  scope?: KnowledgeContent["scope"];
+}
+
+function playbookTemplateKey(ref: PlaybookTemplateRef): string {
+  return JSON.stringify([ref.template_id, ref.template_version, ref.template_digest]);
+}
+
+function templateScopeMatches(
+  candidate: KnowledgeContent["scope"] | undefined,
+  scope: KnowledgeContent["scope"],
+): boolean {
+  if (!candidate) return true;
+  return (
+    (!candidate.org_id || candidate.org_id === scope.org_id) &&
+    (!candidate.case_id || candidate.case_id === scope.case_id) &&
+    candidate.business_line === scope.business_line &&
+    candidate.scenario === scope.scenario &&
+    candidate.contract_type === scope.contract_type
+  );
+}
+
+async function playbookTemplateCatalog(
+  scope: KnowledgeContent["scope"],
+  signal: AbortSignal,
+): Promise<PlaybookTemplateOption[]> {
+  const listedTemplates = await listTemplates(scope.case_id, signal);
+  const options: PlaybookTemplateOption[] = listedTemplates.map((item) => ({
+    ref: {
+      template_id: item.id,
+      template_version: item.version,
+      template_digest: item.digest,
+    },
+    name: item.name,
+    source: item.source === "tenant" ? "tenant" : "builtin",
+  }));
+  if (scope.case_id) return options;
+
+  const summaries = await listGovernedKnowledge(signal);
+  const eligible = summaries.filter(
+    (item) =>
+      item.kind === "template" &&
+      item.status === "published" &&
+      item.active &&
+      templateScopeMatches(item.scope, scope),
+  );
+  const versions = await Promise.all(
+    eligible.map((item) =>
+      getGovernedKnowledge(item.ref.knowledge_id, item.ref.version_id, signal),
+    ),
+  );
+  for (const version of versions) {
+    if (
+      version.status !== "published" ||
+      !version.active ||
+      version.content.kind !== "template" ||
+      !version.content.template ||
+      !templateScopeMatches(version.content.scope, scope)
+    )
+      continue;
+    options.push({
+      ref: {
+        template_id: version.ref.knowledge_id,
+        template_version: version.ref.version_id,
+        template_digest: version.ref.content_sha256,
+      },
+      name: version.content.title,
+      source: "tenant",
+      scope: version.content.scope,
+    });
+  }
+  return options;
+}
+
+function PlaybookSection({ value, onChange, issues, disabled }: SectionProps) {
+  const session = useSession("admin");
+  const actorScope = actorReadContextKey(session.data ?? null);
+  const playbook = value.playbook ?? {
+    template: { template_id: "", template_version: "", template_digest: "" },
+    clauses: [],
+  };
+  const templateQuery = useQuery({
+    queryKey: [
+      "admin",
+      "governed-playbook-templates",
+      actorScope,
+      value.scope.org_id ?? "",
+      value.scope.case_id ?? "",
+      value.scope.business_line,
+      value.scope.scenario,
+      value.scope.contract_type,
+    ],
+    queryFn: ({ signal }) => playbookTemplateCatalog(value.scope, signal),
+    enabled: session.isSuccess && session.data !== null,
+    retry: false,
+  });
+  const currentTemplateKey = playbookTemplateKey(playbook.template);
+  const selectedTemplate = templateQuery.data?.find(
+    (candidate) => playbookTemplateKey(candidate.ref) === currentTemplateKey,
+  );
+  const validRuleIDs = [...new Set(value.binding.rule_ids ?? [])].filter((ruleID) =>
+    value.binding.source_spans?.some((span) => span.rule_id === ruleID),
+  );
+  const updatePlaybook = (patch: Partial<typeof playbook>) =>
+    onChange({ ...value, playbook: { ...playbook, ...patch } });
+  const changeClause = (index: number, patch: Partial<KnowledgePlaybookClause>) =>
+    updatePlaybook({ clauses: replaceAt(playbook.clauses, index, patch) });
+
+  return (
+    <section className="rulepack-editor-section" aria-labelledby="knowledge-playbook-heading">
+      <h2 id="knowledge-playbook-heading">审查手册与精确模板版本</h2>
+      <p className="meta">
+        手册逐条引用已绑定规则和正文来源。内容是审查建议，不会自动确认规则满足、接受偏差或形成法律结论。
+      </p>
+      {templateQuery.isError ? (
+        <Alert
+          type="error"
+          showIcon
+          title="模板目录没有加载"
+          description={lookupError(templateQuery.error)}
+        />
+      ) : null}
+      {playbook.template.template_id && templateQuery.isSuccess && !selectedTemplate ? (
+        <Alert
+          type="warning"
+          showIcon
+          title="所选模板版本已不在当前可用目录"
+          description="系统保留了原精确版本，没有改成同名的新版本。请重新选择后再提交。"
+        />
+      ) : null}
+      <Field id="knowledge-playbook-template" label="治理模板" issues={issues}>
+        <Select
+          id="knowledge-playbook-template"
+          aria-label="审查手册使用的治理模板"
+          style={{ width: "100%" }}
+          showSearch={{ optionFilterProp: "label" }}
+          placeholder="选择平台模板或当前范围已发布的租户模板"
+          value={playbook.template.template_id ? currentTemplateKey : undefined}
+          loading={session.isLoading || templateQuery.isLoading}
+          disabled={disabled || templateQuery.isError || !session.isSuccess}
+          allowClear
+          options={[
+            ...(templateQuery.data ?? []).map((candidate) => ({
+              value: playbookTemplateKey(candidate.ref),
+              label: `${candidate.name} · ${candidate.source === "tenant" ? "租户" : "平台"}`,
+            })),
+            ...(playbook.template.template_id && !selectedTemplate
+              ? [
+                  {
+                    value: currentTemplateKey,
+                    label: "原选版本已不可用（需重新选择）",
+                    disabled: true,
+                  },
+                ]
+              : []),
+          ]}
+          onChange={(key?: string) => {
+            const candidate = templateQuery.data?.find(
+              (item) => playbookTemplateKey(item.ref) === key,
+            );
+            updatePlaybook({
+              template: candidate?.ref ?? {
+                template_id: "",
+                template_version: "",
+                template_digest: "",
+              },
+            });
+          }}
+        />
+      </Field>
+      <TechnicalDetail
+        label="模板精确版本身份"
+        value={playbook.template.template_id ? JSON.stringify(playbook.template) : null}
+      />
+      {templateQuery.isLoading ? <p role="status">正在读取当前范围可用的模板…</p> : null}
+      <p className="meta">
+        规则必须同时出现在所选规则包和正文引用中；不要求手册覆盖规则包内的每一条规则。
+      </p>
+      <SectionIssue id="knowledge-playbook-clauses" issues={issues} />
+      {playbook.clauses.map((clause, index) => {
+        const selectedRuleStillPresent = validRuleIDs.includes(clause.rule_id);
+        const usedElsewhere = new Set(
+          playbook.clauses
+            .filter((_, itemIndex) => itemIndex !== index)
+            .map((item) => item.rule_id),
+        );
+        const options = validRuleIDs
+          .filter((ruleID) => !usedElsewhere.has(ruleID) || ruleID === clause.rule_id)
+          .map((ruleID) => ({ value: ruleID, label: ruleID }));
+        if (clause.rule_id && !selectedRuleStillPresent)
+          options.push({ value: clause.rule_id, label: `${clause.rule_id}（当前绑定中不存在）` });
+        return (
+          <section className="rulepack-editor-section" key={`playbook-clause-${index}`}>
+            <h3>规则指导 {index + 1}</h3>
+            <Field id={`playbook-rule-${index}`} label="绑定规则" issues={issues}>
+              <Select
+                id={`playbook-rule-${index}`}
+                aria-label={`规则指导 ${index + 1} 的绑定规则`}
+                style={{ width: "100%" }}
+                placeholder="选择同时具备规则包绑定和正文引用的规则"
+                value={clause.rule_id || undefined}
+                options={options}
+                disabled={disabled}
+                onChange={(rule_id: string) => changeClause(index, { rule_id })}
+              />
+            </Field>
+            {(
+              [
+                ["standard_clause", "标准条款"],
+                ["acceptable_deviation", "可接受偏差"],
+                ["hard_constraint", "不可突破的底线"],
+                ["proposed_wording", "建议措辞"],
+                ["escalation_condition", "升级条件"],
+              ] as const
+            ).map(([key, label]) => (
+              <Field
+                key={key}
+                id={`playbook-${key}-${index}`}
+                label={`${label}（最多 2000 个字符）`}
+                issues={issues}
+              >
+                <Input.TextArea
+                  id={`playbook-${key}-${index}`}
+                  {...errorProps(`playbook-${key}-${index}`, issues)}
+                  value={clause[key]}
+                  rows={3}
+                  disabled={disabled}
+                  onChange={(event) => changeClause(index, { [key]: event.target.value })}
+                />
+              </Field>
+            ))}
+            <Button
+              htmlType="button"
+              disabled={disabled}
+              onClick={() => updatePlaybook({ clauses: removeAt(playbook.clauses, index) })}
+            >
+              删除规则指导 {index + 1}
+            </Button>
+          </section>
+        );
+      })}
+      <Button
+        htmlType="button"
+        disabled={disabled || playbook.clauses.length >= 32}
+        onClick={() =>
+          updatePlaybook({
+            clauses: [
+              ...playbook.clauses,
+              {
+                rule_id: "",
+                standard_clause: "",
+                acceptable_deviation: "",
+                hard_constraint: "",
+                proposed_wording: "",
+                escalation_condition: "",
+              },
+            ],
+          })
+        }
+      >
+        添加规则指导
+      </Button>
+    </section>
+  );
+}
+
 export type KnowledgeEditorStep = "source" | "content" | "submit";
 
 export function KnowledgeEditor({
@@ -1391,6 +1736,14 @@ export function KnowledgeEditor({
               mode="conditions"
             />
             <BindingSection value={value} onChange={onChange} issues={issues} disabled={disabled} />
+            {value.kind === "playbook" ? (
+              <PlaybookSection
+                value={value}
+                onChange={onChange}
+                issues={issues}
+                disabled={disabled}
+              />
+            ) : null}
           </>
         )}
         {value.kind === "exception" && (
@@ -1404,7 +1757,7 @@ export function KnowledgeEditor({
             disabled={disabled}
           />
         )}
-        {value.kind !== "template" && (
+        {value.kind !== "template" && value.kind !== "playbook" && (
           <PolicyRefsSection
             value={value}
             onChange={onChange}
@@ -1429,6 +1782,14 @@ export function KnowledgeEditor({
         <>
           <ScopeSection value={value} onChange={onChange} issues={issues} disabled={disabled} />
           <BindingSection value={value} onChange={onChange} issues={issues} disabled={disabled} />
+          {value.kind === "playbook" ? (
+            <PlaybookSection
+              value={value}
+              onChange={onChange}
+              issues={issues}
+              disabled={disabled}
+            />
+          ) : null}
         </>
       )}
       {value.kind === "exception" && (
@@ -1437,7 +1798,7 @@ export function KnowledgeEditor({
       {value.kind === "experience" && (
         <ExperienceSection value={value} onChange={onChange} issues={issues} disabled={disabled} />
       )}
-      {value.kind !== "template" && (
+      {value.kind !== "template" && value.kind !== "playbook" && (
         <PolicyRefsSection value={value} onChange={onChange} issues={issues} disabled={disabled} />
       )}
     </div>

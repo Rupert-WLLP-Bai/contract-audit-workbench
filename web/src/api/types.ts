@@ -4,13 +4,14 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r8
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
 import type { BusinessAgentReview } from "./business-agent-review";
 import type { ContractFactsProjection } from "./contract-facts";
 import type { FrozenLegalReviewProjection } from "./legal-citations";
+import type { FrozenPlaybookAdoption } from "./playbooks";
 import type { WireSchemas } from "./wire.generated";
 
 /** Client-side view of the review API. Null means the server omitted the field. */
@@ -762,6 +763,7 @@ export interface RunSnapshot {
   adopted_tenant_config?: { version_id: string; digest: string } | null;
   planner?: FrozenPlannerIdentity;
   governed_knowledge?: FrozenKnowledgeView | null;
+  adopted_playbook?: FrozenPlaybookAdoption | null;
 }
 
 export interface ConstraintEvaluation {

@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-14
 // Updated: 2026-11-14
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -104,8 +104,9 @@ func PrepareSubmission(input model.SubmitContractApprovalInput) (PreparedSubmiss
 		return PreparedSubmission{}, fault.Invalid("template_id 格式不正确")
 	}
 	digest, err := contract.RequestDigest(SubmitRoute, "POST", "/api/contracts/"+id+"/submissions", input.ExpectedRowVersion, struct {
-		TemplateID string `json:"template_id,omitempty"`
-	}{requested})
+		TemplateID  string             `json:"template_id,omitempty"`
+		PlaybookRef *model.PlaybookRef `json:"playbook_ref,omitempty"`
+	}{requested, input.PlaybookRef})
 	return PreparedSubmission{Input: input, ContractID: id, TemplateID: requested, Digest: digest}, err
 }
 
@@ -125,6 +126,13 @@ type SubmissionAccess interface {
 type SubmissionFreeze interface {
 	VerifyFreeze(context.Context, string, string, string) ([]contract.FrozenVersionMaterial, error)
 }
+
+// SubmissionPlaybookResolver reads the exact approved version under the
+// caller's existing transaction and verified frozen contract materials.
+type SubmissionPlaybookResolver interface {
+	ResolveApprovalPlaybook(context.Context, string, string, string, []contract.FrozenVersionMaterial, model.PlaybookRef) (json.RawMessage, error)
+}
+
 type SubmissionEvents interface {
 	AppendContractEvent(context.Context, string, string, string, int64, string, []byte) error
 	EnqueueContractEvent(context.Context, string, string) error
@@ -213,6 +221,20 @@ func Submit(ctx context.Context, p PreparedSubmission, tenantID, actorID string,
 	routing, err := model.ResolveApprovalRouting(record, actorID, template.Summary.TemplateID, template.Summary.TemplateVersion, template.Nodes, bindings, directory.Users(), time.Now().UTC())
 	if err != nil {
 		return empty, err
+	}
+	if p.Input.PlaybookRef != nil {
+		resolver, ok := freeze.(SubmissionPlaybookResolver)
+		if !ok {
+			return empty, fault.Conflict("当前服务不能验证审查手册")
+		}
+		adopted, resolveErr := resolver.ResolveApprovalPlaybook(ctx, tenantID, p.ContractID, revisionID, materials, *p.Input.PlaybookRef)
+		if resolveErr != nil {
+			return empty, resolveErr
+		}
+		if len(adopted) == 0 || !json.Valid(adopted) {
+			return empty, fault.Conflict("审查手册快照无效")
+		}
+		routing.AdoptedPlaybook = adopted
 	}
 	routingJSON, err := json.Marshal(routing)
 	if err != nil {

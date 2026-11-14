@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-14
 // Updated: 2026-11-14
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -159,6 +159,7 @@ type GovernedKnowledgeContent struct {
 	Counterexamples       []string                  `json:"counterexamples,omitempty"`
 	PolicyRefs            []KnowledgeRef            `json:"policy_refs,omitempty"`
 	Template              *contracttemplate.Content `json:"template,omitempty"`
+	Playbook              *PlaybookContent          `json:"playbook,omitempty"`
 	LegalMetadata         *LegalMetadata            `json:"legal_metadata,omitempty"`
 }
 
@@ -352,7 +353,7 @@ func ValidateContent(content GovernedKnowledgeContent) error {
 		return fault.Invalid("制度内容或来源无效")
 	}
 	switch content.Kind {
-	case "policy", "guidance", "exception", "experience", "legal", "template":
+	case "policy", "guidance", "exception", "experience", "legal", "template", "playbook":
 	default:
 		return fault.Invalid("制度类型无效")
 	}
@@ -360,6 +361,9 @@ func ValidateContent(content GovernedKnowledgeContent) error {
 	case "reference", "synthetic_policy", "human_feedback":
 	default:
 		return fault.Invalid("制度来源类型无效")
+	}
+	if content.Kind != "playbook" && content.Playbook != nil {
+		return fault.Invalid("只有审查手册可以包含手册条款")
 	}
 	if content.Kind != "template" && content.Template != nil {
 		return fault.Invalid("只有正文范本可以包含范本字段")
@@ -442,6 +446,11 @@ func ValidateContent(content GovernedKnowledgeContent) error {
 			return fault.Invalid("正文范本结构或内容无效")
 		}
 		return nil
+	}
+	if content.Kind == "playbook" {
+		if err := ValidatePlaybook(content); err != nil {
+			return err
+		}
 	}
 	binding := content.Binding
 	if !validRulePackIdentifier(binding.PackID) || !validRulePackIdentifier(binding.PackVersion) || !ValidHash(binding.PackContentHash) ||

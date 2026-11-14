@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-13
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -41,22 +41,23 @@ type ApprovalReadDecision = approvalmodel.ApprovalReadDecision
 // RevisionDiff compares the round's frozen revision with the previous round's
 // frozen revision; a same-revision resubmission explicitly reports no change.
 type ApprovalRoundReadDetail struct {
-	ContractID            string                    `json:"contract_id"`
-	ContractName          string                    `json:"contract_name"`
-	ContractNumber        *string                   `json:"contract_number"`
-	ContractState         string                    `json:"contract_state"`
-	ContractRowVersion    int64                     `json:"contract_row_version"`
-	CurrentRevisionID     *string                   `json:"current_revision_id"`
-	Round                 ApprovalRoundReadSummary  `json:"round"`
-	Tasks                 []ApprovalReadTask        `json:"tasks"`
-	Decisions             []ApprovalReadDecision    `json:"decisions"`
-	ActiveTaskID          *string                   `json:"active_task_id"`
-	RiskDispositionState  string                    `json:"risk_disposition_state"`
-	RiskDispositionReason string                    `json:"risk_disposition_reason,omitempty"`
-	PreviousRound         *ApprovalRoundReadSummary `json:"previous_round"`
-	RevisionChanged       bool                      `json:"revision_changed"`
-	RevisionDiff          *ContractVersionDiff      `json:"revision_diff"`
-	AllowedActions        []string                  `json:"allowed_actions"`
+	AdoptedPlaybook       *approvalmodel.AdoptedPlaybookView `json:"adopted_playbook,omitempty"`
+	ContractID            string                             `json:"contract_id"`
+	ContractName          string                             `json:"contract_name"`
+	ContractNumber        *string                            `json:"contract_number"`
+	ContractState         string                             `json:"contract_state"`
+	ContractRowVersion    int64                              `json:"contract_row_version"`
+	CurrentRevisionID     *string                            `json:"current_revision_id"`
+	Round                 ApprovalRoundReadSummary           `json:"round"`
+	Tasks                 []ApprovalReadTask                 `json:"tasks"`
+	Decisions             []ApprovalReadDecision             `json:"decisions"`
+	ActiveTaskID          *string                            `json:"active_task_id"`
+	RiskDispositionState  string                             `json:"risk_disposition_state"`
+	RiskDispositionReason string                             `json:"risk_disposition_reason,omitempty"`
+	PreviousRound         *ApprovalRoundReadSummary          `json:"previous_round"`
+	RevisionChanged       bool                               `json:"revision_changed"`
+	RevisionDiff          *ContractVersionDiff               `json:"revision_diff"`
+	AllowedActions        []string                           `json:"allowed_actions"`
 }
 
 // ApprovalTaskReadDetail answers the task detail route: the selected task plus

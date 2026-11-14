@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-07
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -31,8 +31,7 @@ export const paths = {
   tenantConfigPreview: "/api/admin/tenant-config/preview",
   tenantConfigAdoption: "/api/admin/tenant-config/adoption",
   tenantConfigLiveControl: "/api/admin/tenant-config/live-control",
-  oidcLogin: (audience: "client" | "admin") =>
-    `/api/auth/oidc/login?audience=${id(audience)}`,
+  oidcLogin: (audience: "client" | "admin") => `/api/auth/oidc/login?audience=${id(audience)}`,
   oidcMemberships: (audience: "client" | "admin") =>
     `/api/auth/oidc/memberships?audience=${id(audience)}`,
   cases: "/api/cases",
@@ -43,12 +42,10 @@ export const paths = {
     return `/api/cases/${id(caseId)}/review-readiness${query.size ? `?${query}` : ""}`;
   },
   templates: "/api/templates",
-  workbench: (period: "day" | "week" | "month") =>
-    `/api/workbench?period=${period}`,
+  workbench: (period: "day" | "week" | "month") => `/api/workbench?period=${period}`,
   caseProfile: (caseId: string) => `/api/cases/${id(caseId)}/profile`,
   caseTasks: (caseId: string) => `/api/cases/${id(caseId)}/tasks`,
-  caseTask: (caseId: string, taskId: string) =>
-    `/api/cases/${id(caseId)}/tasks/${id(taskId)}`,
+  caseTask: (caseId: string, taskId: string) => `/api/cases/${id(caseId)}/tasks/${id(taskId)}`,
   caseRelations: (caseId: string) => `/api/cases/${id(caseId)}/relations`,
   caseRelation: (caseId: string, relationId: string) =>
     `/api/cases/${id(caseId)}/relations/${id(relationId)}`,
@@ -62,8 +59,7 @@ export const paths = {
     return `/api/subjects${suffix === "" ? "" : `?${suffix}`}`;
   },
   subject: (subjectId: string) => `/api/subjects/${id(subjectId)}`,
-  subjectHistory: (subjectId: string) =>
-    `/api/subjects/${id(subjectId)}/history`,
+  subjectHistory: (subjectId: string) => `/api/subjects/${id(subjectId)}/history`,
   subjectCaseLinks: (subjectId: string, cursor?: string | null, limit?: number) => {
     const params = new URLSearchParams();
     if (cursor !== undefined && cursor !== null) params.set("cursor", cursor);
@@ -73,20 +69,27 @@ export const paths = {
   },
   caseSubjects: (caseId: string) => `/api/cases/${id(caseId)}/subjects`,
   caseLegalApplicabilityFacts: (caseId: string, businessAt: string, evidenceCutoffAt: string) => {
-    const params = new URLSearchParams({ business_at: businessAt, evidence_cutoff_at: evidenceCutoffAt });
+    const params = new URLSearchParams({
+      business_at: businessAt,
+      evidence_cutoff_at: evidenceCutoffAt,
+    });
     return `/api/cases/${id(caseId)}/legal-applicability-facts?${params}`;
   },
   caseLegalApplicabilityFact: (caseId: string, dimension: string) =>
     `/api/cases/${id(caseId)}/legal-applicability-facts/${id(dimension)}`,
-  caseLegalApplicabilityFactHistory: (caseId: string, dimension: string, cursor?: string | null, limit?: number) => {
+  caseLegalApplicabilityFactHistory: (
+    caseId: string,
+    dimension: string,
+    cursor?: string | null,
+    limit?: number,
+  ) => {
     const params = new URLSearchParams();
     if (cursor !== undefined && cursor !== null) params.set("cursor", cursor);
     if (limit !== undefined) params.set("limit", String(limit));
     const suffix = params.toString();
     return `/api/cases/${id(caseId)}/legal-applicability-facts/${id(dimension)}/history${suffix === "" ? "" : `?${suffix}`}`;
   },
-  caseSubjectsBindExisting: (caseId: string) =>
-    `/api/cases/${id(caseId)}/subjects/bind-existing`,
+  caseSubjectsBindExisting: (caseId: string) => `/api/cases/${id(caseId)}/subjects/bind-existing`,
   caseSubjectSourceSnapshots: (caseId: string, cursor?: string | null, limit?: number) => {
     const params = new URLSearchParams();
     if (cursor !== undefined && cursor !== null) params.set("cursor", cursor);
@@ -101,7 +104,14 @@ export const paths = {
     `/api/cases/${id(caseId)}/subject-source-snapshots/${id(snapshotId)}/verify`,
   materialParsedDocuments: (caseId: string, materialId: string, version: number) =>
     `/api/cases/${id(caseId)}/materials/${id(materialId)}/versions/${version}/parsed-documents`,
-  materialParsedText: (caseId: string, materialId: string, version: number, parsedDocumentId: string, offset = 0, limit = 32768) => {
+  materialParsedText: (
+    caseId: string,
+    materialId: string,
+    version: number,
+    parsedDocumentId: string,
+    offset = 0,
+    limit = 32768,
+  ) => {
     const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
     return `/api/cases/${id(caseId)}/materials/${id(materialId)}/versions/${version}/parsed-documents/${id(parsedDocumentId)}?${params}`;
   },
@@ -134,8 +144,7 @@ export const paths = {
     `/api/cases/${id(caseId)}/reports/${id(reportId)}/evidence-bundle`,
   archive: (caseId: string) => `/api/cases/${id(caseId)}/archive`,
   documents: (caseId: string) => `/api/cases/${id(caseId)}/documents`,
-  materialSelection: (caseId: string) =>
-    `/api/cases/${id(caseId)}/materials/selection`,
+  materialSelection: (caseId: string) => `/api/cases/${id(caseId)}/materials/selection`,
   documentOriginal: (caseId: string, documentId: string) =>
     `/api/cases/${id(caseId)}/documents/${id(documentId)}/original`,
   documentDerivedPreview: (caseId: string, documentId: string) =>
@@ -143,6 +152,7 @@ export const paths = {
   reparse: (caseId: string, documentId: string) =>
     `/api/cases/${id(caseId)}/documents/${id(documentId)}/parse`,
   reviews: (caseId: string) => `/api/cases/${id(caseId)}/reviews`,
+  casePlaybooks: (caseId: string) => `/api/cases/${id(caseId)}/playbooks`,
   review: (caseId: string, runId: string, attemptId?: string | null) => {
     const path = `/api/cases/${id(caseId)}/reviews/${id(runId)}`;
     return attemptId === null || attemptId === undefined
@@ -175,13 +185,11 @@ export const paths = {
   rulePacks: "/api/admin/rulepacks",
   rulePack: (packId: string, version: string) =>
     `/api/admin/rulepacks/${id(packId)}/versions/${id(version)}`,
-  rulePackHistory: (packId: string) =>
-    `/api/admin/rulepacks/${id(packId)}/history`,
+  rulePackHistory: (packId: string) => `/api/admin/rulepacks/${id(packId)}/history`,
   rulePackAction: (
     packId: string,
     version: string,
     action: "validate" | "approve" | "publish" | "disable" | "test",
   ) => `/api/admin/rulepacks/${id(packId)}/versions/${id(version)}/${action}`,
-  rulePackRollback: (packId: string) =>
-    `/api/admin/rulepacks/${id(packId)}/rollback`,
+  rulePackRollback: (packId: string) => `/api/admin/rulepacks/${id(packId)}/rollback`,
 } as const;

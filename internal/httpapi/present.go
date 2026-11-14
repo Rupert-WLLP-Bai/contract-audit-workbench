@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-12
-// Revision: r6
+// Updated: 2026-11-14
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -554,6 +554,9 @@ func snapshotJSON(snap store.RunSnapshot) map[string]any {
 		"document_ids": ids, "rule_set_hash": snap.RuleSetHash, "playbook_hash": snap.PlaybookHash,
 		"model_ref": nilString(snap.ModelRef), "comparator_ref": nilString(snap.ComparatorRef),
 		"adopted_tenant_config": nil,
+	}
+	if snap.GovernedKnowledge != nil && snap.GovernedKnowledge.AdoptedPlaybook != nil {
+		out["adopted_playbook"] = map[string]any{"ref": snap.GovernedKnowledge.AdoptedPlaybook.Ref, "content_unavailable_reason": "source_authorization_required"}
 	}
 	if snap.AdoptedTenantConfigVersionID != "" && snap.AdoptedTenantConfigDigest != "" {
 		out["adopted_tenant_config"] = map[string]string{"version_id": snap.AdoptedTenantConfigVersionID, "digest": snap.AdoptedTenantConfigDigest}

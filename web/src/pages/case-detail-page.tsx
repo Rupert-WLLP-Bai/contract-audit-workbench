@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-12
-// Revision: r11
+// Updated: 2026-11-14
+// Revision: r12
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,6 +13,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getReviewReadiness, type ReviewScope } from "../api/review-readiness";
+import type { PlaybookRef } from "../api/playbooks";
 import { beijingInputToUtc } from "../components/beijing-datetime";
 import { ReviewReadinessPanel } from "../components/review-readiness-panel";
 import { errorMessage, isForbidden, isUnauthenticated } from "../api/http";
@@ -29,6 +30,7 @@ import {
   type CaseReadingPosition,
 } from "../components/section-navigation";
 import { CaseNextStep } from "../components/case-next-step";
+import { PlaybookPicker } from "../components/playbook-picker";
 import { MaterialCollectionPanel } from "../components/material-collection-panel";
 import { CaseSubjectRolesPanel } from "../components/case-subject-roles-panel";
 import { CaseSubjectCorrectionsPanel } from "../components/case-subject-corrections-panel";
@@ -326,11 +328,15 @@ export function CaseDetailPage() {
   const start = useStartReview(caseId);
   const [businessAt, setBusinessAt] = useState("");
   const [reviewScope, setReviewScope] = useState<ReviewScope>("full_review");
+  const [playbookRef, setPlaybookRef] = useState<PlaybookRef>();
+  const [playbookRefAvailable, setPlaybookRefAvailable] = useState(true);
   const businessAtValue = beijingInputToUtc(businessAt);
   const validBusinessAt = businessAtValue !== "";
   useEffect(() => {
     setBusinessAt("");
     setReviewScope("full_review");
+    setPlaybookRef(undefined);
+    setPlaybookRefAvailable(true);
   }, [caseId, actorScope]);
   const readiness = useQuery({
     queryKey: [
@@ -432,10 +438,12 @@ export function CaseDetailPage() {
       ? latestWorkspace.review_attempts?.attempt
       : undefined;
   function onStartReview() {
+    if (playbookRef && !playbookRefAvailable) return;
     start.mutate(
       {
         ...(validBusinessAt ? { business_at: businessAtValue } : {}),
         ...(reviewScope === "single_contract_precheck" ? { scope: reviewScope } : {}),
+        ...(playbookRef ? { playbook_ref: playbookRef } : {}),
         ...(readmit
           ? { readmit_cancelled: { run_id: readmit.run_id, attempt_id: readmit.id } }
           : {}),
@@ -551,6 +559,18 @@ export function CaseDetailPage() {
             latestWorkspace={latestWorkspace}
             startPending={start.isPending}
             startError={start.isError ? start.error : null}
+            startDisabled={Boolean(playbookRef && !playbookRefAvailable)}
+            startControls={
+              !archived ? (
+                <PlaybookPicker
+                  caseId={item.id}
+                  value={playbookRef}
+                  onChange={setPlaybookRef}
+                  onAvailabilityChange={setPlaybookRefAvailable}
+                  disabled={start.isPending}
+                />
+              ) : null
+            }
             onRetrySession={() => void session.refetch()}
             onRefreshReadiness={() => {
               start.reset();

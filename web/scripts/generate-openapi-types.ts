@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-14
 // Updated: 2026-11-14
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -19,6 +19,11 @@ const defaultSchema = resolve(repositoryRoot, "internal/apidocs/openapi.json");
 const defaultOutput = resolve(repositoryRoot, "web/src/api/wire.generated.ts");
 
 const ROOTS = [
+  "PlaybookOptions",
+  "GovernedPlaybook",
+  "AdoptedPlaybookView",
+  "ReviewStartRequest",
+  "ApprovalSubmissionRequest",
   "SupportGrant",
   "SupportGrantList",
   "SupportGrantRequest",

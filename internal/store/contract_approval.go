@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-13
-// Revision: r4
+// Updated: 2026-11-14
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -122,7 +122,7 @@ func (s *Store) SubmitContractApproval(ctx context.Context, user accounts.User, 
 	executor := platformpg.Bind(tx)
 	result, err := approvalapp.Submit(ctx, prepared, accounts.Tenant(current), current.ID, approvalDirectory{},
 		contractpg.NewApprovalCommands(executor), approvalSubmissionAccess{tx: tx, user: current},
-		approvalSubmissionFreeze{tx: tx, user: current, executor: executor}, approvalpg.NewSubmission(executor),
+		approvalSubmissionFreeze{store: s, tx: tx, user: current, executor: executor}, approvalpg.NewSubmission(executor),
 		approvalpg.NewGovernance(executor), storeVersionEventAdapter{tx: tx})
 	if err != nil {
 		return SubmitContractApprovalResult{}, err

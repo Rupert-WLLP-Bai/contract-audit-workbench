@@ -2,9 +2,9 @@
 // Purpose: Defines canonical v1 review Knowledge values and pure snapshot identity, applicability, candidate sorting, and optional-budget rules.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-13
-// Updated: 2026-11-13
-// Revision: r1
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -60,6 +60,7 @@ type GovernedKnowledgeExclusion struct {
 // ReviewKnowledgeSnapshot preserves the v1 wire shape while its Legal-owned
 // authority values remain supplied by the Legal boundary.
 type ReviewKnowledgeSnapshot[Authority any] struct {
+	AdoptedPlaybook          *AdoptedPlaybook             `json:"adopted_playbook,omitempty"`
 	Encoding                 string                       `json:"encoding"`
 	BusinessAt               string                       `json:"business_at"`
 	Scope                    KnowledgeScope               `json:"scope"`

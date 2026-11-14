@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r10
+// Revision: r11
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -39,6 +39,7 @@ import { ExecutionInspector } from "./execution-inspector";
 import { FindingPanel } from "./finding-panel";
 import { BusinessAgentReviewView } from "./business-agent-review";
 import { ContractFactsPanel } from "./contract-facts-panel";
+import { FrozenPlaybookPanel } from "./frozen-playbook-panel";
 import { TrajectoryView } from "./trajectory-view";
 import { SingleContractScopeCoverage } from "./single-contract-scope-coverage";
 import { ReviewOutcomeSummary } from "./review-outcome-summary";
@@ -736,6 +737,7 @@ export function ReviewWorkspaceView({
           />
         </>
       ) : null}
+      <FrozenPlaybookPanel adoption={workspace.snapshot?.adopted_playbook} />
       {showCoverage ? (
         <>
           <ReviewOutcomeSummary workspace={workspace} />

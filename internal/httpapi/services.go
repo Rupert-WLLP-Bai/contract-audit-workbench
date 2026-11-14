@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r6
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -473,6 +473,8 @@ func contractDraftRoute(role string, methods routeMethodSet, parts []string) boo
 			return methods.read
 		case "submissions":
 			return methods.post
+		case "playbooks":
+			return methods.read
 		case "signing-checks":
 			return methods.post
 		case "payments":
@@ -657,6 +659,7 @@ var caseRouteHandlers = map[string]caseRouteHandler{
 	"company-policy-sources":    coreReadRoute,
 	"subject-source-snapshots":  subjectSourceSnapshotRoute,
 	"legal-knowledge":           caseLegalKnowledgeRoute,
+	"playbooks":                 coreReadRoute,
 	"legal-applicability-facts": legalApplicabilityRoute,
 	"legal-sources":             caseLegalSourceRoute,
 	"service-objects":           serviceObjectRoute,

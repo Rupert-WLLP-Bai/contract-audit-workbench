@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -26,6 +26,7 @@ const (
 	maxPlannerFacts                 = 32
 	maxPlannerObservations          = 64
 	maxContextFieldBytes            = 16 << 10
+	AdoptedPlaybookFieldBytes       = maxContextFieldBytes
 	maxPlannerFieldBytes            = PlannerKnowledgeFieldBytes
 	maxPlannerValueBytes            = 256
 	maxObservationIDs               = 32
@@ -82,10 +83,10 @@ func validKnowledgeReference(ref KnowledgeReference) bool {
 }
 
 func validKnowledgeReferenceKind(kind string, requiresFactEvaluation bool) bool {
-	if !slices.Contains([]string{"policy", "guidance", "exception", "experience"}, kind) {
+	if !slices.Contains([]string{"policy", "guidance", "exception", "experience", "playbook"}, kind) {
 		return false
 	}
-	return (kind != "experience" && kind != "exception") || requiresFactEvaluation
+	return (kind != "experience" && kind != "exception" && kind != "playbook") || requiresFactEvaluation
 }
 
 func validKnowledgeReferenceFields(ref KnowledgeReference) bool {
@@ -290,8 +291,11 @@ func omitOptionalReference(input *PlanInput, required bool) bool {
 }
 
 func clipKnowledgeReference(ref KnowledgeReference, truncation *PlannerContextTruncation) KnowledgeReference {
-	fields := []*string{&ref.Summary, &ref.Applicability, &ref.Exclusions, &ref.CheckAction, &ref.MinimumEvidence,
+	fields := []*string{&ref.Applicability, &ref.Exclusions, &ref.CheckAction, &ref.MinimumEvidence,
 		&ref.Counterexamples, &ref.SemanticChecks, &ref.SourceSpans}
+	if ref.Kind != "playbook" || !ref.Required {
+		fields = append([]*string{&ref.Summary}, fields...)
+	}
 	ref.Truncated = clipPlannerReferenceFields(fields) || ref.Truncated
 	truncation.FieldsTruncated = truncation.FieldsTruncated || ref.Truncated
 	return ref

@@ -3,13 +3,14 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-01
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 import { ApiError, jsonInit, requestJson } from "./http";
 import { enumValue, responseReader } from "./respond";
+import { parseFrozenPlaybookAdoption, type FrozenPlaybookAdoption } from "./playbooks";
 
 /**
  * Contract approval workbench reads. Responses are projections of frozen
@@ -17,18 +18,8 @@ import { enumValue, responseReader } from "./respond";
  * from a pending mutation or a retry.
  */
 export type ApprovalInboxView = "todo" | "done" | "initiated";
-export type ApprovalRoundState =
-  | "in_review"
-  | "returned"
-  | "withdrawn"
-  | "approved"
-  | "terminated";
-export type ApprovalTaskState =
-  | "pending"
-  | "active"
-  | "approved"
-  | "returned"
-  | "cancelled";
+export type ApprovalRoundState = "in_review" | "returned" | "withdrawn" | "approved" | "terminated";
+export type ApprovalTaskState = "pending" | "active" | "approved" | "returned" | "cancelled";
 export type ApprovalDecisionAction = "approve" | "return";
 
 export interface ApprovalInboxItem {
@@ -149,6 +140,7 @@ export interface ApprovalRoundReadDetail {
   revision_changed: boolean;
   revision_diff: ApprovalRevisionDiff | null;
   allowed_actions: ApprovalDecisionAction[];
+  adopted_playbook?: FrozenPlaybookAdoption;
 }
 
 export interface ApprovalTaskReadDetail {
@@ -202,9 +194,7 @@ export interface ApprovalDecisionResult {
   row_version: number;
 }
 
-const reader = responseReader(
-  (path) => `审批响应无法识别：${path}`,
-);
+const reader = responseReader((path) => `审批响应无法识别：${path}`);
 
 const roundStates: readonly ApprovalRoundState[] = [
   "in_review",
@@ -241,17 +231,11 @@ function decisionAction(value: unknown, path: string): ApprovalDecisionAction {
   return action ?? reader.invalid(path);
 }
 
-function optionalAction(
-  value: unknown,
-  path: string,
-): ApprovalDecisionAction | null {
+function optionalAction(value: unknown, path: string): ApprovalDecisionAction | null {
   return value === null ? null : decisionAction(value, path);
 }
 
-function optionalTaskState(
-  value: unknown,
-  path: string,
-): ApprovalTaskState | null {
+function optionalTaskState(value: unknown, path: string): ApprovalTaskState | null {
   return value === null ? null : taskState(value, path);
 }
 
@@ -263,29 +247,14 @@ function parseInboxItem(value: unknown, path: string): ApprovalInboxItem {
     view,
     contract_id: reader.text(row.contract_id, `${path}.contract_id`),
     contract_name: reader.text(row.contract_name, `${path}.contract_name`),
-    contract_number: reader.nullableText(
-      row.contract_number,
-      `${path}.contract_number`,
-    ),
+    contract_number: reader.nullableText(row.contract_number, `${path}.contract_number`),
     contract_state: reader.text(row.contract_state, `${path}.contract_state`),
-    contract_revision_id: reader.text(
-      row.contract_revision_id,
-      `${path}.contract_revision_id`,
-    ),
-    approval_round_id: reader.text(
-      row.approval_round_id,
-      `${path}.approval_round_id`,
-    ),
+    contract_revision_id: reader.text(row.contract_revision_id, `${path}.contract_revision_id`),
+    approval_round_id: reader.text(row.approval_round_id, `${path}.approval_round_id`),
     round_number: reader.integer(row.round_number, `${path}.round_number`, 1),
     round_state: roundState(row.round_state, `${path}.round_state`),
-    round_started_at: reader.text(
-      row.round_started_at,
-      `${path}.round_started_at`,
-    ),
-    round_ended_at: reader.nullableText(
-      row.round_ended_at,
-      `${path}.round_ended_at`,
-    ),
+    round_started_at: reader.text(row.round_started_at, `${path}.round_started_at`),
+    round_ended_at: reader.nullableText(row.round_ended_at, `${path}.round_ended_at`),
     task_id: reader.nullableText(row.task_id, `${path}.task_id`),
     node_order: nullableInteger(row.node_order, `${path}.node_order`),
     node_code: reader.nullableText(row.node_code, `${path}.node_code`),
@@ -294,28 +263,13 @@ function parseInboxItem(value: unknown, path: string): ApprovalInboxItem {
       row.assignee_subject_id,
       `${path}.assignee_subject_id`,
     ),
-    assignee_display: reader.nullableText(
-      row.assignee_display,
-      `${path}.assignee_display`,
-    ),
+    assignee_display: reader.nullableText(row.assignee_display, `${path}.assignee_display`),
     task_state: optionalTaskState(row.task_state, `${path}.task_state`),
-    task_row_version: nullableInteger(
-      row.task_row_version,
-      `${path}.task_row_version`,
-    ),
-    task_activated_at: reader.nullableText(
-      row.task_activated_at,
-      `${path}.task_activated_at`,
-    ),
-    task_decided_at: reader.nullableText(
-      row.task_decided_at,
-      `${path}.task_decided_at`,
-    ),
+    task_row_version: nullableInteger(row.task_row_version, `${path}.task_row_version`),
+    task_activated_at: reader.nullableText(row.task_activated_at, `${path}.task_activated_at`),
+    task_decided_at: reader.nullableText(row.task_decided_at, `${path}.task_decided_at`),
     decision_id: reader.nullableText(row.decision_id, `${path}.decision_id`),
-    decision_action: optionalAction(
-      row.decision_action,
-      `${path}.decision_action`,
-    ),
+    decision_action: optionalAction(row.decision_action, `${path}.decision_action`),
     decision_actor_subject_id: reader.nullableText(
       row.decision_actor_subject_id,
       `${path}.decision_actor_subject_id`,
@@ -324,10 +278,7 @@ function parseInboxItem(value: unknown, path: string): ApprovalInboxItem {
       row.decision_actor_display,
       `${path}.decision_actor_display`,
     ),
-    decision_opinion: reader.nullableText(
-      row.decision_opinion,
-      `${path}.decision_opinion`,
-    ),
+    decision_opinion: reader.nullableText(row.decision_opinion, `${path}.decision_opinion`),
     decision_decided_at: reader.nullableText(
       row.decision_decided_at,
       `${path}.decision_decided_at`,
@@ -344,49 +295,28 @@ export function parseApprovalInboxPage(value: unknown): ApprovalInboxPage {
   const row = reader.object(value, "approval_inbox");
   return {
     items: reader.array(row.items, "approval_inbox.items", parseInboxItem),
-    next_cursor: reader.nullableText(
-      row.next_cursor,
-      "approval_inbox.next_cursor",
-    ),
+    next_cursor: reader.nullableText(row.next_cursor, "approval_inbox.next_cursor"),
     has_more: reader.bool(row.has_more, "approval_inbox.has_more"),
   };
 }
 
-function parseRoundSummary(
-  value: unknown,
-  path: string,
-): ApprovalRoundReadSummary {
+function parseRoundSummary(value: unknown, path: string): ApprovalRoundReadSummary {
   const row = reader.object(value, path);
   return {
-    approval_round_id: reader.text(
-      row.approval_round_id,
-      `${path}.approval_round_id`,
-    ),
+    approval_round_id: reader.text(row.approval_round_id, `${path}.approval_round_id`),
     round_number: reader.integer(row.round_number, `${path}.round_number`, 1),
-    contract_revision_id: reader.text(
-      row.contract_revision_id,
-      `${path}.contract_revision_id`,
-    ),
+    contract_revision_id: reader.text(row.contract_revision_id, `${path}.contract_revision_id`),
     state: roundState(row.state, `${path}.state`),
-    workflow_template_id: reader.text(
-      row.workflow_template_id,
-      `${path}.workflow_template_id`,
-    ),
+    workflow_template_id: reader.text(row.workflow_template_id, `${path}.workflow_template_id`),
     workflow_template_version: reader.text(
       row.workflow_template_version,
       `${path}.workflow_template_version`,
     ),
     initiated_by: reader.text(row.initiated_by, `${path}.initiated_by`),
-    initiated_by_display: reader.text(
-      row.initiated_by_display,
-      `${path}.initiated_by_display`,
-    ),
+    initiated_by_display: reader.text(row.initiated_by_display, `${path}.initiated_by_display`),
     started_at: reader.text(row.started_at, `${path}.started_at`),
     ended_at: reader.nullableText(row.ended_at, `${path}.ended_at`),
-    previous_round_id: reader.nullableText(
-      row.previous_round_id,
-      `${path}.previous_round_id`,
-    ),
+    previous_round_id: reader.nullableText(row.previous_round_id, `${path}.previous_round_id`),
     row_version: reader.integer(row.row_version, `${path}.row_version`, 1),
   };
 }
@@ -398,28 +328,16 @@ function parseReadTask(value: unknown, path: string): ApprovalReadTask {
     node_order: reader.integer(row.node_order, `${path}.node_order`, 1),
     node_code: reader.text(row.node_code, `${path}.node_code`),
     role_code: reader.text(row.role_code, `${path}.role_code`),
-    assignee_subject_id: reader.text(
-      row.assignee_subject_id,
-      `${path}.assignee_subject_id`,
-    ),
-    assignee_display: reader.text(
-      row.assignee_display,
-      `${path}.assignee_display`,
-    ),
+    assignee_subject_id: reader.text(row.assignee_subject_id, `${path}.assignee_subject_id`),
+    assignee_display: reader.text(row.assignee_display, `${path}.assignee_display`),
     state: taskState(row.state, `${path}.state`),
     row_version: reader.integer(row.row_version, `${path}.row_version`, 1),
-    activated_at: reader.nullableText(
-      row.activated_at,
-      `${path}.activated_at`,
-    ),
+    activated_at: reader.nullableText(row.activated_at, `${path}.activated_at`),
     decided_at: reader.nullableText(row.decided_at, `${path}.decided_at`),
   };
 }
 
-function parseReadDecision(
-  value: unknown,
-  path: string,
-): ApprovalReadDecision {
+function parseReadDecision(value: unknown, path: string): ApprovalReadDecision {
   const row = reader.object(value, path);
   return {
     decision_id: reader.text(row.decision_id, `${path}.decision_id`),
@@ -427,10 +345,7 @@ function parseReadDecision(
     node_order: reader.integer(row.node_order, `${path}.node_order`, 1),
     node_code: reader.text(row.node_code, `${path}.node_code`),
     action: decisionAction(row.action, `${path}.action`),
-    actor_subject_id: reader.text(
-      row.actor_subject_id,
-      `${path}.actor_subject_id`,
-    ),
+    actor_subject_id: reader.text(row.actor_subject_id, `${path}.actor_subject_id`),
     actor_display: reader.text(row.actor_display, `${path}.actor_display`),
     opinion: reader.text(row.opinion, `${path}.opinion`),
     decided_at: reader.text(row.decided_at, `${path}.decided_at`),
@@ -450,10 +365,7 @@ function parseFieldChange(value: unknown, path: string): ApprovalFieldChange {
   return change;
 }
 
-function parseRestrictedChange(
-  value: unknown,
-  path: string,
-): ApprovalRestrictedChange {
+function parseRestrictedChange(value: unknown, path: string): ApprovalRestrictedChange {
   const row = reader.object(value, path);
   return {
     path: reader.text(row.path, `${path}.path`),
@@ -465,46 +377,29 @@ function parseRestrictedChange(
 function parseRevisionDiff(value: unknown, path: string): ApprovalRevisionDiff {
   const row = reader.object(value, path);
   return {
-    from_revision_number: nullableInteger(
-      row.from_revision_number,
-      `${path}.from_revision_number`,
-    ),
-    to_revision_number: reader.integer(
-      row.to_revision_number,
-      `${path}.to_revision_number`,
-      1,
-    ),
+    from_revision_number: nullableInteger(row.from_revision_number, `${path}.from_revision_number`),
+    to_revision_number: reader.integer(row.to_revision_number, `${path}.to_revision_number`, 1),
     changed: reader.bool(row.changed, `${path}.changed`),
-    fields: reader.array(
-      row.fields,
-      `${path}.fields`,
-      parseFieldChange,
-    ),
+    fields: reader.array(row.fields, `${path}.fields`, parseFieldChange),
     restricted_fields: reader.array(
       row.restricted_fields,
       `${path}.restricted_fields`,
       parseRestrictedChange,
     ),
-    amount_terms: reader.array(
-      row.amount_terms,
-      `${path}.amount_terms`,
-      parseFieldChange,
-    ),
+    amount_terms: reader.array(row.amount_terms, `${path}.amount_terms`, parseFieldChange),
   };
 }
 
-function parseRoundDetail(
-  value: unknown,
-  path: string,
-): ApprovalRoundReadDetail {
+function parseRoundDetail(value: unknown, path: string): ApprovalRoundReadDetail {
   const row = reader.object(value, path);
+  const adoptedPlaybook =
+    row.adopted_playbook === undefined
+      ? undefined
+      : parseFrozenPlaybookAdoption(row.adopted_playbook, `${path}.adopted_playbook`);
   return {
     contract_id: reader.text(row.contract_id, `${path}.contract_id`),
     contract_name: reader.text(row.contract_name, `${path}.contract_name`),
-    contract_number: reader.nullableText(
-      row.contract_number,
-      `${path}.contract_number`,
-    ),
+    contract_number: reader.nullableText(row.contract_number, `${path}.contract_number`),
     contract_state: reader.text(row.contract_state, `${path}.contract_state`),
     contract_row_version: reader.integer(
       row.contract_row_version,
@@ -517,15 +412,8 @@ function parseRoundDetail(
     ),
     round: parseRoundSummary(row.round, `${path}.round`),
     tasks: reader.array(row.tasks, `${path}.tasks`, parseReadTask),
-    decisions: reader.array(
-      row.decisions,
-      `${path}.decisions`,
-      parseReadDecision,
-    ),
-    active_task_id: reader.nullableText(
-      row.active_task_id,
-      `${path}.active_task_id`,
-    ),
+    decisions: reader.array(row.decisions, `${path}.decisions`, parseReadDecision),
+    active_task_id: reader.nullableText(row.active_task_id, `${path}.active_task_id`),
     risk_disposition_state: reader.text(
       row.risk_disposition_state,
       `${path}.risk_disposition_state`,
@@ -538,10 +426,7 @@ function parseRoundDetail(
       row.previous_round === null
         ? null
         : parseRoundSummary(row.previous_round, `${path}.previous_round`),
-    revision_changed: reader.bool(
-      row.revision_changed,
-      `${path}.revision_changed`,
-    ),
+    revision_changed: reader.bool(row.revision_changed, `${path}.revision_changed`),
     revision_diff:
       row.revision_diff === null
         ? null
@@ -551,63 +436,38 @@ function parseRoundDetail(
       `${path}.allowed_actions`,
       (entry, itemPath) => decisionAction(entry, itemPath),
     ),
+    ...(adoptedPlaybook === undefined ? {} : { adopted_playbook: adoptedPlaybook }),
   };
 }
 
 export function parseApprovalTaskDetail(value: unknown): ApprovalTaskReadDetail {
   const row = reader.object(value, "approval_task");
   return {
-    selected_task_id: reader.text(
-      row.selected_task_id,
-      "approval_task.selected_task_id",
-    ),
-    round_detail: parseRoundDetail(
-      row.round_detail,
-      "approval_task.round_detail",
-    ),
+    selected_task_id: reader.text(row.selected_task_id, "approval_task.selected_task_id"),
+    round_detail: parseRoundDetail(row.round_detail, "approval_task.round_detail"),
   };
 }
 
-export function parseApprovalRoundDetail(
-  value: unknown,
-): ApprovalRoundReadDetail {
+export function parseApprovalRoundDetail(value: unknown): ApprovalRoundReadDetail {
   return parseRoundDetail(value, "approval_round");
 }
 
-function parseHistoryItem(
-  value: unknown,
-  path: string,
-): ApprovalRoundHistoryItem {
+function parseHistoryItem(value: unknown, path: string): ApprovalRoundHistoryItem {
   const row = reader.object(value, path);
   return {
     round: parseRoundSummary(row.round, `${path}.round`),
     active_task:
-      row.active_task === null
-        ? null
-        : parseReadTask(row.active_task, `${path}.active_task`),
+      row.active_task === null ? null : parseReadTask(row.active_task, `${path}.active_task`),
     task_count: reader.integer(row.task_count, `${path}.task_count`, 0),
-    decision_count: reader.integer(
-      row.decision_count,
-      `${path}.decision_count`,
-      0,
-    ),
+    decision_count: reader.integer(row.decision_count, `${path}.decision_count`, 0),
   };
 }
 
-export function parseApprovalRoundHistoryPage(
-  value: unknown,
-): ApprovalRoundHistoryPage {
+export function parseApprovalRoundHistoryPage(value: unknown): ApprovalRoundHistoryPage {
   const row = reader.object(value, "approval_round_history");
   return {
-    items: reader.array(
-      row.items,
-      "approval_round_history.items",
-      parseHistoryItem,
-    ),
-    next_cursor: reader.nullableText(
-      row.next_cursor,
-      "approval_round_history.next_cursor",
-    ),
+    items: reader.array(row.items, "approval_round_history.items", parseHistoryItem),
+    next_cursor: reader.nullableText(row.next_cursor, "approval_round_history.next_cursor"),
     has_more: reader.bool(row.has_more, "approval_round_history.has_more"),
   };
 }
@@ -621,20 +481,12 @@ function decisionTask(value: unknown, path: string) {
   };
 }
 
-export function parseApprovalDecisionResult(
-  value: unknown,
-): ApprovalDecisionResult {
+export function parseApprovalDecisionResult(value: unknown): ApprovalDecisionResult {
   const row = reader.object(value, "approval_decision");
   const round = reader.object(row.round, "approval_decision.round");
   return {
-    decision_id: reader.text(
-      row.decision_id,
-      "approval_decision.decision_id",
-    ),
-    decision: decisionAction(
-      row.decision,
-      "approval_decision.decision",
-    ),
+    decision_id: reader.text(row.decision_id, "approval_decision.decision_id"),
+    decision: decisionAction(row.decision, "approval_decision.decision"),
     round: {
       approval_round_id: reader.text(
         round.approval_round_id,
@@ -644,36 +496,16 @@ export function parseApprovalDecisionResult(
         round.contract_revision_id,
         "approval_decision.round.contract_revision_id",
       ),
-      round_number: reader.integer(
-        round.round_number,
-        "approval_decision.round.round_number",
-        1,
-      ),
+      round_number: reader.integer(round.round_number, "approval_decision.round.round_number", 1),
       state: roundState(round.state, "approval_decision.round.state"),
-      row_version: reader.integer(
-        round.row_version,
-        "approval_decision.round.row_version",
-        1,
-      ),
+      row_version: reader.integer(round.row_version, "approval_decision.round.row_version", 1),
     },
     task: decisionTask(row.task, "approval_decision.task"),
     next_task:
-      row.next_task === null
-        ? null
-        : decisionTask(row.next_task, "approval_decision.next_task"),
-    contract_state: reader.text(
-      row.contract_state,
-      "approval_decision.contract_state",
-    ),
-    workflow_state: reader.text(
-      row.workflow_state,
-      "approval_decision.workflow_state",
-    ),
-    row_version: reader.integer(
-      row.row_version,
-      "approval_decision.row_version",
-      1,
-    ),
+      row.next_task === null ? null : decisionTask(row.next_task, "approval_decision.next_task"),
+    contract_state: reader.text(row.contract_state, "approval_decision.contract_state"),
+    workflow_state: reader.text(row.workflow_state, "approval_decision.workflow_state"),
+    row_version: reader.integer(row.row_version, "approval_decision.row_version", 1),
   };
 }
 
@@ -771,21 +603,15 @@ export async function decideApprovalTask(
   const send = (credential?: string) =>
     requestJson(
       `/api/approval-tasks/${encodeURIComponent(input.task_id)}/decisions`,
-      jsonInit(
-        "POST",
-        credential === undefined ? body : { ...body, credential },
-        { "Idempotency-Key": idempotencyKey },
-      ),
+      jsonInit("POST", credential === undefined ? body : { ...body, credential }, {
+        "Idempotency-Key": idempotencyKey,
+      }),
       parseApprovalDecisionResult,
     );
   try {
     return await send(input.credential);
   } catch (error) {
-    if (
-      input.credential !== undefined ||
-      !(error instanceof ApiError) ||
-      error.status !== 403
-    ) {
+    if (input.credential !== undefined || !(error instanceof ApiError) || error.status !== 403) {
       throw error;
     }
     let credential: string;

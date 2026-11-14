@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-07
-// Revision: r4
+// Updated: 2026-11-14
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -167,6 +167,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("GET /api/auth/oidc/memberships", h.pendingMemberships)
 	mux.HandleFunc("POST /api/auth/oidc/memberships", h.selectPendingMembership)
 	mux.HandleFunc("GET /api/templates", h.templates)
+	mux.HandleFunc("GET /api/cases/{caseID}/playbooks", h.casePlaybooks)
 	mux.HandleFunc("GET /api/capability-packs", h.listCapabilityPacks)
 	mux.HandleFunc("GET /api/workbench", h.workbench)
 	mux.HandleFunc("GET /api/system-health", h.healthSnapshot)
@@ -731,9 +732,10 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		BusinessAt       string `json:"business_at,omitempty"`
-		EvidenceCutoffAt string `json:"evidence_cutoff_at,omitempty"`
-		Scope            string `json:"scope,omitempty"`
+		BusinessAt       string              `json:"business_at,omitempty"`
+		EvidenceCutoffAt string              `json:"evidence_cutoff_at,omitempty"`
+		Scope            string              `json:"scope,omitempty"`
+		PlaybookRef      *store.KnowledgeRef `json:"playbook_ref,omitempty"`
 		ReadmitCancelled *struct {
 			RunID     string `json:"run_id"`
 			AttemptID string `json:"attempt_id"`
@@ -749,6 +751,9 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := store.WithReviewIdempotency(r.Context(), key)
+	if body.PlaybookRef != nil {
+		ctx = store.WithReviewPlaybook(ctx, *body.PlaybookRef)
+	}
 	if body.ReadmitCancelled != nil {
 		ctx = store.WithReviewReadmission(ctx, store.ReviewReadmission{RunID: body.ReadmitCancelled.RunID, AttemptID: body.ReadmitCancelled.AttemptID})
 	}
