@@ -22,8 +22,6 @@ import (
 	operatorModel "contractaudit/internal/operator/model"
 	operatorPostgres "contractaudit/internal/operator/postgres"
 	platformpostgres "contractaudit/internal/platform/postgres"
-	"contractaudit/internal/rulepack"
-	"contractaudit/internal/telecom"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -368,66 +366,10 @@ func (s *Store) ConfirmServiceObjectAssociation(ctx context.Context, user accoun
 	return result, false, nil
 }
 
-// validateOperatorFrozenAttempt verifies immutable input and output using the
-// caller's transaction, so association approval observes one scoped snapshot.
-func (s *Store) validateOperatorFrozenAttempt(ctx context.Context, tx pgx.Tx, st state, item Case, runID, attemptID string) (Attempt, AttemptInput, error) {
-	_, attempt, err := terminalRunAndAttempt(st, item, runID, attemptID)
-	if err != nil {
-		return Attempt{}, AttemptInput{}, err
-	}
-	if err := requireFrozenAttemptHashes(attempt); err != nil {
-		return Attempt{}, AttemptInput{}, err
-	}
-	input, ok := st.attemptInput(attemptID)
-	if !ok || input.RunID != runID || input.AttemptID != attemptID || input.InputHash != *attempt.InputHash ||
-		!frozenAttemptInputMatches(st, runID, attemptID, input) {
-		return Attempt{}, AttemptInput{}, fault.Conflict("来源审查的冻结输入未通过校验")
-	}
-	if err := s.verifyFrozenDocuments(st, input.Documents); err != nil {
-		return Attempt{}, AttemptInput{}, fault.Conflict("来源审查的冻结材料未通过校验")
-	}
-	digest, err := agentReviewDigestForOutput(ctx, tx, item.TenantID, item.OwnerOrgID, attemptID)
-	if err != nil || !frozenAttemptOutputMatches(st, runID, attemptID, attempt, digest) {
-		return Attempt{}, AttemptInput{}, fault.Conflict("来源审查的冻结输出未通过校验")
-	}
-	if _, err := validateRemediationRulePack(attempt, item); err != nil {
-		return Attempt{}, AttemptInput{}, fault.Conflict("来源审查缺少有效的冻结规则包")
-	}
-	return attempt, input, nil
-}
-
 func deriveServiceObjectAssociationPreview(ctx context.Context, tx pgx.Tx, s *Store, st state, user accounts.User, caseItem Case, head ServiceObjectHead, input ServiceObjectAssociationPreviewInput) (ServiceObjectAssociationPreview, error) {
 	facts := operatorPreviewFacts{store: s, tx: tx, state: st, item: caseItem, user: user}
 	scope := operatorApp.PreviewScope{TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseItem.ID, BusinessLine: caseItem.BusinessLine, Scenario: caseItem.Scenario, ContractType: caseItem.ContractType}
 	return operatorApp.Preview[Document](ctx, facts, scope, head, input)
-}
-
-// operatorSupplementCandidates reads only explicit supplements from the
-// already verified attempt input and keeps each fact tied to its own parse.
-func operatorSupplementCandidates(caseItem Case, input AttemptInput) ([]operatorEvaluationCandidate, error) {
-	request := rulepack.Request{BusinessLine: caseItem.BusinessLine, Scenario: caseItem.Scenario, ContractType: caseItem.ContractType}
-	var candidates []operatorEvaluationCandidate
-	for _, frozen := range input.Documents {
-		if !isOperatorContractSource(frozen) || frozen.Material.Purpose != "supplement" {
-			continue
-		}
-		sources, err := telecomSources(interpretedFromFrozen([]FrozenDocument{frozen}))
-		if err != nil || len(sources) != 1 {
-			return nil, fault.Conflict("冻结补充协议未通过完整性校验")
-		}
-		facts, err := telecom.ExtractContractMaterial(request, sources[0])
-		if err != nil {
-			return nil, fault.Conflict("冻结补充协议的对象事实无法提取")
-		}
-		seen := make(map[string]bool)
-		for _, fact := range facts {
-			if fact.ObjectRef != "" && !seen[fact.ObjectRef] {
-				seen[fact.ObjectRef] = true
-				candidates = append(candidates, operatorEvaluationCandidate{ObjectRef: fact.ObjectRef, Source: frozen})
-			}
-		}
-	}
-	return candidates, nil
 }
 
 func (s *Store) serviceObjectMutationTx(ctx context.Context, user accounts.User, caseID string) (accounts.User, Case, pgx.Tx, error) {
