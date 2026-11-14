@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Maps known frozen rule identifiers and reasons to review guidance while retaining unrecognized source wording.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { Finding } from "../api/types";
 
 type Presentation = { title: string; nextStep: string; raw: string };

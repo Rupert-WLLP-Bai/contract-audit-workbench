@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Loads complete or case-scoped Subject-owned ordered collections through a Query-only reader and preserves payload errors and UTC normalization.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package postgres provides transaction-bound Subject persistence.
 package postgres
 

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks execution diagram selection and unknown observations while mocking the browser drawing engine.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExecutionEvent } from "../api/types";

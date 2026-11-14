@@ -1,3 +1,13 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles read-only LogicFlow execution lanes and saved-event observation details using existing semantic tokens. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-12 */
+/* Updated: 2026-11-12 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
 .execution-diagram { min-width: 0; }
 .execution-diagram-toolbar { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; color: var(--text-secondary); font-size: 12px; }
 .execution-diagram-toolbar > div { display: flex; flex-wrap: wrap; gap: 4px; }

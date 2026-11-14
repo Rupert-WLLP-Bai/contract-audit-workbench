@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Keeps the public structured-output status separate from private ContractFacts failure codes.
+// Purpose: Exercises safe facts API projection and the distinction between advisory coverage and structured-output validity.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12

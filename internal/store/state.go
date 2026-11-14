@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Store is the case file. Relational rows live in PostgreSQL; original bytes stay under dir. Related `store` operations include UseReadOnly, ReadOnly, HasDatabase, parseSelectionsForAttempt.
+// Purpose: Maintains shared authoritative persistence collections and legacy Document values while referring to domain-owned frozen execution aliases.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

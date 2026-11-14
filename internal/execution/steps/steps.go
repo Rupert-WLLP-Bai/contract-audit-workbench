@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Defines versioned Agent step checkpoints and the narrow persistence port used to recover successful planner, knowledge-read, and tool results.
+// Purpose: Defines durable Agent step identity, result integrity, usage knowledge and the recovery journal port without Store or database dependencies.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12

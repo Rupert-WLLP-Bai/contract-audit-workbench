@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: ServiceObjectHead contains only identity and version pointers. The selected immutable version is the single authority for object type and state. Related `store` operations include serviceObjectCandidatesSHA256, PlanServiceObjectAssociation, PlanServiceObjectIdentityChange, canonicalServiceObjectIdentitySHA256.
+// Purpose: Preserves legacy service-object public values and necessary pure association or canonical-rule adapters through Operator aliases.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 

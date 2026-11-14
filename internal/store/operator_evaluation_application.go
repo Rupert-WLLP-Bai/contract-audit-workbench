@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Projects exact original frozen facts, independent or transaction-bound agent digests, Document integrity and scoped reads for Operator evaluation.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

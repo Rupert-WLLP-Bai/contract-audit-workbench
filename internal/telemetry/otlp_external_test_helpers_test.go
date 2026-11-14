@@ -2,8 +2,8 @@
 // Purpose: Decodes official OTLP protobuf requests and writes acknowledgements for public telemetry behavior assertions; contains no production exporter or independent wire implementation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-11
-// Updated: 2026-11-11
+// Created: 2026-11-12
+// Updated: 2026-11-12
 // Revision: r1
 // Copyright: See LICENSE
 // End file metadata.

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Builds historical payment plans and exact net-paid states from narrowly decoded immutable currency/payment snapshots and source receipts.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

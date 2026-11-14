@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines governed Knowledge content, version, command and history values with canonical identity, metadata, lifecycle, source, and resource identifier rules.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package model defines the immutable Knowledge governance values and their
 // pure validation and lifecycle rules.
 package model

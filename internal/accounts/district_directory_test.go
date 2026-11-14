@@ -1,9 +1,9 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the Chongqing district demonstration directory matches the organization page roster and keeps the fixed local logins' authorization scope.
+// Purpose: Checks district demonstration identity uniqueness, fixed account compatibility and case-scoped grant boundaries.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-09
-// Updated: 2026-11-09
+// Created: 2026-11-12
+// Updated: 2026-11-12
 // Revision: r1
 // Copyright: See LICENSE
 // End file metadata.

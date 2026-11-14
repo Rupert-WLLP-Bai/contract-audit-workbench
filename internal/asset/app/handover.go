@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Coordinates frozen asset handovers through current authorization and exact Contract/Fulfillment facts, preserving range allocation, evidence/directory provenance and atomic lifecycle/event/outbox/receipt writes.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

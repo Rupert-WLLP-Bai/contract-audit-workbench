@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Persists and reads Legal-owned fact heads and immutable versions with exact replay, row locks, and head CAS.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package postgres
 
 import (

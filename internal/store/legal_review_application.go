@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Adapts current Case, Knowledge, Legal capture and staged Subject pin facts for Legal review freezing without changing transaction ownership.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

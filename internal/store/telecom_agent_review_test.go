@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Exercises frozen telecom planner configuration, retry takeover history/budget reconstruction, rulepack identity, and partial Agent review outcomes.
+// Purpose: Exercises the `store` package behavior through TestFrozenTelecomPlannerConfigurationLegacyAbsence, TestFrozenTelecomPlannerConfigurationRejectsIncompleteIdentity, TestFrozenTelecomPlannerConfigurationUsesAcceptedPayload, TestAgentReviewRulePackIdentityRejectsIncompleteCompilerMetadata, TestAgentReviewPlannerFailurePreservesRuleFindingsAsPartial; these checks pin observable state, error handling, or wire/database compatibility for this module.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

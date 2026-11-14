@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Pins strict ContractFacts parsing, bounded output semantics and separate frozen capability identity; provider text cannot add fields or silently change an old model identity.
+// Purpose: Exercises bounded facts response shape, frozen plain/native request modes, model configuration drift and physical-call purpose tracking without relying on real-provider quality.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12

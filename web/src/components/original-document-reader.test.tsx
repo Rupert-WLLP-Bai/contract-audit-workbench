@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks frozen-text navigation when page geometry is unavailable and resets reader selection on document scope changes.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";

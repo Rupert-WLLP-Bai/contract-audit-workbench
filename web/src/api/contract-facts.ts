@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Parses the isolated single-contract facts suggestion projection; it never treats suggested values as findings or five-domain review results.
+// Purpose: Parses the versioned single-contract facts projection with bounded fields, explicit uncertainty and exact frozen-source citation identities.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12

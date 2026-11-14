@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Adapts existing Contract receipt, lock and frozen-revision queries, nullable revision-item projections and the fulfillment lifecycle/version CAS through the caller executor.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package postgres
 
 import (

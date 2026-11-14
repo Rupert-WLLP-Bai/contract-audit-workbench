@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks original request identity, frozen revision precedence, unknown source projection and revoked-access receipt replay for Contract draft applications.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

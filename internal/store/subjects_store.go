@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Creates or binds subjects, reads case-scoped subject summaries and records identity corrections in PostgreSQL; every write checks case membership, tenant scope and expected revision.
+// Purpose: Preserves trusted identity, Case gates and original mutation or read transactions for Subject creation, binding and directory applications.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

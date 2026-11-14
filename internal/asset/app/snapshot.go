@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Parses legacy asset snapshot fields tolerantly, preserving malformed, missing and duplicated plan evidence as unknown rather than rewriting frozen data.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

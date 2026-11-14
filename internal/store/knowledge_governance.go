@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: knowledgeGovernanceSchemaSQL is registered by the main migration after the base, case and RulePack schemas. These are Core-owned tables; the migrator must additionally install… Related `store` operations include validKnowledgeText, knowledgeTime, validKnowledgeHash, knowledgeScopeKey.
+// Purpose: Preserves Store Knowledge entry points, authorization and transactions while delegating governance, current selection, Retry comparison, and frozen reads to Knowledge applications.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

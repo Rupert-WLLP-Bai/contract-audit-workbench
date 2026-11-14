@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Provides thin, domain-neutral page compositions for lists, object details, version editors and run inspection; data loading, authorization and business decisions stay in their feature pages.
+// Purpose: Provides thin page compositions while feature pages retain data loading, authorization, forms and business decisions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12

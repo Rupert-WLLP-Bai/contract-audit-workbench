@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Owns the original collection key and business-time preparation, dedicated-line scenario rule and confirmed binding constraints without moving authority or clocks.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

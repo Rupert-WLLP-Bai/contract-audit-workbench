@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Preserves existing routing, initiator separation, organization scope and stable digest characterization directly in the Approval model.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package model
 
 import (

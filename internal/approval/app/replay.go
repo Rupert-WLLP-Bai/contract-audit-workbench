@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Loads committed task command receipts only after matching request digests and rechecking current Contract Read visibility.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

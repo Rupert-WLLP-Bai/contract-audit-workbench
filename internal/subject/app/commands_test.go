@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Pins supplied identity claims and aliases, command clock order and creator visibility after historical binding.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

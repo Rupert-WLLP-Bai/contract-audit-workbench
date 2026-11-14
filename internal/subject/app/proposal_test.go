@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Pins proposal clock and basis order, immutable proposal-only behavior and inactive-binding restoration to the exact current Subject version.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

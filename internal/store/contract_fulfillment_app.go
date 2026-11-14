@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Wires trusted identity, the existing material/case authorization resolver and caller-owned executor into Fulfillment and Contract ports with existing event/outbox adapters.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

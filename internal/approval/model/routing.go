@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Resolves a frozen approval routing snapshot from current tenant directory users, role bindings and exact organization scopes.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package model
 
 import (

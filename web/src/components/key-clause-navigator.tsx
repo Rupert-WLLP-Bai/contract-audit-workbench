@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Provides legal-review navigation to verified frozen contract clauses and bounded source fragments without creating risk conclusions.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button } from "antd";
 import {
   keyClauseCategoryLabel,

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Reads exact and batched Legal reference capture projections while preserving original query and scan behavior.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package postgres
 
 import (

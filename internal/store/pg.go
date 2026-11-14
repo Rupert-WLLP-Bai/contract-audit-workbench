@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: OpenTest opens an isolated schema in the test database. A DSN whose database name is the development or production database is refused before any connection is made. Related `store` operations include OpenTest, Reopen, Close, RewriteAudit.
+// Purpose: Loads and persists authoritative PostgreSQL state with original transaction fences, delegating Subject-owned rows to their bound adapter.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

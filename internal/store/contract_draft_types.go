@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: DraftContent is the typed, strict contract content of one editable draft or frozen revision snapshot. The design pack (docs/04, OpenAPI DraftContent) allows incomplete drafts;… Related `store` operations include newContractUUID, validContractUUID, normalizeContractUUID, optionalText.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-12
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Combines immutable raw Contract revisions with Asset projections and authorized handover/receipt histories while retaining unknown legacy states and the caller snapshot.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

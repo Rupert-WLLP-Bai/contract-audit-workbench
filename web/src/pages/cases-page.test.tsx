@@ -1,9 +1,9 @@
 // File metadata (manifest mirror):
-// Purpose: Verifies URL-backed case views, filtering the current authorized loaded collection before pagination, retaining case-ID links after an editable business-number change, and showing the create-case dialog title once.
+// Purpose: Verifies URL-backed case views, filtering the current authorized loaded collection before pagination, and retaining case-ID links after an editable business-number change.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-09
+// Updated: 2026-11-12
 // Revision: r4
 // Copyright: See LICENSE
 // End file metadata.

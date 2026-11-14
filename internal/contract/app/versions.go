@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Owns compatible Contract version freeze, history import and version query orchestration through authorized transaction and cross-domain ports.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

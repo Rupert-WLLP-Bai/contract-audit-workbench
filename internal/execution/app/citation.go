@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Plans ordered citation inserts and partial finding updates from a locked fresh candidate view while preserving first-match and exact anchor deduplication semantics.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import "contractaudit/internal/engine"

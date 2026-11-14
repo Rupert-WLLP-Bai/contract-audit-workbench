@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Exercises the `store` package behavior through TestServiceObjectAssociationCandidateDigestBindsObjectCASSourceAndCandidateSet, TestOperatorFactsForAssociationPreservesExactPinnedObjectAndMeasurementSemantics, TestAuditextFactNewObjectFieldsStayOmittedForLegacyPayload, TestServiceObjectAssociationReceiptUsesCandidateSHA256WireName, TestPlanServiceObjectAssociationConfirmsPendingIdentityAtomically; these checks pin observable state, error handling, or wire/database compatibility for this module.
+// Purpose: Pins public service-object association, identity, canonical facts and wire compatibility through the retained Store entry names.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 

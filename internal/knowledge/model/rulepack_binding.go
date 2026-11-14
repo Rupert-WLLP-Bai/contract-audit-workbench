@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Validates Knowledge authority, scope, effective windows and policy thresholds against an exact existing RulePack manifest.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package model owns Knowledge's pure checks against an exact RulePack manifest.
 package model
 

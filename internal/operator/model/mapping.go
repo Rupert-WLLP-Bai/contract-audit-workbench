@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Owns mapping and binding values, separate stored request digests, normalized proposals, canonical impact identities and pure CAS or principal rules.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package model
 
 import (

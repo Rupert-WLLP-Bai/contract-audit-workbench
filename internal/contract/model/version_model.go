@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines frozen Contract revision, material, seal, plan-index and legacy provenance models with stable wire and digest field order.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package contract
 
 import (

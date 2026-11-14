@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Persists versioned Agent step checkpoints through a caller-owned PostgreSQL transaction.
+// Purpose: Persists attempt-bound Agent step identities, conservative starts and generation-fenced completion or ambiguity through an authorized transaction.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12

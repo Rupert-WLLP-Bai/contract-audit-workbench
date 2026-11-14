@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Owns draft creation validation, request identity, idempotent receipt replay and field projection through authorized transaction ports.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

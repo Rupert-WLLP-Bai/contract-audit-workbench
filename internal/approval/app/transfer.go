@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Coordinates authorized receipt replay, live transfer target checks and append-only reassignment facts with contract event/outbox/write receipt.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

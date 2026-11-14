@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Builds aggregate candidates and frozen inputs, evaluates within the existing caller transaction and appends all ordered results before constructing the response.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

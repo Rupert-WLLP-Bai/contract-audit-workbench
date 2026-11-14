@@ -1,10 +1,10 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: Registers the UI2-M5 in-repo coverage matrix for 54 design views and representative page-pattern migrations, points to out-of-repo screenshots, and records honest PARTIAL/BLOCKED/NOT_RUN acceptance without claiming fixed-candidate PASS. -->
+<!-- Purpose: Registers the UI2-M5 in-repo coverage matrix for 54 design views, points to out-of-repo screenshots, and records honest PARTIAL/BLOCKED/NOT_RUN acceptance without claiming fixed-candidate PASS. -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-08 -->
 <!-- Updated: 2026-11-12 -->
-<!-- Revision: r3 -->
+<!-- Revision: r2 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines frozen Legal authority values and pure all-of applicability, citation identity, cutoff, validation, and reuse fingerprint rules.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package model provides Legal-owned frozen values and pure evidence rules.
 package model
 

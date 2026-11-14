@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Pins facts capability freezing, unique quote binding to Unicode codepoint spans, truncated-prefix boundaries and partial coverage.
+// Purpose: Exercises frozen primary selection, Unicode quote location, ambiguous or outside-prefix evidence, truncated coverage and versioned facts configuration boundaries.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12

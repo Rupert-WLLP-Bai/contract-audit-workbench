@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Queries Contract ledger candidates through an existing authorized transaction without owning authorization or commits.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package postgres
 
 import (

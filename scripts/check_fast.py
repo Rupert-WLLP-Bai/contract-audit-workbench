@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # File metadata (manifest mirror):
-# Purpose: Selects scoped code, architecture and workflow checks from actual Git differences, prepares required toolchains and rejects missing or skipped execution evidence.
+# Purpose: Selects existing changed sources and sensitive regression scope from Git differences, orchestrates pinned native lint/format tools and scoped checks, and preserves explicit execution evidence.
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-31
-# Updated: 2026-11-10
-# Revision: r6
+# Updated: 2026-11-12
+# Revision: r7
 # Copyright: See LICENSE
 # End file metadata.
 

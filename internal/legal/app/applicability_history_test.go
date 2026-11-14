@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Pins history cursor identity checks, query ordering, and non-nil empty pages.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

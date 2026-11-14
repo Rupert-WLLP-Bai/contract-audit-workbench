@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Implements Asset-owned projection reads, handover/receipt facts, range/amount queries and source-event locks through a caller-bound executor without cross-domain SQL.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package postgres
 
 import (

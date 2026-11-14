@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Converts exact frozen association facts and quantities, derives cutoff-safe observation copies and classifies public per-object results.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: StartReview retains the existing ungoverned entry point. Governed cases must use StartReviewAt with the business instant being reviewed. Related `store` operations include StartReview, StartReviewAt, StartReviewAtWithEvidenceCutoff, StartReviewScope.
+// Purpose: Preserves authoritative review admission, retry and worker transactions while consuming domain-owned frozen values and compatible hash adapters.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r4
+// Updated: 2026-11-14
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 

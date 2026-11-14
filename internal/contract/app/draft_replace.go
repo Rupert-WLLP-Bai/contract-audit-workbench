@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Owns complete draft replacement validation, compatible request identity, current-access receipt replay and same-transaction CAS ordering.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

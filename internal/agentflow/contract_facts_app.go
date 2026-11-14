@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Runs one frozen single-contract facts extraction through the existing durable step journal and validates the bounded result before the Store commits its projection.
+// Purpose: Orchestrates one bounded facts extraction through the existing durable step journal, preserving frozen configuration, success replay, failed-call identity and partial advisory output.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12

@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Wires authorized frozen telecom inputs to Agent step checkpoints and reconstructs retry takeover history; the recorder still owns event, transaction, lease, and generation fencing. Related `store` operations include runTelecomAgentReview, agentReviewEventSink, agentReviewRulePackIdentity, frozenAgentPlanner.
+// Purpose: The recorder owns transaction, lease and generation fencing. The callback blocks runtime progress until the event has been committed or rejected. Related `store` operations include runTelecomAgentReview, agentReviewEventSink, agentReviewRulePackIdentity, frozenAgentPlanner.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

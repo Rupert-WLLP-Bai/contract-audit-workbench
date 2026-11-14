@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Pins v1 snapshot bytes and hashes, legacy nil values, Legal reuse identity, applicability intervals, and optional selection limits.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package model
 
 import (

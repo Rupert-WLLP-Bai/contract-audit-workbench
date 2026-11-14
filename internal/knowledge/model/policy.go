@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Extracts and compares exact policy thresholds and source spans with existing RulePack semantics, keeping ambiguous natural-language requirements explicit.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package model contains deterministic threshold extraction and comparison rules for governed policy content.
 package model
 

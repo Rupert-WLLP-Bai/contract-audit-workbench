@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: OperatorContractObject is the human-selected contract side of a mapping. Related `store` operations include normalizedOperatorEvaluationScope, operatorReady, operatorCaseState, operatorGrantVersion.
+// Purpose: Preserves trusted Case authority and original Operator transaction stages while delegating domain bindings, collections, evaluations and impact planning.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

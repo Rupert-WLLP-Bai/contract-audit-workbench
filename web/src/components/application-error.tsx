@@ -1,9 +1,9 @@
 // File metadata (manifest mirror):
-// Purpose: Provides a dependency-light route error page with same-address reload and audience-home recovery, without rendering the component library that may have failed.
+// Purpose: Renders dependency-light route failure recovery with reload and audience-home actions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: unknown
-// Updated: unknown
+// Created: 2026-11-12
+// Updated: 2026-11-12
 // Revision: r1
 // Copyright: See LICENSE
 // End file metadata.

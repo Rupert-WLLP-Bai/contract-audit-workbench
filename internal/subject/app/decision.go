@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Plans independent cross-case Subject decisions, complete impact checks, visible impact fingerprints and typed head or immutable-version deltas.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

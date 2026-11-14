@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Normalizes trusted payment events, preserves canonical digests and replay-before-new-validation semantics, and appends source receipts or bounded reversals atomically.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

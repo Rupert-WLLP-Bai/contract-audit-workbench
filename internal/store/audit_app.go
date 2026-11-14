@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Maps Audit compatibility records and service-owner routes into domain ports while preserving caller transaction and Query-only read capabilities.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

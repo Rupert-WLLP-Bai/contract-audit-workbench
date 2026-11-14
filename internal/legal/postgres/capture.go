@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Reads and writes Legal-owned capture rows with exact complete, replay, summary, and insert projections through the caller transaction.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package postgres reads and writes Legal-owned captures through a caller-bound executor.
 package postgres
 

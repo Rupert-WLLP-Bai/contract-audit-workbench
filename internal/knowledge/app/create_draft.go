@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Coordinates immutable Knowledge draft creation, original request digests, source facts and transactional history/idempotency without owning scope or transaction lifetime.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package app coordinates Knowledge use cases with caller-owned repositories
 // and exact, domain-specific source facts.
 package app

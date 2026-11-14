@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Assembles Contract, Fulfillment and Payment transaction-local ports with existing current authorization and event/outbox adapters for Store compatibility entry points.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

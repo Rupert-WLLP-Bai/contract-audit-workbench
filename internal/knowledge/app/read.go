@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Coordinates authorized Knowledge list/detail/history/preview and the distinct Platform policy summary projection with original paging, cache and error semantics.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

@@ -1,9 +1,9 @@
 // File metadata (manifest mirror):
-// Purpose: Exercises the application bootstrap and browser-history error recovery without depending on the failed component library to render the fallback.
+// Purpose: Checks application bootstrap and browser history recovery when a route fails without relying on the failed component library.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: unknown
-// Updated: unknown
+// Created: 2026-11-12
+// Updated: 2026-11-12
 // Revision: r1
 // Copyright: See LICENSE
 // End file metadata.

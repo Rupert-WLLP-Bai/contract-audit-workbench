@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Keeps the compatible Store version API and narrow readers used by adjacent Contract workflows while version rules and owned SQL live in internal/contract.
+// Purpose: Freezing a draft appends one immutable clm_contract_revisions row. The draft stays editable so a later freeze can create the next version; frozen rows, their material summaries… Related `store` operations include FreezeContractVersion, loadContractDraftBytes, frozenMaterialsFromReferences, ListContractVersions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01

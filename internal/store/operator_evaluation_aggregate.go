@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: summarizeOperatorEvaluationObjects derives aggregate coverage from the exact persisted per-object rows. It never infers completeness from successful rows alone because callers… Related `store` operations include summarizeOperatorEvaluationObjects, createAggregateOperatorFulfillmentEvaluation, validateOperatorAggregateSources, isOperatorContractMaterial.
+// Purpose: Retains original aggregate transaction, current Case authority and frozen fact projection while invoking the actual Operator application.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 

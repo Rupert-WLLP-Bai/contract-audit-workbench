@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Verifies facts-only projections stay separate from five-domain reads and remain bound to the admitted scope, authorized case, frozen input and generation-fenced persistence.
+// Purpose: Exercises current read authority, facts-only discriminator handling and immutable source/configuration validation for persisted facts projections.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12

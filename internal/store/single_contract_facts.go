@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Adapts authorized frozen attempt evidence, live execution claims, existing step-journal and observer capabilities, and one hash-bound facts projection to the domain facts application.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Pins frozen identity wire compatibility, exact selection fields and historical artifact rules, and input immutability of pure hash operations.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package model
 
 import (

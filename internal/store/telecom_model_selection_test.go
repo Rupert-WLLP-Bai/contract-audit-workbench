@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks declared case-specific model routing so dedicated-line reviews do not invoke the unrelated warranty model path.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import "testing"

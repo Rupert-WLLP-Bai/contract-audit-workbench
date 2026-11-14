@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Reads exact Subject-owned binding and current-version facts for Legal protocols and current or immutable Contract references through a non-owning executor.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package postgres
 
 import (

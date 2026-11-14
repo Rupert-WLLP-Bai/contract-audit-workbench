@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Reads and writes Approval-owned workflow templates, nodes, default pointers and current role bindings using a caller-owned transaction executor.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package postgres
 
 import (

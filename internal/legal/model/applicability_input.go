@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines Legal fact inputs, the single applicability dimension source, normalization, canonical basis and request digests, and exact time rules.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package model
 
 import (

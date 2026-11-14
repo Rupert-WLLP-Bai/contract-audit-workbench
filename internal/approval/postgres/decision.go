@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Reads and locks Approval-owned task/round facts, appends decisions and performs task/round state CAS in the caller transaction.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package postgres
 
 import (

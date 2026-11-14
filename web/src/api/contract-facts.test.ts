@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the strict single-contract facts parser, including Unicode codepoint ranges, source binding, and partial-result semantics.
+// Purpose: Exercises the facts parser against malformed or mismatched source identities, quote ranges, field states and structured-output status.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12

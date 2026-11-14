@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines the immutable Legal source capture value with original response, status evidence, article, and import receipt fields.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package model
 
 import (

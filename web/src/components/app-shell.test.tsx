@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks app-shell identity and breadcrumb behavior plus ordinary/admin role navigation visibility without starting the full browser journey.
+// Purpose: Checks current identity, breadcrumbs, deep links and ordinary versus admin navigation visibility without treating UI visibility as authorization.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
 // Updated: 2026-11-12
-// Revision: r6
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 

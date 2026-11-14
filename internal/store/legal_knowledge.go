@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: LegalMetadata binds one governed article body to an immutable captured official source and point-in-time registry observation. Legal review is deliberately fixed at NOT_RUN for… Related `store` operations include validateLegalMetadata, legalArticleManifest, legalRequestDigest, legalRequestVersions.
+// Purpose: Preserves Legal entry-point authorization and transaction boundaries while delegating capture reads and import workflows to Legal and Knowledge modules.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

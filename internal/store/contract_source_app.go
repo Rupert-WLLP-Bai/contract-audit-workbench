@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Adapts exact configured case authorization and active-case row locking plus object-bound raw source sealing to Contract source application ports.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Appends subject-change proposals and decisions, lists case-scoped history and returns decision summaries using transaction-bound authorization and revision checks.
+// Purpose: Preserves Subject correction command authorization and lock order while delegating proposal, decision and impact rules to the Subject application.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

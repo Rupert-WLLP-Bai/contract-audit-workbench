@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Checks that unknown page state is presented as unverified and remains distinct from empty, failed and forbidden states.
+// Purpose: Checks distinct unknown, empty, loading and error presentation without implying completed business states.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12

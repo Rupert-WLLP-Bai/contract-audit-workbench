@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks exact page attribution for frozen text spans across block and physical page boundaries.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package docir_test
 
 import (

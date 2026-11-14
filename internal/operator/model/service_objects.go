@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Owns service-object identity, immutable association and management values with exact citation, canonical digest and explicit-confirmation rules.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package model owns service object values and pure association rules.
 package model
 

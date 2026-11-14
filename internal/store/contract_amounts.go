@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Contract money validation bridges the draft content onto the settlement identities of internal/contractmoney. Draft saves validate at StageDraft: present values keep their grammar… Related `store` operations include validateDraftAmounts, contractAmountsFromDraft, draftRatioBase, legacyAmountsKnown.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-12
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

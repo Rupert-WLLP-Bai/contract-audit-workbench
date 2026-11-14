@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks attempt and span grouping of recorded execution events and preserves unknown parent and status information.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { describe, expect, it } from "vitest";
 import type { ExecutionEvent } from "../api/types";
 import { buildExecutionDiagram, isEinoToolEvent } from "./execution-diagram";

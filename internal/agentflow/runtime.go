@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Runs bounded Agent planning, tool validation, and same-attempt recovery from versioned durable step results. Related `agentflow` operations include New, defaultRuntimeConfig, defaultPlannerConfig, defaultRuntimeLimits.
+// Purpose: Only the built-in deterministic comparators implement the finite semantic checks this runtime can attest. Other read-only tools can supply validated observations and typed facts,… Related `agentflow` operations include New, defaultRuntimeConfig, defaultPlannerConfig, defaultRuntimeLimits.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

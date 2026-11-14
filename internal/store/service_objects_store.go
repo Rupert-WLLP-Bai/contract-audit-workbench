@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: CreateServiceObject creates only the pending identity head/version. The first contract association is a separate explicit confirmation against a frozen review attempt. Related `store` operations include CreateServiceObject, ListServiceObjects, GetServiceObjectHistory, GetServiceObject.
+// Purpose: Preserves service-object authorization, transactions and necessary frozen proof or compatibility adapters to the Operator owner.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

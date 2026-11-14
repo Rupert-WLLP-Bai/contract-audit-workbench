@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Supplies the narrow Store authorization transaction for durable Agent step checkpoints; the Execution PostgreSQL adapter receives only this transaction's non-owning executor.
+// Purpose: Supplies the narrow authorized Store transaction bridge for Execution checkpoints with current claim, case, attempt and governed input revalidation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12

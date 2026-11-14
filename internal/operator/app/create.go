@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Coordinates normalized service-object creation and receipt replay within a caller-owned authorized transaction.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package app coordinates Operator use cases with caller-owned transactions.
 package app
 

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Maps trusted actors, Subject-owned locked collections and narrow Case or Document facts to Subject applications and applies typed deltas to the original state clone.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

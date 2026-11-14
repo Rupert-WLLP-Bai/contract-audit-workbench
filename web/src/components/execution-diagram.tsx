@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Renders saved execution events through a read-only LogicFlow diagram and presents the selected recorded observations.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-12
+// Updated: 2026-11-12
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import LogicFlow, { RectNode, RectNodeModel } from "@logicflow/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ExecutionEvent } from "../api/types";

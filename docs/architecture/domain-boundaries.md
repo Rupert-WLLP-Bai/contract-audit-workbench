@@ -1,10 +1,10 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: Defines accepted domain data ownership, shared transaction requirements and dependency directions while distinguishing existing Store placement from future incremental migration. -->
+<!-- Purpose: Defines accepted domain ownership, caller-owned transaction and authorization seams, including exact legacy JSON decode semantics for Operator migration. -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-02 -->
-<!-- Updated: 2026-11-03 -->
-<!-- Revision: r3 -->
+<!-- Updated: 2026-11-14 -->
+<!-- Revision: r4 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 

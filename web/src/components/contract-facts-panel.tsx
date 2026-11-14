@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Renders typed single-contract fact suggestions with explicit uncertainty and exact frozen-source citation actions; it does not create risk findings.
+// Purpose: Displays bounded advisory contract facts with explicit uncertainty and actions that locate verified frozen source text without creating risk conclusions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12

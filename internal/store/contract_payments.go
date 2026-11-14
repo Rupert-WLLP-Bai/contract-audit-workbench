@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Store identity, scope, and transaction compatibility for Payment commands and reads.
+// Purpose: 实现 `ContractPaymentEligibilityInput`, `ContractPaymentEligibility`, `ContractPaymentReceiptInput`, `TrustedPaymentSource` 等 Store 数据结构与事务操作，按租户和组织范围读写或校验持久状态。
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-13
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

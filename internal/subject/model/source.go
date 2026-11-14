@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Validates and normalizes controlled Subject source metadata or individual records against explicit server time and deterministic record order.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package model
 
 import (

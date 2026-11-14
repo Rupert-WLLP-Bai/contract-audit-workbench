@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: DocumentParseKind returns the parser capacity class derived from the filename and server-recorded media type used by the parser. Related `store` operations include parseFailurePersistenceContext, parserConfiguration, DocumentParseKind, parserConfigurationFor.
+// Purpose: Maintains immutable parser selection and document proof IO while forwarding frozen selection and parser-configuration identities to Execution.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

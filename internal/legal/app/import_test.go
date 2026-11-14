@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Pins both Legal replay phases and their ordering relative to baseline preparation, ID generation, batch validation, capture insertion, and draft writes.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

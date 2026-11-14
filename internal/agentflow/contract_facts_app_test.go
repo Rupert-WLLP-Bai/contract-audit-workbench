@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Pins facts-only journal execution, strict successful replay, and byte-stable failed-call projection semantics across a same-attempt takeover.
+// Purpose: Exercises exact checkpoint reuse, non-repeated model dispatch and stable failed-step projections in the single-contract facts application.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Projects authorized fulfillment histories and per-item acceptance facts, preserving legacy empty-aggregate string values and frozen quantity/unit sources.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

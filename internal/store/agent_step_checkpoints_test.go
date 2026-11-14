@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Verifies durable Agent checkpoint persistence, repeated same-attempt takeover reuse, stale-generation fencing, and terminal-attempt rejection against isolated PostgreSQL service roles.
+// Purpose: Checks checkpoint persistence, lease generation fencing, cross-tenant RLS, revoked access, terminal attempts and immutable frozen input bindings.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12

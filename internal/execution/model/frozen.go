@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Owns immutable execution run, attempt, snapshot, document provenance and output value types with statically bound owner slots and compatible wire fields.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package model owns immutable execution values and their canonical identities.
 package model
 

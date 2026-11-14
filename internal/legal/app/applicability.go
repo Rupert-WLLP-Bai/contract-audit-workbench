@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Resolves Legal applicability by business time and evidence cutoff using the single dimension source and exact current Subject pin facts.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package app coordinates Legal evidence using exact, authorized facts.
 package app
 

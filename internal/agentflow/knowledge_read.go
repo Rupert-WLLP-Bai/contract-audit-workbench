@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Guards requested frozen knowledge spans and replays only complete persisted reads after current authorization and byte-identity checks. Related `agentflow` operations include validateKnowledgeReads, knowledgeReadConfigurationValid, validKnowledgeReadRequest, executeKnowledgeReads.
+// Purpose: Guard every requested read before any call in the plan executes. The model may name only references actually delivered in this round and bounded body spans. Related `agentflow` operations include validateKnowledgeReads, knowledgeReadConfigurationValid, validKnowledgeReadRequest, executeKnowledgeReads.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28

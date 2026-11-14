@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines Contract ledger export DTOs, allowed columns, frozen row projection and compatible CSV encoding with formula protection.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package ledger
 
 import (

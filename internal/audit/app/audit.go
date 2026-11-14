@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines narrow Audit stream ports and canonical append/head planning while preserving existing hash and correlation ordering.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-13
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package app owns the typed audit-chain application contract and append rules.
 package app
 

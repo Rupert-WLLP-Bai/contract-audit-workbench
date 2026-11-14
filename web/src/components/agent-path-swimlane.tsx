@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Renders the saved Agent execution path as swimlanes, showing each step's lane, tool/model, span parent and reported token usage without inventing skill steps.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-04
+// Updated: 2026-11-12
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useState } from "react";
 import type { Execution } from "../api/types";
 import { elapsed, eventTypeLabel, tokenCount } from "../domain/execution-labels";

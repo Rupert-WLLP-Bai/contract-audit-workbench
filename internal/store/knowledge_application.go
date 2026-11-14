@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Binds Knowledge applications to exact same-transaction source, candidate, Legal capture, RulePack, identity, and namespace facts.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-13
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

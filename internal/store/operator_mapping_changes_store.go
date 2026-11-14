@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: PreviewOperatorMappingChange returns the exact current tuple and proposed after state. The mutation method recomputes every field under the case lock. Related `store` operations include mappingAssociationTarget, bindMappingAssociation, mappingImpactWithAssociation, PreviewOperatorMappingChange.
+// Purpose: Preserves trusted Case gates and original mapping transactions while adapting narrow material or frozen-source proofs and owned application records.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

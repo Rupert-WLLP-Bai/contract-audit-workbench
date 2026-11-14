@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Persists service-object creation rows and receipts through the original caller-bound non-owning executor.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package postgres contains caller-bound Operator persistence.
 package postgres
 
