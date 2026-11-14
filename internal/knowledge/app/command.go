@@ -103,6 +103,10 @@ func ValidateRawVersion(ctx context.Context, facts LegalFactsReader, tenant stri
 		if err := validateLegalCaptureReference(ctx, facts, out.Content, capture); err != nil {
 			return LoadedVersion{}, err
 		}
+	} else if out.Content.Kind == "template" {
+		if len(raw.Binding) != 0 || raw.BindingPackID != "" || raw.BindingPackVersion != "" {
+			return LoadedVersion{}, fault.Conflict("正文范本不得包含规则绑定")
+		}
 	} else {
 		b, err := json.Marshal(out.Content.Binding)
 		if err != nil || !bytes.Equal(raw.Binding, b) || raw.BindingPackID != out.Content.Binding.PackID || raw.BindingPackVersion != out.Content.Binding.PackVersion {
@@ -136,6 +140,9 @@ func validateLegalContentBinding(ctx context.Context, facts CommandFacts, conten
 	return validateLegalCaptureReference(ctx, facts, content, capture)
 }
 func checkBinding(ctx context.Context, facts CommandFacts, tenant string, c model.GovernedKnowledgeContent) error {
+	if c.Kind == "template" {
+		return model.ValidateContent(c)
+	}
 	if c.Kind == "legal" {
 		return validateLegalContentBinding(ctx, facts, c)
 	}

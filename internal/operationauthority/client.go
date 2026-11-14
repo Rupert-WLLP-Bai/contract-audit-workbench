@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/contracttemplate"
 	"contractaudit/internal/coreauthority"
 	"contractaudit/internal/model"
 )
@@ -157,4 +158,39 @@ func (c *OperationClient) CloseIdleConnections() {
 	if c != nil && c.http != nil {
 		c.http.CloseIdleConnections()
 	}
+}
+
+// ResolveDocumentTemplates uses the already authenticated Document/Core
+// channel and sends no raw browser session token.
+func (c *OperationClient) ResolveDocumentTemplates(ctx context.Context, input contracttemplate.ResolveRequest) ([]contracttemplate.Resolved, error) {
+	body, err := json.Marshal(input)
+	if err != nil {
+		return nil, errors.New("template request unavailable")
+	}
+	endpoint := strings.TrimSuffix(c.endpoint, "/operation-authority") + "/templates"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, errors.New("template request unavailable")
+	}
+	req.Header.Set("Authorization", "Bearer "+c.credential)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, errors.New("template authority unavailable")
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, errors.New("template authority unavailable or refused")
+	}
+	raw, err := io.ReadAll(io.LimitReader(res.Body, 4<<20+1))
+	if err != nil || len(raw) > 4<<20 {
+		return nil, errors.New("template authority response unavailable")
+	}
+	var out []contracttemplate.Resolved
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&out) != nil || decoder.Decode(new(any)) != io.EOF {
+		return nil, errors.New("template authority response invalid")
+	}
+	return out, nil
 }

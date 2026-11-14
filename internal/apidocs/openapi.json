@@ -8245,9 +8245,15 @@
             "description": "intent=replace 时的当前版本 CAS 目标",
             "type": "string"
           },
+          "template_digest": {
+            "type": "string"
+          },
           "template_id": {
             "type": "string",
             "minLength": 1
+          },
+          "template_version": {
+            "type": "string"
           }
         },
         "required": [
@@ -10955,6 +10961,12 @@
           "replayed": {
             "type": "boolean"
           },
+          "template_digest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "template_id": {
             "type": "string"
           },
@@ -11164,7 +11176,8 @@
               "policy",
               "guidance",
               "exception",
-              "experience"
+              "experience",
+              "template"
             ]
           },
           "knowledge_id": {
@@ -11211,6 +11224,9 @@
           },
           "summary": {
             "type": "string"
+          },
+          "template": {
+            "$ref": "#/components/schemas/GovernedTextTemplate"
           },
           "title": {
             "type": "string"
@@ -11718,6 +11734,25 @@
           "snapshot_sha256",
           "compiler_ref",
           "pointer_revision"
+        ],
+        "additionalProperties": false
+      },
+      "GovernedTextTemplate": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemplateField"
+            }
+          }
+        },
+        "required": [
+          "body",
+          "fields"
         ],
         "additionalProperties": false
       },
@@ -19656,11 +19691,19 @@
           "name": {
             "type": "string"
           },
+          "source": {
+            "type": "string",
+            "enum": [
+              "builtin",
+              "tenant"
+            ]
+          },
           "version": {
             "type": "string"
           }
         },
         "required": [
+          "source",
           "id",
           "name",
           "version",
@@ -38441,6 +38484,15 @@
         ],
         "summary": "列出模板",
         "description": "返回模板版本和字段定义。模板版本不会被改写；生成草稿时保存 template_id、version 和 digest。",
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "模板列表",

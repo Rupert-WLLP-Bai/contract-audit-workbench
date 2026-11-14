@@ -121,6 +121,12 @@ func restoreReviewReceiptVersionForTest(t *testing.T, ctx context.Context, pool 
 			t.Fatal(err)
 		}
 	}
+	// Reconstruct the pre-47 generation and Knowledge schema before replay.
+	if _, err := tx.Exec(ctx, `ALTER TABLE business_generations DROP COLUMN template_digest;
+		ALTER TABLE governed_knowledge_versions DROP CONSTRAINT governed_knowledge_versions_kind_check;
+		ALTER TABLE governed_knowledge_versions ADD CONSTRAINT governed_knowledge_versions_kind_check CHECK (kind IN ('policy','guidance','exception','experience','legal'))`); err != nil {
+		t.Fatal(err)
+	}
 	// Remove migration 46 objects before replaying from the historical version.
 	if _, err := tx.Exec(ctx, `DROP FUNCTION fulfillment_reminder_enqueue(text,uuid,uuid,text,text,text,bigint,text,text,integer,integer,integer,integer,boolean);
         DROP FUNCTION fulfillment_reminder_cancel_job(text,uuid,uuid);

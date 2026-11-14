@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/http"
 
+	"contractaudit/internal/contracttemplate"
 	"contractaudit/internal/model"
 	"contractaudit/internal/operationauthority"
 	"contractaudit/internal/store"
@@ -147,5 +148,28 @@ func documentOperationTicketHandler(st *store.Store, credential string) http.Han
 			return
 		}
 		writeJSON(w, 200, map[string]string{"ticket": ticket})
+	}
+}
+
+func documentTemplatesHandler(st *store.Store, credential string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		if r.Method != http.MethodPost || r.URL.RawQuery != "" || !claimAuthorityBearer(r.Header.Values("Authorization"), credential) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		var in contracttemplate.ResolveRequest
+		d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384))
+		d.DisallowUnknownFields()
+		if d.Decode(&in) != nil || d.Decode(new(any)) != io.EOF || in.CaseID == "" || (in.ID == "") != (in.Version == "") || (in.ID == "") != (in.Digest == "") {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		items, err := st.ResolveDocumentTemplates(r.Context(), in.SessionDigest, in.ContextVersion, in.CaseID, in.ID, in.Version, in.Digest)
+		if err != nil {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		writeJSON(w, http.StatusOK, items)
 	}
 }

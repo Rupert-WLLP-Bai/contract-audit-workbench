@@ -282,3 +282,33 @@ func TestAttemptOutputHashPreservesNilAndEmptySlices(t *testing.T) {
 		t.Fatal("nil and empty output slices collapsed to one frozen identity")
 	}
 }
+
+func TestFrozenInputTemplateProvenancePreservesLegacyWireAndChangesHash(t *testing.T) {
+	doc := FrozenDocument[hashTestOriginal]{Document: hashTestOriginal{ID: "doc", Digest: "body"}}
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const legacy = `{"document":{"id":"doc","digest":"body"},"ready":false,"from_ocr":false,"parse_error":"","text":"","ir":{"CoordinateSpace":"","NormalizedText":"","NormalizedDigest":"","ExtractionVersion":"","Pages":null,"Blocks":null,"Cells":null,"Clauses":null},"original_hash":"","normalized_hash":null,"parser_ref":""}`
+	if string(raw) != legacy {
+		t.Fatalf("legacy document wire changed: %s", raw)
+	}
+	snapshot := RunSnapshot[hashTestParty, hashTestKnowledge, hashTestOperator]{}
+	first, err := FrozenInputHash(snapshot, []FrozenDocument[hashTestOriginal]{doc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc.Template = &FrozenTemplateRef{ID: "template", Version: "v1", Digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	second, err := FrozenInputHash(snapshot, []FrozenDocument[hashTestOriginal]{doc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc.Template.Digest = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	third, err := FrozenInputHash(snapshot, []FrozenDocument[hashTestOriginal]{doc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second || second == third {
+		t.Fatal("template provenance did not change frozen input hash")
+	}
+}

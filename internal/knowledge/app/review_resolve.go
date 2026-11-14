@@ -70,7 +70,7 @@ func ResolveCurrent(ctx context.Context, repo ReviewRepository, facts ReviewFact
 			return ReviewSnapshot{}, fault.Conflict("无法解析生效制度的编号或内容")
 		}
 		v := loaded.Version
-		if v.Content.Kind == "legal" {
+		if v.Content.Kind == "legal" || v.Content.Kind == "template" {
 			continue
 		}
 		applies, err := model.KnowledgeApplies(v.Content, in.Case, in.BusinessAt)

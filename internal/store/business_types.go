@@ -14,6 +14,7 @@ import "encoding/json"
 
 // Template is one immutable, versioned document generator.
 type Template struct {
+	Source  string          `json:"source"`
 	ID      string          `json:"id"`
 	Name    string          `json:"name"`
 	Version string          `json:"version"`
@@ -29,15 +30,16 @@ type TemplateField struct {
 }
 
 type GenerationRecord struct {
-	ID              string `json:"id"`
-	DocumentID      string `json:"document_id"`
-	MaterialID      string `json:"material_id"`
-	Version         int    `json:"version"`
-	Replayed        bool   `json:"replayed"`
-	TemplateID      string `json:"template_id"`
-	TemplateVersion string `json:"template_version"`
-	Digest          string `json:"digest"`
-	CreatedAt       string `json:"created_at"`
+	ID              string  `json:"id"`
+	DocumentID      string  `json:"document_id"`
+	MaterialID      string  `json:"material_id"`
+	Version         int     `json:"version"`
+	Replayed        bool    `json:"replayed"`
+	TemplateID      string  `json:"template_id"`
+	TemplateVersion string  `json:"template_version"`
+	TemplateDigest  *string `json:"template_digest,omitempty"`
+	Digest          string  `json:"digest"`
+	CreatedAt       string  `json:"created_at"`
 }
 
 type Remediation struct {

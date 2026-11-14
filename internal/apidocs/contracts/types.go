@@ -2415,11 +2415,16 @@ type GovernedKnowledgeBinding struct {
 	Candidate_diff          string                        `json:"candidate_diff" openapi:"{\"type\":\"string\"}"`
 	Validation_evidence     string                        `json:"validation_evidence" openapi:"{\"type\":\"string\"}"`
 }
+type GovernedTextTemplate struct {
+	Body   string          `json:"body" openapi:"{\"type\":\"string\"}"`
+	Fields []TemplateField `json:"fields" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/TemplateField\"}"`
+}
 type GovernedKnowledgeContent struct {
+	Template                 *GovernedTextTemplate        `json:"template,omitempty" openapi:"{\"$ref\":\"#/components/schemas/GovernedTextTemplate\"}"`
 	Encoding                 string                       `json:"encoding,omitempty" openapi:"{\"type\":\"string\"}"`
 	Knowledge_id             string                       `json:"knowledge_id" openapi:"{\"type\":\"string\"}"`
 	Version                  string                       `json:"version" openapi:"{\"type\":\"string\"}"`
-	Kind                     string                       `json:"kind" openapi:"{\"type\":\"string\",\"enum\":[\"policy\",\"guidance\",\"exception\",\"experience\"]}"`
+	Kind                     string                       `json:"kind" openapi:"{\"type\":\"string\",\"enum\":[\"policy\",\"guidance\",\"exception\",\"experience\",\"template\"]}"`
 	Title                    string                       `json:"title" openapi:"{\"type\":\"string\"}"`
 	Body                     string                       `json:"body" openapi:"{\"type\":\"string\"}"`
 	Summary                  string                       `json:"summary" openapi:"{\"type\":\"string\"}"`
@@ -2758,6 +2763,7 @@ type WorkbenchMember struct {
 	Org_id       string `json:"org_id" openapi:"{\"type\":\"string\"}"`
 }
 type Template struct {
+	Source  string          `json:"source" openapi:"{\"type\":\"string\",\"enum\":[\"builtin\",\"tenant\"]}"`
 	Id      string          `json:"id" openapi:"{\"type\":\"string\"}"`
 	Name    string          `json:"name" openapi:"{\"type\":\"string\"}"`
 	Version string          `json:"version" openapi:"{\"type\":\"string\"}"`
@@ -2774,6 +2780,8 @@ type TemplateList struct {
 	Items []Template `json:"items" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/Template\"}"`
 }
 type CreateGenerationRequest struct {
+	Template_version     string         `json:"template_version,omitempty" openapi:"{\"type\":\"string\"}"`
+	Template_digest      string         `json:"template_digest,omitempty" openapi:"{\"type\":\"string\"}"`
 	Template_id          string         `json:"template_id" openapi:"{\"type\":\"string\",\"minLength\":1}"`
 	Fields               map[string]any `json:"fields" openapi:"{\"type\":\"object\",\"additionalProperties\":{\"type\":\"string\"}}"`
 	Intent               string         `json:"intent,omitempty" openapi:"{\"type\":\"string\",\"enum\":[\"add\",\"replace\"],\"default\":\"add\"}"`
@@ -2781,15 +2789,16 @@ type CreateGenerationRequest struct {
 	Replaces_document_id string         `json:"replaces_document_id,omitempty" openapi:"{\"type\":\"string\",\"description\":\"intent=replace 时的当前版本 CAS 目标\"}"`
 }
 type GenerationRecord struct {
-	Id               string `json:"id" openapi:"{\"type\":\"string\"}"`
-	Document_id      string `json:"document_id" openapi:"{\"type\":\"string\"}"`
-	Material_id      string `json:"material_id" openapi:"{\"type\":\"string\"}"`
-	Version          int64  `json:"version" openapi:"{\"type\":\"integer\",\"minimum\":1}"`
-	Replayed         bool   `json:"replayed" openapi:"{\"type\":\"boolean\"}"`
-	Template_id      string `json:"template_id" openapi:"{\"type\":\"string\"}"`
-	Template_version string `json:"template_version" openapi:"{\"type\":\"string\"}"`
-	Digest           string `json:"digest" openapi:"{\"type\":\"string\"}"`
-	Created_at       string `json:"created_at" openapi:"{\"type\":\"string\"}"`
+	Template_digest  *string `json:"template_digest,omitempty" openapi:"{\"type\":[\"string\",\"null\"]}"`
+	Id               string  `json:"id" openapi:"{\"type\":\"string\"}"`
+	Document_id      string  `json:"document_id" openapi:"{\"type\":\"string\"}"`
+	Material_id      string  `json:"material_id" openapi:"{\"type\":\"string\"}"`
+	Version          int64   `json:"version" openapi:"{\"type\":\"integer\",\"minimum\":1}"`
+	Replayed         bool    `json:"replayed" openapi:"{\"type\":\"boolean\"}"`
+	Template_id      string  `json:"template_id" openapi:"{\"type\":\"string\"}"`
+	Template_version string  `json:"template_version" openapi:"{\"type\":\"string\"}"`
+	Digest           string  `json:"digest" openapi:"{\"type\":\"string\"}"`
+	Created_at       string  `json:"created_at" openapi:"{\"type\":\"string\"}"`
 }
 type Remediation struct {
 	Id                      string   `json:"id" openapi:"{\"type\":\"string\"}"`
@@ -4509,6 +4518,7 @@ var SchemaRules = map[string]string{
 	"GovernedKnowledgeCondition":             "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"field\",\"equals\"]}",
 	"GovernedKnowledgeSourceSpan":            "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"rule_id\",\"start\",\"end\",\"quote\"]}",
 	"GovernedKnowledgeBinding":               "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"pack_id\",\"pack_version\",\"pack_content_hash\",\"pack_snapshot_digest\",\"compiler_ref\",\"rule_ids\",\"source_spans\",\"candidate_diff\",\"validation_evidence\"]}",
+	"GovernedTextTemplate":                   "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"body\",\"fields\"]}",
 	"GovernedKnowledgeContent":               "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"knowledge_id\",\"version\",\"kind\",\"title\",\"body\",\"summary\",\"source_type\",\"source_reference\",\"scope\",\"valid_from\",\"valid_until\",\"binding\"]}",
 	"GovernedKnowledgeCreateRequest":         "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"content\"]}",
 	"GovernedKnowledgeCommandRequest":        "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"action\",\"expected_revision\",\"expected_content_sha256\",\"reason\"]}",
@@ -4539,7 +4549,7 @@ var SchemaRules = map[string]string{
 	"WorkbenchRemediation":                   "{\"type\":\"object\",\"required\":[\"id\",\"case_id\",\"run_id\",\"attempt_id\",\"finding_ids\",\"measure\",\"status\",\"version\",\"document_ids\",\"reason\",\"created_at\",\"updated_at\",\"case_title\"],\"additionalProperties\":false}",
 	"WorkbenchReport":                        "{\"type\":\"object\",\"required\":[\"id\",\"version\",\"run_id\",\"attempt_id\",\"input_hash\",\"output_hash\",\"decision_snapshot_hash\",\"digest\",\"created_at\",\"case_title\",\"case_id\"],\"additionalProperties\":false}",
 	"WorkbenchMember":                        "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"id\",\"display_name\",\"role\",\"tenant_id\",\"org_id\"]}",
-	"Template":                               "{\"type\":\"object\",\"required\":[\"id\",\"name\",\"version\",\"digest\",\"fields\"],\"additionalProperties\":false}",
+	"Template":                               "{\"type\":\"object\",\"required\":[\"source\",\"id\",\"name\",\"version\",\"digest\",\"fields\"],\"additionalProperties\":false}",
 	"TemplateField":                          "{\"type\":\"object\",\"required\":[\"key\",\"label\",\"required\",\"type\"],\"additionalProperties\":false}",
 	"TemplateList":                           "{\"type\":\"object\",\"required\":[\"items\"],\"additionalProperties\":false}",
 	"CreateGenerationRequest":                "{\"type\":\"object\",\"required\":[\"template_id\",\"fields\"],\"additionalProperties\":false}",
@@ -4962,6 +4972,7 @@ func Types() map[string]reflect.Type {
 		"GovernedKnowledgeCondition":             reflect.TypeFor[GovernedKnowledgeCondition](),
 		"GovernedKnowledgeSourceSpan":            reflect.TypeFor[GovernedKnowledgeSourceSpan](),
 		"GovernedKnowledgeBinding":               reflect.TypeFor[GovernedKnowledgeBinding](),
+		"GovernedTextTemplate":                   reflect.TypeFor[GovernedTextTemplate](),
 		"GovernedKnowledgeContent":               reflect.TypeFor[GovernedKnowledgeContent](),
 		"GovernedKnowledgeCreateRequest":         reflect.TypeFor[GovernedKnowledgeCreateRequest](),
 		"GovernedKnowledgeCommandRequest":        reflect.TypeFor[GovernedKnowledgeCommandRequest](),

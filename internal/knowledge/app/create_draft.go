@@ -277,7 +277,7 @@ func CreateGovernedKnowledge(ctx context.Context, repository CreateDraftReposito
 	if err := repository.InsertInitialState(ctx, identity, content.KnowledgeID, versionID); err != nil {
 		return model.GovernedKnowledgeVersion{}, err
 	}
-	if content.Kind != "legal" {
+	if content.Kind != "legal" && content.Kind != "template" {
 		if err := repository.InsertPolicyBinding(ctx, identity, content, versionID, binding); err != nil {
 			return model.GovernedKnowledgeVersion{}, err
 		}

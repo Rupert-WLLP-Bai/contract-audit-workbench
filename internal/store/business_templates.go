@@ -76,7 +76,7 @@ func versionedTemplate(id, name, version string, sourceFields []TemplateField, s
 		Source  string          `json:"source"`
 	}{ID: id, Version: version, Fields: fields, Source: source})
 	digest := sha256.Sum256(identity)
-	return Template{ID: id, Name: name, Version: version, Digest: hex.EncodeToString(digest[:]), Fields: fields}
+	return Template{Source: "builtin", ID: id, Name: name, Version: version, Digest: hex.EncodeToString(digest[:]), Fields: fields}
 }
 
 func renderBusinessTemplate(templateID string, input map[string]string) ([]byte, error) {

@@ -13,6 +13,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -20,6 +21,7 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/contracttemplate"
 	"contractaudit/internal/docversion"
 	"contractaudit/internal/fault"
 
@@ -278,11 +280,12 @@ func (s *Store) Generate(ctx context.Context, user accounts.User, caseID, templa
 }
 
 func (s *Store) GenerateWithOptions(ctx context.Context, user accounts.User, caseID, templateID string, fields map[string]string, options MaterialUploadOptions) (GenerationRecord, error) {
+	return s.GenerateWithTemplateOptions(ctx, user, caseID, templateID, "", "", fields, options)
+}
+
+// GenerateWithTemplateOptions pins an explicitly selected governed template.
+func (s *Store) GenerateWithTemplateOptions(ctx context.Context, user accounts.User, caseID, templateID, templateVersion, templateDigest string, fields map[string]string, options MaterialUploadOptions) (GenerationRecord, error) {
 	ctx = commandContext(ctx, user)
-	currentUser, caseItem, body, err := s.prepareBusinessGeneration(ctx, user, caseID, templateID, fields)
-	if err != nil {
-		return GenerationRecord{}, err
-	}
 	if err := validateMaterialUploadOptions(options); err != nil {
 		return GenerationRecord{}, fault.Invalid(err.Error())
 	}
@@ -293,14 +296,83 @@ func (s *Store) GenerateWithOptions(ctx context.Context, user accounts.User, cas
 	if len(options.IdempotencyKey) > 200 || strings.ContainsAny(options.IdempotencyKey, "\r\n\x00") {
 		return GenerationRecord{}, fault.Invalid("Idempotency-Key无效")
 	}
+	currentUser, caseItem, err := s.documentWriteCase(ctx, user, caseID, access.Review)
+	if err != nil {
+		return GenerationRecord{}, err
+	}
+	if err = businessWritable(caseItem); err != nil {
+		return GenerationRecord{}, err
+	}
+	if err = requireCaseAction(caseItem, currentUser, access.Review); err != nil {
+		return GenerationRecord{}, err
+	}
 	requestHash := [32]byte{}
+	explicitReference := templateVersion != "" && templateDigest != ""
+	if explicitReference && options.IdempotencyKey != "" {
+		encoded, _ := json.Marshal(struct {
+			Actor, Case, Template, Version, Digest string
+			Fields                                 map[string]string
+			Options                                MaterialUploadOptions
+		}{currentUser.ID, caseID, templateID, templateVersion, templateDigest, fields, options})
+		requestHash = sha256.Sum256(encoded)
+		priorState, e := s.snapshotScoped(ctx, userScope(currentUser))
+		if e != nil {
+			return GenerationRecord{}, e
+		}
+		for _, prior := range priorState.UploadIdempotency {
+			if prior.CaseID != caseID || prior.ActorID != currentUser.ID || prior.Key != options.IdempotencyKey {
+				continue
+			}
+			if !bytes.Equal(prior.RequestHash, requestHash[:]) {
+				return GenerationRecord{}, fault.Conflict("Idempotency-Key已用于不同生成内容")
+			}
+			for _, generation := range priorState.Generations {
+				if generation.CaseID == caseID && generation.Record.DocumentID == prior.DocumentID {
+					record := generationRecordWithMaterial(&priorState, generation.Record)
+					if record.TemplateID != templateID || record.TemplateVersion != templateVersion || record.TemplateDigest == nil || *record.TemplateDigest != templateDigest {
+						return GenerationRecord{}, fault.Conflict("生成回执的范本身份不一致")
+					}
+					var replay GenerationRecord
+					err = s.scopedCaseMutation(ctx, currentUser, caseID, func(next *state) error {
+						currentCase, e := s.requireBusinessWrite(next, currentUser, caseID)
+						if e != nil {
+							return e
+						}
+						if e = allowBusinessGeneration(currentUser, currentCase); e != nil {
+							return e
+						}
+						for _, receipt := range next.UploadIdempotency {
+							if receipt.CaseID == caseID && receipt.ActorID == currentUser.ID && receipt.Key == options.IdempotencyKey && receipt.DocumentID == record.DocumentID && bytes.Equal(receipt.RequestHash, requestHash[:]) {
+								for _, g := range next.Generations {
+									if g.CaseID == caseID && g.Record.DocumentID == record.DocumentID && g.Record.TemplateID == templateID && g.Record.TemplateVersion == templateVersion && g.Record.TemplateDigest != nil && *g.Record.TemplateDigest == templateDigest {
+										replay = generationRecordWithMaterial(next, g.Record)
+										replay.Replayed = true
+										return nil
+									}
+								}
+							}
+						}
+						return fault.Conflict("生成回执已改变")
+					})
+					return replay, err
+				}
+			}
+			return GenerationRecord{}, errors.New("generation idempotency record has no generation")
+		}
+	}
+	currentUser, caseItem, body, selected, err := s.prepareBusinessGeneration(ctx, user, caseID, templateID, templateVersion, templateDigest, fields)
+	if err != nil {
+		return GenerationRecord{}, err
+	}
 	replayCandidate := false
 	if options.IdempotencyKey != "" {
-		filename, _ := businessDraftIdentity(templateID)
-		requestHash = uploadRequestHash("generation", currentUser.ID, caseID, "draft_contract", "primary_contract", filename, "text/plain", body, options)
-		priorState, err := s.snapshotScoped(ctx, userScope(currentUser))
-		if err != nil {
-			return GenerationRecord{}, err
+		if !explicitReference {
+			filename, _ := businessDraftIdentity(templateID)
+			requestHash = uploadRequestHash("generation", currentUser.ID, caseID, "draft_contract", "primary_contract", filename, "text/plain", body, options)
+		}
+		priorState, e := s.snapshotScoped(ctx, userScope(currentUser))
+		if e != nil {
+			return GenerationRecord{}, e
 		}
 		for _, prior := range priorState.UploadIdempotency {
 			if prior.CaseID == caseID && prior.ActorID == currentUser.ID && prior.Key == options.IdempotencyKey {
@@ -314,6 +386,10 @@ func (s *Store) GenerateWithOptions(ctx context.Context, user accounts.User, cas
 	prepared := preparedBusinessGeneration{}
 	if !replayCandidate {
 		prepared, err = s.buildBusinessGeneration(ctx, caseItem, caseID, templateID, body)
+		if err == nil {
+			prepared.record.TemplateVersion = selected.Version
+			prepared.record.TemplateDigest = new(selected.Digest)
+		}
 		if err != nil {
 			return GenerationRecord{}, err
 		}
@@ -386,29 +462,46 @@ type preparedBusinessGeneration struct {
 	requestHash [32]byte
 }
 
-func (s *Store) prepareBusinessGeneration(ctx context.Context, user accounts.User, caseID, templateID string, fields map[string]string) (accounts.User, Case, []byte, error) {
+func (s *Store) prepareBusinessGeneration(ctx context.Context, user accounts.User, caseID, templateID, version, digest string, fields map[string]string) (accounts.User, Case, []byte, Template, error) {
 	ctx = commandContext(ctx, user)
 	current, item, err := s.documentWriteCase(ctx, user, caseID, access.Review)
 	if err != nil {
-		return accounts.User{}, Case{}, nil, err
+		return accounts.User{}, Case{}, nil, Template{}, err
 	}
 	if err := businessWritable(item); err != nil {
-		return accounts.User{}, Case{}, nil, err
+		return accounts.User{}, Case{}, nil, Template{}, err
 	}
 	if err := requireCaseAction(item, current, access.Review); err != nil {
-		return accounts.User{}, Case{}, nil, err
+		return accounts.User{}, Case{}, nil, Template{}, err
 	}
-	if !businessTemplateMatches(item, templateID) {
-		return accounts.User{}, Case{}, nil, fault.Invalid("合同模板与案件业务场景不匹配")
+	for _, builtin := range s.Templates() {
+		if builtin.ID != templateID {
+			continue
+		}
+		if !businessTemplateMatches(item, templateID) || (version != "" && version != builtin.Version) || (digest != "" && digest != builtin.Digest) {
+			return accounts.User{}, Case{}, nil, Template{}, fault.Invalid("合同模板与案件业务场景或版本不匹配")
+		}
+		body, e := renderBusinessTemplate(templateID, fields)
+		return current, item, body, builtin, e
 	}
-	body, err := renderBusinessTemplate(templateID, fields)
+	if templateID == "" || version == "" || digest == "" {
+		return accounts.User{}, Case{}, nil, Template{}, fault.Invalid("必须指定范本的准确版本和摘要")
+	}
+	versions, err := s.documentTemplates(ctx, current, caseID, templateID, version, digest)
 	if err != nil {
-		return accounts.User{}, Case{}, nil, err
+		return accounts.User{}, Case{}, nil, Template{}, err
 	}
-	if len(body) > 20<<20 {
-		return accounts.User{}, Case{}, nil, fault.TooLarge("生成的合同草稿超过 20MB")
+	if len(versions) != 1 || versions[0].ID != templateID || versions[0].Version != version || versions[0].Digest != digest {
+		return accounts.User{}, Case{}, nil, Template{}, fault.Conflict("正文范本身份不一致")
 	}
-	return current, item, body, nil
+	text, err := contracttemplate.Render(versions[0].Content, fields)
+	if err != nil {
+		return accounts.User{}, Case{}, nil, Template{}, fault.Invalid("正文范本字段无效")
+	}
+	if len(text) > 20<<20 {
+		return accounts.User{}, Case{}, nil, Template{}, fault.TooLarge("生成的合同草稿超过 20MB")
+	}
+	return current, item, []byte(text), Template{ID: templateID, Version: version, Digest: digest, Source: "tenant"}, nil
 }
 
 func businessTemplateMatches(item Case, templateID string) bool {
@@ -426,6 +519,9 @@ func (s *Store) buildBusinessGeneration(ctx context.Context, item Case, caseID, 
 		return preparedBusinessGeneration{}, err
 	}
 	filename, templateVersion := businessDraftIdentity(templateID)
+	if !contracttemplate.ReservedID(templateID) {
+		filename = "contract-template-draft.txt"
+	}
 	media := "text/plain"
 	version, err := docversion.New(documentID, docversion.Source{Origin: "generated", Filename: filename, MediaType: media}, body)
 	if err != nil {

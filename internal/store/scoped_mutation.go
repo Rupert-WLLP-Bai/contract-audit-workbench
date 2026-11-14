@@ -520,7 +520,7 @@ func (s *Store) loadScopedCaseState(ctx context.Context, tx pgx.Tx, caseID strin
 	}
 	if ownedTable(s.serviceOwner, "business_generations") {
 		generationRows, err := tx.Query(ctx, `SELECT g.id, g.tenant_id, g.org_id, g.case_id, g.document_id, g.template_id, g.template_version,
-			g.digest, d.digest, g.created_at FROM business_generations g JOIN documents d
+			g.digest, d.digest, g.created_at, g.template_digest FROM business_generations g JOIN documents d
 			ON d.tenant_id=g.tenant_id AND d.org_id=g.org_id AND d.case_id=g.case_id AND d.id=g.document_id
 			WHERE g.case_id=$1 AND g.tenant_id=$2 AND g.org_id=$3 ORDER BY g.seq`, caseID, caseItem.TenantID, caseItem.OwnerOrgID)
 		if err != nil {
@@ -532,7 +532,7 @@ func (s *Store) loadScopedCaseState(ctx context.Context, tx pgx.Tx, caseID strin
 			var documentDigest string
 			if err := generationRows.Scan(&item.Record.ID, &item.TenantID, &item.OrgID, &item.CaseID,
 				&item.Record.DocumentID, &item.Record.TemplateID, &item.Record.TemplateVersion,
-				&item.Record.Digest, &documentDigest, &item.Record.CreatedAt); err != nil {
+				&item.Record.Digest, &documentDigest, &item.Record.CreatedAt, &item.Record.TemplateDigest); err != nil {
 				return state{}, err
 			}
 			if item.Record.Digest != documentDigest {
