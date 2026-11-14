@@ -345,15 +345,6 @@ func nullableKnowledgeID(value string) any {
 	return value
 }
 
-func insertKnowledgeHistory(ctx context.Context, tx pgx.Tx, tenant string, entry GovernedKnowledgeHistoryEntry) error {
-	_, err := tx.Exec(ctx, `INSERT INTO governed_knowledge_history
-		(tenant_id,knowledge_id,version_id,action,revision,pointer_revision,actor_id,reason,content_sha256,previous_version_id,previous_active,resulting_version_id,resulting_active,occurred_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,clock_timestamp())`, tenant, entry.Ref.KnowledgeID, entry.Ref.VersionID,
-		entry.Action, entry.Revision, entry.PointerRevision, entry.ActorID, entry.Reason, entry.Ref.ContentSHA256, entry.PreviousVersionID,
-		entry.PreviousActive, entry.ResultingVersionID, entry.ResultingActive)
-	return err
-}
-
 // CreateGovernedKnowledge persists a new immutable draft, never mutating or
 // automatically approving a legacy version. Tenant and actor are directory-bound.
 func (s *Store) CreateGovernedKnowledge(user accounts.User, input CreateGovernedKnowledgeInput) (GovernedKnowledgeVersion, error) {
