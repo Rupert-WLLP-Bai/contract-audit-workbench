@@ -365,3 +365,27 @@ Decision 在全部校验后依次生成 decisionID、取 UTC 微秒 now、approv
 本域读取目录、精确 binding/snapshot、按 key 或 collectionID 的采集状态继续原授权、首错、时间与 partial out+err，通过 Operator 自有 PG 完成。必要 SOURCE 在真实会话和 Core operation authority 下触达事务 B：snapshot/observation 已写、原 claim/token/lease 精确有效后，用测试专用非事务 marker 证明最终 CAS 被拦并返回零行；比较 B 前后完整行及旧成功历史，按已有受控过期或测试显式 Release 恢复同 key，再证明 completed replay 不读 connector。复用已有 SOD、四 CAS、并发与接管矩阵，不重复镜像用例。
 
 实际实施按模型和 record、初始映射与读取/提案、决定、采集 A、事务外调用及 B/Release/读取、必要故障 SOURCE 串行，开始每段重新核对实际 API。元信息头部/manifest、所有测试、编译、go list、门禁、数据库、app/browser、模型/OCR 仍待全轮源码冻结后统一执行，当前 NOT_RUN。#183 真实接入保持 NOT_APPLICABLE，#95/#99 外部专业/试用/交接继续暂缓。
+
+## #311 冻结多对象评估与影响计划的接缝
+
+状态：采纳，实施前决策。基于 #310 已审源码候选 `a3cc29697a6c06f97efb67f7a85c39470088a2f3`，其绑定、映射、采集与精确读取已实际接入 Operator；schema45、五个服务角色及12个已登记领域不变。迁移现有能力，不新增实时接入或平台。
+
+Operator 拥有现有核验 scope、DTO、候选与 coverage、冻结事实至 auditext 的精确数值转换、历史观察过滤、单对象及整案评估编排、Impact fallback 和自有记录读取/追加。复用现有 auditext.Evaluator、ImpactPlanner、Execution model 具体冻结值与纯哈希、已落地 Operator binding/snapshot 端口及 caller-bound executor，不新增领域、schema、角色、真实外部接入、外部写回或平台。Store 保留当前受信身份、Case 权限、RLS、原事务/锁/提交与精确 Document/Execution 证明能力。
+
+公开 Evaluation DTO 与独立 `EvaluationRecord{Value,RequestSHA256}` 分离；私有 SHA 不进入响应 JSON 或公开回执。Store 继续直接 alias 同形公开值，真正比较请求摘要的消费者使用 record，公开读取仅解 Value。字段/tag/顺序、nil/空数组、RawMessage、SHA、时间、错误和 partial out+err 均保留。检查表为空时才回退 result_json；有 scope 时按 ordinal 读对象，逐行核事实/结果原字节摘要和 objectRef，只有最终 checks 为空时才核整批 objects 摘要，不能额外扩大旧完整性规则。
+
+允许复用并细化 #309 已采纳的 typed frozen facts：指定 run/attempt、input、snapshot、selection、ordered findings/evaluations、精确 Agent review digest；Document 继续提供指定 frozen 原件/parse 的已有 IO/引用证明及 telecomSource，不用最新解析替换。原件仅通过 Execution 的有界泛型完整编码和 OriginalProof 七项标识读取，不把 Store.state、Case、Document 实体、pgx.Tx/SQL/pool 或整个旧 validator/aggregate/Impact 函数交给 app。app 依原阶段组合这些事实并执行真实终态、input/output、RulePack、候选/时间/association/facts 规则。
+
+保留两套实际冻结证明协议：外层 `validateFrozenTerminalAttempt` 的既有 Agent digest 读取路径、逐层错误和 input 不存在/不符的不同首错，与整案锁内 `validateOperatorFrozenAttempt` 的同事务 digest、合并输出错误及精确 input/output hashes 对照不同。可共享 Execution 纯规则和窄事实实现，不因抽取统一为 Preview 的查询时点或错误文案。Supplement 提取仍只用旧业务属性 Request，不附加 Preview 的 grant/Now；显式单 source 检查保留。
+
+准许 Store 为指定 association.SourceAttemptID 提供原精确 attempt-input 的 frozen documents，只读现有 snapshot，不枚举其他尝试或查询最新 parse。Operator app 自行核 source run、合同 purpose/role、material/version/document/parse、原件及 parse 获得时间与 cutoff；冻结 documents 保持原序，首个匹配即返回时间判断，不跳过首个不合时点的匹配再找后项；不能将整个 `operatorAssociationEvidenceBeforeCutoff` 业务判断当 proof callback。整案候选从指定 frozen Documents 和指定 run/attempt 的有序 ConstraintEval.Evidence/ObjectRefs 生成；保留 missing、ambiguous、未就绪、不适用和 insufficient，Supplement 合并、registered union、排序去重后才判 100 上限。
+
+单对象路径保持外层 key/evaluator/scope/pack/businessAt/cutoff/当前 Case Review/scenario 与初次幂等读取，再原多个精确 scoped reads、冻结证明和事实组装，核验器仍在写事务外。写事务二次回执同时比较 request SHA 和 result SHA，miss 依次 evaluation→checks→构造公开 out→对象计算与 INSERT；后续错误和 commit 失败继续返回原 partial out+err，不新增旧路径没有的 writable 或当前 Case Review 复验。
+
+整案路径保持锁前 frozen 证明、RulePack/contract source 核验及 request SHA；原写事务 schema advisory→case lock→scope 后先回执，再 loadState、当前 Case Review/writable、同事务 frozen input/output 复验。每对象核验器仍在该写事务内，普通核验不可用转换为对象 insufficient，未授权/无效结果/持久化错误才中断。按原 ordinal 追加 evaluation 和全部对象，最后构造 out，commit 错误保留 out+err。不得把 evaluator 调用移到事务外或把对象不足冒充整批回滚。
+
+Operator PG 只查询/追加自己的 evaluations、evaluation_objects、checks、impact_plans，以及已有 service-object、binding、mapping、snapshot/observations 事实；不读取 Case/Document/Execution/Audit 表或导入其他领域 PG，不设置 scope/身份或拥有事务。历史 object version 仍以 effective_from <= businessAt 过滤，再沿原 ORDER BY 将晚于 cutoff 的候选保留供 insufficient 分类，association 继续原 created/confirmed cutoff 排序优先，不用 WHERE 截掉；mapping 与 snapshot 保留各条旧显式 tenant/org 和 current_setting 范围、有效期及时间选择。app 承接多行逐条校验和组合，不在 PG adapter 判断全域业务。
+
+Impact 保留当前 Case Read→读事务 target/previous→提交→事务外 planner 或 baseline_missing 全量 fallback→另一个写事务 append ON CONFLICT DO NOTHING。planner nil 仍先于 baseline 发现失败；无 baseline 不调用 planner。原第二写事务只有 withOperatorTx 既有 trusted/role/scope/锁和正常会话 tenant_context_fence 的语句/提交围栏，没有第二次 Case Read，不在目录迁移中悄然加撤权检查；created_by 继续原 user.ID，写/commit 失败返回零 plan。两事务不声称同快照。
+
+必要 SOURCE 固定真实 Core/Document/Execution 会话和 authority：多对象合法前态、evaluation 与至少一个 object 已写后唯一强制失败及完整行/旧历史回滚、同键恢复；Impact planner 期间真实 membership grant/revision 变更后原第二事务的 context_stale 围栏行为（fresh 认证用于验证当前失权，不能拿旧 proof 假装 fresh）；新解析产生不同事实后仍使用 exact frozen parse。只补必要边界，复用既有矩阵。整轮源码冻结前所有测试、编译、go list、门禁、PG/app/browser 和真实模型/OCR均 NOT_RUN。#183 真实接入不再要求，#95/#99 外部专业/试用/交接继续暂缓。
