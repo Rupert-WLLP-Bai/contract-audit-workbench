@@ -7,8 +7,6 @@ import (
 	"contractaudit/internal/accounts"
 	contractapp "contractaudit/internal/contract/app"
 	clmcontract "contractaudit/internal/contract/model"
-	contractpostgres "contractaudit/internal/contract/postgres"
-	platformpostgres "contractaudit/internal/platform/postgres"
 
 	"github.com/jackc/pgx/v5"
 )

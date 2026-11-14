@@ -252,7 +252,7 @@ func equalPolicyThreshold(candidate PolicyThresholdCandidate, threshold rulepack
 }
 
 func CompareGovernedPolicyThresholds(content GovernedKnowledgeContent, manifest rulepack.Manifest) GovernedPolicyPreview {
-	candidates, issues, semantic := extractGovernedPolicyThresholds(content.Body)
+	candidates, issues, semantic := ExtractGovernedPolicyThresholds(content.Body)
 	preview := GovernedPolicyPreview{ExtractorRef: PolicyThresholdCompilerRef, Comparisons: []PolicyRuleComparison{}, Issues: issues, SemanticOnly: semantic, Approvable: true}
 	rules := make(map[string]rulepack.Rule, len(manifest.Rules))
 	for _, rule := range manifest.Rules {

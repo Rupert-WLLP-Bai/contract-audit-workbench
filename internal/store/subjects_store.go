@@ -184,13 +184,13 @@ func (s *Store) ListCaseSubjects(ctx context.Context, user accounts.User, caseID
 	if err := requireCaseAction(caseItem, current, access.Read); err != nil {
 		return CaseSubjectListProjection{}, err
 	}
-	profile, found := profileFor(st, *caseItem)
+	profile, found := profileFor(st, caseItem)
 	legacy := subjectApp.LegacyProfile{}
 	if found {
 		legacy = subjectApp.LegacyProfile{Found: true, Version: profile.Version, Customer: profile.Customer, Supplier: profile.Supplier}
 	}
 	snapshot := subjectCommandSnapshot(&st)
-	facts := subjectReadFacts(&st, current, s.ReadOnly(), *caseItem)
+	facts := subjectReadFacts(&st, current, s.ReadOnly(), caseItem)
 	return subjectApp.ProjectCaseSubjects(snapshot, subjectCommandActor(current), facts,
 		subjectApp.CaseIdentity{TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseItem.ID}, legacy), nil
 }

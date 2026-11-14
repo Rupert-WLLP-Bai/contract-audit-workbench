@@ -5538,6 +5538,180 @@
         ],
         "additionalProperties": false
       },
+      "ContractFact": {
+        "type": "object",
+        "properties": {
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContractFactsCitation"
+            },
+            "maxItems": 3
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "parties",
+              "contract_amount",
+              "tax_treatment",
+              "business_dates",
+              "term",
+              "payment_schedule",
+              "subject_matter",
+              "exceptions"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "known",
+              "unknown",
+              "conflicting"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 1200
+          }
+        },
+        "required": [
+          "field",
+          "status",
+          "value",
+          "citations"
+        ],
+        "additionalProperties": false
+      },
+      "ContractFactsCitation": {
+        "type": "object",
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "normalized_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "original_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "parsed_document_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "document_id",
+          "parsed_document_id",
+          "original_digest",
+          "normalized_digest",
+          "quote",
+          "start",
+          "end"
+        ],
+        "additionalProperties": false
+      },
+      "ContractFactsProjection": {
+        "type": "object",
+        "properties": {
+          "attempt_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContractFact"
+            },
+            "minItems": 8,
+            "maxItems": 8
+          },
+          "input_codepoints": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32000
+          },
+          "input_truncated": {
+            "type": "boolean"
+          },
+          "schema_version": {
+            "type": "string",
+            "const": "contract-facts/v1"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ContractFactsSource"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "suggested",
+              "partial"
+            ]
+          },
+          "structured_output_status": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "invalid",
+              "not_returned"
+            ]
+          }
+        },
+        "required": [
+          "schema_version",
+          "attempt_id",
+          "status",
+          "structured_output_status",
+          "source",
+          "input_codepoints",
+          "input_truncated",
+          "fields"
+        ],
+        "additionalProperties": false
+      },
+      "ContractFactsSource": {
+        "type": "object",
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "normalized_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "original_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "parsed_document_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "document_id",
+          "parsed_document_id",
+          "original_digest",
+          "normalized_digest"
+        ],
+        "additionalProperties": false
+      },
       "ContractFulfillmentItemSummary": {
         "type": "object",
         "properties": {
@@ -21690,6 +21864,17 @@
               "$ref": "#/components/schemas/BusinessAuditEvent"
             }
           },
+          "contract_facts": {
+            "description": "单合同事实建议；独立于五域审查，不构成风险结论。",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContractFactsProjection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "documents": {
             "type": "array",
             "items": {
@@ -21826,6 +22011,7 @@
           "execution",
           "review_attempts",
           "agent_review",
+          "contract_facts",
           "business_events"
         ],
         "additionalProperties": false

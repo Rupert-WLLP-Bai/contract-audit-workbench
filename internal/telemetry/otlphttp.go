@@ -12,7 +12,6 @@ package telemetry
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"mime"
 	"net/http"

@@ -77,7 +77,7 @@ func HistoryLimit(limit int) (int, error) {
 
 func EncodeInboxCursor(current accounts.User, view string, key time.Time, id string) string {
 	raw, _ := json.Marshal(InboxCursor{
-		Version: InboxCursorVersion, TenantID: accounts.Tenant(current), ActorID: current.ID,
+		Version: approvalInboxCursorVersion, TenantID: accounts.Tenant(current), ActorID: current.ID,
 		View: view, Key: key.UTC(), ID: id,
 	})
 	return base64.RawURLEncoding.EncodeToString(raw)
@@ -87,13 +87,13 @@ func DecodeInboxCursor(value string, current accounts.User, view string) (*Inbox
 	if value == "" {
 		return nil, nil
 	}
-	if len(value) > InboxCursorMaxBytes {
+	if len(value) > approvalInboxCursorMaxBytes {
 		return nil, fault.Invalid("待办分页游标无效")
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(value)
 	var cursor InboxCursor
 	if err != nil || json.Unmarshal(raw, &cursor) != nil ||
-		cursor.Version != InboxCursorVersion || cursor.TenantID != accounts.Tenant(current) ||
+		cursor.Version != approvalInboxCursorVersion || cursor.TenantID != accounts.Tenant(current) ||
 		cursor.ActorID != current.ID || cursor.View != view || cursor.Key.IsZero() ||
 		!contract.ValidContractUUID(cursor.ID) {
 		return nil, fault.Invalid("待办分页游标无效")
@@ -103,7 +103,7 @@ func DecodeInboxCursor(value string, current accounts.User, view string) (*Inbox
 
 func EncodeRoundCursor(current accounts.User, contractID string, lastRound int) string {
 	raw, _ := json.Marshal(RoundCursor{
-		Version: RoundCursorVersion, TenantID: accounts.Tenant(current), ActorID: current.ID,
+		Version: approvalRoundCursorVersion, TenantID: accounts.Tenant(current), ActorID: current.ID,
 		ContractID: contractID, LastRoundNum: lastRound,
 	})
 	return base64.RawURLEncoding.EncodeToString(raw)
@@ -113,13 +113,13 @@ func DecodeRoundCursor(value string, current accounts.User, contractID string) (
 	if value == "" {
 		return nil, nil
 	}
-	if len(value) > RoundCursorMaxBytes {
+	if len(value) > approvalRoundCursorMaxBytes {
 		return nil, fault.Invalid("轮次分页游标无效")
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(value)
 	var cursor RoundCursor
 	if err != nil || json.Unmarshal(raw, &cursor) != nil ||
-		cursor.Version != RoundCursorVersion || cursor.TenantID != accounts.Tenant(current) ||
+		cursor.Version != approvalRoundCursorVersion || cursor.TenantID != accounts.Tenant(current) ||
 		cursor.ActorID != current.ID || cursor.ContractID != contractID || cursor.LastRoundNum < 1 {
 		return nil, fault.Invalid("轮次分页游标无效")
 	}
