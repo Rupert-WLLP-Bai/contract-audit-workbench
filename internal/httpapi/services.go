@@ -210,6 +210,7 @@ func buildServiceHandler(st *store.Store, opt Options, role, credential string) 
 
 		if opt.ExperienceWorkerCredential != "" {
 			mux.HandleFunc("/internal/v1/worker/claim-authority", claimAuthorityHandler(st, opt.ExperienceWorkerCredential, "worker_start"))
+			mux.HandleFunc("/internal/v1/worker/reminder-claim", reminderClaimHandler(st, opt.ExperienceWorkerCredential))
 		}
 		if opt.ToolClaimAuthorityCredential != "" {
 			mux.HandleFunc("/internal/v1/tool/claim-authority", claimAuthorityHandler(st, opt.ToolClaimAuthorityCredential, "tool_read"))

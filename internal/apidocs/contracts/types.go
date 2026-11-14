@@ -4185,7 +4185,69 @@ type SystemHealthServicesItemProbeOneof1 struct {
 	Duration_ms int64  `json:"duration_ms" openapi:"{\"type\":\"integer\",\"minimum\":0}"`
 }
 
+type ReminderPlan struct {
+	Kind        string `json:"kind"`
+	Sequence    int    `json:"sequence"`
+	PlannedDate string `json:"planned_date"`
+	Description string `json:"description"`
+}
+type Reminder struct {
+	ReminderID         string `json:"reminder_id"`
+	ContractID         string `json:"contract_id"`
+	ContractRevisionID string `json:"contract_revision_id"`
+	PlanKind           string `json:"plan_kind"`
+	PlanSequence       int    `json:"plan_sequence"`
+	PlannedDate        string `json:"planned_date"`
+	Timezone           string `json:"timezone"`
+	RecipientID        string `json:"recipient_id"`
+	LeadDays           int    `json:"lead_days"`
+	DueAt              string `json:"due_at"`
+	Status             string `json:"status"`
+	Version            int64  `json:"version"`
+	ConfirmedBy        string `json:"confirmed_by"`
+	ConfirmedAt        string `json:"confirmed_at"`
+}
+type ReminderList struct {
+	ContractRevisionID string         `json:"contract_revision_id"`
+	ContractRowVersion int64          `json:"contract_row_version"`
+	Plans              []ReminderPlan `json:"plans"`
+	Reminders          []Reminder     `json:"reminders"`
+}
+type ReminderCreateInput struct {
+	ContractRevisionID         string `json:"contract_revision_id"`
+	PlanKind                   string `json:"plan_kind"`
+	PlanSequence               int    `json:"plan_sequence"`
+	Timezone                   string `json:"timezone"`
+	RecipientID                string `json:"recipient_id"`
+	LeadDays                   int    `json:"lead_days"`
+	ExpectedContractRowVersion int64  `json:"expected_contract_row_version"`
+}
+type ReminderCancelInput struct {
+	ExpectedVersion int64 `json:"expected_version"`
+}
+type ReminderDelivery struct {
+	ReminderID         string `json:"reminder_id"`
+	ContractID         string `json:"contract_id"`
+	ContractRevisionID string `json:"contract_revision_id"`
+	PlanKind           string `json:"plan_kind"`
+	PlanSequence       int    `json:"plan_sequence"`
+	PlannedDate        string `json:"planned_date"`
+	Timezone           string `json:"timezone"`
+	DeliveredAt        string `json:"delivered_at"`
+}
+type ReminderInbox struct {
+	Items []ReminderDelivery `json:"items"`
+}
+
 var SchemaRules = map[string]string{
+	"ReminderPlan":        `{"type":"object","additionalProperties":false,"required":["kind","sequence","planned_date","description"]}`,
+	"Reminder":            `{"type":"object","additionalProperties":false,"required":["reminder_id","contract_id","contract_revision_id","plan_kind","plan_sequence","planned_date","timezone","recipient_id","lead_days","due_at","status","version","confirmed_by","confirmed_at"]}`,
+	"ReminderList":        `{"type":"object","additionalProperties":false,"required":["contract_revision_id","contract_row_version","plans","reminders"]}`,
+	"ReminderCreateInput": `{"type":"object","additionalProperties":false,"required":["contract_revision_id","plan_kind","plan_sequence","timezone","recipient_id","lead_days","expected_contract_row_version"]}`,
+	"ReminderCancelInput": `{"type":"object","additionalProperties":false,"required":["expected_version"]}`,
+	"ReminderDelivery":    `{"type":"object","additionalProperties":false,"required":["reminder_id","contract_id","contract_revision_id","plan_kind","plan_sequence","planned_date","timezone","delivered_at"]}`,
+	"ReminderInbox":       `{"type":"object","additionalProperties":false,"required":["items"]}`,
+
 	"SupportGrant":                           "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"id\",\"tenant_id\",\"org_id\",\"case_id\",\"principal_id\",\"actions\",\"reason\",\"expires_at\",\"created_by\",\"approved_by\",\"status\",\"revision\"]}",
 	"SupportGrantList":                       "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"grants\"]}",
 	"SupportGrantRequest":                    "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"principal_id\",\"actions\",\"reason\",\"expires_at\"]}",
@@ -4631,6 +4693,14 @@ var SchemaRules = map[string]string{
 
 func Types() map[string]reflect.Type {
 	types := map[string]reflect.Type{
+		"ReminderPlan":        reflect.TypeOf((*ReminderPlan)(nil)).Elem(),
+		"Reminder":            reflect.TypeOf((*Reminder)(nil)).Elem(),
+		"ReminderList":        reflect.TypeOf((*ReminderList)(nil)).Elem(),
+		"ReminderCreateInput": reflect.TypeOf((*ReminderCreateInput)(nil)).Elem(),
+		"ReminderCancelInput": reflect.TypeOf((*ReminderCancelInput)(nil)).Elem(),
+		"ReminderDelivery":    reflect.TypeOf((*ReminderDelivery)(nil)).Elem(),
+		"ReminderInbox":       reflect.TypeOf((*ReminderInbox)(nil)).Elem(),
+
 		"SupportGrant":                           reflect.TypeOf((*SupportGrant)(nil)).Elem(),
 		"SupportGrantList":                       reflect.TypeOf((*SupportGrantList)(nil)).Elem(),
 		"SupportGrantRequest":                    reflect.TypeOf((*SupportGrantRequest)(nil)).Elem(),

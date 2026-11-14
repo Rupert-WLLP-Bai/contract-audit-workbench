@@ -78,3 +78,27 @@ func claimAuthorityBearer(values []string, expected string) bool {
 	parts := strings.SplitN(values[0], " ", 2)
 	return len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") && subtle.ConstantTimeCompare([]byte(parts[1]), []byte(expected)) == 1
 }
+
+func reminderClaimHandler(st *store.Store, credential string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if !claimAuthorityBearer(r.Header.Values("Authorization"), credential) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "service authentication required", "code": "service_unauthenticated"})
+			return
+		}
+		var claim store.ReminderClaim
+		if err := readJSON(w, r, &claim); err != nil {
+			writeErr(w, err)
+			return
+		}
+		if err := st.DeliverReminderClaim(r.Context(), claim); err != nil {
+			writeErr(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}

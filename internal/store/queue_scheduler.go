@@ -67,7 +67,7 @@ func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time
 		var expired bool
 		var eligibleAt, claimedAt time.Time
 		var createdAt string
-		err = tx.QueryRow(ctx, `SELECT id,tenant_id,org_id,case_id,COALESCE(run_id,''),COALESCE(attempt_id,''),actor_id,kind,state='running',claim_count,max_claims,deadline_at,deadline_at<=clock_timestamp(),created_at,
+		err = tx.QueryRow(ctx, `SELECT id,tenant_id,org_id,COALESCE(case_id,''),COALESCE(run_id,''),COALESCE(attempt_id,''),actor_id,kind,state='running',claim_count,max_claims,deadline_at,deadline_at<=clock_timestamp(),created_at,
 			tenant_live_epoch,
 			CASE WHEN state='queued' THEN ready_at ELSE GREATEST(lease_until,LEAST(ready_at,deadline_at)) END
 			FROM worker_jobs j WHERE tenant_id=$1 AND tenant_runtime_fence(tenant_id,tenant_live_epoch,$2) AND (j.kind<>'review' OR tenant_review_job_epoch_matches(j.id)) AND

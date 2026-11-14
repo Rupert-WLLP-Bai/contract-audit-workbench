@@ -20,6 +20,10 @@ import (
 func registerContractFulfillmentRoutes(mux *http.ServeMux, h *handler) {
 	mountRoutes(mux,
 		routeBinding{"GET /api/contracts/{contractID}/lifecycle-overview", h.contractLifecycleOverview},
+		routeBinding{"GET /api/contracts/{contractID}/reminders", h.listContractReminders},
+		routeBinding{"POST /api/contracts/{contractID}/reminders", h.createContractReminder},
+		routeBinding{"POST /api/contracts/{contractID}/reminders/{reminderID}/cancel", h.cancelContractReminder},
+		routeBinding{"GET /api/reminders", h.listReminderInbox},
 		routeBinding{"GET /api/contracts/{contractID}/deliveries", h.listContractDeliveries},
 		routeBinding{"POST /api/contracts/{contractID}/deliveries", h.createContractDelivery},
 		routeBinding{"GET /api/contracts/{contractID}/acceptances", h.listContractAcceptances},
@@ -90,5 +94,36 @@ func (h *handler) recordContractRectification(w http.ResponseWriter, r *http.Req
 			DefectID: body.DefectID, Description: body.Description, Evidence: body.Evidence,
 		}
 		return h.store.RecordContractRectification(req.Context(), user, input)
+	})
+}
+
+func (h *handler) listContractReminders(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	serveClientJSONLookup(h, w, r, func(user accounts.User, req *http.Request) (any, error) {
+		return h.store.ListContractReminders(req.Context(), user, req.PathValue("contractID"))
+	})
+}
+func (h *handler) createContractReminder(w http.ResponseWriter, r *http.Request) {
+	serveClientJSONCommand(h, w, r, http.StatusCreated, func(user accounts.User, req *http.Request, body store.ReminderCreateInput) (any, error) {
+		key, err := requiredIdempotencyKey(req)
+		if err != nil {
+			return nil, err
+		}
+		return h.store.CreateContractReminder(req.Context(), user, req.PathValue("contractID"), key, body)
+	})
+}
+func (h *handler) cancelContractReminder(w http.ResponseWriter, r *http.Request) {
+	serveClientJSONCommand(h, w, r, http.StatusOK, func(user accounts.User, req *http.Request, body store.ReminderCancelInput) (any, error) {
+		key, err := requiredIdempotencyKey(req)
+		if err != nil {
+			return nil, err
+		}
+		return h.store.CancelContractReminder(req.Context(), user, req.PathValue("contractID"), req.PathValue("reminderID"), key, body)
+	})
+}
+func (h *handler) listReminderInbox(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	serveClientJSONLookup(h, w, r, func(user accounts.User, req *http.Request) (any, error) {
+		return h.store.ListReminderInbox(req.Context(), user)
 	})
 }

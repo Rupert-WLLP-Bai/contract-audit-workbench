@@ -15154,6 +15154,227 @@
         ],
         "additionalProperties": false
       },
+      "Reminder": {
+        "type": "object",
+        "properties": {
+          "confirmed_at": {
+            "type": "string"
+          },
+          "confirmed_by": {
+            "type": "string"
+          },
+          "contract_id": {
+            "type": "string"
+          },
+          "contract_revision_id": {
+            "type": "string"
+          },
+          "due_at": {
+            "type": "string"
+          },
+          "lead_days": {
+            "type": "integer"
+          },
+          "plan_kind": {
+            "type": "string"
+          },
+          "plan_sequence": {
+            "type": "integer"
+          },
+          "planned_date": {
+            "type": "string"
+          },
+          "recipient_id": {
+            "type": "string"
+          },
+          "reminder_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reminder_id",
+          "contract_id",
+          "contract_revision_id",
+          "plan_kind",
+          "plan_sequence",
+          "planned_date",
+          "timezone",
+          "recipient_id",
+          "lead_days",
+          "due_at",
+          "status",
+          "version",
+          "confirmed_by",
+          "confirmed_at"
+        ],
+        "additionalProperties": false
+      },
+      "ReminderCancelInput": {
+        "type": "object",
+        "properties": {
+          "expected_version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "additionalProperties": false
+      },
+      "ReminderCreateInput": {
+        "type": "object",
+        "properties": {
+          "contract_revision_id": {
+            "type": "string"
+          },
+          "expected_contract_row_version": {
+            "type": "integer"
+          },
+          "lead_days": {
+            "type": "integer"
+          },
+          "plan_kind": {
+            "type": "string"
+          },
+          "plan_sequence": {
+            "type": "integer"
+          },
+          "recipient_id": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_revision_id",
+          "plan_kind",
+          "plan_sequence",
+          "timezone",
+          "recipient_id",
+          "lead_days",
+          "expected_contract_row_version"
+        ],
+        "additionalProperties": false
+      },
+      "ReminderDelivery": {
+        "type": "object",
+        "properties": {
+          "contract_id": {
+            "type": "string"
+          },
+          "contract_revision_id": {
+            "type": "string"
+          },
+          "delivered_at": {
+            "type": "string"
+          },
+          "plan_kind": {
+            "type": "string"
+          },
+          "plan_sequence": {
+            "type": "integer"
+          },
+          "planned_date": {
+            "type": "string"
+          },
+          "reminder_id": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reminder_id",
+          "contract_id",
+          "contract_revision_id",
+          "plan_kind",
+          "plan_sequence",
+          "planned_date",
+          "timezone",
+          "delivered_at"
+        ],
+        "additionalProperties": false
+      },
+      "ReminderInbox": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReminderDelivery"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "ReminderList": {
+        "type": "object",
+        "properties": {
+          "contract_revision_id": {
+            "type": "string"
+          },
+          "contract_row_version": {
+            "type": "integer"
+          },
+          "plans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReminderPlan"
+            }
+          },
+          "reminders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Reminder"
+            }
+          }
+        },
+        "required": [
+          "contract_revision_id",
+          "contract_row_version",
+          "plans",
+          "reminders"
+        ],
+        "additionalProperties": false
+      },
+      "ReminderPlan": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "planned_date": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "sequence",
+          "planned_date",
+          "description"
+        ],
+        "additionalProperties": false
+      },
       "ReportDocument": {
         "description": "已保存报告的 JSON 原始字节；字节摘要记录在 ReportRecord.digest，字段由生成报告时的版本决定。",
         "type": "object",
@@ -35805,6 +36026,138 @@
         }
       }
     },
+    "/api/contracts/{contractID}/reminders": {
+      "parameters": [
+        {
+          "name": "contractID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listContractReminders",
+        "tags": [
+          "合同"
+        ],
+        "summary": "读取冻结计划与履约提醒",
+        "responses": {
+          "200": {
+            "description": "可读取的冻结计划和提醒历史",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderList"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createContractReminder",
+        "tags": [
+          "合同"
+        ],
+        "summary": "确认履约提醒",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReminderCreateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "确认的提醒",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reminder"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contracts/{contractID}/reminders/{reminderID}/cancel": {
+      "parameters": [
+        {
+          "name": "contractID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "reminderID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "cancelContractReminder",
+        "tags": [
+          "合同"
+        ],
+        "summary": "取消履约提醒",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReminderCancelInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已取消的提醒",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reminder"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/contracts/{contractID}/revision-diff": {
       "parameters": [
         {
@@ -37333,6 +37686,27 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reminders": {
+      "get": {
+        "operationId": "listReminderInbox",
+        "tags": [
+          "合同"
+        ],
+        "summary": "读取当前用户站内提醒",
+        "responses": {
+          "200": {
+            "description": "仍有权限的站内收件事实",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderInbox"
                 }
               }
             }

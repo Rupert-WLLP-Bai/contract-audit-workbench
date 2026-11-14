@@ -131,3 +131,30 @@ func (resolver *coreWorkerClaimAuthority) Resolve(ctx context.Context, claim sto
 	}
 	return nil
 }
+
+func (resolver *coreWorkerClaimAuthority) DispatchReminder(ctx context.Context, claim store.JobClaim) error {
+	if resolver == nil || ctx == nil || claim.Kind != "fulfillment_reminder" || claim.TenantID == "" || claim.OrgID == "" || claim.JobID == "" || claim.WorkerID == "" || claim.Generation <= 0 || claim.CaseID != "" || claim.RunID != "" || claim.AttemptID != "" {
+		return errors.New("reminder claim identity is incomplete")
+	}
+	body, err := json.Marshal(store.ReminderClaim{TenantID: claim.TenantID, OrgID: claim.OrgID, JobID: claim.JobID, WorkerID: claim.WorkerID, Generation: claim.Generation})
+	if err != nil {
+		return err
+	}
+	endpoint := strings.TrimSuffix(resolver.endpoint, workerClaimAuthorityPath) + "/internal/v1/worker/reminder-claim"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+resolver.token)
+	response, err := resolver.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+	if response.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("core reminder dispatch returned status %d", response.StatusCode)
+	}
+	return nil
+}

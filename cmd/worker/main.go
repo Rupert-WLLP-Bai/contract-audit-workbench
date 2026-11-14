@@ -216,6 +216,25 @@ func claimJobsWithAuthority(ctx context.Context, st *store.Store, workerID strin
 		if !claimed {
 			continue
 		}
+		if claim.Kind == "fulfillment_reminder" {
+			dispatcher, ok := authority.(interface {
+				DispatchReminder(context.Context, store.JobClaim) error
+			})
+			if !ok {
+				return errors.New("core reminder claim dispatcher is unavailable")
+			}
+			jobCtx, cancel := context.WithCancel(ctx)
+			heartbeatDone := make(chan error, 1)
+			go func() { heartbeatDone <- renewLease(jobCtx, cancel, st, claim, lease, heartbeat) }()
+			runErr := dispatcher.DispatchReminder(jobCtx, claim)
+			cancel()
+			heartbeatErr := <-heartbeatDone
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			logClaimOutcome(claim, runErr, heartbeatErr)
+			continue
+		}
 		if authority != nil && claim.Kind != "experience_distill" {
 			if err := authority.Resolve(ctx, claim); err != nil {
 				return fmt.Errorf("worker refused an unverified claim before execution: %w", err)

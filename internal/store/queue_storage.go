@@ -24,7 +24,7 @@ import (
 )
 
 func loadJobs(ctx context.Context, q queryer, caseID ...string) ([]Job, error) {
-	query := jobSelectSQL + ` WHERE state IN ('queued','running')`
+	query := jobSelectSQL + ` WHERE kind <> 'fulfillment_reminder' AND state IN ('queued','running')`
 	var args []any
 	if len(caseID) != 0 {
 		query += ` AND case_id=$1`
