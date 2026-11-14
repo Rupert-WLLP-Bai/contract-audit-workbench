@@ -90978,7 +90978,7 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "10b7d37e71f50b44488f2e373d7eca70a6acd8b4",
+          "commit": "cbc61b4355d36c969db60876619911b370d3b820",
           "path": "web/src/components/contract-reminders-panel.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
