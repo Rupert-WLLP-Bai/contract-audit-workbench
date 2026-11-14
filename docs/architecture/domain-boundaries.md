@@ -384,7 +384,7 @@ Operator 拥有现有核验 scope、DTO、候选与 coverage、冻结事实至 a
 
 整案路径保持锁前 frozen 证明、RulePack/contract source 核验及 request SHA；原写事务 schema advisory→case lock→scope 后先回执，再 loadState、当前 Case Review/writable、同事务 frozen input/output 复验。每对象核验器仍在该写事务内，普通核验不可用转换为对象 insufficient，未授权/无效结果/持久化错误才中断。按原 ordinal 追加 evaluation 和全部对象，最后构造 out，commit 错误保留 out+err。不得把 evaluator 调用移到事务外或把对象不足冒充整批回滚。
 
-Operator PG 只查询/追加自己的 evaluations、evaluation_objects、checks、impact_plans，以及已有 service-object、binding、mapping、snapshot/observations 事实；不读取 Case/Document/Execution/Audit 表或导入其他领域 PG，不设置 scope/身份或拥有事务。历史 object version 仍以 effective_from <= businessAt 过滤，再沿原 ORDER BY 将晚于 cutoff 的候选保留供 insufficient 分类，association 继续原 created/confirmed cutoff 排序优先，不用 WHERE 截掉；mapping 与 snapshot 保留各条旧显式 tenant/org 和 current_setting 范围、有效期及时间选择。app 承接多行逐条校验和组合，不在 PG adapter 判断全域业务。
+Operator PG 只查询/追加自己的 evaluations、evaluation_objects、checks、impact_plans，以及已有 service-object、binding、mapping、snapshot/observations 事实；不读取 Case/Document/Execution/Audit 表或导入其他领域 PG，不设置 scope/身份或拥有事务。历史 object version 仍以 `effective_from <= businessAt` 过滤，再沿原 ORDER BY 将晚于 cutoff 的候选保留供 insufficient 分类，association 继续原 created/confirmed cutoff 排序优先，不用 WHERE 截掉；mapping 与 snapshot 保留各条旧显式 tenant/org 和 current_setting 范围、有效期及时间选择。app 承接多行逐条校验和组合，不在 PG adapter 判断全域业务。
 
 Impact 保留当前 Case Read→读事务 target/previous→提交→事务外 planner 或 baseline_missing 全量 fallback→另一个写事务 append ON CONFLICT DO NOTHING。planner nil 仍先于 baseline 发现失败；无 baseline 不调用 planner。原第二写事务只有 withOperatorTx 既有 trusted/role/scope/锁和正常会话 tenant_context_fence 的语句/提交围栏，没有第二次 Case Read，不在目录迁移中悄然加撤权检查；created_by 继续原 user.ID，写/commit 失败返回零 plan。两事务不声称同快照。
 
