@@ -111,7 +111,7 @@ func TestApprovalDecisionRequiresCredentialBoundToTaskRevisionAndRowVersions(t *
 
 	var credentialID, keyID, digest, snapshot, amount, currency, actorOrg string
 	var contractRowVersion int64
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT credential_id,credential_key_id,credential_digest,
+	if err := fixture.environment.harness.pool.QueryRow(ctx, `SELECT credential_id,credential_key_id,credential_digest,
 			snapshot_digest,amount_limit::text,currency,contract_row_version,actor_org_id
 		FROM clm_approval_decisions WHERE tenant_id=$1 AND decision_id=$2`,
 		fixture.admin.TenantID, decided.DecisionID).Scan(&credentialID, &keyID, &digest, &snapshot,
@@ -140,7 +140,7 @@ func TestApprovalTaskMaterialsAreWhitelistedAndDefaultDeny(t *testing.T) {
 	fixture, _ := newApprovalDecisionEnv(t)
 	ctx := context.Background()
 	var materialID, materialVersionID, materialDigest string
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT mv.material_id,d.id,d.digest
+	if err := fixture.environment.harness.pool.QueryRow(ctx, `SELECT mv.material_id,d.id,d.digest
 		FROM material_versions mv
 		JOIN documents d ON d.tenant_id=mv.tenant_id AND d.org_id=mv.org_id
 		  AND d.case_id=mv.case_id AND d.id=mv.document_id
@@ -235,7 +235,7 @@ func TestApprovalTaskTransferIsAppendOnlyAndMovesTheLiveRight(t *testing.T) {
 	replacement := approvalTestUser(t, "demo-reviewer-2")
 
 	var taskRowVersion int64
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT row_version FROM clm_approval_tasks
+	if err := fixture.environment.harness.pool.QueryRow(ctx, `SELECT row_version FROM clm_approval_tasks
 		WHERE tenant_id=$1 AND contract_id=$2 AND approval_task_id=$3`,
 		fixture.admin.TenantID, contractID, first.ApprovalTaskID).Scan(&taskRowVersion); err != nil {
 		t.Fatal(err)
@@ -283,7 +283,7 @@ func TestApprovalTaskTransferIsAppendOnlyAndMovesTheLiveRight(t *testing.T) {
 	}
 
 	var transfers, assignments int
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT
+	if err := fixture.environment.harness.pool.QueryRow(ctx, `SELECT
 			(SELECT count(*) FROM clm_approval_task_transfers WHERE tenant_id=$1 AND contract_id=$2),
 			(SELECT count(*) FROM clm_approval_task_assignments
 			 WHERE tenant_id=$1 AND contract_id=$2 AND approval_task_id=$3)`,
