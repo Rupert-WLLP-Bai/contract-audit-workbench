@@ -725,7 +725,7 @@ func TestOperatorCollectionClaimZeroRowRollbackAndRecovery(t *testing.T) {
 	setDigestInput := append(append([]byte(nil), observationJSON...), []byte(beforeClaim.RequestSHA256)...)
 	setDigest := sha256.Sum256(setDigestInput)
 	setSHA := hex.EncodeToString(setDigest[:])
-	ddl, drop, markerName, markerQualified := operatorCollectionZeroRowFaultDDL(t, env.schema, beforeClaim, businessAt, binding, observation,
+	ddl, drop, markerName, markerQualified := operatorCollectionZeroRowFaultDDL(t, env.harness.schema, beforeClaim, businessAt, binding, observation,
 		observationJSON, fieldsJSON, observationSHA, setSHA)
 	operatorTrigger(t, env, ddl, drop)
 	quotedCoreLogin := operatorQualifiedTestIdent(t, coreLogin)
@@ -733,13 +733,13 @@ func TestOperatorCollectionClaimZeroRowRollbackAndRecovery(t *testing.T) {
 		releaseConnector()
 		t.Fatalf("grant only Core usage on marker sequence: %v", err)
 	}
-	functionQualified := operatorQualifiedTestIdent(t, env.schema, "c310_f_claim_zero_row_guard")
+	functionQualified := operatorQualifiedTestIdent(t, env.harness.schema, "c310_f_claim_zero_row_guard")
 	if _, err := env.harness.pool.Exec(ctx, "GRANT EXECUTE ON FUNCTION "+functionQualified+"() TO "+quotedCoreLogin); err != nil {
 		releaseConnector()
 		t.Fatalf("grant Core execution on invoker trigger function: %v", err)
 	}
 	var initializedMarker int64
-	if err := env.harness.pool.QueryRow(ctx, "SELECT nextval($1::regclass)", env.schema+"."+markerName).Scan(&initializedMarker); err != nil || initializedMarker != 1 {
+	if err := env.harness.pool.QueryRow(ctx, "SELECT nextval($1::regclass)", env.harness.schema+"."+markerName).Scan(&initializedMarker); err != nil || initializedMarker != 1 {
 		releaseConnector()
 		t.Fatalf("initialize nontransactional marker: value=%d err=%v", initializedMarker, err)
 	}
