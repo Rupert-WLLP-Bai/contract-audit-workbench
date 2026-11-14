@@ -11351,12 +11351,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "2994db6770d6fce11c0ebf3f0b5f09cde41d09c9",
+          "commit": "00980f27ca90fb569906616b6e1db008ef948403",
           "path": "internal/agentflow/contract_facts_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -34224,12 +34224,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "2994db6770d6fce11c0ebf3f0b5f09cde41d09c9",
+          "commit": "00980f27ca90fb569906616b6e1db008ef948403",
           "path": "internal/model/contract_facts.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -34272,12 +34272,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "2994db6770d6fce11c0ebf3f0b5f09cde41d09c9",
+          "commit": "00980f27ca90fb569906616b6e1db008ef948403",
           "path": "internal/model/contract_facts_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -34320,10 +34320,10 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "2994db6770d6fce11c0ebf3f0b5f09cde41d09c9",
+          "commit": "00980f27ca90fb569906616b6e1db008ef948403",
           "path": "internal/model/identity.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -35367,15 +35367,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "4fbb767413956c16c9ee37f254e54ea5b0f296ad",
           "path": "internal/modelgateway/embedded_ocr_boundary_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -36032,15 +36032,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-04",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "c0d75641ef0555e0f355e7d77a4bcfd4ff8ca37b",
+          "commit": "00980f27ca90fb569906616b6e1db008ef948403",
           "path": "internal/modelgateway/upstream_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
