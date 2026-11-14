@@ -63,6 +63,15 @@ func ValidateFrozenDependencies(ctx context.Context, repo VersionReader, facts R
 	if err := legalApp.ValidateFrozenCaptures(ctx, legalFacts, snapshot.LegalAuthorities); err != nil {
 		return err
 	}
+	if adopted := snapshot.AdoptedPlaybook; adopted != nil {
+		loaded, err := LoadExactVersion(ctx, repo, facts, tenant, adopted.Ref.KnowledgeID, adopted.Ref.VersionID)
+		if err != nil || loaded.Version.Ref != adopted.Ref || loaded.Version.Content.Kind != "playbook" || !reflect.DeepEqual(loaded.Version.Content, adopted.Content) {
+			return fault.Conflict("本次审查保存的手册无法验证")
+		}
+		if err := facts.AuthorizeReadSource(ctx, adopted.Content); err != nil {
+			return fault.Conflict("本次审查手册的案件授权已改变")
+		}
+	}
 	for _, selected := range snapshot.RequiredPolicies {
 		loaded, err := LoadExactVersion(ctx, repo, facts, tenant, selected.Ref.KnowledgeID, selected.Ref.VersionID)
 		if err != nil || !loaded.PointerActive || loaded.Version.Ref != selected.Ref || !reflect.DeepEqual(model.KnowledgeSelection(loaded.Version), selected) {
@@ -90,7 +99,8 @@ func ValidateFrozenDependencies(ctx context.Context, repo VersionReader, facts R
 }
 
 func ReadFrozenContent(ctx context.Context, repo VersionReader, facts LegalFactsReader, tenant string, snapshot ReviewSnapshot, ref model.KnowledgeRef) (model.GovernedKnowledgeReviewContent, error) {
-	found := false
+	adopted := snapshot.AdoptedPlaybook != nil && snapshot.AdoptedPlaybook.Ref == ref
+	found := adopted
 	for _, v := range snapshot.RequiredPolicies {
 		if v.Ref == ref {
 			found = true
@@ -105,10 +115,14 @@ func ReadFrozenContent(ctx context.Context, repo VersionReader, facts LegalFacts
 		return model.GovernedKnowledgeReviewContent{}, fault.NotFound("制度不在本次审查保存的候选列表中")
 	}
 	loaded, err := LoadExactVersion(ctx, repo, facts, tenant, ref.KnowledgeID, ref.VersionID)
-	if err != nil || loaded.Version.Ref != ref || !loaded.Version.Active {
+	if err != nil || loaded.Version.Ref != ref || (!adopted && !loaded.Version.Active) ||
+		(adopted && (loaded.Version.Content.Kind != "playbook" || !reflect.DeepEqual(loaded.Version.Content, snapshot.AdoptedPlaybook.Content))) {
 		return model.GovernedKnowledgeReviewContent{}, fault.Conflict("本次审查使用的制度已撤回，或记录编号不一致")
 	}
 	c := loaded.Version.Content
+	if adopted {
+		c = snapshot.AdoptedPlaybook.Content
+	}
 	return model.GovernedKnowledgeReviewContent{Ref: ref, Kind: c.Kind, Title: c.Title, Body: c.Body, Summary: c.Summary, ValidFrom: c.ValidFrom, ValidUntil: c.ValidUntil, ExceptionBasis: c.ExceptionBasis, ReviewedApplicability: c.ReviewedApplicability, ReviewedExclusions: c.ReviewedExclusions, CheckAction: c.CheckAction, MinimumEvidence: c.MinimumEvidence, Counterexamples: c.Counterexamples}, nil
 }
 

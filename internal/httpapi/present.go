@@ -555,6 +555,9 @@ func snapshotJSON(snap store.RunSnapshot) map[string]any {
 		"model_ref": nilString(snap.ModelRef), "comparator_ref": nilString(snap.ComparatorRef),
 		"adopted_tenant_config": nil,
 	}
+	if snap.GovernedKnowledge != nil && snap.GovernedKnowledge.AdoptedPlaybook != nil {
+		out["adopted_playbook"] = map[string]any{"ref": snap.GovernedKnowledge.AdoptedPlaybook.Ref, "content_unavailable_reason": "source_authorization_required"}
+	}
 	if snap.AdoptedTenantConfigVersionID != "" && snap.AdoptedTenantConfigDigest != "" {
 		out["adopted_tenant_config"] = map[string]string{"version_id": snap.AdoptedTenantConfigVersionID, "digest": snap.AdoptedTenantConfigDigest}
 	}

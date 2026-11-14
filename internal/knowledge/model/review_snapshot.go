@@ -60,6 +60,7 @@ type GovernedKnowledgeExclusion struct {
 // ReviewKnowledgeSnapshot preserves the v1 wire shape while its Legal-owned
 // authority values remain supplied by the Legal boundary.
 type ReviewKnowledgeSnapshot[Authority any] struct {
+	AdoptedPlaybook          *AdoptedPlaybook             `json:"adopted_playbook,omitempty"`
 	Encoding                 string                       `json:"encoding"`
 	BusinessAt               string                       `json:"business_at"`
 	Scope                    KnowledgeScope               `json:"scope"`

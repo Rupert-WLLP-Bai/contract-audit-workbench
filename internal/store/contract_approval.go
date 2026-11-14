@@ -122,7 +122,7 @@ func (s *Store) SubmitContractApproval(ctx context.Context, user accounts.User, 
 	executor := platformpg.Bind(tx)
 	result, err := approvalapp.Submit(ctx, prepared, accounts.Tenant(current), current.ID, approvalDirectory{},
 		contractpg.NewApprovalCommands(executor), approvalSubmissionAccess{tx: tx, user: current},
-		approvalSubmissionFreeze{tx: tx, user: current, executor: executor}, approvalpg.NewSubmission(executor),
+		approvalSubmissionFreeze{store: s, tx: tx, user: current, executor: executor}, approvalpg.NewSubmission(executor),
 		approvalpg.NewGovernance(executor), storeVersionEventAdapter{tx: tx})
 	if err != nil {
 		return SubmitContractApprovalResult{}, err

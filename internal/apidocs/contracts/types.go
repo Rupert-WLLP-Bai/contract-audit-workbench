@@ -187,6 +187,7 @@ type ApprovalReadDecision struct {
 	Decided_at       string `json:"decided_at" openapi:"{\"type\":\"string\",\"format\":\"date-time\"}"`
 }
 type ApprovalRoundReadDetail struct {
+	Adopted_playbook        *AdoptedPlaybookView     `json:"adopted_playbook,omitempty" openapi:"{\"$ref\":\"#/components/schemas/AdoptedPlaybookView\"}"`
 	Contract_id             string                   `json:"contract_id" openapi:"{\"type\":\"string\",\"format\":\"uuid\"}"`
 	Contract_name           string                   `json:"contract_name" openapi:"{\"type\":\"string\"}"`
 	Contract_number         any                      `json:"contract_number" openapi:"{\"type\":[\"string\",\"null\"]}"`
@@ -1056,8 +1057,9 @@ type ApprovalDecisionResult struct {
 	Row_version    int64         `json:"row_version" openapi:"{\"type\":\"integer\",\"minimum\":1}"`
 }
 type ApprovalSubmissionRequest struct {
-	Expected_row_version int64  `json:"expected_row_version" openapi:"{\"type\":\"integer\",\"minimum\":1}"`
-	Template_id          string `json:"template_id,omitempty" openapi:"{\"type\":\"string\",\"maxLength\":64,\"description\":\"可选的当前生效模板；省略时使用租户默认模板。\"}"`
+	Playbook_ref         *GovernedKnowledgeRef `json:"playbook_ref,omitempty" openapi:"{\"$ref\":\"#/components/schemas/GovernedKnowledgeRef\"}"`
+	Expected_row_version int64                 `json:"expected_row_version" openapi:"{\"type\":\"integer\",\"minimum\":1}"`
+	Template_id          string                `json:"template_id,omitempty" openapi:"{\"type\":\"string\",\"maxLength\":64,\"description\":\"可选的当前生效模板；省略时使用租户默认模板。\"}"`
 }
 type ApprovalRound struct {
 	Approval_round_id         string `json:"approval_round_id" openapi:"{\"type\":\"string\",\"format\":\"uuid\"}"`
@@ -2087,10 +2089,11 @@ type ReviewReadinessBlocker struct {
 	Next_action          string   `json:"next_action" openapi:"{\"type\":\"string\"}"`
 }
 type ReviewStartRequest struct {
-	Scope              string `json:"scope,omitempty" openapi:"{\"type\":\"string\",\"enum\":[\"full_review\",\"single_contract_precheck\"],\"default\":\"full_review\",\"description\":\"单合同预审仅执行版本固定的单合同检查，不替代完整审查。\"}"`
-	Business_at        string `json:"business_at,omitempty" openapi:"{\"type\":\"string\",\"format\":\"date-time\",\"description\":\"已治理案件必填，带时区的 RFC3339Nano 业务时间；界面按北京时间输入并提交 UTC。\"}"`
-	Evidence_cutoff_at string `json:"evidence_cutoff_at,omitempty" openapi:"{\"type\":\"string\",\"format\":\"date-time\",\"description\":\"可选法律证据截止时间；省略时由受理事务采样。显式值按UTC微秒规范化且不得晚于受理时刻。\"}"`
-	Readmit_cancelled  any    `json:"readmit_cancelled,omitempty" openapi:"{\"type\":\"object\",\"description\":\"明确针对最近一次用户主动取消且尚未冻结输入的准备记录发起新审查；必须使用新的 Idempotency-Key。\",\"additionalProperties\":false,\"required\":[\"run_id\",\"attempt_id\"],\"properties\":{\"run_id\":{\"type\":\"string\",\"minLength\":1},\"attempt_id\":{\"type\":\"string\",\"minLength\":1}}}"`
+	Playbook_ref       *GovernedKnowledgeRef `json:"playbook_ref,omitempty" openapi:"{\"$ref\":\"#/components/schemas/GovernedKnowledgeRef\"}"`
+	Scope              string                `json:"scope,omitempty" openapi:"{\"type\":\"string\",\"enum\":[\"full_review\",\"single_contract_precheck\"],\"default\":\"full_review\",\"description\":\"单合同预审仅执行版本固定的单合同检查，不替代完整审查。\"}"`
+	Business_at        string                `json:"business_at,omitempty" openapi:"{\"type\":\"string\",\"format\":\"date-time\",\"description\":\"已治理案件必填，带时区的 RFC3339Nano 业务时间；界面按北京时间输入并提交 UTC。\"}"`
+	Evidence_cutoff_at string                `json:"evidence_cutoff_at,omitempty" openapi:"{\"type\":\"string\",\"format\":\"date-time\",\"description\":\"可选法律证据截止时间；省略时由受理事务采样。显式值按UTC微秒规范化且不得晚于受理时刻。\"}"`
+	Readmit_cancelled  any                   `json:"readmit_cancelled,omitempty" openapi:"{\"type\":\"object\",\"description\":\"明确针对最近一次用户主动取消且尚未冻结输入的准备记录发起新审查；必须使用新的 Idempotency-Key。\",\"additionalProperties\":false,\"required\":[\"run_id\",\"attempt_id\"],\"properties\":{\"run_id\":{\"type\":\"string\",\"minLength\":1},\"attempt_id\":{\"type\":\"string\",\"minLength\":1}}}"`
 }
 type ReviewDiagnostics struct {
 	Case_id      string                          `json:"case_id" openapi:"{\"type\":\"string\"}"`
@@ -2419,12 +2422,42 @@ type GovernedTextTemplate struct {
 	Body   string          `json:"body" openapi:"{\"type\":\"string\"}"`
 	Fields []TemplateField `json:"fields" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/TemplateField\"}"`
 }
+type PlaybookTemplateRef struct {
+	Template_id      string `json:"template_id" openapi:"{\"type\":\"string\"}"`
+	Template_version string `json:"template_version" openapi:"{\"type\":\"string\"}"`
+	Template_digest  string `json:"template_digest" openapi:"{\"type\":\"string\"}"`
+}
+type PlaybookClause struct {
+	Rule_id              string `json:"rule_id" openapi:"{\"type\":\"string\"}"`
+	Standard_clause      string `json:"standard_clause" openapi:"{\"type\":\"string\"}"`
+	Acceptable_deviation string `json:"acceptable_deviation" openapi:"{\"type\":\"string\"}"`
+	Hard_constraint      string `json:"hard_constraint" openapi:"{\"type\":\"string\"}"`
+	Proposed_wording     string `json:"proposed_wording" openapi:"{\"type\":\"string\"}"`
+	Escalation_condition string `json:"escalation_condition" openapi:"{\"type\":\"string\"}"`
+}
+type GovernedPlaybook struct {
+	Template PlaybookTemplateRef `json:"template" openapi:"{\"$ref\":\"#/components/schemas/PlaybookTemplateRef\"}"`
+	Clauses  []PlaybookClause    `json:"clauses" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/PlaybookClause\"}"`
+}
+type PlaybookOption struct {
+	Ref   GovernedKnowledgeRef `json:"ref" openapi:"{\"$ref\":\"#/components/schemas/GovernedKnowledgeRef\"}"`
+	Title string               `json:"title" openapi:"{\"type\":\"string\"}"`
+}
+type PlaybookOptions struct {
+	Items  []PlaybookOption `json:"items" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/PlaybookOption\"}"`
+	Reason string           `json:"reason,omitempty" openapi:"{\"type\":\"string\"}"`
+}
+type AdoptedPlaybookView struct {
+	Ref                        GovernedKnowledgeRef `json:"ref" openapi:"{\"$ref\":\"#/components/schemas/GovernedKnowledgeRef\"}"`
+	Content_unavailable_reason string               `json:"content_unavailable_reason" openapi:"{\"type\":\"string\"}"`
+}
 type GovernedKnowledgeContent struct {
+	Playbook                 *GovernedPlaybook            `json:"playbook,omitempty" openapi:"{\"$ref\":\"#/components/schemas/GovernedPlaybook\"}"`
 	Template                 *GovernedTextTemplate        `json:"template,omitempty" openapi:"{\"$ref\":\"#/components/schemas/GovernedTextTemplate\"}"`
 	Encoding                 string                       `json:"encoding,omitempty" openapi:"{\"type\":\"string\"}"`
 	Knowledge_id             string                       `json:"knowledge_id" openapi:"{\"type\":\"string\"}"`
 	Version                  string                       `json:"version" openapi:"{\"type\":\"string\"}"`
-	Kind                     string                       `json:"kind" openapi:"{\"type\":\"string\",\"enum\":[\"policy\",\"guidance\",\"exception\",\"experience\",\"template\"]}"`
+	Kind                     string                       `json:"kind" openapi:"{\"type\":\"string\",\"enum\":[\"policy\",\"guidance\",\"exception\",\"experience\",\"template\",\"playbook\"]}"`
 	Title                    string                       `json:"title" openapi:"{\"type\":\"string\"}"`
 	Body                     string                       `json:"body" openapi:"{\"type\":\"string\"}"`
 	Summary                  string                       `json:"summary" openapi:"{\"type\":\"string\"}"`
@@ -3121,6 +3154,7 @@ type FrozenPlannerIdentity struct {
 	Max_rounds             int64  `json:"max_rounds" openapi:"{\"type\":\"integer\",\"minimum\":0}"`
 }
 type Snapshot struct {
+	Adopted_playbook        *AdoptedPlaybookView   `json:"adopted_playbook,omitempty" openapi:"{\"$ref\":\"#/components/schemas/AdoptedPlaybookView\"}"`
 	Adopted_tenant_config   any                    `json:"adopted_tenant_config" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/AdoptedTenantConfigIdentity\"},{\"type\":\"null\"}],\"description\":\"该次新运行实际冻结的租户配置版本；历史未记录时为null，不从当前配置推断。\"}"`
 	Document_ids            []string               `json:"document_ids" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\"}"`
 	Parsed_document_ids     []string               `json:"parsed_document_ids,omitempty" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\"}"`
@@ -4519,6 +4553,12 @@ var SchemaRules = map[string]string{
 	"GovernedKnowledgeSourceSpan":            "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"rule_id\",\"start\",\"end\",\"quote\"]}",
 	"GovernedKnowledgeBinding":               "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"pack_id\",\"pack_version\",\"pack_content_hash\",\"pack_snapshot_digest\",\"compiler_ref\",\"rule_ids\",\"source_spans\",\"candidate_diff\",\"validation_evidence\"]}",
 	"GovernedTextTemplate":                   "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"body\",\"fields\"]}",
+	"PlaybookTemplateRef":                    "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"template_id\",\"template_version\",\"template_digest\"]}",
+	"PlaybookClause":                         "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"rule_id\",\"standard_clause\",\"acceptable_deviation\",\"hard_constraint\",\"proposed_wording\",\"escalation_condition\"]}",
+	"GovernedPlaybook":                       "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"template\",\"clauses\"]}",
+	"PlaybookOption":                         "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ref\",\"title\"]}",
+	"PlaybookOptions":                        "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"items\"]}",
+	"AdoptedPlaybookView":                    "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ref\",\"content_unavailable_reason\"]}",
 	"GovernedKnowledgeContent":               "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"knowledge_id\",\"version\",\"kind\",\"title\",\"body\",\"summary\",\"source_type\",\"source_reference\",\"scope\",\"valid_from\",\"valid_until\",\"binding\"]}",
 	"GovernedKnowledgeCreateRequest":         "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"content\"]}",
 	"GovernedKnowledgeCommandRequest":        "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"action\",\"expected_revision\",\"expected_content_sha256\",\"reason\"]}",
@@ -4973,6 +5013,12 @@ func Types() map[string]reflect.Type {
 		"GovernedKnowledgeSourceSpan":            reflect.TypeFor[GovernedKnowledgeSourceSpan](),
 		"GovernedKnowledgeBinding":               reflect.TypeFor[GovernedKnowledgeBinding](),
 		"GovernedTextTemplate":                   reflect.TypeFor[GovernedTextTemplate](),
+		"PlaybookTemplateRef":                    reflect.TypeFor[PlaybookTemplateRef](),
+		"PlaybookClause":                         reflect.TypeFor[PlaybookClause](),
+		"GovernedPlaybook":                       reflect.TypeFor[GovernedPlaybook](),
+		"PlaybookOption":                         reflect.TypeFor[PlaybookOption](),
+		"PlaybookOptions":                        reflect.TypeFor[PlaybookOptions](),
+		"AdoptedPlaybookView":                    reflect.TypeFor[AdoptedPlaybookView](),
 		"GovernedKnowledgeContent":               reflect.TypeFor[GovernedKnowledgeContent](),
 		"GovernedKnowledgeCreateRequest":         reflect.TypeFor[GovernedKnowledgeCreateRequest](),
 		"GovernedKnowledgeCommandRequest":        reflect.TypeFor[GovernedKnowledgeCommandRequest](),

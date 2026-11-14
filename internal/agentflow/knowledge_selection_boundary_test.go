@@ -106,6 +106,37 @@ func TestRuntimeRejectsForgedKnowledgeSelection(t *testing.T) {
 	}
 }
 
+func TestRuntimePreservesAdoptedPlaybookContext(t *testing.T) {
+	for _, size := range []int{1024, AdoptedPlaybookFieldBytes, AdoptedPlaybookFieldBytes + 1} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			request := requestWithPolicyTrace(false)
+			ref := &request.Knowledge[0]
+			ref.Kind, ref.RequiresFactEvaluation, ref.Summary = "playbook", true, strings.Repeat("x", size)
+			trace := request.KnowledgeSelection
+			trace.Candidates[0].Kind, trace.Candidates[0].Reason = "playbook", "adopted_playbook"
+			trace.Candidates[0].RequiresFactEvaluation = true
+			trace.PolicyStatus, trace.PolicyReason = "unknown", "policy_semantic_verification_required"
+			trace.Budget.ContentBytesLimit, trace.Budget.ContentBytesUsed = AdoptedPlaybookFieldBytes, size
+			calls := 0
+			planner := plannerFunc(func(ctx context.Context, input PlanInput) (Plan, error) {
+				calls++
+				if len(input.Knowledge) != 1 || input.Knowledge[0].Summary != ref.Summary || input.Knowledge[0].Truncated {
+					t.Fatal("adopted playbook was omitted or clipped before reaching the planner")
+				}
+				return (ScopePlanner{}).Plan(ctx, input)
+			})
+			_, err := runtimeFixture(t, planner, BaselineTools(), 1).Run(context.Background(), request)
+			if size > AdoptedPlaybookFieldBytes {
+				if !errors.Is(err, ErrInput) || calls != 0 {
+					t.Fatalf("oversized playbook reached planner: calls=%d err=%v", calls, err)
+				}
+			} else if err != nil || calls == 0 {
+				t.Fatalf("bounded playbook did not reach planner: calls=%d err=%v", calls, err)
+			}
+		})
+	}
+}
+
 func selectionWithoutPolicy() Request {
 	request := requestWithPolicyTrace(false)
 	request.Knowledge = nil

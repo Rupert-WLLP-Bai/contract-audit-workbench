@@ -12,6 +12,7 @@ package model
 
 import (
 	"contractaudit/internal/fault"
+	"encoding/json"
 	"regexp"
 	"strings"
 	"time"
@@ -116,11 +117,18 @@ type WorkflowRoleSummary struct {
 // SubmitContractApprovalInput submits the current frozen revision for a
 // sequential countersign round. ContractID, tenant, actor and organization come
 // from the server, never from the payload.
+type PlaybookRef struct {
+	KnowledgeID   string `json:"knowledge_id"`
+	VersionID     string `json:"version_id"`
+	ContentSHA256 string `json:"content_sha256"`
+}
+
 type SubmitContractApprovalInput struct {
-	ContractID         string `json:"-"`
-	ExpectedRowVersion int64  `json:"expected_row_version"`
-	TemplateID         string `json:"template_id,omitempty"`
-	IdempotencyKey     string `json:"-"`
+	PlaybookRef        *PlaybookRef `json:"playbook_ref,omitempty"`
+	ContractID         string       `json:"-"`
+	ExpectedRowVersion int64        `json:"expected_row_version"`
+	TemplateID         string       `json:"template_id,omitempty"`
+	IdempotencyKey     string       `json:"-"`
 }
 
 // ApprovalTaskSummary is one frozen routing node of a round. Assignee IDs are
@@ -180,6 +188,7 @@ type RoutingAssignee struct {
 
 // RoutingSnapshot is the complete routing fact frozen with the round.
 type RoutingSnapshot struct {
+	AdoptedPlaybook json.RawMessage        `json:"adopted_playbook,omitempty"`
 	Schema          string                 `json:"schema"`
 	TemplateID      string                 `json:"template_id"`
 	TemplateVersion string                 `json:"template_version"`

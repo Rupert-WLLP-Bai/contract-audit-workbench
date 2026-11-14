@@ -157,6 +157,13 @@ func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID
 	return s.jobAcceptanceForRun(ctx, user, caseID, runID, "审查任务缺少执行记录", "审查任务没有保存到任务队列")
 }
 
+type reviewPlaybookContextKey struct{}
+
+// WithReviewPlaybook carries the explicitly selected immutable reference.
+func WithReviewPlaybook(ctx context.Context, ref KnowledgeRef) context.Context {
+	return context.WithValue(ctx, reviewPlaybookContextKey{}, ref)
+}
+
 func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string, durable bool, requestedScope ...string) (string, error) {
 	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
@@ -195,6 +202,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	if _, err := s.writableCase(&seen, user, caseID, access.Review); err != nil {
 		return "", err
 	}
+	playbook, adoptPlaybook := ctx.Value(reviewPlaybookContextKey{}).(KnowledgeRef)
 	idempotency, _ := ctx.Value(reviewIdempotencyContextKey{}).(*reviewIdempotency)
 	readmission, readmit := ctx.Value(reviewReadmissionKey{}).(ReviewReadmission)
 	key, route, digest := "", "POST /api/cases/"+caseID+"/reviews", ""
@@ -209,6 +217,9 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	}
 	if key != "" {
 		request := []string{caseID, businessAt, evidenceCutoffAt, scope}
+		if adoptPlaybook {
+			request = append(request, "playbook", playbook.KnowledgeID, playbook.VersionID, playbook.ContentSHA256)
+		}
 		if readmit {
 			request = append(request, readmission.RunID, readmission.AttemptID)
 		}
@@ -378,6 +389,9 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		// association and mapping pins, and it must name the business instant
 		// itself instead of borrowing the server clock.
 		if !isGovernedReviewCase(lockedCase) {
+			if adoptPlaybook {
+				return fault.Conflict("当前案件没有可用于手册的治理规则包")
+			}
 			signature = applyReviewScope(currentSignatureWithRulePack(models, reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload), scope)
 			signature, err = withServiceObjectContextTx(ctx, tx, lockedCase, at, serviceObjectDocuments, signature)
 			return err
@@ -411,6 +425,21 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		}
 		activePack = assessment.Pack
 		signature = applyReviewScope(currentSignatureWithRulePack(models, reviewDocumentIDs, frozenDocs, assessment.Pack, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload), scope)
+		if adoptPlaybook {
+			if assessment.Knowledge == nil {
+				return fault.Conflict("手册需要已冻结的治理知识")
+			}
+			adopted, e := s.resolvePlaybookTx(ctx, tx, user, lockedCase, playbook, at)
+			if e != nil {
+				return e
+			}
+			assessment.Knowledge.AdoptedPlaybook = &adopted
+			sealed, e := sealKnowledgeSnapshot(*assessment.Knowledge)
+			if e != nil {
+				return e
+			}
+			assessment.Knowledge = &sealed
+		}
 		if assessment.Knowledge != nil {
 			signature.GovernedKnowledge = assessment.Knowledge
 		}

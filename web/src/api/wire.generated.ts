@@ -28,6 +28,10 @@ export interface components {
             role: "admin" | "reviewer" | "clerk" | "viewer";
             tenant_id: string;
         };
+        AdoptedPlaybookView: {
+            content_unavailable_reason: string;
+            ref: components["schemas"]["GovernedKnowledgeRef"];
+        };
         AdoptedTenantConfig: {
             /** Format: date-time */
             adopted_at: string;
@@ -46,6 +50,12 @@ export interface components {
         AdoptedTenantConfigIdentity: {
             digest: string;
             version_id: string;
+        };
+        ApprovalSubmissionRequest: {
+            expected_row_version: number;
+            playbook_ref?: components["schemas"]["GovernedKnowledgeRef"];
+            /** @description 可选的当前生效模板；省略时使用租户默认模板。 */
+            template_id?: string;
         };
         ArchiveRequest: {
             reason: string;
@@ -1006,6 +1016,15 @@ export interface components {
             total: number;
             undecided: number;
         };
+        GovernedKnowledgeRef: {
+            content_sha256: string;
+            knowledge_id: string;
+            version_id: string;
+        };
+        GovernedPlaybook: {
+            clauses: components["schemas"]["PlaybookClause"][];
+            template: components["schemas"]["PlaybookTemplateRef"];
+        };
         JurisdictionOperationsSummary: {
             jurisdiction_id: string;
             tenants: components["schemas"]["TenantOperationsSummary"][];
@@ -1202,6 +1221,27 @@ export interface components {
             output_micro_usd_per_million: string;
             provider_config_id: string;
         };
+        PlaybookClause: {
+            acceptable_deviation: string;
+            escalation_condition: string;
+            hard_constraint: string;
+            proposed_wording: string;
+            rule_id: string;
+            standard_clause: string;
+        };
+        PlaybookOption: {
+            ref: components["schemas"]["GovernedKnowledgeRef"];
+            title: string;
+        };
+        PlaybookOptions: {
+            items: components["schemas"]["PlaybookOption"][];
+            reason?: string;
+        };
+        PlaybookTemplateRef: {
+            template_digest: string;
+            template_id: string;
+            template_version: string;
+        };
         ProcurementRef: {
             package_id: string;
             result_id: string;
@@ -1302,6 +1342,30 @@ export interface components {
             rule_set_hash: string;
             rule_set_id: string;
             rule_set_version: string;
+        };
+        ReviewStartRequest: {
+            /**
+             * Format: date-time
+             * @description 已治理案件必填，带时区的 RFC3339Nano 业务时间；界面按北京时间输入并提交 UTC。
+             */
+            business_at?: string;
+            /**
+             * Format: date-time
+             * @description 可选法律证据截止时间；省略时由受理事务采样。显式值按UTC微秒规范化且不得晚于受理时刻。
+             */
+            evidence_cutoff_at?: string;
+            playbook_ref?: components["schemas"]["GovernedKnowledgeRef"];
+            /** @description 明确针对最近一次用户主动取消且尚未冻结输入的准备记录发起新审查；必须使用新的 Idempotency-Key。 */
+            readmit_cancelled?: {
+                attempt_id: string;
+                run_id: string;
+            };
+            /**
+             * @description 单合同预审仅执行版本固定的单合同检查，不替代完整审查。
+             * @default full_review
+             * @enum {string}
+             */
+            scope: "full_review" | "single_contract_precheck";
         };
         RunSummary: {
             id: string;

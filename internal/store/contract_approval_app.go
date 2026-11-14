@@ -14,12 +14,16 @@ import (
 	"context"
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	approvalmodel "contractaudit/internal/approval/model"
 	contractapp "contractaudit/internal/contract/app"
 	contract "contractaudit/internal/contract/model"
 	contractpg "contractaudit/internal/contract/postgres"
+	"contractaudit/internal/fault"
+	knowledgemodel "contractaudit/internal/knowledge/model"
 	platform "contractaudit/internal/platform/postgres"
 	"encoding/json"
 	"github.com/jackc/pgx/v5"
+	"time"
 )
 
 type approvalFreezeCodec struct{}
@@ -66,6 +70,7 @@ func (a approvalSubmissionAccess) CanManage(record contract.Aggregate) bool {
 }
 
 type approvalSubmissionFreeze struct {
+	store    *Store
 	tx       pgx.Tx
 	user     accounts.User
 	executor platform.Executor
@@ -74,4 +79,30 @@ type approvalSubmissionFreeze struct {
 func (a approvalSubmissionFreeze) VerifyFreeze(ctx context.Context, tenantID, contractID, revisionID string) ([]contract.FrozenVersionMaterial, error) {
 	return contractapp.VerifyApprovalFreeze(ctx, tenantID, contractID, revisionID, contractpg.NewApprovalFreeze(a.executor), approvalFreezeCodec{}, approvalMaterialResolver{tx: a.tx, user: a.user})
 }
+
+// ResolveApprovalPlaybook takes scope only from verified revision materials.
+func (a approvalSubmissionFreeze) ResolveApprovalPlaybook(ctx context.Context, tenantID, contractID, revisionID string, materials []contract.FrozenVersionMaterial, ref approvalmodel.PlaybookRef) (json.RawMessage, error) {
+	if len(materials) == 0 {
+		return nil, fault.Conflict("合同冻结版本没有可验证的来源案件")
+	}
+	caseID, orgID := materials[0].CaseID, materials[0].CaseOrgID
+	if caseID == "" || orgID == "" {
+		return nil, fault.Conflict("合同来源案件不可用")
+	}
+	for _, material := range materials {
+		if material.CaseID != caseID || material.CaseOrgID != orgID {
+			return nil, fault.Conflict("合同冻结版本包含多个来源案件")
+		}
+	}
+	item, err := loadCLMCase(ctx, a.tx, a.user, orgID, caseID)
+	if err != nil {
+		return nil, err
+	}
+	adopted, err := a.store.resolvePlaybookTx(ctx, a.tx, a.user, item, knowledgemodel.KnowledgeRef{KnowledgeID: ref.KnowledgeID, VersionID: ref.VersionID, ContentSHA256: ref.ContentSHA256}, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(adopted)
+}
+
 func (approvalDirectory) Users() []accounts.User { return accounts.List() }
