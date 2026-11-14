@@ -1,9 +1,9 @@
 // File metadata (manifest mirror):
-// Purpose: Lets a reviewer explicitly adopt one authorized, exact-version playbook before starting a case review.
+// Purpose: Lets reviewers explicitly select an authorized exact playbook version, isolates catalog caches by actor context, and rejects stale selections.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-15
-// Updated: 2026-11-15
+// Created: 2026-11-14
+// Updated: 2026-11-14
 // Revision: r1
 // Copyright: See LICENSE
 // End file metadata.

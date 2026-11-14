@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks explicit playbook adoption and immutable review/approval history with restricted service roles, plus complete planner payload budget boundaries.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

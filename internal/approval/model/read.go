@@ -2,9 +2,9 @@
 // Purpose: Defines Approval read DTOs, identity-bound cursors, limits and frozen workflow/risk/action-hint projections without persistence or current-policy recomputation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-13
+// Created: 2026-11-14
 // Updated: 2026-11-14
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 

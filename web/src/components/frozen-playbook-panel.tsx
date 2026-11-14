@@ -1,9 +1,9 @@
 // File metadata (manifest mirror):
-// Purpose: Displays the exact playbook reference frozen with a review or approval round and explains when its body is not included in the current projection.
+// Purpose: Shows the exact playbook reference frozen with a review or approval and explains why this view does not expose source content.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-15
-// Updated: 2026-11-15
+// Created: 2026-11-14
+// Updated: 2026-11-14
 // Revision: r1
 // Copyright: See LICENSE
 // End file metadata.
