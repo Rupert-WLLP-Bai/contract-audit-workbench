@@ -3,13 +3,14 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"time"
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
 	legalApp "contractaudit/internal/legal/app"
 	legalModel "contractaudit/internal/legal/model"
+	platformpostgres "contractaudit/internal/platform/postgres"
+	subjectPostgres "contractaudit/internal/subject/postgres"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -43,18 +44,11 @@ func (f legalRecordFacts) VerifyBasis(ctx context.Context, raw json.RawMessage) 
 	return refs, obtained, err
 }
 func (f legalRecordFacts) LoadRecordBinding(ctx context.Context, pin legalModel.LegalApplicabilityPartyPin) (legalApp.RecordPartyBinding, error) {
-	var out legalApp.RecordPartyBinding
-	err := f.tx.QueryRow(ctx, `SELECT h.current_version,v.subject_id,v.subject_version,v.role,v.binding_state,sv.current_version FROM case_subject_roles h JOIN case_subject_role_versions v ON v.tenant_id=h.tenant_id AND v.org_id=h.org_id AND v.case_id=h.case_id AND v.binding_id=h.binding_id AND v.version=h.current_version JOIN subjects sv ON sv.tenant_id=v.tenant_id AND sv.subject_id=v.subject_id WHERE h.tenant_id=$1 AND h.org_id=$2 AND h.case_id=$3 AND h.binding_id=$4`, accounts.Tenant(f.user), f.item.OwnerOrgID, f.item.ID, pin.BindingID).Scan(&out.HeadVersion, &out.SubjectID, &out.SubjectVersion, &out.Role, &out.State, &out.SubjectHead)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return out, nil
-	}
-	out.Found = err == nil
-	return out, err
+	v, err := subjectPostgres.ReadRecordBinding(ctx, platformpostgres.Bind(f.tx), accounts.Tenant(f.user), f.item.OwnerOrgID, f.item.ID, pin.BindingID)
+	return legalApp.RecordPartyBinding{HeadVersion: v.HeadVersion, SubjectID: v.SubjectID, SubjectVersion: v.SubjectVersion, Role: v.Role, State: v.State, SubjectHead: v.SubjectHead, Found: v.Found}, err
 }
 func (f legalRecordFacts) CountRecordRole(ctx context.Context, role string) (int, error) {
-	var count int
-	err := f.tx.QueryRow(ctx, `SELECT count(*) FROM case_subject_roles h JOIN case_subject_role_versions v ON v.tenant_id=h.tenant_id AND v.org_id=h.org_id AND v.case_id=h.case_id AND v.binding_id=h.binding_id AND v.version=h.current_version WHERE h.tenant_id=$1 AND h.org_id=$2 AND h.case_id=$3 AND h.current_version=v.version AND v.role=$4 AND v.binding_state='active'`, accounts.Tenant(f.user), f.item.OwnerOrgID, f.item.ID, role).Scan(&count)
-	return count, err
+	return subjectPostgres.CountActiveRole(ctx, platformpostgres.Bind(f.tx), accounts.Tenant(f.user), f.item.OwnerOrgID, f.item.ID, role)
 }
 
 type legalRecordClock struct{}

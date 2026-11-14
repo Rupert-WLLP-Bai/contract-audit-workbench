@@ -187,6 +187,17 @@
         "postgres": [
           "internal/legal/postgres"
         ]
+      },
+      {
+        "id": "subject",
+        "app": [
+          "internal/subject/model",
+          "internal/subject/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/subject/postgres"
+        ]
       }
     ]
   }

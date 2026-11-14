@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 
 	"contractaudit/internal/accounts"
 	knowledgeApp "contractaudit/internal/knowledge/app"
@@ -12,6 +11,7 @@ import (
 	legalModel "contractaudit/internal/legal/model"
 	legalPostgres "contractaudit/internal/legal/postgres"
 	platformpostgres "contractaudit/internal/platform/postgres"
+	subjectPostgres "contractaudit/internal/subject/postgres"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -48,27 +48,12 @@ func (facts *legalReviewFacts) LoadFactFamilies(ctx context.Context) ([]legalApp
 }
 
 func (facts *legalReviewFacts) LoadSubjectBinding(ctx context.Context, pin legalModel.LegalApplicabilityPartyPin) (legalApp.SubjectBinding, error) {
-	var out legalApp.SubjectBinding
-	err := facts.tx.QueryRow(ctx, `SELECT h.current_version,v.subject_id,v.subject_version,v.role,v.binding_state FROM case_subject_roles h JOIN case_subject_role_versions v ON v.tenant_id=h.tenant_id AND v.org_id=h.org_id AND v.case_id=h.case_id AND v.binding_id=h.binding_id AND v.version=h.current_version WHERE h.tenant_id=$1 AND h.org_id=$2 AND h.case_id=$3 AND h.binding_id=$4`, accounts.Tenant(facts.user), facts.item.OwnerOrgID, facts.item.ID, pin.BindingID).Scan(&out.BindingVersion, &out.SubjectID, &out.SubjectVersion, &out.Role, &out.State)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return out, nil
-	}
-	if err != nil {
-		return out, err
-	}
-	out.Found = true
-	return out, nil
+	v, err := subjectPostgres.ReadCurrentBinding(ctx, platformpostgres.Bind(facts.tx), accounts.Tenant(facts.user), facts.item.OwnerOrgID, facts.item.ID, pin.BindingID)
+	return legalApp.SubjectBinding{BindingVersion: v.HeadVersion, SubjectID: v.SubjectID, SubjectVersion: v.SubjectVersion, Role: v.Role, State: v.State, Found: v.Found}, err
 }
 func (facts *legalReviewFacts) LoadSubjectVersion(ctx context.Context, id string) (int64, bool, error) {
-	var v int64
-	err := facts.tx.QueryRow(ctx, `SELECT current_version FROM subjects WHERE tenant_id=$1 AND subject_id=$2`, accounts.Tenant(facts.user), id).Scan(&v)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, false, nil
-	}
-	return v, err == nil, err
+	return subjectPostgres.ReadSubjectCurrentVersion(ctx, platformpostgres.Bind(facts.tx), accounts.Tenant(facts.user), id)
 }
 func (facts *legalReviewFacts) CountActiveRole(ctx context.Context, role string) (int, error) {
-	var count int
-	err := facts.tx.QueryRow(ctx, `SELECT count(*) FROM case_subject_roles h JOIN case_subject_role_versions v ON v.tenant_id=h.tenant_id AND v.org_id=h.org_id AND v.case_id=h.case_id AND v.binding_id=h.binding_id AND v.version=h.current_version WHERE h.tenant_id=$1 AND h.org_id=$2 AND h.case_id=$3 AND h.current_version=v.version AND v.role=$4 AND v.binding_state='active'`, accounts.Tenant(facts.user), facts.item.OwnerOrgID, facts.item.ID, role).Scan(&count)
-	return count, err
+	return subjectPostgres.CountActiveRole(ctx, platformpostgres.Bind(facts.tx), accounts.Tenant(facts.user), facts.item.OwnerOrgID, facts.item.ID, role)
 }
