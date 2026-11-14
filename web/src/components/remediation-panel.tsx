@@ -26,6 +26,7 @@ import type {
   Remediation,
   ReviewHistoryEntry,
 } from "../api/types";
+import type { PlaybookRef } from "../api/playbooks";
 import {
   caseHref,
   formatDateTime,
@@ -41,6 +42,7 @@ import {
   type ReviewChoice,
 } from "../domain/workflow";
 import { ReviewChoiceSelect } from "./review-choice-select";
+import { PlaybookPicker } from "./playbook-picker";
 import { StatusText } from "./status-text";
 import { TechnicalDetail } from "./technical-detail";
 
@@ -122,6 +124,8 @@ function RemediationCard({
     choices[0]?.key ??
     "";
   const [candidateKey, setCandidateKey] = useState(candidateDefault);
+  const [playbookRef, setPlaybookRef] = useState<PlaybookRef>();
+  const [playbookRefAvailable, setPlaybookRefAvailable] = useState(true);
   const [documentId, setDocumentId] = useState(item.document_ids[0] ?? "");
   const [submitReason, setSubmitReason] = useState("");
   const [verifyReason, setVerifyReason] = useState("");
@@ -139,6 +143,10 @@ function RemediationCard({
     });
     return () => { active = false; };
   }, [selected]);
+  useEffect(() => {
+    setPlaybookRef(undefined);
+    setPlaybookRefAvailable(true);
+  }, [caseId, item.id]);
   const candidate = reviewChoiceForKey(choices, candidateKey);
   const candidateWorkspace = useReview(
     caseId,
@@ -302,13 +310,14 @@ function RemediationCard({
     );
   }
   function onStartSourceTimeReview() {
-    if (!sourceBusinessTimeValid || sourceBusinessTime === null) return;
+    if (!sourceBusinessTimeValid || sourceBusinessTime === null || (playbookRef && !playbookRefAvailable)) return;
     startSourceReview.mutate(
       {
         business_at: sourceBusinessTime,
         scope: source.data?.snapshot?.review_scope?.id === "single_contract_precheck"
           ? "single_contract_precheck"
           : "full_review",
+        ...(playbookRef ? { playbook_ref: playbookRef } : {}),
       },
       {
         onSuccess: (accepted) => {
@@ -551,6 +560,13 @@ function RemediationCard({
               <p className="meta">
                 新审查会使用来源冻结业务时点 {formatDateTime(sourceBusinessTime)}；材料、规则和其他依赖仍由服务端重新冻结并核验。
               </p>
+              <PlaybookPicker
+                caseId={caseId}
+                value={playbookRef}
+                onChange={setPlaybookRef}
+                onAvailabilityChange={setPlaybookRefAvailable}
+                disabled={startSourceReview.isPending}
+              />
               {startSourceReview.error ? (
                 <p ref={startReviewErrorRef} className="workflow-error" role="alert" tabIndex={-1}>
                   {errorMessage(startSourceReview.error)}
@@ -560,7 +576,7 @@ function RemediationCard({
                 type="primary"
                 htmlType="button"
                 loading={startSourceReview.isPending}
-                disabled={startSourceReview.isPending}
+                disabled={startSourceReview.isPending || Boolean(playbookRef && !playbookRefAvailable)}
                 onClick={onStartSourceTimeReview}
               >
                 按来源业务时点发起复审

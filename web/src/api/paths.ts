@@ -143,6 +143,7 @@ export const paths = {
   reparse: (caseId: string, documentId: string) =>
     `/api/cases/${id(caseId)}/documents/${id(documentId)}/parse`,
   reviews: (caseId: string) => `/api/cases/${id(caseId)}/reviews`,
+  casePlaybooks: (caseId: string) => `/api/cases/${id(caseId)}/playbooks`,
   review: (caseId: string, runId: string, attemptId?: string | null) => {
     const path = `/api/cases/${id(caseId)}/reviews/${id(runId)}`;
     return attemptId === null || attemptId === undefined

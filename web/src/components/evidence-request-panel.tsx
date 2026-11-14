@@ -39,6 +39,7 @@ import {
 import { ErrorNotice } from "./error-notice";
 import { queryKeys, useCreateWorkbenchTask, useStartReview } from "../api/queries";
 import type { Actor, CaseDetail, ConstraintEvaluation, ReviewDocument, ReviewWorkspace, WorkbenchTask } from "../api/types";
+import type { PlaybookRef } from "../api/playbooks";
 import { caseHref, formatDateTime, relationLabel, roleLabel } from "../domain/review";
 import { businessCapabilityLabel, businessDomainLabel } from "../domain/business-labels";
 import { beijingInputToUtc } from "./beijing-datetime";
@@ -50,6 +51,7 @@ import {
 } from "../domain/frozen-quote";
 import { StatusText } from "./status-text";
 import { TechnicalDetail } from "./technical-detail";
+import { PlaybookPicker } from "./playbook-picker";
 
 const materialRoles = [
   { value: "procurement", label: "采购文件" },
@@ -355,8 +357,12 @@ function requestVerificationInput(
 function followupReviewInput(
   requiresBusinessAt: boolean,
   businessAt: string,
-): { business_at?: string } {
-  return requiresBusinessAt ? { business_at: beijingInputToUtc(businessAt) } : {};
+  playbookRef?: PlaybookRef,
+): { business_at?: string; playbook_ref?: PlaybookRef } {
+  return {
+    ...(requiresBusinessAt ? { business_at: beijingInputToUtc(businessAt) } : {}),
+    ...(playbookRef ? { playbook_ref: playbookRef } : {}),
+  };
 }
 
 function validBusinessReviewTime(value: string): boolean {
@@ -710,6 +716,7 @@ function RequestReceiptForm(props: RequestReceiptFormProps) {
 }
 
 function FollowupReview({
+  caseId,
   canSubmit,
   requiresBusinessAt,
   businessAt,
@@ -717,8 +724,14 @@ function FollowupReview({
   startPending,
   startError,
   validBusinessAt,
+  playbookRef,
+  setPlaybookRef,
+  playbookRefAvailable,
+  setPlaybookRefAvailable,
+  disabled,
   onStart,
 }: {
+  caseId: string;
   canSubmit: boolean;
   requiresBusinessAt: boolean;
   businessAt: string;
@@ -726,6 +739,11 @@ function FollowupReview({
   startPending: boolean;
   startError: unknown;
   validBusinessAt: boolean;
+  playbookRef: PlaybookRef | undefined;
+  setPlaybookRef: (value: PlaybookRef | undefined) => void;
+  playbookRefAvailable: boolean;
+  setPlaybookRefAvailable: (available: boolean) => void;
+  disabled: boolean;
   onStart: () => void;
 }) {
   if (!canSubmit) return null;
@@ -738,9 +756,16 @@ function FollowupReview({
           <Input type="datetime-local" value={businessAt} onChange={(event) => setBusinessAt(event.target.value)} />
         </label>
       ) : null}
+      <PlaybookPicker
+        caseId={caseId}
+        value={playbookRef}
+        onChange={setPlaybookRef}
+        onAvailabilityChange={setPlaybookRefAvailable}
+        disabled={disabled}
+      />
       <ErrorNotice error={startError} />
       <Button htmlType="button" loading={startPending}
-        disabled={startPending || (requiresBusinessAt && !validBusinessAt)} onClick={onStart}>
+        disabled={startPending || (requiresBusinessAt && !validBusinessAt) || (playbookRef !== undefined && !playbookRefAvailable)} onClick={onStart}>
         发起后续审查
       </Button>
     </div>
@@ -1614,6 +1639,8 @@ function RequestCard({
   const [quote, setQuote] = useState<FrozenQuoteSelection | null>(null);
   const [reason, setReason] = useState("");
   const [businessAt, setBusinessAt] = useState("");
+  const [playbookRef, setPlaybookRef] = useState<PlaybookRef>();
+  const [playbookRefAvailable, setPlaybookRefAvailable] = useState(true);
   const targetRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
     if (!expanded || selectedRequestId !== item.id) return;
@@ -1649,6 +1676,10 @@ function RequestCard({
     receipt?.id,
     runId,
   ]);
+  useEffect(() => {
+    setPlaybookRef(undefined);
+    setPlaybookRefAvailable(true);
+  }, [caseId, item.id]);
   const verifiedReady = requestVerificationReady(canVerify, item.status, receipt, frozenLater, observed, quoteValid, reason);
   const validBusinessAt = validBusinessReviewTime(businessAt);
   const availableDocuments = availableRequestDocuments(documents, item.material_role);
@@ -1715,7 +1746,8 @@ function RequestCard({
   }
 
   function startFollowupReview() {
-    start.mutate(followupReviewInput(requiresBusinessAt, businessAt), {
+    if (playbookRef && !playbookRefAvailable) return;
+    start.mutate(followupReviewInput(requiresBusinessAt, businessAt, playbookRef), {
       onSuccess: (accepted) => {
         void navigate(caseHref(caseId, accepted.id, accepted.attempt_id));
       },
@@ -1764,9 +1796,11 @@ function RequestCard({
       />
       {item.status === "received" && context.allowWrites ? (
         <>
-          <FollowupReview canSubmit={canSubmit} requiresBusinessAt={requiresBusinessAt} businessAt={businessAt}
+          <FollowupReview caseId={caseId} canSubmit={canSubmit} requiresBusinessAt={requiresBusinessAt} businessAt={businessAt}
             setBusinessAt={setBusinessAt} startPending={start.isPending} startError={start.error}
-            validBusinessAt={validBusinessAt} onStart={startFollowupReview} />
+            validBusinessAt={validBusinessAt} playbookRef={playbookRef} setPlaybookRef={setPlaybookRef}
+            playbookRefAvailable={playbookRefAvailable} setPlaybookRefAvailable={setPlaybookRefAvailable}
+            disabled={start.isPending} onStart={startFollowupReview} />
           <RequestVerificationForm
             frozenLater={frozenLater} observed={observed} matchDescription={matchDescription}
             historyError={history.isError}

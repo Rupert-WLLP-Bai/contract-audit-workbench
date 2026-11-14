@@ -70,6 +70,7 @@ import { enumValue, invalidResponse } from "./respond";
 import { parseAgentReview } from "./agent-review";
 import { parseBusinessAgentReview } from "./business-agent-review";
 import { parseContractFacts } from "./contract-facts";
+import { parseFrozenPlaybookAdoption } from "./playbooks";
 import { wireEnums } from "./wire.generated";
 function nonNegativeIntegerOrNull(value: unknown): number | null {
   const result = numberOrNull(value);
@@ -956,6 +957,12 @@ function parseSnapshot(value: unknown): RunSnapshot | null {
   }
   const planner = parseFrozenPlanner(value.planner);
   const governedKnowledge = parseFrozenKnowledge(value.governed_knowledge);
+  const adoptedPlaybook =
+    value.adopted_playbook === null
+      ? null
+      : value.adopted_playbook === undefined
+        ? undefined
+        : parseFrozenPlaybookAdoption(value.adopted_playbook, "snapshot.adopted_playbook");
   const parsedDocumentIDs = optionalIDList(value.parsed_document_ids);
   const parseSelectionHash = optionalString(value, "parse_selection_hash");
   const parserConfigurationID = optionalString(value, "parser_configuration_id");
@@ -975,6 +982,7 @@ function parseSnapshot(value: unknown): RunSnapshot | null {
     ...(adoptedTenantConfig === undefined ? {} : { adopted_tenant_config: adoptedTenantConfig }),
     ...(planner === undefined ? {} : { planner }),
     ...(governedKnowledge === undefined ? {} : { governed_knowledge: governedKnowledge }),
+    ...(adoptedPlaybook === undefined ? {} : { adopted_playbook: adoptedPlaybook }),
   };
 }
 

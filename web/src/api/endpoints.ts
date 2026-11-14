@@ -155,10 +155,12 @@ export function getCase(caseId: string, signal?: AbortSignal) {
   return requestJson(paths.case(caseId), { method: "GET", signal }, parseCaseDetail);
 }
 
-export function listTemplates(caseId: string, signal?: AbortSignal) {
-  const query = new URLSearchParams({ case_id: caseId });
+export function listTemplates(caseId?: string, signal?: AbortSignal) {
+  const query = new URLSearchParams();
+  if (caseId) query.set("case_id", caseId);
+  const suffix = query.size === 0 ? "" : `?${query.toString()}`;
   return requestJson(
-    `${paths.templates}?${query.toString()}`,
+    `${paths.templates}${suffix}`,
     { method: "GET", signal },
     parseTemplateList,
   );
@@ -462,6 +464,7 @@ export interface StartReviewInput {
   business_at?: string;
   scope?: "full_review" | "single_contract_precheck";
   readmit_cancelled?: { run_id: string; attempt_id: string };
+  playbook_ref?: import("./playbooks").PlaybookRef;
 }
 
 export function startReview(caseId: string, input: StartReviewInput = {}, idempotencyKey?: string) {

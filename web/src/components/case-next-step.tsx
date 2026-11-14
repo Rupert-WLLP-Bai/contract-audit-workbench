@@ -9,6 +9,7 @@
 // End file metadata.
 
 import { Button } from "antd";
+import type { ReactNode } from "react";
 import type { CaseDetail, Remediation, ReviewWorkspace } from "../api/types";
 import type { ReviewReadiness, ReviewScope } from "../api/review-readiness";
 import { errorMessage } from "../api/http";
@@ -35,7 +36,9 @@ interface Props {
   historyError: unknown;
   latestWorkspace?: ReviewWorkspace;
   startPending: boolean;
+  startDisabled?: boolean;
   startError: unknown;
+  startControls?: ReactNode;
   onRetrySession: () => void;
   onRefreshReadiness: () => void;
   onRefreshHistory: () => void;
@@ -658,7 +661,7 @@ export function CaseNextStep(props: Props) {
   const { actorRole } = props;
   const action = plan.action;
   const latestWorkspace = currentWorkspace(props);
-  const actionProps = { className: "case-next-step-button", "aria-label": props.suppressWriteAction && action.kind === "start" ? "打开案件继续" : action.label, type: "primary" as const, htmlType: "button" as const, loading: action.loading, disabled: action.disabled };
+  const actionProps = { className: "case-next-step-button", "aria-label": props.suppressWriteAction && action.kind === "start" ? "打开案件继续" : action.label, type: "primary" as const, htmlType: "button" as const, loading: action.loading, disabled: action.disabled || (action.kind === "start" && props.startDisabled === true) };
   const actionHref = props.suppressWriteAction && action.href?.startsWith("#")
     ? "/cases/" + encodeURIComponent(props.caseDetail.id) + action.href
     : action.href;
@@ -721,6 +724,7 @@ export function CaseNextStep(props: Props) {
           <strong>唯一主要下一步</strong>
           <p>页面提示用于定位当前工作；提交时仍以服务端校验结果为准。</p>
         </div>
+        {action.kind === "start" && !props.suppressWriteAction ? props.startControls : null}
         {mainAction}
       </div>
     </section>

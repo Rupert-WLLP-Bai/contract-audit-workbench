@@ -12,9 +12,16 @@ import { jsonInit, requestJson } from "./http";
 import { enumValue, responseReader } from "./respond";
 
 import { parseLegalMetadata, type LegalMetadata } from "./legal-knowledge";
+import type { WireSchemas } from "./wire.generated";
 
 export type KnowledgeKind =
-  "policy" | "guidance" | "exception" | "experience" | "legal" | "template";
+  | "policy"
+  | "guidance"
+  | "exception"
+  | "experience"
+  | "legal"
+  | "template"
+  | "playbook";
 export type KnowledgeTemplateFieldType = "string" | "decimal" | "date";
 export interface KnowledgeTemplateField {
   key: string;
@@ -26,6 +33,9 @@ export interface KnowledgeTemplate {
   body: string;
   fields: KnowledgeTemplateField[];
 }
+export type PlaybookTemplateRef = WireSchemas["PlaybookTemplateRef"];
+export type KnowledgePlaybookClause = WireSchemas["PlaybookClause"];
+export type KnowledgePlaybook = WireSchemas["GovernedPlaybook"];
 export type KnowledgeAction =
   "submit" | "validate" | "approve" | "publish" | "withdraw" | "rollback";
 
@@ -89,6 +99,7 @@ export interface KnowledgeContent {
   exclusions: KnowledgeCondition[] | null;
   binding: KnowledgeBinding;
   template?: KnowledgeTemplate;
+  playbook?: KnowledgePlaybook;
   exception_basis?: string;
   check_action?: string;
   minimum_evidence?: string;
@@ -198,6 +209,7 @@ function kind(value: unknown, path: string): KnowledgeKind {
       "experience",
       "legal",
       "template",
+      "playbook",
     ]) ?? invalid(path)
   );
 }
@@ -267,6 +279,28 @@ function template(value: unknown, path: string): KnowledgeTemplate {
     }),
   };
 }
+function playbook(value: unknown, path: string): KnowledgePlaybook {
+  const v = obj(value, path);
+  const templateValue = obj(v.template, `${path}.template`);
+  return {
+    template: {
+      template_id: text(templateValue.template_id, `${path}.template.template_id`),
+      template_version: text(templateValue.template_version, `${path}.template.template_version`),
+      template_digest: text(templateValue.template_digest, `${path}.template.template_digest`),
+    },
+    clauses: array(v.clauses, `${path}.clauses`, (clause, clausePath) => {
+      const item = obj(clause, clausePath);
+      return {
+        rule_id: text(item.rule_id, `${clausePath}.rule_id`),
+        standard_clause: text(item.standard_clause, `${clausePath}.standard_clause`),
+        acceptable_deviation: text(item.acceptable_deviation, `${clausePath}.acceptable_deviation`),
+        hard_constraint: text(item.hard_constraint, `${clausePath}.hard_constraint`),
+        proposed_wording: text(item.proposed_wording, `${clausePath}.proposed_wording`),
+        escalation_condition: text(item.escalation_condition, `${clausePath}.escalation_condition`),
+      };
+    }),
+  };
+}
 function content(value: unknown, path: string): KnowledgeContent {
   const v = obj(value, path);
   return {
@@ -302,6 +336,7 @@ function content(value: unknown, path: string): KnowledgeContent {
     exclusions: nullableArray(v.exclusions, `${path}.exclusions`, condition),
     binding: binding(v.binding, `${path}.binding`),
     template: v.template === undefined ? undefined : template(v.template, `${path}.template`),
+    playbook: v.playbook === undefined ? undefined : playbook(v.playbook, `${path}.playbook`),
     exception_basis: optionalText(v.exception_basis, `${path}.exception_basis`),
     check_action: optionalText(v.check_action, `${path}.check_action`),
     minimum_evidence: optionalText(v.minimum_evidence, `${path}.minimum_evidence`),

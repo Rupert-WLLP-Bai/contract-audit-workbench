@@ -32,6 +32,7 @@ import type { Actor } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { ListPage } from "../components/page-patterns";
 import { StatusText } from "../components/status-text";
+import { FrozenPlaybookPanel } from "../components/frozen-playbook-panel";
 import {
   approvalActionLabel,
   approvalFieldValue,
@@ -563,6 +564,7 @@ function ApprovalDetailBody({
           <dd className="approval-mono">{detail.round.contract_revision_id}</dd>
         </div>
       </dl>
+      <FrozenPlaybookPanel adoption={detail.adopted_playbook} heading="本轮冻结采用的审查手册" />
       <RoundTimeline detail={detail} selectedTaskId={selectedTaskId} />
       <DecisionForm detail={detail} activeTask={activeTask} />
       <RevisionDiff detail={detail} />

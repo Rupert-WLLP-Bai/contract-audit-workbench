@@ -13,6 +13,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getReviewReadiness, type ReviewScope } from "../api/review-readiness";
+import type { PlaybookRef } from "../api/playbooks";
 import { beijingInputToUtc } from "../components/beijing-datetime";
 import { ReviewReadinessPanel } from "../components/review-readiness-panel";
 import { errorMessage, isForbidden, isUnauthenticated } from "../api/http";
@@ -29,6 +30,7 @@ import {
   type CaseReadingPosition,
 } from "../components/section-navigation";
 import { CaseNextStep } from "../components/case-next-step";
+import { PlaybookPicker } from "../components/playbook-picker";
 import { MaterialCollectionPanel } from "../components/material-collection-panel";
 import { CaseSubjectRolesPanel } from "../components/case-subject-roles-panel";
 import { CaseSubjectCorrectionsPanel } from "../components/case-subject-corrections-panel";
@@ -326,11 +328,15 @@ export function CaseDetailPage() {
   const start = useStartReview(caseId);
   const [businessAt, setBusinessAt] = useState("");
   const [reviewScope, setReviewScope] = useState<ReviewScope>("full_review");
+  const [playbookRef, setPlaybookRef] = useState<PlaybookRef>();
+  const [playbookRefAvailable, setPlaybookRefAvailable] = useState(true);
   const businessAtValue = beijingInputToUtc(businessAt);
   const validBusinessAt = businessAtValue !== "";
   useEffect(() => {
     setBusinessAt("");
     setReviewScope("full_review");
+    setPlaybookRef(undefined);
+    setPlaybookRefAvailable(true);
   }, [caseId, actorScope]);
   const readiness = useQuery({
     queryKey: [
@@ -432,10 +438,12 @@ export function CaseDetailPage() {
       ? latestWorkspace.review_attempts?.attempt
       : undefined;
   function onStartReview() {
+    if (playbookRef && !playbookRefAvailable) return;
     start.mutate(
       {
         ...(validBusinessAt ? { business_at: businessAtValue } : {}),
         ...(reviewScope === "single_contract_precheck" ? { scope: reviewScope } : {}),
+        ...(playbookRef ? { playbook_ref: playbookRef } : {}),
         ...(readmit
           ? { readmit_cancelled: { run_id: readmit.run_id, attempt_id: readmit.id } }
           : {}),
@@ -535,35 +543,43 @@ export function CaseDetailPage() {
         }
         nextStep={
           <CaseNextStep
-            caseDetail={item}
-            actorRole={actorRole}
-            sessionReady={session.isSuccess}
-            sessionLoading={session.isLoading}
-            sessionError={session.isError ? session.error : null}
-            readiness={readiness.data}
-            readinessLoading={readiness.isFetching}
-            readinessError={readiness.isError ? readiness.error : null}
-            selectedScope={reviewScope}
-            businessAtInput={businessAt}
-            validBusinessAt={validBusinessAt}
-            historyLoading={history.isLoading}
-            historyError={history.isError ? history.error : null}
-            latestWorkspace={latestWorkspace}
-            startPending={start.isPending}
-            startError={start.isError ? start.error : null}
-            onRetrySession={() => void session.refetch()}
-            onRefreshReadiness={() => {
-              start.reset();
-              void Promise.all([
-                readiness.refetch(),
-                detail.refetch(),
-                ...(item.latest_run ? [history.refetch()] : []),
-              ]);
-            }}
-            onRefreshHistory={() => void history.refetch()}
-            onStartReview={onStartReview}
-            onNavigateReview={(href) => void navigate(href, { state: reviewNavigationState() })}
-          />
+              caseDetail={item}
+              actorRole={actorRole}
+              sessionReady={session.isSuccess}
+              sessionLoading={session.isLoading}
+              sessionError={session.isError ? session.error : null}
+              readiness={readiness.data}
+              readinessLoading={readiness.isFetching}
+              readinessError={readiness.isError ? readiness.error : null}
+              selectedScope={reviewScope}
+              businessAtInput={businessAt}
+              validBusinessAt={validBusinessAt}
+              historyLoading={history.isLoading}
+              historyError={history.isError ? history.error : null}
+              latestWorkspace={latestWorkspace}
+              startPending={start.isPending}
+              startError={start.isError ? start.error : null}
+              startDisabled={Boolean(playbookRef && !playbookRefAvailable)}
+              startControls={!archived ? <PlaybookPicker
+                caseId={item.id}
+                value={playbookRef}
+                onChange={setPlaybookRef}
+                onAvailabilityChange={setPlaybookRefAvailable}
+                disabled={start.isPending}
+              /> : null}
+              onRetrySession={() => void session.refetch()}
+              onRefreshReadiness={() => {
+                start.reset();
+                void Promise.all([
+                  readiness.refetch(),
+                  detail.refetch(),
+                  ...(item.latest_run ? [history.refetch()] : []),
+                ]);
+              }}
+              onRefreshHistory={() => void history.refetch()}
+              onStartReview={onStartReview}
+              onNavigateReview={(href) => void navigate(href, { state: reviewNavigationState() })}
+            />
         }
         navigation={
           <nav className="case-detail-sections" aria-label="案件详情分区">

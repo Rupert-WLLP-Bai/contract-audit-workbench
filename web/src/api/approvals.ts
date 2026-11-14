@@ -10,6 +10,7 @@
 
 import { ApiError, jsonInit, requestJson } from "./http";
 import { enumValue, responseReader } from "./respond";
+import { parseFrozenPlaybookAdoption, type FrozenPlaybookAdoption } from "./playbooks";
 
 /**
  * Contract approval workbench reads. Responses are projections of frozen
@@ -149,6 +150,7 @@ export interface ApprovalRoundReadDetail {
   revision_changed: boolean;
   revision_diff: ApprovalRevisionDiff | null;
   allowed_actions: ApprovalDecisionAction[];
+  adopted_playbook?: FrozenPlaybookAdoption;
 }
 
 export interface ApprovalTaskReadDetail {
@@ -498,6 +500,10 @@ function parseRoundDetail(
   path: string,
 ): ApprovalRoundReadDetail {
   const row = reader.object(value, path);
+  const adoptedPlaybook =
+    row.adopted_playbook === undefined
+      ? undefined
+      : parseFrozenPlaybookAdoption(row.adopted_playbook, `${path}.adopted_playbook`);
   return {
     contract_id: reader.text(row.contract_id, `${path}.contract_id`),
     contract_name: reader.text(row.contract_name, `${path}.contract_name`),
@@ -551,6 +557,7 @@ function parseRoundDetail(
       `${path}.allowed_actions`,
       (entry, itemPath) => decisionAction(entry, itemPath),
     ),
+    ...(adoptedPlaybook === undefined ? {} : { adopted_playbook: adoptedPlaybook }),
   };
 }
 
