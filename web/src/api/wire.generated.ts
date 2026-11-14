@@ -610,8 +610,8 @@ export interface components {
             warnings: string[];
         };
         ContractSigningFieldChange: {
-            after?: components["schemas"]["SigningJSONValue"];
-            before?: components["schemas"]["SigningJSONValue"];
+            after?: __WireRecursive0;
+            before?: __WireRecursive0;
             /** @enum {string} */
             change: "added" | "removed" | "changed";
             path: string;
@@ -1266,8 +1266,8 @@ export interface components {
             /** @description Current authenticated PostgreSQL principal UUID; null only for local demo. Actor.id remains the legacy actor ID. */
             principal_id: string | null;
         };
-        SigningJSONValue: string | number | boolean | null | components["schemas"]["SigningJSONValue"][] | {
-            [key: string]: components["schemas"]["SigningJSONValue"];
+        SigningJSONValue: string | number | boolean | null | __WireRecursive0[] | {
+            [key: string]: __WireRecursive0;
         };
         SourceRef: {
             id: string;
@@ -1662,6 +1662,9 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export type operations = Record<string, never>;
+type __WireRecursive0 = string | number | boolean | null | __WireRecursive0[] | {
+    [key: string]: __WireRecursive0;
+};
 export type WireSchemas = components["schemas"];
 export const wireEnums = {
     "MaterialProjection.legacy_status": ["native", "pending_confirmation", "confirmed"],
