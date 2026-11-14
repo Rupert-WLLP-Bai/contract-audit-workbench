@@ -46629,12 +46629,12 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ad20118735900315b03e3181c556fe40f52698e2",
+          "commit": "76024bb16a04126a607521be9de9e392f0055b27",
           "path": "internal/store/document_scope_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
