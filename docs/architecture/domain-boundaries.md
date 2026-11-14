@@ -301,3 +301,22 @@ Subject PG 迁移保留原 loadScope/loadCase、head upsert→version append→i
 Legal原pin事实在Subject自有读取契约落地后改为同事务精确适配，保留Record原单JOIN与Resolver binding/subject两步及fresh后count的不同查询语义；不让Subject PG依赖Legal app/PG或改物理owner。
 
 过渡快照/delta桥随 Subject 公开contract与持久化迁入逐项缩小，AR020消费审计后删除死 facade。schema45、五个数据库服务角色、RLS 与PG权威不改。必要 SOURCE 固定真实回滚前提：已写主体/当前claims/全部跨案binding版本/人工决定后receipt或commit失败的完整行回滚、锁后影响变化/撤权和同键恢复。所有执行检查、应用/浏览器、真实模型/OCR待整轮源码冻结后统一，当前NOT_RUN。
+
+
+## #309 服务对象与冻结关联接缝
+
+状态：采纳，实施前决策。基于 #308 已审查源码候选 `edbb4ba41615597151b17ff26ea5d55a5af63526`，迁移现有服务对象、材料关联、候选与审查冻结上下文；不新增真实外部接入。Operator 是领域所有者，association 表达冻结合同材料关联，其身份仍为 material/version/document/parse/run/attempt，不增加 CLM 合同 ID。#310 继续现有映射人工变更/采集租约，#311 继续现有评估/影响；本项不提前重建这些流程。
+
+先迁实际依赖的 ServiceObject DTO、association planner、identity/facts/basis/candidate/context canonical 规则至 Operator model/app，Store 保留直接类型别名与必要薄转发，字段/tag/顺序、nil/[]、RawMessage 与 SHA 原字节不变。pending 首次确认才推进 confirmed 身份版本，已 confirmed 保持原版本，inactive、旧双指针和错误事实仍按原规则拒绝。现有 identity-change planner 的私有已审核决定 pin 不公开为可任意构造的信任标记；其 #310 写规则/标记留原边界，到对应领域迁移时再承接。context 内部只需 mapping 公共精确 pin 时可投影最小只读值，不为纯规划搬动含私有 request digest 的完整 legacy mapping 实体。
+
+Operator PG 只访问自己的 service_objects、service_object_versions、service_object_contract_associations、service_object_mutation_receipts 及已有 Operator mapping 自有精确事实，不查 Case/Document/Execution/Subject/Contract 表或导入其它领域 PG。使用 platform 的 caller-bound non-owning executor，不设置 scope、身份、连接或事务生命周期；实际 model/app/PG 都接线后才由 root 登记真实领域路径。
+
+Store 保持 Core/只读、trusted actor、原 RC 写事务的 schema advisory→scope→case advisory→当前 Case Manage/writable，以及 RR/read-only 的当前 Case Read。Create 原取 Now(UTC微秒)→normalize→normalized digest→receipt；miss 再 writable/count<100/ID→head/version/receipt→当前 trusted/Manage/writable复验→commit。Confirm 原 key/trim/validate/digest→receipt；miss 再 writable→原 loadState 时点→object FOR UPDATE→已有关联时 mapping EXISTS 与审批流程检查→current exact version/preview→候选/objectRef/facts/hash/双 expected 指针→Now→必要 identity version→association→双 head CAS→receipt独立 Now→原提交围栏。两个 replay 保留原直接 commit，不附加 miss 的末尾复验；首错与 query/clock 时点不改。
+
+准许的专用跨域过渡能力分阶段提供明确值和原证明，不能把 validateOperatorFrozenAttempt、deriveServiceObjectAssociationPreview 或整个旧业务改名为 callback。依原顺序：terminal run/attempt 与 finished/state → frozen input/output hashes → exact attempt input/snapshot/selection 身份与 input hash → 指定 Document 原件/parse完整性 → 同事务 exact agent-review digest 与有序 findings/evaluations output hash → frozen RulePack compiler/raw/normalized digest、tenant/published/case业务范围。Case 只提供服务端 tenant/org/case/业务属性、当前 grant/writable、可信 actor；Document 只提供精确 material/version/document/digest/parse/normalized hash/citation 与既有 artifact/original IO证明，不查最新解析替换冻结引用。
+
+Execution 拥有上述输入/输出的纯身份与哈希规则；既有 standard app 的简化 PreparedInput 不足以代替完整 frozen provenance。必需的 frozen 值/纯函数必须以真实具体字段或有边界泛型保留 v1/v2 JSON、scopeSnapshot、tenant config、document/parse排序及旧 artifact digest 空值兼容；纯 model 不导入 Store/app/PG。实施该值抽取前另列实际最小 DTO/依赖方向及消费者补充决策，不把整份 state 或无类型 verified 包交给 Operator，也不为本项顺手迁全部 Execution 状态。现有 remediation/evidence/single-contract/shadow 与 #311 消费者保留各自原错误/事务路径，以薄转发逐项退出。Operator app 依次组合公开证明值和窄端口，真正拥有候选事实分组、citation精确身份筛选、canonical摘要、人工确认与 CAS plan；Execution/Document 不反向依赖 Operator app。
+
+审查 context 继续按 object ID 排序读取 current head→exact identity→optional exact association→mapping pin 并校验一致性，按明确业务时间及 [from,until) 规划，不能用服务器时钟代替 businessAt。原 no source 且无 governed knowledge 的 nil、受理前 inventory_pending/Complete=false、unresolved原因与精确候选范围保留。Store 仅将 typed context/hash 映射入原 RunSnapshot，受理/Retry 沿原真实前态 clone/append-only/stateDelta/persist 与 run/attempt/snapshot/job/Outbox/receipt 同事务；Operator PG 不写 Execution 表，旧 attempt 不按当前对象或解析重算。
+
+必要 SOURCE 覆盖 exact parse、撤权、版本/association/双head/receipt 已写后的唯一失败与完整行回滚、同键恢复，以及接纳 snapshot/job/outbox/receipt 的真实完整前置。schema45、五个DB服务角色、RLS、预算/租约/Outbox与PG权威保持；synthetic示例不等于真实来源验证。元信息与所有测试、编译、门禁、数据库、app/browser、真实模型/OCR仍待整轮源码冻结后集中执行，当前NOT_RUN。
