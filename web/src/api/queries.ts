@@ -17,8 +17,20 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import * as api from "./endpoints";
-import { assertCommandContextCurrent, captureCommandContext, invalidateSessionIdentity, isForbidden, isUnauthenticated, setSessionIdentity } from "./http";
-import { clearPendingMutationKey, idempotencyActorScope, newIdempotencyKey, pendingMutationKey } from "./idempotency";
+import {
+  assertCommandContextCurrent,
+  captureCommandContext,
+  invalidateSessionIdentity,
+  isForbidden,
+  isUnauthenticated,
+  setSessionIdentity,
+} from "./http";
+import {
+  clearPendingMutationKey,
+  idempotencyActorScope,
+  newIdempotencyKey,
+  pendingMutationKey,
+} from "./idempotency";
 import {
   createContractSavedView,
   deleteContractSavedView,
@@ -61,6 +73,7 @@ import type {
   SubjectSourceVerificationInput,
 } from "./types";
 import { isActiveAttemptState } from "../domain/review";
+import { actorReadContextKey } from "../domain/actor-read-context";
 import { clearAllDecisionDrafts } from "../hooks/decision-drafts";
 import { clearAllEvidenceDrafts } from "../features/review/evidence-request-drafts";
 import type { RulePackManifestInput, RulePackTestInput } from "./rulepacks";
@@ -71,39 +84,33 @@ export const queryKeys = {
     audience === "admin" ? (["session", "admin"] as const) : queryKeys.session,
   pendingIntakesPrefix: ["intakes", "pending"] as const,
   contractDraftsPrefix: ["contracts", "drafts"] as const,
-  contractDrafts: (actorScope: string) =>
-    ["contracts", "drafts", actorScope] as const,
+  contractDrafts: (actorScope: string) => ["contracts", "drafts", actorScope] as const,
   contractLedgerPrefix: ["contracts", "ledger"] as const,
   contractLedger: (actorScope: string, query: string) =>
     ["contracts", "ledger", actorScope, query] as const,
   contractSavedViewsPrefix: ["contracts", "views"] as const,
-  contractSavedViews: (actorScope: string) =>
-    ["contracts", "views", actorScope] as const,
+  contractSavedViews: (actorScope: string) => ["contracts", "views", actorScope] as const,
   pendingIntakes: (actorScope: string, cursor: string | null) =>
     ["intakes", "pending", actorScope, cursor] as const,
   cases: ["cases"] as const,
   case: (caseId: string) => ["cases", caseId] as const,
-  reviewPrefix: (caseId: string, runId: string) =>
-    ["cases", caseId, "reviews", runId] as const,
+  reviewPrefix: (caseId: string, runId: string) => ["cases", caseId, "reviews", runId] as const,
   review: (caseId: string, runId: string, attemptId?: string | null) =>
     [...queryKeys.reviewPrefix(caseId, runId), attemptId ?? null] as const,
   reviewDiagnostics: (caseId: string, runId: string, attemptId?: string | null) =>
     [...queryKeys.reviewPrefix(caseId, runId), "diagnostics", attemptId ?? null] as const,
   reviewHistory: (caseId: string, latestRunId: string) =>
     ["cases", caseId, "review-history", latestRunId] as const,
-  templates: ["templates"] as const,
+  templatesFor: (actorScope: string, caseId: string) => ["templates", actorScope, caseId] as const,
   settings: ["settings", "client"] as const,
   settingsFor: (audience: SessionAudience) =>
-    audience === "admin"
-      ? (["settings", "admin"] as const)
-      : queryKeys.settings,
+    audience === "admin" ? (["settings", "admin"] as const) : queryKeys.settings,
   llmEndpoint: ["admin", "llm-endpoint"] as const,
   rulePacks: ["admin", "rulepacks"] as const,
   rulePackList: ["admin", "rulepacks", "list"] as const,
   rulePack: (packId: string, version: string) =>
     ["admin", "rulepacks", "detail", packId, version] as const,
-  rulePackHistory: (packId: string) =>
-    ["admin", "rulepacks", "history", packId] as const,
+  rulePackHistory: (packId: string) => ["admin", "rulepacks", "history", packId] as const,
   workbench: (period: WorkbenchPeriod, actorScope?: string) =>
     actorScope === undefined
       ? (["workbench", period] as const)
@@ -114,7 +121,8 @@ export const queryKeys = {
     ["subjects", "list", caseId ?? null, query, cursor] as const,
   subject: (subjectId: string) => ["subjects", "detail", subjectId] as const,
   subjectHistory: (subjectId: string) => ["subjects", "history", subjectId] as const,
-  subjectCaseLinks: (subjectId: string, cursor: string | null) => ["subjects", "case-links", subjectId, cursor] as const,
+  subjectCaseLinks: (subjectId: string, cursor: string | null) =>
+    ["subjects", "case-links", subjectId, cursor] as const,
   caseSubjects: (caseId: string) => ["cases", caseId, "subjects"] as const,
   caseSubjectChanges: (caseId: string, cursor: string | null) =>
     ["cases", caseId, "subject-changes", cursor] as const,
@@ -122,24 +130,60 @@ export const queryKeys = {
     ["cases", caseId, "subject-changes", requestId] as const,
   caseSubjectChangeImpact: (caseId: string, requestId: string) =>
     ["cases", caseId, "subject-changes", requestId, "impact"] as const,
-  caseSubjectSourceSnapshots: (caseId: string, cursor: string | null) => ["cases", caseId, "subject-source-snapshots", cursor] as const,
+  caseSubjectSourceSnapshots: (caseId: string, cursor: string | null) =>
+    ["cases", caseId, "subject-source-snapshots", cursor] as const,
   caseSubjectSources: (caseId: string) => ["cases", caseId, "subject-sources"] as const,
-  caseSubjectSourceSnapshot: (caseId: string, snapshotId: string) => ["cases", caseId, "subject-source-snapshots", snapshotId] as const,
-  materialParsedDocuments: (caseId: string, materialId: string, version: number) => ["cases", caseId, "materials", materialId, "versions", version, "parsed-documents"] as const,
-  materialParsedText: (caseId: string, materialId: string, version: number, parsedDocumentId: string, offset: number) => ["cases", caseId, "materials", materialId, "versions", version, "parsed-documents", parsedDocumentId, offset] as const,
+  caseSubjectSourceSnapshot: (caseId: string, snapshotId: string) =>
+    ["cases", caseId, "subject-source-snapshots", snapshotId] as const,
+  materialParsedDocuments: (caseId: string, materialId: string, version: number) =>
+    ["cases", caseId, "materials", materialId, "versions", version, "parsed-documents"] as const,
+  materialParsedText: (
+    caseId: string,
+    materialId: string,
+    version: number,
+    parsedDocumentId: string,
+    offset: number,
+  ) =>
+    [
+      "cases",
+      caseId,
+      "materials",
+      materialId,
+      "versions",
+      version,
+      "parsed-documents",
+      parsedDocumentId,
+      offset,
+    ] as const,
 };
 
-async function keyedMutation<T>(client: QueryClient, operation: string, target: string, input: unknown, send: (key: string) => Promise<T>): Promise<T> {
+async function keyedMutation<T>(
+  client: QueryClient,
+  operation: string,
+  target: string,
+  input: unknown,
+  send: (key: string) => Promise<T>,
+): Promise<T> {
   const actor = client.getQueryData<Actor>(queryKeys.session);
   if (!actor) throw new Error("登录状态不可用，请刷新后重试");
   const commandContext = captureCommandContext(actor);
-  const pending = await pendingMutationKey(operation, idempotencyActorScope(actor), target, input, commandContext);
+  const pending = await pendingMutationKey(
+    operation,
+    idempotencyActorScope(actor),
+    target,
+    input,
+    commandContext,
+  );
   assertCommandContextCurrent(commandContext);
   const result = await send(pending.key);
   try {
     clearPendingMutationKey(pending.storageKey);
   } catch {
-    try { sessionStorage.setItem(pending.storageKey, newIdempotencyKey()); } catch { /* response already succeeded */ }
+    try {
+      sessionStorage.setItem(pending.storageKey, newIdempotencyKey());
+    } catch {
+      /* response already succeeded */
+    }
   }
   return result;
 }
@@ -170,7 +214,10 @@ export function useContextChoices(audience: SessionAudience) {
   });
 }
 
-export async function revalidateSessionContext(queryClient: QueryClient, audience: SessionAudience): Promise<Actor> {
+export async function revalidateSessionContext(
+  queryClient: QueryClient,
+  audience: SessionAudience,
+): Promise<Actor> {
   const session = await api.getSession(audience);
   if (setSessionIdentity(session)) clearAllEvidenceDrafts();
   clearIdentityQueries(queryClient);
@@ -181,7 +228,13 @@ export async function revalidateSessionContext(queryClient: QueryClient, audienc
 export function useSwitchContext(audience: SessionAudience) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ membershipId, context }: { membershipId: string; context: ReturnType<typeof captureCommandContext> }) => {
+    mutationFn: async ({
+      membershipId,
+      context,
+    }: {
+      membershipId: string;
+      context: ReturnType<typeof captureCommandContext>;
+    }) => {
       const actor = queryClient.getQueryData<Actor>(queryKeys.sessionFor(audience));
       if (!actor || !actor.context_switch_enabled) throw new Error("当前会话未启用上下文切换");
       assertCommandContextCurrent(context);
@@ -277,9 +330,7 @@ function invalidateCaseViews(
     );
   }
   if (options.workbench) {
-    invalidations.push(
-      queryClient.invalidateQueries({ queryKey: queryKeys.workbenchPrefix }),
-    );
+    invalidations.push(queryClient.invalidateQueries({ queryKey: queryKeys.workbenchPrefix }));
   }
   return Promise.all(invalidations);
 }
@@ -398,8 +449,7 @@ function invalidateSubjectChangeViews(
 export function useUpdateCaseProfile(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: CaseProfileInput) =>
-      api.updateCaseProfile(caseId, input),
+    mutationFn: (input: CaseProfileInput) => api.updateCaseProfile(caseId, input),
     onSuccess: () =>
       invalidateCaseViews(queryClient, caseId, {
         caseList: true,
@@ -411,10 +461,8 @@ export function useUpdateCaseProfile(caseId: string) {
 export function useCreateWorkbenchTask(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: WorkbenchTaskInput) =>
-      api.createWorkbenchTask(caseId, input),
-    onSuccess: () =>
-      invalidateCaseViews(queryClient, caseId, { workbench: true }),
+    mutationFn: (input: WorkbenchTaskInput) => api.createWorkbenchTask(caseId, input),
+    onSuccess: () => invalidateCaseViews(queryClient, caseId, { workbench: true }),
     onError: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.workbenchPrefix }),
@@ -427,11 +475,8 @@ export function useCreateWorkbenchTask(caseId: string) {
 export function useUpdateWorkbenchTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: {
-      caseId: string;
-      taskId: string;
-      update: WorkbenchTaskUpdateInput;
-    }) => api.updateWorkbenchTask(input.caseId, input.taskId, input.update),
+    mutationFn: (input: { caseId: string; taskId: string; update: WorkbenchTaskUpdateInput }) =>
+      api.updateWorkbenchTask(input.caseId, input.taskId, input.update),
     onSuccess: (_task, input) =>
       invalidateCaseViews(queryClient, input.caseId, { workbench: true }),
     onError: async () => {
@@ -446,8 +491,7 @@ export function useUpdateWorkbenchTask() {
 export function useCreateCaseRelation(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: CaseRelationInput) =>
-      api.createCaseRelation(caseId, input),
+    mutationFn: (input: CaseRelationInput) => api.createCaseRelation(caseId, input),
     onSuccess: () =>
       invalidateCaseViews(queryClient, caseId, {
         caseList: true,
@@ -459,8 +503,7 @@ export function useCreateCaseRelation(caseId: string) {
 export function useDeleteCaseRelation(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (relationId: string) =>
-      api.deleteCaseRelation(caseId, relationId),
+    mutationFn: (relationId: string) => api.deleteCaseRelation(caseId, relationId),
     onSuccess: () =>
       invalidateCaseViews(queryClient, caseId, {
         caseList: true,
@@ -539,7 +582,11 @@ export function useSubjectCaseLinks(subjectId: string, cursor: string | null = n
   });
 }
 
-export function useMaterialParsedDocuments(caseId: string, materialId: string | undefined, version: number | undefined) {
+export function useMaterialParsedDocuments(
+  caseId: string,
+  materialId: string | undefined,
+  version: number | undefined,
+) {
   return useQuery({
     queryKey: queryKeys.materialParsedDocuments(caseId, materialId ?? "", version ?? 0),
     queryFn: ({ signal }) => {
@@ -550,14 +597,38 @@ export function useMaterialParsedDocuments(caseId: string, materialId: string | 
   });
 }
 
-export function useMaterialParsedTextPage(caseId: string, materialId: string | undefined, version: number | undefined, parsedDocumentId: string | undefined, offset: number) {
+export function useMaterialParsedTextPage(
+  caseId: string,
+  materialId: string | undefined,
+  version: number | undefined,
+  parsedDocumentId: string | undefined,
+  offset: number,
+) {
   return useQuery({
-    queryKey: queryKeys.materialParsedText(caseId, materialId ?? "", version ?? 0, parsedDocumentId ?? "", offset),
+    queryKey: queryKeys.materialParsedText(
+      caseId,
+      materialId ?? "",
+      version ?? 0,
+      parsedDocumentId ?? "",
+      offset,
+    ),
     queryFn: ({ signal }) => {
       if (!materialId || !version || !parsedDocumentId) throw new Error("缺少固定解析版本");
-      return api.getMaterialParsedTextPage(caseId, materialId, version, parsedDocumentId, offset, 32768, signal);
+      return api.getMaterialParsedTextPage(
+        caseId,
+        materialId,
+        version,
+        parsedDocumentId,
+        offset,
+        32768,
+        signal,
+      );
     },
-    enabled: caseId !== "" && materialId !== undefined && version !== undefined && parsedDocumentId !== undefined,
+    enabled:
+      caseId !== "" &&
+      materialId !== undefined &&
+      version !== undefined &&
+      parsedDocumentId !== undefined,
   });
 }
 
@@ -712,12 +783,7 @@ export function useDecideSubjectChange(caseId: string, requestId: string) {
     mutationFn: (input: { value: SubjectChangeDecisionInput; idempotencyKey: string }) =>
       api.decideSubjectChange(caseId, requestId, input.value, input.idempotencyKey),
     onSuccess: (result) =>
-      invalidateSubjectChangeViews(
-        queryClient,
-        caseId,
-        requestId,
-        result.decision === "approved",
-      ),
+      invalidateSubjectChangeViews(queryClient, caseId, requestId, result.decision === "approved"),
   });
 }
 
@@ -731,7 +797,10 @@ export function useCreateSubjectSourceSnapshot(caseId: string) {
         queryKey: queryKeys.caseSubjectSourceSnapshots(caseId, null),
         exact: true,
       });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjectSourceSnapshot(caseId, snapshot.snapshot_id), exact: true });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.caseSubjectSourceSnapshot(caseId, snapshot.snapshot_id),
+        exact: true,
+      });
     },
   });
 }
@@ -776,11 +845,13 @@ export function useVerifySubjectAgainstSourceSnapshot(caseId: string, snapshotId
   });
 }
 
-export function useTemplates(enabled = true) {
+export function useTemplates(caseId: string, actor: Actor | null, enabled = true) {
+  const actorScope = actorReadContextKey(actor);
   return useQuery({
-    queryKey: queryKeys.templates,
-    queryFn: ({ signal }) => api.listTemplates(signal),
-    enabled,
+    queryKey: queryKeys.templatesFor(actorScope, caseId),
+    queryFn: ({ signal }) => api.listTemplates(caseId, signal),
+    enabled: enabled && caseId !== "" && actor !== null,
+    retry: false,
   });
 }
 
@@ -789,19 +860,11 @@ export interface ReviewHistoryPageParam {
   seenRunIds: string[];
 }
 
-export function useCaseReviewHistory(
-  caseId: string,
-  latestRunId: string | null,
-) {
+export function useCaseReviewHistory(caseId: string, latestRunId: string | null) {
   const query = useInfiniteQuery({
     queryKey: queryKeys.reviewHistory(caseId, latestRunId ?? ""),
     queryFn: ({ pageParam, signal }) =>
-      api.getReviewHistoryPage(
-        caseId,
-        pageParam.runId,
-        pageParam.seenRunIds,
-        signal,
-      ),
+      api.getReviewHistoryPage(caseId, pageParam.runId, pageParam.seenRunIds, signal),
     initialPageParam: {
       runId: latestRunId ?? "",
       seenRunIds: [],
@@ -815,10 +878,7 @@ export function useCaseReviewHistory(
           },
     enabled: caseId !== "" && latestRunId !== null,
   });
-  const data = useMemo(
-    () => query.data?.pages.map((page) => page.entry),
-    [query.data],
-  );
+  const data = useMemo(() => query.data?.pages.map((page) => page.entry), [query.data]);
   // React Query marks the whole query as errored when fetchNextPage fails even
   // though earlier pages remain usable. Only a failure with no loaded page is
   // a total history error; older-page failures surface through olderError.
@@ -834,8 +894,7 @@ export function useCaseReviewHistory(
     hasOlder: query.hasNextPage,
     isLoadingOlder: query.isFetchingNextPage,
     olderError: query.isFetchNextPageError ? query.error : null,
-    cycleDetected:
-      query.data?.pages.some((page) => page.cycleDetected) ?? false,
+    cycleDetected: query.data?.pages.some((page) => page.cycleDetected) ?? false,
     fetchOlder: () => query.fetchNextPage(),
   };
 }
@@ -843,8 +902,7 @@ export function useCaseReviewHistory(
 export function useUploadDocument(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: UploadDocumentInput) =>
-      api.uploadDocument(caseId, input),
+    mutationFn: (input: UploadDocumentInput) => api.uploadDocument(caseId, input),
     onSuccess: () =>
       invalidateCaseViews(queryClient, caseId, {
         caseList: true,
@@ -867,9 +925,7 @@ export function useReparse(caseId: string) {
   return useMutation({
     mutationFn: (documentId: string) => api.reparseDocument(caseId, documentId),
     onSuccess: async (_result, documentId) => {
-      const detail = queryClient.getQueryData<CaseDetail>(
-        queryKeys.case(caseId),
-      );
+      const detail = queryClient.getQueryData<CaseDetail>(queryKeys.case(caseId));
       const materialVersion = detail?.material_versions?.find(
         (version) => version.document_id === documentId,
       );
@@ -892,7 +948,9 @@ export function useStartReview(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: api.StartReviewInput) =>
-      keyedMutation(queryClient, "review.start", caseId, input, (key) => api.startReview(caseId, input, key)),
+      keyedMutation(queryClient, "review.start", caseId, input, (key) =>
+        api.startReview(caseId, input, key),
+      ),
     onSuccess: () =>
       invalidateCaseViews(queryClient, caseId, {
         caseList: true,
@@ -917,11 +975,7 @@ interface ReviewPollQuery {
   };
 }
 
-function reviewScope(
-  caseId: string,
-  runId: string,
-  attemptId: string | null | undefined,
-): string {
+function reviewScope(caseId: string, runId: string, attemptId: string | null | undefined): string {
   return JSON.stringify([caseId, runId, attemptId ?? null]);
 }
 
@@ -969,16 +1023,17 @@ function reviewRefetchInterval(
     polling.current = { scope, data: undefined, updateCount: 0, unchanged: 0, wasLive: false };
   }
   if (streamLive) {
-    polling.current = { scope, data, updateCount: query.state.dataUpdateCount, unchanged: 0, wasLive: true };
+    polling.current = {
+      scope,
+      data,
+      updateCount: query.state.dataUpdateCount,
+      unchanged: 0,
+      wasLive: true,
+    };
     // A live stream drives immediate refreshes; this is only a safety read.
     return 30_000;
   }
-  polling.current = advanceReviewPolling(
-    polling.current,
-    data,
-    query.state.dataUpdateCount,
-    scope,
-  );
+  polling.current = advanceReviewPolling(polling.current, data, query.state.dataUpdateCount, scope);
   return 2_000 * 2 ** polling.current.unchanged;
 }
 
@@ -1000,14 +1055,7 @@ export function useReview(
     queryFn: ({ signal }) => api.getReview(caseId, runId, attemptId, signal),
     enabled: caseId !== "" && runId !== "",
     refetchInterval: (query) =>
-      reviewRefetchInterval(
-        query,
-        polling,
-        caseId,
-        runId,
-        attemptId,
-        streamLive,
-      ),
+      reviewRefetchInterval(query, polling, caseId, runId, attemptId, streamLive),
   });
 }
 
@@ -1029,8 +1077,7 @@ export function useRetryReview(caseId: string, runId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => api.retryReview(caseId, runId),
-    onSuccess: () =>
-      invalidateReviewMutationViews(queryClient, caseId, runId),
+    onSuccess: () => invalidateReviewMutationViews(queryClient, caseId, runId),
   });
 }
 
@@ -1038,8 +1085,7 @@ export function useCancelReview(caseId: string, runId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => api.cancelReview(caseId, runId),
-    onSuccess: () =>
-      invalidateReviewMutationViews(queryClient, caseId, runId),
+    onSuccess: () => invalidateReviewMutationViews(queryClient, caseId, runId),
   });
 }
 
@@ -1048,8 +1094,7 @@ export function useSubmitDecision(caseId: string, runId: string) {
   return useMutation({
     mutationFn: (input: { findingId: string; decision: DecisionInput }) =>
       api.submitDecision(caseId, runId, input.findingId, input.decision),
-    onSuccess: () =>
-      invalidateReviewMutationViews(queryClient, caseId, runId),
+    onSuccess: () => invalidateReviewMutationViews(queryClient, caseId, runId),
   });
 }
 export function useCreateGeneration(caseId: string) {
@@ -1068,8 +1113,7 @@ export function useCreateGeneration(caseId: string) {
 export function useCreateRemediation(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: RemediationCreateInput) =>
-      api.createRemediation(caseId, input),
+    mutationFn: (input: RemediationCreateInput) => api.createRemediation(caseId, input),
     onSuccess: () =>
       invalidateCaseViews(queryClient, caseId, {
         caseList: true,
@@ -1081,8 +1125,7 @@ export function useCreateRemediation(caseId: string) {
 export function useSubmitRemediation(caseId: string, itemId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: RemediationSubmitInput) =>
-      api.submitRemediation(caseId, itemId, input),
+    mutationFn: (input: RemediationSubmitInput) => api.submitRemediation(caseId, itemId, input),
     onSuccess: () =>
       invalidateCaseViews(queryClient, caseId, {
         caseList: true,
@@ -1094,8 +1137,7 @@ export function useSubmitRemediation(caseId: string, itemId: string) {
 export function useVerifyRemediation(caseId: string, itemId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: RemediationVerifyInput) =>
-      api.verifyRemediation(caseId, itemId, input),
+    mutationFn: (input: RemediationVerifyInput) => api.verifyRemediation(caseId, itemId, input),
     onSuccess: () =>
       invalidateCaseViews(queryClient, caseId, {
         caseList: true,
@@ -1108,7 +1150,9 @@ export function useCreateReport(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: ReportCreateInput) =>
-      keyedMutation(queryClient, "report.create", caseId, input, (key) => api.createReport(caseId, input, key)),
+      keyedMutation(queryClient, "report.create", caseId, input, (key) =>
+        api.createReport(caseId, input, key),
+      ),
     onSuccess: () =>
       invalidateCaseViews(queryClient, caseId, {
         caseList: true,
@@ -1210,9 +1254,7 @@ export function useRulePackHistory(packId: string) {
   });
 }
 
-function useRulePackMutation<TInput, TOutput>(
-  mutationFn: (input: TInput) => Promise<TOutput>,
-) {
+function useRulePackMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promise<TOutput>) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
@@ -1224,9 +1266,7 @@ function useRulePackMutation<TInput, TOutput>(
 }
 
 export function useCreateRulePack() {
-  return useRulePackMutation((manifest: RulePackManifestInput) =>
-    api.createRulePack(manifest),
-  );
+  return useRulePackMutation((manifest: RulePackManifestInput) => api.createRulePack(manifest));
 }
 
 export function useEditRulePack(packId: string, version: string) {
@@ -1243,14 +1283,8 @@ export function useValidateRulePack(packId: string, version: string) {
 }
 
 export function useApproveRulePack(packId: string, version: string) {
-  return useRulePackMutation(
-    (input: { expectedRevision: number; expectedContentHash: string }) =>
-      api.approveRulePack(
-        packId,
-        version,
-        input.expectedRevision,
-        input.expectedContentHash,
-      ),
+  return useRulePackMutation((input: { expectedRevision: number; expectedContentHash: string }) =>
+    api.approveRulePack(packId, version, input.expectedRevision, input.expectedContentHash),
   );
 }
 
@@ -1274,22 +1308,13 @@ export function usePublishRulePack(packId: string, version: string) {
 export function useDisableRulePack(packId: string, version: string) {
   return useRulePackMutation(
     (input: { expectedRevision: number; expectedPointerRevision: number }) =>
-      api.disableRulePack(
-        packId,
-        version,
-        input.expectedRevision,
-        input.expectedPointerRevision,
-      ),
+      api.disableRulePack(packId, version, input.expectedRevision, input.expectedPointerRevision),
   );
 }
 
 export function useRollbackRulePack(packId: string) {
   return useRulePackMutation(
-    (input: {
-      version: string;
-      expectedPointerRevision: number;
-      idempotencyKey: string;
-    }) =>
+    (input: { version: string; expectedPointerRevision: number; idempotencyKey: string }) =>
       api.rollbackRulePack(
         packId,
         input.version,
@@ -1301,8 +1326,7 @@ export function useRollbackRulePack(packId: string) {
 
 export function useTestRulePack(packId: string, version: string) {
   return useMutation({
-    mutationFn: (input: RulePackTestInput) =>
-      api.testRulePack(packId, version, input),
+    mutationFn: (input: RulePackTestInput) => api.testRulePack(packId, version, input),
     retry: false,
   });
 }
@@ -1315,11 +1339,9 @@ export function useContractLedger(
   const query = JSON.stringify(filter);
   return useInfiniteQuery({
     queryKey: queryKeys.contractLedger(actorScope, query),
-    queryFn: ({ pageParam, signal }) =>
-      listContractLedger(filter, pageParam, 25, signal),
+    queryFn: ({ pageParam, signal }) => listContractLedger(filter, pageParam, 25, signal),
     initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) =>
-      lastPage.has_more ? lastPage.next_cursor : undefined,
+    getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.next_cursor : undefined),
     enabled,
   });
 }

@@ -780,7 +780,9 @@ export interface components {
             material_id?: string;
             /** @description intent=replace 时的当前版本 CAS 目标 */
             replaces_document_id?: string;
+            template_digest?: string;
             template_id: string;
+            template_version?: string;
         };
         CreateReportRequest: {
             attempt_id: string;

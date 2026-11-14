@@ -13,6 +13,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import * as api from "./endpoints";
 import { ApiError, setSessionIdentity } from "./http";
+import { actorReadContextKey } from "../domain/actor-read-context";
 import {
   clearIdentityQueries,
   queryKeys,
@@ -29,19 +30,40 @@ import {
   useTemplates,
   useTestRulePack,
 } from "./queries";
-import type { ReviewWorkspace } from "./types";
+import type { Actor, ReviewWorkspace } from "./types";
 
 function workspace(state: string): ReviewWorkspace {
   const attempt = {
-    id: "a1", run_id: "r1", ordinal: 1, retry_of_attempt_id: null,
-    state, accepted_at: "2026-10-21T06:00:00Z", started_at: null,
-    finished_at: null, parsed_document_ids: [], input_hash: null,
-    output_hash: null, error_code: null, history_kind: "frozen",
+    id: "a1",
+    run_id: "r1",
+    ordinal: 1,
+    retry_of_attempt_id: null,
+    state,
+    accepted_at: "2026-10-21T06:00:00Z",
+    started_at: null,
+    finished_at: null,
+    parsed_document_ids: [],
+    input_hash: null,
+    output_hash: null,
+    error_code: null,
+    history_kind: "frozen",
   };
   return {
-    run: { id: "r1", case_id: "c1", state, updated_at: "2026-10-21T06:00:00Z", started_at: null, model_ref: null, partial_reason: null, failure_message: null },
-    documents: [], findings: [], review_attempts: { attempt, attempts: [attempt] },
-    execution: null, audit_events: [],
+    run: {
+      id: "r1",
+      case_id: "c1",
+      state,
+      updated_at: "2026-10-21T06:00:00Z",
+      started_at: null,
+      model_ref: null,
+      partial_reason: null,
+      failure_message: null,
+    },
+    documents: [],
+    findings: [],
+    review_attempts: { attempt, attempts: [attempt] },
+    execution: null,
+    audit_events: [],
   };
 }
 
@@ -54,34 +76,52 @@ describe("review polling", () => {
   it("backs off unchanged catch-up reads, slows while live, and stops after a terminal refresh", async () => {
     vi.useFakeTimers();
     let response = workspace("running");
-    const getReview = vi.spyOn(api, "getReview").mockImplementation(async () => structuredClone(response));
+    const getReview = vi
+      .spyOn(api, "getReview")
+      .mockImplementation(async () => structuredClone(response));
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
-    const { rerender, unmount } = renderHook(
-      ({ live }) => useReview("c1", "r1", null, live),
-      { wrapper, initialProps: { live: false } },
-    );
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    const { rerender, unmount } = renderHook(({ live }) => useReview("c1", "r1", null, live), {
+      wrapper,
+      initialProps: { live: false },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(getReview).toHaveBeenCalledTimes(1);
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(2);
-    await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(2);
-    await act(async () => { await vi.advanceTimersByTimeAsync(1_001); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_001);
+    });
     expect(getReview).toHaveBeenCalledTimes(3);
-    await act(async () => { await vi.advanceTimersByTimeAsync(8_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(4);
 
     rerender({ live: true });
-    await act(async () => { await vi.advanceTimersByTimeAsync(29_999); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(29_999);
+    });
     expect(getReview).toHaveBeenCalledTimes(4);
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(getReview).toHaveBeenCalledTimes(5);
 
     rerender({ live: false });
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(6);
     response = workspace("awaiting_human");
     await act(async () => {
@@ -89,7 +129,9 @@ describe("review polling", () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(getReview).toHaveBeenCalledTimes(7);
-    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(7);
     unmount();
     client.clear();
@@ -97,7 +139,8 @@ describe("review polling", () => {
 
   it("stops catch-up polling after a forbidden workspace read", async () => {
     vi.useFakeTimers();
-    const getReview = vi.spyOn(api, "getReview")
+    const getReview = vi
+      .spyOn(api, "getReview")
       .mockResolvedValueOnce(workspace("running"))
       .mockRejectedValue(new ApiError("访问已撤销", 403, "forbidden", false, null));
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -105,8 +148,12 @@ describe("review polling", () => {
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
     const { rerender, unmount } = renderHook(() => useReview("c1", "r1"), { wrapper });
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(2);
     const query = client.getQueryCache().find({
       queryKey: queryKeys.review("c1", "r1"),
@@ -117,7 +164,9 @@ describe("review polling", () => {
       expect(interval(query)).toBe(false);
     }
     rerender();
-    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(2);
     unmount();
     client.clear();
@@ -125,7 +174,8 @@ describe("review polling", () => {
 
   it("stops catch-up polling after the session expires", async () => {
     vi.useFakeTimers();
-    const getReview = vi.spyOn(api, "getReview")
+    const getReview = vi
+      .spyOn(api, "getReview")
       .mockResolvedValueOnce(workspace("running"))
       .mockRejectedValue(new ApiError("登录状态已失效", 401, "unauthenticated", false, null));
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -133,11 +183,17 @@ describe("review polling", () => {
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
     const { rerender, unmount } = renderHook(() => useReview("c1", "r1"), { wrapper });
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(2);
     rerender();
-    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(2);
     unmount();
     client.clear();
@@ -163,10 +219,7 @@ function testWrapper(client: QueryClient) {
   );
 }
 
-function workspaceWithStates(
-  attemptState: string,
-  runState: string,
-): ReviewWorkspace {
+function workspaceWithStates(attemptState: string, runState: string): ReviewWorkspace {
   const base = workspace(runState);
   const attempt = { ...base.review_attempts!.attempt, state: attemptState };
   return {
@@ -201,39 +254,57 @@ describe("query hook gates", () => {
   });
 
   it("does not retry the session query and keys it by audience", async () => {
-    const getSession = vi
-      .spyOn(api, "getSession")
-      .mockResolvedValue({} as never);
+    const getSession = vi.spyOn(api, "getSession").mockResolvedValue({} as never);
     const client = testClient();
     const { unmount } = renderHook(() => useSession("admin"), {
       wrapper: testWrapper(client),
     });
     await waitFor(() => expect(getSession).toHaveBeenCalledTimes(1));
     expect(
-      client.getQueryCache().find({ queryKey: queryKeys.sessionFor("admin") })
-        ?.options.retry,
+      client.getQueryCache().find({ queryKey: queryKeys.sessionFor("admin") })?.options.retry,
     ).toBe(false);
     unmount();
     client.clear();
   });
 
-  it("loads templates by default", async () => {
-    const listTemplates = vi
-      .spyOn(api, "listTemplates")
-      .mockResolvedValue([]);
+  it("loads templates for the selected case under the complete actor cache identity", async () => {
+    const listTemplates = vi.spyOn(api, "listTemplates").mockResolvedValue([]);
     const client = testClient();
-    const { unmount } = renderHook(() => useTemplates(), {
+    const actor: Actor = {
+      id: "actor-1",
+      display_name: "审查员",
+      role: "reviewer",
+      tenant_id: "tenant-1",
+      org_id: "org-1",
+      audience: "client",
+      principal_id: "principal-1",
+      active_context: {
+        membership_id: "membership-1",
+        context_version: "context-v1",
+        tenant_id: "tenant-1",
+        tenant_name: "租户",
+        org_id: "org-1",
+        org_name: "组织",
+      },
+      csrf_token: "csrf",
+      context_switch_enabled: false,
+    };
+    const { unmount } = renderHook(() => useTemplates("case-1", actor), {
       wrapper: testWrapper(client),
     });
     await waitFor(() => expect(listTemplates).toHaveBeenCalledTimes(1));
+    expect(listTemplates.mock.calls[0]?.[0]).toBe("case-1");
+    expect(
+      client.getQueryCache().find({
+        queryKey: queryKeys.templatesFor(actorReadContextKey(actor), "case-1"),
+      }),
+    ).toBeDefined();
     unmount();
     client.clear();
   });
 
   it("loads knowledge only when both ids are present", async () => {
-    const getKnowledge = vi
-      .spyOn(api, "getKnowledge")
-      .mockResolvedValue({} as never);
+    const getKnowledge = vi.spyOn(api, "getKnowledge").mockResolvedValue({} as never);
     const client = testClient();
     const { rerender, unmount } = renderHook(
       ({ knowledgeId, versionId }) => useKnowledge(knowledgeId, versionId),
@@ -244,10 +315,14 @@ describe("query hook gates", () => {
     );
     await waitFor(() => expect(getKnowledge).toHaveBeenCalledTimes(1));
     rerender({ knowledgeId: "", versionId: "v1" });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(getKnowledge).toHaveBeenCalledTimes(1);
     rerender({ knowledgeId: "k1", versionId: "" });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(getKnowledge).toHaveBeenCalledTimes(1);
     unmount();
     client.clear();
@@ -256,13 +331,15 @@ describe("query hook gates", () => {
   it("loads a case detail only for a non-empty id", async () => {
     const getCase = vi.spyOn(api, "getCase").mockResolvedValue({} as never);
     const client = testClient();
-    const { rerender, unmount } = renderHook(
-      ({ caseId }) => useCaseDetail(caseId),
-      { wrapper: testWrapper(client), initialProps: { caseId: "c1" } },
-    );
+    const { rerender, unmount } = renderHook(({ caseId }) => useCaseDetail(caseId), {
+      wrapper: testWrapper(client),
+      initialProps: { caseId: "c1" },
+    });
     await waitFor(() => expect(getCase).toHaveBeenCalledTimes(1));
     rerender({ caseId: "" });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(getCase).toHaveBeenCalledTimes(1);
     unmount();
     client.clear();
@@ -291,50 +368,47 @@ describe("query hook gates", () => {
     expect(result.current.isFetching).toBe(false);
     expect(getHistoryPage).toHaveBeenCalledWith("c1", "r1", [], expect.any(AbortSignal));
 
-    await act(async () => { await result.current.fetchOlder(); });
+    await act(async () => {
+      await result.current.fetchOlder();
+    });
     expect(getHistoryPage).toHaveBeenCalledTimes(2);
-    expect(getHistoryPage).toHaveBeenLastCalledWith(
-      "c1",
-      "r0",
-      ["r1"],
-      expect.any(AbortSignal),
-    );
+    expect(getHistoryPage).toHaveBeenLastCalledWith("c1", "r0", ["r1"], expect.any(AbortSignal));
     await waitFor(() =>
-      expect(result.current.data?.map((entry) => entry.runId)).toEqual([
-        "r1",
-        "r0",
-      ]),
+      expect(result.current.data?.map((entry) => entry.runId)).toEqual(["r1", "r0"]),
     );
     expect(result.current.hasOlder).toBe(false);
     expect(result.current.cycleDetected).toBe(false);
 
     rerender({ caseId: "", latestRunId: "r1" });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(getHistoryPage).toHaveBeenCalledTimes(2);
     rerender({ caseId: "c1", latestRunId: null });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(getHistoryPage).toHaveBeenCalledTimes(2);
     unmount();
     client.clear();
   });
 
   it("stops paging at a cycle and keeps the loaded records", async () => {
-    const getHistoryPage = vi
-      .spyOn(api, "getReviewHistoryPage")
-      .mockResolvedValue({
-        entry: { runId: "r1", workspace: workspace("completed") },
-        nextRunId: "r1",
-        cycleDetected: true,
-      });
+    const getHistoryPage = vi.spyOn(api, "getReviewHistoryPage").mockResolvedValue({
+      entry: { runId: "r1", workspace: workspace("completed") },
+      nextRunId: "r1",
+      cycleDetected: true,
+    });
     const client = testClient();
-    const { result, unmount } = renderHook(
-      () => useCaseReviewHistory("c1", "r1"),
-      { wrapper: testWrapper(client) },
-    );
+    const { result, unmount } = renderHook(() => useCaseReviewHistory("c1", "r1"), {
+      wrapper: testWrapper(client),
+    });
     await waitFor(() => expect(result.current.data).toHaveLength(1));
     expect(result.current.cycleDetected).toBe(true);
     expect(result.current.hasOlder).toBe(false);
-    await act(async () => { await result.current.fetchOlder(); });
+    await act(async () => {
+      await result.current.fetchOlder();
+    });
     expect(getHistoryPage).toHaveBeenCalledTimes(1);
     unmount();
     client.clear();
@@ -352,10 +426,9 @@ describe("query hook gates", () => {
         new ApiError("更早的审查记录不可读取", 500, "unavailable", true, null),
       );
     const client = testClient();
-    const { result, unmount } = renderHook(
-      () => useCaseReviewHistory("c1", "r1"),
-      { wrapper: testWrapper(client) },
-    );
+    const { result, unmount } = renderHook(() => useCaseReviewHistory("c1", "r1"), {
+      wrapper: testWrapper(client),
+    });
     await waitFor(() => expect(result.current.data).toHaveLength(1));
     await act(async () => {
       await result.current.fetchOlder().catch(() => undefined);
@@ -396,9 +469,7 @@ describe("query hook gates", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
-        const runId = new URL(String(input), "http://workflow.test").pathname
-          .split("/")
-          .at(-1)!;
+        const runId = new URL(String(input), "http://workflow.test").pathname.split("/").at(-1)!;
         return Response.json(bodies[runId]);
       }),
     );
@@ -415,30 +486,27 @@ describe("query hook gates", () => {
       await expect(api.getReviewHistoryPage("c1", "bad", [])).rejects.toThrow(
         "审查历史中的案件或审查身份不一致",
       );
-      await expect(api.getReviewHistory("c1", "rc")).rejects.toThrow(
-        "运行历史包含循环引用",
-      );
+      await expect(api.getReviewHistory("c1", "rc")).rejects.toThrow("运行历史包含循环引用");
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
   it("does not load a review without both ids", async () => {
-    const getReview = vi
-      .spyOn(api, "getReview")
-      .mockResolvedValue(workspace("running"));
+    const getReview = vi.spyOn(api, "getReview").mockResolvedValue(workspace("running"));
     const client = testClient();
-    const { rerender, unmount } = renderHook(
-      ({ caseId, runId }) => useReview(caseId, runId),
-      {
-        wrapper: testWrapper(client),
-        initialProps: { caseId: "", runId: "r1" },
-      },
-    );
-    await act(async () => { await Promise.resolve(); });
+    const { rerender, unmount } = renderHook(({ caseId, runId }) => useReview(caseId, runId), {
+      wrapper: testWrapper(client),
+      initialProps: { caseId: "", runId: "r1" },
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(getReview).not.toHaveBeenCalled();
     rerender({ caseId: "c1", runId: "" });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(getReview).not.toHaveBeenCalled();
     unmount();
     client.clear();
@@ -450,8 +518,7 @@ describe("query hook gates", () => {
       .mockResolvedValue({} as never);
     const client = testClient();
     const { rerender, unmount } = renderHook(
-      ({ caseId, runId, enabled }) =>
-        useReviewDiagnostics(caseId, runId, null, enabled),
+      ({ caseId, runId, enabled }) => useReviewDiagnostics(caseId, runId, null, enabled),
       {
         wrapper: testWrapper(client),
         initialProps: { caseId: "c1", runId: "r1", enabled: true },
@@ -459,19 +526,23 @@ describe("query hook gates", () => {
     );
     await waitFor(() => expect(getReviewDiagnostics).toHaveBeenCalledTimes(1));
     expect(
-      client
-        .getQueryCache()
-        .find({ queryKey: queryKeys.reviewDiagnostics("c1", "r1", null) })
+      client.getQueryCache().find({ queryKey: queryKeys.reviewDiagnostics("c1", "r1", null) })
         ?.options.retry,
     ).toBe(false);
     rerender({ caseId: "c1", runId: "r1", enabled: false });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(getReviewDiagnostics).toHaveBeenCalledTimes(1);
     rerender({ caseId: "", runId: "r1", enabled: true });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(getReviewDiagnostics).toHaveBeenCalledTimes(1);
     rerender({ caseId: "c1", runId: "", enabled: true });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(getReviewDiagnostics).toHaveBeenCalledTimes(1);
     unmount();
     client.clear();
@@ -485,49 +556,48 @@ describe("query hook gates", () => {
     const packs = renderHook(() => useRulePacks(), {
       wrapper: testWrapper(client),
     });
-    await act(async () => { await Promise.resolve(); });
-    expect(
-      client.getQueryCache().find({ queryKey: queryKeys.rulePackList })?.options
-        .retry,
-    ).toBe(false);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(client.getQueryCache().find({ queryKey: queryKeys.rulePackList })?.options.retry).toBe(
+      false,
+    );
     packs.unmount();
 
-    const pack = renderHook(
-      ({ packId, version }) => useRulePack(packId, version),
-      {
-        wrapper: testWrapper(client),
-        initialProps: { packId: "p1", version: "v1" },
-      },
-    );
+    const pack = renderHook(({ packId, version }) => useRulePack(packId, version), {
+      wrapper: testWrapper(client),
+      initialProps: { packId: "p1", version: "v1" },
+    });
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const calls = fetchMock.mock.calls.length;
     pack.rerender({ packId: "", version: "v1" });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(fetchMock).toHaveBeenCalledTimes(calls);
     pack.rerender({ packId: "p1", version: "" });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(fetchMock).toHaveBeenCalledTimes(calls);
     expect(
-      client.getQueryCache().find({ queryKey: queryKeys.rulePack("p1", "v1") })
-        ?.options.retry,
+      client.getQueryCache().find({ queryKey: queryKeys.rulePack("p1", "v1") })?.options.retry,
     ).toBe(false);
     pack.unmount();
 
-    const history = renderHook(
-      ({ packId }) => useRulePackHistory(packId),
-      {
-        wrapper: testWrapper(client),
-        initialProps: { packId: "p1" },
-      },
-    );
+    const history = renderHook(({ packId }) => useRulePackHistory(packId), {
+      wrapper: testWrapper(client),
+      initialProps: { packId: "p1" },
+    });
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const historyCalls = fetchMock.mock.calls.length;
     history.rerender({ packId: "" });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(fetchMock).toHaveBeenCalledTimes(historyCalls);
     expect(
-      client.getQueryCache().find({ queryKey: queryKeys.rulePackHistory("p1") })
-        ?.options.retry,
+      client.getQueryCache().find({ queryKey: queryKeys.rulePackHistory("p1") })?.options.retry,
     ).toBe(false);
     history.unmount();
     client.clear();
@@ -600,9 +670,7 @@ describe("query hook gates", () => {
     expect(String(createUrl)).toBe("/api/admin/rulepacks");
     expect(createInit?.method).toBe("POST");
     const createHeaders = new Headers(createInit?.headers);
-    expect(createHeaders.get("X-Context-Version")).toBe(
-      actor.active_context.context_version,
-    );
+    expect(createHeaders.get("X-Context-Version")).toBe(actor.active_context.context_version);
     expect(createHeaders.get("X-CSRF-Token")).toBe(actor.csrf_token);
     const createEntry = client.getMutationCache().getAll()[0];
     expect(createEntry?.options.retry).toBe(false);
@@ -621,9 +689,7 @@ describe("query hook gates", () => {
     expect(String(testUrl)).toBe("/api/admin/rulepacks/pack-1/versions/v1/test");
     expect(testInit?.method).toBe("POST");
     const testHeaders = new Headers(testInit?.headers);
-    expect(testHeaders.get("X-Context-Version")).toBe(
-      actor.active_context.context_version,
-    );
+    expect(testHeaders.get("X-Context-Version")).toBe(actor.active_context.context_version);
     expect(testHeaders.get("X-CSRF-Token")).toBe(actor.csrf_token);
     const testEntry = client.getMutationCache().getAll()[0];
     expect(testEntry?.options.retry).toBe(false);
@@ -661,9 +727,7 @@ describe("query hook gates", () => {
     expect(String(url)).toBe("/api/admin/rulepacks");
     expect(init?.method).toBe("POST");
     const headers = new Headers(init?.headers);
-    expect(headers.get("X-Context-Version")).toBe(
-      actor.active_context.context_version,
-    );
+    expect(headers.get("X-Context-Version")).toBe(actor.active_context.context_version);
     expect(headers.get("X-CSRF-Token")).toBe(actor.csrf_token);
     expect(create.result.current.error).toBeInstanceOf(ApiError);
     expect((create.result.current.error as ApiError).status).toBe(409);
@@ -690,9 +754,13 @@ describe("review state polling", () => {
     const { unmount } = renderHook(() => useReview("c1", "r1"), {
       wrapper: testWrapper(client),
     });
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(getReview).toHaveBeenCalledTimes(1);
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(2);
     unmount();
     client.clear();
@@ -708,7 +776,9 @@ describe("review state polling", () => {
     const { unmount } = renderHook(() => useReview("c1", "r1"), {
       wrapper: testWrapper(client),
     });
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(getReview).toHaveBeenCalledTimes(1);
     const query = client.getQueryCache().find({
       queryKey: queryKeys.review("c1", "r1"),
@@ -718,7 +788,9 @@ describe("review state polling", () => {
     if (query && typeof interval === "function") {
       expect(interval(query)).toBe(false);
     }
-    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(1);
     unmount();
     client.clear();
@@ -735,7 +807,9 @@ describe("review state polling", () => {
     const { unmount } = renderHook(() => useReview("c1", "r1"), {
       wrapper: testWrapper(client),
     });
-    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(1);
     await act(async () => {
       resolve(workspace("running"));
@@ -757,21 +831,25 @@ describe("review state polling", () => {
     });
     const wrapper = testWrapper(client);
     const emptyAttempt = renderHook(
-      ({ attemptId }: { attemptId: string | null }) =>
-        useReview("c1", "r1", attemptId),
+      ({ attemptId }: { attemptId: string | null }) => useReview("c1", "r1", attemptId),
       { wrapper, initialProps: { attemptId: "" as string | null } },
     );
-    const nullAttempt = renderHook(
-      () => useReview("c1", "r1", null),
-      { wrapper },
-    );
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(4_000); });
+    const nullAttempt = renderHook(() => useReview("c1", "r1", null), { wrapper });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_000);
+    });
     nullAttempt.unmount();
     const before = getReview.mock.calls.length;
     emptyAttempt.rerender({ attemptId: null });
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
     expect(getReview.mock.calls.length).toBeGreaterThan(before);
     emptyAttempt.unmount();
     client.clear();
@@ -779,7 +857,8 @@ describe("review state polling", () => {
 
   it("starts the new attempt scope at the base interval", async () => {
     vi.useFakeTimers();
-    const getReview = vi.spyOn(api, "getReview")
+    const getReview = vi
+      .spyOn(api, "getReview")
       .mockImplementation(async () => structuredClone(workspace("running")));
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
@@ -788,11 +867,12 @@ describe("review state polling", () => {
     const cached = workspace("running");
     client.setQueryData(nextScope, cached);
     const { rerender, unmount } = renderHook(
-      ({ attemptId }: { attemptId: string | null }) =>
-        useReview("c1", "r1", attemptId),
+      ({ attemptId }: { attemptId: string | null }) => useReview("c1", "r1", attemptId),
       { wrapper: testWrapper(client), initialProps: { attemptId: "current" } },
     );
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(getReview).toHaveBeenCalledTimes(1);
     rerender({ attemptId: "next" });
     const query = client.getQueryCache().find({ queryKey: nextScope });
@@ -822,8 +902,7 @@ describe("review state polling", () => {
       },
     });
     const { rerender, unmount } = renderHook(
-      ({ attemptId }: { attemptId: string }) =>
-        useReview("c1", "r1", attemptId),
+      ({ attemptId }: { attemptId: string }) => useReview("c1", "r1", attemptId),
       { wrapper: testWrapper(client), initialProps: { attemptId: "current" } },
     );
     const currentKey = queryKeys.review("c1", "r1", "current");
@@ -854,21 +933,31 @@ describe("review state polling", () => {
       .spyOn(api, "getReview")
       .mockImplementation(async () => structuredClone(workspace("running")));
     const client = testClient();
-    const { rerender, unmount } = renderHook(
-      ({ live }) => useReview("c1", "r1", null, live),
-      { wrapper: testWrapper(client), initialProps: { live: false } },
-    );
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    const { rerender, unmount } = renderHook(({ live }) => useReview("c1", "r1", null, live), {
+      wrapper: testWrapper(client),
+      initialProps: { live: false },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(getReview).toHaveBeenCalledTimes(1);
     rerender({ live: true });
-    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(2);
     rerender({ live: false });
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(3);
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(3);
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
     expect(getReview).toHaveBeenCalledTimes(4);
     unmount();
     client.clear();
@@ -876,14 +965,17 @@ describe("review state polling", () => {
 
   it("resets the catch-up delay after an unchanged read during a live stream", async () => {
     vi.useFakeTimers();
-    const getReview = vi.spyOn(api, "getReview")
+    const getReview = vi
+      .spyOn(api, "getReview")
       .mockImplementation(async () => structuredClone(workspace("running")));
     const client = testClient();
-    const { rerender, unmount } = renderHook(
-      ({ live }) => useReview("c1", "r1", null, live),
-      { wrapper: testWrapper(client), initialProps: { live: false } },
-    );
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    const { rerender, unmount } = renderHook(({ live }) => useReview("c1", "r1", null, live), {
+      wrapper: testWrapper(client),
+      initialProps: { live: false },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(getReview).toHaveBeenCalledTimes(1);
     const query = client.getQueryCache().find({
       queryKey: queryKeys.review("c1", "r1"),

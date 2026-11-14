@@ -53,6 +53,22 @@ import { knownOrganizationName, presentOrganizationMembers } from "../domain/org
 import { SettingsPage } from "./settings-page";
 import "./workbench-module-page.css";
 
+function TenantTemplateMaintenanceLink() {
+  const adminSession = useSession("admin");
+  if (
+    !adminSession.isSuccess ||
+    adminSession.isFetching ||
+    adminSession.isError ||
+    adminSession.data.role !== "admin"
+  )
+    return null;
+  return (
+    <Button type="text" href="/admin/governed-knowledge/new?kind=template">
+      维护租户模板
+    </Button>
+  );
+}
+
 export const WORKBENCH_MODULES = {
   tasks: {
     title: "审查任务",
@@ -1638,6 +1654,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         {createOpen ? "关闭新建" : "新增知识"}
       </Button>
     );
+  if (module === "templates") headerAction = <TenantTemplateMaintenanceLink />;
 
   return (
     <>

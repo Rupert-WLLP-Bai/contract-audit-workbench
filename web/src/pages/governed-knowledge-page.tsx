@@ -58,6 +58,7 @@ const labels: Record<string, string> = {
   exception: "例外",
   experience: "审查经验",
   legal: "法律规范",
+  template: "合同模板",
   draft: "草稿",
   submitted: "已提交",
   validated: "已校验",
@@ -294,6 +295,7 @@ export function GovernedKnowledgeListPage() {
                   { value: "exception", label: "例外" },
                   { value: "experience", label: "审查经验" },
                   { value: "legal", label: "法律规范" },
+                  { value: "template", label: "合同模板" },
                 ]}
               />
             </label>
@@ -346,6 +348,36 @@ function contentForCreate(value: KnowledgeContent): KnowledgeContent {
     result.counterexamples = value.counterexamples?.map((item) => item.trim()).filter(Boolean);
   }
   if (value.kind !== "exception") result.exception_basis = undefined;
+  if (value.kind === "template") {
+    result.template = { body: value.body, fields: value.template?.fields ?? [] };
+    result.applicability = null;
+    result.exclusions = null;
+    result.binding = {
+      pack_id: "",
+      pack_version: "",
+      pack_content_hash: "",
+      pack_snapshot_digest: "",
+      compiler_ref: "",
+      rule_ids: null,
+      source_spans: null,
+      candidate_diff: "",
+      validation_evidence: "",
+    };
+    result.exception_basis = undefined;
+    result.check_action = undefined;
+    result.minimum_evidence = undefined;
+    result.counterexamples = undefined;
+    result.policy_refs = undefined;
+    result.reviewed_applicability = undefined;
+    result.reviewed_exclusions = undefined;
+    result.candidate_id = undefined;
+    result.candidate_version_id = undefined;
+    result.candidate_content_sha256 = undefined;
+    result.candidate_review_diff = undefined;
+    result.legal_metadata = undefined;
+  } else {
+    result.template = undefined;
+  }
   return result;
 }
 
@@ -356,7 +388,28 @@ function candidateLink(params: URLSearchParams): boolean {
 }
 
 function initialDraft(params: URLSearchParams): KnowledgeContent {
-  if (!candidateLink(params)) return emptyKnowledgeContent();
+  if (!candidateLink(params)) {
+    const draft = emptyKnowledgeContent();
+    if (params.get("kind") !== "template") return draft;
+    return {
+      ...draft,
+      kind: "template",
+      applicability: null,
+      exclusions: null,
+      binding: {
+        pack_id: "",
+        pack_version: "",
+        pack_content_hash: "",
+        pack_snapshot_digest: "",
+        compiler_ref: "",
+        rule_ids: null,
+        source_spans: null,
+        candidate_diff: "",
+        validation_evidence: "",
+      },
+      template: { body: "", fields: [] },
+    };
+  }
   return {
     ...emptyKnowledgeContent(),
     kind: "experience",
@@ -572,6 +625,10 @@ function scopeText(scope: KnowledgeScope): string {
   return `${businessScopeLabel(scope.business_line, scope.scenario)} / ${contractTypeLabel(scope.contract_type)}`;
 }
 
+function placeholderCount(body: string): number {
+  return body.match(/{{[^{}]+}}/g)?.length ?? 0;
+}
+
 function RegistrationSummary({ draft }: { draft: KnowledgeContent }) {
   return (
     <aside className="governed-summary-card" aria-label="登记摘要">
@@ -593,6 +650,14 @@ function RegistrationSummary({ draft }: { draft: KnowledgeContent }) {
           <dt>适用范围</dt>
           <dd>{scopeText(draft.scope)}</dd>
         </div>
+        {draft.kind === "template" ? (
+          <div>
+            <dt>模板字段</dt>
+            <dd>
+              {draft.template?.fields.length ?? 0} 个字段 · {placeholderCount(draft.body)} 个占位符
+            </dd>
+          </div>
+        ) : null}
         <div>
           <dt>生效时间</dt>
           <dd>{validFromText(draft.valid_from)}</dd>
@@ -639,18 +704,29 @@ function SubmitReview({ draft }: { draft: KnowledgeContent }) {
           <dt>有效期</dt>
           <dd>{validityText(draft.valid_from, draft.valid_until)}</dd>
         </div>
-        <div>
-          <dt>规则包</dt>
-          <dd>
-            {draft.binding.pack_id
-              ? `${draft.binding.pack_id} · ${draft.binding.pack_version}`
-              : "未绑定"}
-          </dd>
-        </div>
-        <div>
-          <dt>正文引用</dt>
-          <dd>{draft.binding.source_spans?.length ?? 0} 条</dd>
-        </div>
+        {draft.kind === "template" ? (
+          <div>
+            <dt>模板结构</dt>
+            <dd>
+              {draft.template?.fields.length ?? 0} 个字段 · {placeholderCount(draft.body)} 个占位符
+            </dd>
+          </div>
+        ) : (
+          <>
+            <div>
+              <dt>规则包</dt>
+              <dd>
+                {draft.binding.pack_id
+                  ? `${draft.binding.pack_id} · ${draft.binding.pack_version}`
+                  : "未绑定"}
+              </dd>
+            </div>
+            <div>
+              <dt>正文引用</dt>
+              <dd>{draft.binding.source_spans?.length ?? 0} 条</dd>
+            </div>
+          </>
+        )}
       </dl>
     </section>
   );
@@ -969,6 +1045,15 @@ function DetailFacts({
         <dt>适用范围</dt>
         <dd>{scopeText(content.scope)}</dd>
       </div>
+      {content.kind === "template" ? (
+        <div>
+          <dt>模板结构</dt>
+          <dd>
+            {content.template?.fields.length ?? 0} 个字段 · {placeholderCount(content.body)}{" "}
+            个正文占位符
+          </dd>
+        </div>
+      ) : null}
     </dl>
   );
 }
@@ -1214,12 +1299,31 @@ function DetailBinding({ content }: { content: KnowledgeContent }) {
 function BodySection({ content }: { content: KnowledgeContent }) {
   return (
     <section className="rulepack-editor-section" aria-labelledby="knowledge-body-heading">
-      <h2 id="knowledge-body-heading">正文与适用条件</h2>
+      <h2 id="knowledge-body-heading">
+        {content.kind === "template" ? "合同模板正文与字段" : "正文与适用条件"}
+      </h2>
       <h3>摘要</h3>
       <p style={{ whiteSpace: "pre-wrap" }}>{content.summary}</p>
       <h3>正文</h3>
       <p style={{ whiteSpace: "pre-wrap" }}>{content.body}</p>
-      <ConditionLines content={content} />
+      {content.kind === "template" ? (
+        <>
+          <h3>字段定义</h3>
+          {content.template?.fields.length ? (
+            <ul>
+              {content.template.fields.map((field) => (
+                <li key={field.key}>
+                  {field.label}（{field.key}）· {field.type} · 必填
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>字段定义未返回。</p>
+          )}
+        </>
+      ) : (
+        <ConditionLines content={content} />
+      )}
       {content.exception_basis && <p>例外依据：{content.exception_basis}</p>}
       <ExperienceReview content={content} />
     </section>
@@ -1258,8 +1362,14 @@ function VerificationSection({
     <>
       <section className="rulepack-editor-section" aria-labelledby="knowledge-verify-heading">
         <h2 id="knowledge-verify-heading">核验与发布信息</h2>
-        <p>验证、批准与发布按当前内容摘要、修订和生效指针由服务端核验；预览通过后仍需人工审核。</p>
-        {content.kind !== "legal" ? (
+        <p>
+          {content.kind === "template"
+            ? "模板格式由服务端校验；验证、批准与发布仍按治理流程分别记录。"
+            : "验证、批准与发布按当前内容摘要、修订和生效指针由服务端核验；预览通过后仍需人工审核。"}
+        </p>
+        {content.kind === "template" ? (
+          <p>模板使用受限字段和占位符，不绑定规则包。</p>
+        ) : content.kind !== "legal" ? (
           <DetailBinding content={content} />
         ) : (
           <p>法律规范使用来源与效力证据，不绑定规则包。</p>
@@ -1273,7 +1383,9 @@ function ReferenceSection({ content }: { content: KnowledgeContent }) {
   return (
     <section className="rulepack-editor-section" aria-labelledby="knowledge-reference-heading">
       <h2 id="knowledge-reference-heading">依据引用</h2>
-      {content.policy_refs?.length ? (
+      {content.kind === "template" ? (
+        <p>合同模板不声明政策依赖。</p>
+      ) : content.policy_refs?.length ? (
         <PolicyRefList content={content} />
       ) : (
         <p>没有返回政策依赖。</p>

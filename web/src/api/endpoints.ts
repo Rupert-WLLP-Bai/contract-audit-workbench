@@ -96,35 +96,17 @@ import {
   parseMaterialParsedDocumentList,
 } from "./subjects-parse";
 
-export function getSession(
-  audience: SessionAudience = "client",
-  signal?: AbortSignal,
-) {
-  return requestJson(
-    paths.sessionFor(audience),
-    { method: "GET", signal },
-    parseActor,
-  );
+export function getSession(audience: SessionAudience = "client", signal?: AbortSignal) {
+  return requestJson(paths.sessionFor(audience), { method: "GET", signal }, parseActor);
 }
 
-export function login(
-  username: string,
-  password: string,
-  audience: SessionAudience = "client",
-) {
-  const body =
-    audience === "admin"
-      ? { username, password, audience }
-      : { username, password };
+export function login(username: string, password: string, audience: SessionAudience = "client") {
+  const body = audience === "admin" ? { username, password, audience } : { username, password };
   return requestJson(paths.session, jsonInit("POST", body), parseActor);
 }
 
 export function logout(audience: SessionAudience = "client") {
-  return requestJson(
-    paths.sessionFor(audience),
-    { method: "DELETE" },
-    parseEmpty,
-  );
+  return requestJson(paths.sessionFor(audience), { method: "DELETE" }, parseEmpty);
 }
 
 export function getContextChoices(audience: SessionAudience, signal?: AbortSignal) {
@@ -153,36 +135,36 @@ export function listCases(signal?: AbortSignal) {
   return requestJson(paths.cases, { method: "GET", signal }, parseCaseList);
 }
 
-export function createCase(input: {
-  title: string;
-  contract_type: string;
-  business_line?: string;
-  scenario?: string;
-}, idempotencyKey?: string) {
-  return requestJson(paths.cases, jsonInit("POST", input, idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined), parseId);
-}
-
-export function getCase(caseId: string, signal?: AbortSignal) {
+export function createCase(
+  input: {
+    title: string;
+    contract_type: string;
+    business_line?: string;
+    scenario?: string;
+  },
+  idempotencyKey?: string,
+) {
   return requestJson(
-    paths.case(caseId),
-    { method: "GET", signal },
-    parseCaseDetail,
+    paths.cases,
+    jsonInit("POST", input, idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined),
+    parseId,
   );
 }
 
-export function listTemplates(signal?: AbortSignal) {
+export function getCase(caseId: string, signal?: AbortSignal) {
+  return requestJson(paths.case(caseId), { method: "GET", signal }, parseCaseDetail);
+}
+
+export function listTemplates(caseId: string, signal?: AbortSignal) {
+  const query = new URLSearchParams({ case_id: caseId });
   return requestJson(
-    paths.templates,
+    `${paths.templates}?${query.toString()}`,
     { method: "GET", signal },
     parseTemplateList,
   );
 }
 
-export function createGeneration(
-  caseId: string,
-  input: GenerationInput,
-  idempotencyKey: string,
-) {
+export function createGeneration(caseId: string, input: GenerationInput, idempotencyKey: string) {
   return requestJson(
     paths.generations(caseId),
     jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
@@ -190,22 +172,11 @@ export function createGeneration(
   );
 }
 
-export function createRemediation(
-  caseId: string,
-  input: RemediationCreateInput,
-) {
-  return requestJson(
-    paths.remediations(caseId),
-    jsonInit("POST", input),
-    parseRemediation,
-  );
+export function createRemediation(caseId: string, input: RemediationCreateInput) {
+  return requestJson(paths.remediations(caseId), jsonInit("POST", input), parseRemediation);
 }
 
-export function submitRemediation(
-  caseId: string,
-  itemId: string,
-  input: RemediationSubmitInput,
-) {
+export function submitRemediation(caseId: string, itemId: string, input: RemediationSubmitInput) {
   return requestJson(
     paths.remediationSubmit(caseId, itemId),
     jsonInit("POST", input),
@@ -213,11 +184,7 @@ export function submitRemediation(
   );
 }
 
-export function verifyRemediation(
-  caseId: string,
-  itemId: string,
-  input: RemediationVerifyInput,
-) {
+export function verifyRemediation(caseId: string, itemId: string, input: RemediationVerifyInput) {
   return requestJson(
     paths.remediationVerify(caseId, itemId),
     jsonInit("POST", input),
@@ -234,11 +201,7 @@ export function createReport(caseId: string, input: ReportCreateInput, idempoten
 }
 
 export function archiveCase(caseId: string, input: ArchiveInput) {
-  return requestJson(
-    paths.archive(caseId),
-    jsonInit("POST", input),
-    parseArchiveRecord,
-  );
+  return requestJson(paths.archive(caseId), jsonInit("POST", input), parseArchiveRecord);
 }
 
 export function uploadDocument(caseId: string, input: UploadDocumentInput) {
@@ -266,10 +229,7 @@ export function confirmLegacyMaterialSelection(
 ) {
   return requestJson(
     paths.materialSelection(caseId),
-    jsonInit(
-      "POST",
-      { version: input.version, document_ids: input.document_ids },
-    ),
+    jsonInit("POST", { version: input.version, document_ids: input.document_ids }),
     parseMaterialSelectionProjection,
   );
 }
@@ -292,12 +252,25 @@ export function getSubject(subjectId: string, signal?: AbortSignal) {
   return requestJson(paths.subject(subjectId), { method: "GET", signal }, parseSubjectDetail);
 }
 
-export function getSubjectCaseLinks(subjectId: string, cursor: string | null = null, limit = 50, signal?: AbortSignal) {
-  return requestJson(paths.subjectCaseLinks(subjectId, cursor, limit), { method: "GET", signal }, parseSubjectCaseLinks);
+export function getSubjectCaseLinks(
+  subjectId: string,
+  cursor: string | null = null,
+  limit = 50,
+  signal?: AbortSignal,
+) {
+  return requestJson(
+    paths.subjectCaseLinks(subjectId, cursor, limit),
+    { method: "GET", signal },
+    parseSubjectCaseLinks,
+  );
 }
 
 export function getSubjectHistory(subjectId: string, signal?: AbortSignal) {
-  return requestJson(paths.subjectHistory(subjectId), { method: "GET", signal }, parseSubjectHistory);
+  return requestJson(
+    paths.subjectHistory(subjectId),
+    { method: "GET", signal },
+    parseSubjectHistory,
+  );
 }
 
 export function getCaseSubjects(caseId: string, signal?: AbortSignal) {
@@ -312,11 +285,7 @@ export function createSubject(input: SubjectCreateInput, idempotencyKey: string)
   );
 }
 
-export function createCaseRole(
-  caseId: string,
-  input: CaseRoleCreateInput,
-  idempotencyKey: string,
-) {
+export function createCaseRole(caseId: string, input: CaseRoleCreateInput, idempotencyKey: string) {
   return requestJson(
     paths.caseSubjects(caseId),
     jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
@@ -407,16 +376,40 @@ export function createSubjectSourceSnapshot(
   );
 }
 
-export function listSubjectSourceSnapshots(caseId: string, cursor: string | null = null, limit = 50, signal?: AbortSignal): Promise<SubjectSourceSnapshotList> {
-  return requestJson(paths.caseSubjectSourceSnapshots(caseId, cursor, limit), { method: "GET", signal }, parseSubjectSourceSnapshotList);
+export function listSubjectSourceSnapshots(
+  caseId: string,
+  cursor: string | null = null,
+  limit = 50,
+  signal?: AbortSignal,
+): Promise<SubjectSourceSnapshotList> {
+  return requestJson(
+    paths.caseSubjectSourceSnapshots(caseId, cursor, limit),
+    { method: "GET", signal },
+    parseSubjectSourceSnapshotList,
+  );
 }
 
-export function getSubjectSourceDirectory(caseId: string, signal?: AbortSignal): Promise<SubjectSourceDirectory> {
-  return requestJson(paths.caseSubjectSources(caseId), { method: "GET", signal }, parseSubjectSourceDirectory);
+export function getSubjectSourceDirectory(
+  caseId: string,
+  signal?: AbortSignal,
+): Promise<SubjectSourceDirectory> {
+  return requestJson(
+    paths.caseSubjectSources(caseId),
+    { method: "GET", signal },
+    parseSubjectSourceDirectory,
+  );
 }
 
-export function getSubjectSourceSnapshot(caseId: string, snapshotId: string, signal?: AbortSignal): Promise<SubjectSourceSnapshotDetail> {
-  return requestJson(paths.caseSubjectSourceSnapshot(caseId, snapshotId), { method: "GET", signal }, parseSubjectSourceSnapshotDetail);
+export function getSubjectSourceSnapshot(
+  caseId: string,
+  snapshotId: string,
+  signal?: AbortSignal,
+): Promise<SubjectSourceSnapshotDetail> {
+  return requestJson(
+    paths.caseSubjectSourceSnapshot(caseId, snapshotId),
+    { method: "GET", signal },
+    parseSubjectSourceSnapshotDetail,
+  );
 }
 
 export function getMaterialParsedTextPage(
@@ -462,11 +455,7 @@ export function verifySubjectAgainstSourceSnapshot(
 }
 
 export function reparseDocument(caseId: string, documentId: string) {
-  return requestJson(
-    paths.reparse(caseId, documentId),
-    jsonInit("POST", {}),
-    parseEmpty,
-  );
+  return requestJson(paths.reparse(caseId, documentId), jsonInit("POST", {}), parseEmpty);
 }
 
 export interface StartReviewInput {
@@ -507,8 +496,11 @@ export async function getReviewDiagnostics(
     { method: "GET", signal },
     parseReviewDiagnostics,
   );
-  if (diagnostics.case_id !== caseId || diagnostics.run_id !== runId ||
-      (attemptId && diagnostics.execution && diagnostics.execution.attempt.id !== attemptId)) {
+  if (
+    diagnostics.case_id !== caseId ||
+    diagnostics.run_id !== runId ||
+    (attemptId && diagnostics.execution && diagnostics.execution.attempt.id !== attemptId)
+  ) {
     throw new ApiError("审查诊断身份不匹配", 500, "invalid_response", false, null);
   }
   return diagnostics;
@@ -534,17 +526,10 @@ export async function getReviewHistoryPage(
 ): Promise<ReviewHistoryPage> {
   const workspace = await getReview(caseId, runId, null, signal);
   if (workspace.run.id !== runId || workspace.run.case_id !== caseId)
-    throw new ApiError(
-      "审查历史中的案件或审查身份不一致",
-      500,
-      "invalid_response",
-      false,
-      null,
-    );
+    throw new ApiError("审查历史中的案件或审查身份不一致", 500, "invalid_response", false, null);
   const previousRunId = workspace.previous_run_id ?? null;
   const cycleDetected =
-    previousRunId !== null &&
-    (previousRunId === runId || seenRunIds.includes(previousRunId));
+    previousRunId !== null && (previousRunId === runId || seenRunIds.includes(previousRunId));
   return {
     entry: { runId, workspace },
     nextRunId: cycleDetected ? null : previousRunId,
@@ -567,43 +552,23 @@ export async function getReviewHistory(
   let runId: string | null = latestRunId;
   while (runId !== null) {
     if (seen.has(runId))
-      throw new ApiError(
-        "运行历史包含循环引用",
-        500,
-        "invalid_response",
-        false,
-        null,
-      );
+      throw new ApiError("运行历史包含循环引用", 500, "invalid_response", false, null);
     seen.add(runId);
     const page = await getReviewHistoryPage(caseId, runId, [...seen], signal);
     entries.push(page.entry);
     if (page.cycleDetected)
-      throw new ApiError(
-        "运行历史包含循环引用",
-        500,
-        "invalid_response",
-        false,
-        null,
-      );
+      throw new ApiError("运行历史包含循环引用", 500, "invalid_response", false, null);
     runId = page.nextRunId;
   }
   return entries;
 }
 
 export function retryReview(caseId: string, runId: string) {
-  return requestJson(
-    paths.retryReview(caseId, runId),
-    jsonInit("POST", {}),
-    parseAcceptedReview,
-  );
+  return requestJson(paths.retryReview(caseId, runId), jsonInit("POST", {}), parseAcceptedReview);
 }
 
 export function cancelReview(caseId: string, runId: string) {
-  return requestJson(
-    paths.cancelReview(caseId, runId),
-    jsonInit("POST", {}),
-    parseEmpty,
-  );
+  return requestJson(paths.cancelReview(caseId, runId), jsonInit("POST", {}), parseEmpty);
 }
 
 export function submitDecision(
@@ -627,20 +592,13 @@ export function submitDecision(
   );
 }
 
-export function getSettings(
-  audience: SessionAudience = "client",
-  signal?: AbortSignal,
-) {
+export function getSettings(audience: SessionAudience = "client", signal?: AbortSignal) {
   const path = audience === "admin" ? paths.adminSettings : paths.settings;
   return requestJson(path, { method: "GET", signal }, parseSettings);
 }
 
 export function getLLMEndpoint(signal?: AbortSignal) {
-  return requestJson(
-    paths.llmEndpoint,
-    { method: "GET", signal },
-    parseLLMEndpoint,
-  );
+  return requestJson(paths.llmEndpoint, { method: "GET", signal }, parseLLMEndpoint);
 }
 
 export function probeLLMEndpoint(input: {
@@ -649,55 +607,41 @@ export function probeLLMEndpoint(input: {
   api_key?: string;
   clear_api_key?: boolean;
 }) {
-  return requestJson(
-    paths.llmEndpointProbe,
-    jsonInit("POST", input),
-    parseLLMProbe,
-  );
+  return requestJson(paths.llmEndpointProbe, jsonInit("POST", input), parseLLMProbe);
 }
 
 export function saveLLMEndpoint(input: LLMEndpointInput) {
-  return requestJson(
-    paths.llmEndpoint,
-    jsonInit("PUT", input),
-    parseLLMEndpoint,
-  );
+  return requestJson(paths.llmEndpoint, jsonInit("PUT", input), parseLLMEndpoint);
 }
 
 export function saveLLMModels(input: LLMModelSelectionInput) {
-  return requestJson(
-    paths.llmEndpointModels,
-    jsonInit("PUT", input),
-    parseLLMEndpoint,
-  );
+  return requestJson(paths.llmEndpointModels, jsonInit("PUT", input), parseLLMEndpoint);
 }
 export async function getWorkbench(period: WorkbenchPeriod, signal?: AbortSignal) {
   const path = paths.workbench(period);
   try {
-    return await requestJson(`${path}&task_capabilities=1`, { method: "GET", signal },
-      (value) => parseWorkbenchSnapshot(value, period));
+    return await requestJson(`${path}&task_capabilities=1`, { method: "GET", signal }, (value) =>
+      parseWorkbenchSnapshot(value, period),
+    );
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 422 || signal?.aborted) throw error;
-    const snapshot = await requestJson(path, { method: "GET", signal },
-      (value) => parseWorkbenchSnapshot(value, period));
-    return { ...snapshot, cases: snapshot.cases.map((item) => ({ ...item, can_create_task: false })), tasks: snapshot.tasks.map((task) => ({ ...task, can_complete: false })) };
+    const snapshot = await requestJson(path, { method: "GET", signal }, (value) =>
+      parseWorkbenchSnapshot(value, period),
+    );
+    return {
+      ...snapshot,
+      cases: snapshot.cases.map((item) => ({ ...item, can_create_task: false })),
+      tasks: snapshot.tasks.map((task) => ({ ...task, can_complete: false })),
+    };
   }
 }
 
 export function updateCaseProfile(caseId: string, input: CaseProfileInput) {
-  return requestJson(
-    paths.caseProfile(caseId),
-    jsonInit("PUT", input),
-    parseCaseProfile,
-  );
+  return requestJson(paths.caseProfile(caseId), jsonInit("PUT", input), parseCaseProfile);
 }
 
 export function createWorkbenchTask(caseId: string, input: WorkbenchTaskInput) {
-  return requestJson(
-    paths.caseTasks(caseId),
-    jsonInit("POST", input),
-    parseWorkbenchTask,
-  );
+  return requestJson(paths.caseTasks(caseId), jsonInit("POST", input), parseWorkbenchTask);
 }
 
 export function updateWorkbenchTask(
@@ -705,38 +649,22 @@ export function updateWorkbenchTask(
   taskId: string,
   input: WorkbenchTaskUpdateInput,
 ) {
-  return requestJson(
-    paths.caseTask(caseId, taskId),
-    jsonInit("PUT", input),
-    parseWorkbenchTask,
-  );
+  return requestJson(paths.caseTask(caseId, taskId), jsonInit("PUT", input), parseWorkbenchTask);
 }
 
 export function createCaseRelation(caseId: string, input: CaseRelationInput) {
-  return requestJson(
-    paths.caseRelations(caseId),
-    jsonInit("POST", input),
-    parseCaseRelation,
-  );
+  return requestJson(paths.caseRelations(caseId), jsonInit("POST", input), parseCaseRelation);
 }
 
 export function deleteCaseRelation(caseId: string, relationId: string) {
-  return requestJson(
-    paths.caseRelation(caseId, relationId),
-    jsonInit("DELETE"),
-    parseEmpty,
-  );
+  return requestJson(paths.caseRelation(caseId, relationId), jsonInit("DELETE"), parseEmpty);
 }
 
 export function createKnowledge(input: KnowledgeInput) {
   return requestJson(paths.knowledge, jsonInit("POST", input), parseKnowledge);
 }
 
-export function getKnowledge(
-  knowledgeId: string,
-  versionId: string,
-  signal?: AbortSignal,
-) {
+export function getKnowledge(knowledgeId: string, versionId: string, signal?: AbortSignal) {
   return requestJson(
     paths.knowledgeVersion(knowledgeId, versionId),
     { method: "GET", signal },

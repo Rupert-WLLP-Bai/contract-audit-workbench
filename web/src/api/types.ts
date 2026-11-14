@@ -852,6 +852,7 @@ export interface GenerationRecord {
   replayed?: boolean;
   template_id: string;
   template_version: string;
+  template_digest?: string;
   digest: string;
   created_at: string;
 }
@@ -907,6 +908,7 @@ export interface Template {
   name: string;
   version: string;
   digest: string;
+  source?: "builtin" | "tenant";
   fields: TemplateField[];
 }
 

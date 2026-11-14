@@ -9,18 +9,18 @@
 // End file metadata.
 
 import { Button, Input, Select } from "antd";
+import { Fragment, useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
 import {
-  Fragment,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type RefObject,
-} from "react";
-import { ApiError, assertCommandContextCurrent, bindIdempotencyCommandContext, captureCommandContext, errorMessage } from "../api/http";
+  ApiError,
+  assertCommandContextCurrent,
+  bindIdempotencyCommandContext,
+  captureCommandContext,
+  errorMessage,
+} from "../api/http";
 import { idempotencyFingerprint, newIdempotencyKey } from "../api/idempotency";
-import { useCreateGeneration, useTemplates } from "../api/queries";
+import { useCreateGeneration, useSession, useTemplates } from "../api/queries";
 import type {
+  Actor,
   DocumentVersion,
   GenerationRecord,
   MaterialProjection,
@@ -39,9 +39,7 @@ function templateControlType(fieldType: string): {
   const normalized = fieldType.toLowerCase();
   if (normalized === "textarea" || normalized === "multiline")
     return { inputType: "text", multiline: true };
-  if (
-    ["number", "integer", "decimal", "percent", "currency"].includes(normalized)
-  )
+  if (["number", "integer", "decimal", "percent", "currency"].includes(normalized))
     return { inputType: "number", multiline: false };
   if (normalized === "date") return { inputType: "date", multiline: false };
   return { inputType: "text", multiline: false };
@@ -102,12 +100,7 @@ function TemplateFieldRow({
       <label className="field" htmlFor={fieldId}>
         {field.label}
         {field.required ? "（必填）" : ""}
-        <TemplateFieldControl
-          field={field}
-          value={value}
-          fieldId={fieldId}
-          onChange={onChange}
-        />
+        <TemplateFieldControl field={field} value={value} fieldId={fieldId} onChange={onChange} />
       </label>
       <p className="meta">
         字段：{field.key}，类型：{field.type}
@@ -116,20 +109,19 @@ function TemplateFieldRow({
   );
 }
 
-function selectedTemplateOf(
-  data: Template[] | undefined,
-  selectedTemplateId: string,
-): Template | null {
-  return (
-    data?.find((item) => item.id === selectedTemplateId) ?? data?.[0] ?? null
-  );
+function templateSelectionKey(template: Template): string {
+  return JSON.stringify([template.id, template.version, template.digest]);
+}
+
+function selectedTemplateOf(data: Template[] | undefined, selectionKey: string): Template | null {
+  return data?.find((item) => templateSelectionKey(item) === selectionKey) ?? null;
 }
 
 function templateOptions(data: Template[] | undefined) {
   if (data === undefined) return [];
   return data.map((template: Template) => ({
-    label: `${template.name}，${template.version}`,
-    value: template.id,
+    label: `${template.name}（${template.source === "tenant" ? "租户" : "平台内置"}）`,
+    value: templateSelectionKey(template),
   }));
 }
 
@@ -143,24 +135,41 @@ function replaceablePrimaryMaterials(
 ): MaterialProjection[] {
   if (!selection) return [];
   if (selection.primary_material_id) {
-    return materials.filter((material) => material.material_id === selection.primary_material_id && material.purpose === "primary_contract");
+    return materials.filter(
+      (material) =>
+        material.material_id === selection.primary_material_id &&
+        material.purpose === "primary_contract",
+    );
   }
   if (selection.status === "pending_confirmation") {
-    return materials.filter((material) => material.purpose === "primary_contract" && material.legacy_selected);
+    return materials.filter(
+      (material) => material.purpose === "primary_contract" && material.legacy_selected,
+    );
   }
   return [];
 }
 
 function TemplateReadState({
   templates,
+  session,
 }: {
   templates: UseQueryResult<Template[]>;
+  session: UseQueryResult<Actor>;
 }) {
   return (
     <>
-      {templates.isLoading ? (
-        <p role="status">正在读取可用模板。</p>
+      {session.isLoading || session.isFetching ? (
+        <p role="status">正在确认当前身份后读取模板。</p>
       ) : null}
+      {session.isError ? (
+        <p className="workflow-error" role="alert">
+          当前身份没有确认，无法读取模板。{errorMessage(session.error)}{" "}
+          <Button type="text" htmlType="button" onClick={() => void session.refetch()}>
+            重试读取身份
+          </Button>
+        </p>
+      ) : null}
+      {templates.isLoading ? <p role="status">正在读取可用模板。</p> : null}
       {templates.isError ? (
         <p className="workflow-error" role="alert">
           {errorMessage(templates.error)}{" "}
@@ -174,9 +183,7 @@ function TemplateReadState({
           </Button>
         </p>
       ) : null}
-      {templates.isSuccess && templates.data.length === 0 ? (
-        <p>服务没有返回可用模板。</p>
-      ) : null}
+      {templates.isSuccess && templates.data.length === 0 ? <p>服务没有返回可用模板。</p> : null}
     </>
   );
 }
@@ -184,12 +191,10 @@ function TemplateReadState({
 function TemplateForm({
   caseId,
   template,
-  options,
   generate,
   values,
   errorRef,
   onSubmit,
-  onSelectTemplate,
   onUpdateField,
   materials,
   documents,
@@ -203,12 +208,10 @@ function TemplateForm({
 }: {
   caseId: string;
   template: Template;
-  options: { label: string; value: string }[];
   generate: ReturnType<typeof useCreateGeneration>;
   values: Record<string, string>;
   errorRef: RefObject<HTMLParagraphElement | null>;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
-  onSelectTemplate: (templateId: string) => void;
   onUpdateField: (fieldKey: string, value: string) => void;
   materials: MaterialProjection[];
   documents: DocumentVersion[];
@@ -230,17 +233,9 @@ function TemplateForm({
   }));
   return (
     <form className="workflow-form" onSubmit={onSubmit}>
-      <label className="field">
-        模板
-        <Select
-          aria-label="模板"
-          value={template.id}
-          onChange={onSelectTemplate}
-          options={options}
-        />
-      </label>
       <div className="meta">
-        模板 {template.name}，版本 {template.version} ·{" "}
+        {template.source === "tenant" ? "租户模板" : "平台内置模板"}：{template.name} · 精确版本{" "}
+        <TechnicalDetail value={template.version} label="模板版本标识" /> ·{" "}
         <TechnicalDetail value={template.id} label="模板标识" /> ·{" "}
         <TechnicalDetail value={template.digest} label="模板摘要" />
       </div>
@@ -258,7 +253,9 @@ function TemplateForm({
         />
       </label>
       {intent === "replace" ? (
-        targetOptions.length === 0 ? <p role="alert">当前案件没有可替换的主合同材料。</p> : (
+        targetOptions.length === 0 ? (
+          <p role="alert">当前案件没有可替换的主合同材料。</p>
+        ) : (
           <label className="field">
             要替换的主合同材料
             <Select
@@ -270,14 +267,17 @@ function TemplateForm({
             />
             {target ? (
               <span className="meta">
-                将替换“{documentById.get(target.current_document_id)?.filename ?? "所选主合同材料"}”（主合同）当前第 {target.current_version} 版；若版本已更新，请刷新重试。
+                将替换“{documentById.get(target.current_document_id)?.filename ?? "所选主合同材料"}
+                ”（主合同）当前第 {target.current_version} 版；若版本已更新，请刷新重试。
               </span>
             ) : null}
           </label>
         )
       ) : null}
       {hasPrimaryMaterial && intent === "add" ? (
-        <p className="callout">当前案件已有主合同。请先确认要纳入后续审查的主合同材料，再替换该材料；独立主合同请另建案件。</p>
+        <p className="callout">
+          当前案件已有主合同。请先确认要纳入后续审查的主合同材料，再替换该材料；独立主合同请另建案件。
+        </p>
       ) : null}
       {template.fields.map((field, index) => (
         <TemplateFieldRow
@@ -299,10 +299,25 @@ function TemplateForm({
       ) : null}
       {preparationError ? <p role="alert">{preparationError}</p> : null}
       {generate.data ? (
-        <p role="status" data-document-id={generate.data.document_id} data-material-id={generate.data.material_id} data-version={generate.data.version}>
-          草稿已生成：{template.name}（{generate.data.template_version}），当前第 {generate.data.version ?? "?"} 版。
+        <div
+          className="callout"
+          role="status"
+          data-document-id={generate.data.document_id}
+          data-material-id={generate.data.material_id}
+          data-version={generate.data.version}
+        >
+          草稿已生成：{template.name}（模板版本{" "}
+          <TechnicalDetail value={generate.data.template_version} label="查看精确模板版本" />
+          ），当前第 {generate.data.version ?? "?"} 版。
+          {generate.data.template_digest ? (
+            <>
+              {" "}
+              模板摘要{" "}
+              <TechnicalDetail value={generate.data.template_digest} label="查看模板摘要" />
+            </>
+          ) : null}
           摘要 <code className="digest">{generate.data.digest}</code>
-        </p>
+        </div>
       ) : null}
       <Button
         aria-label={String(
@@ -322,6 +337,7 @@ function TemplateGenerationBody({
   caseId,
   actorId,
   templates,
+  session,
   materials,
   documents,
   materialSelection,
@@ -329,6 +345,7 @@ function TemplateGenerationBody({
   caseId: string;
   actorId: string;
   templates: UseQueryResult<Template[]>;
+  session: UseQueryResult<Actor>;
   materials: MaterialProjection[];
   documents: DocumentVersion[];
   materialSelection: MaterialSelectionProjection | undefined;
@@ -341,10 +358,9 @@ function TemplateGenerationBody({
   const [isPreparing, setIsPreparing] = useState(false);
   const [preparationError, setPreparationError] = useState<string | null>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
-  const selectedTemplate = selectedTemplateOf(
-    templates.data,
-    selectedTemplateId,
-  );
+  const availableTemplates = templates.isError ? undefined : templates.data;
+  const selectedTemplate = selectedTemplateOf(availableTemplates, selectedTemplateId);
+  const options = templateOptions(availableTemplates);
 
   useEffect(() => {
     if (generate.error && errorRef.current) errorRef.current.focus();
@@ -363,15 +379,16 @@ function TemplateGenerationBody({
     event.preventDefault();
     if (!selectedTemplate) return;
     const fields = Object.fromEntries(
-      selectedTemplate.fields.map((field) => [
-        field.key,
-        fieldValue(values, field.key),
-      ]),
+      selectedTemplate.fields.map((field) => [field.key, fieldValue(values, field.key)]),
     );
-    const target = replaceablePrimaryMaterials(materials, materialSelection).find((material) => material.material_id === targetMaterialId);
+    const target = replaceablePrimaryMaterials(materials, materialSelection).find(
+      (material) => material.material_id === targetMaterialId,
+    );
     if (intent === "replace" && !target) return;
     const input = {
       template_id: selectedTemplate.id,
+      template_version: selectedTemplate.version,
+      template_digest: selectedTemplate.digest,
       fields,
       intent,
       ...(intent === "replace" && target
@@ -382,7 +399,9 @@ function TemplateGenerationBody({
     setIsPreparing(true);
     setPreparationError(null);
     try {
-      const fingerprint = await idempotencyFingerprint(JSON.stringify({ input, sessionIdentity: commandContext.identity }));
+      const fingerprint = await idempotencyFingerprint(
+        JSON.stringify({ input, sessionIdentity: commandContext.identity }),
+      );
       assertCommandContextCurrent(commandContext);
       const storageKey = `caw:generation-idempotency:${caseId}:${actorId}:${commandContext.contextVersion}:${fingerprint}`;
       const idempotencyKey = sessionStorage.getItem(storageKey) ?? newIdempotencyKey();
@@ -399,7 +418,9 @@ function TemplateGenerationBody({
               try {
                 sessionStorage.setItem(storageKey, newIdempotencyKey());
               } catch {
-                setPreparationError("草稿已生成，但浏览器无法清理安全重试记录。请不要重复提交同一内容；如需继续，请刷新后重试或联系管理员。");
+                setPreparationError(
+                  "草稿已生成，但浏览器无法清理安全重试记录。请不要重复提交同一内容；如需继续，请刷新后重试或联系管理员。",
+                );
               }
             }
           },
@@ -414,12 +435,29 @@ function TemplateGenerationBody({
 
   return (
     <>
-      <TemplateReadState templates={templates} />
+      <TemplateReadState templates={templates} session={session} />
+      {templates.isSuccess && !templates.isError ? (
+        <label className="field">
+          模板来源
+          <Select
+            aria-label="选择模板"
+            value={selectedTemplate ? selectedTemplateId : undefined}
+            placeholder="请选择平台内置或当前案件可用的租户模板"
+            onChange={selectTemplate}
+            options={options}
+          />
+          <span className="meta">
+            租户模板仅在当前案件授权范围内显示。选择后会固定模板版本和摘要。
+          </span>
+        </label>
+      ) : null}
+      {selectedTemplateId && !selectedTemplate && templates.isSuccess && !templates.isError ? (
+        <p role="status">所选模板版本已不在当前可用列表中，请重新选择一个明确版本。</p>
+      ) : null}
       {selectedTemplate ? (
         <TemplateForm
           caseId={caseId}
           template={selectedTemplate}
-          options={templateOptions(templates.data)}
           generate={generate}
           values={values}
           errorRef={errorRef}
@@ -431,13 +469,14 @@ function TemplateGenerationBody({
           onIntentChange={(value) => {
             setIntent(value);
             const candidates = replaceablePrimaryMaterials(materials, materialSelection);
-            setTargetMaterialId(value === "replace" && candidates.length === 1 ? candidates[0]!.material_id : "");
+            setTargetMaterialId(
+              value === "replace" && candidates.length === 1 ? candidates[0]!.material_id : "",
+            );
           }}
           onTargetChange={setTargetMaterialId}
           isPreparing={isPreparing}
           preparationError={preparationError}
           onSubmit={onSubmit}
-          onSelectTemplate={selectTemplate}
           onUpdateField={updateField}
         />
       ) : null}
@@ -455,22 +494,51 @@ function GenerationHistory({ records }: { records: GenerationRecord[] }) {
         <ul className="workflow-record-list">
           {records.map((record) => (
             <li key={record.id}>
-              <strong>模板版本 {record.template_version}</strong>
+              <strong>模板生成记录</strong>
               <dl className="execution-dl">
                 <div>
+                  <dt>精确模板版本</dt>
+                  <dd>
+                    <TechnicalDetail value={record.template_version} label="查看模板版本" />
+                  </dd>
+                </div>
+                <div>
+                  <dt>模板标识</dt>
+                  <dd>
+                    <TechnicalDetail value={record.template_id} label="查看模板标识" />
+                  </dd>
+                </div>
+                <div>
                   <dt>生成记录</dt>
-                  <dd><TechnicalDetail value={record.id} label="查看编号" /></dd>
+                  <dd>
+                    <TechnicalDetail value={record.id} label="查看编号" />
+                  </dd>
                 </div>
                 <div>
                   <dt>草稿文档</dt>
-                  <dd><TechnicalDetail value={record.document_id} label="查看标识" /></dd>
+                  <dd>
+                    <TechnicalDetail value={record.document_id} label="查看标识" />
+                  </dd>
                 </div>
                 {record.material_id ? (
                   <div>
                     <dt>材料版本</dt>
-                    <dd>v{record.version ?? "?"} · <TechnicalDetail value={record.material_id} label="材料标识" /></dd>
+                    <dd>
+                      v{record.version ?? "?"} ·{" "}
+                      <TechnicalDetail value={record.material_id} label="材料标识" />
+                    </dd>
                   </div>
                 ) : null}
+                <div>
+                  <dt>模板内容摘要</dt>
+                  <dd>
+                    {record.template_digest ? (
+                      <TechnicalDetail value={record.template_digest} label="查看模板摘要" />
+                    ) : (
+                      "历史记录未返回模板摘要"
+                    )}
+                  </dd>
+                </div>
                 <div>
                   <dt>摘要</dt>
                   <dd>
@@ -509,31 +577,35 @@ export function TemplateGenerationPanel({
   materialSelection?: MaterialSelectionProjection;
   actorId: string;
 }) {
-  const templates = useTemplates(canWrite && !archived);
+  const session = useSession();
+  const currentActor =
+    session.isSuccess && !session.isFetching && !session.isError ? session.data : null;
+  const templates = useTemplates(caseId, currentActor, canWrite && !archived);
   return (
-    <section
-      className="workflow-panel"
-      aria-labelledby="template-generation-title"
-    >
+    <section className="workflow-panel" aria-labelledby="template-generation-title">
       <header className="workflow-panel-head">
         <div>
           <h2 id="template-generation-title">模板生成</h2>
           <p className="meta">
-            模板身份、版本和摘要由服务端返回；生成记录会关联真实草稿文档。
+            从已发布模板生成草稿；替换材料时保留原版本。模板版本和摘要由服务端返回。
           </p>
         </div>
       </header>
-      {!canWrite ? (
-        <p className="callout">当前角色没有已定义的模板写入权限。</p>
-      ) : null}
+      {!canWrite ? <p className="callout">当前角色没有已定义的模板写入权限。</p> : null}
       {archived ? (
-        <p className="callout">
-          案件已归档，模板生成写入会被服务端拒绝（HTTP 409）。
-        </p>
+        <p className="callout">案件已归档，模板生成写入会被服务端拒绝（HTTP 409）。</p>
       ) : null}
       {canWrite && !archived ? (
         materials && documents ? (
-          <TemplateGenerationBody caseId={caseId} actorId={actorId} templates={templates} materials={materials} documents={documents} materialSelection={materialSelection} />
+          <TemplateGenerationBody
+            caseId={caseId}
+            actorId={actorId}
+            templates={templates}
+            session={session}
+            materials={materials}
+            documents={documents}
+            materialSelection={materialSelection}
+          />
         ) : (
           <p role="alert">材料信息暂不可用，请刷新重试或联系管理员。</p>
         )

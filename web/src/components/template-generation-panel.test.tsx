@@ -12,16 +12,24 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setSessionIdentity } from "../api/http";
-import type { DocumentVersion, GenerationRecord, MaterialProjection, MaterialSelectionProjection, Template } from "../api/types";
+import type {
+  DocumentVersion,
+  GenerationRecord,
+  MaterialProjection,
+  MaterialSelectionProjection,
+  Template,
+} from "../api/types";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { TemplateGenerationPanel } from "./template-generation-panel";
 
 const mocks = vi.hoisted(() => ({
+  useSession: vi.fn(),
   useTemplates: vi.fn(),
   useCreateGeneration: vi.fn(),
 }));
 
 vi.mock("../api/queries", () => ({
+  useSession: mocks.useSession,
   useTemplates: mocks.useTemplates,
   useCreateGeneration: mocks.useCreateGeneration,
 }));
@@ -33,6 +41,7 @@ const template: Template = {
   name: "采购合同模板",
   version: "3",
   digest: "template-digest",
+  source: "builtin",
   fields: [
     { key: "title", label: "标题", required: true, type: "text" },
     { key: "summary", label: "摘要", required: false, type: "textarea" },
@@ -51,6 +60,7 @@ const record: GenerationRecord = {
   document_id: "document-1",
   template_id: "template-1",
   template_version: "3",
+  template_digest: "template-digest",
   digest: "generation-digest",
   created_at: at,
 };
@@ -94,7 +104,14 @@ function renderPanel(
       records={overrides.records ?? []}
       materials={overrides.materials ?? []}
       documents={overrides.documents ?? []}
-      materialSelection={overrides.materialSelection ?? { version: 1, status: "not_applicable", document_ids: [], primary_material_id: null }}
+      materialSelection={
+        overrides.materialSelection ?? {
+          version: 1,
+          status: "not_applicable",
+          document_ids: [],
+          primary_material_id: null,
+        }
+      }
       canWrite={overrides.canWrite ?? true}
       archived={overrides.archived ?? false}
     />,
@@ -112,9 +129,34 @@ beforeEach(() => {
     active_context: { context_version: "context-1" },
     csrf_token: "test-csrf-token",
   });
-  mocks.useTemplates.mockReturnValue(
-    templatesState({ isSuccess: true, data: [template] }),
-  );
+  mocks.useSession.mockReturnValue({
+    data: {
+      id: "actor-1",
+      display_name: "审查员",
+      role: "reviewer",
+      tenant_id: "tenant-1",
+      org_id: "org-1",
+      audience: "client",
+      principal_id: "actor-1",
+      active_context: {
+        membership_id: "membership-1",
+        context_version: "context-1",
+        tenant_id: "tenant-1",
+        tenant_name: "租户",
+        org_id: "org-1",
+        org_name: "组织",
+      },
+      csrf_token: "test-csrf-token",
+      context_switch_enabled: false,
+    },
+    isSuccess: true,
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  });
+  mocks.useTemplates.mockReturnValue(templatesState({ isSuccess: true, data: [template] }));
   mocks.useCreateGeneration.mockReturnValue(generationState());
 });
 
@@ -125,10 +167,8 @@ afterEach(() => {
 describe("template generation panel", () => {
   it("explains a missing write permission without loading templates", () => {
     renderPanel({ canWrite: false });
-    expect(
-      screen.getByText("当前角色没有已定义的模板写入权限。"),
-    ).toBeInTheDocument();
-    expect(mocks.useTemplates).toHaveBeenCalledWith(false);
+    expect(screen.getByText("当前角色没有已定义的模板写入权限。")).toBeInTheDocument();
+    expect(mocks.useTemplates).toHaveBeenCalledWith("case-1", expect.any(Object), false);
     expect(screen.queryByRole("button", { name: "生成待审草稿" })).not.toBeInTheDocument();
     expect(screen.getByText("没有已返回的模板生成记录。")).toBeInTheDocument();
   });
@@ -138,22 +178,28 @@ describe("template generation panel", () => {
     expect(
       screen.getByText("案件已归档，模板生成写入会被服务端拒绝（HTTP 409）。"),
     ).toBeInTheDocument();
-    expect(mocks.useTemplates).toHaveBeenCalledWith(false);
+    expect(mocks.useTemplates).toHaveBeenCalledWith("case-1", expect.any(Object), false);
     expect(screen.queryByRole("form")).not.toBeInTheDocument();
   });
 
   it("shows template loading and error states with an explicit retry", async () => {
     const refetch = vi.fn();
-    mocks.useTemplates.mockReturnValue(
-      templatesState({ isLoading: true, refetch }),
-    );
+    mocks.useTemplates.mockReturnValue(templatesState({ isLoading: true, refetch }));
     const view = renderPanel();
     expect(screen.getByRole("status")).toHaveTextContent("正在读取可用模板。");
     mocks.useTemplates.mockReturnValue(
       templatesState({ isError: true, error: new Error("boom"), refetch }),
     );
     view.rerender(
-      <TemplateGenerationPanel caseId="case-1" actorId="actor-1" records={[]} materials={[]} documents={[]} canWrite archived={false} />,
+      <TemplateGenerationPanel
+        caseId="case-1"
+        actorId="actor-1"
+        records={[]}
+        materials={[]}
+        documents={[]}
+        canWrite
+        archived={false}
+      />,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("请求没有完成");
     const user = userEvent.setup();
@@ -162,17 +208,27 @@ describe("template generation panel", () => {
   });
 
   it("says when a successful read returned no templates", () => {
-    mocks.useTemplates.mockReturnValue(
-      templatesState({ isSuccess: true, data: [] }),
-    );
+    mocks.useTemplates.mockReturnValue(templatesState({ isSuccess: true, data: [] }));
     renderPanel();
     expect(screen.getByText("服务没有返回可用模板。")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "生成待审草稿" })).not.toBeInTheDocument();
   });
 
-  it("renders the selected template identity and a control per field type", () => {
+  it("requires an explicit template choice before showing generation fields", async () => {
     renderPanel();
-    expect(screen.getByText(/模板 采购合同模板，版本 3/)).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "选择模板" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "生成待审草稿" })).not.toBeInTheDocument();
+  });
+
+  it("renders the explicitly selected template identity and a control per legacy field type", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "选择模板" }),
+      "采购合同模板（平台内置）",
+    );
+    expect(screen.getByText(/平台内置模板：采购合同模板/)).toBeInTheDocument();
     expect(screen.getByText("模板摘要")).toBeInTheDocument();
     const title = screen.getByRole("textbox", { name: /标题（必填）/ }) as HTMLInputElement;
     expect(title).toHaveAttribute("type", "text");
@@ -188,12 +244,13 @@ describe("template generation panel", () => {
     expect(screen.getByText("字段：note，类型：multiline")).toBeInTheDocument();
   });
 
-  it("lists every available template as a selectable option", async () => {
+  it("lists templates by source without treating a tenant choice as a platform override", async () => {
     const second: Template = {
       id: "template-2",
       name: "服务合同模板",
       version: "1",
       digest: "second-digest",
+      source: "tenant",
       fields: [],
     };
     mocks.useTemplates.mockReturnValue(
@@ -201,11 +258,11 @@ describe("template generation panel", () => {
     );
     const user = userEvent.setup();
     renderPanel();
-    await user.click(screen.getByRole("combobox", { name: "模板" }));
+    await user.click(screen.getByRole("combobox", { name: "选择模板" }));
     const options = await screen.findAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
-      "采购合同模板，3",
-      "服务合同模板，1",
+      "采购合同模板（平台内置）",
+      "服务合同模板（租户）",
     ]);
   });
 
@@ -214,6 +271,11 @@ describe("template generation panel", () => {
     mocks.useCreateGeneration.mockReturnValue(generationState({ mutate }));
     const user = userEvent.setup();
     renderPanel();
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "选择模板" }),
+      "采购合同模板（平台内置）",
+    );
     await user.type(screen.getByRole("textbox", { name: /标题（必填）/ }), "合同");
     await user.type(screen.getByRole("textbox", { name: "摘要" }), "说明");
     await user.click(screen.getByRole("button", { name: "生成待审草稿" }));
@@ -222,17 +284,19 @@ describe("template generation panel", () => {
     expect(input).toMatchObject({
       input: {
         template_id: "template-1",
+        template_version: "3",
+        template_digest: "template-digest",
         intent: "add",
         fields: {
-        title: "合同",
-        summary: "说明",
-        amount: "",
-        count: "",
-        ratio: "",
-        discount: "",
-        fee: "",
-        signed: "",
-        note: "",
+          title: "合同",
+          summary: "说明",
+          amount: "",
+          count: "",
+          ratio: "",
+          discount: "",
+          fee: "",
+          signed: "",
+          note: "",
         },
       },
     });
@@ -248,6 +312,7 @@ describe("template generation panel", () => {
       name: "服务合同模板",
       version: "1",
       digest: "second-digest",
+      source: "builtin",
       fields: [{ key: "title", label: "标题", required: true, type: "text" }],
     };
     mocks.useTemplates.mockReturnValue(
@@ -255,27 +320,73 @@ describe("template generation panel", () => {
     );
     const user = userEvent.setup();
     renderPanel();
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "选择模板" }),
+      "采购合同模板（平台内置）",
+    );
     await user.type(screen.getByRole("textbox", { name: /标题（必填）/ }), "草稿");
-    await chooseOption(user, screen.getByRole("combobox", { name: "模板" }), /服务合同模板，1/);
-    expect(screen.getByText(/模板 服务合同模板，版本 1/)).toBeInTheDocument();
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "选择模板" }),
+      /服务合同模板（平台内置）/,
+    );
+    expect(screen.getByText(/平台内置模板：服务合同模板/)).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /标题（必填）/ })).toHaveValue("");
   });
 
-  it("shows pending, error and generated-document states", async () => {
-    mocks.useCreateGeneration.mockReturnValue(
-      generationState({ isPending: true }),
-    );
+  it("does not silently switch to a newer version of the same template", async () => {
+    const user = userEvent.setup();
     const view = renderPanel();
-    expect(screen.getByRole("button", { name: "正在生成草稿" })).toBeDisabled();
-    mocks.useCreateGeneration.mockReturnValue(
-      generationState({ error: new Error("boom") }),
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "选择模板" }),
+      "采购合同模板（平台内置）",
+    );
+    mocks.useTemplates.mockReturnValue(
+      templatesState({
+        isSuccess: true,
+        data: [{ ...template, version: "4", digest: "next-template-digest" }],
+      }),
     );
     view.rerender(
-      <TemplateGenerationPanel caseId="case-1" actorId="actor-1" records={[]} materials={[]} documents={[]} canWrite archived={false} />,
+      <TemplateGenerationPanel
+        caseId="case-1"
+        actorId="actor-1"
+        records={[]}
+        materials={[]}
+        documents={[]}
+        canWrite
+        archived={false}
+      />,
     );
-    await waitFor(() =>
-      expect(screen.getByRole("alert")).toHaveTextContent("请求没有完成"),
+    expect(screen.getByRole("status")).toHaveTextContent("所选模板版本已不在当前可用列表中");
+    expect(screen.queryByRole("button", { name: "生成待审草稿" })).not.toBeInTheDocument();
+  });
+
+  it("shows pending, error and generated-document states", async () => {
+    mocks.useCreateGeneration.mockReturnValue(generationState({ isPending: true }));
+    const user = userEvent.setup();
+    const view = renderPanel();
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "选择模板" }),
+      "采购合同模板（平台内置）",
     );
+    expect(screen.getByRole("button", { name: "正在生成草稿" })).toBeDisabled();
+    mocks.useCreateGeneration.mockReturnValue(generationState({ error: new Error("boom") }));
+    view.rerender(
+      <TemplateGenerationPanel
+        caseId="case-1"
+        actorId="actor-1"
+        records={[]}
+        materials={[]}
+        documents={[]}
+        canWrite
+        archived={false}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("请求没有完成"));
     expect(screen.getByRole("alert")).toHaveAttribute("tabindex", "-1");
     expect(screen.getByRole("alert")).toHaveFocus();
     mocks.useCreateGeneration.mockReturnValue(
@@ -285,6 +396,7 @@ describe("template generation panel", () => {
           document_id: "document-9",
           template_id: "template-1",
           template_version: "3",
+          template_digest: "template-digest",
           material_id: "mat-primary",
           version: 2,
           digest: "result-digest",
@@ -293,11 +405,19 @@ describe("template generation panel", () => {
       }),
     );
     view.rerender(
-      <TemplateGenerationPanel caseId="case-1" actorId="actor-1" records={[]} materials={[]} documents={[]} canWrite archived={false} />,
+      <TemplateGenerationPanel
+        caseId="case-1"
+        actorId="actor-1"
+        records={[]}
+        materials={[]}
+        documents={[]}
+        canWrite
+        archived={false}
+      />,
     );
-    expect(screen.getByRole("status")).toHaveTextContent(
-      /草稿已生成：采购合同模板（3），当前第 2 版。\s*摘要 result-digest/,
-    );
+    expect(screen.getByRole("status")).toHaveTextContent(/草稿已生成：采购合同模板/);
+    expect(screen.getByRole("status")).toHaveTextContent(/模板摘要.*template-digest/);
+    expect(screen.getByRole("status")).toHaveTextContent("摘要 result-digest");
     expect(screen.getByRole("status")).toHaveAttribute("data-document-id", "document-9");
     expect(screen.getByRole("status")).toHaveAttribute("data-material-id", "mat-primary");
     expect(screen.getByRole("status")).not.toHaveTextContent("document-9");
@@ -308,50 +428,141 @@ describe("template generation panel", () => {
   it("requires an explicit target and sends the current document CAS for generated replacement", async () => {
     const mutate = vi.fn();
     mocks.useCreateGeneration.mockReturnValue(generationState({ mutate }));
-    const materials: MaterialProjection[] = [{
-      material_id: "mat-primary",
-      role: "draft_contract",
-      purpose: "primary_contract",
-      legacy_status: "confirmed",
-      legacy_selected: true,
-      selected: true,
-      current_document_id: "doc-current",
-      current_version: 3,
-    }];
-    const documents: DocumentVersion[] = [{
-      id: "doc-current", role: "draft_contract", filename: "主合同.txt", media_type: "text/plain", digest: "digest", size: 8,
-      parse_status: "ready", parse_error: null, created_at: at, parsed_document: null,
-    }];
-    const user = userEvent.setup();
-    renderPanel({ materials, documents, materialSelection: { version: 3, status: "confirmed", document_ids: ["doc-current"], primary_material_id: "mat-primary" } });
-    await user.type(screen.getByRole("textbox", { name: /标题（必填）/ }), "新文本");
-    await chooseOption(user, screen.getByRole("combobox", { name: "草稿操作" }), "明确替换已有草稿材料");
-    await user.click(screen.getByRole("button", { name: "生成待审草稿" }));
-    expect(mutate).toHaveBeenCalledTimes(1);
-    const command = mutate.mock.calls[0]![0];
-    expect(command.input).toMatchObject({ intent: "replace", material_id: "mat-primary", replaces_document_id: "doc-current" });
-    expect(command.idempotencyKey).toMatch(/^[0-9a-f-]{32,36}$/i);
-  });
-
-  it("only offers the server-designated primary chain for generated replacement", async () => {
     const materials: MaterialProjection[] = [
-      { material_id: "mat-chain", role: "draft_contract", purpose: "primary_contract", legacy_status: "native", legacy_selected: false, selected: true, current_document_id: "doc-chain", current_version: 2 },
-      { material_id: "mat-unrelated", role: "draft_contract", purpose: "primary_contract", legacy_status: "confirmed", legacy_selected: true, selected: false, current_document_id: "doc-unrelated", current_version: 7 },
+      {
+        material_id: "mat-primary",
+        role: "draft_contract",
+        purpose: "primary_contract",
+        legacy_status: "confirmed",
+        legacy_selected: true,
+        selected: true,
+        current_document_id: "doc-current",
+        current_version: 3,
+      },
     ];
     const documents: DocumentVersion[] = [
-      { id: "doc-chain", role: "draft_contract", filename: "主链合同.txt", media_type: "text/plain", digest: "a", size: 8, parse_status: "ready", parse_error: null, created_at: at, parsed_document: null },
-      { id: "doc-unrelated", role: "draft_contract", filename: "其他旧合同.txt", media_type: "text/plain", digest: "b", size: 8, parse_status: "ready", parse_error: null, created_at: at, parsed_document: null },
+      {
+        id: "doc-current",
+        role: "draft_contract",
+        filename: "主合同.txt",
+        media_type: "text/plain",
+        digest: "digest",
+        size: 8,
+        parse_status: "ready",
+        parse_error: null,
+        created_at: at,
+        parsed_document: null,
+      },
     ];
     const user = userEvent.setup();
     renderPanel({
       materials,
       documents,
-      materialSelection: { version: 8, status: "confirmed", document_ids: ["doc-chain"], primary_material_id: "mat-chain" },
+      materialSelection: {
+        version: 3,
+        status: "confirmed",
+        document_ids: ["doc-current"],
+        primary_material_id: "mat-primary",
+      },
     });
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "选择模板" }),
+      "采购合同模板（平台内置）",
+    );
     await user.type(screen.getByRole("textbox", { name: /标题（必填）/ }), "新文本");
-    await chooseOption(user, screen.getByRole("combobox", { name: "草稿操作" }), "明确替换已有草稿材料");
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "草稿操作" }),
+      "明确替换已有草稿材料",
+    );
+    await user.click(screen.getByRole("button", { name: "生成待审草稿" }));
+    expect(mutate).toHaveBeenCalledTimes(1);
+    const command = mutate.mock.calls[0]![0];
+    expect(command.input).toMatchObject({
+      intent: "replace",
+      material_id: "mat-primary",
+      replaces_document_id: "doc-current",
+    });
+    expect(command.idempotencyKey).toMatch(/^[0-9a-f-]{32,36}$/i);
+  });
+
+  it("only offers the server-designated primary chain for generated replacement", async () => {
+    const materials: MaterialProjection[] = [
+      {
+        material_id: "mat-chain",
+        role: "draft_contract",
+        purpose: "primary_contract",
+        legacy_status: "native",
+        legacy_selected: false,
+        selected: true,
+        current_document_id: "doc-chain",
+        current_version: 2,
+      },
+      {
+        material_id: "mat-unrelated",
+        role: "draft_contract",
+        purpose: "primary_contract",
+        legacy_status: "confirmed",
+        legacy_selected: true,
+        selected: false,
+        current_document_id: "doc-unrelated",
+        current_version: 7,
+      },
+    ];
+    const documents: DocumentVersion[] = [
+      {
+        id: "doc-chain",
+        role: "draft_contract",
+        filename: "主链合同.txt",
+        media_type: "text/plain",
+        digest: "a",
+        size: 8,
+        parse_status: "ready",
+        parse_error: null,
+        created_at: at,
+        parsed_document: null,
+      },
+      {
+        id: "doc-unrelated",
+        role: "draft_contract",
+        filename: "其他旧合同.txt",
+        media_type: "text/plain",
+        digest: "b",
+        size: 8,
+        parse_status: "ready",
+        parse_error: null,
+        created_at: at,
+        parsed_document: null,
+      },
+    ];
+    const user = userEvent.setup();
+    renderPanel({
+      materials,
+      documents,
+      materialSelection: {
+        version: 8,
+        status: "confirmed",
+        document_ids: ["doc-chain"],
+        primary_material_id: "mat-chain",
+      },
+    });
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "选择模板" }),
+      "采购合同模板（平台内置）",
+    );
+    await user.type(screen.getByRole("textbox", { name: /标题（必填）/ }), "新文本");
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "草稿操作" }),
+      "明确替换已有草稿材料",
+    );
     const target = screen.getByRole("combobox", { name: "要替换的主合同材料" });
-    const selectedLabel = target.closest(".ant-select")?.querySelector(".ant-select-content")?.textContent?.trim();
+    const selectedLabel = target
+      .closest(".ant-select")
+      ?.querySelector(".ant-select-content")
+      ?.textContent?.trim();
     expect(selectedLabel).toContain("主链合同.txt，v2");
     await user.click(target);
     const options = screen.getAllByRole("option").map((item) => item.textContent?.trim());
@@ -362,7 +573,10 @@ describe("template generation panel", () => {
   it("lists generation history with digests and times", () => {
     renderPanel({ records: [record] });
     const history = screen.getByRole("region", { name: "生成历史" });
-    expect(within(history).getByText("模板版本 3")).toBeInTheDocument();
+    expect(within(history).getByText("精确模板版本")).toBeInTheDocument();
+    expect(within(history).getByText("查看模板版本")).toBeInTheDocument();
+    expect(within(history).getByText("模板标识")).toBeInTheDocument();
+    expect(within(history).getByText("查看模板摘要")).toBeInTheDocument();
     expect(within(history).getByText("查看编号")).toBeInTheDocument();
     expect(within(history).getByText("查看标识")).toBeInTheDocument();
     expect(within(history).getByText("generation-1")).toBeInTheDocument();
