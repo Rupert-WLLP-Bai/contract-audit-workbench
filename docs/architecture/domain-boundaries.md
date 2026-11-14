@@ -389,3 +389,14 @@ Operator PG 只查询/追加自己的 evaluations、evaluation_objects、checks�
 Impact 保留当前 Case Read→读事务 target/previous→提交→事务外 planner 或 baseline_missing 全量 fallback→另一个写事务 append ON CONFLICT DO NOTHING。planner nil 仍先于 baseline 发现失败；无 baseline 不调用 planner。原第二写事务只有 withOperatorTx 既有 trusted/role/scope/锁和正常会话 tenant_context_fence 的语句/提交围栏，没有第二次 Case Read，不在目录迁移中悄然加撤权检查；created_by 继续原 user.ID，写/commit 失败返回零 plan。两事务不声称同快照。
 
 必要 SOURCE 固定真实 Core/Document/Execution 会话和 authority：多对象合法前态、evaluation 与至少一个 object 已写后唯一强制失败及完整行/旧历史回滚、同键恢复；Impact planner 期间真实 membership grant/revision 变更后原第二事务的 context_stale 围栏行为（fresh 认证用于验证当前失权，不能拿旧 proof 假装 fresh）；新解析产生不同事实后仍使用 exact frozen parse。只补必要边界，复用既有矩阵。整轮源码冻结前所有测试、编译、go list、门禁、PG/app/browser 和真实模型/OCR均 NOT_RUN。#183 真实接入不再要求，#95/#99 外部专业/试用/交接继续暂缓。
+### #293 真实思考模型的有界输出与调用时间
+
+状态：采纳，扩大预算实现前记录。用户在 2026-11-14 明确选择“不能关闭，适配更大预算”。本机 DeepSeek 路由宣告最大输出 32000，未宣告 none 模式；同一 21912 字合同在 4096、8192、16384 输出限制下均实际空答，16384 对照耗时约 270 秒。较短材料在 16384 限制下得到实际正文。真实请求与失败记录位于仓外交付目录，不改原始预期或将传输成功视为完整验收。
+
+采用新的 facts 提示词和能力身份版本，明确允许思考并将输出上限固定为 32000；继续共用一份响应 JSON Schema、严格解析和冻结原文引用绑定。旧 v2/v3 能力身份不作为新协议执行。普通审查与 OCR 的实际请求输出长度不随预留上界自动增加。
+
+网关单次输出预留上界覆盖 32000；单次保守输入预留上界取 131072，覆盖实测约 64062 字节请求及合法前缀的编码与协议开销，超界继续拒绝。全局和租户的分钟 token、次数、并发与金额预算不增加，仍由 PostgreSQL 原子预留与实际或未知用量结算。不得用调用方自报 purpose 绕过身份、冻结配置或预算；未知用量继续保守处理，不将失败调用计为零。
+
+复用已有 MODEL_REQUEST_TIMEOUT 的有限配置，网关默认请求时间支持 600 秒并保持租约覆盖请求时间与结算余量。客户端和存储端点的 guarded client 共享相应有限默认值；网关调用方保留接收超时响应的余量，不覆盖 NewWithHTTPClient 调用方提供的 transport 或 timeout。取消、当前授权和任务心跳续租保持原边界。Compose、环境示例与维护说明同步传递真实生效的单次预留和时间配置，不新增任务平台、数据库结构、服务角色或其他权限。
+
+实际验收仍使用相同原件、提取文本摘要和本机端点，逐项记录请求参数、配置身份、响应、用量、耗时及引用匹配；扩大参数本身不构成 PASS。
