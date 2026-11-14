@@ -24,6 +24,7 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/contracttemplate"
 	"contractaudit/internal/coreauthority"
+	"contractaudit/internal/fault"
 	"contractaudit/internal/model"
 )
 
@@ -179,7 +180,15 @@ func (c *OperationClient) ResolveDocumentTemplates(ctx context.Context, input co
 		return nil, errors.New("template authority unavailable")
 	}
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
+	switch res.StatusCode {
+	case http.StatusOK:
+	case http.StatusForbidden:
+		return nil, fault.Forbidden("当前会话不能采用正文范本")
+	case http.StatusNotFound:
+		return nil, fault.NotFound("正文范本不可用，请刷新后重新选择")
+	case http.StatusConflict:
+		return nil, fault.Conflict("正文范本状态已变化，请刷新后重新选择")
+	default:
 		return nil, errors.New("template authority unavailable or refused")
 	}
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 4<<20+1))

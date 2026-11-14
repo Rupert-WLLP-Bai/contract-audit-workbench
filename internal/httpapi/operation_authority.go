@@ -19,6 +19,7 @@ import (
 	"net/http"
 
 	"contractaudit/internal/contracttemplate"
+	"contractaudit/internal/fault"
 	"contractaudit/internal/model"
 	"contractaudit/internal/operationauthority"
 	"contractaudit/internal/store"
@@ -167,7 +168,10 @@ func documentTemplatesHandler(st *store.Store, credential string) http.HandlerFu
 		}
 		items, err := st.ResolveDocumentTemplates(r.Context(), in.SessionDigest, in.ContextVersion, in.CaseID, in.ID, in.Version, in.Digest)
 		if err != nil {
-			w.WriteHeader(http.StatusForbidden)
+			if errors.Is(err, operationauthority.ErrDenied) {
+				err = fault.Forbidden("当前会话不能采用正文范本")
+			}
+			writeErr(w, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, items)
