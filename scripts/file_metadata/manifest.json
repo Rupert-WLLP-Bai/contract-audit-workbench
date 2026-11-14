@@ -63635,7 +63635,7 @@
         "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "commit": "19029b1b77c05c43f093a17c8305f37b66a5718f",
           "path": "scripts/architecture/architecture.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
