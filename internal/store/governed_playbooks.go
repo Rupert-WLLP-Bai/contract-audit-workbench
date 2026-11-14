@@ -74,6 +74,17 @@ type PlaybookOptions struct {
 	Reason string           `json:"reason,omitempty"`
 }
 
+func loadPlaybookSourceCase(ctx context.Context, tx pgx.Tx, user accounts.User, orgID, caseID string) (Case, error) {
+	item, err := loadKnowledgeCase(ctx, tx, user, caseID)
+	if err != nil {
+		return Case{}, err
+	}
+	if item.OwnerOrgID != orgID {
+		return Case{}, fault.NotFound("没有找到对应记录")
+	}
+	return item, nil
+}
+
 func (s *Store) casePlaybooksTx(ctx context.Context, tx pgx.Tx, user accounts.User, item Case, at time.Time) (PlaybookOptions, error) {
 	out := PlaybookOptions{Items: []PlaybookOption{}}
 	if !authorizeCase(item, user, access.Review) {
@@ -179,7 +190,7 @@ func (s *Store) ListContractPlaybooks(ctx context.Context, user accounts.User, c
 			return unavailable, nil
 		}
 	}
-	item, err := loadCLMCase(ctx, tx, current, orgID, caseID)
+	item, err := loadPlaybookSourceCase(ctx, tx, current, orgID, caseID)
 	if err != nil {
 		return PlaybookOptions{}, err
 	}

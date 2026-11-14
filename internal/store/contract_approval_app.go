@@ -94,7 +94,7 @@ func (a approvalSubmissionFreeze) ResolveApprovalPlaybook(ctx context.Context, t
 			return nil, fault.Conflict("合同冻结版本包含多个来源案件")
 		}
 	}
-	item, err := loadCLMCase(ctx, a.tx, a.user, orgID, caseID)
+	item, err := loadPlaybookSourceCase(ctx, a.tx, a.user, orgID, caseID)
 	if err != nil {
 		return nil, err
 	}

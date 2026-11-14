@@ -82,6 +82,10 @@ func TestGovernedPlaybookLifecycleWithRestrictedRoles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	options, err := core.ListContractPlaybooks(ctx, actor, contractID)
+	if err != nil || len(options.Items) != 1 || options.Items[0].Ref != playbook.Ref {
+		t.Fatalf("verified contract scope did not expose its applicable playbook: %+v %v", options, err)
+	}
 	approval, err := core.SubmitContractApproval(ctx, actor, SubmitContractApprovalInput{ContractID: contractID, ExpectedRowVersion: revision.RowVersion, IdempotencyKey: "pb-approval", PlaybookRef: &approvalmodel.PlaybookRef{KnowledgeID: playbook.Ref.KnowledgeID, VersionID: playbook.Ref.VersionID, ContentSHA256: playbook.Ref.ContentSHA256}})
 	if err != nil {
 		t.Fatalf("submit approval with playbook: %v", err)
