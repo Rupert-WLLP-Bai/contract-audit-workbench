@@ -279,3 +279,25 @@ Record 从 head FOR UPDATE 取当前版本后先 expectedVersion；仅新family�
 #305 Standards建议在此收口：Legal维度来自唯一枚举源，Store与app复用Legal ParseFactTime的RFC3339+UTC微秒语义；SameTimestamp保持原RFC3339 Equal精确时刻，不能改用截断比较。`rulepackAuthorityGates` 迁纯Legal规则并保留legacy missing→not_applicable→unknown优先、unknown理由字典序和key排序，Store仅兼容转发。已有Subject/operator严格材料resolver消费者不顺手删除；窄桥随对应领域契约逐项迁出，AR020消费审计后再删除死接口。
 
 schema45、数据库服务角色、当前授权、预算/租约/Outbox/PG权威和所有旧冻结快照不变。全部测试、编译、门禁、数据库、app/browser与真实模型/OCR在整轮重构后固定候选统一验证，当前NOT_RUN。
+
+## #308 业务主体变更与受锁状态桥
+
+状态：采纳，实施前决策。基于 #307 已审查源码候选 `3d2129da166ebe1d17d727d7302d7c5c99bb414e`，在 Subject 新状态桥与持久化接线前明确边界。迁移既有业务主体、关联、来源和人工更正，不新增真实外部系统接入。
+
+Subject 是业务主体，独立于登录 Identity。Subject model/app 拥有 subjects、subject_versions、subject_current_identifier_claims、case_subject_roles、case_subject_role_versions、subject_change_requests、subject_change_decisions、subject_write_idempotency、subject_source_snapshots 的规则和值；Subject PG 仅访问这九表，使用同调用者非拥有事务。公开 Store DTO 用原直接字段、tag、顺序及 alias 兼容；规范字节/hash、人工决定/版本/来源快照追加历史与原唯一约束保持。已有受控来源仍仅 synthetic_controlled，匹配只能生成待人工决定的 proposal，不能直接更新 verified 主体或声称真实系统验证。
+
+准许 Store 将原真实受锁前态的 Subject-owned 集合映射为明确域快照或精确 facts，供 Subject app 返回有类型 delta：expected→next 主体/关联头、新增不可变版本、当前 identifier claims 的原替换投影、proposal/decision/source/receipt 和返回结果。该快照不包含任意 Store.state、其它领域集合、pool/SQL/scope/tx；delta 不接任意变更回调。app 拥有匹配、版本、patch、影响集合、排序/hash、独立决定、来源和可见投影规则。Store 只按字段映射把 delta 应用到原真实 clone，再沿原 append-only、serviceDelta/stateDelta、persist、commit proof 及提交后 projection 更新路径，不能用空 state 重建或绕过原真实前态。PG 迁移替换原 Subject 自有 load/replaceRows 段，仍在原其它域持久化与 audit/Outbox 事务中，不提前删写入责任或加独立 commit。
+
+保留实际两种锁协议：通用更正路径 schema advisory→sorted subject→sorted case；现有受限单案创建路径保持 scope→case 等原协议，不一律套 schema 锁。Create/Bind/Proposal/Source 原业务可写 Manage 与 replay 先后分别保留；unbound 创建仅原创建者可见未曾绑定的 pending 主体，不能放大为租户任意读取。Store 保留目录可信 actor、issuer/subject、租户/组织、Case 当前权限/归档事实、原 role/RLS/证明/提交围栏，客户端不提供授权。
+
+准许的材料窄桥复用既有严格同案 material version→document→指定 ready parse 校验及 rune/quote digest，输入仅绑定 tenant/org/case 与锚点，输出原 canonical verified basis 与精确身份；不把整份 state 或主体/Operator 业务交给 app callback。另准许原 legacy profile/version 精确事实和服务端来源 manifest、指定 frozen payload 校验事实，只服务对应命令，不提供任意配置/跨案读取。原摘要和 codec 上下文/密钥不对 app 开放。
+
+DecideSubjectChange 原锁前读取只确定锁集合；锁后 app 必须重读真实 request/head/version/既有决定、重算当前 affected bindings 排序/hash，不能信任 preview。Store 在 app 明确列出的每个受影响 case 上复核当前 Decide 与 businessWritable，并提供同事务精确事实；不能用部分可见集合代替全影响集合。保留 proposer 与 decider 按UserID或可信issuer+subject的分离、expected payload/版本/impact ETag、替换目标主体和所有关联版本检查。批准追加主体或关联版本及决定/receipt，拒绝只追加决定/receipt；关联重钉版本与当前identifier唯一冲突按原序。无权案件不通过投影、impact或返回值泄露；人工决定不覆写旧 SQL。
+
+当前identifier claims仍由受影响Subject头所指的精确SubjectVersion.IdentityClaims派生，只按原受影响主体删除重建，不全租户重置或另建独立事实来源。
+
+Subject PG 迁移保留原 loadScope/loadCase、head upsert→version append→identifier claims 原删除重建→binding head/version→request→decision→receipt→source snapshot 顺序、原受锁 expected-version 检查与 DB 错误映射，不暗加原路径没有的生命周期/CAS条件。冻结 partyContext 按原规则引用精确 binding/subject版本、排序和hash；后续当前头或标签变化不重算旧 attempt。Store/Execution现有 frozen-input、claim/generation/epoch/lease、budget和Outbox权威不改变。
+
+Legal原pin事实在Subject自有读取契约落地后改为同事务精确适配，保留Record原单JOIN与Resolver binding/subject两步及fresh后count的不同查询语义；不让Subject PG依赖Legal app/PG或改物理owner。
+
+过渡快照/delta桥随 Subject 公开contract与持久化迁入逐项缩小，AR020消费审计后删除死 facade。schema45、五个数据库服务角色、RLS 与PG权威不改。必要 SOURCE 固定真实回滚前提：已写主体/当前claims/全部跨案binding版本/人工决定后receipt或commit失败的完整行回滚、锁后影响变化/撤权和同键恢复。所有执行检查、应用/浏览器、真实模型/OCR待整轮源码冻结后统一，当前NOT_RUN。
