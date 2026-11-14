@@ -30,5 +30,13 @@ export default defineConfig(
     },
   },
   reactHooks.configs.flat.recommended,
+  {
+    rules: {
+      // Surface Compiler adoption diagnostics without requiring an unrelated
+      // rewrite of existing pages. Core Hooks correctness rules stay enabled.
+      "react-hooks/refs": "warn",
+      "react-hooks/set-state-in-effect": "warn",
+    },
+  },
   eslintConfigPrettier,
 );

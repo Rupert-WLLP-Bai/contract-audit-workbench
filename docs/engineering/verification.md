@@ -25,6 +25,8 @@ python3 scripts/check_fast.py --base <base-sha> --plan --github-output "$GITHUB_
 
 Web 与 Python 的快速 lint/format 只接收本次变更且仍存在的源文件；删除文件不会传入 CLI，重命名只检查新路径。配置或依赖变化不扩大为全仓文件扫描。`--plan` 中的 `web_eslint_files`、`web_prettier_files` 和 `python_ruff_files` 展示实际 lint/format 文件，`web_prettier_ignore_config` 与 `python_ruff_config` 标记配置解析探针。单独修改 Ruff 配置或版本时，快速路径调用 `ruff check --show-settings scripts/check_fast.py` 解析配置，不对无关 Python 文件 lint/format；`.prettierignore` 单独变化时调用 Prettier `--file-info` 解析忽略配置。ESLint 与 Prettier 可解析的配置文件本身仍按变更文件进入对应 CLI。全仓 lint/format 只由完整 quality 的 static 阶段执行。CI 只在计划需要 Python 工具时安装 Ruff；OpenAPI 漂移检查需要 Go、Bun、Node 与冻结的 Web 依赖，因此 Go-only 计划也会先安装这些工具后再执行生成检查。
 
+当前未启用 React Compiler。ESLint 保留官方 recommended 配置，`rules-of-hooks` 等规则维持原强度；`refs` 与 `set-state-in-effect` 两类 Compiler 兼容诊断先以 warning 完整报告，按 [React 官方的渐进处理建议](https://react.dev/reference/eslint-plugin-react-hooks)逐步改进已有页面。warning 不表示问题已修复，也不替代角色切换、异步结果隔离或浏览器验收；现有 UI 验收继续跟踪这些诊断。
+
 OpenAPI 更新先改 Go 契约，再运行 `make generate-openapi` 生成前端类型。`make check-openapi-generated` 是只读漂移检查，运行前需要已安装 `web/bun.lock` 对应依赖；PR 中 Go-only 变更也会准备 Bun、Node 与 Web 锁定依赖后再执行它。Python 兼容入口只转发，不再实现 schema 到 TypeScript 的转换。
 
 ## 定点/本地测试
