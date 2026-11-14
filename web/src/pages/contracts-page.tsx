@@ -66,6 +66,7 @@ import { ContractReferencesPanel } from "../components/contract-references-panel
 import { caseSelectPresentation } from "../components/case-select-presentation";
 import { ContractSigningPanel } from "../components/contract-signing-panel";
 import { ContractFulfillmentPanel } from "../components/contract-fulfillment-panel";
+import { ContractReminderInbox } from "../components/contract-reminder-inbox";
 import { ContractPaymentsPanel } from "../components/contract-payments-panel";
 import { ContractAssetsPanel } from "../components/contract-assets-panel";
 import { ContractLifecycleOverviewPanel } from "../components/contract-lifecycle-overview-panel";
@@ -697,6 +698,11 @@ export function ContractsPage() {
             forceRender: true,
             children: (
               <>
+                <ContractReminderInbox
+                  actor={actor}
+                  contracts={ledgerItems}
+                  onOpenContract={openContractDetail}
+                />
                 <div className="contracts-ledger-summary" aria-label="合同台账摘要">
                   <span>生效筛选</span>
                   <strong>{activeLedgerFilters}</strong>
