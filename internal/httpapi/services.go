@@ -395,6 +395,8 @@ var topLevelRoutes = map[string]topLevelRouteRule{
 	"subjects":         {role: "core", methods: routeMethodSet{read: true, post: true}},
 	"contracts":        {role: "core", methods: routeMethodSet{read: true, post: true}},
 	"approval-tasks":   {role: "core", methods: routeMethodSet{read: true}},
+	"reminders":        {role: "core", methods: routeMethodSet{read: true}},
+	"support-grants":   {role: "core", methods: routeMethodSet{read: true}},
 	"intakes":          {role: "core", methods: routeMethodSet{read: true, post: true}},
 }
 
@@ -454,8 +456,14 @@ func contractDraftRoute(role string, methods routeMethodSet, parts []string) boo
 	if len(parts) == 5 && parts[2] == "revisions" && parts[4] == "audit-links" {
 		return methods.read || methods.post
 	}
+	if len(parts) == 5 && ((parts[2] == "reminders" && parts[4] == "cancel") ||
+		(parts[2] == "acceptances" && parts[4] == "rectifications")) {
+		return methods.post
+	}
 	if len(parts) == 3 {
 		switch parts[2] {
+		case "reminders", "deliveries", "acceptances":
+			return methods.read || methods.post
 		case "draft":
 			return methods.put
 		case "revisions":
@@ -468,7 +476,7 @@ func contractDraftRoute(role string, methods routeMethodSet, parts []string) boo
 			return methods.post
 		case "payments":
 			return methods.read
-		case "lifecycle-overview":
+		case "lifecycle-overview", "source-capability":
 			return methods.read
 		case "assets":
 			return methods.read
@@ -523,6 +531,27 @@ func adminRoute(role string, m routeMethodSet, parts []string) bool {
 	switch parts[1] {
 	case "settings", "system-health", "tenant-operations":
 		return len(parts) == 2 && m.read
+	case "tenant-cost-policy":
+		return len(parts) == 2 && (m.read || m.put)
+	case "tenant-cost-adjustments":
+		return len(parts) == 2 && m.post
+	case "tenant-config":
+		if len(parts) == 2 {
+			return m.read
+		}
+		return len(parts) == 3 && (parts[2] == "preview" && m.post ||
+			(parts[2] == "adoption" || parts[2] == "live-control") && m.put)
+	case "jurisdiction":
+		return len(parts) == 3 && parts[2] == "operations" && m.read
+	case "platform":
+		if len(parts) == 3 && parts[2] == "model-money-policy" {
+			return m.read || m.put
+		}
+		if len(parts) < 3 || parts[2] != "tenant-provision-operations" {
+			return false
+		}
+		return len(parts) == 3 && (m.read || m.post) || len(parts) == 4 && m.read ||
+			len(parts) == 5 && parts[4] == "step" && m.post
 	case "company-policy-sources":
 		return len(parts) == 2 && m.read
 	case "llm-endpoint":

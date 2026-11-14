@@ -988,8 +988,13 @@ func TestEveryPublicOperationHasExactlyOneOwningService(t *testing.T) {
 					owners++
 				}
 			}
-			if owners != 1 {
-				t.Fatalf("%s %s is owned by %d services", strings.ToUpper(method), path, owners)
+			wantOwners := 1
+			if strings.HasPrefix(path, "/internal/") {
+				// Service-authenticated callbacks are documented but never edge-routed.
+				wantOwners = 0
+			}
+			if owners != wantOwners {
+				t.Errorf("%s %s is owned by %d services, want %d", strings.ToUpper(method), path, owners, wantOwners)
 			}
 			checked++
 		}

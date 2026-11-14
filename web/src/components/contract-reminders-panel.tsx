@@ -159,7 +159,7 @@ export function ContractRemindersPanel({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const initialTimezone = useMemo(browserTimezone, []);
+  const initialTimezone = useMemo(() => browserTimezone(), []);
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
