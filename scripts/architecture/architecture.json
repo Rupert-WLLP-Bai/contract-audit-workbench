@@ -84,7 +84,10 @@
       {
         "id": "contract",
         "app": [
-          "internal/contract/lifecycle"
+          "internal/contract/lifecycle",
+          "internal/contract/model",
+          "internal/contract/app",
+          "internal/contract/ledger"
         ],
         "transport": [],
         "postgres": [
@@ -99,6 +102,113 @@
         "transport": [],
         "postgres": [
           "internal/clmoutbox/postgres"
+        ]
+      },
+      {
+        "id": "execution",
+        "app": [
+          "internal/execution/steps",
+          "internal/execution/app",
+          "internal/execution/model"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/execution/postgres"
+        ]
+      },
+      {
+        "id": "approval",
+        "app": [
+          "internal/approval/model",
+          "internal/approval/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/approval/postgres"
+        ]
+      },
+      {
+        "id": "fulfillment",
+        "app": [
+          "internal/fulfillment/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/fulfillment/postgres"
+        ]
+      },
+      {
+        "id": "payment",
+        "app": [
+          "internal/payment/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/payment/postgres"
+        ]
+      },
+      {
+        "id": "asset",
+        "app": [
+          "internal/asset/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/asset/postgres"
+        ]
+      },
+      {
+        "id": "audit",
+        "app": [
+          "internal/audit/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/audit/postgres"
+        ]
+      },
+      {
+        "id": "knowledge",
+        "app": [
+          "internal/knowledge/model",
+          "internal/knowledge/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/knowledge/postgres"
+        ]
+      },
+      {
+        "id": "legal",
+        "app": [
+          "internal/legal/model",
+          "internal/legal/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/legal/postgres"
+        ]
+      },
+      {
+        "id": "subject",
+        "app": [
+          "internal/subject/model",
+          "internal/subject/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/subject/postgres"
+        ]
+      },
+      {
+        "id": "operator",
+        "app": [
+          "internal/operator/model",
+          "internal/operator/app"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/operator/postgres"
         ]
       }
     ]

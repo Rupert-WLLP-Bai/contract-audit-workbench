@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: ExperienceFeedbackSchemaSQL is registered by the migrator after the existing review tables and forbid_append_only function. Core owns both new tables; registration must also… Related `store` operations include experienceIdentity, validateExperienceFeedbackInput, beginExperienceCase, feedbackRequestHash.
+// Purpose: Maintains authorized append-only experience feedback and exact frozen citation validation using the shared execution evidence value.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -96,17 +96,6 @@ CREATE INDEX IF NOT EXISTS experience_candidate_source ON experience_candidate_v
 DROP TRIGGER IF EXISTS experience_candidate_append_only ON experience_candidate_versions;
 CREATE TRIGGER experience_candidate_append_only BEFORE UPDATE OR DELETE ON experience_candidate_versions FOR EACH ROW EXECUTE FUNCTION forbid_append_only();
 `
-
-// ExperienceEvidenceRef points into one selected, ready parse of the attempt.
-// Offsets are Unicode code points in [Start, End), not byte indices.
-type ExperienceEvidenceRef struct {
-	DocumentID       string `json:"document_id"`
-	ParsedDocumentID string `json:"parsed_document_id"`
-	NormalizedDigest string `json:"normalized_digest"`
-	Quote            string `json:"quote"`
-	Start            int    `json:"start"`
-	End              int    `json:"end"`
-}
 
 type ExperienceFeedbackInput struct {
 	CaseID         string                  `json:"case_id"`

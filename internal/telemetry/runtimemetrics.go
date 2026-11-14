@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: RuntimeSnapshot is a bounded process-local pool snapshot and, only for the authorized worker, cross-tenant queue and outbox snapshots. Failure values are "role", "timeout",… Related `telemetry` operations include observe, metric, SetRuntimeMetricsSource, RecordQueueClaim.
+// Purpose: Maps authorized pool, PostgreSQL queue, Outbox and CLM snapshots plus local queue/quota observations to bounded SDK instruments and availability-aware callbacks.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-01
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,8 +12,12 @@ package telemetry
 
 import (
 	"context"
-	"strconv"
+	"sync"
+	"sync/atomic"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // RuntimeSnapshot is a bounded process-local pool snapshot and, only for the
@@ -73,272 +77,301 @@ type CLMApprovalSnapshot struct {
 // Millisecond bounds include long queues and executions; the last bucket is +Inf.
 var queueDurationBounds = [...]float64{1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000, 120000, 300000, 900000, 1800000, 3600000}
 
-type runtimeHistogram struct {
-	count   uint64
-	sum     float64
-	buckets [len(queueDurationBounds) + 1]uint64
+type runtimeMetrics struct {
+	owner *Exporter
+
+	sourceMu sync.RWMutex
+	source   func(context.Context) RuntimeSnapshot
+	skip     atomic.Bool
+
+	claims         metric.Int64Counter
+	reclaims       metric.Int64Counter
+	quotaReject    metric.Int64Counter
+	queueWait      metric.Float64Histogram
+	queueElapsed   metric.Float64Histogram
+	queueFailure   metric.Int64ObservableCounter
+	outboxFailure  metric.Int64ObservableCounter
+	queueFailures  [4]atomic.Int64
+	outboxFailures [4]atomic.Int64
+
+	intGauge     map[string]metric.Int64ObservableGauge
+	floatGauge   map[string]metric.Float64ObservableGauge
+	intCounter   map[string]metric.Int64ObservableCounter
+	floatCounter map[string]metric.Float64ObservableCounter
+	registration metric.Registration
 }
 
-func (h *runtimeHistogram) observe(value time.Duration) {
-	if value < 0 {
-		return
+func (e *Exporter) configureRuntimeMetrics() error {
+	meter := e.metricProvider.Meter("contractaudit.runtime")
+	r := &runtimeMetrics{
+		owner: e, intGauge: make(map[string]metric.Int64ObservableGauge),
+		floatGauge:   make(map[string]metric.Float64ObservableGauge),
+		intCounter:   make(map[string]metric.Int64ObservableCounter),
+		floatCounter: make(map[string]metric.Float64ObservableCounter),
 	}
-	milliseconds := float64(value) / float64(time.Millisecond)
-	h.count++
-	h.sum += milliseconds
-	bucket := 0
-	for bucket < len(queueDurationBounds) && milliseconds > queueDurationBounds[bucket] {
-		bucket++
+	var err error
+	if r.claims, err = meter.Int64Counter("audit.queue.claims"); err != nil {
+		return err
 	}
-	h.buckets[bucket]++
+	if r.reclaims, err = meter.Int64Counter("audit.queue.reclaims"); err != nil {
+		return err
+	}
+	if r.quotaReject, err = meter.Int64Counter("audit.quota.rejections"); err != nil {
+		return err
+	}
+	if r.queueWait, err = meter.Float64Histogram("audit.queue.wait_duration_ms", metric.WithUnit("ms")); err != nil {
+		return err
+	}
+	if r.queueElapsed, err = meter.Float64Histogram("audit.queue.execution_duration_ms", metric.WithUnit("ms")); err != nil {
+		return err
+	}
+	if r.queueFailure, err = meter.Int64ObservableCounter("audit.queue.collection_failures"); err != nil {
+		return err
+	}
+	if r.outboxFailure, err = meter.Int64ObservableCounter("audit.outbox.collection_failures"); err != nil {
+		return err
+	}
+
+	observables := []metric.Observable{r.queueFailure, r.outboxFailure}
+	for _, name := range []string{
+		"audit.db.pool.acquired", "audit.db.pool.idle", "audit.db.pool.max",
+		"audit.queue.available", "audit.outbox.available",
+		"audit.queue.queued", "audit.queue.ready", "audit.queue.running",
+		"audit.queue.wait_age_available", "audit.outbox.pending", "audit.outbox.age_available",
+		"audit.clm.available", "audit.clm.outbox.pending", "audit.clm.outbox.pending_age_available",
+		"audit.clm.approval_rounds.completed", "audit.clm.approval_rounds.duration_available",
+		"audit.clm.approval_rounds.aged_in_review_available", "audit.clm.approval_rounds.aged_in_review",
+	} {
+		instrument, instrumentErr := meter.Int64ObservableGauge(name)
+		if instrumentErr != nil {
+			return instrumentErr
+		}
+		r.intGauge[name] = instrument
+		observables = append(observables, instrument)
+	}
+	for _, name := range []string{
+		"audit.queue.oldest_wait_ms", "audit.queue.oldest_ready_wait_ms",
+		"audit.outbox.oldest_pending_ms", "audit.clm.outbox.oldest_pending_ms",
+		"audit.clm.approval_rounds.duration_p50_ms", "audit.clm.approval_rounds.duration_p95_ms",
+	} {
+		instrument, instrumentErr := meter.Float64ObservableGauge(name, metric.WithUnit("ms"))
+		if instrumentErr != nil {
+			return instrumentErr
+		}
+		r.floatGauge[name] = instrument
+		observables = append(observables, instrument)
+	}
+	for _, name := range []string{
+		"audit.db.pool.acquires", "audit.db.pool.empty_acquires", "audit.db.pool.canceled_acquires",
+	} {
+		instrument, instrumentErr := meter.Int64ObservableCounter(name)
+		if instrumentErr != nil {
+			return instrumentErr
+		}
+		r.intCounter[name] = instrument
+		observables = append(observables, instrument)
+	}
+	for _, name := range []string{"audit.db.pool.empty_acquire_wait_ms", "audit.db.pool.acquire_duration_ms"} {
+		instrument, instrumentErr := meter.Float64ObservableCounter(name, metric.WithUnit("ms"))
+		if instrumentErr != nil {
+			return instrumentErr
+		}
+		r.floatCounter[name] = instrument
+		observables = append(observables, instrument)
+	}
+	r.registration, err = meter.RegisterCallback(r.collect, observables...)
+	if err != nil {
+		return err
+	}
+	e.runtime = r
+	return nil
 }
 
-func (h *runtimeHistogram) metric(name, start, now string) metric {
-	buckets := make([]string, len(h.buckets))
-	for i, count := range h.buckets {
-		buckets[i] = strconv.FormatUint(count, 10)
-	}
-	return metric{Name: name, Unit: "ms", Histogram: &histogramMetric{AggregationTemporality: 2, DataPoints: []histogramPoint{{
-		Start: start, Time: now, Count: strconv.FormatUint(h.count, 10), Sum: h.sum,
-		BucketCounts: buckets, ExplicitBounds: queueDurationBounds[:],
-	}}}}
-}
-
-// SetRuntimeMetricsSource installs the sole runtime sampler. It is called only
-// from the exporter's periodic delivery loop, with a short, cancellable context.
-// Install it during assembly, before serving traffic.
 func (e *Exporter) SetRuntimeMetricsSource(source func(context.Context) RuntimeSnapshot) {
-	if e == nil {
+	if e == nil || e.runtime == nil {
 		return
 	}
-	e.runtimeMu.Lock()
-	e.runtimeSource = source
-	e.runtimeMu.Unlock()
+	e.runtime.sourceMu.Lock()
+	e.runtime.source = source
+	e.runtime.sourceMu.Unlock()
 }
 
-// RecordQueueClaim counts a committed claim and its PostgreSQL-clock wait.
-// Negative waits are omitted when the source timestamp cannot be established.
-// A reclaim is also a claim.
-// The interval can include capacity delays and does not assert that the job
-// stayed claimable throughout the interval.
 func (e *Exporter) RecordQueueClaim(reclaimed bool, wait time.Duration) {
-	if e == nil {
+	if e == nil || e.runtime == nil {
 		return
 	}
-	e.runtimeMu.Lock()
-	e.queueClaims.Add(1)
+	e.runtime.claims.Add(context.Background(), 1)
 	if reclaimed {
-		e.queueReclaims.Add(1)
+		e.runtime.reclaims.Add(context.Background(), 1)
 	}
-	e.queueWait.observe(wait)
-	e.runtimeMu.Unlock()
+	if wait >= 0 {
+		e.runtime.queueWait.Record(context.Background(), float64(wait)/float64(time.Millisecond))
+	}
 }
 
-// RecordQueueCompletion records a committed terminal transition's elapsed
-// monotonic wall time, measured only in the process that held the claim.
 func (e *Exporter) RecordQueueCompletion(elapsed time.Duration) {
-	if e == nil {
+	if e == nil || e.runtime == nil || elapsed < 0 {
 		return
 	}
-	e.runtimeMu.Lock()
-	e.queueExecution.observe(elapsed)
-	e.runtimeMu.Unlock()
+	e.runtime.queueElapsed.Record(context.Background(), float64(elapsed)/float64(time.Millisecond))
 }
 
-// RecordQuotaRejection accepts only the fixed rejection categories below.
 func (e *Exporter) RecordQuotaRejection(reason string) {
-	if e == nil {
+	if e == nil || e.runtime == nil {
 		return
 	}
 	switch reason {
-	case "queue_capacity":
-		e.quotaQueue.Add(1)
-	case "model_budget":
-		e.quotaModel.Add(1)
-	case "tool_budget":
-		e.quotaTool.Add(1)
+	case "queue_capacity", "model_budget", "tool_budget":
+		e.runtime.quotaReject.Add(context.Background(), 1, metric.WithAttributes(attribute.String("reason", reason)))
 	}
 }
 
-func (e *Exporter) collectRuntimeMetrics(collect bool) []metric {
-	e.runtimeMu.Lock()
-	source := e.runtimeSource
-	e.runtimeMu.Unlock()
+func (r *runtimeMetrics) collect(ctx context.Context, observer metric.Observer) error {
+	if r.owner.closing.Load() || r.skip.Load() {
+		return nil
+	}
+	r.sourceMu.RLock()
+	source := r.source
+	r.sourceMu.RUnlock()
 	if source == nil {
 		return nil
 	}
+	sampleCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	snapshot := source(sampleCtx)
 
-	var snapshot RuntimeSnapshot
-	if collect {
-		ctx, cancel := context.WithTimeout(e.sampleCtx, time.Second)
-		snapshot = source(ctx)
-		cancel()
-		if snapshot.QueueObserved && snapshot.QueueFailure != "" {
-			e.queueErrors[queueFailureIndex(snapshot.QueueFailure)].Add(1)
-		}
-		if snapshot.QueueObserved && snapshot.OutboxFailure != "" {
-			e.outboxErrors[queueFailureIndex(snapshot.OutboxFailure)].Add(1)
-		}
+	if snapshot.QueueObserved && snapshot.QueueFailure != "" {
+		r.queueFailures[queueFailureIndex(snapshot.QueueFailure)].Add(1)
 	}
-	e.runtimeMu.Lock()
-	claims, reclaims := e.queueClaims.Load(), e.queueReclaims.Load()
-	wait, execution := e.queueWait, e.queueExecution
-	e.runtimeMu.Unlock()
-	now := strconv.FormatInt(time.Now().UnixNano(), 10)
-	counter := func(name string, value uint64) metric {
-		return metric{Name: name, Sum: &sumMetric{AggregationTemporality: 2, IsMonotonic: true,
-			DataPoints: []numberPoint{{Start: e.metricStart, Time: now, AsInt: strconv.FormatUint(value, 10)}}}}
+	if snapshot.QueueObserved && snapshot.OutboxFailure != "" {
+		r.outboxFailures[queueFailureIndex(snapshot.OutboxFailure)].Add(1)
 	}
-	counterPoint := func(reason string, value uint64) numberPoint {
-		return numberPoint{Attributes: []attribute{stringAttribute("reason", reason)}, Start: e.metricStart,
-			Time: now, AsInt: strconv.FormatUint(value, 10)}
-	}
-	metrics := []metric{
-		counter("audit.queue.claims", claims),
-		counter("audit.queue.reclaims", reclaims),
-		{Name: "audit.quota.rejections", Sum: &sumMetric{AggregationTemporality: 2, IsMonotonic: true, DataPoints: []numberPoint{
-			counterPoint("queue_capacity", e.quotaQueue.Load()),
-			counterPoint("model_budget", e.quotaModel.Load()),
-			counterPoint("tool_budget", e.quotaTool.Load()),
-		}}},
-	}
-	if wait.count > 0 {
-		metrics = append(metrics, wait.metric("audit.queue.wait_duration_ms", e.metricStart, now))
-	}
-	if execution.count > 0 {
-		metrics = append(metrics, execution.metric("audit.queue.execution_duration_ms", e.metricStart, now))
-	}
-	if !collect {
-		return metrics
-	}
-	gaugeInt := func(name string, value int64) metric {
-		return metric{Name: name, Gauge: &gaugeMetric{DataPoints: []numberPoint{{Time: now, AsInt: strconv.FormatInt(value, 10)}}}}
-	}
-	gaugeDuration := func(name string, value float64) metric {
-		return metric{Name: name, Unit: "ms", Gauge: &gaugeMetric{DataPoints: []numberPoint{{Time: now, AsDouble: &value}}}}
-	}
-	durationCounter := func(name string, value float64) metric {
-		return metric{Name: name, Unit: "ms", Sum: &sumMetric{AggregationTemporality: 2, IsMonotonic: true,
-			DataPoints: []numberPoint{{Start: e.metricStart, Time: now, AsDouble: &value}}}}
-	}
+
 	if snapshot.PoolAvailable {
-		metrics = append(metrics,
-			gaugeInt("audit.db.pool.acquired", snapshot.PoolAcquired),
-			gaugeInt("audit.db.pool.idle", snapshot.PoolIdle),
-			gaugeInt("audit.db.pool.max", snapshot.PoolMax),
-			counter("audit.db.pool.acquires", uint64(snapshot.PoolAcquireCount)),
-			counter("audit.db.pool.empty_acquires", uint64(snapshot.PoolEmptyAcquireCount)),
-			counter("audit.db.pool.canceled_acquires", uint64(snapshot.PoolCanceledAcquireCount)),
-			durationCounter("audit.db.pool.empty_acquire_wait_ms", snapshot.PoolEmptyAcquireWaitMS),
-			durationCounter("audit.db.pool.acquire_duration_ms", snapshot.PoolAcquireDurationMS),
-		)
+		r.observeInt(observer, "audit.db.pool.acquired", snapshot.PoolAcquired)
+		r.observeInt(observer, "audit.db.pool.idle", snapshot.PoolIdle)
+		r.observeInt(observer, "audit.db.pool.max", snapshot.PoolMax)
+		r.observeIntCounter(observer, "audit.db.pool.acquires", snapshot.PoolAcquireCount)
+		r.observeIntCounter(observer, "audit.db.pool.empty_acquires", snapshot.PoolEmptyAcquireCount)
+		r.observeIntCounter(observer, "audit.db.pool.canceled_acquires", snapshot.PoolCanceledAcquireCount)
+		r.observeFloatCounter(observer, "audit.db.pool.empty_acquire_wait_ms", snapshot.PoolEmptyAcquireWaitMS)
+		r.observeFloatCounter(observer, "audit.db.pool.acquire_duration_ms", snapshot.PoolAcquireDurationMS)
 	}
 	if snapshot.QueueObserved {
-		availability := func(ok bool) int64 {
-			if ok {
-				return 1
-			}
-			return 0
-		}
-		failures := func(name string, role, timeout, database, notStarted uint64) metric {
-			return metric{Name: name, Sum: &sumMetric{AggregationTemporality: 2, IsMonotonic: true, DataPoints: []numberPoint{
-				counterPoint("role", role), counterPoint("timeout", timeout),
-				counterPoint("database", database), counterPoint("not_started", notStarted),
-			}}}
+		for i, reason := range [4]string{"role", "timeout", "database", "not_started"} {
+			attrs := metric.WithAttributes(attribute.String("reason", reason))
+			observer.ObserveInt64(r.queueFailure, r.queueFailures[i].Load(), attrs)
+			observer.ObserveInt64(r.outboxFailure, r.outboxFailures[i].Load(), attrs)
 		}
 		queueUp, outboxUp := snapshot.QueueFailure == "", snapshot.OutboxFailure == ""
-		metrics = append(metrics,
-			gaugeInt("audit.queue.available", availability(queueUp)),
-			gaugeInt("audit.outbox.available", availability(outboxUp)),
-			failures("audit.queue.collection_failures", e.queueErrors[0].Load(), e.queueErrors[1].Load(), e.queueErrors[2].Load(), e.queueErrors[3].Load()),
-			failures("audit.outbox.collection_failures", e.outboxErrors[0].Load(), e.outboxErrors[1].Load(), e.outboxErrors[2].Load(), e.outboxErrors[3].Load()),
-		)
+		r.observeInt(observer, "audit.queue.available", boolInt(queueUp))
+		r.observeInt(observer, "audit.outbox.available", boolInt(outboxUp))
 		if queueUp {
-			metrics = append(metrics,
-				gaugeInt("audit.queue.queued", snapshot.Queued),
-				gaugeInt("audit.queue.ready", snapshot.Ready),
-				gaugeInt("audit.queue.running", snapshot.Running),
-				gaugeInt("audit.queue.wait_age_available", availability(snapshot.QueueWaitAvailable)),
-			)
+			r.observeInt(observer, "audit.queue.queued", snapshot.Queued)
+			r.observeInt(observer, "audit.queue.ready", snapshot.Ready)
+			r.observeInt(observer, "audit.queue.running", snapshot.Running)
+			r.observeInt(observer, "audit.queue.wait_age_available", boolInt(snapshot.QueueWaitAvailable))
 			if snapshot.QueueWaitAvailable {
-				metrics = append(metrics,
-					gaugeDuration("audit.queue.oldest_wait_ms", snapshot.OldestWaitMS),
-					gaugeDuration("audit.queue.oldest_ready_wait_ms", snapshot.OldestReadyWaitMS),
-				)
+				r.observeFloat(observer, "audit.queue.oldest_wait_ms", snapshot.OldestWaitMS)
+				r.observeFloat(observer, "audit.queue.oldest_ready_wait_ms", snapshot.OldestReadyWaitMS)
 			}
 		}
 		if outboxUp {
-			metrics = append(metrics,
-				gaugeInt("audit.outbox.pending", snapshot.OutboxPending),
-				gaugeInt("audit.outbox.age_available", availability(snapshot.OutboxAgeAvailable)),
-			)
+			r.observeInt(observer, "audit.outbox.pending", snapshot.OutboxPending)
+			r.observeInt(observer, "audit.outbox.age_available", boolInt(snapshot.OutboxAgeAvailable))
 			if snapshot.OutboxAgeAvailable {
-				metrics = append(metrics, gaugeDuration("audit.outbox.oldest_pending_ms", snapshot.OutboxOldestMS))
+				r.observeFloat(observer, "audit.outbox.oldest_pending_ms", snapshot.OutboxOldestMS)
 			}
 		}
 	}
 	if snapshot.CLMObserved {
-		available := int64(0)
+		r.observeInt(observer, "audit.clm.available", boolInt(snapshot.CLMAvailable))
 		if snapshot.CLMAvailable {
-			available = 1
-		}
-		metrics = append(metrics, gaugeInt("audit.clm.available", available))
-		if snapshot.CLMAvailable {
-			ageAvailable := int64(0)
+			r.observeInt(observer, "audit.clm.outbox.pending", snapshot.CLMPending)
+			r.observeInt(observer, "audit.clm.outbox.pending_age_available", boolInt(snapshot.CLMPendingAgeAvailable))
 			if snapshot.CLMPendingAgeAvailable {
-				ageAvailable = 1
-			}
-			metrics = append(metrics,
-				gaugeInt("audit.clm.outbox.pending", snapshot.CLMPending),
-				gaugeInt("audit.clm.outbox.pending_age_available", ageAvailable),
-			)
-			if snapshot.CLMPendingAgeAvailable {
-				metrics = append(metrics, gaugeDuration("audit.clm.outbox.oldest_pending_ms", snapshot.CLMOldestPendingMS))
+				r.observeFloat(observer, "audit.clm.outbox.oldest_pending_ms", snapshot.CLMOldestPendingMS)
 			}
 			for _, outcome := range []struct {
 				name    string
 				latency CLMApprovalSnapshot
 			}{
-				{"approved", snapshot.CLMApproved},
-				{"returned", snapshot.CLMReturned},
-				{"withdrawn", snapshot.CLMWithdrawn},
-				{"terminated", snapshot.CLMTerminated},
+				{"approved", snapshot.CLMApproved}, {"returned", snapshot.CLMReturned},
+				{"withdrawn", snapshot.CLMWithdrawn}, {"terminated", snapshot.CLMTerminated},
 			} {
-				outcomeCount := numberPoint{Attributes: []attribute{stringAttribute("outcome", outcome.name)}, Time: now,
-					AsInt: strconv.FormatInt(outcome.latency.Count, 10)}
-				durationAvailable := int64(0)
+				attrs := metric.WithAttributes(attribute.String("outcome", outcome.name))
+				r.observeIntWith(observer, "audit.clm.approval_rounds.completed", outcome.latency.Count, attrs)
+				r.observeIntWith(observer, "audit.clm.approval_rounds.duration_available",
+					boolInt(outcome.latency.DurationAvailable), attrs)
 				if outcome.latency.DurationAvailable {
-					durationAvailable = 1
-				}
-				availabilityPoint := numberPoint{Attributes: []attribute{stringAttribute("outcome", outcome.name)}, Time: now,
-					AsInt: strconv.FormatInt(durationAvailable, 10)}
-				metrics = append(metrics,
-					metric{Name: "audit.clm.approval_rounds.completed", Gauge: &gaugeMetric{DataPoints: []numberPoint{outcomeCount}}},
-					metric{Name: "audit.clm.approval_rounds.duration_available", Gauge: &gaugeMetric{DataPoints: []numberPoint{availabilityPoint}}},
-				)
-				if outcome.latency.DurationAvailable {
-					p50, p95 := outcome.latency.P50MS, outcome.latency.P95MS
-					metrics = append(metrics,
-						metric{Name: "audit.clm.approval_rounds.duration_p50_ms", Unit: "ms", Gauge: &gaugeMetric{DataPoints: []numberPoint{{Attributes: []attribute{stringAttribute("outcome", outcome.name)}, Time: now, AsDouble: &p50}}}},
-						metric{Name: "audit.clm.approval_rounds.duration_p95_ms", Unit: "ms", Gauge: &gaugeMetric{DataPoints: []numberPoint{{Attributes: []attribute{stringAttribute("outcome", outcome.name)}, Time: now, AsDouble: &p95}}}},
-					)
+					r.observeFloatWith(observer, "audit.clm.approval_rounds.duration_p50_ms", outcome.latency.P50MS, attrs)
+					r.observeFloatWith(observer, "audit.clm.approval_rounds.duration_p95_ms", outcome.latency.P95MS, attrs)
 				}
 			}
-			agedAvailable := int64(0)
+			r.observeInt(observer, "audit.clm.approval_rounds.aged_in_review_available",
+				boolInt(snapshot.CLMAgedInReviewAvailable))
 			if snapshot.CLMAgedInReviewAvailable {
-				agedAvailable = 1
-			}
-			metrics = append(metrics, gaugeInt("audit.clm.approval_rounds.aged_in_review_available", agedAvailable))
-			if snapshot.CLMAgedInReviewAvailable {
-				metrics = append(metrics, gaugeInt("audit.clm.approval_rounds.aged_in_review", snapshot.CLMAgedInReview))
+				r.observeInt(observer, "audit.clm.approval_rounds.aged_in_review", snapshot.CLMAgedInReview)
 			}
 		}
 	}
-	return metrics
+	return nil
+}
+
+func (r *runtimeMetrics) observeInt(observer metric.Observer, name string, value int64) {
+	if instrument := r.intGauge[name]; instrument != nil {
+		observer.ObserveInt64(instrument, value)
+	}
+}
+
+func (r *runtimeMetrics) observeIntWith(observer metric.Observer, name string, value int64, options metric.ObserveOption) {
+	if instrument := r.intGauge[name]; instrument != nil {
+		observer.ObserveInt64(instrument, value, options)
+	}
+}
+
+func (r *runtimeMetrics) observeFloat(observer metric.Observer, name string, value float64) {
+	if instrument := r.floatGauge[name]; instrument != nil {
+		observer.ObserveFloat64(instrument, value)
+	}
+}
+
+func (r *runtimeMetrics) observeFloatWith(observer metric.Observer, name string, value float64, options metric.ObserveOption) {
+	if instrument := r.floatGauge[name]; instrument != nil {
+		observer.ObserveFloat64(instrument, value, options)
+	}
+}
+
+func (r *runtimeMetrics) observeIntCounter(observer metric.Observer, name string, value int64) {
+	if instrument := r.intCounter[name]; instrument != nil {
+		observer.ObserveInt64(instrument, value)
+	}
+}
+
+func (r *runtimeMetrics) observeFloatCounter(observer metric.Observer, name string, value float64) {
+	if instrument := r.floatCounter[name]; instrument != nil {
+		observer.ObserveFloat64(instrument, value)
+	}
+}
+
+func boolInt(value bool) int64 {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func failureReason(reason string) string {
+	switch reason {
+	case "role", "timeout", "not_started":
+		return reason
+	default:
+		return "database"
+	}
 }
 
 func queueFailureIndex(reason string) int {
-	switch reason {
+	switch failureReason(reason) {
 	case "role":
 		return 0
 	case "timeout":

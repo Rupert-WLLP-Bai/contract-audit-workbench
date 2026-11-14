@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-08
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,17 +13,33 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { errorMessage, isForbidden } from "../api/http";
-import { getCompanyPolicySourceStatus, getLegalKnowledgeForCase, getLegalSourceCaptureForCase, importLegalSource, searchAdminLegalKnowledge, searchLegalKnowledgeForCase, type LegalHit, type LegalImportInput, type LegalSourceCapture } from "../api/legal-knowledge";
+import {
+  getCompanyPolicySourceStatus,
+  getLegalKnowledgeForCase,
+  getLegalSourceCaptureForCase,
+  importLegalSource,
+  searchAdminLegalKnowledge,
+  searchLegalKnowledgeForCase,
+  type LegalHit,
+  type LegalImportInput,
+  type LegalSourceCapture,
+} from "../api/legal-knowledge";
 import { useCases, useSession } from "../api/queries";
 import type { KnowledgeVersion } from "../api/governed-knowledge";
-import { clearPendingMutationKey, idempotencyActorScope, pendingMutationKey } from "../api/idempotency";
+import {
+  clearPendingMutationKey,
+  idempotencyActorScope,
+  pendingMutationKey,
+} from "../api/idempotency";
 import { CaseLegalApplicabilityPanel } from "../components/case-legal-applicability-panel";
 import { PageStatus } from "../components/page-status";
+import { ListPage } from "../components/page-patterns";
 import { beijingInputToUtc, toBeijingInputValue } from "../components/beijing-datetime";
 import { formatDateTime } from "../domain/review";
 import "./legal-knowledge-page.css";
 
-const detailPath = (knowledgeId: string, versionId: string) => `/admin/governed-knowledge/${encodeURIComponent(knowledgeId)}/versions/${encodeURIComponent(versionId)}`;
+const detailPath = (knowledgeId: string, versionId: string) =>
+  `/admin/governed-knowledge/${encodeURIComponent(knowledgeId)}/versions/${encodeURIComponent(versionId)}`;
 
 const legalTabs = [
   { key: "applicability", label: "适用依据" },
@@ -74,17 +90,62 @@ export function LegalKnowledgePage() {
     setBusinessTimeError("");
   }, [caseId, committedQuery, committedArticle, committedBusinessAt]);
   const search = useQuery({
-    queryKey: ["cases", caseId, "legal-knowledge", committedQuery, committedArticle, committedBusinessAt, cursor],
-    queryFn: ({ signal }) => searchLegalKnowledgeForCase(caseId, { q: committedQuery, article_number: committedArticle ? Number(committedArticle) : undefined, business_at: committedBusinessAt || undefined, cursor }, signal),
-    enabled: Boolean(caseId) && (committedQuery.trim() !== "" || committedArticle !== ""), retry: false,
+    queryKey: [
+      "cases",
+      caseId,
+      "legal-knowledge",
+      committedQuery,
+      committedArticle,
+      committedBusinessAt,
+      cursor,
+    ],
+    queryFn: ({ signal }) =>
+      searchLegalKnowledgeForCase(
+        caseId,
+        {
+          q: committedQuery,
+          article_number: committedArticle ? Number(committedArticle) : undefined,
+          business_at: committedBusinessAt || undefined,
+          cursor,
+        },
+        signal,
+      ),
+    enabled: Boolean(caseId) && (committedQuery.trim() !== "" || committedArticle !== ""),
+    retry: false,
   });
-  const company = useQuery({ queryKey: ["cases", caseId, "company-policy-sources"], queryFn: ({ signal }) => getCompanyPolicySourceStatus(caseId, signal), enabled: Boolean(caseId), retry: false });
+  const company = useQuery({
+    queryKey: ["cases", caseId, "company-policy-sources"],
+    queryFn: ({ signal }) => getCompanyPolicySourceStatus(caseId, signal),
+    enabled: Boolean(caseId),
+    retry: false,
+  });
   const selected = legalSelection(params);
-  const detail = useQuery({ queryKey: ["cases", caseId, "legal-knowledge-detail", selected?.knowledgeId, selected?.versionId], queryFn: ({ signal }) => getLegalKnowledgeForCase(caseId, selected!.knowledgeId, selected!.versionId, signal), enabled: Boolean(selected), retry: false });
+  const detail = useQuery({
+    queryKey: [
+      "cases",
+      caseId,
+      "legal-knowledge-detail",
+      selected?.knowledgeId,
+      selected?.versionId,
+    ],
+    queryFn: ({ signal }) =>
+      getLegalKnowledgeForCase(caseId, selected!.knowledgeId, selected!.versionId, signal),
+    enabled: Boolean(selected),
+    retry: false,
+  });
   const captureId = detail.data?.content.legal_metadata?.source_snapshot_id ?? "";
-  const capture = useQuery({ queryKey: ["cases", caseId, "legal-source-capture", captureId], queryFn: ({ signal }) => getLegalSourceCaptureForCase(caseId, captureId, signal), enabled: Boolean(caseId && captureId), retry: false });
+  const capture = useQuery({
+    queryKey: ["cases", caseId, "legal-source-capture", captureId],
+    queryFn: ({ signal }) => getLegalSourceCaptureForCase(caseId, captureId, signal),
+    enabled: Boolean(caseId && captureId),
+    retry: false,
+  });
   const firstHit = search.data?.items[0];
-  const sourceTarget: LegalSelection | null = selected ?? (firstHit ? { knowledgeId: firstHit.ref.knowledge_id, versionId: firstHit.ref.version_id } : null);
+  const sourceTarget: LegalSelection | null =
+    selected ??
+    (firstHit
+      ? { knowledgeId: firstHit.ref.knowledge_id, versionId: firstHit.ref.version_id }
+      : null);
   const showSourceAction = tab !== "facts" && sourceTarget !== null;
   const directory = search.data?.items ?? [];
 
@@ -141,189 +202,760 @@ export function LegalKnowledgePage() {
     setParams(next);
   }
 
-  const columns: TableProps<LegalHit>["columns"] = useMemo(() => [
-    { title: "法规与条号", key: "article", render: (_, item) => <><strong>{item.legal_metadata.norm_title}</strong><div>{item.legal_metadata.article_label}</div><div className="meta">{item.legal_metadata.norm_version} · {item.ref.version_id}</div></> },
-    { title: "效力与治理", key: "status", render: (_, item) => <>{item.legal_metadata.official_status} · {item.governance_status}<div className="meta">法律审阅：{item.legal_metadata.legal_review_status}</div></> },
-    { title: "生效时间", key: "effective", render: (_, item) => <>{item.legal_metadata.effective_from}{item.legal_metadata.effective_until ? ` 至 ${item.legal_metadata.effective_until}` : "起"}</> },
-    { title: "命中内容", key: "snippet", render: (_, item) => <>{item.snippet || item.summary}</> },
-    { title: "查看", key: "open", render: (_, item) => <Button htmlType="button" onClick={() => openVersion(item)}>查看精确版本</Button> },
-  ], [params, setParams]);
+  const columns: TableProps<LegalHit>["columns"] = useMemo(
+    () => [
+      {
+        title: "法规与条号",
+        key: "article",
+        render: (_, item) => (
+          <>
+            <strong>{item.legal_metadata.norm_title}</strong>
+            <div>{item.legal_metadata.article_label}</div>
+            <div className="meta">
+              {item.legal_metadata.norm_version} · {item.ref.version_id}
+            </div>
+          </>
+        ),
+      },
+      {
+        title: "效力与治理",
+        key: "status",
+        render: (_, item) => (
+          <>
+            {item.legal_metadata.official_status} · {item.governance_status}
+            <div className="meta">法律审阅：{item.legal_metadata.legal_review_status}</div>
+          </>
+        ),
+      },
+      {
+        title: "生效时间",
+        key: "effective",
+        render: (_, item) => (
+          <>
+            {item.legal_metadata.effective_from}
+            {item.legal_metadata.effective_until
+              ? ` 至 ${item.legal_metadata.effective_until}`
+              : "起"}
+          </>
+        ),
+      },
+      {
+        title: "命中内容",
+        key: "snippet",
+        render: (_, item) => <>{item.snippet || item.summary}</>,
+      },
+      {
+        title: "查看",
+        key: "open",
+        render: (_, item) => (
+          <Button htmlType="button" onClick={() => openVersion(item)}>
+            查看精确版本
+          </Button>
+        ),
+      },
+    ],
+    [params, setParams],
+  );
 
   function renderApplicability() {
     const metadata = detail.data?.content.legal_metadata;
-    const selectedInDirectory = selected !== null && directory.some((item) => item.ref.knowledge_id === selected.knowledgeId && item.ref.version_id === selected.versionId);
-    return <section className="legal-tab-panel legal-applicability-tab" aria-label="适用依据">
-      <div className="legal-reader-layout">
-        <aside className="legal-reader-directory" aria-label="内容目录">
-          <header className="legal-reader-directory-head"><h2>内容目录</h2><p className="meta">本案检索到的精确版本</p></header>
-          {search.isLoading ? <p className="legal-reader-directory-status" role="status">正在读取依据目录…</p> : null}
-          {search.isError ? <div className="legal-reader-directory-status"><Alert type="error" showIcon title="依据目录没有加载" description={errorMessage(search.error)} action={<Button onClick={() => void search.refetch()}>重试</Button>} /></div> : null}
-          {directory.length > 0 ? <ul className="legal-directory-list">
-            {directory.map((item) => {
-              const active = selected?.knowledgeId === item.ref.knowledge_id && selected?.versionId === item.ref.version_id;
-              return <li key={`${item.ref.knowledge_id}:${item.ref.version_id}`}>
-                <button type="button" className="legal-directory-button" aria-current={active ? "true" : undefined} onClick={() => openVersion(item)}>
-                  <strong>{item.legal_metadata.norm_title}</strong>
-                  <span>{item.legal_metadata.article_label} · {item.legal_metadata.norm_version}</span>
-                </button>
-              </li>;
-            })}
-          </ul> : null}
-          {selected && !selectedInDirectory && detail.data ? <ul className="legal-directory-list">
-            <li><button type="button" className="legal-directory-button" aria-current="true" onClick={openSourceDetails}><strong>{metadata?.norm_title}</strong><span>{metadata?.article_label} · {metadata?.norm_version}</span></button></li>
-          </ul> : null}
-          {!search.isLoading && !search.isError && directory.length === 0 && !(selected && detail.data) ? <p className="legal-reader-directory-status meta">尚未检索到可阅读的依据。</p> : null}
-        </aside>
-        <section className="legal-reader-panel" aria-label="法律条文精确版本">
-          <header className="legal-reader-toolbar">
-            <div>
-              <h2>{metadata?.norm_title ?? "法律条文精确版本"}</h2>
-              <p className="meta">{metadata ? `${metadata.article_label} · ${metadata.norm_version} · 精确版本 ${detail.data?.ref.version_id}` : "所选版本只读 · 精确版本"}</p>
+    const selectedInDirectory =
+      selected !== null &&
+      directory.some(
+        (item) =>
+          item.ref.knowledge_id === selected.knowledgeId &&
+          item.ref.version_id === selected.versionId,
+      );
+    return (
+      <section className="legal-tab-panel legal-applicability-tab" aria-label="适用依据">
+        <div className="legal-reader-layout">
+          <aside className="legal-reader-directory" aria-label="内容目录">
+            <header className="legal-reader-directory-head">
+              <h2>内容目录</h2>
+              <p className="meta">本案检索到的精确版本</p>
+            </header>
+            {search.isLoading ? (
+              <p className="legal-reader-directory-status" role="status">
+                正在读取依据目录…
+              </p>
+            ) : null}
+            {search.isError ? (
+              <div className="legal-reader-directory-status">
+                <Alert
+                  type="error"
+                  showIcon
+                  title="依据目录没有加载"
+                  description={errorMessage(search.error)}
+                  action={<Button onClick={() => void search.refetch()}>重试</Button>}
+                />
+              </div>
+            ) : null}
+            {directory.length > 0 ? (
+              <ul className="legal-directory-list">
+                {directory.map((item) => {
+                  const active =
+                    selected?.knowledgeId === item.ref.knowledge_id &&
+                    selected?.versionId === item.ref.version_id;
+                  return (
+                    <li key={`${item.ref.knowledge_id}:${item.ref.version_id}`}>
+                      <button
+                        type="button"
+                        className="legal-directory-button"
+                        aria-current={active ? "true" : undefined}
+                        onClick={() => openVersion(item)}
+                      >
+                        <strong>{item.legal_metadata.norm_title}</strong>
+                        <span>
+                          {item.legal_metadata.article_label} · {item.legal_metadata.norm_version}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+            {selected && !selectedInDirectory && detail.data ? (
+              <ul className="legal-directory-list">
+                <li>
+                  <button
+                    type="button"
+                    className="legal-directory-button"
+                    aria-current="true"
+                    onClick={openSourceDetails}
+                  >
+                    <strong>{metadata?.norm_title}</strong>
+                    <span>
+                      {metadata?.article_label} · {metadata?.norm_version}
+                    </span>
+                  </button>
+                </li>
+              </ul>
+            ) : null}
+            {!search.isLoading &&
+            !search.isError &&
+            directory.length === 0 &&
+            !(selected && detail.data) ? (
+              <p className="legal-reader-directory-status meta">尚未检索到可阅读的依据。</p>
+            ) : null}
+          </aside>
+          <section className="legal-reader-panel" aria-label="法律条文精确版本">
+            <header className="legal-reader-toolbar">
+              <div>
+                <h2>{metadata?.norm_title ?? "法律条文精确版本"}</h2>
+                <p className="meta">
+                  {metadata
+                    ? `${metadata.article_label} · ${metadata.norm_version} · 精确版本 ${detail.data?.ref.version_id}`
+                    : "所选版本只读 · 精确版本"}
+                </p>
+              </div>
+              {detail.isSuccess ? (
+                <Button htmlType="button" onClick={openSourceDetails}>
+                  来源详情
+                </Button>
+              ) : null}
+            </header>
+            <div className="legal-reader-body">
+              {!selected ? (
+                <Empty description="尚未选择法律依据。请先在“引用条目”中检索并选择精确版本。">
+                  <Button
+                    htmlType="button"
+                    onClick={() => setParams(withLegalTab(params, "references"))}
+                  >
+                    前往引用条目
+                  </Button>
+                </Empty>
+              ) : null}
+              {selected && detail.isLoading ? (
+                <PageStatus kind="loading" title="正在读取精确版本" />
+              ) : null}
+              {selected && detail.isError ? (
+                <Alert
+                  type="error"
+                  showIcon
+                  title="精确版本没有加载"
+                  description={errorMessage(detail.error)}
+                  action={<Button onClick={() => void detail.refetch()}>重试</Button>}
+                />
+              ) : null}
+              {selected && detail.isSuccess ? (
+                <LegalVersionDetail
+                  value={detail.data}
+                  capture={capture.data}
+                  captureLoading={capture.isLoading}
+                  captureError={capture.isError ? errorMessage(capture.error) : ""}
+                  onRetryCapture={() => void capture.refetch()}
+                />
+              ) : null}
             </div>
-            {detail.isSuccess ? <Button htmlType="button" onClick={openSourceDetails}>来源详情</Button> : null}
-          </header>
-          <div className="legal-reader-body">
-            {!selected ? <Empty description="尚未选择法律依据。请先在“引用条目”中检索并选择精确版本。"><Button htmlType="button" onClick={() => setParams(withLegalTab(params, "references"))}>前往引用条目</Button></Empty> : null}
-            {selected && detail.isLoading ? <PageStatus kind="loading" title="正在读取精确版本" /> : null}
-            {selected && detail.isError ? <Alert type="error" showIcon title="精确版本没有加载" description={errorMessage(detail.error)} action={<Button onClick={() => void detail.refetch()}>重试</Button>} /> : null}
-            {selected && detail.isSuccess ? <LegalVersionDetail value={detail.data} capture={capture.data} captureLoading={capture.isLoading} captureError={capture.isError ? errorMessage(capture.error) : ""} onRetryCapture={() => void capture.refetch()} /> : null}
-          </div>
-        </section>
-      </div>
-    </section>;
+          </section>
+        </div>
+      </section>
+    );
   }
 
   function renderReferences() {
-    return <section className="legal-tab-panel legal-references-tab" aria-label="引用条目">
-      <header className="legal-tab-head"><h2>引用条目</h2><p className="meta">检索结果来自本案授权范围；精确版本、来源与效力证据保持只读。</p></header>
-      <form className="governance-filters" onSubmit={submitSearch}>
-        <label className="field">名称或正文<Input aria-label="名称或正文" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="输入法规名称或正文关键词" /></label>
-        <label className="field">条号<Input aria-label="条号" inputMode="numeric" value={article} onChange={(event) => setArticle(event.target.value.replace(/[^0-9]/g, ""))} placeholder="例如 1260" /></label>
-        <label className="field">业务时间（北京时间）<Input aria-label="业务时间（北京时间）" type="datetime-local" value={businessAt} onChange={(event) => setBusinessAt(event.target.value)} /></label>
-        <Button type="primary" htmlType="submit" disabled={!query.trim() && !article}>检索</Button>
-      </form>
-      {businessTimeError ? <Alert type="error" title={businessTimeError} /> : null}
-      {!committedQuery.trim() && !committedArticle && !search.isLoading && !search.isError ? <Empty description="输入法规名称、正文关键词或条号后检索本案引用条目。" /> : null}
-      {search.isError ? <Alert type="error" showIcon title="法律知识检索失败" description={errorMessage(search.error)} action={<Button onClick={() => void search.refetch()}>重试</Button>} /> : null}
-      {search.isLoading ? <PageStatus kind="loading" title="正在检索法律知识" /> : null}
-      {search.isSuccess ? <><p className="meta">检索到 {search.data.items.length} 条当前授权范围内的记录。</p><Table rowKey={(item) => `${item.ref.knowledge_id}:${item.ref.version_id}`} columns={columns} dataSource={search.data.items} pagination={false} locale={{ emptyText: "没有匹配的法律条文" }} />{search.data.next_cursor ? <Button htmlType="button" onClick={nextPage}>下一页</Button> : null}</> : null}
-      {company.isLoading ? <p className="meta" role="status">正在读取公司制度来源状态…</p> : null}
-      {company.isError && !isForbidden(company.error) ? <Alert type="error" title="公司制度来源状态暂不可用" description={errorMessage(company.error)} action={<Button onClick={() => void company.refetch()}>重试</Button>} /> : null}
-      {company.isSuccess ? <section className="rulepack-editor-section legal-company-sources"><h2>公司制度资料</h2>{company.data.items.map((source) => <Alert key={source.catalog_key} type="info" showIcon title={source.display_label} description={source.can_be_cited ? "存在已发布资料，可按案件授权查看。" : "资料待提供；当前不可引用，也未满足必需依赖。"} />)}</section> : null}
-    </section>;
+    return (
+      <section className="legal-tab-panel legal-references-tab" aria-label="引用条目">
+        <header className="legal-tab-head">
+          <h2>引用条目</h2>
+          <p className="meta">检索结果来自本案授权范围；精确版本、来源与效力证据保持只读。</p>
+        </header>
+        <form className="governance-filters" onSubmit={submitSearch}>
+          <label className="field">
+            名称或正文
+            <Input
+              aria-label="名称或正文"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="输入法规名称或正文关键词"
+            />
+          </label>
+          <label className="field">
+            条号
+            <Input
+              aria-label="条号"
+              inputMode="numeric"
+              value={article}
+              onChange={(event) => setArticle(event.target.value.replace(/[^0-9]/g, ""))}
+              placeholder="例如 1260"
+            />
+          </label>
+          <label className="field">
+            业务时间（北京时间）
+            <Input
+              aria-label="业务时间（北京时间）"
+              type="datetime-local"
+              value={businessAt}
+              onChange={(event) => setBusinessAt(event.target.value)}
+            />
+          </label>
+          <Button type="primary" htmlType="submit" disabled={!query.trim() && !article}>
+            检索
+          </Button>
+        </form>
+        {businessTimeError ? <Alert type="error" title={businessTimeError} /> : null}
+        {!committedQuery.trim() && !committedArticle && !search.isLoading && !search.isError ? (
+          <Empty description="输入法规名称、正文关键词或条号后检索本案引用条目。" />
+        ) : null}
+        {search.isError ? (
+          <Alert
+            type="error"
+            showIcon
+            title="法律知识检索失败"
+            description={errorMessage(search.error)}
+            action={<Button onClick={() => void search.refetch()}>重试</Button>}
+          />
+        ) : null}
+        {search.isLoading ? <PageStatus kind="loading" title="正在检索法律知识" /> : null}
+        {search.isSuccess ? (
+          <>
+            <p className="meta">检索到 {search.data.items.length} 条当前授权范围内的记录。</p>
+            <Table
+              rowKey={(item) => `${item.ref.knowledge_id}:${item.ref.version_id}`}
+              columns={columns}
+              dataSource={search.data.items}
+              pagination={false}
+              locale={{ emptyText: "没有匹配的法律条文" }}
+            />
+            {search.data.next_cursor ? (
+              <Button htmlType="button" onClick={nextPage}>
+                下一页
+              </Button>
+            ) : null}
+          </>
+        ) : null}
+        {company.isLoading ? (
+          <p className="meta" role="status">
+            正在读取公司制度来源状态…
+          </p>
+        ) : null}
+        {company.isError && !isForbidden(company.error) ? (
+          <Alert
+            type="error"
+            title="公司制度来源状态暂不可用"
+            description={errorMessage(company.error)}
+            action={<Button onClick={() => void company.refetch()}>重试</Button>}
+          />
+        ) : null}
+        {company.isSuccess ? (
+          <section className="rulepack-editor-section legal-company-sources">
+            <h2>公司制度资料</h2>
+            {company.data.items.map((source) => (
+              <Alert
+                key={source.catalog_key}
+                type="info"
+                showIcon
+                title={source.display_label}
+                description={
+                  source.can_be_cited
+                    ? "存在已发布资料，可按案件授权查看。"
+                    : "资料待提供；当前不可引用，也未满足必需依赖。"
+                }
+              />
+            ))}
+          </section>
+        ) : null}
+      </section>
+    );
   }
 
   if (!caseId) {
     if (cases.isLoading) return <PageStatus kind="loading" title="正在读取可访问案件" />;
-    if (cases.isError) return <PageStatus kind={isForbidden(cases.error) ? "denied" : "error"} title="案件列表没有加载" action={<Button onClick={() => void cases.refetch()}>重试</Button>} />;
-    return <section className="page page-legal-knowledge"><header className="page-head"><div><h1>案件适用依据</h1><p>先选择有权访问的案件，再按条文名称、条号或正文检索。</p></div></header><ul className="document-list">{(cases.data ?? []).map((item) => <li key={item.id}><Link to={`/cases/${encodeURIComponent(item.id)}/legal-knowledge`}>{item.title}</Link></li>)}</ul></section>;
+    if (cases.isError)
+      return (
+        <PageStatus
+          kind={isForbidden(cases.error) ? "denied" : "error"}
+          title="案件列表没有加载"
+          action={<Button onClick={() => void cases.refetch()}>重试</Button>}
+        />
+      );
+    return (
+      <section className="page page-legal-knowledge">
+        <header className="page-head">
+          <div>
+            <h1>案件适用依据</h1>
+            <p>先选择有权访问的案件，再按条文名称、条号或正文检索。</p>
+          </div>
+        </header>
+        <ul className="document-list">
+          {(cases.data ?? []).map((item) => (
+            <li key={item.id}>
+              <Link to={`/cases/${encodeURIComponent(item.id)}/legal-knowledge`}>{item.title}</Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
   }
-  if (cases.isSuccess && !cases.data?.some((item) => item.id === caseId)) return <PageStatus kind="denied" title="当前案件不可用" />;
-  if (company.isError && isForbidden(company.error)) return <PageStatus kind="denied" title="没有权限读取本案资料" />;
-  return <section className="page page-legal-knowledge">
-    <nav className="page-back" aria-label="案件导航"><Link to={`/cases/${encodeURIComponent(caseId)}`}>返回案件</Link></nav>
-    <header className="page-head legal-reader-head">
-      <div><h1>案件适用依据</h1><p>采购与履约依据核对</p></div>
-      {showSourceAction ? <div className="legal-reader-actions"><Button type="primary" htmlType="button" onClick={openSourceDetails}>查看来源详情</Button></div> : null}
-    </header>
-    <Alert className="legal-reader-notice" type="info" showIcon title="请单独核验来源、效力和适用事实。" />
-    <Tabs className="legal-reader-tabs" activeKey={tab} onChange={selectTab} items={legalTabs.map((item) => ({
-      key: item.key,
-      label: item.label,
-      children: item.key === "applicability" ? renderApplicability() : item.key === "references" ? renderReferences() : <section className="legal-tab-panel legal-facts-tab" aria-label="适用事实"><CaseLegalApplicabilityPanel caseId={caseId} /></section>,
-    }))} />
-  </section>;
+  if (cases.isSuccess && !cases.data?.some((item) => item.id === caseId))
+    return <PageStatus kind="denied" title="当前案件不可用" />;
+  if (company.isError && isForbidden(company.error))
+    return <PageStatus kind="denied" title="没有权限读取本案资料" />;
+  return (
+    <section className="page page-legal-knowledge">
+      <nav className="page-back" aria-label="案件导航">
+        <Link to={`/cases/${encodeURIComponent(caseId)}`}>返回案件</Link>
+      </nav>
+      <header className="page-head legal-reader-head">
+        <div>
+          <h1>案件适用依据</h1>
+          <p>采购与履约依据核对</p>
+        </div>
+        {showSourceAction ? (
+          <div className="legal-reader-actions">
+            <Button type="primary" htmlType="button" onClick={openSourceDetails}>
+              查看来源详情
+            </Button>
+          </div>
+        ) : null}
+      </header>
+      <Alert
+        className="legal-reader-notice"
+        type="info"
+        showIcon
+        title="请单独核验来源、效力和适用事实。"
+      />
+      <Tabs
+        className="legal-reader-tabs"
+        activeKey={tab}
+        onChange={selectTab}
+        items={legalTabs.map((item) => ({
+          key: item.key,
+          label: item.label,
+          children:
+            item.key === "applicability" ? (
+              renderApplicability()
+            ) : item.key === "references" ? (
+              renderReferences()
+            ) : (
+              <section className="legal-tab-panel legal-facts-tab" aria-label="适用事实">
+                <CaseLegalApplicabilityPanel caseId={caseId} />
+              </section>
+            ),
+        }))}
+      />
+    </section>
+  );
 }
 
 function isImportInput(value: unknown): value is LegalImportInput {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const item = value as Record<string, unknown>;
   const capture = item.capture;
-  return typeof capture === "object" && capture !== null && !Array.isArray(capture) && Array.isArray(item.articles);
+  return (
+    typeof capture === "object" &&
+    capture !== null &&
+    !Array.isArray(capture) &&
+    Array.isArray(item.articles)
+  );
 }
 
-export function LegalKnowledgeAdminList({ search, onSearch, onSelectOtherKind }: { search: string; onSearch: (value: string) => void; onSelectOtherKind: () => void }) {
+export function LegalKnowledgeAdminList({
+  search,
+  onSearch,
+  onSelectOtherKind,
+}: {
+  search: string;
+  onSearch: (value: string) => void;
+  onSelectOtherKind: () => void;
+}) {
   const [params, setParams] = useSearchParams();
   const committedSearch = params.get("q") ?? "";
   const cursor = params.get("cursor") ?? undefined;
   const [searchDraft, setSearchDraft] = useState(committedSearch || search);
   useEffect(() => setSearchDraft(committedSearch || search), [committedSearch, search]);
-  const query = useQuery({ queryKey: ["admin","governed-knowledge","legal",committedSearch,cursor], queryFn: ({signal}) => searchAdminLegalKnowledge({q:committedSearch || undefined,cursor},signal), retry:false });
+  const query = useQuery({
+    queryKey: ["admin", "governed-knowledge", "legal", committedSearch, cursor],
+    queryFn: ({ signal }) =>
+      searchAdminLegalKnowledge({ q: committedSearch || undefined, cursor }, signal),
+    retry: false,
+  });
   const [raw, setRaw] = useState("");
   const [localError, setLocalError] = useState("");
-  const [success, setSuccess] = useState<Awaited<ReturnType<typeof importLegalSource>> | null>(null);
+  const [success, setSuccess] = useState<Awaited<ReturnType<typeof importLegalSource>> | null>(
+    null,
+  );
   const actor = useSession("admin");
   const client = useQueryClient();
-  const command = useMutation({ mutationFn: ({input,key}:{input:LegalImportInput;key:string}) => importLegalSource(input,key), retry:false });
+  const command = useMutation({
+    mutationFn: ({ input, key }: { input: LegalImportInput; key: string }) =>
+      importLegalSource(input, key),
+    retry: false,
+  });
   const columns: TableProps<LegalHit>["columns"] = [
-    { title:"法规条文",key:"title",render:(_,item)=><><Link to={detailPath(item.ref.knowledge_id,item.ref.version_id)}>{item.legal_metadata.norm_title} · {item.legal_metadata.article_label}</Link><div className="meta">{item.legal_metadata.norm_version} · {item.ref.knowledge_id}</div></> },
-    { title:"来源与效力",key:"source",render:(_,item)=><>{item.legal_metadata.issuer}<div className="meta">{item.legal_metadata.official_status} · {item.governance_status}</div></> },
-    { title:"施行 / 捕获",key:"time",render:(_,item)=><>{item.legal_metadata.effective_from}<div className="meta">捕获于 {item.legal_metadata.source_captured_at}</div></> },
-    { title:"法律审阅",key:"review",render:(_,item)=><>{item.legal_metadata.legal_review_status} · {item.legal_metadata.reviewer ?? "审阅人未记录"}</> },
+    {
+      title: "法规条文",
+      key: "title",
+      render: (_, item) => (
+        <>
+          <Link to={detailPath(item.ref.knowledge_id, item.ref.version_id)}>
+            {item.legal_metadata.norm_title} · {item.legal_metadata.article_label}
+          </Link>
+          <div className="meta">
+            {item.legal_metadata.norm_version} · {item.ref.knowledge_id}
+          </div>
+        </>
+      ),
+    },
+    {
+      title: "来源与效力",
+      key: "source",
+      render: (_, item) => (
+        <>
+          {item.legal_metadata.issuer}
+          <div className="meta">
+            {item.legal_metadata.official_status} · {item.governance_status}
+          </div>
+        </>
+      ),
+    },
+    {
+      title: "施行 / 捕获",
+      key: "time",
+      render: (_, item) => (
+        <>
+          {item.legal_metadata.effective_from}
+          <div className="meta">捕获于 {item.legal_metadata.source_captured_at}</div>
+        </>
+      ),
+    },
+    {
+      title: "法律审阅",
+      key: "review",
+      render: (_, item) => (
+        <>
+          {item.legal_metadata.legal_review_status} ·{" "}
+          {item.legal_metadata.reviewer ?? "审阅人未记录"}
+        </>
+      ),
+    },
   ];
   async function submit(event: FormEvent) {
-    event.preventDefault(); setLocalError(""); setSuccess(null);
+    event.preventDefault();
+    setLocalError("");
+    setSuccess(null);
     let decoded: unknown;
-    try { decoded = JSON.parse(raw); } catch { setLocalError("请输入有效的 JSON 导入对象。"); return; }
-    if (!isImportInput(decoded)) { setLocalError("导入对象必须包含 capture 和 articles；捕获字节及状态证据使用原始 base64，不能手工改写哈希。"); return; }
-    if (!actor.data) { setLocalError("管理身份暂不可用，请刷新后重试。"); return; }
     try {
-      const pending = await pendingMutationKey("legal-source-import", idempotencyActorScope(actor.data), "legal-source-capture", decoded);
-      const result = await command.mutateAsync({input:decoded,key:pending.key});
+      decoded = JSON.parse(raw);
+    } catch {
+      setLocalError("请输入有效的 JSON 导入对象。");
+      return;
+    }
+    if (!isImportInput(decoded)) {
+      setLocalError(
+        "导入对象必须包含 capture 和 articles；捕获字节及状态证据使用原始 base64，不能手工改写哈希。",
+      );
+      return;
+    }
+    if (!actor.data) {
+      setLocalError("管理身份暂不可用，请刷新后重试。");
+      return;
+    }
+    try {
+      const pending = await pendingMutationKey(
+        "legal-source-import",
+        idempotencyActorScope(actor.data),
+        "legal-source-capture",
+        decoded,
+      );
+      const result = await command.mutateAsync({ input: decoded, key: pending.key });
       clearPendingMutationKey(pending.storageKey);
-      setSuccess(result); setRaw("");
-      await Promise.all([client.invalidateQueries({queryKey:["admin","governed-knowledge","legal"]}),client.invalidateQueries({queryKey:["admin","governed-knowledge","list"]})]);
-    } catch (error) { setLocalError(error instanceof Error ? error.message : "导入失败；可使用相同内容重试。"); }
+      setSuccess(result);
+      setRaw("");
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["admin", "governed-knowledge", "legal"] }),
+        client.invalidateQueries({ queryKey: ["admin", "governed-knowledge", "list"] }),
+      ]);
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : "导入失败；可使用相同内容重试。");
+    }
   }
   function submitSearch(event: FormEvent) {
     event.preventDefault();
     const next = new URLSearchParams(params);
     const value = searchDraft.trim();
-    if (value) next.set("q", value); else next.delete("q");
+    if (value) next.set("q", value);
+    else next.delete("q");
     next.delete("cursor");
     setParams(next);
     onSearch(value);
   }
-  return <section className="page page-rulepacks">
-    <header className="page-head"><div><h1>知识治理 · 法律规范</h1><p>法律条文使用已捕获的官方来源和效力证据，并沿用知识治理的提交、校验、批准与发布流程。法律审阅状态只显示当前登记值。</p></div><Button onClick={onSelectOtherKind}>返回其他知识类型</Button></header>
-    <section className="rulepack-editor-section"><h2>导入官方来源捕获</h2><p>粘贴带有 capture 与 articles 的原始 JSON。服务端会核对来源正文、状态证据和各自摘要；法律审阅状态保持 NOT_RUN。</p><form className="workflow-form" onSubmit={(event)=>void submit(event)}><label className="field">官方捕获 JSON<Input.TextArea aria-label="官方捕获 JSON" rows={10} value={raw} onChange={(event)=>setRaw(event.target.value)} disabled={command.isPending} placeholder={`{"capture":{...},"articles":[...]}`} /></label>{localError && <Alert type="error" showIcon title="导入没有完成" description={<><p>{localError}</p>{command.error && <pre>{JSON.stringify((command.error as {details?:unknown}).details ?? command.error,null,2)}</pre>}</>} />}{success && <Alert type="success" showIcon title={`已保存来源快照 ${success.capture_snapshot_id}`} description={<>{success.provenance} · 正文摘要 {success.extracted_full_text_sha256}<div>导入 {success.articles.length} 条精确版本；每条继续使用治理流程。</div></>} />}{command.isPending && <p role="status">正在核验并保存来源捕获…</p>}<Button type="primary" htmlType="submit" loading={command.isPending} disabled={!raw.trim() || command.isPending}>导入并核验</Button></form></section>
-    <form className="governance-filters" onSubmit={submitSearch}><label className="field" htmlFor="legal-admin-search">查找法律条文<Input id="legal-admin-search" type="search" value={searchDraft} placeholder="法规名称、条号或正文" onChange={(event)=>setSearchDraft(event.target.value)} /></label><Button type="primary" htmlType="submit">检索</Button></form>
-    {query.isLoading && <PageStatus kind="loading" title="正在读取法律条文" />}{query.isError && <Alert type="error" showIcon title="法律条文列表没有加载" description={errorMessage(query.error)} action={<Button onClick={()=>void query.refetch()}>重试</Button>} />}{query.data && <><Table rowKey={(item)=>`${item.ref.knowledge_id}:${item.ref.version_id}`} dataSource={query.data.items} columns={columns} pagination={false} locale={{emptyText:"没有可显示的法律条文"}} />{query.data.next_cursor ? <Button htmlType="button" onClick={()=>{const next=new URLSearchParams(params);next.set("cursor",query.data.next_cursor!);setParams(next);}}>下一页</Button> : null}</>}
-  </section>;
+  return (
+    <ListPage
+      className="page-rulepacks"
+      title="知识治理 · 法律规范"
+      description="法律条文使用已捕获的官方来源和效力证据，并沿用知识治理的提交、校验、批准与发布流程。法律审阅状态只显示当前登记值。"
+      actions={<Button onClick={onSelectOtherKind}>返回其他知识类型</Button>}
+      beforeSummary={
+        <section className="rulepack-editor-section">
+          <h2>导入官方来源捕获</h2>
+          <p>
+            粘贴带有 capture 与 articles 的原始
+            JSON。服务端会核对来源正文、状态证据和各自摘要；法律审阅状态保持 NOT_RUN。
+          </p>
+          <form className="workflow-form" onSubmit={(event) => void submit(event)}>
+            <label className="field">
+              官方捕获 JSON
+              <Input.TextArea
+                aria-label="官方捕获 JSON"
+                rows={10}
+                value={raw}
+                onChange={(event) => setRaw(event.target.value)}
+                disabled={command.isPending}
+                placeholder={`{"capture":{...},"articles":[...]}`}
+              />
+            </label>
+            {localError && (
+              <Alert
+                type="error"
+                showIcon
+                title="导入没有完成"
+                description={
+                  <>
+                    <p>{localError}</p>
+                    {command.error && (
+                      <pre>
+                        {JSON.stringify(
+                          (command.error as { details?: unknown }).details ?? command.error,
+                          null,
+                          2,
+                        )}
+                      </pre>
+                    )}
+                  </>
+                }
+              />
+            )}
+            {success && (
+              <Alert
+                type="success"
+                showIcon
+                title={`已保存来源快照 ${success.capture_snapshot_id}`}
+                description={
+                  <>
+                    {success.provenance} · 正文摘要 {success.extracted_full_text_sha256}
+                    <div>导入 {success.articles.length} 条精确版本；每条继续使用治理流程。</div>
+                  </>
+                }
+              />
+            )}
+            {command.isPending && <p role="status">正在核验并保存来源捕获…</p>}
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={command.isPending}
+              disabled={!raw.trim() || command.isPending}
+            >
+              导入并核验
+            </Button>
+          </form>
+        </section>
+      }
+      filters={
+        <form className="governance-filters" onSubmit={submitSearch}>
+          <label className="field" htmlFor="legal-admin-search">
+            查找法律条文
+            <Input
+              id="legal-admin-search"
+              type="search"
+              value={searchDraft}
+              placeholder="法规名称、条号或正文"
+              onChange={(event) => setSearchDraft(event.target.value)}
+            />
+          </label>
+          <Button type="primary" htmlType="submit">
+            检索
+          </Button>
+        </form>
+      }
+      pagination={
+        query.data?.next_cursor ? (
+          <Button
+            htmlType="button"
+            onClick={() => {
+              const next = new URLSearchParams(params);
+              next.set("cursor", query.data!.next_cursor!);
+              setParams(next);
+            }}
+          >
+            下一页
+          </Button>
+        ) : null
+      }
+    >
+      {query.isLoading && <PageStatus kind="loading" title="正在读取法律条文" />}
+      {query.isError && (
+        <Alert
+          type="error"
+          showIcon
+          title="法律条文列表没有加载"
+          description={errorMessage(query.error)}
+          action={<Button onClick={() => void query.refetch()}>重试</Button>}
+        />
+      )}
+      {query.data && (
+        <Table
+          rowKey={(item) => `${item.ref.knowledge_id}:${item.ref.version_id}`}
+          dataSource={query.data.items}
+          columns={columns}
+          pagination={false}
+          locale={{ emptyText: "没有可显示的法律条文" }}
+        />
+      )}
+    </ListPage>
+  );
 }
 
-function LegalVersionDetail({ value, capture, captureLoading, captureError, onRetryCapture }: { value: KnowledgeVersion; capture?: LegalSourceCapture; captureLoading: boolean; captureError: string; onRetryCapture: () => void }) {
+function LegalVersionDetail({
+  value,
+  capture,
+  captureLoading,
+  captureError,
+  onRetryCapture,
+}: {
+  value: KnowledgeVersion;
+  capture?: LegalSourceCapture;
+  captureLoading: boolean;
+  captureError: string;
+  onRetryCapture: () => void;
+}) {
   const content = value.content;
   const metadata = content.legal_metadata;
-  if (content.kind !== "legal" || !metadata) return <Alert type="error" title="服务返回的法律版本结构无法识别" />;
-  const captureMatches = capture?.capture_snapshot_id === metadata.source_snapshot_id &&
-    capture.source_id === metadata.source_id && capture.raw_sha256 === metadata.source_sha256;
-  return <div className="legal-version-detail">
-    <section id="legal-version-basic" aria-label="法律条文基本信息">
-      <h3>{metadata.norm_title} · {metadata.article_label}</h3>
-      <pre className="legal-article-body">{content.body}</pre>
-      <dl>
-        <dt>规范版本</dt><dd>{metadata.norm_version} · 精确版本 {value.ref.version_id}</dd>
-        <dt>制定机关</dt><dd>{metadata.issuer}</dd>
-        <dt>公布时间</dt><dd>{metadata.promulgated_on}</dd>
-        <dt>施行时间</dt><dd>{metadata.effective_from}{metadata.effective_until ? ` 至 ${metadata.effective_until}` : "起"}</dd>
-        <dt>来源捕获</dt><dd>{formatDateTime(metadata.source_captured_at)} · SHA-256 {metadata.source_sha256}</dd>
-        <dt>效力观察</dt><dd>{metadata.official_status} · {formatDateTime(metadata.status_observed_at)} · SHA-256 {metadata.status_evidence_sha256}</dd>
-        <dt>审阅状态</dt><dd>{metadata.legal_review_status === "NOT_RUN" ? "未审核（NOT_RUN）" : metadata.legal_review_status}{metadata.reviewer ? ` · 审阅人 ${metadata.reviewer}` : ""}</dd>
-        <dt>官方来源</dt><dd><a href={metadata.official_url} target="_blank" rel="noreferrer">{metadata.official_url}</a></dd>
-      </dl>
-    </section>
-    <section id="legal-source-detail" className="legal-source-capture" tabIndex={-1} aria-label="原始来源捕获">
-      <h4>原始来源捕获</h4>
-      {captureLoading ? <p>正在读取固定来源快照…</p> : null}
-      {captureError ? <Alert type="error" showIcon title="来源快照没有加载" description={captureError} action={<Button onClick={onRetryCapture}>重试</Button>} /> : null}
-      {capture ? captureMatches ? <>
-        <p>{capture.norm_title} · {capture.provenance} · HTTP {capture.response_status} · {capture.media_type}</p>
-        <p>原始响应 SHA-256：{capture.raw_sha256} · 状态证据 SHA-256：{capture.status_response_sha256}</p>
-        <details><summary>查看来源原始响应（Base64）</summary><pre>{capture.raw_response}</pre></details>
-        <details><summary>查看效力状态原始响应（Base64）</summary><pre>{capture.status_response}</pre></details>
-        <h5>来源提取正文</h5><pre className="legal-article-body">{capture.extracted_full_text}</pre>
-      </> : <Alert type="error" showIcon title="来源快照与法律版本引用不一致" /> : null}
-    </section>
-  </div>;
+  if (content.kind !== "legal" || !metadata)
+    return <Alert type="error" title="服务返回的法律版本结构无法识别" />;
+  const captureMatches =
+    capture?.capture_snapshot_id === metadata.source_snapshot_id &&
+    capture.source_id === metadata.source_id &&
+    capture.raw_sha256 === metadata.source_sha256;
+  return (
+    <div className="legal-version-detail">
+      <section id="legal-version-basic" aria-label="法律条文基本信息">
+        <h3>
+          {metadata.norm_title} · {metadata.article_label}
+        </h3>
+        <pre className="legal-article-body">{content.body}</pre>
+        <dl>
+          <dt>规范版本</dt>
+          <dd>
+            {metadata.norm_version} · 精确版本 {value.ref.version_id}
+          </dd>
+          <dt>制定机关</dt>
+          <dd>{metadata.issuer}</dd>
+          <dt>公布时间</dt>
+          <dd>{metadata.promulgated_on}</dd>
+          <dt>施行时间</dt>
+          <dd>
+            {metadata.effective_from}
+            {metadata.effective_until ? ` 至 ${metadata.effective_until}` : "起"}
+          </dd>
+          <dt>来源捕获</dt>
+          <dd>
+            {formatDateTime(metadata.source_captured_at)} · SHA-256 {metadata.source_sha256}
+          </dd>
+          <dt>效力观察</dt>
+          <dd>
+            {metadata.official_status} · {formatDateTime(metadata.status_observed_at)} · SHA-256{" "}
+            {metadata.status_evidence_sha256}
+          </dd>
+          <dt>审阅状态</dt>
+          <dd>
+            {metadata.legal_review_status === "NOT_RUN"
+              ? "未审核（NOT_RUN）"
+              : metadata.legal_review_status}
+            {metadata.reviewer ? ` · 审阅人 ${metadata.reviewer}` : ""}
+          </dd>
+          <dt>官方来源</dt>
+          <dd>
+            <a href={metadata.official_url} target="_blank" rel="noreferrer">
+              {metadata.official_url}
+            </a>
+          </dd>
+        </dl>
+      </section>
+      <section
+        id="legal-source-detail"
+        className="legal-source-capture"
+        tabIndex={-1}
+        aria-label="原始来源捕获"
+      >
+        <h4>原始来源捕获</h4>
+        {captureLoading ? <p>正在读取固定来源快照…</p> : null}
+        {captureError ? (
+          <Alert
+            type="error"
+            showIcon
+            title="来源快照没有加载"
+            description={captureError}
+            action={<Button onClick={onRetryCapture}>重试</Button>}
+          />
+        ) : null}
+        {capture ? (
+          captureMatches ? (
+            <>
+              <p>
+                {capture.norm_title} · {capture.provenance} · HTTP {capture.response_status} ·{" "}
+                {capture.media_type}
+              </p>
+              <p>
+                原始响应 SHA-256：{capture.raw_sha256} · 状态证据 SHA-256：
+                {capture.status_response_sha256}
+              </p>
+              <details>
+                <summary>查看来源原始响应（Base64）</summary>
+                <pre>{capture.raw_response}</pre>
+              </details>
+              <details>
+                <summary>查看效力状态原始响应（Base64）</summary>
+                <pre>{capture.status_response}</pre>
+              </details>
+              <h5>来源提取正文</h5>
+              <pre className="legal-article-body">{capture.extracted_full_text}</pre>
+            </>
+          ) : (
+            <Alert type="error" showIcon title="来源快照与法律版本引用不一致" />
+          )
+        ) : null}
+      </section>
+    </div>
+  );
 }

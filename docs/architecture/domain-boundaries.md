@@ -1,10 +1,10 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: Defines accepted domain data ownership, shared transaction requirements and dependency directions while distinguishing existing Store placement from future incremental migration. -->
+<!-- Purpose: Defines accepted domain ownership, caller-owned transaction and authorization seams, including exact legacy JSON decode semantics for Operator migration. -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-02 -->
-<!-- Updated: 2026-11-03 -->
-<!-- Revision: r3 -->
+<!-- Updated: 2026-11-14 -->
+<!-- Revision: r4 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -42,12 +42,12 @@
 
 ## 既有包与蓝图区别
 
-以下均为**扩展现有包**，不是按 14 个领域重建；包与领域不是一一映射。当前实现未必直接拥有表，持久化仍主要经 `internal/store`，以下边界不决定未审方法的归属。
+以下均为**扩展现有包**，不是按 14 个领域重建；包与领域不是一一映射。部分领域已有本域 app/postgres 实现，其余持久化仍主要经 `internal/store`；Store 的兼容入口、当前授权和事务管理不等于它继续拥有领域规则。以下边界不决定未审方法的归属。
 
 | 已有包 | 现存边界与蓝图差异 |
 | --- | --- |
-| `internal/approval` | 审批凭据签发、校验；审批持久化及事务仍在 Store，不等同完整 Approval 存储模块。 |
-| `internal/fulfillment` | 冻结输入和观察的履约评估；交付、验收写入仍在 Store。 |
+| `internal/approval` | 根包保留凭据签发、校验；model/app/postgres 已承接模板、送审、决定、转办及冻结历史读取，Store 保留当前授权、事务和公开兼容入口。源码候选的运行验收仍为 NOT_RUN。 |
+| `internal/fulfillment` | 根包保留冻结输入和观察的履约评估；CLM 交付、验收、缺陷、整改规则和自有 SQL 已迁入 app/postgres，Store 保留授权事务及旧调用方的窄兼容入口。源码候选的运行验收仍为 NOT_RUN。 |
 | `internal/audit` | 审计事件链与快照不可改规则；不等同所有审查和审计表的持久化包。 |
 | `internal/auditext` | 外部观察、证据及评估契约；横跨 Operator、Fulfillment、Evidence，非单一领域存储。 |
 | `internal/decision` | 决策建议输入、结果和校验契约；不替代人工决定历史。 |
@@ -103,3 +103,304 @@ python3 scripts/architecture/generate_store_ownership.py \
 生命周期概览采用一个只读 Repeatable Read 事务，复用现有交付、验收、付款和资产读取及材料授权。响应契约归 `internal/contract/lifecycle`，数据所有权仍分别归原领域。为保留私有授权与既有 DTO 的兼容性，暂允许 Store 的专用概览入口组织这些事务内加载器；该例外仅覆盖读取和投影组合，不新增业务事实、关闭判断、通知或通用事务回调。将四类 DTO 和加载器一次搬出会扩大当前切片，后续随 #148 对应领域迁移逐项替换，旧四个读取接口继续保留兼容包装。
 
 本次读取时间采用数据库事务开始时间；外部事实时间、记录时间与独立来源观察时间分别保留，未知来源时间为 null。`known` 只表示本次授权范围内读取成功，空集合不证明履约完成。租户、合同、外部关联案件和材料授权沿用原服务端入口，失权或版本不匹配时清除视图；不声称跨外部系统的一致快照或快照开始后的即时撤权。
+
+## #287 Contract 草稿创建与台账查询纵切片
+
+此切片仅迁移 `CreateContractDraft` 命令和 `ListContractLedger` 查询的领域模型、不变量、应用编排、端口及 PostgreSQL adapter。`internal/contract/model` 承接草稿模型、格式与金额校验、合同聚合及摘要；`internal/contract/app` 承接草稿创建的校验、请求摘要、回执重放和台账分页；`internal/contract/ledger` 承接台账筛选、游标和投影；`internal/contract/postgres` 只查询或写入合同自有表。
+
+Store 仍是认证、角色门禁、服务端身份解析、RLS scope、事务生命周期、当前合同授权及受限字段加解密的边界。写命令在 Store 已授权事务中创建 adapter；同一个非拥有 `platform.Executor` 仅增加 `Query`、`QueryRow` 能力，不暴露连接、提交或回滚，并继续委托给原事务封装，使每条语句和提交前 proof 复核保持生效。合同写入及幂等回执仍原子提交。
+
+台账 SQL 仅按已校验筛选条件缩小候选行；Store 对每行执行现有授权后，应用层继续扫描直到填满一页可见行，再生成绑定租户、操作者、排序和筛选摘要的游标。投影不含受限供应商字段；未知状态值继续作为原始值显示。已迁移的草稿模型、摘要、创建输入和台账 DTO 通过 Store 类型别名保留兼容入口；包含签署 DTO 的 `ContractDetail` 仍是 Store 兼容 envelope。
+
+当前 `CreateContractDraft` 本身不追加 `clm_business_events` 或 Outbox，因此该切片不新增事件；`ImportLegacySignedContract` 已有的业务事件与 Outbox 写入仍留在原 Store 事务及原位置，未纳入迁移。保存视图、导出、替换草稿和历史导入也不属于本切片。此迁移不改变 HTTP/OpenAPI wire 或数据库 schema。
+
+## Agent 步骤恢复与 Store 过渡适配
+
+状态：采纳。现有恢复从持久事件和终态投影续算预算及失败调用，没有保存可重用的成功 planner/tool 输出。增加 Execution 所有的步骤记录及领域端口，复用现有 PostgreSQL、服务角色和租约围栏；Eino 继续负责执行组合，不建立第二个任务或状态权威。
+
+每项记录绑定租户、组织、案件、run、attempt、冻结输入摘要、planner/model/runtime/tool 版本及步骤身份，保存输入与输出摘要、实际观察时间、状态和已耗预算。写入须使用当前执行服务身份，在现有案件→attempt锁顺序下复核活动租约、generation、当前授权和冻结依据；旧 generation 不得继续写。成功输出在步骤成功对后续执行可见前持久化，写失败终止当前执行。未完整保存的步骤不能凭事件名称重建成功。
+
+恢复先覆盖同一 attempt 的 Worker 接管。只有身份、版本和输入完全匹配的记录才可复用；引用与事实仍对冻结原文重新核验，外部观察时间仍是原时间。模型建议不能因来自检查点成为确认结论，预算账本仍决定真实用量；失败、取消、未知调用及未确认用量不会按零成本重放。新 attempt 默认使用既有冻结与重试规则，跨 attempt 的成功输出复用须另有明确兼容与新鲜度证明。
+
+Store 暂保留针对现有执行事务的窄适配入口，以调用其私有授权、任务租约和冻结依据复核能力；新增步骤模型、校验和恢复逻辑进入 Agent/Execution 领域，持久化适配器使用非拥有事务能力。该例外不开放可自报 scope 的通用事务或 SQL 入口，后续按 #148 将其迁入 Execution 持久化端口。已有终态投影、人工决定、模型账本和历史原件不被步骤恢复改写。
+
+不在旧事件 JSON 中塞入完整合同输出，也不使用框架内存检查点替代数据库围栏。若需要新增表，采用追加迁移、强制 RLS 和明确的角色 ACL，声明应用/schema 兼容范围与停写、恢复边界；不改已应用迁移。当前实现及运行验收均为 NOT_RUN，集中实现后执行受影响的重入、崩溃、撤权、旧租约、摘要篡改和预算用例。
+
+## #292 Contract 修订冻结、读取和历史导入的迁移边界
+
+状态：采纳。接续 #287/#291，在现有 Contract 模块内迁移版本冻结、版本查询及历史导入的模型、规则、应用编排和自有持久化；Store 的公开签名保持兼容。此决定不增加业务能力、数据库版本或新的任务平台，现阶段运行验收为 NOT_RUN。
+
+`clm_contract_revision_items` 是 Contract 冻结修订的不可变计划项索引：0028 的复合外键直接引用 `clm_contract_revisions`，插入沿用 `guard_contract_version_child_insert`，UPDATE/DELETE 由追加约束拒绝。交付与验收事实通过外键引用这些计划项，不取得修订计划的所有权。因此该表随 Contract 版本适配器迁移，现有 `insertFrozenContractRevisionItems` 可保留窄兼容转发供尚未迁移的来源观察调用；不能仅按其当前文件名把它归给 Fulfillment。实际交付、验收、付款及资产事实仍归原领域。
+
+Store 暂时承接当前身份、RLS scope、授权事务生命周期、锁及提交前 fence，并通过有明确输入输出的窄端口复用唯一的案件/主体/材料引用 resolver、字段绑定加解密与受限指纹。Contract application 承接校验、请求摘要、回执重放、状态/CAS、快照和结果组装的真实流程；不能把完整原 Store 业务体放进回调。引用 pins 只进入新冻结快照，StageFinal 金额校验、原字节封存、材料当前可见性和历史未知状态均保留。
+
+Contract PostgreSQL adapter 只读写本域聚合、修订、材料快照、封印、计划项索引和导入来源。业务事件复用 Contract 事件端口，投递记录复用 Platform Outbox 适配器，均使用同一个非拥有事务句柄。修订、索引、封印、聚合 CAS、业务事件、Outbox 与幂等回执共同提交或回滚；adapter 不开放任意 SQL、scope 或提交能力。历史导入不伪造会签、签署或专业审核，版本读取也不以当前解析、模板或政策重算旧快照。
+
+## #293 单原件冻结事实建议与执行投影
+
+状态：采纳，实施前决策。现有非治理单合同预检只运行付款比例规则，规划模型也不接收合同正文；一次 planner 调用不能证明主体、金额税口径、期限或例外已经提取。为补足真实材料验收的产品路径，新增有界、带引用的单合同事实建议，仍以单材料受限范围结束，不增加已确认风险或跨材料审查结论。
+
+事实建议归 Execution 的尝试输出，校验和应用规则进入既有 Agent/Execution 模块；模型客户端只承担严格类型的请求与响应，网关继续独占凭据、预算和用量账本。输入只取已冻结且校验通过的唯一主合同及其解析，正文作为不可信数据发送，输入截断和未知值必须显式保留。服务端用 Unicode codepoint 位置、精确引用及原件/解析摘要核对输出；引用定位只证明来源文本存在，不证明模型归纳、签署、工程适配或法律判断正确。
+
+新接纳的尝试须冻结事实能力及 prompt/schema/configuration 身份。历史尝试缺少该配置时保留原执行行为，不能从当前环境补开新调用。物理事实调用复用现有委派 scope、冻结模型配置、预算预约/结算、执行 observer 和活动租约；调用用途明确区分 planner、contract_facts 和 OCR。复用 0045 的 tool 步骤记录保存有界结果及身份摘要；同 attempt 接管须重新验证冻结输入、当前授权和引用，未确定完成的物理调用不得当零成本成功重放。此决定不新增数据库表、服务角色或第二个任务权威。
+
+终态复用 Execution 所有的 `execution_agent_reviews` 哈希投影存储及既有终态输出摘要链，但纯事实输出使用独立、带版本的 discriminator，不能伪装 `five-domain-review/v1` 或制造 Planner/五域字段。当前切片先覆盖非治理单合同路径，与既有治理审查投影互斥；每一代写入一次完整投影，保留原有同代字节幂等约束。旧五域消费者继续只接收五域投影，事实结果经独立 Workspace 字段显示；报告、补证与恢复读取也须按类型分派。日后需要同一次尝试组合两种输出时，先设计一次性组合及兼容规则，不通过覆写同代投影拼接。
+
+Store 暂保留已授权尝试的冻结材料解析、scope/租约复核、步骤 journal 和终态投影的窄适配；新增事实选择、归纳校验、引用绑定和失败语义不进入 Store 业务体。该例外不开放通用 SQL、scope 或跨案件读取，后续随 #148 迁入 Execution 持久化端口。HTTP/Web/真实语料 runner 分别展示事实建议、规划与 OCR 的实际调用，原12份与新项目材料仍分别验收。所有本批运行检查和真实模型/OCR验收均为 NOT_RUN。
+
+## #295 Contract 来源观察与历史持久化迁移
+
+状态：采纳，实施前决策。接续 #292/#294，把既有来源观察的模型、规则、应用编排及 Contract 自有持久化迁入现有 `internal/contract`。本决定迁移现有能力与历史/fixture 支持，不增加真实外部系统接入；用户取消的 #183 保持 NOT_APPLICABLE。HTTP 签名认证、服务端来源配置和公开 wire 不变，运行验收为 NOT_RUN。
+
+Contract 拥有来源到合同的身份、追加式 `clm_contract_source_observations`、合同与案件关联、聚合、修订和冻结计划项。案件的存在、归档状态及授权仍由既有案件边界负责，不新建领域分类。来源凭据、租户和允许案件集合由服务端配置解析，签名请求正文不能提供这些权限。`internal/clmsource` 继续提供来源能力与 `CompareVersion` 契约；不另建接入平台或删除已有历史。
+
+Contract model/app 承接输入校验、克隆规范化、语义及快照摘要、事件幂等、版本/序号不可变判断、归档或推进当前版本的决定与结果组装。Contract PostgreSQL adapter 仅访问本域表，使用调用者同一事务绑定的非拥有 executor；外部合同只能有一个且匹配的案件关联，由 Contract 自有持久化检查。业务事件仍由 Contract 事件端口追加，投递状态由 Platform Outbox 端口处理，禁止 adapter 查询案件表或设置身份、scope、提交与回滚。
+
+Store 仅保留服务身份、写入门禁、RLS scope、事务生命周期与提交围栏，以及两类明确窄桥：其一在同一事务内复核当前服务端允许案件集合，读取指定 tenant/org/case 的存在及非归档状态并取得 `FOR KEY SHARE`；其二复用现有字段绑定 codec 与原始来源载荷 codec。后者只封存准确原始请求字节，绑定 tenant/source/event/observation、字段 `source.raw_body`、用途 `contract.source.observation` 和现有 data epoch，不暴露密钥或任意加密上下文。既有 `clmsrc1:` 历史解码保留；冻结修订继续复用已批准的 DraftContent 字段封存桥。桥不执行来源版本决定、循环、摘要或旧 Store 完整业务体。
+
+一条观察仍为单一 PostgreSQL 事务，保留顺序：案件 `FOR KEY SHARE` → 来源事件 advisory lock → 来源合同 advisory lock → 合同聚合 `FOR UPDATE`。来源观察、可选身份/案件关联、修订/计划项、聚合与当前版本、业务事件和 Outbox 共同提交或回滚。保持事件ID与规范载荷摘要幂等、原始字节独立摘要、来源版本与序号不可变、opaque/monotonic 差异、未知金额不推进当前版本、旧序号仅归档及历史无可信 baseline 不替换当前版本。已应用迁移、append-only、RLS 与服务角色 ACL 不改。
+
+后续随 #148 迁入相应授权/持久化端口并删除过渡桥；不得把旧方法作为 app 的通用 callback，也不扩大成任意 SQL、身份或跨案件入口。源代码完成后再按固定候选执行来源幂等/序号冲突、未知金额、绑定、撤权、密文绑定和事务回滚的定点验收；当前全部 NOT_RUN。
+
+## #303 标准审查阶段与 Store 窄适配
+
+状态：采纳，实施前决策。基于 #302 源码候选 `949d78a4f00ce1f7ac38716c754f2721b6b9549d`。标准审查仍由 Store 四个阶段闭包组织规则、模型资料、引用合并及终态分类；仅把这些闭包传给 `execution.Run` 不构成迁移。Execution app 承接真实编排和纯计划，复用现有 engine、model 与 execution instrumentation。此次先迁标准路径，保留 #289 步骤恢复、#293 单原件事实 discriminator 和 telecom 冻结路由；不重建平台或变更公有 Store/HTTP 契约。
+
+冻结材料、解析及 normalized digest 由既有 Document 路径读取；run/attempt/snapshot、审计及执行输出保持当前持久化责任，不因目录改变 RLS 或数据库服务 owner。服务端构造冻结尝试身份；generation、epoch、claim 和 scope 不接受客户端声明。准备前可能没有最终 input hash，由准备结果明确返回实际摘要、document/parsed 身份及冻结文本，不从当前配置补旧尝试。引用 verified 仅表示对上冻结原文；Finding 仍是建议，人工决定历史独立追加。
+
+本次准许 Store 的专用过渡能力如下，最终方法名可随实现调整，但不能扩成任意 state、SQL 或事务 callback：
+
+- PrepareFrozenInput：复用原材料准备、验证和冻结，以及对应审计事务。
+- AppendRuleResults：仅应用 app 生成的 typed findings/evaluations，不在 Store 执行规则或分类。
+- MergeCitationDrafts：在原受锁真实前态内调用 app 纯计划并应用明确 typed delta，匹配、去重与 materialize 规则归 app。
+- ReadAttemptProgress、FinishAttempt：读取原尝试进度，并沿原 durable/inline 终态提交路径执行 typed 结果。
+- 原 attempt recorder 与受限 ID/时钟 codec：保留事件和 ID/时间语义，不暴露原 Store 业务方法或任意函数入口。
+
+引用合并保留 `scopedAttemptMutationInternal` 的 case→attempt→claim 锁序、当前授权、generation/epoch 与提交 proof。Store 私有适配闭包只把真实 fresh loaded state 的有序候选映射为 typed 输入，调用 Execution app 纯 `PlanCitationMerge`，再将显式新增 finding、字段替换及 anchor 追加 delta 应用到同一个 state。按 draft 顺序维护临时视图，保留 first-match、原 anchor 去重键、全部历史引用字段及 ID/时间生成顺序；app 不取得 Store.state，也不执行 I/O。原合并不递增 Finding.Version，不能据此新增事务外读取、版本 CAS 或重算协议。原先仅新建 finding 参与首次 verified 事件判断，仍在该次事务成功后记录。
+
+所有状态写继续从真实 `loadScopedAttemptState` 基线 clone，经原 append-only/service delta/stateDelta/persist；不构造空 state 或覆盖历史 snapshot/Decision。规则发布、引用写入、首次 verified 事件和终态各保持原提交点。适用 audit、job、Outbox 随原事务提交，并非每一步都有 Outbox。deadline 清理、父取消、recorder 失败优先和部分解析/模型错误分类保持，durable 与 inline 终态不能被新流程合并成不同提交语义。
+
+模型配置沿现有 nil 判断和 Warranty 窄协议，复用当前入口已选客户端、冻结 delegated scope 和 observer，不新增探测或 provider client。调用仍经网关预算 Reserve→重授权/dispatch→settle；trace/checkpoint 不替代账本，未知用量不记零。PostgreSQL 继续是任务/租约与业务权威，NATS 仅作短通知。本次不新增 schema、服务角色、默认外部连接器或专业结论。
+
+这些 Store 桥只覆盖本次 typed 标准流程；随 #148 相应 Document/Audit/Execution 持久化和授权 ports 逐项迁出，AR020 清理无消费者适配。SOURCE 覆盖真实规则/引用顺序、错误分类、持久失败、失权/旧 generation 以及终态兼容；并不据此宣称运行通过。整轮重构完成后统一执行检查，当前测试、编译、门禁、PG/app/browser 与真实模型/OCR 全部 NOT_RUN。
+
+## #304 Knowledge 治理的精确依赖与 Store 过渡桥
+
+状态：采纳，实施前决策。基于 #303 源码候选 `45a36d766b1e57b5788bb5ec50167dde99c4f290`。治理创建、命令、版本/目录、历史和政策预览的真实规则迁入 Knowledge model/app，自有 SQL 迁入 Knowledge PG。跨域依赖仍有私有身份和授权入口；保留原单事务内的专用精确事实桥，避免拆提交或让新 adapter 越权读表。此选择是受限过渡，不以旧 Store 业务函数 callback 代替迁移。
+
+Knowledge 自有持久化限于治理 versions、state、pointers、history、idempotency、policy_rule_bindings 六表；PG adapter 只接同一 caller-owned transaction 的非拥有 Executor，不持有 pool、scope 或提交能力，不访问 RulePack、Legal capture、Case/candidate/feedback/lineage、review snapshot、job 或 Outbox 表。Legal 捕获事实仍归 Legal；RulePack 不新增领域，候选等所有权不凭旧 UNKNOWN 清单或服务授权表推定。
+
+本次准许 Store 保留以下命名明确、同事务的私有能力，最终方法名按实际契约调整：
+
+- 精确 RulePack 版本及 pointer 事实：原 manifest bytes、存储 hash/digest、状态与 pointer 身份。复用现有 rulepack 解析契约，Knowledge 自己的 binding、期限、范围、authority 与阈值判定进入 app/model，不回调旧 validateKnowledgeBinding 整体业务。
+- 精确 Legal capture 或 batch 来源事实：现有不可变来源、状态、canonical text 和文章身份及来源层完整性验证。Knowledge 判断自身内容的精确绑定，不将来源可定位解释为专业审核通过。
+- scope/source 案件及祖先的当前授权、服务端 Org 推导与原 blocking/try case locks：只返回指定身份的必要事实，不开放 scope 枚举或任意 SQL。
+- 精确 experience candidate/version/feedback/lineage 事实及当前来源授权：来源层完整性和现有 candidate 自身 completeness 契约保持；Knowledge 对所需条件、内容一致性、依赖、跨案审阅及可发布性的决定进入 app，不把整个 knowledgeCandidate 业务函数隐藏在桥内。
+
+Store 继续 trustedAdmin、Core service owner、写门禁、updateAdminAs 或原读事务、schema advisory lock、transaction-local RLS、当前 source/ancestor grant 和提交 proof。各命令分支保留原依赖读取与错误优先顺序，幂等 replay 也重验当前授权。state revision + contentSHA 与 pointer revision 双 CAS、tombstone/无 ABA、追加 history 和幂等响应在原单事务内共同提交或回滚；案件与祖先锁、case_busy 竞争语义不变。不新增 schema、角色、ACL、Outbox 或事务框架。
+
+公开 Store DTO/方法保留直接字段、keyed literal、JSON tags/顺序、canonical bytes、摘要及 wire。精确同形 alias 可减少重复 DTO 和 mapper；内部形状不同才做有界转换。LegalMetadata 在此表示 Knowledge 不可变文章内容中的 metadata 值，不将 Legal 捕获表改归 Knowledge，也不改变法律审核 NOT_RUN。旧 business knowledge API、Legal 管理分派/案件读取和 Platform 配置聚合保持；若抽取 published-policy catalog，只迁 Knowledge 行读取，不迁模型/凭据聚合。
+
+本次不迁 #305 Resolve、接纳、retry 和 worker frozen read，既有消费者通过兼容入口继续使用精确值和规则。T14/T15/T23/T08 的规则包、知识版本、业务时间与执行尝试含义沿唯一概念源，不新增同义概念源；旧尝试不补当前知识或改写冻结身份。原跨域 state writer 的真实 load→clone→append-only/delta→persist 及适用 snapshot/run/attempt/job/Outbox 原子性不变，不能构造空 state。
+
+本过渡桥随对应领域公开 contract 就绪逐项退场，AR020 检查消费者后删除无用适配。实际包落地后登记架构路径；必要 SOURCE 补真实 CAS/history/幂等失败回滚及当前授权，不复制旧完整矩阵。全部运行检查、PG/app/browser 和真实模型/OCR 仍 NOT_RUN，整轮重构结束后统一验收。
+
+### #304 旧知识版本命名空间兼容读取
+
+状态：采纳，创建接线前的补充决策。现有 `validateKnowledgeVersionFamily` 先在同一条固定 SQL 中检查 `business_knowledge` 的 tenant/id/version 或治理 versions 的 tenant/knowledge_id/display_version 是否占用，再检查治理族是否出现其他 kind。两条 API 的版本命名空间共享冲突边界，但旧 business knowledge 不据此归入新 Knowledge PG 六表。
+
+准许一个专用 `VersionSlotOccupied` 同事务只读事实桥，输入限于服务端绑定 tenant 与精确 knowledge ID/display version，返回 bool/error；保留原两表 EXISTS OR EXISTS 的单条固定查询。app 根据该事实给出原重复版本冲突，随后才调用 Knowledge 自有 PG 的 family-kind 事实并判断。桥不执行内容、生命周期或 family-kind 决定，也不开放 SQL、scope、pool、事务或泛化 callback。此处保留旧单条查询，避免拆成 LegacyExists 与 GovernedExists 后增加查询及改变错误时序；Knowledge PG 不读取 business_knowledge，服务角色/RLS/schema 锁与原事务不变。
+
+本例外只覆盖创建/导入现有命名空间兼容的精确读取；不迁旧 API、不推定其数据 owner。相应公开所有者契约可承接同事务兼容检查后删除该 Store 桥，AR020 继续检查消费者。所有运行检查仍 NOT_RUN。
+
+### #304 来源授权失败的精确读取返回值
+
+状态：采纳，兼容性例外。旧 `GetGovernedKnowledgeVersion` 在来源/祖先授权失败时仍以 `(已加载版本, error)` 返回，错误值之外可能携带受限正文；本次迁移保留新版 app 的零值返回，明确以 `(零版本, 原错误)` 收紧该路径，符合默认拒绝授权的边界。HTTP 原错误码、错误体、公开方法签名与成功响应不变，来源权限仍在原事务和原校验点复核，不改变角色、查询或冻结内容。此决定仅确认来源授权失败的精确内容读取，不据此更改其它读取/写入的错误返回值；必要 SOURCE 须证明已通过内容完整性校验后发生授权拒绝，且返回值不携带正文。运行验证仍 NOT_RUN。
+
+## #305 审查知识选择与冻结校验的过渡边界
+
+状态：采纳，实施前决策。基于 #304 源码候选 `6d3d1014e0a988d48650a0df078f7e2d774a9087`，接续其精确版本读取、纯模型与非拥有事务能力。Knowledge app 承接当前知识候选选择、mandatory/optional 覆盖、适用条件、排序与预算、精确依赖校验、快照封存、Retry 比较和冻结引用读取；不把旧 resolver 或 frozen validator 整体包装成回调。
+
+复用既有 RawVersion、LoadedVersion、VersionReader、ValidateRawVersion、LegalFactsReader 及 model 值，保留 `review-knowledge-snapshot/v1` 的字段、tag、顺序、nil/空数组、canonical bytes/SHA 和历史 Legal cutoff/fingerprint 特例。Knowledge PG 仍只访问自有六表；active-candidate 用固定 typed 查询保持原 knowledge_id/scope_key 排序和 4096 上限，不把管理分页或 Platform summary 当作执行选择接口。
+
+Review/Execution actor 来自原受信 case/run/attempt/claim 与数据库身份解析，沿原 proof、租户 epoch、generation 和当前权限复核。不能复用治理 RecheckAdmin 要求或提权；case/org/业务属性、businessAt/cutoff、依赖身份均服务端构造。准许 Store 在同 caller-owned transaction 下提供以下专用窄能力：
+
+- 当前目标、来源、祖先的 Read/Review grant 与原 blocking/try case locks。
+- 精确 RulePack identity、manifest、compiler、active/pointer 事实；不新建 RulePack 领域。
+- 精确 Legal capture、时间/身份与已有冻结依据事实；Legal 捕获和 Legal 自身适用性规则仍归 Legal，优先复用已有纯 legalnorm 契约。若实际需要跨域决策公共契约，先列明最小具体接缝，不把整段 Store 业务藏在接口内。
+- 冻结 run/attempt/snapshot 的原读取与接纳挂接：app 只返回 sealed snapshot、精确身份和 typed 决定，Store 沿真实 state writer 应用，不开放 Store.state、pgx.Tx/pool、任意 SQL/scope 或通用 mutation callback。
+
+Start 在原 receipt/config/case/assessment hook 取得 app 结果，仍经真实 loadState→hook→clone→append-only/serviceDelta/stateDelta→persist→commit，已有 run/attempt/input/snapshot/audit/job/Outbox/receipt 的原子性不拆。不构造空 state 或覆盖旧快照；独立 readiness 事务不能替代接纳同事务复核。
+
+Retry 按原业务时间解析当前依赖，变化返回冲突要求重新发起；Retry 不自动创建新 run，随后 Start 才按当前 signature 决定复用或新建，旧 snapshot 不改。worker/adoption 从数据库装载原 frozen digest/refs 并重验当前 actor/source/ancestor 权限，不按当前 pointer 重算旧引用。required 保留原 exact selection 与 raw pointer active，不机械改成派生的 Version.Active；optional adoption 不新增 active 要求，而 ReadFrozen 对所读 exact ref 另有 active 要求。原 case→attempt→live claim/generation/tenant epoch/inputHash 围栏与 #289 成功步骤的重读、比对保持。
+
+经验人工使用账本继续原 Decide/source 授权和命令事务；知识行读取接新 contract 只替换精确 facts，不迁模型预算或人工决定。Core 写治理、Execution 只读等服务角色/RLS/schema 不变；预算、租约和 Outbox 仍由 PG 决定，NATS 仍只作短通知。过渡桥随对应公开领域 contract 逐项迁出，AR020 消费审计后删无用适配。必要 SOURCE 固定 canonical 历史、Retry/新 Start 差异、optional adoption/read 差别、接纳及后续 persist 失败回滚和撤权/旧 generation 边界。整轮重构结束后统一运行检查，当前均 NOT_RUN。
+
+### #305 Legal 纯契约与 Subject pin 精确事实
+
+状态：采纳，选择器接线前的具体补充。当前冻结法律依据同时读取 Knowledge 精确版本、Legal 事实历史和 Subject pin，不能把原 `freezeLegalAuthoritiesTx` 整体作为新 Knowledge 回调。先提取实际依赖的最小 Legal-owned 纯值与规则到 `internal/legal/model`：事实版本/条件/缺口/冻结依据、时序选择、party stale/ambiguous 与 all_of 判定、规范化及指纹。Store 保留当前事务的来源事实读取与权限；Knowledge 组合封存知识快照。此处是已有规则的真实依赖抽取，不提前建设 Legal CRUD、平台或空包，#306/#307 仍承接剩余捕获与管理/依据路径。
+
+准许仅为既有 Legal 依据链读取服务端绑定 tenant/org/case 与 pin 的精确 Subject 事实：case_subject_roles 当前绑定头、case_subject_role_versions 当前版本字段、指定 subjects.current_version，以及同案件/角色的 active binding 数。业务主体归 Subject，不能与登录 Identity 混同，不按此给它改物理 owner。桥返回 found/版本/subject/role/state/count 原始值，Legal 纯规则决定 stale/ambiguous；保留原 binding→subject 当前版本→仅在 pin 新鲜时请求同角色 count 的查询/错误先后、原 case scope/授权/锁、service role/RLS，不扩大成通用主体枚举或新授权入口。
+
+Legal 公共纯值可消费 Knowledge 公共值引用及 rulepack/legalnorm 契约，不导入 Knowledge app/PG 或 Store；Knowledge app 可依赖该 Legal 纯契约。A 段泛型 v1 snapshot 只承载 Legal-owned authority 值，避免把 Legal 类型永久归 Knowledge或形成 model 循环；Store 以实际具体类型实例化，Wire/tag/字节与 SHA 不变。后续最小 Legal 值抽取后仍保留这种数据所有权边界，不通过任意函数 callback 绕过验证。实际 Legal Go package 落地后登记真实角色路径；数据库 schema、服务角色及外部连接器不变，所有运行检查仍 NOT_RUN。
+
+## #306 官方来源捕获与已核验知识草稿组合
+
+状态：采纳，实施前决策。基于 #305 已审查源码候选 `c0cd498fa727110a0a1739213572c561f3b0d4fe`，以下窄能力先于 #306 实施明确。
+
+接续 #304/#305，迁移已有来源导入和精确捕获读取，不新增真实外部系统接入。Legal 拥有 `legal_source_captures` 的原始响应、提取文本、状态证据、条文 manifest、请求摘要与有序 imported refs；Knowledge 拥有自己的版本、状态与历史。Legal model/app 复用 `legalnorm.VerifyBaseline` 和现有值类型，PG adapter 只访问自有捕获表，绑定原调用者事务且不设置身份、scope 或 commit。Legal app 声明窄 Knowledge 端口，通过 Store 同事务适配调用 Knowledge app 的批量草稿准备与持久化；跨域草稿值归 Knowledge model。既有 Knowledge app 已组合 Legal app，因此 Legal app 不反向导入 Knowledge app/PG 或查询其表，避免循环；Knowledge PG 不读 Legal 表。
+
+Store 保留原 `commandContext`、trusted admin、Core/只读门禁、mutex、schema advisory lock、tenant governance scope、原 RR 读取事务/写事务及提交前 admin 复验。导入在第一次只读 replay 未命中后才验证数量、快照断言与 official baseline；第二次同事务 replay 在 verifier 和 article-version 覆盖核对之后、服务端 capture ID 和逐篇内容/namespace 校验之前。两个 replay 保留相同 tenant/actor/key、原摘要冲突和已存结果完整性规则，不为重放追加新权限或业务校验。
+
+同一事务内，Legal app 生成服务端 capture 身份、根据已核验全文构建有序条文内容；Knowledge app 先完整批量预检（重复编号、内容、已批准的单 SQL legacy-or-governed 版本槽事实、自己的 family kind），产生精确 bytes/SHA/version ID/refs，全部成功后才插入 Legal 捕获。随后按原顺序逐篇运行精确来源核验并由 Knowledge 自己插入 version、draft revision 1 和 create history。三类 Knowledge 写入与 Legal 捕获共同提交或回滚；不调用普通单篇 Create 的 pointer/read/recheck/receipt 路径，不增加逐篇幂等回执，不自动批准或发布。
+
+准许的过渡桥仅为：绑定同一事务的 Legal replay/insert/exact-capture facts；既有 Knowledge 精确 replay ref/content/capture-identity 验证；同一 tenant/id/displayVersion 的单条 legacy-or-governed namespace facts；现有服务端 ID 生成和身份/提交围栏。复用 #304 的窄 Legal capture facts 校验，保留 digest→metadata→manifest→article 的错误顺序。桥不接收任意 SQL、事务/state/scope 或旧完整业务回调。业务循环、摘要、版本计划、source内容决定和结果组装均在领域 app/model，Store 仅负责事务组合。
+
+重放结果保持原窄验证：先读取 Legal summary，再解析非空有序 refs，逐 ref 由 Knowledge 自有查询只读取精确 tenant/id/version/kind=legal/captureID 的 content SHA。不能替换成完整 LoadExactVersion 而增加正文、pointer、批准、来源或其他早期错误。完整 capture 读取与 Knowledge metadata/reference facts 读取保留各自验证顺序，不能以一种更重的读取改变另一种首错。
+
+保留现有 DTO 直接字段、JSON tags/顺序、scrubbed capture ID 后的 request digest、有序文章 manifest 原字节及摘要、raw/status bytes、DB created_at、历史字段和错误。获取捕获的案件路径仍先当前案件 Read，再查精确 published/withdrawn Knowledge 引用，最后读取指定 immutable capture；该查询经 Knowledge 自己的接口实现，不放入 Legal PG。后续 #307 迁移适用事实管理，#308 迁移 Subject，不扩大本次事务或专业结论。TextCheckStatus PASS 仅代表来源文字核验；LegalReviewStatus 继续 NOT_RUN。
+
+schema45、五个服务数据库角色、RLS、append-only 和 PostgreSQL 权威不改。whole-refactor freeze 前所有测试、编译、门禁、app/browser 与真实模型/OCR 为 NOT_RUN；草稿本身不是实施或运行验收证据。
+
+## #307 法律适用事实写入与精确材料依据
+
+状态：采纳，实施前决策。基于 #306 已审查源码候选 `29639c95e297287cb3b26d287bfe5ecec835b938`，在 #307 新增窄桥前明确下列边界；源码候选不是运行验收。
+
+Legal model/app 承接现有输入规范化、维度枚举、请求摘要、时序与幂等、Record CAS/追加、Resolve/History 和 frozen authority gate 规则。Legal PostgreSQL adapter 只访问 `case_legal_applicability_facts`、`case_legal_applicability_fact_versions`（捕获表继续其既有 owner），使用调用者同一非拥有事务；不得读写 Case、Subject、Document、Knowledge 或 Run 表。公开 Store DTO/方法与 HTTP wire 继续兼容；复用 #305/#306 已落地能力，不重复冻结或导入流程。
+
+Store 保留原 Core/只读门禁、trusted actor、命令证明、ReadCommitted 与 schema advisory→scope→case advisory 锁、目标 Case 当前 Read/Manage、原提交围栏。Record 在当前 Manage 后计算原 request digest，查该 actor/dimension/key 的版本 receipt；命中后精确读取原版本并核 basis manifest，再比 digest、原 Manage 检查并提交。重放先于 businessWritable、材料、Subject pin 和 CAS，也不额外加原分支没有的 trustedUser 查询；contextTx 的提交证明不变。miss 才走原业务可写、材料依据、server now/normalize、Subject pin、head lock/CAS、append/head更新，最后按原路径 trustedUser/Manage 复验并提交。
+
+准许的专用过渡材料能力为 VerifyLegalApplicabilityBasis：服务端绑定 tenant/org/case 与原事务，miss 在业务可写后对所有 BasisRefs 形式调用；内部沿原 loadState(ctx,tx,true)→精确本案 tenant/org/ID→BasisProvided 顺序，再在有依据时复用既有严格 Document/material resolver。请求不携带权限，不给 app state、pool、pgx.Tx、任意 SQL 或通用业务 callback。严格锚点限1–8个，核 material/version/document 及指定 ready parse 的同案身份和 digest、Unicode span/quote SHA；只返回原 canonical materialAnchorProjection JSON、精确引用身份及该引用 Documents 最大 CreatedAt（UTC微秒），空依据按原 []/nil。原格式/缺案/原文不匹配/取得时间错误顺序保持；材料取得时间不是业务发生时间，晚于 cutoff 的依据不能回写旧审查。
+
+Subject 有两种独立精确读取协议。Record 原一条 joined query 同时取 binding head、current binding version 字段及 subjects.current_version；无行或版本/主体/state stale 先409，随后 role mismatch 为原422，全部匹配才查同case+role active count并按scope note判定422。不能复用把role并入stale的Resolver判断改变错误。Resolve/Freeze 继续 #305 的 binding缺失先stale、存在总读取subject current、fresh后才count协议。两类桥都只返回 found/版本/subject/role/state/count 原始事实，规则归Legal，物理owner仍Subject，角色/租户/锁/RLS不扩大。
+
+Record 从 head FOR UPDATE 取当前版本后先 expectedVersion；仅新family才生成factID、INSERT head(current_version1)，然后 append immutable version；已有family则 append后CAS前进head。receipt是原fact version上的actor/key/digest，不另建表或对历史UPDATE。任何后续失败同事务回滚，保留原唯一约束、append-only、fence与真实PG角色。Resolve/History 保留原RR/read-only、scope、case锁、Read与commit复验、limit/cursor/排序/nil[]语义；family读取须保留逐行scan→basis校验→head一致性→下一行/Rows.Err的错误次序，不以先收集全部行提前抛末尾错误。
+
+#305 Standards建议在此收口：Legal维度来自唯一枚举源，Store与app复用Legal ParseFactTime的RFC3339+UTC微秒语义；SameTimestamp保持原RFC3339 Equal精确时刻，不能改用截断比较。`rulepackAuthorityGates` 迁纯Legal规则并保留legacy missing→not_applicable→unknown优先、unknown理由字典序和key排序，Store仅兼容转发。已有Subject/operator严格材料resolver消费者不顺手删除；窄桥随对应领域契约逐项迁出，AR020消费审计后再删除死接口。
+
+schema45、数据库服务角色、当前授权、预算/租约/Outbox/PG权威和所有旧冻结快照不变。全部测试、编译、门禁、数据库、app/browser与真实模型/OCR在整轮重构后固定候选统一验证，当前NOT_RUN。
+
+## #308 业务主体变更与受锁状态桥
+
+状态：采纳，实施前决策。基于 #307 已审查源码候选 `3d2129da166ebe1d17d727d7302d7c5c99bb414e`，在 Subject 新状态桥与持久化接线前明确边界。迁移既有业务主体、关联、来源和人工更正，不新增真实外部系统接入。
+
+Subject 是业务主体，独立于登录 Identity。Subject model/app 拥有 subjects、subject_versions、subject_current_identifier_claims、case_subject_roles、case_subject_role_versions、subject_change_requests、subject_change_decisions、subject_write_idempotency、subject_source_snapshots 的规则和值；Subject PG 仅访问这九表，使用同调用者非拥有事务。公开 Store DTO 用原直接字段、tag、顺序及 alias 兼容；规范字节/hash、人工决定/版本/来源快照追加历史与原唯一约束保持。已有受控来源仍仅 synthetic_controlled，匹配只能生成待人工决定的 proposal，不能直接更新 verified 主体或声称真实系统验证。
+
+准许 Store 将原真实受锁前态的 Subject-owned 集合映射为明确域快照或精确 facts，供 Subject app 返回有类型 delta：expected→next 主体/关联头、新增不可变版本、当前 identifier claims 的原替换投影、proposal/decision/source/receipt 和返回结果。该快照不包含任意 Store.state、其它领域集合、pool/SQL/scope/tx；delta 不接任意变更回调。app 拥有匹配、版本、patch、影响集合、排序/hash、独立决定、来源和可见投影规则。Store 只按字段映射把 delta 应用到原真实 clone，再沿原 append-only、serviceDelta/stateDelta、persist、commit proof 及提交后 projection 更新路径，不能用空 state 重建或绕过原真实前态。PG 迁移替换原 Subject 自有 load/replaceRows 段，仍在原其它域持久化与 audit/Outbox 事务中，不提前删写入责任或加独立 commit。
+
+保留实际两种锁协议：通用更正路径 schema advisory→sorted subject→sorted case；现有受限单案创建路径保持 scope→case 等原协议，不一律套 schema 锁。Create/Bind/Proposal/Source 原业务可写 Manage 与 replay 先后分别保留；unbound 创建仅原创建者可见未曾绑定的 pending 主体，不能放大为租户任意读取。Store 保留目录可信 actor、issuer/subject、租户/组织、Case 当前权限/归档事实、原 role/RLS/证明/提交围栏，客户端不提供授权。
+
+准许的材料窄桥复用既有严格同案 material version→document→指定 ready parse 校验及 rune/quote digest，输入仅绑定 tenant/org/case 与锚点，输出原 canonical verified basis 与精确身份；不把整份 state 或主体/Operator 业务交给 app callback。另准许原 legacy profile/version 精确事实和服务端来源 manifest、指定 frozen payload 校验事实，只服务对应命令，不提供任意配置/跨案读取。原摘要和 codec 上下文/密钥不对 app 开放。
+
+DecideSubjectChange 原锁前读取只确定锁集合；锁后 app 必须重读真实 request/head/version/既有决定、重算当前 affected bindings 排序/hash，不能信任 preview。Store 在 app 明确列出的每个受影响 case 上复核当前 Decide 与 businessWritable，并提供同事务精确事实；不能用部分可见集合代替全影响集合。保留 proposer 与 decider 按UserID或可信issuer+subject的分离、expected payload/版本/impact ETag、替换目标主体和所有关联版本检查。批准追加主体或关联版本及决定/receipt，拒绝只追加决定/receipt；关联重钉版本与当前identifier唯一冲突按原序。无权案件不通过投影、impact或返回值泄露；人工决定不覆写旧 SQL。
+
+当前identifier claims仍由受影响Subject头所指的精确SubjectVersion.IdentityClaims派生，只按原受影响主体删除重建，不全租户重置或另建独立事实来源。
+
+Subject PG 迁移保留原 loadScope/loadCase、head upsert→version append→identifier claims 原删除重建→binding head/version→request→decision→receipt→source snapshot 顺序、原受锁 expected-version 检查与 DB 错误映射，不暗加原路径没有的生命周期/CAS条件。冻结 partyContext 按原规则引用精确 binding/subject版本、排序和hash；后续当前头或标签变化不重算旧 attempt。Store/Execution现有 frozen-input、claim/generation/epoch/lease、budget和Outbox权威不改变。
+
+Legal原pin事实在Subject自有读取契约落地后改为同事务精确适配，保留Record原单JOIN与Resolver binding/subject两步及fresh后count的不同查询语义；不让Subject PG依赖Legal app/PG或改物理owner。
+
+过渡快照/delta桥随 Subject 公开contract与持久化迁入逐项缩小，AR020消费审计后删除死 facade。schema45、五个数据库服务角色、RLS 与PG权威不改。必要 SOURCE 固定真实回滚前提：已写主体/当前claims/全部跨案binding版本/人工决定后receipt或commit失败的完整行回滚、锁后影响变化/撤权和同键恢复。所有执行检查、应用/浏览器、真实模型/OCR待整轮源码冻结后统一，当前NOT_RUN。
+
+
+## #309 服务对象与冻结关联接缝
+
+状态：采纳，实施前决策。基于 #308 已审查源码候选 `edbb4ba41615597151b17ff26ea5d55a5af63526`，迁移现有服务对象、材料关联、候选与审查冻结上下文；不新增真实外部接入。Operator 是领域所有者，association 表达冻结合同材料关联，其身份仍为 material/version/document/parse/run/attempt，不增加 CLM 合同 ID。#310 继续现有映射人工变更/采集租约，#311 继续现有评估/影响；本项不提前重建这些流程。
+
+先迁实际依赖的 ServiceObject DTO、association planner、identity/facts/basis/candidate/context canonical 规则至 Operator model/app，Store 保留直接类型别名与必要薄转发，字段/tag/顺序、nil/[]、RawMessage 与 SHA 原字节不变。pending 首次确认才推进 confirmed 身份版本，已 confirmed 保持原版本，inactive、旧双指针和错误事实仍按原规则拒绝。现有 identity-change planner 的私有已审核决定 pin 不公开为可任意构造的信任标记；其 #310 写规则/标记留原边界，到对应领域迁移时再承接。context 内部只需 mapping 公共精确 pin 时可投影最小只读值，不为纯规划搬动含私有 request digest 的完整 legacy mapping 实体。
+
+Operator PG 只访问自己的 service_objects、service_object_versions、service_object_contract_associations、service_object_mutation_receipts 及已有 Operator mapping 自有精确事实，不查 Case/Document/Execution/Subject/Contract 表或导入其它领域 PG。使用 platform 的 caller-bound non-owning executor，不设置 scope、身份、连接或事务生命周期；实际 model/app/PG 都接线后才由 root 登记真实领域路径。
+
+Store 保持 Core/只读、trusted actor、原 RC 写事务的 schema advisory→scope→case advisory→当前 Case Manage/writable，以及 RR/read-only 的当前 Case Read。Create 原取 Now(UTC微秒)→normalize→normalized digest→receipt；miss 再 writable/count &lt; 100/ID→head/version/receipt→当前 trusted/Manage/writable复验→commit。Confirm 原 key/trim/validate/digest→receipt；miss 再 writable→原 loadState 时点→object FOR UPDATE→已有关联时 mapping EXISTS 与审批流程检查→current exact version/preview→候选/objectRef/facts/hash/双 expected 指针→Now→必要 identity version→association→双 head CAS→receipt独立 Now→原提交围栏。两个 replay 保留原直接 commit，不附加 miss 的末尾复验；首错与 query/clock 时点不改。
+
+准许的专用跨域过渡能力分阶段提供明确值和原证明，不能把 validateOperatorFrozenAttempt、deriveServiceObjectAssociationPreview 或整个旧业务改名为 callback。依原顺序：terminal run/attempt 与 finished/state → frozen input/output hashes → exact attempt input/snapshot/selection 身份与 input hash → 指定 Document 原件/parse完整性 → 同事务 exact agent-review digest 与有序 findings/evaluations output hash → frozen RulePack compiler/raw/normalized digest、tenant/published/case业务范围。Case 只提供服务端 tenant/org/case/业务属性、当前 grant/writable、可信 actor；Document 只提供精确 material/version/document/digest/parse/normalized hash/citation 与既有 artifact/original IO证明，不查最新解析替换冻结引用。
+
+Execution 拥有上述输入/输出的纯身份与哈希规则；既有 standard app 的简化 PreparedInput 不足以代替完整 frozen provenance。必需的 frozen 值/纯函数必须以真实具体字段或有边界泛型保留 v1/v2 JSON、scopeSnapshot、tenant config、document/parse排序及旧 artifact digest 空值兼容；纯 model 不导入 Store/app/PG。实施该值抽取前另列实际最小 DTO/依赖方向及消费者补充决策，不把整份 state 或无类型 verified 包交给 Operator，也不为本项顺手迁全部 Execution 状态。现有 remediation/evidence/single-contract/shadow 与 #311 消费者保留各自原错误/事务路径，以薄转发逐项退出。Operator app 依次组合公开证明值和窄端口，真正拥有候选事实分组、citation精确身份筛选、canonical摘要、人工确认与 CAS plan；Execution/Document 不反向依赖 Operator app。
+
+审查 context 继续按 object ID 排序读取 current head→exact identity→optional exact association→mapping pin 并校验一致性，按明确业务时间及 [from,until) 规划，不能用服务器时钟代替 businessAt。原 no source 且无 governed knowledge 的 nil、受理前 inventory_pending/Complete=false、unresolved原因与精确候选范围保留。Store 仅将 typed context/hash 映射入原 RunSnapshot，受理/Retry 沿原真实前态 clone/append-only/stateDelta/persist 与 run/attempt/snapshot/job/Outbox/receipt 同事务；Operator PG 不写 Execution 表，旧 attempt 不按当前对象或解析重算。
+
+必要 SOURCE 覆盖 exact parse、撤权、版本/association/双head/receipt 已写后的唯一失败与完整行回滚、同键恢复，以及接纳 snapshot/job/outbox/receipt 的真实完整前置。schema45、五个DB服务角色、RLS、预算/租约/Outbox与PG权威保持；synthetic示例不等于真实来源验证。元信息与所有测试、编译、门禁、数据库、app/browser、真实模型/OCR仍待整轮源码冻结后集中执行，当前NOT_RUN。
+
+
+### #309 Execution 冻结值的具体接缝
+
+状态：采纳，冻结值抽取前补充。依据前置 edbb4ba 的实际 Run/Attempt、state.go/parsing.go/execution.go 和已落地 Operator 纯 context 值，不将现有 standard pipeline 的简化值替换持久 frozen DTO。只建立有真实数据和规则的 internal/execution/model；Store 按原直接字段、类型、tag/顺序及隐藏标记做具体 alias，不迁行查询、事务、当前权限或整个 Execution Store。
+
+Execution model 拥有 Run、Attempt、ReviewScopeIdentity、AttemptParseSelection、FrozenMaterialSelection、冻结 input/output 的 Finding/Anchor/SeveritySource/ConstraintEval/EvaluationEvidence 等具体值。原 ExperienceEvidenceRef 是相同冻结引用值时用直接 alias 保持原公开形状，不另镜像第二份字段。RunSnapshot 只引入三个具名静态值槽 RunSnapshot[PartyItem,KnowledgeSnapshot,OperatorContext]，仍按旧字段位置保存 party slice、knowledge pointer、operator context pointer；Store 固定实例化既有 Subject、Knowledge+Legal 和 Operator model 值。FrozenDocument[OriginalDocument] 与 AttemptInput[OriginalDocument] 保留原件为首字段、完整原字段/IR/provenance，Store 固定 alias 到自己的 Document；不引入任意 map、插件、无类型 payload 或跨域 model 循环。
+
+原件数据仍由 Document/Store 边界拥有，Document 原结构、字段、JSON与StorageBackend隐藏标记不变。准许 Store 为自有 Document 增一个无IO、无授权含义的 OriginalProof() 字段投影，满足 Execution model 的小接口，返回 `OriginalDocumentProof{ID,Digest,TenantID,OrgID,CaseID,Role,CreatedAt}`，七项原值逐字拷贝，无规范化。该 proof 是读取证明所需标识，不替代或写进持久 FrozenDocument；JSON仍编码完整具体 Document。SelectionHash 只读 proof.ID，AttemptSelectionsMatchFrozen 只读 proof.ID/Digest；Operator 后续候选读取该明确 proof 与必要 frozen material/parse/ready/normalizedHash 值，不能把 proof 当grant或把全部原件改放Execution。
+
+只抽 frozen input v1/v2 canonical hash、input/snapshot/selection匹配、终态/hash存在性纯谓词、ordered output hash和 frozen RulePack纯scope/identity规则。v1/v2 envelope、omitempty/nil/空数组、config version/digest、artifact digest为空的历史兼容、所有旧JSON字节/SHA保持。scopeSnapshot/engine mapping、原 state 的精确run/attempt/snapshot/selection/finding/evaluation选择、Document artifact/original证明IO、agent-review同事务SQL仍Store窄桥；各旧完整validator及其消费者继续原事务/错误映射，不用单个verified结果替代分阶段事实。
+
+兼容排序副作用单独约定：旧 frozenInputHash 在 scopeSnapshot 后按值复制snapshot但对两组ID的共享slice原地sort，部分调用者可能观察到同次流程顺序。Store旧同名forwarder继续在原位置执行这两次sort以保持调用者行为；新的纯model计算在自有拷贝排序，保留同样canonical bytes与document输入次序，不通过本次迁移修改旧acceptance的持久行或扩大纯函数写入。Finding Version清零用于输出hash时同样只处理用于计算的拷贝，不引入对旧人工决定/冻结输出的写回。
+
+实际新增Execution model路径在真实接线后由root登记到已有Execution领域，Operator仍待实际纵切收口再登记；不新增服务角色/表/schema或互相导入app/PG。必要SOURCE固定v1/v2历史bytes、静态槽实例化的wire、精确selection/空artifact兼容、output人工Version排除及model不改输入；所有执行仍NOT_RUN，待整轮源码冻结后统一验收。
+
+## #310 映射审批与采集租约的迁移边界
+
+状态：采纳，实施前决策。基于 #309 源码候选 `0ebc1ce5a274c8aacf6c0c1703160b91bb033ad9`，迁移既有初始人工映射、四版本 CAS 更正、异人决定、只读采集租约及管理读取。复用既有 Operator 模型、冻结预览、`auditext.ReadConnector`、`Observation.Validate` 与非拥有 PG executor，不增加真实接入、外部写回或任务平台。Operator 是业务域，数据库写角色仍为 Core；schema45、五个服务角色、RLS、PG 权威不变。#311 评估和 Impact 另行迁移，其既有 binding/snapshot 精确读取可薄转发新 owner，不复制第二套 SQL。
+
+公开 DTO 保留字段、tag、顺序、nil、时间和完整 response body 语义，Store 用直接 alias 兼容。私有请求摘要作为本域存储事实与 DTO 分离：采用 `BindingRecord{Value,RequestSHA256}`、`MappingChangeRecord{Value,RequestSHA256}`、`SnapshotRecord{Value,RequestSHA256}` 等具名 record，不能把私有 SHA 增为用户响应字段。PG scan 保存公开字段及独立列 SHA；历史 response_body 在原位置以 json.Unmarshal 解码到已扫描的公开 DTO，显式零值覆盖，缺字段或整体 null 保留原 Go 解码语义，不先清零 DTO，也不做按非零字段手工合并。该列 SHA 始终独立保留，不参与公开 JSON 覆盖。record 不作为 HTTP 或响应回执编码；旧 helper 中真正比较摘要的消费者改用 record，仅需公开业务值的消费者拆 Value。Snapshot 的 CollectionID 继续隐藏；Evaluation 的同类私有元数据由 #311 承接。
+
+映射 model/app 拥有输入规范化、四个 expected pins、canonical before/after/impact/request 摘要、SOD 与真实应用编排；本域 PG 只读写 bindings、lineages、requests、decisions、collection claims、snapshot sets、observations 及既有 service-object 自有行，不查询 Case、Document、Execution、Subject 或其它领域表，不设置身份、scope 或事务。沿用同一个调用者绑定 executor，Store 保留原受信身份、Case 授权、锁、RLS、事务生命周期与提交证明。不能把完整原 Preview/Propose/Decide/Collect、当前 tuple loader 或业务事务体改名为 callback。
+
+身份修正的私有已审核 capability 与 identity-change planner 一起进入实际 Operator app 决定编排包。只有完整提案、异人、CAS、after/impact 摘要和依据复核通过后，才在包内私有构造并使用；不公开 `Validated:true`、可信批准结构或任意构造器。Store/PG 只承接 app 产生的实际追加记录和原事务，不替调用方伪造批准。只测该私有 planner 的旧 Store 测试可迁到 owner 包，规则保持唯一。identity 修正继续复制原 association 的完整 FactRefs、FactsCanonicalJSON 与 SHA，不查询新解析替换冻结事实。
+
+材料依据复用现有唯一严格 resolver `validateSubjectBasisRefs`，限原已授权 tenant/org/case 及同事务实际 state，继续核 1–8 anchors、精确 material/version/document/parse、ready/原件证明、rune span 和 quote SHA。准许的 Store 窄桥只返回 canonical verified anchors，并保留原 resolver 错误；Operator app 在原调用点负责非空和逐项匹配当前 association 的四个 pins，保持原三类错误顺序。此桥承接 #308 已允许的严格材料 resolver，不传整份 Case/Document/state，也不复制严格 decoder、原件证明或把整个 `validateMappingChangeBasis` 作为回调。
+
+可选合同关联更正复用 #309 的 `PreviewFacts[D]`、`Preview[D]` 及逐阶段精确冻结证明：run/attempt/input/output、parse selections、Document IO、同事务 agent digest 和 RulePack。Operator app 比较目标 ObjectRef、facts/candidate 摘要并规划关联，不能调用会拒绝已有 mapping 的普通 Confirm。basis 和可选 target 的读取保持各原入口的顺序，不提前扫描、扩大授权或用当前 parse 重算旧提案。
+
+初始绑定保留原外层 Manage、专线场景、输入及时间默认、bindingID、legacy/pinned 请求摘要与回执优先次序。外层以原 user 解析 current，`withOperatorTx` 仍传原 user 并再次 trustedUser，闭包回执和写入使用外层 current，不能统一替换。miss 才要求正对象版本、精确 head/identity/association，随后 mappingID、序列化、UTC 微秒 now、binding 和 lineage 写入。旧无 pin 请求只允许已有精确回执重放；不新增原锁内没有的 Case 或 businessWritable 检查。
+
+Preview、Proposal、Get、Decision 分别保留原外层和事务内授权、visibleCase 隐藏、writable、回执先后及错误文案。`withOperatorTx` 写路径为 mutex→begin→schema advisory→case advisory→scope，读路径只设 scope；不能与服务对象命令的不同锁序混同。Proposal replay 不重取 mapping 或依据，Decision replay 不重取 request，但各自仍先经过原当前 Case 权限及 writable。异人沿用真实 userID 或 issuer/subject 规则，不按显示名识别。
+
+Decision 在全部校验后依次生成 decisionID、取 UTC 微秒 now、approve 分支生成 bindingID 并推进 mappingVersion、编码结果，再 INSERT 决定与回执；reject 到此结束。approve 继续原计划和写序：identity 分支在 identity/association 追加后、binding INSERT 前更新 service-object 双指针；target-association 分支在 association 追加、binding INSERT 后更新 association head；最后才 mapping lineage CAS。四个 expected pins、After/Impact/SHA、各独立 clock/ID、out+err 与 replay 语义不变，所有行与决定同事务提交或回滚。
+
+采集先验证明确 businessAt、confirmed exact binding、有效区间和 connector identity，计算请求 SHA 并生成 owner/collectionID，保留包括 replay 前分配 ID 的原时点。事务 A 在原 loadState/当前 Case Review 后锁 claim，先处理 completed 及 legacy snapshot 重放；miss 才检查 connector 与 writable，按 DB 时钟写五分钟 lease。接管分支仍用原应用时钟判断过期，再推进 generation。A 提交后才调用既有只读 connector，并验证 scope 和 observation；completed replay 重载实际 snapshot 与有序 observations，不能仅返回 response_body。
+
+只有原 connector 读取和 observation 验证两类失败才 best-effort 条件 Release。读取后的授权版本变化、ID/编码或事务 B 失败继续让原 lease 到期或接管，不新增自动清理。Release 按 tenant/org/case/actor/key/generation/owner/status 精确更新。采集不是外部系统和 PG 的跨系统原子事务。
+
+事务 B 先锁 claim，以 DB clock 检查 status、generation、owner、lease，再原 loadState/当前 Case/trusted/writable/Review/grantVersion 复验，随后 now、snapshot/observation 追加、response JSON、精确 completed claim CAS。零影响行保持原 409，整笔 B 回滚，A 已提交的 in_progress claim 保留。CAS 前 completed receipt 只在待写 response JSON 中，尚未落库；不可把它作为 CAS 零行故障前置。app 以明确 typed 阶段和本域 repo 端口组织流程，Store 固定 A commit→事务外 connector→B commit，不向 app 开放任意事务回调。
+
+本域读取目录、精确 binding/snapshot、按 key 或 collectionID 的采集状态继续原授权、首错、时间与 partial out+err，通过 Operator 自有 PG 完成。必要 SOURCE 在真实会话和 Core operation authority 下触达事务 B：snapshot/observation 已写、原 claim/token/lease 精确有效后，用测试专用非事务 marker 证明最终 CAS 被拦并返回零行；比较 B 前后完整行及旧成功历史，按已有受控过期或测试显式 Release 恢复同 key，再证明 completed replay 不读 connector。复用已有 SOD、四 CAS、并发与接管矩阵，不重复镜像用例。
+
+实际实施按模型和 record、初始映射与读取/提案、决定、采集 A、事务外调用及 B/Release/读取、必要故障 SOURCE 串行，开始每段重新核对实际 API。元信息头部/manifest、所有测试、编译、go list、门禁、数据库、app/browser、模型/OCR 仍待全轮源码冻结后统一执行，当前 NOT_RUN。#183 真实接入保持 NOT_APPLICABLE，#95/#99 外部专业/试用/交接继续暂缓。
+
+## #311 冻结多对象评估与影响计划的接缝
+
+状态：采纳，实施前决策。基于 #310 已审源码候选 `a3cc29697a6c06f97efb67f7a85c39470088a2f3`，其绑定、映射、采集与精确读取已实际接入 Operator；schema45、五个服务角色及12个已登记领域不变。迁移现有能力，不新增实时接入或平台。
+
+Operator 拥有现有核验 scope、DTO、候选与 coverage、冻结事实至 auditext 的精确数值转换、历史观察过滤、单对象及整案评估编排、Impact fallback 和自有记录读取/追加。复用现有 auditext.Evaluator、ImpactPlanner、Execution model 具体冻结值与纯哈希、已落地 Operator binding/snapshot 端口及 caller-bound executor，不新增领域、schema、角色、真实外部接入、外部写回或平台。Store 保留当前受信身份、Case 权限、RLS、原事务/锁/提交与精确 Document/Execution 证明能力。
+
+公开 Evaluation DTO 与独立 `EvaluationRecord{Value,RequestSHA256}` 分离；私有 SHA 不进入响应 JSON 或公开回执。Store 继续直接 alias 同形公开值，真正比较请求摘要的消费者使用 record，公开读取仅解 Value。字段/tag/顺序、nil/空数组、RawMessage、SHA、时间、错误和 partial out+err 均保留。检查表为空时才回退 result_json；有 scope 时按 ordinal 读对象，逐行核事实/结果原字节摘要和 objectRef，只有最终 checks 为空时才核整批 objects 摘要，不能额外扩大旧完整性规则。
+
+允许复用并细化 #309 已采纳的 typed frozen facts：指定 run/attempt、input、snapshot、selection、ordered findings/evaluations、精确 Agent review digest；Document 继续提供指定 frozen 原件/parse 的已有 IO/引用证明及 telecomSource，不用最新解析替换。原件仅通过 Execution 的有界泛型完整编码和 OriginalProof 七项标识读取，不把 Store.state、Case、Document 实体、pgx.Tx/SQL/pool 或整个旧 validator/aggregate/Impact 函数交给 app。app 依原阶段组合这些事实并执行真实终态、input/output、RulePack、候选/时间/association/facts 规则。
+
+保留两套实际冻结证明协议：外层 `validateFrozenTerminalAttempt` 的既有 Agent digest 读取路径、逐层错误和 input 不存在/不符的不同首错，与整案锁内 `validateOperatorFrozenAttempt` 的同事务 digest、合并输出错误及精确 input/output hashes 对照不同。可共享 Execution 纯规则和窄事实实现，不因抽取统一为 Preview 的查询时点或错误文案。Supplement 提取仍只用旧业务属性 Request，不附加 Preview 的 grant/Now；显式单 source 检查保留。
+
+准许 Store 为指定 association.SourceAttemptID 提供原精确 attempt-input 的 frozen documents，只读现有 snapshot，不枚举其他尝试或查询最新 parse。Operator app 自行核 source run、合同 purpose/role、material/version/document/parse、原件及 parse 获得时间与 cutoff；冻结 documents 保持原序，首个匹配即返回时间判断，不跳过首个不合时点的匹配再找后项；不能将整个 `operatorAssociationEvidenceBeforeCutoff` 业务判断当 proof callback。整案候选从指定 frozen Documents 和指定 run/attempt 的有序 ConstraintEval.Evidence/ObjectRefs 生成；保留 missing、ambiguous、未就绪、不适用和 insufficient，Supplement 合并、registered union、排序去重后才判 100 上限。
+
+单对象路径保持外层 key/evaluator/scope/pack/businessAt/cutoff/当前 Case Review/scenario 与初次幂等读取，再原多个精确 scoped reads、冻结证明和事实组装，核验器仍在写事务外。写事务二次回执同时比较 request SHA 和 result SHA，miss 依次 evaluation→checks→构造公开 out→对象计算与 INSERT；后续错误和 commit 失败继续返回原 partial out+err，不新增旧路径没有的 writable 或当前 Case Review 复验。
+
+整案路径保持锁前 frozen 证明、RulePack/contract source 核验及 request SHA；原写事务 schema advisory→case lock→scope 后先回执，再 loadState、当前 Case Review/writable、同事务 frozen input/output 复验。每对象核验器仍在该写事务内，普通核验不可用转换为对象 insufficient，未授权/无效结果/持久化错误才中断。按原 ordinal 追加 evaluation 和全部对象，最后构造 out，commit 错误保留 out+err。不得把 evaluator 调用移到事务外或把对象不足冒充整批回滚。
+
+Operator PG 只查询/追加自己的 evaluations、evaluation_objects、checks、impact_plans，以及已有 service-object、binding、mapping、snapshot/observations 事实；不读取 Case/Document/Execution/Audit 表或导入其他领域 PG，不设置 scope/身份或拥有事务。历史 object version 仍以 `effective_from <= businessAt` 过滤，再沿原 ORDER BY 将晚于 cutoff 的候选保留供 insufficient 分类，association 继续原 created/confirmed cutoff 排序优先，不用 WHERE 截掉；mapping 与 snapshot 保留各条旧显式 tenant/org 和 current_setting 范围、有效期及时间选择。app 承接多行逐条校验和组合，不在 PG adapter 判断全域业务。
+
+Impact 保留当前 Case Read→读事务 target/previous→提交→事务外 planner 或 baseline_missing 全量 fallback→另一个写事务 append ON CONFLICT DO NOTHING。planner nil 仍先于 baseline 发现失败；无 baseline 不调用 planner。原第二写事务只有 withOperatorTx 既有 trusted/role/scope/锁和正常会话 tenant_context_fence 的语句/提交围栏，没有第二次 Case Read，不在目录迁移中悄然加撤权检查；created_by 继续原 user.ID，写/commit 失败返回零 plan。两事务不声称同快照。
+
+必要 SOURCE 固定真实 Core/Document/Execution 会话和 authority：多对象合法前态、evaluation 与至少一个 object 已写后唯一强制失败及完整行/旧历史回滚、同键恢复；Impact planner 期间真实 membership grant/revision 变更后原第二事务的 context_stale 围栏行为（fresh 认证用于验证当前失权，不能拿旧 proof 假装 fresh）；新解析产生不同事实后仍使用 exact frozen parse。只补必要边界，复用既有矩阵。整轮源码冻结前所有测试、编译、go list、门禁、PG/app/browser 和真实模型/OCR均 NOT_RUN。#183 真实接入不再要求，#95/#99 外部专业/试用/交接继续暂缓。
+### #293 真实思考模型的有界输出与调用时间
+
+状态：采纳，扩大预算实现前记录。用户在 2026-11-14 明确选择“不能关闭，适配更大预算”。本机 DeepSeek 路由宣告最大输出 32000，未宣告 none 模式；同一 21912 字合同在 4096、8192、16384 输出限制下均实际空答，16384 对照耗时约 270 秒。较短材料在 16384 限制下得到实际正文。真实请求与失败记录位于仓外交付目录，不改原始预期或将传输成功视为完整验收。
+
+采用新的 facts 提示词和能力身份版本，明确允许思考并将输出上限固定为 32000；继续共用一份响应 JSON Schema、严格解析和冻结原文引用绑定。旧 v2/v3 能力身份不作为新协议执行。普通审查与 OCR 的实际请求输出长度不随预留上界自动增加。
+
+网关单次输出预留上界覆盖 32000；单次保守输入预留上界取 131072，覆盖实测约 64062 字节请求及合法前缀的编码与协议开销，超界继续拒绝。全局和租户的分钟 token、次数、并发与金额预算不增加，仍由 PostgreSQL 原子预留与实际或未知用量结算。不得用调用方自报 purpose 绕过身份、冻结配置或预算；未知用量继续保守处理，不将失败调用计为零。
+
+复用已有 MODEL_REQUEST_TIMEOUT 的有限配置，网关默认请求时间支持 600 秒并保持租约覆盖请求时间与结算余量。客户端和存储端点的 guarded client 共享相应有限默认值；网关调用方保留接收超时响应的余量，不覆盖 NewWithHTTPClient 调用方提供的 transport 或 timeout。取消、当前授权和任务心跳续租保持原边界。Compose、环境示例与维护说明同步传递真实生效的单次预留和时间配置，不新增任务平台、数据库结构、服务角色或其他权限。
+
+实际验收仍使用相同原件、提取文本摘要和本机端点，逐项记录请求参数、配置身份、响应、用量、耗时及引用匹配；扩大参数本身不构成 PASS。
+
+真实 PG 网关验证进一步确认：模型请求已经发出，但审查执行外层的 90 秒上限提前取消调用；网关按未知用量保守结算 96063 tokens，无活动调用租约。为覆盖已测得的长思考调用，仅对持有 durable job、冻结为非治理单合同预检且包含当前有效 facts 能力的执行，采用客户端默认时限加原执行余量，即 720 秒的总上限。启动、权限与冻结元数据读取仍先受原 90 秒限制；识别能力后按执行开始时间计算最终截止时间，不重新获得一整段执行预算。其他审查仍保留 90 秒。
+
+外层时限继续继承同一个父 context；PG 任务默认 900 秒截止时间、操作者设置的更短截止时间、心跳续租、失租与用户取消仍可更早终止。worker 的 30 秒租约和 10 秒心跳不随模型预算扩大。600 秒网关和 630 秒客户端的返回及持久化有余量；不为迟到的 observer 写入绕过当前授权或租约。父任务取消或失租时执行事件可能不完整，真实调用的 PG 预算账本仍是用量结算权威，不把缺失事件解释为没有调用。

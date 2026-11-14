@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,12 +12,14 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"contractaudit/internal/access"
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/engine"
+	executionapp "contractaudit/internal/execution/app"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/model"
 
@@ -66,18 +68,7 @@ func decided(findings []Finding, st *state) bool {
 }
 
 func publicModelError(err error) string {
-	switch {
-	case errors.Is(err, model.ErrUnusable):
-		return "模型输出无法解析成质保结论，已保留可定位的规则结果；模型审查尚未完成。"
-	case errors.Is(err, engine.ErrRejected):
-		return "模型输出不能对应到材料原文，已保留可定位的规则结果；模型审查尚未完成。"
-	case errors.Is(err, errModelNotConfigured):
-		return "审查模型未配置，已保留可定位的规则结果；模型审查尚未完成。"
-	case errors.Is(err, model.ErrRequest):
-		return "调用审查模型失败，已保留可定位的规则结果；模型审查尚未完成。"
-	default:
-		return "审查模型没有完成质保核对，已保留可定位的规则结果。"
-	}
+	return executionapp.PublicModelError(err, errModelNotConfigured)
 }
 
 func publicAttemptFailure(code string) string {
@@ -239,7 +230,8 @@ type Workspace struct {
 	Revisions                []Revision
 	RevisionComparisonReason string
 	RevisionComparisonSource *RevisionComparisonSource
-	Execution                *Execution `json:"execution"`
+	Execution                *Execution      `json:"execution"`
+	ContractFacts            json.RawMessage `json:"contract_facts,omitempty"`
 }
 
 func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAttemptID ...string) (Workspace, error) {
@@ -270,6 +262,7 @@ func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAtte
 		return Workspace{}, fault.NotFound("没有找到对应记录")
 	}
 	executionView := selectedExecution(st, runID, selectedID)
+	var contractFacts json.RawMessage
 	if executionView != nil && executionView.Attempt != nil {
 		// The five-domain projection is read for this exact attempt only. It is
 		// null when no agent-flow record was persisted; it is never derived from
@@ -280,6 +273,15 @@ func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAtte
 		}
 		if present {
 			executionView.AgentReview = review
+		}
+		facts, factsPresent, factsErr := s.ContractFactsForAttempt(context.Background(), user, caseID, runID, executionView.Attempt.ID)
+		if factsErr != nil {
+			return Workspace{}, factsErr
+		}
+		if factsPresent {
+			// Facts-only output is a separate business projection. It never
+			// populates Execution.AgentReview or any risk finding.
+			contractFacts = facts
 		}
 	}
 	if selectedID != "" && executionView == nil {
@@ -349,6 +351,7 @@ func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAtte
 		RevisionComparisonReason: comparisonReason,
 		RevisionComparisonSource: source,
 		Execution:                executionView,
+		ContractFacts:            contractFacts,
 	}, nil
 }
 

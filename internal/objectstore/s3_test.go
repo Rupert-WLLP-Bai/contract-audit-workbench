@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Exercises the `objectstore` package behavior through TestPutGetUsesSigV4AndPreservesObjectBytes, TestGetRejectsTamperedBodyAndMetadata, TestGetMapsPublicServiceAndMetadataFailures, TestPutSignatureRejectsTamperedRequestBody, TestCanonicalQueryEncodesAndSortsParameters; these checks pin observable state, error handling, or wire/database compatibility for this module.
+// Purpose: Exercises SDK-backed object storage through signed requests, original bytes, bounded responses, digest rejection, status mapping, cancellation and single-attempt behavior.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,9 +13,7 @@ package objectstore
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -46,7 +44,7 @@ func testStore(t *testing.T, endpoint string) *S3 {
 	return store
 }
 
-func TestPutGetUsesSigV4AndPreservesObjectBytes(t *testing.T) {
+func TestPutGetUsesSDKAndPreservesObjectBytes(t *testing.T) {
 	const key = "tenants/tenant-1/cases/case-1/a b+雪.txt"
 	original := []byte("original contract bytes\x00with a trailing byte")
 	var stored []byte
@@ -58,12 +56,26 @@ func TestPutGetUsesSigV4AndPreservesObjectBytes(t *testing.T) {
 			http.Error(w, "request failure", http.StatusBadRequest)
 			return
 		}
-		if !validTestSignature(r, body) {
-			http.Error(w, "invalid signature", http.StatusForbidden)
+		if authorization := r.Header.Get("Authorization"); !strings.Contains(authorization, "Credential="+testAccessKey+"/") {
+			t.Errorf("request was not authenticated with the configured access key: %q", authorization)
+			http.Error(w, "missing credentials", http.StatusForbidden)
 			return
 		}
-		if r.URL.EscapedPath() != "/gateway%20prefix/"+testBucket+"/tenants/tenant-1/cases/case-1/a%20b%2B%E9%9B%AA.txt" {
-			t.Errorf("escaped request path = %q", r.URL.EscapedPath())
+		authorization := r.Header.Get("Authorization")
+		if !strings.Contains(authorization, "/"+testRegion+"/s3/aws4_request") {
+			t.Errorf("credential scope = %q; want region/service scope for %s", authorization, testRegion)
+		}
+		signedHeaders := signedHeaderNames(authorization)
+		if r.Method == http.MethodPut && !strings.Contains(";"+signedHeaders+";", ";x-amz-meta-sha256;") {
+			t.Errorf("Put signature did not cover SHA-256 metadata: %q", signedHeaders)
+		}
+		// A literal '+' is valid in a URL path; unlike a query, it is not a space.
+		// Check the decoded path exactly and permit either legal encoding of '+'.
+		escaped := r.URL.EscapedPath()
+		prefix := "/gateway%20prefix/" + testBucket + "/tenants/tenant-1/cases/case-1/a%20b"
+		if r.URL.Path != "/gateway prefix/"+testBucket+"/"+key ||
+			(escaped != prefix+"+%E9%9B%AA.txt" && escaped != prefix+"%2B%E9%9B%AA.txt") {
+			t.Errorf("request path = %q, escaped = %q, query = %q", r.URL.Path, escaped, r.URL.RawQuery)
 			http.Error(w, "invalid path", http.StatusBadRequest)
 			return
 		}
@@ -71,9 +83,19 @@ func TestPutGetUsesSigV4AndPreservesObjectBytes(t *testing.T) {
 		case http.MethodPut:
 			digest := sha256.Sum256(body)
 			storedDigest = hex.EncodeToString(digest[:])
+			if got := r.Header.Get("X-Amz-Content-Sha256"); got != storedDigest {
+				t.Errorf("signed payload digest = %q; want %q", got, storedDigest)
+				http.Error(w, "invalid payload digest", http.StatusBadRequest)
+				return
+			}
 			if r.Header.Get("X-Amz-Meta-Sha256") != storedDigest {
 				t.Errorf("signed metadata digest = %q; want %q", r.Header.Get("X-Amz-Meta-Sha256"), storedDigest)
 				http.Error(w, "invalid metadata", http.StatusBadRequest)
+				return
+			}
+			if r.Header.Get("X-Amz-Sdk-Checksum-Algorithm") != "" || r.Header.Get("X-Amz-Checksum-CRC32") != "" {
+				t.Errorf("Put added an unconfigured S3 flexible checksum header")
+				http.Error(w, "unexpected checksum", http.StatusBadRequest)
 				return
 			}
 			stored = append(stored[:0], body...)
@@ -101,16 +123,66 @@ func TestPutGetUsesSigV4AndPreservesObjectBytes(t *testing.T) {
 	}
 }
 
+func TestPutSignsPayloadOverTLS(t *testing.T) {
+	type observation struct {
+		payloadDigest  string
+		metadataDigest string
+		signedHeaders  string
+		body           []byte
+	}
+	seen := make(chan observation, 1)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("reading request body: %v", err)
+			http.Error(w, "request failure", http.StatusBadRequest)
+			return
+		}
+		seen <- observation{
+			payloadDigest:  r.Header.Get("X-Amz-Content-Sha256"),
+			metadataDigest: r.Header.Get("X-Amz-Meta-Sha256"),
+			signedHeaders:  signedHeaderNames(r.Header.Get("Authorization")),
+			body:           body,
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	config := Config{
+		Endpoint: server.URL, Bucket: testBucket, Region: testRegion,
+		AccessKey: testAccessKey, SecretKey: testSecretKey,
+	}
+	endpoint, err := parseEndpoint(config.Endpoint)
+	if err != nil {
+		t.Fatalf("parse TLS endpoint: %v", err)
+	}
+	httpClient := server.Client()
+	httpClient.Timeout = 30 * time.Second
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	store := &S3{
+		bucket: config.Bucket,
+		client: newSDKClient(config, endpoint, responseMetadataHTTPClient{next: httpClient}),
+	}
+	original := []byte("original TLS payload")
+	if err := store.Put(context.Background(), "tenants/t1/cases/c1/source", original); err != nil {
+		t.Fatalf("Put over TLS failed: %v", err)
+	}
+	got := <-seen
+	digest := sha256.Sum256(original)
+	wantDigest := hex.EncodeToString(digest[:])
+	if !bytes.Equal(got.body, original) || got.payloadDigest != wantDigest || got.metadataDigest != wantDigest {
+		t.Fatalf("TLS request body/hash mismatch: body=%q payload=%q metadata=%q", got.body, got.payloadDigest, got.metadataDigest)
+	}
+	if !strings.Contains(";"+got.signedHeaders+";", ";x-amz-meta-sha256;") {
+		t.Fatalf("TLS signature did not cover SHA-256 metadata: %q", got.signedHeaders)
+	}
+}
+
 func TestGetRejectsTamperedBodyAndMetadata(t *testing.T) {
 	original := []byte("the stored original")
 	tampered := []byte("a changed original")
 	originalDigest := sha256.Sum256(original)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		if !validTestSignature(r, body) {
-			http.Error(w, "invalid signature", http.StatusForbidden)
-			return
-		}
 		w.Header().Set("X-Amz-Meta-Sha256", hex.EncodeToString(originalDigest[:]))
 		_, _ = w.Write(tampered)
 	}))
@@ -134,6 +206,7 @@ func TestGetMapsPublicServiceAndMetadataFailures(t *testing.T) {
 	}{
 		{"not found", http.StatusNotFound, nil, ErrObjectNotFound},
 		{"service error", http.StatusForbidden, []string{validDigest}, ErrRequestFailed},
+		{"unexpected successful status", http.StatusNoContent, nil, ErrRequestFailed},
 		{"missing digest", http.StatusOK, nil, ErrIntegrity},
 		{"duplicate digest", http.StatusOK, []string{validDigest, validDigest}, ErrIntegrity},
 		{"malformed digest", http.StatusOK, []string{"not-hex"}, ErrIntegrity},
@@ -161,52 +234,39 @@ func TestGetMapsPublicServiceAndMetadataFailures(t *testing.T) {
 	}
 }
 
-func TestPutSignatureRejectsTamperedRequestBody(t *testing.T) {
-	var accepted atomic.Bool
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		if validTestSignature(r, body) {
-			accepted.Store(true)
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		http.Error(w, "signature rejected", http.StatusForbidden)
+func TestPutRejectsUnexpectedSuccessfulStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
 	}))
 	defer server.Close()
-	store := testStore(t, server.URL)
-	store.client.Transport = tamperBodyTransport{next: store.client.Transport}
-	err := store.Put(context.Background(), "tenants/t1/cases/c1/source", []byte("good"))
-	if !errors.Is(err, ErrRequestFailed) {
+	if err := testStore(t, server.URL).Put(context.Background(), "tenants/t1/cases/c1/source", []byte("bytes")); !errors.Is(err, ErrRequestFailed) {
 		t.Fatalf("Put error = %v; want ErrRequestFailed", err)
 	}
-	if accepted.Load() {
-		t.Fatal("server accepted a body whose bytes differ from the signed payload")
+}
+
+func TestPutDoesNotRetryServiceFailure(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	if err := testStore(t, server.URL).Put(context.Background(), "tenants/t1/cases/c1/source", []byte("bytes")); !errors.Is(err, ErrRequestFailed) {
+		t.Fatalf("Put error = %v; want ErrRequestFailed", err)
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("Put made %d attempts; want one configured SDK attempt", requests.Load())
 	}
 }
 
-func TestCanonicalQueryEncodesAndSortsParameters(t *testing.T) {
-	got, err := canonicalQuery("z=last%20item&a=%2B&a=%20&empty")
-	if err != nil {
-		t.Fatalf("canonicalQuery returned an error: %v", err)
+func signedHeaderNames(authorization string) string {
+	for _, field := range strings.Split(authorization, ",") {
+		name, value, ok := strings.Cut(strings.TrimSpace(field), "=")
+		if ok && name == "SignedHeaders" {
+			return value
+		}
 	}
-	const want = "a=%20&a=%2B&empty=&z=last%20item"
-	if got != want {
-		t.Fatalf("canonical query = %q; want %q", got, want)
-	}
-}
-
-func TestSigV4SignsCanonicalQuery(t *testing.T) {
-	store := &S3{region: testRegion, accessKey: testAccessKey, secretKey: testSecretKey}
-	request := httptest.NewRequest(http.MethodGet, "http://s3.example/bucket/key?z=2&a=1", nil)
-	emptyDigest := sha256.Sum256(nil)
-	request.Header.Set("X-Amz-Content-Sha256", hex.EncodeToString(emptyDigest[:]))
-	request.Header.Set("X-Amz-Date", time.Now().UTC().Format("20060102T150405Z"))
-	if err := store.sign(request, hex.EncodeToString(emptyDigest[:])); err != nil {
-		t.Fatalf("sign returned an error: %v", err)
-	}
-	if !validTestSignature(request, nil) {
-		t.Fatal("canonical query was not covered by the SigV4 signature")
-	}
+	return ""
 }
 
 func TestNewRejectsInvalidConfigurationAndKeysBeforeRequest(t *testing.T) {
@@ -514,88 +574,4 @@ func TestGetHonorsContextDeadline(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Get did not return after context deadline")
 	}
-}
-
-func validTestSignature(request *http.Request, body []byte) bool {
-	canonicalQuery := ""
-	if request.URL.RawQuery != "" {
-		if request.URL.RawQuery != "z=2&a=1" {
-			return false
-		}
-		canonicalQuery = "a=1&z=2"
-	}
-	authorization := strings.TrimPrefix(request.Header.Get("Authorization"), "AWS4-HMAC-SHA256 ")
-	fields := strings.Split(authorization, ", ")
-	if len(fields) != 3 {
-		return false
-	}
-	credential := strings.TrimPrefix(fields[0], "Credential=")
-	signedHeaders := strings.TrimPrefix(fields[1], "SignedHeaders=")
-	signature := strings.TrimPrefix(fields[2], "Signature=")
-	date := request.Header.Get("X-Amz-Date")
-	if credential == fields[0] || signedHeaders == fields[1] || signature == fields[2] || len(date) != len("20060102T150405Z") {
-		return false
-	}
-	parsedDate, err := time.Parse("20060102T150405Z", date)
-	if err != nil || time.Since(parsedDate) > 5*time.Minute || time.Until(parsedDate) > 5*time.Minute {
-		return false
-	}
-	payloadDigest := sha256.Sum256(body)
-	payloadDigestHex := hex.EncodeToString(payloadDigest[:])
-	if request.Header.Get("X-Amz-Content-Sha256") != payloadDigestHex {
-		return false
-	}
-	credentialParts := strings.Split(credential, "/")
-	dateScope := date[:8]
-	if len(credentialParts) != 5 || credentialParts[0] != testAccessKey || credentialParts[1] != dateScope ||
-		credentialParts[2] != testRegion || credentialParts[3] != "s3" || credentialParts[4] != "aws4_request" {
-		return false
-	}
-	if request.Method == http.MethodPut {
-		if request.Header.Get("X-Amz-Meta-Sha256") != payloadDigestHex ||
-			signedHeaders != "host;x-amz-content-sha256;x-amz-date;x-amz-meta-sha256" {
-			return false
-		}
-	} else if signedHeaders != "host;x-amz-content-sha256;x-amz-date" {
-		return false
-	}
-
-	var canonicalHeaders strings.Builder
-	for _, name := range strings.Split(signedHeaders, ";") {
-		value := request.Host
-		if name != "host" {
-			value = request.Header.Get(name)
-		}
-		canonicalHeaders.WriteString(name)
-		canonicalHeaders.WriteByte(':')
-		canonicalHeaders.WriteString(strings.Join(strings.Fields(value), " "))
-		canonicalHeaders.WriteByte('\n')
-	}
-	canonicalRequest := request.Method + "\n" + request.URL.EscapedPath() + "\n" + canonicalQuery + "\n" +
-		canonicalHeaders.String() + "\n" + signedHeaders + "\n" + payloadDigestHex
-	canonicalRequestDigest := sha256.Sum256([]byte(canonicalRequest))
-	scope := dateScope + "/" + testRegion + "/s3/aws4_request"
-	stringToSign := "AWS4-HMAC-SHA256\n" + date + "\n" + scope + "\n" + hex.EncodeToString(canonicalRequestDigest[:])
-	dateKey := testHMAC([]byte("AWS4"+testSecretKey), dateScope)
-	regionKey := testHMAC(dateKey, testRegion)
-	serviceKey := testHMAC(regionKey, "s3")
-	signingKey := testHMAC(serviceKey, "aws4_request")
-	expectedSignature := hex.EncodeToString(testHMAC(signingKey, stringToSign))
-	return subtle.ConstantTimeCompare([]byte(signature), []byte(expectedSignature)) == 1
-}
-
-func testHMAC(key []byte, value string) []byte {
-	mac := hmac.New(sha256.New, key)
-	_, _ = io.WriteString(mac, value)
-	return mac.Sum(nil)
-}
-
-type tamperBodyTransport struct{ next http.RoundTripper }
-
-func (transport tamperBodyTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	if request.Method == http.MethodPut {
-		_ = request.Body.Close()
-		request.Body = io.NopCloser(strings.NewReader("evil"))
-	}
-	return transport.next.RoundTrip(request)
 }

@@ -3,18 +3,19 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r4
+// Updated: 2026-11-12
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Button, Input, Table, Tabs, type TableColumnsType } from "antd";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useSearchParams } from "react-router";
 import { errorMessage } from "../api/http";
 import { useSession, useWorkbench } from "../api/queries";
 import type { WorkbenchCase, WorkbenchRun, WorkbenchSnapshot } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { ListPage } from "../components/page-patterns";
 import { StatusText } from "../components/status-text";
 import { TechnicalDetail } from "../components/technical-detail";
 import { businessLineLabel } from "../domain/business-labels";
@@ -85,10 +86,7 @@ function selectReviewEntryCases(
   const pendingTaskCaseIds = new Set(
     actorId
       ? snapshot.tasks
-          .filter(
-            (task) =>
-              task.assignee_id === actorId && task.status !== "completed",
-          )
+          .filter((task) => task.assignee_id === actorId && task.status !== "completed")
           .map((task) => task.case_id)
       : [],
   );
@@ -108,11 +106,8 @@ function selectReviewEntryCases(
 
 function ReviewEntryCaseCell({ item }: { item: WorkbenchCase }) {
   const context =
-    item.profile?.customer ||
-    (item.business_line ? businessLineLabel(item.business_line) : "");
-  const businessStatus = item.business_status
-    ? businessStatusLabel(item.business_status)
-    : "";
+    item.profile?.customer || (item.business_line ? businessLineLabel(item.business_line) : "");
+  const businessStatus = item.business_status ? businessStatusLabel(item.business_status) : "";
   return (
     <div className="review-entry-case">
       <strong>{item.title}</strong>
@@ -127,13 +122,7 @@ function ReviewEntryCaseCell({ item }: { item: WorkbenchCase }) {
   );
 }
 
-function ReviewEntryStatusCell({
-  item,
-  run,
-}: {
-  item: WorkbenchCase;
-  run: WorkbenchRun | null;
-}) {
+function ReviewEntryStatusCell({ item, run }: { item: WorkbenchCase; run: WorkbenchRun | null }) {
   if (!run) return <span className="review-entry-muted">尚未发起</span>;
   return (
     <div className="review-entry-status">
@@ -155,9 +144,7 @@ function ReviewEntryTodoCell({
   return (
     <div className="review-entry-todo">
       <span>
-        {item.pending_decisions > 0
-          ? `${item.pending_decisions} 项待判断`
-          : "暂无待判断"}
+        {item.pending_decisions > 0 ? `${item.pending_decisions} 项待判断` : "暂无待判断"}
       </span>
       {assignedTasks > 0 ? (
         <span className="review-entry-muted">{assignedTasks} 项分派待办</span>
@@ -166,13 +153,7 @@ function ReviewEntryTodoCell({
   );
 }
 
-function ReviewEntryActions({
-  item,
-  run,
-}: {
-  item: WorkbenchCase;
-  run: WorkbenchRun | null;
-}) {
+function ReviewEntryActions({ item, run }: { item: WorkbenchCase; run: WorkbenchRun | null }) {
   return (
     <div className="review-entry-actions">
       {run ? (
@@ -205,10 +186,7 @@ function reviewEntryColumns(
       key: "status",
       width: 190,
       render: (_, item) => (
-        <ReviewEntryStatusCell
-          item={item}
-          run={latestRunForCase(runsByCase, item.id)}
-        />
+        <ReviewEntryStatusCell item={item} run={latestRunForCase(runsByCase, item.id)} />
       ),
     },
     {
@@ -216,10 +194,7 @@ function reviewEntryColumns(
       key: "todo",
       width: 180,
       render: (_, item) => (
-        <ReviewEntryTodoCell
-          item={item}
-          assignedTasks={pendingTaskCounts.get(item.id) ?? 0}
-        />
+        <ReviewEntryTodoCell item={item} assignedTasks={pendingTaskCounts.get(item.id) ?? 0} />
       ),
     },
     {
@@ -241,30 +216,10 @@ function reviewEntryColumns(
       width: 210,
       align: "right",
       render: (_, item) => (
-        <ReviewEntryActions
-          item={item}
-          run={latestRunForCase(runsByCase, item.id)}
-        />
+        <ReviewEntryActions item={item} run={latestRunForCase(runsByCase, item.id)} />
       ),
     },
   ];
-}
-
-function ReviewEntryHeader() {
-  return (
-    <header className="page-head review-entry-header">
-      <div>
-        <h1>合同审查</h1>
-        <p>从当前有权访问的案件进入审查，进入有权访问的案件继续办理。</p>
-      </div>
-      <div className="review-entry-primary-action">
-        <Button type="primary" href="/cases">
-          发起审查
-        </Button>
-        <span>先选择案件；系统会在案件准备流程中核对权限与材料。</span>
-      </div>
-    </header>
-  );
 }
 
 function ReviewEntrySummary({ snapshot }: { snapshot: WorkbenchSnapshot }) {
@@ -306,6 +261,7 @@ function ReviewEntryCases({
   runsByCase,
   onViewChange,
   onQueryChange,
+  children,
 }: {
   snapshot: WorkbenchSnapshot;
   view: ReviewEntryView;
@@ -314,27 +270,15 @@ function ReviewEntryCases({
   runsByCase: Map<string, WorkbenchRun[]>;
   onViewChange: (view: ReviewEntryView) => void;
   onQueryChange: (query: string) => void;
+  children: (parts: { filters: ReactNode; content: ReactNode }) => ReactNode;
 }) {
   const pendingTaskCounts = new Map<string, number>();
   for (const task of snapshot.tasks) {
-    if (
-      actorId &&
-      task.assignee_id === actorId &&
-      task.status !== "completed"
-    ) {
-      pendingTaskCounts.set(
-        task.case_id,
-        (pendingTaskCounts.get(task.case_id) ?? 0) + 1,
-      );
+    if (actorId && task.assignee_id === actorId && task.status !== "completed") {
+      pendingTaskCounts.set(task.case_id, (pendingTaskCounts.get(task.case_id) ?? 0) + 1);
     }
   }
-  const cases = selectReviewEntryCases(
-    snapshot,
-    view,
-    query,
-    actorId,
-    runsByCase,
-  );
+  const cases = selectReviewEntryCases(snapshot, view, query, actorId, runsByCase);
   const tabItems = REVIEW_ENTRY_VIEWS.map(({ key, label }) => ({
     key,
     label,
@@ -356,22 +300,24 @@ function ReviewEntryCases({
           ? "请检查案件名称、业务编号或客户名称。"
           : "案件列表按当前服务端授权返回。";
 
-  return (
+  const filters = (
+    <div className="review-entry-list-toolbar">
+      <Tabs
+        activeKey={view}
+        items={tabItems}
+        onChange={(key) => onViewChange(parseReviewEntryView(key))}
+      />
+      <Input
+        aria-label="搜索案件"
+        allowClear
+        placeholder="名称、业务编号或客户"
+        value={query}
+        onChange={(event) => onQueryChange(event.target.value)}
+      />
+    </div>
+  );
+  const content = (
     <section className="review-entry-collection" aria-label="审查案件列表">
-      <div className="review-entry-list-toolbar">
-        <Tabs
-          activeKey={view}
-          items={tabItems}
-          onChange={(key) => onViewChange(parseReviewEntryView(key))}
-        />
-        <Input
-          aria-label="搜索案件"
-          allowClear
-          placeholder="名称、业务编号或客户"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-        />
-      </div>
       <p className="review-entry-scope">
         显示当前已加载的授权案件。运行状态、待办与最近执行分别呈现；执行完成后请继续核对审查结论。小屏幕可横向滚动表格。
       </p>
@@ -398,6 +344,7 @@ function ReviewEntryCases({
       )}
     </section>
   );
+  return children({ filters, content });
 }
 
 function ReviewEntryContent({
@@ -418,19 +365,36 @@ function ReviewEntryContent({
   onQueryChange: (query: string) => void;
 }) {
   return (
-    <section className="page review-entry-page">
-      <ReviewEntryHeader />
-      <ReviewEntrySummary snapshot={snapshot} />
-      <ReviewEntryCases
-        snapshot={snapshot}
-        view={view}
-        query={query}
-        actorId={actorId}
-        runsByCase={runsByCase}
-        onViewChange={onViewChange}
-        onQueryChange={onQueryChange}
-      />
-    </section>
+    <ReviewEntryCases
+      snapshot={snapshot}
+      view={view}
+      query={query}
+      actorId={actorId}
+      runsByCase={runsByCase}
+      onViewChange={onViewChange}
+      onQueryChange={onQueryChange}
+    >
+      {({ filters, content }) => (
+        <ListPage
+          className="review-entry-page"
+          headingClassName="review-entry-header"
+          title="合同审查"
+          description="从当前有权访问的案件进入审查，进入有权访问的案件继续办理。"
+          actions={
+            <div className="review-entry-primary-action">
+              <Button type="primary" href="/cases">
+                发起审查
+              </Button>
+              <span>先选择案件；系统会在案件准备流程中核对权限与材料。</span>
+            </div>
+          }
+          summary={<ReviewEntrySummary snapshot={snapshot} />}
+          filters={filters}
+        >
+          {content}
+        </ListPage>
+      )}
+    </ReviewEntryCases>
   );
 }
 
@@ -440,10 +404,7 @@ export function ReviewEntryPage() {
   const [params, setParams] = useSearchParams();
   const view = parseReviewEntryView(params.get("view"));
   const search = params.get("q") ?? "";
-  const runsByCase = useMemo(
-    () => indexRunsByCase(query.data?.runs ?? []),
-    [query.data?.runs],
-  );
+  const runsByCase = useMemo(() => indexRunsByCase(query.data?.runs ?? []), [query.data?.runs]);
 
   function updateParam(key: "view" | "q", value: string) {
     setParams(
@@ -457,8 +418,7 @@ export function ReviewEntryPage() {
     );
   }
 
-  if (query.isLoading)
-    return <PageStatus kind="loading" title="正在读取审查工作区案件" />;
+  if (query.isLoading) return <PageStatus kind="loading" title="正在读取审查工作区案件" />;
   if (query.isError || !query.data)
     return (
       <PageStatus

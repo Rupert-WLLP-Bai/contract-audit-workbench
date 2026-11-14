@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: ConfigureSubjectSourceManifest installs an explicit, server-owned, versioned controlled dataset. The caller must load this from deployment configuration; a missing configuration… Related `store` operations include ConfigureSubjectSourceManifest, configureSubjectSourceFromEnvironment, configuredSubjectSource, ListConfiguredSubjectSources.
+// Purpose: Loads server-owned Subject source configuration and preserves Case authorization, configuration locking and transaction boundaries around Subject source use cases.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,78 +12,40 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
+	subjectApp "contractaudit/internal/subject/app"
+	subjectModel "contractaudit/internal/subject/model"
 )
-
-const syntheticSubjectSourceID = "synthetic.uscc.demo"
-
-type SubjectSourceSnapshotListResult struct {
-	Items      []SubjectSourceSnapshotResult `json:"items"`
-	NextCursor *string                       `json:"next_cursor"`
-}
-
-type SubjectSourceSnapshotDetail struct {
-	SubjectSourceSnapshotResult
-	CaseID string `json:"case_id"`
-}
 
 // ConfigureSubjectSourceManifest installs an explicit, server-owned, versioned
 // controlled dataset. The caller must load this from deployment configuration;
 // a missing configuration intentionally leaves the directory empty.
 func (s *Store) ConfigureSubjectSourceManifest(raw []byte) error {
-	if len(raw) == 0 || len(raw) > 4<<20 {
-		return errors.New("subject source manifest size is invalid")
-	}
 	var manifest SubjectSourceManifest
-	decoder := json.NewDecoder(strings.NewReader(string(raw)))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&manifest); err != nil {
-		return fmt.Errorf("decode subject source manifest: %w", err)
+	decoded, err := subjectApp.DecodeConfiguredSubjectSourceManifest(raw)
+	if err != nil {
+		return err
 	}
-	if err := decoder.Decode(new(any)); err == nil {
-		return errors.New("subject source manifest has trailing JSON")
-	} else if !errors.Is(err, io.EOF) {
-		return fmt.Errorf("subject source manifest has invalid trailing data: %w", err)
-	}
-	if manifest.SourceID != syntheticSubjectSourceID || manifest.SourceVersion < 1 ||
-		strings.TrimSpace(manifest.DisplayName) == "" || manifest.VerificationScope != "synthetic_controlled" ||
-		len(manifest.Records) == 0 || len(manifest.Records) > 1000 {
-		return errors.New("subject source manifest metadata is invalid")
-	}
+	manifest = decoded
 	seenIDs := map[string]bool{}
 	for i := range manifest.Records {
-		record := &manifest.Records[i]
-		record.RecordID = strings.TrimSpace(record.RecordID)
-		record.DisplayName = strings.TrimSpace(record.DisplayName)
-		record.USCC = strings.ToUpper(strings.TrimSpace(record.USCC))
-		if record.RecordID == "" || record.DisplayName == "" || !validUSCCFormat(record.USCC) ||
-			record.SourceAsOf.IsZero() || record.SourceAsOf.After(time.Now().UTC()) || record.ValidFrom.IsZero() ||
-			(record.ValidUntil != nil && !record.ValidUntil.After(record.ValidFrom)) || seenIDs[record.RecordID] {
-			return errors.New("subject source record is invalid or duplicated")
+		record, err := subjectModel.NormalizeSubjectSourceRecord(manifest.Records[i], time.Now().UTC(), seenIDs)
+		if err != nil {
+			return err
 		}
-		record.SourceAsOf = record.SourceAsOf.UTC()
-		record.ValidFrom = record.ValidFrom.UTC()
-		if record.ValidUntil != nil {
-			value := record.ValidUntil.UTC()
-			record.ValidUntil = &value
-		}
+		manifest.Records[i] = record
 		seenIDs[record.RecordID] = true
 	}
-	sort.Slice(manifest.Records, func(i, j int) bool { return manifest.Records[i].RecordID < manifest.Records[j].RecordID })
+	subjectModel.SortSubjectSourceRecords(&manifest)
 	s.subjectSourcesMu.Lock()
 	if previous := s.subjectSources; previous != nil {
 		if manifest.SourceVersion < previous.SourceVersion {
@@ -122,18 +84,7 @@ func configureSubjectSourceFromEnvironment(s *Store) error {
 func (s *Store) configuredSubjectSource() *SubjectSourceManifest {
 	s.subjectSourcesMu.RLock()
 	defer s.subjectSourcesMu.RUnlock()
-	if s.subjectSources == nil {
-		return nil
-	}
-	copy := *s.subjectSources
-	copy.Records = append([]SubjectSourceRecord(nil), s.subjectSources.Records...)
-	for i := range copy.Records {
-		if copy.Records[i].ValidUntil != nil {
-			value := *copy.Records[i].ValidUntil
-			copy.Records[i].ValidUntil = &value
-		}
-	}
-	return &copy
+	return subjectModel.CloneSubjectSourceManifest(s.subjectSources)
 }
 
 func (s *Store) ListConfiguredSubjectSources(ctx context.Context, user accounts.User, caseID string) (SubjectSourceDirectoryResult, error) {
@@ -156,13 +107,7 @@ func (s *Store) ListConfiguredSubjectSources(ctx context.Context, user accounts.
 	if err := requireCaseAction(caseItem, current, access.Read); err != nil {
 		return SubjectSourceDirectoryResult{}, err
 	}
-	manifest := s.configuredSubjectSource()
-	items := make([]SubjectSourceDirectoryItem, 0, 1)
-	if manifest != nil {
-		items = append(items, SubjectSourceDirectoryItem{SourceID: manifest.SourceID, SourceVersion: manifest.SourceVersion,
-			DisplayName: manifest.DisplayName, VerificationScope: manifest.VerificationScope})
-	}
-	return SubjectSourceDirectoryResult{Items: items}, nil
+	return subjectApp.SubjectSourceDirectory(s.configuredSubjectSource()), nil
 }
 
 func (s *Store) CreateSubjectSourceSnapshot(ctx context.Context, user accounts.User, caseID string, input SubjectSourceSnapshotCreateInput, key string) (SubjectSourceSnapshotResult, bool, error) {
@@ -182,10 +127,10 @@ func (s *Store) CreateSubjectSourceSnapshot(ctx context.Context, user accounts.U
 	if err := validateIdempotencyKey(key); err != nil {
 		return SubjectSourceSnapshotResult{}, false, err
 	}
-	if input.SourceID != syntheticSubjectSourceID || input.ExpectedSourceVersion < 1 {
-		return SubjectSourceSnapshotResult{}, false, fault.Invalid("受控来源及预期版本无效")
+	if err := subjectApp.ValidateSourceSnapshotInput(input); err != nil {
+		return SubjectSourceSnapshotResult{}, false, err
 	}
-	requestHash, err := canonicalSubjectHash(input)
+	requestHash, err := subjectApp.RequestHash(input)
 	if err != nil {
 		return SubjectSourceSnapshotResult{}, false, err
 	}
@@ -196,71 +141,29 @@ func (s *Store) CreateSubjectSourceSnapshot(ctx context.Context, user accounts.U
 		if err != nil {
 			return err
 		}
-		if prior, ok, err := readSubjectIdempotency(*st, current, "create_subject_source_snapshot", caseID, key, requestHash); err != nil {
+		snapshot, actor := subjectCommandSnapshot(st), subjectCommandActor(current)
+		result, replayed, err = subjectApp.ReplaySourceSnapshot(snapshot, actor, caseID, key, requestHash)
+		if err != nil || replayed {
 			return err
-		} else if ok {
-			replayed = true
-			return json.Unmarshal(prior.Response, &result)
 		}
 		live := s.configuredSubjectSource()
-		if live == nil || live.SourceID != input.SourceID || live.SourceVersion != input.ExpectedSourceVersion {
-			return fault.Conflict("受控来源版本已变化，请刷新后重试")
-		}
-		payload, err := json.Marshal(live)
+		delta, created, err := subjectApp.CreateSourceSnapshot(snapshot, actor, subjectApp.CaseIdentity{TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID}, input, live, key, requestHash, subjectCommandClock{})
+		result = created
 		if err != nil {
 			return err
 		}
-		digest := sha256.Sum256(payload)
-		digestHex := hex.EncodeToString(digest[:])
-		for _, existing := range st.SubjectSourceSnapshots {
-			if existing.TenantID == current.TenantID && existing.SourceCatalogID == live.SourceID && existing.SourceVersion == live.SourceVersion && existing.SourceDigest != digestHex {
-				return fault.Conflict("同一受控来源版本已有不同内容，请提升来源版本")
-			}
-		}
-		result = SubjectSourceSnapshotResult{SourceID: live.SourceID, SourceVersion: live.SourceVersion,
-			SourceDigest: digestHex, SourceScope: live.VerificationScope, CapturedAt: time.Now().UTC(),
-			RecordCount: len(live.Records), Label: live.DisplayName}
-		snapshotID, err := newID("ssnap_")
-		if err != nil {
-			return err
-		}
-		result.SnapshotID = snapshotID
-		st.SubjectSourceSnapshots = append(st.SubjectSourceSnapshots, SubjectSourceSnapshot{TenantID: current.TenantID, OrgID: caseItem.OwnerOrgID,
-			CaseID: caseID, SnapshotID: snapshotID, SourceCatalogID: live.SourceID, SourceVersion: live.SourceVersion,
-			SourcePayload: string(payload), SourceDigest: result.SourceDigest, SourceScope: live.VerificationScope,
-			CapturedAt: result.CapturedAt, CreatedByUser: current.ID, CreatedByIssuer: current.Issuer, CreatedBySubject: current.Subject})
-		return appendSubjectIdempotency(st, current, "create_subject_source_snapshot", caseID, key, requestHash, 201, result, time.Now().UTC())
+		applySubjectCommandDelta(st, delta)
+		return nil
 	})
 	return result, replayed, err
 }
 
 func decodeFrozenSubjectSourceSnapshot(item SubjectSourceSnapshot) (SubjectSourceManifest, error) {
-	digest := sha256.Sum256([]byte(item.SourcePayload))
-	if hex.EncodeToString(digest[:]) != item.SourceDigest {
-		return SubjectSourceManifest{}, fault.New(500, "integrity_error", "来源快照完整性校验失败")
-	}
-	var manifest SubjectSourceManifest
-	decoder := json.NewDecoder(strings.NewReader(item.SourcePayload))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&manifest); err != nil || manifest.SourceID != item.SourceCatalogID || manifest.SourceVersion != item.SourceVersion ||
-		manifest.VerificationScope != item.SourceScope || item.SourceScope != "synthetic_controlled" {
-		return SubjectSourceManifest{}, fault.New(500, "integrity_error", "来源快照内容与元数据不一致")
-	}
-	canonical, err := json.Marshal(manifest)
-	if err != nil || string(canonical) != item.SourcePayload {
-		return SubjectSourceManifest{}, fault.New(500, "integrity_error", "来源快照不是规范序列化数据")
-	}
-	return manifest, nil
+	return subjectApp.DecodeFrozenSource(item)
 }
 
 func subjectSourceSnapshotResult(item SubjectSourceSnapshot) (SubjectSourceSnapshotResult, error) {
-	manifest, err := decodeFrozenSubjectSourceSnapshot(item)
-	if err != nil {
-		return SubjectSourceSnapshotResult{}, err
-	}
-	return SubjectSourceSnapshotResult{SnapshotID: item.SnapshotID, SourceID: item.SourceCatalogID, SourceVersion: item.SourceVersion,
-		SourceDigest: item.SourceDigest, SourceScope: item.SourceScope, CapturedAt: item.CapturedAt,
-		RecordCount: len(manifest.Records), Label: manifest.DisplayName}, nil
+	return subjectApp.SourceSnapshotResult(item)
 }
 
 func (s *Store) ListSubjectSourceSnapshots(ctx context.Context, user accounts.User, caseID, cursor string, limit int) (SubjectSourceSnapshotListResult, error) {
@@ -284,44 +187,7 @@ func (s *Store) ListSubjectSourceSnapshots(ctx context.Context, user accounts.Us
 	if err := requireCaseAction(caseItem, current, access.Read); err != nil {
 		return SubjectSourceSnapshotListResult{}, err
 	}
-	if limit < 1 {
-		limit = 50
-	}
-	if limit > 100 {
-		return SubjectSourceSnapshotListResult{}, fault.Invalid("每页来源快照最多为100")
-	}
-	items := make([]SubjectSourceSnapshot, 0)
-	for _, item := range st.SubjectSourceSnapshots {
-		if item.TenantID == current.TenantID && item.CaseID == caseID {
-			items = append(items, item)
-		}
-	}
-	sort.Slice(items, func(i, j int) bool { return items[i].SnapshotID < items[j].SnapshotID })
-	start := 0
-	if cursor != "" {
-		decoded, err := base64.RawURLEncoding.DecodeString(cursor)
-		if err != nil {
-			return SubjectSourceSnapshotListResult{}, fault.Invalid("来源快照游标无效")
-		}
-		start = sort.Search(len(items), func(i int) bool { return items[i].SnapshotID > string(decoded) })
-	}
-	if start >= len(items) {
-		return SubjectSourceSnapshotListResult{Items: []SubjectSourceSnapshotResult{}}, nil
-	}
-	end := min(start+limit, len(items))
-	result := SubjectSourceSnapshotListResult{Items: make([]SubjectSourceSnapshotResult, 0, end-start)}
-	for _, item := range items[start:end] {
-		projected, err := subjectSourceSnapshotResult(item)
-		if err != nil {
-			return SubjectSourceSnapshotListResult{}, err
-		}
-		result.Items = append(result.Items, projected)
-	}
-	if end < len(items) {
-		cursor := base64.RawURLEncoding.EncodeToString([]byte(items[end-1].SnapshotID))
-		result.NextCursor = &cursor
-	}
-	return result, nil
+	return subjectApp.ListSourceSnapshots(subjectCommandSnapshot(&st), subjectCommandActor(current), caseID, cursor, limit)
 }
 
 func (s *Store) GetSubjectSourceSnapshot(ctx context.Context, user accounts.User, caseID, snapshotID string) (SubjectSourceSnapshotDetail, error) {
@@ -344,16 +210,7 @@ func (s *Store) GetSubjectSourceSnapshot(ctx context.Context, user accounts.User
 	if err := requireCaseAction(caseItem, current, access.Read); err != nil {
 		return SubjectSourceSnapshotDetail{}, err
 	}
-	for _, item := range st.SubjectSourceSnapshots {
-		if item.TenantID == current.TenantID && item.CaseID == caseItem.ID && item.SnapshotID == strings.TrimSpace(snapshotID) {
-			projected, err := subjectSourceSnapshotResult(item)
-			if err != nil {
-				return SubjectSourceSnapshotDetail{}, err
-			}
-			return SubjectSourceSnapshotDetail{SubjectSourceSnapshotResult: projected, CaseID: caseItem.ID}, nil
-		}
-	}
-	return SubjectSourceSnapshotDetail{}, fault.NotFound("没有找到对应来源快照")
+	return subjectApp.GetSourceSnapshot(subjectCommandSnapshot(&st), subjectCommandActor(current), caseItem.ID, strings.TrimSpace(snapshotID))
 }
 
 func (s *Store) VerifySubjectFromControlledSource(ctx context.Context, user accounts.User, caseID, snapshotID string, input SubjectSourceVerifyInput, key string) (SubjectSourceVerifyResult, bool, error) {
@@ -376,7 +233,7 @@ func (s *Store) VerifySubjectFromControlledSource(ctx context.Context, user acco
 		return SubjectSourceVerifyResult{}, false, err
 	}
 	targetID := caseID + "/" + snapshotID + "/" + input.SubjectID
-	requestHash, err := canonicalSubjectHash(input)
+	requestHash, err := subjectApp.RequestHash(input)
 	if err != nil {
 		return SubjectSourceVerifyResult{}, false, err
 	}
@@ -387,105 +244,24 @@ func (s *Store) VerifySubjectFromControlledSource(ctx context.Context, user acco
 		if err != nil {
 			return err
 		}
-		if prior, ok, err := readSubjectIdempotency(*st, current, "verify_subject_source", targetID, key, requestHash); err != nil {
+		snapshot, actor := subjectCommandSnapshot(st), subjectCommandActor(current)
+		result, replayed, err = subjectApp.ReplaySourceVerification(snapshot, actor, targetID, key, requestHash)
+		if err != nil || replayed {
 			return err
-		} else if ok {
-			replayed = true
-			return json.Unmarshal(prior.Response, &result)
 		}
-		var snapshot *SubjectSourceSnapshot
-		for i := range st.SubjectSourceSnapshots {
-			item := &st.SubjectSourceSnapshots[i]
-			if item.TenantID == current.TenantID && item.OrgID == caseItem.OwnerOrgID && item.CaseID == caseID && item.SnapshotID == snapshotID {
-				snapshot = item
-				break
-			}
-		}
-		if snapshot == nil {
-			return fault.NotFound("没有找到案件来源快照")
-		}
-		manifest, err := decodeFrozenSubjectSourceSnapshot(*snapshot)
+		caseIdentity := subjectApp.CaseIdentity{TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID}
+		prepared, err := subjectApp.PrepareSourceVerification(snapshot, actor, caseIdentity, snapshotID)
 		if err != nil {
 			return err
 		}
-		subject, version, visible := visibleSubject(*st, current, input.SubjectID)
-		if !visible || subject.TenantID != current.TenantID || subject.CurrentVersion != input.ExpectedSubjectVersion || !caseHasSubject(st, caseID, subject.ID) {
-			return fault.NotFound("没有找到对应案件主体")
+		readable := subjectReadableBindingCases(st, current)
+		delta, verified, err := subjectApp.VerifySource(snapshot, actor, caseIdentity, prepared, input, readable, key, requestHash, subjectCommandClock{})
+		result = verified
+		if err != nil {
+			return err
 		}
-		claimedUSCC := ""
-		for _, claim := range version.IdentityClaims {
-			if claim.Namespace == "cn.gov.samr.uscc" && claim.IdentifierType == "unified_social_credit_code" {
-				if claim.VerificationState == "verified" && claim.VerificationScope != "synthetic_controlled" {
-					return fault.Conflict("当前主体已有其他来源核验，不能由synthetic受控来源替换")
-				}
-				claimedUSCC = strings.ToUpper(strings.TrimSpace(claim.Value))
-				break
-			}
-		}
-		usccMatches := make([]SubjectSourceRecord, 0, 1)
-		for _, record := range manifest.Records {
-			if claimedUSCC != "" && record.USCC == claimedUSCC {
-				usccMatches = append(usccMatches, record)
-			}
-		}
-		result = SubjectSourceVerifyResult{State: "not_proposed", MatchOutcome: "no_match", SnapshotID: snapshot.SnapshotID, SourceCatalogID: snapshot.SourceCatalogID,
-			SourceVersion: snapshot.SourceVersion, SourceDigest: snapshot.SourceDigest, SourceScope: snapshot.SourceScope}
-		operationStatus := 200
-		if len(usccMatches) > 1 {
-			// Without an explicit record/as-of selector, conflicting entries for
-			// one identifier are ambiguous even when only one name happens to fit.
-			result.MatchOutcome = "ambiguous"
-		} else if len(usccMatches) == 1 && (usccMatches[0].DisplayName == version.DisplayName || (version.LegalName != "" && usccMatches[0].DisplayName == version.LegalName)) {
-			record := usccMatches[0]
-			asOf, validFrom, validUntil := record.SourceAsOf.UTC(), record.ValidFrom.UTC(), (*time.Time)(nil)
-			if record.ValidUntil != nil {
-				value := record.ValidUntil.UTC()
-				validUntil = &value
-			}
-			result.SourceAsOf = &asOf
-			result.ValidFrom = &validFrom
-			result.ValidUntil = validUntil
-			result.MatchOutcome = "exact_match"
-			result.MatchedRecord = &SubjectSourceMatchedRecord{DisplayName: record.DisplayName, MaskedIdentifier: maskUSCC(record.USCC)}
-			version.Version = subject.CurrentVersion + 1
-			version.VerificationState, version.VerificationScope, version.SourceKind = "verified", "synthetic_controlled", "authorized_correction"
-			version.BasisSummary = "按版本化synthetic_controlled受控来源精确比对名称和统一社会信用代码"
-			version.CreatedByUser, version.CreatedByIssuer, version.CreatedBySubject = current.ID, current.Issuer, current.Subject
-			version.CreatedAt = time.Now().UTC()
-			version.IdentityClaims = []SubjectIdentityClaim{{Namespace: "cn.gov.samr.uscc", IdentifierType: "unified_social_credit_code", Value: record.USCC,
-				VerificationState: "verified", VerificationScope: "synthetic_controlled", SourceKind: "synthetic_controlled_snapshot", SourceTime: &asOf,
-				SourceCatalogID: snapshot.SourceCatalogID, SourceSnapshotID: snapshot.SnapshotID, SourceDigest: snapshot.SourceDigest,
-				SourceValidFrom: &validFrom, SourceValidUntil: validUntil}}
-			version.IdentityClaims[0].PayloadHash = hashSubjectClaim(version.IdentityClaims[0])
-			version.PayloadHash = hashSubjectVersion(version)
-			canonical, err := json.Marshal(subjectAfterPayload{SubjectVersion: version})
-			if err != nil {
-				return err
-			}
-			basis, err := json.Marshal([]ControlledSourceBasisRef{{Kind: "controlled_source", SnapshotID: snapshot.SnapshotID, SourceCatalogID: snapshot.SourceCatalogID,
-				SourceVersion: snapshot.SourceVersion, SourceDigest: snapshot.SourceDigest, SourceScope: snapshot.SourceScope, SourceAsOf: asOf,
-				ValidFrom: validFrom, ValidUntil: validUntil, CapturedAt: snapshot.CapturedAt}})
-			if err != nil {
-				return err
-			}
-			bindings := affectedSubjectBindings(*st, current.TenantID, subject.ID, "subject", "")
-			bindingsHash, err := canonicalSubjectHash(bindings)
-			if err != nil {
-				return err
-			}
-			requestID, err := newID("sch_")
-			if err != nil {
-				return err
-			}
-			request := SubjectChangeRequest{TenantID: current.TenantID, OrgID: caseItem.OwnerOrgID, RequestID: requestID, SourceCaseID: caseID,
-				TargetKind: "subject", TargetSubjectID: subject.ID, ExpectedSubjectVersion: subject.CurrentVersion, CanonicalPayload: canonical,
-				CanonicalPayloadHash: hashJSON(canonical), BasisNote: "按版本化受控来源精确比对名称与统一社会信用代码；来源范围为synthetic_controlled。",
-				BasisRefs: basis, ExpectedBindingsHash: bindingsHash, ProposedBy: TrustedPrincipalProjection{UserID: current.ID, Issuer: current.Issuer, Subject: current.Subject}, CreatedAt: time.Now().UTC()}
-			st.SubjectChangeRequests = append(st.SubjectChangeRequests, request)
-			result.RequestID, result.State = &requestID, "pending_decision"
-			operationStatus = 202
-		}
-		return appendSubjectIdempotency(st, current, "verify_subject_source", targetID, key, requestHash, operationStatus, result, time.Now().UTC())
+		applySubjectCommandDelta(st, delta)
+		return nil
 	})
 	return result, replayed, err
 }

@@ -1,0 +1,498 @@
+{
+  "organizations": [
+    {
+      "id": "cq-wanzhou",
+      "name": "万州区"
+    },
+    {
+      "id": "cq-qianjiang",
+      "name": "黔江区"
+    },
+    {
+      "id": "cq-fuling",
+      "name": "涪陵区"
+    },
+    {
+      "id": "demo-other-org",
+      "name": "渝中区"
+    },
+    {
+      "id": "cq-dadukou",
+      "name": "大渡口区"
+    },
+    {
+      "id": "cq-shapingba",
+      "name": "沙坪坝区"
+    },
+    {
+      "id": "cq-jiulongpo",
+      "name": "九龙坡区"
+    },
+    {
+      "id": "cq-nanan",
+      "name": "南岸区"
+    },
+    {
+      "id": "cq-beibei",
+      "name": "北碚区"
+    },
+    {
+      "id": "cq-banan",
+      "name": "巴南区"
+    },
+    {
+      "id": "cq-changshou",
+      "name": "长寿区"
+    },
+    {
+      "id": "cq-jiangjin",
+      "name": "江津区"
+    },
+    {
+      "id": "cq-hechuan",
+      "name": "合川区"
+    },
+    {
+      "id": "cq-yongchuan",
+      "name": "永川区"
+    },
+    {
+      "id": "cq-nanchuan",
+      "name": "南川区"
+    },
+    {
+      "id": "cq-qijiang",
+      "name": "綦江区"
+    },
+    {
+      "id": "cq-dazu",
+      "name": "大足区"
+    },
+    {
+      "id": "cq-bishan",
+      "name": "璧山区"
+    },
+    {
+      "id": "cq-tongliang",
+      "name": "铜梁区"
+    },
+    {
+      "id": "cq-tongnan",
+      "name": "潼南区"
+    },
+    {
+      "id": "cq-rongchang",
+      "name": "荣昌区"
+    },
+    {
+      "id": "cq-kaizhou",
+      "name": "开州区"
+    },
+    {
+      "id": "cq-liangping",
+      "name": "梁平区"
+    },
+    {
+      "id": "cq-wulong",
+      "name": "武隆区"
+    },
+    {
+      "id": "demo-org",
+      "name": "两江新区"
+    }
+  ],
+  "users": [
+    {
+      "id": "wanzhou-clerk",
+      "display_name": "Ethan Brooks",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-wanzhou"
+    },
+    {
+      "id": "wanzhou-reviewer",
+      "display_name": "Grace Coleman",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-wanzhou"
+    },
+    {
+      "id": "qianjiang-clerk",
+      "display_name": "Lucas Perry",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-qianjiang"
+    },
+    {
+      "id": "qianjiang-reviewer",
+      "display_name": "Hannah Scott",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-qianjiang"
+    },
+    {
+      "id": "fuling-clerk",
+      "display_name": "Jack Morgan",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-fuling"
+    },
+    {
+      "id": "fuling-reviewer",
+      "display_name": "Lily Foster",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-fuling"
+    },
+    {
+      "id": "demo-otherorg-clerk",
+      "display_name": "Noah Griffin",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "demo-other-org"
+    },
+    {
+      "id": "yuzhong-reviewer",
+      "display_name": "Mia Harper",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "demo-other-org"
+    },
+    {
+      "id": "dadukou-clerk",
+      "display_name": "Leo Hughes",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-dadukou"
+    },
+    {
+      "id": "dadukou-reviewer",
+      "display_name": "Ella Price",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-dadukou"
+    },
+    {
+      "id": "shapingba-clerk",
+      "display_name": "Mason Ward",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-shapingba"
+    },
+    {
+      "id": "shapingba-reviewer",
+      "display_name": "Chloe Bennett",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-shapingba"
+    },
+    {
+      "id": "jiulongpo-clerk",
+      "display_name": "Logan Hayes",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-jiulongpo"
+    },
+    {
+      "id": "jiulongpo-reviewer",
+      "display_name": "Zoe Campbell",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-jiulongpo"
+    },
+    {
+      "id": "nanan-clerk",
+      "display_name": "Benjamin Ross",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-nanan"
+    },
+    {
+      "id": "nanan-reviewer",
+      "display_name": "Nora Jenkins",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-nanan"
+    },
+    {
+      "id": "beibei-clerk",
+      "display_name": "Caleb Powell",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-beibei"
+    },
+    {
+      "id": "beibei-reviewer",
+      "display_name": "Ruby Sanders",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-beibei"
+    },
+    {
+      "id": "banan-clerk",
+      "display_name": "Owen Bailey",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-banan"
+    },
+    {
+      "id": "banan-reviewer",
+      "display_name": "Stella Grant",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-banan"
+    },
+    {
+      "id": "changshou-clerk",
+      "display_name": "Nathan Cox",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-changshou"
+    },
+    {
+      "id": "changshou-reviewer",
+      "display_name": "Violet Long",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-changshou"
+    },
+    {
+      "id": "jiangjin-clerk",
+      "display_name": "Samuel Ortiz",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-jiangjin"
+    },
+    {
+      "id": "jiangjin-reviewer",
+      "display_name": "Audrey Kim",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-jiangjin"
+    },
+    {
+      "id": "hechuan-clerk",
+      "display_name": "Isaac Flores",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-hechuan"
+    },
+    {
+      "id": "hechuan-reviewer",
+      "display_name": "Penelope Diaz",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-hechuan"
+    },
+    {
+      "id": "yongchuan-clerk",
+      "display_name": "Gabriel Myers",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-yongchuan"
+    },
+    {
+      "id": "yongchuan-reviewer",
+      "display_name": "Claire Nguyen",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-yongchuan"
+    },
+    {
+      "id": "nanchuan-clerk",
+      "display_name": "Anthony Rivera",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-nanchuan"
+    },
+    {
+      "id": "nanchuan-reviewer",
+      "display_name": "Natalie Cruz",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-nanchuan"
+    },
+    {
+      "id": "qijiang-clerk",
+      "display_name": "Dylan Reyes",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-qijiang"
+    },
+    {
+      "id": "qijiang-reviewer",
+      "display_name": "Brooklyn Morales",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-qijiang"
+    },
+    {
+      "id": "dazu-clerk",
+      "display_name": "Christian Peterson",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-dazu"
+    },
+    {
+      "id": "dazu-reviewer",
+      "display_name": "Samantha Powell",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-dazu"
+    },
+    {
+      "id": "bishan-clerk",
+      "display_name": "Jonathan Simmons",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-bishan"
+    },
+    {
+      "id": "bishan-reviewer",
+      "display_name": "Allison Bryant",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-bishan"
+    },
+    {
+      "id": "tongliang-clerk",
+      "display_name": "Aaron Russell",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-tongliang"
+    },
+    {
+      "id": "tongliang-reviewer",
+      "display_name": "Caroline Wood",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-tongliang"
+    },
+    {
+      "id": "tongnan-clerk",
+      "display_name": "Charles Butler",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-tongnan"
+    },
+    {
+      "id": "tongnan-reviewer",
+      "display_name": "Madeline Barnes",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-tongnan"
+    },
+    {
+      "id": "rongchang-clerk",
+      "display_name": "Thomas Henderson",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-rongchang"
+    },
+    {
+      "id": "rongchang-reviewer",
+      "display_name": "Paisley Cook",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-rongchang"
+    },
+    {
+      "id": "kaizhou-clerk",
+      "display_name": "Joshua Rogers",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-kaizhou"
+    },
+    {
+      "id": "kaizhou-reviewer",
+      "display_name": "Hailey Patterson",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-kaizhou"
+    },
+    {
+      "id": "liangping-clerk",
+      "display_name": "Andrew Fisher",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-liangping"
+    },
+    {
+      "id": "liangping-reviewer",
+      "display_name": "Genesis Bell",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-liangping"
+    },
+    {
+      "id": "wulong-clerk",
+      "display_name": "Christopher Gonzales",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "cq-wulong"
+    },
+    {
+      "id": "wulong-reviewer",
+      "display_name": "Naomi West",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "cq-wulong"
+    },
+    {
+      "id": "demo-admin",
+      "display_name": "James Carter",
+      "role": "admin",
+      "tenant_id": "local-demo",
+      "org_id": "demo-org"
+    },
+    {
+      "id": "demo-clerk",
+      "display_name": "Emma Walsh",
+      "role": "clerk",
+      "tenant_id": "local-demo",
+      "org_id": "demo-org"
+    },
+    {
+      "id": "demo-reviewer",
+      "display_name": "Oliver Bennett",
+      "role": "reviewer",
+      "tenant_id": "local-demo",
+      "org_id": "demo-org"
+    },
+    {
+      "id": "demo-viewer",
+      "display_name": "Sophia Reed",
+      "role": "viewer",
+      "tenant_id": "local-demo",
+      "org_id": "demo-org"
+    },
+    {
+      "id": "demo-tenant2-admin",
+      "display_name": "Henry Brooks",
+      "role": "admin",
+      "tenant_id": "local-demo-2",
+      "org_id": "demo-org-2"
+    },
+    {
+      "id": "demo-tenant2-clerk",
+      "display_name": "Ava Mitchell",
+      "role": "clerk",
+      "tenant_id": "local-demo-2",
+      "org_id": "demo-org-2"
+    },
+    {
+      "id": "demo-tenant2-reviewer",
+      "display_name": "Liam Cooper",
+      "role": "reviewer",
+      "tenant_id": "local-demo-2",
+      "org_id": "demo-org-2"
+    },
+    {
+      "id": "demo-tenant2-viewer",
+      "display_name": "Chloe Parker",
+      "role": "viewer",
+      "tenant_id": "local-demo-2",
+      "org_id": "demo-org-2"
+    }
+  ]
+}

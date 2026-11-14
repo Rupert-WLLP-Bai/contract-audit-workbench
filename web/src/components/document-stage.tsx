@@ -3,11 +3,12 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r5
+// Updated: 2026-11-14
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
+import { findingTitle } from "../domain/finding-presentation";
 import { Tabs } from "antd";
 import { Collapse } from "antd";
 import { Button, Input, Select } from "antd";
@@ -26,12 +27,8 @@ import { Link } from "react-router";
 import type { CaseReturnState } from "./section-navigation";
 import { TechnicalDetail } from "./technical-detail";
 import { caseSelectPresentation } from "./case-select-presentation";
-import type {
-  CaseRelationInput,
-  EvidenceAnchor,
-  Finding,
-  ReviewDocument,
-} from "../api/types";
+import type { ContractFactsCitation, ContractFactsProjection } from "../api/contract-facts";
+import type { CaseRelationInput, EvidenceAnchor, Finding, ReviewDocument } from "../api/types";
 import type { ReviewLayout } from "../domain/review";
 import {
   actorRoleLabel,
@@ -47,6 +44,7 @@ import {
   findTextMatches,
   resolveAnchor,
   segmentText,
+  sliceByCodePoints,
   type CodePointTextIndex,
   type ResolvedAnchor,
   type TextSegment,
@@ -54,12 +52,23 @@ import {
 import { ParsedDocumentSummary } from "./parsed-document-summary";
 import {
   createFrozenQuoteSelection,
+  frozenQuoteMatchesDocument,
   type FrozenQuoteScope,
   type FrozenQuoteSelection,
 } from "../domain/frozen-quote";
+import {
+  keyClauseNavigationFor,
+  type KeyClauseCandidate,
+  type KeyClauseNavigation,
+} from "../domain/key-clauses";
 import { StatusText } from "./status-text";
-import { OriginalDocumentReader, OriginalSourceContext, supportsOriginalPreview } from "./original-document-reader";
+import {
+  OriginalDocumentReader,
+  OriginalSourceContext,
+  supportsOriginalPreview,
+} from "./original-document-reader";
 import { businessScopeLabel } from "../domain/business-labels";
+import { KeyClauseNavigator } from "./key-clause-navigator";
 
 export interface ReviewCaseContext {
   caseId: string;
@@ -95,10 +104,7 @@ function documentKey(document: ReviewDocument): string {
   return `${document.id}\u0000${document.parsed_document?.id ?? document.parsed_document_id ?? "legacy"}`;
 }
 
-function documentLabel(
-  document: ReviewDocument,
-  documents: ReviewDocument[],
-): string {
+function documentLabel(document: ReviewDocument, documents: ReviewDocument[]): string {
   const sameVersion = documents.filter((item) => item.id === document.id);
   return sameVersion.length > 1
     ? `${roleLabel(document.role)}，来源 ${sameVersion.findIndex((item) => documentKey(item) === documentKey(document)) + 1}`
@@ -109,17 +115,80 @@ function documentForAnchor(
   anchor: EvidenceAnchor,
   documents: ReviewDocument[],
 ): ReviewDocument | null {
-  return documents.find((document) =>
-    evidenceSourceMatches(anchor, document.id, document.parsed_document, document.parsed_document_id),
-  ) ?? null;
+  return (
+    documents.find((document) =>
+      evidenceSourceMatches(
+        anchor,
+        document.id,
+        document.parsed_document,
+        document.parsed_document_id,
+      ),
+    ) ?? null
+  );
 }
 
-function anchorsFor(
-  document: ReviewDocument,
-  finding: Finding | null,
-): EvidenceAnchor[] {
-  return finding?.evidence.filter((anchor) =>
-    anchor.document_version_id === document.id) ?? [];
+function documentForContractFactsCitation(
+  citation: ContractFactsCitation | null,
+  documents: ReviewDocument[],
+  scope: ContractFactsLocationScope | null,
+): ReviewDocument | null {
+  if (
+    !citation ||
+    !scope ||
+    scope.historyKind !== "frozen" ||
+    !scope.caseId ||
+    !scope.runId ||
+    scope.projection.attempt_id !== scope.attemptId ||
+    !scope.parsedDocumentIds.includes(citation.parsed_document_id)
+  )
+    return null;
+  const source = scope.projection.source;
+  if (
+    source.document_id !== citation.document_id ||
+    source.parsed_document_id !== citation.parsed_document_id ||
+    source.original_digest !== citation.original_digest ||
+    source.normalized_digest !== citation.normalized_digest ||
+    citation.end > scope.projection.input_codepoints ||
+    !scope.projection.fields.some((field) =>
+      field.citations.some(
+        (item) =>
+          item.document_id === citation.document_id &&
+          item.parsed_document_id === citation.parsed_document_id &&
+          item.original_digest === citation.original_digest &&
+          item.normalized_digest === citation.normalized_digest &&
+          item.quote === citation.quote &&
+          item.start === citation.start &&
+          item.end === citation.end,
+      ),
+    )
+  )
+    return null;
+  return (
+    documents.find((document) => {
+      return (
+        document.id === citation.document_id &&
+        document.role === "draft_contract" &&
+        document.parsed_document_id === citation.parsed_document_id &&
+        scope.parsedDocumentIds.includes(document.parsed_document_id) &&
+        document.parse_status === "ready" &&
+        document.text !== null &&
+        sliceByCodePoints(document.text, citation.start, citation.end) === citation.quote
+      );
+    }) ?? null
+  );
+}
+
+export interface ContractFactsLocationScope {
+  caseId: string;
+  runId: string;
+  attemptId: string;
+  historyKind: string;
+  parsedDocumentIds: readonly string[];
+  projection: ContractFactsProjection;
+}
+
+function anchorsFor(document: ReviewDocument, finding: Finding | null): EvidenceAnchor[] {
+  return finding?.evidence.filter((anchor) => anchor.document_version_id === document.id) ?? [];
 }
 
 function codePointBoundary(index: CodePointTextIndex, utf16Offset: number): number | null {
@@ -156,17 +225,23 @@ function publishQuoteSelection(
 ) {
   if (!onQuoteSelectionChange) return;
   const selection = window.getSelection();
-  if (!selection || selection.isCollapsed || selection.rangeCount !== 1 ||
-    source.text === null || container.textContent !== source.text ||
-    !selection.anchorNode || !selection.focusNode ||
-    !container.contains(selection.anchorNode) || !container.contains(selection.focusNode)) {
+  if (
+    !selection ||
+    selection.isCollapsed ||
+    selection.rangeCount !== 1 ||
+    source.text === null ||
+    container.textContent !== source.text ||
+    !selection.anchorNode ||
+    !selection.focusNode ||
+    !container.contains(selection.anchorNode) ||
+    !container.contains(selection.focusNode)
+  ) {
     onQuoteSelectionChange(null);
     return;
   }
   const range = selection.getRangeAt(0);
-  const index = providedTextIndex?.text === source.text
-    ? providedTextIndex
-    : createTextIndex(source.text);
+  const index =
+    providedTextIndex?.text === source.text ? providedTextIndex : createTextIndex(source.text);
   const startUtf16 = textOffsetWithin(container, range.startContainer, range.startOffset);
   const endUtf16 = textOffsetWithin(container, range.endContainer, range.endOffset);
   const start = startUtf16 === null ? null : codePointBoundary(index, startUtf16);
@@ -228,36 +303,56 @@ function DiagnosticsCollapse({
 
 const DocSegments = memo(function DocSegments({
   segments,
+  keyClause,
 }: {
   segments: TextSegment[];
+  keyClause: KeyClauseCandidate | null;
 }) {
   return (
     <>
-      {segments.map((segment) =>
-        segment.highlighted === "evidence" ? (
-          <mark
-            key={segment.start}
-            data-offset={segment.start}
-            className="hit-evidence"
-          >
-            {segment.text}
-          </mark>
-        ) : (
+      {segments.map((segment) => {
+        const segmentEnd = segment.start + Array.from(segment.text).length;
+        const inKeyClause =
+          keyClause !== null &&
+          segment.start >= keyClause.range.start &&
+          segmentEnd <= keyClause.range.end;
+        const selectedAttribute = inKeyClause ? { "data-selected-key-clause": "true" } : {};
+        if (segment.highlighted === "evidence") {
+          return (
+            <mark
+              key={segment.start}
+              data-offset={segment.start}
+              {...selectedAttribute}
+              className={`hit-evidence${inKeyClause ? " key-clause-overlap" : ""}`}
+            >
+              {segment.text}
+            </mark>
+          );
+        }
+        if (inKeyClause) {
+          return (
+            <mark
+              key={segment.start}
+              data-offset={segment.start}
+              {...selectedAttribute}
+              className={`hit-key-clause${segment.highlighted === "find" ? " hit-find" : ""}`}
+            >
+              {segment.text}
+            </mark>
+          );
+        }
+        return (
           <span
             key={segment.start}
             data-offset={
-              segment.anchor || segment.highlighted === "find"
-                ? segment.start
-                : undefined
+              segment.anchor || segment.highlighted === "find" ? segment.start : undefined
             }
-            className={
-              segment.highlighted === "find" ? "hit-find" : undefined
-            }
+            className={segment.highlighted === "find" ? "hit-find" : undefined}
           >
             {segment.text}
           </span>
-        ),
-      )}
+        );
+      })}
     </>
   );
 });
@@ -274,7 +369,9 @@ function EvidenceNotes({ resolved }: { resolved: ResolvedAnchor[] }) {
         item.kind === "snapshot" ? (
           <SnapshotCallout key={`snapshot-${index}`} resolved={item} />
         ) : item.kind === "unavailable" ? (
-          <p key={`unavailable-${index}`} className="callout">{item.reason}</p>
+          <p key={`unavailable-${index}`} className="callout">
+            {item.reason}
+          </p>
         ) : null,
       )}
     </>
@@ -317,12 +414,14 @@ function SelectableDocText({
   scope,
   textIndex,
   segments,
+  keyClause,
   onQuoteSelectionChange,
 }: {
   document: ReviewDocument;
   scope: FrozenQuoteScope | null;
   textIndex: CodePointTextIndex | null;
   segments: TextSegment[];
+  keyClause: KeyClauseCandidate | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   if (document.text === null) return <p>这份材料还没有可阅读的正文。</p>;
@@ -331,14 +430,26 @@ function SelectableDocText({
       className="doc-text"
       tabIndex={0}
       aria-label={`${document.filename}原文`}
-      onMouseUp={(event) => publishQuoteSelection(
-        event.currentTarget, document, scope, textIndex, onQuoteSelectionChange,
-      )}
-      onKeyUp={(event) => publishQuoteSelection(
-        event.currentTarget, document, scope, textIndex, onQuoteSelectionChange,
-      )}
+      onMouseUp={(event) =>
+        publishQuoteSelection(
+          event.currentTarget,
+          document,
+          scope,
+          textIndex,
+          onQuoteSelectionChange,
+        )
+      }
+      onKeyUp={(event) =>
+        publishQuoteSelection(
+          event.currentTarget,
+          document,
+          scope,
+          textIndex,
+          onQuoteSelectionChange,
+        )
+      }
     >
-      <DocSegments segments={segments} />
+      <DocSegments segments={segments} keyClause={keyClause} />
     </div>
   );
 }
@@ -360,7 +471,10 @@ function FailedParseBody({
         <strong>{document.filename}</strong>
         <StatusText tone="bad">解析失败</StatusText>
       </header>
-      <TechnicalDetail label="材料状态技术详情" value={JSON.stringify({ role: document.role, parse_status: document.parse_status })} />
+      <TechnicalDetail
+        label="材料状态技术详情"
+        value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
+      />
       <DiagnosticsCollapse document={document} showDiagnostics={showDiagnostics} />
       <p className="callout">这份材料解析失败，请先处理解析问题再继续审查。</p>
       {document.parse_error ? <p>{document.parse_error}</p> : null}
@@ -381,6 +495,7 @@ function HighlightBody({
   activeSource,
   scope,
   textIndex,
+  keyClause,
   onQuoteSelectionChange,
 }: {
   document: ReviewDocument;
@@ -394,17 +509,23 @@ function HighlightBody({
   activeSource: boolean;
   scope: FrozenQuoteScope | null;
   textIndex: CodePointTextIndex | null;
+  keyClause: KeyClauseCandidate | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
-  const pages = [...new Set(resolved.flatMap((item) => item.page === null ? [] : [item.page]))];
+  const pages = [...new Set(resolved.flatMap((item) => (item.page === null ? [] : [item.page])))];
   return (
     <DocPane document={document} activeSource={activeSource}>
       <header className="doc-pane-head">
         <strong>{document.filename}</strong>
         <span>{roleLabel(document.role)}</span>
-        {pages.map((page) => <span key={page}>第 {page} 页</span>)}
+        {pages.map((page) => (
+          <span key={page}>第 {page} 页</span>
+        ))}
       </header>
-      <TechnicalDetail label="材料状态技术详情" value={JSON.stringify({ role: document.role, parse_status: document.parse_status })} />
+      <TechnicalDetail
+        label="材料状态技术详情"
+        value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
+      />
       <DiagnosticsCollapse document={document} showDiagnostics={showDiagnostics} />
       {activeSource ? (
         <EvidenceAnchorSwitch
@@ -419,6 +540,7 @@ function HighlightBody({
         scope={scope}
         textIndex={textIndex}
         segments={segments}
+        keyClause={keyClause}
         onQuoteSelectionChange={onQuoteSelectionChange}
       />
     </DocPane>
@@ -445,6 +567,7 @@ function EmptyOrText({
   scope,
   textIndex,
   segments,
+  keyClause,
   onQuoteSelectionChange,
 }: {
   hasResolved: boolean;
@@ -452,6 +575,7 @@ function EmptyOrText({
   scope: FrozenQuoteScope | null;
   textIndex: CodePointTextIndex | null;
   segments: TextSegment[];
+  keyClause: KeyClauseCandidate | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   if (hasResolved) return null;
@@ -461,6 +585,7 @@ function EmptyOrText({
       scope={scope}
       textIndex={textIndex}
       segments={segments}
+      keyClause={keyClause}
       onQuoteSelectionChange={onQuoteSelectionChange}
     />
   );
@@ -474,6 +599,7 @@ function PlainBody({
   activeSource,
   scope,
   textIndex,
+  keyClause,
   onQuoteSelectionChange,
 }: {
   document: ReviewDocument;
@@ -483,6 +609,7 @@ function PlainBody({
   activeSource: boolean;
   scope: FrozenQuoteScope | null;
   textIndex: CodePointTextIndex | null;
+  keyClause: KeyClauseCandidate | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   return (
@@ -494,7 +621,10 @@ function PlainBody({
           {parseLabel(document.parse_status)}
         </StatusText>
       </header>
-      <TechnicalDetail label="材料状态技术详情" value={JSON.stringify({ role: document.role, parse_status: document.parse_status })} />
+      <TechnicalDetail
+        label="材料状态技术详情"
+        value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
+      />
       <DiagnosticsCollapse document={document} showDiagnostics={showDiagnostics} />
       <EvidenceNotes resolved={resolved} />
       <EmptyOrText
@@ -503,6 +633,7 @@ function PlainBody({
         scope={scope}
         textIndex={textIndex}
         segments={segments}
+        keyClause={keyClause}
         onQuoteSelectionChange={onQuoteSelectionChange}
       />
     </DocPane>
@@ -517,6 +648,7 @@ const TextDocumentBody = memo(function TextDocumentBody({
   showDiagnostics,
   textIndex: providedTextIndex,
   quoteScope,
+  keyClause,
   onQuoteSelectionChange,
 }: {
   document: ReviewDocument;
@@ -526,56 +658,86 @@ const TextDocumentBody = memo(function TextDocumentBody({
   showDiagnostics: boolean;
   textIndex: CodePointTextIndex | null;
   quoteScope: FrozenQuoteScope | null;
+  keyClause: KeyClauseCandidate | null;
+  focusRange?: { start: number; end: number } | null;
+  onClearKeyClause?: () => void;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   const textIndex = useMemo(
     () => providedTextIndex ?? (document.text === null ? null : createTextIndex(document.text)),
-    [document, document.parsed_document, document.parsed_document_id, document.text, providedTextIndex],
+    [
+      document,
+      document.parsed_document,
+      document.parsed_document_id,
+      document.text,
+      providedTextIndex,
+    ],
   );
   const anchors = useMemo(() => anchorsFor(document, finding), [document, finding]);
   const resolved = useMemo(
-    () => anchors.map((anchor) => resolveAnchor(
-      document.text,
-      anchor,
-      document.parsed_document,
-      document.parsed_document_id,
-      textIndex ?? undefined,
-    )),
+    () =>
+      anchors.map((anchor) =>
+        resolveAnchor(
+          document.text,
+          anchor,
+          document.parsed_document,
+          document.parsed_document_id,
+          textIndex ?? undefined,
+        ),
+      ),
     [anchors, document, textIndex],
   );
   const locatedAnchors = useMemo(
-    () => resolved.flatMap((item, index): LocatedEvidenceAnchor[] =>
-      item.kind === "highlight" && anchors[index]
-        ? [{ anchor: anchors[index]!, resolved: item }]
-        : [],
-    ),
+    () =>
+      resolved.flatMap((item, index): LocatedEvidenceAnchor[] =>
+        item.kind === "highlight" && anchors[index]
+          ? [{ anchor: anchors[index]!, resolved: item }]
+          : [],
+      ),
     [anchors, resolved],
   );
   const [selectedAnchorId, setSelectedAnchorId] = useState("");
-  const currentAnchorId = locatedAnchors.find((item) => item.anchor.id === selectedAnchorId)?.anchor.id ??
-    locatedAnchors[0]?.anchor.id ?? "";
+  const currentAnchorId =
+    locatedAnchors.find((item) => item.anchor.id === selectedAnchorId)?.anchor.id ??
+    locatedAnchors[0]?.anchor.id ??
+    "";
   const clauseStarts = useMemo(
     () => document.clauses.map((clause) => clause.text_offset.start),
     [document, document.clauses],
   );
   const segments = useMemo(() => {
     if (document.text === null || document.parse_status === "failed") return null;
-    const highlights = locatedAnchors.map(({ resolved: item }) => ({ start: item.start, end: item.end }));
+    const highlights = locatedAnchors.map(({ resolved: item }) => ({
+      start: item.start,
+      end: item.end,
+    }));
+    const clauseOffsets = keyClause
+      ? clauseStarts.concat(keyClause.range.start, keyClause.range.end)
+      : clauseStarts;
     return segmentText(
       document.text,
       highlights,
-      highlights.length > 0 ? clauseStarts.concat(highlights.map((item) => item.start)) : [],
+      highlights.length > 0
+        ? clauseOffsets.concat(highlights.map((item) => item.start))
+        : clauseOffsets,
       findRange,
       textIndex ?? undefined,
     );
-  }, [clauseStarts, document, findRange, locatedAnchors, textIndex]);
+  }, [clauseStarts, document, findRange, keyClause, locatedAnchors, textIndex]);
   function selectAnchor(anchor: LocatedEvidenceAnchor) {
     setSelectedAnchorId(anchor.anchor.id);
     focusAnchorOffset(document, anchor.resolved.start);
   }
 
   if (document.parse_status === "failed") {
-    return <FailedParseBody document={document} resolved={resolved} showDiagnostics={showDiagnostics} activeSource={activeSource} />;
+    return (
+      <FailedParseBody
+        document={document}
+        resolved={resolved}
+        showDiagnostics={showDiagnostics}
+        activeSource={activeSource}
+      />
+    );
   }
 
   if (locatedAnchors.length > 0 && document.text !== null) {
@@ -592,6 +754,7 @@ const TextDocumentBody = memo(function TextDocumentBody({
         activeSource={activeSource}
         scope={quoteScope}
         textIndex={textIndex}
+        keyClause={keyClause}
         onQuoteSelectionChange={onQuoteSelectionChange}
       />
     );
@@ -606,6 +769,7 @@ const TextDocumentBody = memo(function TextDocumentBody({
       activeSource={activeSource}
       scope={quoteScope}
       textIndex={textIndex}
+      keyClause={keyClause}
       onQuoteSelectionChange={onQuoteSelectionChange}
     />
   );
@@ -614,22 +778,70 @@ const TextDocumentBody = memo(function TextDocumentBody({
 const DocumentBody = memo(function DocumentBody(props: ComponentProps<typeof TextDocumentBody>) {
   const scope = useContext(OriginalSourceContext);
   const document = props.document;
-  const quotes = useMemo(() => anchorsFor(document, props.finding).flatMap((anchor) => {
-    const resolved = resolveAnchor(document.text, anchor, document.parsed_document, document.parsed_document_id,
-      props.textIndex ?? undefined);
-    return resolved.kind === "highlight"
-      ? [{ id: anchor.id, quote: anchor.quote, start: resolved.start, end: resolved.end, page: resolved.page }]
-      : [];
-  }), [document, props.finding, props.textIndex]);
+  const quotes = useMemo(
+    () =>
+      anchorsFor(document, props.finding).flatMap((anchor) => {
+        const resolved = resolveAnchor(
+          document.text,
+          anchor,
+          document.parsed_document,
+          document.parsed_document_id,
+          props.textIndex ?? undefined,
+        );
+        return resolved.kind === "highlight"
+          ? [
+              {
+                id: anchor.id,
+                quote: anchor.quote,
+                start: resolved.start,
+                end: resolved.end,
+                page: resolved.page,
+              },
+            ]
+          : [];
+      }),
+    [document, props.finding, props.textIndex],
+  );
   const textBody = <TextDocumentBody {...props} />;
   const digest = scope?.digests.get(document.id);
-  if (!scope || !digest || !props.quoteScope?.isFrozenAttempt || !document.parsed_document_id ||
+  if (
+    !scope ||
+    !props.quoteScope ||
+    scope.caseId !== props.quoteScope.caseId ||
+    !digest ||
+    digest !== document.digest ||
+    !props.quoteScope.isFrozenAttempt ||
+    !document.parsed_document_id ||
     !props.quoteScope.parsedDocumentIds.includes(document.parsed_document_id) ||
-    !supportsOriginalPreview(document.filename)) return textBody;
-  return <OriginalDocumentReader key={`${document.id}:${document.parsed_document_id}`} scope={scope}
-    documentId={document.id} filename={document.filename} digest={digest} text={document.text ?? ""} quotes={quotes}>
-    {textBody}
-  </OriginalDocumentReader>;
+    !supportsOriginalPreview(document.filename)
+  )
+    return textBody;
+  return (
+    <OriginalDocumentReader
+      key={`${document.id}:${document.parsed_document_id}`}
+      scope={scope}
+      documentId={document.id}
+      filename={document.filename}
+      digest={digest}
+      text={document.text ?? ""}
+      quotes={quotes}
+      keyClause={
+        props.keyClause
+          ? {
+              id: props.keyClause.id,
+              heading: props.keyClause.heading,
+              sourceLabel: props.keyClause.sourceLabel,
+              quote: props.keyClause.quote,
+              page: props.keyClause.page,
+            }
+          : null
+      }
+      focusRange={props.focusRange ?? null}
+      onClearKeyClause={props.onClearKeyClause}
+    >
+      {textBody}
+    </OriginalDocumentReader>
+  );
 });
 
 function ownerLabel(context: ReviewCaseContext): string {
@@ -644,7 +856,13 @@ function deadlineLabel(context: ReviewCaseContext): string {
   return `${context.dueAt ? formatDateTime(context.dueAt) : "未设期限"} ，${context.status || "未报告"}`;
 }
 
-function CaseContextHeader({ context, caseReturnState }: { context: ReviewCaseContext; caseReturnState?: CaseReturnState }) {
+function CaseContextHeader({
+  context,
+  caseReturnState,
+}: {
+  context: ReviewCaseContext;
+  caseReturnState?: CaseReturnState;
+}) {
   return (
     <>
       <header className="review-case-context-head">
@@ -704,9 +922,7 @@ function ContextTabs({
     <Tabs
       activeKey={leftTab}
       onChange={(key) => {
-        const next = (["材料", "审查成员", "相关案件"] as const).find(
-          (label) => label === key,
-        );
+        const next = (["材料", "审查成员", "相关案件"] as const).find((label) => label === key);
         if (next) onTab(next);
       }}
       items={[
@@ -783,9 +999,7 @@ function MaterialSearch({
         />
       </label>
       <p className="meta">
-        {resultQuery.trim() === ""
-          ? "输入后在当前材料中查找"
-          : `正文匹配 ${matches.length} 处`}
+        {resultQuery.trim() === "" ? "输入后在当前材料中查找" : `正文匹配 ${matches.length} 处`}
       </p>
       {matches.length > 0 ? (
         <div className="filter-row" role="group" aria-label="搜索匹配项导航">
@@ -821,11 +1035,11 @@ const ClauseList = memo(function ClauseList({
         {clauses.map((clause) => (
           <li key={clause.id}>
             <Button
-              aria-label={`${clause.page !== null ? `第 ${clause.page} 页，` : ""}${clause.heading}`}
+              aria-label={`${clause.page !== null ? `起始页第 ${clause.page} 页，` : ""}${clause.heading}`}
               htmlType="button"
               onClick={() => onFocus(clause.text_offset.start)}
             >
-              {clause.page !== null ? `第 ${clause.page} 页，` : ""}
+              {clause.page !== null ? `起始页第 ${clause.page} 页，` : ""}
               {clause.heading}
             </Button>
           </li>
@@ -854,12 +1068,12 @@ const RelatedFindings = memo(function RelatedFindings({
           {findings.map((item) => (
             <li key={item.id}>
               <Button
-                aria-label={"查看线索：" + String(item.claim || "未命名线索")}
+                aria-label={"查看线索：" + findingTitle(item)}
                 htmlType="button"
                 aria-pressed={selectedFindingId === item.id}
                 onClick={() => onSelectFinding(item.id)}
               >
-                查看线索：{item.claim || "未命名线索"}
+                查看线索：{findingTitle(item)}
               </Button>
             </li>
           ))}
@@ -877,6 +1091,8 @@ function MaterialPane({
   matches,
   currentMatchIndex,
   clauses,
+  keyClauseNavigation,
+  selectedKeyClauseId,
   relatedFindings,
   selectedFindingId,
   onActiveKey,
@@ -884,6 +1100,7 @@ function MaterialPane({
   onPreviousMatch,
   onNextMatch,
   onFocusOffset,
+  onSelectKeyClause,
   onSelectFinding,
 }: {
   documents: ReviewDocument[];
@@ -893,6 +1110,8 @@ function MaterialPane({
   matches: { start: number; end: number }[];
   currentMatchIndex: number;
   clauses: ReviewDocument["clauses"];
+  keyClauseNavigation: KeyClauseNavigation;
+  selectedKeyClauseId: string | null;
   relatedFindings: Finding[];
   selectedFindingId: string | null;
   onActiveKey: (key: string) => void;
@@ -900,6 +1119,7 @@ function MaterialPane({
   onPreviousMatch: () => void;
   onNextMatch: () => void;
   onFocusOffset: (offset: number) => void;
+  onSelectKeyClause: (candidate: KeyClauseCandidate) => void;
   onSelectFinding: (findingId: string) => void;
 }) {
   return (
@@ -926,6 +1146,11 @@ function MaterialPane({
             onNext={onNextMatch}
           />
           <ClauseList clauses={clauses} onFocus={onFocusOffset} />
+          <KeyClauseNavigator
+            navigation={keyClauseNavigation}
+            selectedId={selectedKeyClauseId}
+            onSelect={onSelectKeyClause}
+          />
           <RelatedFindings
             findings={relatedFindings}
             selectedFindingId={selectedFindingId}
@@ -937,11 +1162,7 @@ function MaterialPane({
   );
 }
 
-function CollaboratorsPane({
-  context,
-}: {
-  context: ReviewCaseContext;
-}) {
+function CollaboratorsPane({ context }: { context: ReviewCaseContext }) {
   return (
     <section className="review-collaborators" aria-label="案件协作人员">
       <h2>审查成员</h2>
@@ -1064,9 +1285,7 @@ function RelatedCasesPane({
           {context.relatedCases.map((relation) => (
             <li key={relation.relationId}>
               <div>
-                <Link to={caseHref(relation.id, relation.runId)}>
-                  {relation.title}
-                </Link>
+                <Link to={caseHref(relation.id, relation.runId)}>{relation.title}</Link>
                 <small>{formatDateTime(relation.createdAt)}</small>
                 <p>{relation.reason}</p>
               </div>
@@ -1184,6 +1403,9 @@ function DocumentView({
   split,
   evidenceDocs,
   quoteScope,
+  focusRange,
+  keyClause,
+  onClearKeyClause,
   onQuoteSelectionChange,
 }: {
   documents: ReviewDocument[];
@@ -1195,6 +1417,9 @@ function DocumentView({
   split: boolean;
   evidenceDocs: ReviewDocument[];
   quoteScope: FrozenQuoteScope | null;
+  focusRange: { start: number; end: number } | null;
+  keyClause: KeyClauseCandidate | null;
+  onClearKeyClause?: () => void;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   if (documents.length === 0) return <p>这次运行没有带上材料。</p>;
@@ -1211,6 +1436,14 @@ function DocumentView({
             showDiagnostics={showDiagnostics}
             activeSource={item === active}
             quoteScope={quoteScope}
+            focusRange={item === active ? focusRange : null}
+            keyClause={
+              keyClause?.documentId === item.id &&
+              keyClause.parsedDocumentId === item.parsed_document_id
+                ? keyClause
+                : null
+            }
+            onClearKeyClause={onClearKeyClause}
             onQuoteSelectionChange={onQuoteSelectionChange}
           />
         ))}
@@ -1226,6 +1459,9 @@ function DocumentView({
       showDiagnostics={showDiagnostics}
       activeSource
       quoteScope={quoteScope}
+      focusRange={focusRange}
+      keyClause={keyClause}
+      onClearKeyClause={onClearKeyClause}
       onQuoteSelectionChange={onQuoteSelectionChange}
     />
   ) : null;
@@ -1244,15 +1480,8 @@ function initialDocumentOf(
   );
 }
 
-function activeDocumentOf(
-  documents: ReviewDocument[],
-  activeKey: string,
-): ReviewDocument | null {
-  return (
-    documents.find((document) => documentKey(document) === activeKey) ??
-    documents[0] ??
-    null
-  );
+function activeDocumentOf(documents: ReviewDocument[], activeKey: string): ReviewDocument | null {
+  return documents.find((document) => documentKey(document) === activeKey) ?? documents[0] ?? null;
 }
 
 function evidenceDocumentsOf(
@@ -1280,22 +1509,14 @@ function evidenceSourceOf(
   );
 }
 
-function relatedFindingsOf(
-  active: ReviewDocument | null,
-  findings: Finding[],
-): Finding[] {
+function relatedFindingsOf(active: ReviewDocument | null, findings: Finding[]): Finding[] {
   if (active === null) return [];
   return findings.filter((item) =>
-    item.evidence.some(
-      (anchor) => anchor.document_version_id === active.id,
-    ),
+    item.evidence.some((anchor) => anchor.document_version_id === active.id),
   );
 }
 
-function visibleClausesOf(
-  active: ReviewDocument | null,
-  query: string,
-): ReviewDocument["clauses"] {
+function visibleClausesOf(active: ReviewDocument | null, query: string): ReviewDocument["clauses"] {
   return (
     active?.clauses.filter(
       (clause) => query.trim() === "" || clause.heading.includes(query.trim()),
@@ -1308,42 +1529,38 @@ function useEvidenceAutoSwitch(
   active: ReviewDocument | null,
   documents: ReviewDocument[],
   setActiveKey: (key: string) => void,
+  factCitationActive: boolean,
 ) {
   useEffect(() => {
     if (
+      factCitationActive ||
       !finding ||
       !active ||
-      finding.evidence.some(
-        (anchor) => anchor.document_version_id === active.id,
-      )
+      finding.evidence.some((anchor) => anchor.document_version_id === active.id)
     )
       return;
     const source = evidenceSourceOf(finding, documents);
     if (source) setActiveKey(documentKey(source));
-  }, [active, documents, finding, setActiveKey]);
+  }, [active, documents, factCitationActive, finding, setActiveKey]);
 }
 
-function useScrollToEvidence(
-  finding: Finding | null,
-  active: ReviewDocument | null,
-) {
+function useScrollToEvidence(finding: Finding | null, active: ReviewDocument | null) {
   useEffect(() => {
     if (!finding || !active) return;
-    const mark = document.querySelector(
-      '.col-doc [data-active-source="true"] .hit-evidence',
-    );
-    if (mark instanceof HTMLElement) mark.scrollIntoView({ block: "nearest" });
+    const mark = document.querySelector('.col-doc [data-active-source="true"] .hit-evidence');
+    const pane = mark?.closest<HTMLElement>(".col-doc");
+    if (mark instanceof HTMLElement && pane && pane.scrollHeight > pane.clientHeight) {
+      const markRect = mark.getBoundingClientRect();
+      const paneRect = pane.getBoundingClientRect();
+      // Move only the document pane. Scrolling every ancestor would overwrite the
+      // page's restored position when opening a finding or switching materials.
+      pane.scrollTop += markRect.top - paneRect.top - pane.clientHeight / 2;
+    }
   }, [finding, active]);
 }
 
-function isActiveEvidence(
-  active: ReviewDocument | null,
-  evidenceDocs: ReviewDocument[],
-): boolean {
-  return (
-    active !== null &&
-    evidenceDocs.some((item) => documentKey(item) === documentKey(active))
-  );
+function isActiveEvidence(active: ReviewDocument | null, evidenceDocs: ReviewDocument[]): boolean {
+  return active !== null && evidenceDocs.some((item) => documentKey(item) === documentKey(active));
 }
 
 function shouldSplit(
@@ -1352,14 +1569,8 @@ function shouldSplit(
   evidenceCount: number,
   activeIsEvidence: boolean,
 ): boolean {
-  return (
-    compareSources &&
-    layout === "split" &&
-    evidenceCount >= 2 &&
-    activeIsEvidence
-  );
+  return compareSources && layout === "split" && evidenceCount >= 2 && activeIsEvidence;
 }
-
 
 function currentMatchOf(
   matches: { start: number; end: number }[],
@@ -1373,11 +1584,7 @@ function relationIsSubmittable(
   relatedCaseId: string,
   relationReason: string,
 ): boolean {
-  return (
-    onCreateRelation !== undefined &&
-    relatedCaseId !== "" &&
-    relationReason.trim() !== ""
-  );
+  return onCreateRelation !== undefined && relatedCaseId !== "" && relationReason.trim() !== "";
 }
 
 function focusOffsetNode(offset: number, source: ReviewDocument | null) {
@@ -1388,13 +1595,18 @@ function focusOffsetNode(offset: number, source: ReviewDocument | null) {
   ).filter((node) => {
     if (node.dataset.offset !== String(offset)) return false;
     const pane = node.closest<HTMLElement>(".doc-pane");
-    return pane?.dataset.documentVersionId === source.id &&
-      pane.dataset.parsedDocumentId === parsedDocumentId;
+    return (
+      pane?.dataset.documentVersionId === source.id &&
+      pane.dataset.parsedDocumentId === parsedDocumentId
+    );
   });
-  const node = candidates.find((candidate) =>
-    candidate.closest<HTMLElement>(".doc-pane")?.dataset.activeSource === "true",
-  ) ?? candidates[0];
-  node?.scrollIntoView({ block: "center" });
+  const node =
+    candidates.find(
+      (candidate) => candidate.closest<HTMLElement>(".doc-pane")?.dataset.activeSource === "true",
+    ) ?? candidates[0];
+  if (node && typeof node.scrollIntoView === "function") {
+    node.scrollIntoView({ block: "center" });
+  }
 }
 function focusAnchorOffset(source: ReviewDocument, offset: number) {
   focusOffsetNode(offset, source);
@@ -1447,6 +1659,9 @@ function DocumentColumn({
   onCompare,
   onActiveKey,
   quoteScope,
+  focusRange,
+  keyClause,
+  onClearKeyClause,
   onQuoteSelectionChange,
 }: {
   documents: ReviewDocument[];
@@ -1463,6 +1678,9 @@ function DocumentColumn({
   onCompare: (compare: boolean) => void;
   onActiveKey: (key: string) => void;
   quoteScope: FrozenQuoteScope | null;
+  focusRange: { start: number; end: number } | null;
+  keyClause: KeyClauseCandidate | null;
+  onClearKeyClause?: () => void;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   return (
@@ -1492,6 +1710,9 @@ function DocumentColumn({
         split={split}
         evidenceDocs={evidenceDocs}
         quoteScope={quoteScope}
+        focusRange={focusRange}
+        keyClause={keyClause}
+        onClearKeyClause={onClearKeyClause}
         onQuoteSelectionChange={onQuoteSelectionChange}
       />
     </section>
@@ -1514,6 +1735,8 @@ export function DocumentStage({
   onCreateRelation,
   onDeleteRelation,
   quoteScope = null,
+  contractFactsCitation = null,
+  contractFactsLocationScope = null,
   onQuoteSelectionChange,
 }: {
   documents: ReviewDocument[];
@@ -1531,6 +1754,8 @@ export function DocumentStage({
   onCreateRelation?: (input: CaseRelationInput) => Promise<void>;
   onDeleteRelation?: (relationId: string) => void;
   quoteScope?: FrozenQuoteScope | null;
+  contractFactsCitation?: ContractFactsCitation | null;
+  contractFactsLocationScope?: ContractFactsLocationScope | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   const initialDocument = initialDocumentOf(finding, documents);
@@ -1540,13 +1765,25 @@ export function DocumentStage({
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [matchIndex, setMatchIndex] = useState(0);
+  const [selectedKeyClauseId, setSelectedKeyClauseId] = useState<string | null>(null);
   const [compareSources, setCompareSources] = useState(false);
-  const [leftTab, setLeftTab] = useState<"材料" | "审查成员" | "相关案件">(
-    "材料",
-  );
+  const [leftTab, setLeftTab] = useState<"材料" | "审查成员" | "相关案件">("材料");
   const [relatedCaseId, setRelatedCaseId] = useState("");
   const [relationReason, setRelationReason] = useState("");
   const active = activeDocumentOf(documents, activeKey);
+  const factSource = useMemo(
+    () =>
+      documentForContractFactsCitation(
+        contractFactsCitation,
+        documents,
+        contractFactsLocationScope,
+      ),
+    [contractFactsCitation, contractFactsLocationScope, documents],
+  );
+  const factRange =
+    factSource && contractFactsCitation
+      ? { start: contractFactsCitation.start, end: contractFactsCitation.end }
+      : null;
   const quoteParsedIds = quoteScope?.parsedDocumentIds.join("\u0000") ?? "";
   useEffect(() => {
     onQuoteSelectionChange?.(null);
@@ -1564,51 +1801,83 @@ export function DocumentStage({
     quoteParsedIds,
     selectedFindingId,
   ]);
+  useEffect(() => {
+    setSelectedKeyClauseId(null);
+  }, [
+    active?.id,
+    active?.parsed_document?.id,
+    active?.parsed_document_id,
+    active?.digest,
+    quoteScope?.attemptId,
+    quoteScope?.caseId,
+    quoteScope?.isFrozenAttempt,
+    quoteScope?.runId,
+    quoteParsedIds,
+    selectedFindingId,
+  ]);
   const activeTextIndex = useMemo(
-    () =>
-      active === null || active.text === null
-        ? null
-        : createTextIndex(active.text),
+    () => (active === null || active.text === null ? null : createTextIndex(active.text)),
     [active, active?.parsed_document, active?.parsed_document_id, active?.text],
   );
-  const evidenceDocs = useMemo(
-    () => evidenceDocumentsOf(finding, documents),
-    [documents, finding],
-  );
-  useEvidenceAutoSwitch(finding, active, documents, setActiveKey);
-  const relatedFindings = useMemo(
-    () => relatedFindingsOf(active, findings),
-    [active, findings],
-  );
+  const evidenceDocs = useMemo(() => evidenceDocumentsOf(finding, documents), [documents, finding]);
+  useEffect(() => {
+    if (!factSource) return;
+    setActiveKey(documentKey(factSource));
+    setSelectedKeyClauseId(null);
+    setCompareSources(false);
+  }, [factSource]);
+  useEvidenceAutoSwitch(finding, active, documents, setActiveKey, factSource !== null);
+  const relatedFindings = useMemo(() => relatedFindingsOf(active, findings), [active, findings]);
   const activeIsEvidence = isActiveEvidence(active, evidenceDocs);
-  const split = shouldSplit(
-    compareSources,
-    layout,
-    evidenceDocs.length,
-    activeIsEvidence,
-  );
+  const split = shouldSplit(compareSources, layout, evidenceDocs.length, activeIsEvidence);
   const matches = useMemo(
     () =>
-      active?.text
-        ? findTextMatches(
-            active.text,
-            deferredQuery,
-            activeTextIndex ?? undefined,
-          )
-        : [],
+      active?.text ? findTextMatches(active.text, deferredQuery, activeTextIndex ?? undefined) : [],
     [active, activeTextIndex, deferredQuery],
   );
-  const currentMatch = currentMatchOf(matches, matchIndex);
+  const currentMatch =
+    factRange &&
+    active !== null &&
+    factSource !== null &&
+    documentKey(active) === documentKey(factSource)
+      ? factRange
+      : currentMatchOf(matches, matchIndex);
   useScrollToEvidence(finding, active);
+  useEffect(() => {
+    if (!factRange || !factSource || !active || documentKey(active) !== documentKey(factSource))
+      return;
+    const target = window.document.querySelector<HTMLElement>(
+      `.doc-pane[data-active-source="true"] [data-offset="${factRange.start}"]`,
+    );
+    const pane = target?.closest<HTMLElement>(".col-doc");
+    if (target && pane && pane.scrollHeight > pane.clientHeight) {
+      pane.scrollTop +=
+        target.getBoundingClientRect().top -
+        pane.getBoundingClientRect().top -
+        pane.clientHeight / 2;
+    }
+  }, [active, factRange, factSource]);
   const visibleClauses = useMemo(
     () => visibleClausesOf(active, deferredQuery),
     [active, deferredQuery],
   );
+  const keyClauseNavigation = useMemo(
+    () => keyClauseNavigationFor(quoteScope, active),
+    [active, quoteScope],
+  );
+  const selectedKeyClause =
+    keyClauseNavigation.candidates.find(
+      (candidate) =>
+        candidate.id === selectedKeyClauseId &&
+        active !== null &&
+        candidate.documentId === active.id &&
+        candidate.parsedDocumentId === active.parsed_document_id &&
+        frozenQuoteMatchesDocument(candidate.selection, quoteScope, active),
+    ) ?? null;
 
   function submitRelation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!relationIsSubmittable(onCreateRelation, relatedCaseId, relationReason))
-      return;
+    if (!relationIsSubmittable(onCreateRelation, relatedCaseId, relationReason)) return;
     void onCreateRelation!({
       related_case_id: relatedCaseId,
       reason: relationReason.trim(),
@@ -1627,6 +1896,22 @@ export function DocumentStage({
     const range = matches[next];
     setMatchIndex(next);
     if (range) focusOffsetNode(range.start, active);
+  }
+
+  function selectKeyClause(candidate: KeyClauseCandidate) {
+    if (
+      !active ||
+      !quoteScope ||
+      candidate.documentId !== active.id ||
+      candidate.parsedDocumentId !== active.parsed_document_id ||
+      !frozenQuoteMatchesDocument(candidate.selection, quoteScope, active)
+    ) {
+      setSelectedKeyClauseId(null);
+      return;
+    }
+    setSelectedKeyClauseId(candidate.id);
+    onQuoteSelectionChange?.(null);
+    focusOffsetNode(candidate.range.start, active);
   }
 
   return (
@@ -1661,6 +1946,8 @@ export function DocumentStage({
             matches={matches}
             currentMatchIndex={matchIndex}
             clauses={visibleClauses}
+            keyClauseNavigation={keyClauseNavigation}
+            selectedKeyClauseId={selectedKeyClause?.id ?? null}
             relatedFindings={relatedFindings}
             selectedFindingId={selectedFindingId}
             onActiveKey={(key) => {
@@ -1674,6 +1961,7 @@ export function DocumentStage({
             onPreviousMatch={() => moveMatch(-1)}
             onNextMatch={() => moveMatch(1)}
             onFocusOffset={(offset) => focusOffsetNode(offset, active)}
+            onSelectKeyClause={selectKeyClause}
             onSelectFinding={onSelectFinding}
           />
         }
@@ -1693,6 +1981,16 @@ export function DocumentStage({
         onCompare={setCompareSources}
         onActiveKey={setActiveKey}
         quoteScope={quoteScope}
+        focusRange={
+          factRange &&
+          active !== null &&
+          factSource !== null &&
+          documentKey(active) === documentKey(factSource)
+            ? factRange
+            : null
+        }
+        keyClause={selectedKeyClause}
+        onClearKeyClause={() => setSelectedKeyClauseId(null)}
         onQuoteSelectionChange={onQuoteSelectionChange}
       />
     </>

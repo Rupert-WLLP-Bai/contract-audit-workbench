@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-13
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -17,6 +17,7 @@ import (
 
 	"contractaudit/internal/agentflow"
 	"contractaudit/internal/audit"
+	auditapp "contractaudit/internal/audit/app"
 	"contractaudit/internal/engine"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/rulepack"
@@ -199,8 +200,14 @@ func withFrozenGovernance(current, frozen RunSnapshot) RunSnapshot {
 // plannerConfigurationForAcceptance freezes the agent planner configuration a
 // run must use. A resolver failure is a hard error: an unfrozen planner identity
 // would let a retry silently switch prompt or limits.
-func (s *Store) plannerConfigurationForAcceptance(modelConfigurationID string) (agentflow.PlannerConfiguration, error) {
-	configuration, err := agentflow.ResolvePlannerConfiguration(modelConfigurationID)
+func (s *Store) plannerConfigurationForAcceptance(modelConfigurationID, factsChatModel, factsConfigurationID string) (agentflow.PlannerConfiguration, error) {
+	var configuration agentflow.PlannerConfiguration
+	var err error
+	if factsConfigurationID != "" || factsChatModel != "" {
+		configuration, err = agentflow.ResolvePlannerConfigurationWithContractFacts(modelConfigurationID, factsChatModel, factsConfigurationID)
+	} else {
+		configuration, err = agentflow.ResolvePlannerConfiguration(modelConfigurationID)
+	}
 	if err != nil {
 		return agentflow.PlannerConfiguration{}, fault.Conflict("审查计划配置不可用，无法保存本次审查信息：" + err.Error())
 	}
@@ -398,20 +405,14 @@ func sealSnapshot(st *state, runID string, input RunSnapshot) error {
 }
 
 func appendAudit(st *state, runID, actor, eventType string, correlation []string) error {
-	var prev audit.Event
-	for _, item := range st.Audits {
-		if item.RunID != runID || item.Seq < prev.Seq {
-			continue
-		}
-		prev = item.event()
-	}
+	prev, found := auditapp.SelectHead(auditEventsFromRecords(st.Audits), auditapp.RunRef{ID: runID})
 	id, err := newID("evt_")
 	if err != nil {
 		return err
 	}
-	next, err := audit.Append(prev, audit.Event{
-		EventID: id, RunID: runID, Actor: actor, Seq: prev.Seq + 1,
-		EventType: eventType, CorrelationIDs: correlation,
+	next, err := auditapp.PrepareAppend(prev, found, auditapp.Draft{
+		EventID: id, RunID: runID, Actor: actor, EventType: eventType,
+		CorrelationIDs: correlation,
 	})
 	if err != nil {
 		return err
@@ -428,7 +429,7 @@ func (rec AuditRecord) event() audit.Event {
 	return audit.Event{
 		EventID: rec.EventID, RunID: rec.RunID, Actor: rec.Actor, Seq: rec.Seq,
 		EventType: rec.EventType, PrevHash: rec.PrevHash, Hash: rec.Hash,
-		CorrelationIDs: append([]string(nil), rec.CorrelationIDs...),
+		CorrelationIDs: cloneAuditCorrelationIDs(rec.CorrelationIDs),
 	}
 }
 

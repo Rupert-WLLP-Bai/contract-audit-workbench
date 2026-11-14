@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -134,17 +134,17 @@ func ValidateEnvironment(mode string) error {
 }
 
 func init() {
-	directory = []record{
-		seed("demo-admin", "演示管理员", "admin", "admin-demo"),
-		seed("demo-reviewer", "演示审查员", "reviewer", "reviewer-demo"),
-		seed("demo-clerk", "演示经办", "clerk", "clerk-demo"),
-		seed("demo-viewer", "演示只读", "viewer", "viewer-demo"),
-		seedIn("demo-otherorg-clerk", "演示其他组织经办", "clerk", "otherorg-clerk-demo", LocalDemoTenant, "demo-other-org"),
-		seedIn("demo-tenant2-admin", "演示第二租户管理员", "admin", "tenant2-admin-demo", LocalDemoTenant2, "demo-org-2"),
-		seedIn("demo-tenant2-clerk", "演示第二租户经办", "clerk", "tenant2-clerk-demo", LocalDemoTenant2, "demo-org-2"),
-		seedIn("demo-tenant2-reviewer", "演示第二租户审查员", "reviewer", "tenant2-reviewer-demo", LocalDemoTenant2, "demo-org-2"),
-		seedIn("demo-tenant2-viewer", "演示第二租户只读", "viewer", "tenant2-viewer-demo", LocalDemoTenant2, "demo-org-2"),
-	}
+	directory = appendDistrictLogins([]record{
+		seed("demo-admin", "James Carter", "admin", "admin-demo"),
+		seed("demo-reviewer", "Oliver Bennett", "reviewer", "reviewer-demo"),
+		seed("demo-clerk", "Emma Walsh", "clerk", "clerk-demo"),
+		seed("demo-viewer", "Sophia Reed", "viewer", "viewer-demo"),
+		seedIn("demo-otherorg-clerk", "Noah Griffin", "clerk", "otherorg-clerk-demo", LocalDemoTenant, "demo-other-org"),
+		seedIn("demo-tenant2-admin", "Henry Brooks", "admin", "tenant2-admin-demo", LocalDemoTenant2, "demo-org-2"),
+		seedIn("demo-tenant2-clerk", "Ava Mitchell", "clerk", "tenant2-clerk-demo", LocalDemoTenant2, "demo-org-2"),
+		seedIn("demo-tenant2-reviewer", "Liam Cooper", "reviewer", "tenant2-reviewer-demo", LocalDemoTenant2, "demo-org-2"),
+		seedIn("demo-tenant2-viewer", "Chloe Parker", "viewer", "tenant2-viewer-demo", LocalDemoTenant2, "demo-org-2"),
+	})
 }
 
 // seed builds one demonstration record. The credential argument documents the

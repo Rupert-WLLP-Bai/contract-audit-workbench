@@ -3,13 +3,14 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r8
+// Updated: 2026-11-12
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -17,6 +18,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { Button, Select } from "antd";
+import type { ContractFactsCitation } from "../api/contract-facts";
 import type {
   CaseRelationInput,
   DecisionAction,
@@ -36,10 +38,16 @@ import type { CaseReturnState } from "./section-navigation";
 import { ExecutionInspector } from "./execution-inspector";
 import { FindingPanel } from "./finding-panel";
 import { BusinessAgentReviewView } from "./business-agent-review";
+import { ContractFactsPanel } from "./contract-facts-panel";
 import { TrajectoryView } from "./trajectory-view";
 import { SingleContractScopeCoverage } from "./single-contract-scope-coverage";
 import { ReviewOutcomeSummary } from "./review-outcome-summary";
-import { canRestartUserCancelled, hasTransientRetryCause } from "../features/review/review-outcome";
+import {
+  canReadmitCancelledPreparation,
+  canRestartUserCancelled,
+  hasTransientRetryCause,
+  selectedOutcome,
+} from "../features/review/review-outcome";
 import { StatusText } from "./status-text";
 import { TechnicalDetail } from "./technical-detail";
 import "./review-workspace-layout.css";
@@ -68,12 +76,8 @@ function WorkspaceCircuit({
   findings: Finding[];
 }) {
   const anchors = findings.flatMap((finding) => finding.evidence);
-  const locatedAnchors = anchors.filter(
-    (anchor) => anchor.status === "located",
-  ).length;
-  const decidedFindings = findings.filter(
-    (finding) => finding.decisions.length > 0,
-  ).length;
+  const locatedAnchors = anchors.filter((anchor) => anchor.status === "located").length;
+  const decidedFindings = findings.filter((finding) => finding.decisions.length > 0).length;
   const allLocated = anchors.length > 0 && locatedAnchors === anchors.length;
   return (
     <ol className="workspace-circuit" aria-label="审查链路">
@@ -198,39 +202,31 @@ function TraceLink({
   }
   if (!onLoadDiagnostics) return null;
   return (
-    <Button
-      type="text"
-      htmlType="button"
-      onClick={onLoadDiagnostics}
-      disabled={diagnosticsLoading}
-    >
+    <Button type="text" htmlType="button" onClick={onLoadDiagnostics} disabled={diagnosticsLoading}>
       {diagnosticsLoading ? "正在加载运行轨迹" : "加载运行轨迹与诊断"}
     </Button>
   );
 }
 
-function RunCallouts({ run }: { run: ReviewRun }) {
+function RunCallouts({ run, compact = false }: { run: ReviewRun; compact?: boolean }) {
   return (
     <>
       {run.state === "partial" ? (
         <>
           <p className="callout">
+            {compact ? "部分完成：" : ""}
             {run.partial_reason ?? "部分结果已保留。"}
           </p>
-          <p className="meta">
-            部分完成：有的项目已出结果，有的还缺材料或证据。
-          </p>
+          {!compact ? (
+            <p className="meta">部分完成：有的项目已出结果，有的还缺材料或证据。</p>
+          ) : null}
         </>
       ) : null}
       {run.state === "failed" ? (
-        <p className="callout">
-          {run.failure_message ?? "本次审查执行失败，已保留失败前的记录。"}
-        </p>
+        <p className="callout">{run.failure_message ?? "本次审查执行失败，已保留失败前的记录。"}</p>
       ) : null}
       {run.state === "cancelled" ? (
-        <p className="callout">
-          审查已取消。取消前保存的规则发现和实际调用用量仍会保留。
-        </p>
+        <p className="callout">审查已取消。取消前保存的规则发现和实际调用用量仍会保留。</p>
       ) : null}
     </>
   );
@@ -319,11 +315,12 @@ function attemptsOf(workspace: ReviewWorkspace): {
   const saved = workspace.review_attempts.attempts;
   return {
     selected,
-    attempts: selected && saved.some((item) => item.id === selected.id)
-      ? saved
-      : selected
-        ? [selected, ...saved]
-        : saved,
+    attempts:
+      selected && saved.some((item) => item.id === selected.id)
+        ? saved
+        : selected
+          ? [selected, ...saved]
+          : saved,
   };
 }
 
@@ -360,10 +357,7 @@ function maximumFindingColumnWidth(gridWidth: number): number {
 
 function clampFindingColumnWidth(width: number, gridWidth: number): number {
   return Math.round(
-    Math.max(
-      MIN_FINDING_COLUMN_WIDTH,
-      Math.min(maximumFindingColumnWidth(gridWidth), width),
-    ),
+    Math.max(MIN_FINDING_COLUMN_WIDTH, Math.min(maximumFindingColumnWidth(gridWidth), width)),
   );
 }
 
@@ -411,10 +405,9 @@ function WorkspaceResizeHandle({
   function resize(event: ReactPointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    onChange(clampFindingColumnWidth(
-      drag.startWidth + drag.startX - event.clientX,
-      drag.gridWidth,
-    ));
+    onChange(
+      clampFindingColumnWidth(drag.startWidth + drag.startX - event.clientX, drag.gridWidth),
+    );
   }
 
   function finishResize(event: ReactPointerEvent<HTMLDivElement>) {
@@ -429,11 +422,12 @@ function WorkspaceResizeHandle({
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
     const gridWidth = event.currentTarget.parentElement?.clientWidth ?? window.innerWidth;
-    const next = event.key === "Home"
-      ? MIN_FINDING_COLUMN_WIDTH
-      : event.key === "End"
-        ? maximumFindingColumnWidth(gridWidth)
-        : value + (event.key === "ArrowLeft" ? 16 : -16);
+    const next =
+      event.key === "Home"
+        ? MIN_FINDING_COLUMN_WIDTH
+        : event.key === "End"
+          ? maximumFindingColumnWidth(gridWidth)
+          : value + (event.key === "ArrowLeft" ? 16 : -16);
     onChange(clampFindingColumnWidth(next, gridWidth));
   }
 
@@ -458,6 +452,79 @@ function WorkspaceResizeHandle({
     >
       <span className="sr-only">拖动分隔线或使用左右方向键调整审查结论栏宽度</span>
     </div>
+  );
+}
+
+function DocumentRunStatus({
+  workspace,
+  streamStatus,
+  selected,
+  attempts,
+  onSelectAttempt,
+  canCancel,
+  cancelling,
+  cancelError,
+  onCancel,
+}: {
+  workspace: ReviewWorkspace;
+  streamStatus: StreamStatus;
+  selected: ExecutionAttempt | null;
+  attempts: ExecutionAttempt[];
+  onSelectAttempt: (attemptId: string) => void;
+  canCancel: boolean;
+  cancelling: boolean;
+  cancelError: string | null;
+  onCancel: () => void;
+}) {
+  const outcome = selectedOutcome(workspace);
+  const preparing = workspace.review_attempts?.attempt.history_kind === "preparing";
+  const casePath = `/cases/${encodeURIComponent(workspace.run.case_id)}`;
+  return (
+    <>
+      <div className="review-run-controls">
+        <span className="meta">{STREAM_LABEL[streamStatus]}</span>
+        {preparing ? <p>该执行尚未冻结审查输入，检查范围与人工进度待冻结后确认。</p> : null}
+        {preparing &&
+        outcome?.reason === "cancelled_by_user" &&
+        canReadmitCancelledPreparation(workspace) ? (
+          <p>
+            <a href={`${casePath}#review-readiness`}>返回审查准备清单</a>
+          </p>
+        ) : null}
+        {outcome?.reason === "authorization_revoked" ? (
+          <p>本次执行因授权变化而取消，请联系案件管理员核对权限。</p>
+        ) : null}
+        {outcome?.reason === "cancelled_by_user" &&
+        !canReadmitCancelledPreparation(workspace) &&
+        !canRestartUserCancelled(workspace) ? (
+          <p>审查由用户主动取消；冻结输入尚不能核对，请查看审查准备。</p>
+        ) : null}
+        {selected ? (
+          <label className="field">
+            查看执行记录
+            <Select
+              aria-label="查看执行记录"
+              value={selected.id}
+              onChange={onSelectAttempt}
+              options={attemptOptions(attempts)}
+            />
+          </label>
+        ) : (
+          <p>没有获取到本次审查的执行记录。未记录的阶段、耗时和用量不会显示为已知。</p>
+        )}
+      </div>
+      {selected?.history_kind === "legacy_unfrozen" ? (
+        <p className="callout">
+          较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。
+        </p>
+      ) : null}
+      {canCancel ? (
+        <Button type="text" disabled={cancelling} onClick={onCancel}>
+          {cancelling ? "正在取消" : "取消本次执行"}
+        </Button>
+      ) : null}
+      {cancelError ? <p role="alert">{cancelError}</p> : null}
+    </>
   );
 }
 
@@ -498,6 +565,7 @@ export function ReviewWorkspaceView({
   onSelectEvidence,
   workTarget = null,
   navigationSerial = 0,
+  surface = "full",
 }: {
   workspace: ReviewWorkspace;
   layout: ReviewLayout;
@@ -540,11 +608,67 @@ export function ReviewWorkspaceView({
   onSelectEvidence?: (evidenceId: string | null) => void;
   workTarget?: WorkTarget | null;
   navigationSerial?: number;
+  surface?: "full" | "document" | "trace" | "coverage";
 }) {
   const { run } = workspace;
   const { selected, attempts } = attemptsOf(workspace);
-  const [findingColumnWidth, setFindingColumnWidth] = useState(360);
+  const stageQuoteScope = useMemo<FrozenQuoteScope | null>(() => {
+    if (
+      !quoteScope ||
+      !selected ||
+      selected.history_kind !== "frozen" ||
+      selected.run_id !== run.id ||
+      quoteScope.caseId !== run.case_id ||
+      quoteScope.runId !== run.id ||
+      quoteScope.attemptId !== selected.id ||
+      !quoteScope.isFrozenAttempt
+    )
+      return null;
+    const attemptParsedIds = new Set(selected.parsed_document_ids);
+    const parsedDocumentIds = workspace.documents.flatMap((document) => {
+      const parsedDocumentId = document.parsed_document_id;
+      if (!parsedDocumentId || !attemptParsedIds.has(parsedDocumentId)) return [];
+      const parsedDocument = document.parsed_document;
+      if (
+        !parsedDocument ||
+        parsedDocument.id !== parsedDocumentId ||
+        parsedDocument.document_id !== document.id ||
+        parsedDocument.original_digest !== document.digest ||
+        parsedDocument.status !== "ready"
+      )
+        return [];
+      return [parsedDocumentId];
+    });
+    return { ...quoteScope, parsedDocumentIds };
+  }, [quoteScope, run.case_id, run.id, selected, workspace.documents]);
+  const [findingColumnWidth, setFindingColumnWidth] = useState(440);
   const [workspaceView, setWorkspaceView] = useState<"context" | "evidence">("evidence");
+  const [factLocation, setFactLocation] = useState<{
+    attemptId: string;
+    citation: ContractFactsCitation;
+  } | null>(null);
+  const factCitation =
+    factLocation &&
+    factLocation.attemptId === selected?.id &&
+    factLocation.attemptId === workspace.contract_facts?.attempt_id
+      ? factLocation.citation
+      : null;
+  const selectedFactsProjection = workspace.contract_facts ?? null;
+  const contractFactsLocationScope =
+    selected &&
+    selectedFactsProjection &&
+    selected.history_kind === "frozen" &&
+    selected.run_id === run.id &&
+    selectedFactsProjection.attempt_id === selected.id
+      ? {
+          caseId: run.case_id,
+          runId: run.id,
+          attemptId: selected.id,
+          historyKind: selected.history_kind,
+          parsedDocumentIds: selected.parsed_document_ids,
+          projection: selectedFactsProjection,
+        }
+      : null;
   const evidenceViewButton = useRef<HTMLButtonElement>(null);
   const focusEvidenceAfterSwitch = useRef(false);
   useEffect(() => {
@@ -566,125 +690,184 @@ export function ReviewWorkspaceView({
   const gridStyle = {
     "--finding-column-width": `${findingColumnWidth}px`,
   } as CSSProperties;
+  const showDocument = surface === "full" || surface === "document";
+  const showCoverage = surface === "full" || surface === "coverage";
+  const showTrace = surface === "full" || surface === "trace";
+  const showRetry = hasTransientRetryCause(workspace) || canRestartUserCancelled(workspace);
   return (
     <div className="workspace">
-      <WorkspaceBanner
-        run={run}
-        documents={workspace.documents}
-        findings={workspace.findings}
-        streamStatus={streamStatus}
-        retrying={retrying}
-        canRetry={canRetry}
-        onRetry={onRetry}
-        showRetry={hasTransientRetryCause(workspace) || canRestartUserCancelled(workspace)}
-        restartCancelled={canRestartUserCancelled(workspace)}
-        hasExecution={workspace.execution !== null}
-        diagnosticsLoading={diagnosticsLoading}
-        onLoadDiagnostics={onLoadDiagnostics}
-      />
-      <ReviewOutcomeSummary workspace={workspace} />
-      <SingleContractScopeCoverage mode="workspace" workspace={workspace} />
-      <RunCallouts run={run} />
-      <div className="review-workspace-view-switch" role="group" aria-label="工作区视图">
-        <Button
-          htmlType="button"
-          aria-pressed={workspaceView === "context"}
-          onClick={() => setWorkspaceView("context")}
-        >
-          案件与材料
-        </Button>
-        <Button
-          ref={evidenceViewButton}
-          htmlType="button"
-          aria-pressed={workspaceView === "evidence"}
-          onClick={() => setWorkspaceView("evidence")}
-        >
-          原文与风险发现
-        </Button>
-      </div>
-      <div className={`workspace-grid review-workspace-layout workspace-view-${workspaceView} layout-${layout}`} style={gridStyle}>
-        <DocumentStage
-          key={`${run.id}:${workspace.review_attempts?.attempt.id ?? "legacy"}`}
+      {surface === "full" ? (
+        <WorkspaceBanner
+          run={run}
           documents={workspace.documents}
-          finding={
-            workspace.findings.find((item) => item.id === selectedId) ?? null
-          }
           findings={workspace.findings}
-          selectedFindingId={selectedId}
-          onSelectFinding={selectFinding}
-          layout={layout}
-          showDiagnostics={showDiagnostics}
-          caseContext={caseContext}
-          caseReturnState={caseReturnState}
-          canEditRelations={canEditRelations}
-          relationPending={relationPending}
-          relationError={relationError}
-          onCreateRelation={onCreateRelation}
-          onDeleteRelation={onDeleteRelation}
-          quoteScope={quoteScope}
-          onQuoteSelectionChange={onQuoteSelectionChange}
+          streamStatus={streamStatus}
+          retrying={retrying}
+          canRetry={canRetry}
+          onRetry={onRetry}
+          showRetry={showRetry}
+          restartCancelled={canRestartUserCancelled(workspace)}
+          hasExecution={workspace.execution !== null}
+          diagnosticsLoading={diagnosticsLoading}
+          onLoadDiagnostics={onLoadDiagnostics}
         />
-        <WorkspaceResizeHandle
-          value={findingColumnWidth}
-          onChange={setFindingColumnWidth}
+      ) : null}
+      {surface === "document" ? (
+        <>
+          <DocumentRunStatus
+            workspace={workspace}
+            streamStatus={streamStatus}
+            selected={selected}
+            attempts={attempts}
+            onSelectAttempt={onSelectAttempt}
+            canCancel={canCancel}
+            cancelling={cancelling}
+            cancelError={cancelError}
+            onCancel={onCancel}
+          />
+        </>
+      ) : null}
+      {showCoverage ? (
+        <>
+          <ReviewOutcomeSummary workspace={workspace} />
+          <SingleContractScopeCoverage mode="workspace" workspace={workspace} />
+        </>
+      ) : null}
+      {surface === "full" || surface === "document" ? (
+        <RunCallouts run={run} compact={surface === "document"} />
+      ) : null}
+      {surface === "document" && showRetry ? (
+        <RetryButton
+          retrying={retrying}
+          canRetry={canRetry}
+          onRetry={onRetry}
+          restartCancelled={canRestartUserCancelled(workspace)}
         />
-        <FindingPanel
-          findings={workspace.findings}
-          evaluations={workspace.evaluations ?? []}
-          documents={workspace.documents}
-          selectedId={selectedId}
-          onSelect={selectFinding}
-          showDiagnostics={showDiagnostics}
-          pending={pending}
-          canDecide={canDecide}
-          decisionDisabledReason={decisionDisabledReason}
-          conflictMessage={conflictMessage}
-          saveError={saveError}
-          onDecide={onDecide}
-          onBatchDecide={onBatchDecide}
-          requestedFindingId={workTarget?.kind === "finding" ? workTarget.id : null}
+      ) : null}
+      {showDocument ? (
+        <>
+          {workspace.contract_facts ? (
+            <ContractFactsPanel
+              facts={workspace.contract_facts}
+              onLocate={(citation) => {
+                setWorkspaceView("evidence");
+                setFactLocation({ attemptId: workspace.contract_facts!.attempt_id, citation });
+              }}
+            />
+          ) : null}
+          <div className="review-workspace-view-switch" role="group" aria-label="工作区视图">
+            <Button
+              htmlType="button"
+              aria-pressed={workspaceView === "context"}
+              onClick={() => setWorkspaceView("context")}
+            >
+              案件与材料
+            </Button>
+            <Button
+              ref={evidenceViewButton}
+              htmlType="button"
+              aria-pressed={workspaceView === "evidence"}
+              onClick={() => setWorkspaceView("evidence")}
+            >
+              原文与风险发现
+            </Button>
+          </div>
+          <div
+            className={`workspace-grid review-workspace-layout workspace-view-${workspaceView} layout-${layout}`}
+            style={gridStyle}
+          >
+            <DocumentStage
+              key={`${run.id}:${workspace.review_attempts?.attempt.id ?? "legacy"}`}
+              documents={workspace.documents}
+              finding={workspace.findings.find((item) => item.id === selectedId) ?? null}
+              findings={workspace.findings}
+              selectedFindingId={selectedId}
+              onSelectFinding={selectFinding}
+              layout={layout}
+              showDiagnostics={showDiagnostics}
+              caseContext={caseContext}
+              caseReturnState={caseReturnState}
+              canEditRelations={canEditRelations}
+              relationPending={relationPending}
+              relationError={relationError}
+              onCreateRelation={onCreateRelation}
+              onDeleteRelation={onDeleteRelation}
+              quoteScope={stageQuoteScope}
+              contractFactsCitation={factCitation}
+              contractFactsLocationScope={contractFactsLocationScope}
+              onQuoteSelectionChange={onQuoteSelectionChange}
+            />
+            <WorkspaceResizeHandle value={findingColumnWidth} onChange={setFindingColumnWidth} />
+            <FindingPanel
+              findings={workspace.findings}
+              evaluations={workspace.evaluations ?? []}
+              documents={workspace.documents}
+              selectedId={selectedId}
+              onSelect={selectFinding}
+              showDiagnostics={showDiagnostics}
+              pending={pending}
+              canDecide={canDecide}
+              decisionDisabledReason={decisionDisabledReason}
+              conflictMessage={conflictMessage}
+              saveError={saveError}
+              onDecide={onDecide}
+              onBatchDecide={onBatchDecide}
+              requestedFindingId={workTarget?.kind === "finding" ? workTarget.id : null}
+              navigationSerial={navigationSerial}
+            />
+          </div>
+        </>
+      ) : null}
+      {showCoverage ? (
+        <BusinessAgentReviewView
+          review={workspace.agent_review ?? null}
+          caseId={run.case_id}
+          runId={run.id}
+          attemptId={selected?.history_kind === "frozen" ? selected.id : null}
+          selectedEvidenceId={selectedEvidenceId}
+          onSelectEvidence={onSelectEvidence}
+          selectedGapId={workTarget?.kind === "gap" ? workTarget.id : null}
           navigationSerial={navigationSerial}
         />
-      </div>
-      <BusinessAgentReviewView
-        review={workspace.agent_review ?? null}
-        caseId={run.case_id}
-        runId={run.id}
-        attemptId={selected?.history_kind === "frozen" ? selected.id : null}
-        selectedEvidenceId={selectedEvidenceId}
-        onSelectEvidence={onSelectEvidence}
-        selectedGapId={workTarget?.kind === "gap" ? workTarget.id : null}
-        navigationSerial={navigationSerial}
-      />
-      {workspace.execution ? (
-        <TrajectoryView execution={workspace.execution} />
       ) : null}
-      {workspace.execution ? (
-        <ExecutionInspector
-          execution={workspace.execution}
-          caseId={run.case_id}
-          findings={workspace.findings}
-          evaluations={workspace.evaluations ?? []}
-          selectedFindingId={selectedId}
-          onSelectFinding={selectFinding}
-          onSelectAttempt={onSelectAttempt}
-          canCancel={canCancel}
-          cancelling={cancelling}
-          cancelError={cancelError}
-          onCancel={onCancel}
-        />
-      ) : (
-        <MissingExecution
-          run={run}
-          attempts={attempts}
-          selected={selected}
-          onSelectAttempt={onSelectAttempt}
-          canCancel={canCancel}
-          cancelling={cancelling}
-          cancelError={cancelError}
-          onCancel={onCancel}
-        />
-      )}
+      {surface === "trace" ? (
+        <div className="workspace-banner">
+          <TraceLink
+            hasExecution={workspace.execution !== null}
+            diagnosticsLoading={diagnosticsLoading}
+            onLoadDiagnostics={onLoadDiagnostics}
+          />
+        </div>
+      ) : null}
+      {showTrace && workspace.execution ? <TrajectoryView execution={workspace.execution} /> : null}
+      {showTrace ? (
+        workspace.execution ? (
+          <ExecutionInspector
+            execution={workspace.execution}
+            caseId={run.case_id}
+            findings={workspace.findings}
+            evaluations={workspace.evaluations ?? []}
+            selectedFindingId={selectedId}
+            onSelectFinding={selectFinding}
+            onSelectAttempt={onSelectAttempt}
+            canCancel={canCancel}
+            cancelling={cancelling}
+            cancelError={cancelError}
+            onCancel={onCancel}
+          />
+        ) : (
+          <MissingExecution
+            run={run}
+            attempts={attempts}
+            selected={selected}
+            onSelectAttempt={onSelectAttempt}
+            canCancel={canCancel}
+            cancelling={cancelling}
+            cancelError={cancelError}
+            onCancel={onCancel}
+          />
+        )
+      ) : null}
     </div>
   );
 }

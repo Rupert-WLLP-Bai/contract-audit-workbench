@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-06
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,6 +16,10 @@ const PHASE_LABELS: Record<string, string> = {
   deterministic_rules: "确定性规则审查",
   model_review: "模型审查",
   model_request: "模型请求",
+  planner: "审查计划",
+  contract_facts: "合同事实建议",
+  ocr: "文字识别",
+  single_contract_facts: "合同事实建议",
   citation_verification: "引用核验",
   verified_finding: "引用核验",
   terminal_persistence: "终态保存",
@@ -67,12 +71,9 @@ function labelFrom(labels: Record<string, string>, value: string): string {
   return Object.hasOwn(labels, value) ? (labels[value] ?? value) : value;
 }
 
-export const phaseLabel = (phase: string): string =>
-  labelFrom(PHASE_LABELS, phase);
-export const eventTypeLabel = (type: string): string =>
-  labelFrom(EVENT_TYPE_LABELS, type);
-export const eventStatusLabel = (status: string): string =>
-  labelFrom(EVENT_STATUS_LABELS, status);
+export const phaseLabel = (phase: string): string => labelFrom(PHASE_LABELS, phase);
+export const eventTypeLabel = (type: string): string => labelFrom(EVENT_TYPE_LABELS, type);
+export const eventStatusLabel = (status: string): string => labelFrom(EVENT_STATUS_LABELS, status);
 
 export function elapsed(value: number | null): string {
   if (value === null) return "未报告";

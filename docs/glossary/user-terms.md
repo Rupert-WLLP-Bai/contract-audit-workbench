@@ -632,7 +632,7 @@ ReportRecord 及冻结报告类型可定位；本轮未生成或下载报告。
 
 源码锚点：
 - `httpapi.contractCitation` — [`internal/httpapi/contract_citations.go`](../../internal/httpapi/contract_citations.go)
-- `store.Anchor` — [`internal/store/state.go`](../../internal/store/state.go)
+- `model.Anchor` — [`internal/execution/model/frozen.go`](../../internal/execution/model/frozen.go)
 
 相关概念：`T06`, `T08`, `T11`
 

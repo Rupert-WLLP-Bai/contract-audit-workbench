@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -241,19 +241,32 @@ func (ir IR) ElementAt(start, end int) string {
 	return id
 }
 
-// cover returns the page and tightest element containing the span: a cell
-// first, then a block, then a clause.
+// cover returns the tightest element and an observed page containing the
+// complete span. A clause may extend beyond its heading's page, so page
+// attribution uses page ranges rather than the clause's starting page.
 func (ir IR) cover(start, end int) (*int, string) {
-	if page, id, ok := coverFirst(ir.Cells, start, end, cellSpan); ok {
-		return page, id
+	if start < 0 || end <= start || end > utf8.RuneCountInString(ir.NormalizedText) {
+		return nil, ""
 	}
-	if page, id, ok := coverFirst(ir.Blocks, start, end, blockSpan); ok {
-		return page, id
+	var id string
+	if _, element, ok := coverFirst(ir.Cells, start, end, cellSpan); ok {
+		id = element
+	} else if _, element, ok := coverFirst(ir.Blocks, start, end, blockSpan); ok {
+		id = element
+	} else if _, element, ok := coverFirst(ir.Clauses, start, end, clauseSpan); ok {
+		id = element
 	}
-	if page, id, ok := coverFirst(ir.Clauses, start, end, clauseSpan); ok {
-		return page, id
+	var page *int
+	for _, observed := range ir.Pages {
+		if start >= observed.Start && end <= observed.End {
+			if page != nil { // inconsistent overlapping page ranges
+				return nil, id
+			}
+			number := observed.Number
+			page = &number
+		}
 	}
-	return nil, ""
+	return page, id
 }
 
 // coverFirst finds the first element whose span contains start..end.

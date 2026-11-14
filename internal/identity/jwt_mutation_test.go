@@ -3,45 +3,36 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 package identity
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 )
 
-func jwksServer(t *testing.T, document jwksDocument) (*Manager, string) {
+func marshalJWKS(t *testing.T, document jwksDocument) []byte {
 	t.Helper()
 	body, err := json.Marshal(document)
 	if err != nil {
 		t.Fatalf("marshal jwks: %v", err)
 	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(body)
-	}))
-	t.Cleanup(server.Close)
-	return &Manager{client: server.Client()}, server.URL
+	return body
 }
 
-// fetchJWKS rejects an empty key set and more than 4096 keys, and accepts
-// exactly 4096.
-func TestFetchJWKSBounds(t *testing.T) {
-	empty, emptyURL := jwksServer(t, jwksDocument{Keys: []jwk{}})
-	if _, err := empty.fetchJWKS(context.Background(), emptyURL); err == nil {
+// The OIDC transport guard keeps the established empty-set and 4096-key bounds
+// before passing the same response to go-oidc's remote key set.
+func TestJWKSValidationBounds(t *testing.T) {
+	if err := validateJWKSForID(marshalJWKS(t, jwksDocument{Keys: []jwk{}}), "key"); err == nil {
 		t.Fatal("empty key set accepted")
 	}
 
@@ -49,17 +40,19 @@ func TestFetchJWKSBounds(t *testing.T) {
 	for index := range tooMany {
 		tooMany[index] = jwk{KeyType: "RSA", KeyID: "key"}
 	}
-	oversized, oversizedURL := jwksServer(t, jwksDocument{Keys: tooMany})
-	if _, err := oversized.fetchJWKS(context.Background(), oversizedURL); err == nil {
+	if err := validateJWKSForID(marshalJWKS(t, jwksDocument{Keys: tooMany}), "key"); err == nil {
 		t.Fatal("4097 keys accepted")
 	}
 
 	exact := make([]jwk, 4096)
 	for index := range exact {
-		exact[index] = jwk{KeyType: "RSA", KeyID: "key"}
+		exact[index] = jwk{KeyType: "RSA", KeyID: "other"}
 	}
-	document, documentURL := jwksServer(t, jwksDocument{Keys: exact})
-	if _, err := document.fetchJWKS(context.Background(), documentURL); err != nil {
+	exact[0] = jwk{
+		KeyType: "RSA", KeyID: "key", Use: "sig", Algorithm: "RS256",
+		Modulus: encodedModulus(256), Exponent: "AQAB",
+	}
+	if err := validateJWKSForID(marshalJWKS(t, jwksDocument{Keys: exact}), "key"); err != nil {
 		t.Fatalf("4096 keys rejected: %v", err)
 	}
 }

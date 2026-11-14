@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-13
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,7 +12,6 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 
 	"github.com/jackc/pgx/v5"
@@ -60,35 +59,11 @@ func scanJobs(rows pgx.Rows) ([]Job, error) {
 // attempt when a user opens them.
 func loadWriteHistory(ctx context.Context, tx pgx.Tx, st *state, caseIDs []string, attemptID string) error {
 	if len(caseIDs) != 0 {
-		audits, err := tx.Query(ctx, `SELECT h.event_id,h.run_id,h.actor,h.seq,h.event_type,h.prev_hash,h.hash,h.correlation_ids
-			FROM review_runs r CROSS JOIN LATERAL (
-				SELECT * FROM (
-					(SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM audit_events WHERE run_id=r.id ORDER BY seq DESC,event_id DESC LIMIT 1)
-					UNION ALL
-					(SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM business_audit_events WHERE run_id=r.id ORDER BY seq DESC,event_id DESC LIMIT 1)
-				) candidates ORDER BY seq DESC,event_id DESC LIMIT 1
-			) h WHERE r.case_id=ANY($1) ORDER BY h.seq,h.event_id`, caseIDs)
+		audits, err := readAuditCaseHeads(ctx, tx, caseIDs)
 		if err != nil {
 			return err
 		}
-		for audits.Next() {
-			var item AuditRecord
-			var correlation string
-			if err := audits.Scan(&item.EventID, &item.RunID, &item.Actor, &item.Seq, &item.EventType, &item.PrevHash, &item.Hash, &correlation); err != nil {
-				audits.Close()
-				return err
-			}
-			if err := json.Unmarshal([]byte(correlation), &item.CorrelationIDs); err != nil {
-				audits.Close()
-				return err
-			}
-			st.Audits = append(st.Audits, item)
-		}
-		if err := audits.Err(); err != nil {
-			audits.Close()
-			return err
-		}
-		audits.Close()
+		st.Audits = append(st.Audits, audits...)
 
 		events, err := tx.Query(ctx, `SELECT h.run_id,h.event_seq,h.event_type,h.state
 			FROM review_runs r CROSS JOIN LATERAL (

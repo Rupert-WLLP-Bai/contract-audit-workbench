@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-12
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -25,6 +25,7 @@ import (
 	"contractaudit/internal/agentflow"
 	"contractaudit/internal/docversion"
 	"contractaudit/internal/execution"
+	"contractaudit/internal/execution/steps"
 	"contractaudit/internal/model"
 	"contractaudit/internal/rulepack"
 	"contractaudit/internal/telecom"
@@ -87,7 +88,11 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 	}
 	selectedKnowledge := map[KnowledgeRef]bool{}
 	readKnowledge := func(ctx context.Context, read agentflow.KnowledgeReadRequest) (string, error) {
-		return s.readAgentPlannerKnowledge(ctx, runID, attemptID, resource, actor.ID, frozenKnowledge, selectedKnowledge, read)
+		text, err := s.readAgentPlannerKnowledge(ctx, runID, attemptID, resource, actor.ID, frozenKnowledge, selectedKnowledge, read)
+		if errors.Is(err, errAttemptAuthorizationRevoked) || errors.Is(err, rulepack.ErrUnauthorized) {
+			return "", fmt.Errorf("%w: %w", agentflow.ErrPlanningAuthorization, err)
+		}
+		return text, err
 	}
 	planner, err := frozenAgentPlanner(configuration, models, recorder)
 	if err != nil {
@@ -101,6 +106,7 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 	runtime, err := agentflow.New(ctx, agentflow.Config{
 		Planner: planner, Tools: tools, PlannerConfiguration: configuration,
 		EventSink: agentReviewEventSink(recorder), AuthorizePlanning: authorizePlanning, ReadKnowledge: readKnowledge,
+		StepJournal: newAgentStepJournal(s, claim, input.InputHash, recorder),
 	})
 	if err != nil {
 		return true, err
@@ -123,14 +129,13 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 	if err := s.applyPriorAttemptRecovery(ctx, st, actor, caseItem, attempt, tools, &request); err != nil {
 		return true, err
 	}
-	// A worker takeover resumes the same attempt with a newer lease generation.
-	// Preserve the event sequence and elapsed budget already spent by the
-	// previous generation; no tool output is fabricated from those events.
-	if attempt.RetryOfAttemptID == nil && claim.Generation > 1 {
-		if recovered := st.executionEvents(attemptID); len(recovered) > 0 {
-			count, elapsed := priorAttemptUsage(recovered, attempt)
-			request.PriorEventCount = count
-			request.PriorElapsedMS = elapsed
+	sameAttemptTakeover := claim.Generation > 1
+	// A worker takeover resumes the same attempt with a newer lease generation,
+	// including when this attempt is itself a retry. Keep prior-attempt history
+	// as the base and append only this attempt's committed event history.
+	if sameAttemptTakeover {
+		if err := addCurrentAttemptRecoveryHistory(&request, st.executionEvents(attemptID)); err != nil {
+			return true, err
 		}
 	}
 	rulePackIdentity, err := agentReviewRulePackIdentity(attempt, caseItem)
@@ -146,8 +151,8 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 	if request.PriorKnowledgeReadCount > agentflow.KnowledgeReadMaxCalls {
 		return true, errors.New("governed knowledge read budget exceeded")
 	}
-	reserved := request.PriorKnowledgeReadCount * agentflow.KnowledgeReadMaxBytes
-	contextBudget := max(0, configuration.Limits.MaxEvidenceBytes-reserved)
+	contextBudget, reserved := agentReviewKnowledgeContextBudget(configuration.Limits.MaxEvidenceBytes,
+		request.PriorKnowledgeReadCount, sameAttemptTakeover)
 	var evaluator advisoryEvaluator
 	if configuration.Advisory != nil && frozenKnowledge != nil {
 		if provider := s.advisoryProviderForRun(); provider != nil {
@@ -168,7 +173,15 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 	request.KnowledgeSelection.Budget.PriorReadCalls = request.PriorKnowledgeReadCount
 	request.KnowledgeSelection.Budget.PriorReadReservedBytes = reserved
 	report, runErr := runtime.Run(ctx, request)
-	if errors.Is(runErr, agentflow.ErrEventSink) || errors.Is(runErr, agentflow.ErrPlanningAuthorization) || errors.Is(runErr, agentflow.ErrKnowledgeRead) {
+	stepTerminalErr := errors.Is(runErr, steps.ErrAmbiguous) || errors.Is(runErr, steps.ErrPriorFailure)
+	if errors.Is(runErr, errLeaseLost) || errors.Is(runErr, errAttemptTerminal) || errors.Is(runErr, errAttemptAuthorizationRevoked) {
+		return true, runErr
+	}
+	if errors.Is(runErr, steps.ErrPersistence) || errors.Is(runErr, steps.ErrCorrupt) || errors.Is(runErr, steps.ErrIdentityMismatch) {
+		return true, errors.Join(errAgentReviewPersistence, runErr)
+	}
+	if errors.Is(runErr, agentflow.ErrEventSink) || errors.Is(runErr, agentflow.ErrPlanningAuthorization) ||
+		(errors.Is(runErr, agentflow.ErrKnowledgeRead) && !stepTerminalErr) {
 		return true, runErr
 	}
 	if errors.Is(runErr, agentflow.ErrDenied) {
@@ -199,36 +212,116 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 	if err := s.SyncAgentReviewRecord(ctx, claim, record); err != nil {
 		return true, errors.Join(errAgentReviewPersistence, err)
 	}
+	if stepTerminalErr {
+		return true, runErr
+	}
 	incomplete := report.Status != "completed" || runErr != nil || caseItem.ID != resource.CaseID
 	return incomplete, nil
+}
+
+func agentReviewKnowledgeContextBudget(maxEvidenceBytes, priorReadCalls int, sameAttemptTakeover bool) (contextBudget, reservedBytes int) {
+	reservedBytes = priorReadCalls * agentflow.KnowledgeReadMaxBytes
+	if sameAttemptTakeover {
+		// Recreate the first generation's selected context exactly. Durable reads
+		// are charged once by the Agent runtime as their checkpoints replay.
+		return maxEvidenceBytes, reservedBytes
+	}
+	return max(0, maxEvidenceBytes-reservedBytes), reservedBytes
+}
+
+func addCurrentAttemptRecoveryHistory(request *agentflow.Request, events []ExecutionEvent) error {
+	if request == nil {
+		return errors.New("Agent attempt recovery request is unavailable")
+	}
+	if len(events) == 0 {
+		return nil
+	}
+	if request.PriorEventCount < 0 || request.PriorEventCount > 1024 || len(events) > 1024-request.PriorEventCount {
+		return errors.New("Agent recovery event sequence exceeds its bounded history")
+	}
+	var elapsed int64
+	const maxInt64 = int64(1<<63 - 1)
+	for _, event := range events {
+		if event.DurationMS == nil {
+			continue
+		}
+		if *event.DurationMS < 0 || *event.DurationMS > maxInt64-elapsed {
+			return errors.New("Agent recovery event elapsed history is invalid")
+		}
+		elapsed += *event.DurationMS
+	}
+	request.PriorEventCount += len(events)
+	request.CurrentAttemptPriorElapsedMS = &elapsed
+	return nil
+}
+
+func isFatalAgentReviewBoundaryError(err error) bool {
+	for _, boundary := range []error{errLeaseLost, errAttemptTerminal, errAttemptAuthorizationRevoked,
+		errAgentReviewPersistence, errAgentReviewScopeChanged, steps.ErrPersistence, steps.ErrCorrupt,
+		steps.ErrIdentityMismatch, agentflow.ErrEventSink, agentflow.ErrPlanningAuthorization,
+		agentflow.ErrDenied, rulepack.ErrUnauthorized, context.Canceled, context.DeadlineExceeded} {
+		if errors.Is(err, boundary) {
+			return true
+		}
+	}
+	return false
+}
+
+func agentReviewFatalResult(err error) (string, string) {
+	switch {
+	case errors.Is(err, errAttemptAuthorizationRevoked):
+		return "failed", "authorization_revoked"
+	case errors.Is(err, rulepack.ErrUnauthorized), errors.Is(err, agentflow.ErrPlanningAuthorization), errors.Is(err, agentflow.ErrDenied):
+		return "failed", "authorization_denied"
+	case errors.Is(err, errAgentReviewScopeChanged):
+		return "failed", "agent_review_scope_changed"
+	case errors.Is(err, errAgentReviewPersistence), errors.Is(err, steps.ErrPersistence), errors.Is(err, steps.ErrCorrupt),
+		errors.Is(err, steps.ErrIdentityMismatch), errors.Is(err, agentflow.ErrEventSink):
+		return "failed", "agent_review_persistence_failed"
+	default:
+		return "failed", "agent_review_failed"
+	}
 }
 
 // The recorder owns transaction, lease and generation fencing. The callback
 // blocks runtime progress until the event has been committed or rejected.
 func agentReviewEventSink(recorder attemptRecorder) func(context.Context, agentflow.Event) error {
 	return func(ctx context.Context, event agentflow.Event) error {
-		status := "completed"
-		switch event.Kind {
-		case "tool_started", "knowledge_read_started":
-			status = "running"
-		case "tool_failed", "knowledge_read_failed", "plan_rejected", "gap_unsupported":
-			status = "failed"
-		case "planner_fallback":
-			status = "partial"
-		case "run_cancelled":
-			status = "cancelled"
+		return recorder.RecordExecutionEvent(ctx, agentReviewExecutionEvent(ctx, event))
+	}
+}
+
+func agentReviewExecutionEvent(ctx context.Context, event agentflow.Event) execution.Event {
+	status := "completed"
+	switch event.Kind {
+	case "tool_started", "knowledge_read_started":
+		status = "running"
+	case "tool_failed", "knowledge_read_failed", "step_failure_reused", "step_ambiguous", "plan_rejected", "gap_unsupported":
+		status = "failed"
+	case "planner_fallback":
+		status = "partial"
+	case "run_cancelled":
+		status = "cancelled"
+	}
+	var duration *int64
+	measured := event.Kind == "tool_observed" || event.Kind == "tool_completed" || event.Kind == "tool_failed" ||
+		event.Kind == "knowledge_read_completed" || event.Kind == "knowledge_read_failed"
+	if event.DurationMS > 0 || measured {
+		value := event.DurationMS
+		duration = &value
+	}
+	nodeKind, spanID, modelRef := "agent_review", "", ""
+	switch event.Kind {
+	case "tool_started", "tool_completed", "tool_failed", "tool_reused", "tool_observed", "step_failure_reused", "step_ambiguous":
+		if event.ToolID != "" {
+			nodeKind, spanID, modelRef = "tool_call", event.CallID, event.ToolID
 		}
-		var duration *int64
-		if event.DurationMS > 0 {
-			value := event.DurationMS
-			duration = &value
-		}
-		return recorder.RecordExecutionEvent(ctx, execution.Event{
-			EventKey:     fmt.Sprintf("agent-review/%d", event.Sequence),
-			ParentSpanID: execution.ParentSpanID(ctx), NodeKind: "agent_review", Phase: event.Kind,
-			EventType: "agent_review_event", At: event.OccurredAt, DurationMS: duration, Status: status,
-			ErrorCode: event.Code,
-		})
+	}
+	return execution.Event{
+		EventKey: fmt.Sprintf("agent-review/%d", event.Sequence),
+		SpanID:   spanID, ParentSpanID: execution.ParentSpanID(ctx), NodeKind: nodeKind, Phase: event.Kind,
+		EventType: "agent_review_event", At: event.OccurredAt, DurationMS: duration, Status: status,
+		ErrorCode: event.Code, ModelRef: modelRef,
 	}
 }
 

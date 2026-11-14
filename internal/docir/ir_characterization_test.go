@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -419,8 +419,8 @@ func TestCoverPrecedencePinned(t *testing.T) {
 	if got := paged.ElementAt(5, 8); got != "k-1" {
 		t.Fatalf("paged clause span = %q", got)
 	}
-	if page, ok := paged.PageAt(5, 8); !ok || page != 1 {
-		t.Fatalf("clause PageAt = %d, %v", page, ok)
+	if page, ok := paged.PageAt(5, 8); ok || page != 0 {
+		t.Fatalf("cross-page clause must not claim one page: %d, %v", page, ok)
 	}
 }
 

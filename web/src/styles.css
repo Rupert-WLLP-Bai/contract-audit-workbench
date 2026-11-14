@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
-/* Updated: 2026-11-08 */
-/* Revision: r5 */
+/* Updated: 2026-11-12 */
+/* Revision: r6 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -106,8 +106,7 @@
     --font-ui:
       -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC",
       "Microsoft YaHei", sans-serif;
-    --font-mono:
-      "SFMono-Regular", "Cascadia Code", "Noto Sans Mono", monospace;
+    --font-mono: "SFMono-Regular", "Cascadia Code", "Noto Sans Mono", monospace;
     --font-size-ui: 14px;
     --font-size-document: 16px;
     --line-height-document: 1.7;
@@ -970,10 +969,7 @@
   }
   .cases-filters {
     display: grid;
-    grid-template-columns: minmax(240px, 1fr) minmax(180px, 240px) minmax(
-        180px,
-        240px
-      );
+    grid-template-columns: minmax(240px, 1fr) minmax(180px, 240px) minmax(180px, 240px);
     gap: var(--space-3);
     align-items: end;
     margin-bottom: var(--space-4);
@@ -1082,30 +1078,6 @@
   .login-mobile-brand {
     display: none;
   }
-  .page-review {
-    padding: 0;
-  }
-  .page-review > .page-head {
-    min-height: 36px;
-    margin: 0;
-    padding: var(--space-1) var(--space-3);
-    border-bottom: 1px solid var(--border-default);
-    background: var(--surface-raised);
-  }
-  .page-review > .page-head > div {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--space-2) var(--space-4);
-  }
-  .page-review > .page-head h1 {
-    font-size: 13px;
-    margin: 0;
-  }
-  .page-review > .page-head p {
-    margin: 0;
-    font-size: 13px;
-  }
   .workspace-banner {
     display: flex;
     flex-wrap: wrap;
@@ -1125,7 +1097,10 @@
   }
   .workspace-grid {
     display: grid;
-    grid-template-columns: 220px minmax(320px, 1fr) 12px minmax(300px, var(--finding-column-width, 340px));
+    grid-template-columns: 220px minmax(320px, 1fr) 12px minmax(
+        300px,
+        var(--finding-column-width, 340px)
+      );
     gap: 0;
     align-items: stretch;
     border-block: 1px solid var(--border-default);
@@ -1614,7 +1589,7 @@
   .page-review .col-nav,
   .page-review .col-doc,
   .page-review .col-findings {
-    height: calc(100dvh - 408px);
+    height: calc(100dvh - 260px);
     min-height: 330px;
   }
   @media (max-width: 1099px) {
@@ -2800,25 +2775,100 @@
     background: var(--surface-rail) !important;
     border-right: 1px solid var(--surface-rail-line);
   }
-  .sidenav a {
+  .client-navigation {
+    display: flex;
+    min-height: 100%;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-2);
+  }
+  .client-navigation ul {
+    display: grid;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .primary-navigation-link,
+  .secondary-navigation a,
+  .utility-navigation a {
+    display: flex;
+    min-height: 40px;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-radius: 6px;
+    color: var(--text-inverse-secondary);
+    font-size: 13px;
+    line-height: 1.35;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .primary-navigation-link {
+    min-height: 44px;
+    color: var(--text-inverse);
+    font-weight: 600;
+  }
+  .client-nav-icon {
+    display: inline-flex;
+    width: 20px;
+    min-width: 20px;
+    justify-content: center;
     color: inherit;
   }
-  .sidenav .ant-menu-item-group-title {
-    padding: 18px 16px 6px;
+  .primary-navigation-link:hover,
+  .primary-navigation-link:focus-visible,
+  .secondary-navigation a:hover,
+  .secondary-navigation a:focus-visible,
+  .utility-navigation a:hover,
+  .utility-navigation a:focus-visible {
+    background: var(--surface-rail-raised);
+    color: var(--text-inverse);
+  }
+  .primary-navigation-link.is-current,
+  .secondary-navigation a.active,
+  .utility-navigation a.active {
+    background: var(--nav-item-selected);
+    color: var(--nav-item-selected-fg);
+  }
+  .secondary-navigation,
+  .utility-navigation {
+    min-width: 0;
+  }
+  .secondary-navigation h2,
+  .utility-navigation h2 {
+    margin: var(--space-1) var(--space-3) var(--space-1);
     color: var(--text-inverse-secondary);
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.03em;
     line-height: 1.4;
   }
-  .sidenav .ant-menu-item-group:first-child .ant-menu-item-group-title {
-    padding-top: 10px;
+  .secondary-navigation a {
+    min-height: 36px;
+    padding-block: 6px;
   }
-  .sidenav.ant-layout-sider-collapsed .ant-menu-item-group-title {
-    display: none;
+  .app--nav-collapsed .client-navigation {
+    padding-inline: var(--space-1);
   }
-  .sidenav .nav-footer {
-    border-color: var(--surface-rail-line);
-    color: var(--text-inverse-secondary);
+  .app--nav-collapsed .primary-navigation-link,
+  .app--nav-collapsed .secondary-navigation a,
+  .app--nav-collapsed .utility-navigation a {
+    justify-content: center;
+    gap: 0;
+    padding-inline: var(--space-2);
+  }
+  .app--nav-collapsed .secondary-navigation h2,
+  .app--nav-collapsed .utility-navigation h2 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  .sidenav a {
+    color: inherit;
   }
   .content-column {
     background: var(--surface-page);
@@ -2835,10 +2885,6 @@
     max-width: 1720px;
     margin-inline: auto;
     padding: 20px var(--space-6) 40px;
-  }
-  .page-review {
-    max-width: none;
-    padding: 0;
   }
   .page-head {
     margin-bottom: var(--space-4);
@@ -3261,7 +3307,10 @@
 @layer responsive {
   @media (min-width: 1440px) {
     .workspace-grid {
-      grid-template-columns: 240px minmax(320px, 1fr) 12px minmax(300px, var(--finding-column-width, 400px));
+      grid-template-columns: 240px minmax(320px, 1fr) 12px minmax(
+          300px,
+          var(--finding-column-width, 400px)
+        );
     }
   }
   @media (max-width: 1439px) {
@@ -3284,10 +3333,7 @@
       display: none;
     }
     .cases-filters {
-      grid-template-columns: minmax(220px, 1fr) minmax(170px, 220px) minmax(
-          170px,
-          220px
-        );
+      grid-template-columns: minmax(220px, 1fr) minmax(170px, 220px) minmax(170px, 220px);
     }
   }
   @media (max-width: 820px) {
@@ -3312,7 +3358,10 @@
       grid-row: 2;
     }
     .workspace-grid {
-      grid-template-columns: minmax(320px, 1fr) 12px minmax(300px, var(--finding-column-width, 340px));
+      grid-template-columns: minmax(320px, 1fr) 12px minmax(
+          300px,
+          var(--finding-column-width, 340px)
+        );
     }
     .col-nav {
       grid-column: 1 / -1;
@@ -4522,43 +4571,62 @@
       display: block;
       height: auto;
     }
-    .sidenav .ant-menu {
+    .client-navigation {
       display: flex;
       width: 100%;
       max-width: 100%;
       flex-direction: row;
-      gap: 0;
+      align-items: flex-start;
+      gap: var(--space-2);
       overflow-x: auto;
+      overflow-y: hidden;
       padding: 0 var(--space-2) var(--space-2);
-      border-inline-end: 0;
       scrollbar-width: thin;
     }
-    .sidenav .ant-menu-item-group {
-      display: contents;
+    .client-navigation > ul {
+      display: flex;
+      gap: var(--space-1);
     }
-    .sidenav .ant-menu-item-group-list {
-      display: contents;
-    }
-    .sidenav .ant-menu-item-group-title {
-      display: none;
-    }
-    .sidenav .ant-menu-item,
-    .sidenav.ant-layout-sider-collapsed .ant-menu-item {
-      width: auto;
-      min-width: 0;
+    .client-navigation > ul,
+    .client-navigation > section {
       flex: 0 0 auto;
-      margin: var(--space-1) 0;
+    }
+    .client-navigation > section {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      border-left: 1px solid var(--surface-rail-line);
+      padding-left: var(--space-2);
+    }
+    .client-navigation > section h2 {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+    }
+    .client-navigation > section ul {
+      display: flex;
+      flex: 0 0 auto;
+      gap: var(--space-1);
+    }
+    .app--nav-collapsed .primary-navigation-link,
+    .app--nav-collapsed .secondary-navigation a,
+    .app--nav-collapsed .utility-navigation a {
+      justify-content: flex-start;
+      gap: var(--space-2);
       padding-inline: var(--space-2);
-      border-radius: 0;
     }
-    .sidenav.ant-layout-sider-collapsed .ant-menu-title-content,
-    .sidenav .ant-menu-title-content {
-      display: inline-block !important;
-      max-width: none;
-      opacity: 1;
+    .app--nav-collapsed .nav-label {
+      position: static;
+      width: auto;
+      height: auto;
+      overflow: visible;
+      clip: auto;
+      white-space: normal;
     }
-    .sidenav .ant-layout-sider-trigger,
-    .sidenav .nav-footer {
+    .sidenav .ant-layout-sider-trigger {
       display: none;
     }
     .breadcrumbs {
@@ -4633,16 +4701,6 @@
     }
     .topbar .who > .ant-btn > span:not(.anticon) {
       display: inline;
-    }
-    .sidenav.ant-layout-sider-collapsed .ant-menu-title-content,
-    .sidenav .ant-menu-title-content {
-      opacity: 1 !important;
-      visibility: visible;
-      display: inline-block !important;
-    }
-    .sidenav.ant-layout-sider-collapsed .ant-menu-item {
-      width: auto;
-      padding-inline: var(--space-2);
     }
   }
   @media (max-width: 420px) {

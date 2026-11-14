@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "purpose": "UI2-M5 in-repo coverage registry for 54 design views. Screenshot binaries stay outside the source repo under CAW_DELIVERY_DIR/ui2. Status PARTIAL means a page screenshot exists; it is not product PASS. Fixed-candidate / native-200% / role-state acceptance remains NOT_RUN on #97.",
+  "purpose": "UI2-M5 in-repo coverage registry for 54 design views. Screenshot binaries stay outside the source repo under CAW_DELIVERY_DIR/ui2. Status PARTIAL means a page screenshot exists; it is not product PASS. Fixed-candidate / native-200% / role-state acceptance remains NOT_RUN on #97. Representative page-pattern migrations are registered separately; the original design-view count stays 54.",
   "baseline_sha": "2a1a942939f0bd73c1bb1669157b77def2f9a622",
   "design_baseline": "contract-audit-delivery/ui2/prototype-pages.json",
   "external_coverage": "contract-audit-delivery/ui2/UI2_COVERAGE.md",
@@ -20,6 +20,187 @@
     "role_state_keyboard_matrix": "NOT_RUN",
     "fixed_candidate_five_stage": "NOT_RUN"
   },
+  "representativePagePatterns": {
+    "scope": "Actual consumers are recorded by route and row-level template ownership. This registry describes source composition only; the 54 view count and acceptance states remain unchanged.",
+    "templates": [
+      {
+        "pattern": "list",
+        "routes": [
+          "/review",
+          "/cases",
+          "/contracts",
+          "/workbench/approvals",
+          "/support",
+          "/cases/:caseId/legal-knowledge",
+          "/subjects",
+          "/compare",
+          "/workbench/tasks",
+          "/workbench/remediation",
+          "/workbench/reports",
+          "/workbench/evidence",
+          "/workbench/executions",
+          "/workbench/knowledge",
+          "/workbench/organization",
+          "/workbench/templates",
+          "/workbench/tools",
+          "/workbench/audit",
+          "/admin/tenant-lifecycle",
+          "/admin/rulepacks",
+          "/admin/governed-knowledge"
+        ],
+        "sources": [
+          "web/src/components/page-patterns.tsx",
+          "web/src/components/page-patterns.css",
+          "web/src/pages/review-entry-page.tsx",
+          "web/src/pages/approval-tasks-page.tsx",
+          "web/src/pages/support-grant-pages.tsx",
+          "web/src/pages/legal-knowledge-page.tsx",
+          "web/src/pages/subjects-page.tsx",
+          "web/src/pages/compare-entry-page.tsx",
+          "web/src/pages/workbench-module-page.tsx",
+          "web/src/pages/tenant-lifecycle-page.tsx",
+          "web/src/pages/rulepacks-page.tsx",
+          "web/src/pages/governed-knowledge-page.tsx",
+          "web/src/pages/cases-page.tsx",
+          "web/src/pages/contracts-page.tsx"
+        ]
+      },
+      {
+        "pattern": "object-detail",
+        "routes": [
+          "/cases/:caseId",
+          "/support-grants/:grantId",
+          "/subjects/:subjectId",
+          "/admin/tenant-lifecycle",
+          "/admin/rulepacks/:packId/versions/:version",
+          "/admin/governed-knowledge/:knowledgeId/versions/:versionId"
+        ],
+        "sources": [
+          "web/src/components/page-patterns.tsx",
+          "web/src/components/page-patterns.css",
+          "web/src/pages/case-detail-page.tsx",
+          "web/src/pages/support-grant-pages.tsx",
+          "web/src/pages/subjects-page.tsx",
+          "web/src/pages/tenant-lifecycle-page.tsx",
+          "web/src/pages/rulepack-detail-page.tsx",
+          "web/src/pages/governed-knowledge-page.tsx"
+        ]
+      },
+      {
+        "pattern": "version-editor",
+        "routes": ["/admin/rulepacks/new", "/admin/governed-knowledge/new"],
+        "sources": [
+          "web/src/components/page-patterns.tsx",
+          "web/src/components/page-patterns.css",
+          "web/src/pages/rulepack-create-page.tsx",
+          "web/src/pages/governed-knowledge-page.tsx"
+        ]
+      },
+      {
+        "pattern": "run-inspection",
+        "entryRoute": "/workbench/executions",
+        "detailRoute": "/cases/:caseId/reviews/:runId/agent?attempt=:attemptId",
+        "sources": [
+          "web/src/components/page-patterns.tsx",
+          "web/src/components/page-patterns.css",
+          "web/src/pages/agent-studio-page.tsx",
+          "web/src/pages/agent-studio-page.css"
+        ]
+      },
+      {
+        "pattern": "review-workspace",
+        "route": "/cases/:caseId/reviews/:runId",
+        "sources": [
+          "web/src/pages/review-page.tsx",
+          "web/src/components/review-workspace.tsx",
+          "web/src/components/document-stage.tsx"
+        ],
+        "note": "Existing review workspace and deep modules remain feature-owned; frozen attempt identity, evidence references and human decisions were not changed."
+      }
+    ]
+  },
+  "mainNavigation": {
+    "mainEntries": [
+      {
+        "key": "workbench",
+        "label": "工作台",
+        "route": "/",
+        "secondaryRoutes": [
+          "/review",
+          "/workbench/tasks",
+          "/workbench/remediation",
+          "/workbench/reports",
+          "/workbench/evidence",
+          "/workbench/evidence-sla"
+        ]
+      },
+      {
+        "key": "cases",
+        "label": "案件",
+        "route": "/cases",
+        "secondaryRoutes": ["/support", "/compare"]
+      },
+      {
+        "key": "contracts",
+        "label": "合同台账",
+        "route": "/contracts",
+        "secondaryRoutes": ["/workbench/approvals", "/subjects"]
+      },
+      {
+        "key": "knowledge",
+        "label": "知识与规则",
+        "route": "/workbench/knowledge",
+        "secondaryRoutes": ["/admin/rulepacks", "/workbench/templates"]
+      },
+      {
+        "key": "agent-studio",
+        "label": "Agent Studio",
+        "route": "/workbench/executions",
+        "detailRoute": "/cases/:caseId/reviews/:runId/agent?attempt=:attemptId"
+      }
+    ],
+    "managementAndDocsRoutes": [
+      "/workbench/organization",
+      "/workbench/tools",
+      "/workbench/settings",
+      "/workbench/health",
+      "/workbench/audit",
+      "/docs/",
+      "/api-docs"
+    ],
+    "sources": [
+      "web/src/components/app-shell.tsx",
+      "web/src/components/app-shell.test.tsx"
+    ],
+    "roleConditionedLinks": {
+      "clientAdminRoleOnly": [
+        "/admin/rulepacks",
+        "/workbench/settings",
+        "/workbench/health",
+        "/workbench/audit"
+      ],
+      "clientReadOnlyAvailableToOtherRoles": [
+        {
+          "route": "/workbench/organization",
+          "reason": "The route exposes the current actor-visible public member directory and role information."
+        },
+        {
+          "route": "/workbench/tools",
+          "reason": "The route exposes registered tool metadata and call-state projection; it has no external write action."
+        },
+        {
+          "route": "/workbench/templates",
+          "reason": "The route displays service-provided template, field, and generation-history projections without a write action."
+        }
+      ],
+      "publicReferencesAndPublishedKnowledge": [
+        "/docs/",
+        "/api-docs",
+        "/workbench/knowledge"
+      ],
+      "note": "Client sidebar visibility uses Actor.role for presentation only. Existing route and server authorization remains authoritative for deep links and commands; knowledge creation actions remain with their existing feature and server checks."
+    }
+  },
   "views": [
     {
       "designId": "UI-001",
@@ -29,7 +210,8 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/home-page.tsx"
+        "web/src/pages/home-page.tsx",
+        "web/src/components/app-shell.tsx"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "6:2",
@@ -41,7 +223,8 @@
         "audit/round41/home-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized dashboard"
     },
     {
       "designId": "UI-002",
@@ -51,7 +234,10 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/review-entry-page.tsx"
+        "web/src/pages/review-entry-page.tsx",
+        "web/src/pages/review-entry-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "8:108",
@@ -63,7 +249,8 @@
         "audit/review-entry-ui2-mine.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-003",
@@ -73,7 +260,10 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/cases-page.tsx"
+        "web/src/pages/cases-page.tsx",
+        "web/src/components/cases-table.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "8:183",
@@ -86,7 +276,8 @@
         "audit/cases-ui2-390-archived.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-004",
@@ -96,7 +287,10 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/contracts-page.tsx"
+        "web/src/pages/contracts-page.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css",
+        "web/src/pages/contracts-page.css"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "8:258",
@@ -107,7 +301,8 @@
         "audit/contracts-ui2-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage with embedded contract editor"
     },
     {
       "designId": "UI-005",
@@ -117,7 +312,10 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/approval-tasks-page.tsx"
+        "web/src/pages/approval-tasks-page.tsx",
+        "web/src/pages/approval-tasks-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "6:387",
@@ -129,7 +327,8 @@
         "audit/round41/approvals-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-006",
@@ -139,7 +338,9 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/case-detail-page.tsx"
+        "web/src/pages/case-detail-page.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "6:112",
@@ -150,7 +351,8 @@
         "audit/case-detail-ui2-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ObjectDetailPage"
     },
     {
       "designId": "UI-007",
@@ -160,15 +362,17 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/support-grant-pages.tsx"
+        "web/src/pages/support-grant-pages.tsx",
+        "web/src/pages/support-grants.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "8:333",
-      "screenshotRefs": [
-        "support-ui2.png"
-      ],
+      "screenshotRefs": ["support-ui2.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-008",
@@ -178,13 +382,17 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/support-grant-pages.tsx"
+        "web/src/pages/support-grant-pages.tsx",
+        "web/src/pages/support-grants.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "8:403",
       "screenshotRefs": [],
       "status": "BLOCKED",
-      "statusDetail": "BLOCKED（无真实支援授权数据）"
+      "statusDetail": "BLOCKED（无真实支援授权数据）",
+      "template": "ObjectDetailPage"
     },
     {
       "designId": "UI-009",
@@ -194,7 +402,10 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/legal-knowledge-page.tsx"
+        "web/src/pages/legal-knowledge-page.tsx",
+        "web/src/pages/legal-knowledge-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 258,
       "figmaNodeId": "8:499",
@@ -206,7 +417,8 @@
         "audit/round41/legal-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized legal reader with admin list"
     },
     {
       "designId": "UI-010",
@@ -216,7 +428,10 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/subjects-page.tsx"
+        "web/src/pages/subjects-page.tsx",
+        "web/src/pages/subjects-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "8:584",
@@ -228,7 +443,8 @@
         "audit/round41/subjects-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-011",
@@ -238,15 +454,17 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/subjects-page.tsx"
+        "web/src/pages/subjects-page.tsx",
+        "web/src/pages/subjects-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "8:654",
-      "screenshotRefs": [
-        "subject-detail.png"
-      ],
+      "screenshotRefs": ["subject-detail.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ObjectDetailPage"
     },
     {
       "designId": "UI-012",
@@ -255,9 +473,7 @@
       "title": "运营商专项核验",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/operator-audit-page.tsx"
-      ],
+      "sources": ["web/src/pages/operator-audit-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:751",
       "screenshotRefs": [
@@ -268,7 +484,8 @@
         "audit/round41/operator-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized operator audit workspace"
     },
     {
       "designId": "UI-013",
@@ -278,7 +495,9 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/review-page.tsx"
+        "web/src/pages/review-page.tsx",
+        "web/src/components/review-workspace.tsx",
+        "web/src/components/document-stage.tsx"
       ],
       "implementationIssue": 258,
       "figmaNodeId": "6:206",
@@ -290,7 +509,8 @@
         "audit/round41/review-nav-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ReviewWorkspaceView"
     },
     {
       "designId": "UI-014",
@@ -299,14 +519,13 @@
       "title": "主体更正复核",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/subject-change-review-page.tsx"
-      ],
+      "sources": ["web/src/pages/subject-change-review-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "8:836",
       "screenshotRefs": [],
       "status": "BLOCKED",
-      "statusDetail": "BLOCKED（无真实更正请求数据）"
+      "statusDetail": "BLOCKED（无真实更正请求数据）",
+      "template": "specialized subject change review"
     },
     {
       "designId": "UI-015",
@@ -316,15 +535,17 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/compare-entry-page.tsx"
+        "web/src/pages/compare-entry-page.tsx",
+        "web/src/pages/compare-entry-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 258,
       "figmaNodeId": "8:923",
-      "screenshotRefs": [
-        "compare.png"
-      ],
+      "screenshotRefs": ["compare.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-016",
@@ -333,9 +554,7 @@
       "title": "系统健康",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/system-health-page.tsx"
-      ],
+      "sources": ["web/src/pages/system-health-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:997",
       "screenshotRefs": [
@@ -346,7 +565,8 @@
         "audit/round41/health-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized health dashboard"
     },
     {
       "designId": "UI-017",
@@ -355,16 +575,13 @@
       "title": "补证时效",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/evidence-sla-page.tsx"
-      ],
+      "sources": ["web/src/pages/evidence-sla-page.tsx"],
       "implementationIssue": 257,
       "figmaNodeId": "8:1081",
-      "screenshotRefs": [
-        "evidence-sla.png"
-      ],
+      "screenshotRefs": ["evidence-sla.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized evidence SLA dashboard"
     },
     {
       "designId": "UI-018",
@@ -373,16 +590,13 @@
       "title": "API 文档",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/api-docs-page.tsx"
-      ],
+      "sources": ["web/src/pages/api-docs-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:1174",
-      "screenshotRefs": [
-        "api-docs.png"
-      ],
+      "screenshotRefs": ["api-docs.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized API reference explorer"
     },
     {
       "designId": "UI-019",
@@ -392,7 +606,10 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/workbench-module-page.tsx"
+        "web/src/pages/workbench-module-page.tsx",
+        "web/src/pages/workbench-module-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "8:1240",
@@ -404,7 +621,8 @@
         "audit/round41/tasks-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-020",
@@ -414,7 +632,10 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/workbench-module-page.tsx"
+        "web/src/pages/workbench-module-page.tsx",
+        "web/src/pages/workbench-module-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "8:1334",
@@ -426,7 +647,8 @@
         "audit/round41/remediation-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-021",
@@ -436,7 +658,10 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/workbench-module-page.tsx"
+        "web/src/pages/workbench-module-page.tsx",
+        "web/src/pages/workbench-module-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 258,
       "figmaNodeId": "8:1428",
@@ -449,7 +674,8 @@
         "audit/round41/reports-reader-1440.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-022",
@@ -459,7 +685,10 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/workbench-module-page.tsx"
+        "web/src/pages/workbench-module-page.tsx",
+        "web/src/pages/workbench-module-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 258,
       "figmaNodeId": "8:1514",
@@ -471,7 +700,8 @@
         "audit/round41/evidence-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-023",
@@ -481,15 +711,18 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/workbench-module-page.tsx"
+        "web/src/pages/workbench-module-page.tsx",
+        "web/src/components/app-shell.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css",
+        "web/src/pages/workbench-module-page.css"
       ],
       "implementationIssue": 258,
       "figmaNodeId": "8:1600",
-      "screenshotRefs": [
-        "executions.png"
-      ],
+      "screenshotRefs": ["executions.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-024",
@@ -499,7 +732,10 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/workbench-module-page.tsx"
+        "web/src/pages/workbench-module-page.tsx",
+        "web/src/pages/workbench-module-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 258,
       "figmaNodeId": "8:1698",
@@ -508,7 +744,8 @@
         "audit/round41/knowledge-reader-1440.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-025",
@@ -518,15 +755,17 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/workbench-module-page.tsx"
+        "web/src/pages/workbench-module-page.tsx",
+        "web/src/pages/workbench-module-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 259,
       "figmaNodeId": "8:1784",
-      "screenshotRefs": [
-        "organization.png"
-      ],
+      "screenshotRefs": ["organization.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-026",
@@ -536,7 +775,10 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/workbench-module-page.tsx"
+        "web/src/pages/workbench-module-page.tsx",
+        "web/src/pages/workbench-module-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 258,
       "figmaNodeId": "8:1881",
@@ -545,7 +787,8 @@
         "audit/round41/templates-reader-1440.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-027",
@@ -555,15 +798,17 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/workbench-module-page.tsx"
+        "web/src/pages/workbench-module-page.tsx",
+        "web/src/pages/workbench-module-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 259,
       "figmaNodeId": "8:1967",
-      "screenshotRefs": [
-        "tools.png"
-      ],
+      "screenshotRefs": ["tools.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-028",
@@ -573,15 +818,17 @@
       "site": "client",
       "kind": "route",
       "sources": [
-        "web/src/pages/workbench-module-page.tsx"
+        "web/src/pages/workbench-module-page.tsx",
+        "web/src/pages/workbench-module-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 259,
       "figmaNodeId": "8:2064",
-      "screenshotRefs": [
-        "audit-log.png"
-      ],
+      "screenshotRefs": ["audit-log.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-029",
@@ -590,16 +837,13 @@
       "title": "系统设置",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/settings-page.tsx"
-      ],
+      "sources": ["web/src/pages/settings-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2161",
-      "screenshotRefs": [
-        "settings.png"
-      ],
+      "screenshotRefs": ["settings.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized settings forms"
     },
     {
       "designId": "UI-030",
@@ -608,16 +852,13 @@
       "title": "登录",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/login-page.tsx"
-      ],
+      "sources": ["web/src/pages/login-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2252",
-      "screenshotRefs": [
-        "login.png"
-      ],
+      "screenshotRefs": ["login.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized authentication form"
     },
     {
       "designId": "UI-031",
@@ -626,16 +867,13 @@
       "title": "成员待开通",
       "site": "client",
       "kind": "route",
-      "sources": [
-        "web/src/pages/pending-membership-page.tsx"
-      ],
+      "sources": ["web/src/pages/pending-membership-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2315",
-      "screenshotRefs": [
-        "login-membership.png"
-      ],
+      "screenshotRefs": ["login-membership.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized membership status"
     },
     {
       "designId": "UI-032",
@@ -644,16 +882,13 @@
       "title": "管理端登录",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/login-page.tsx"
-      ],
+      "sources": ["web/src/pages/login-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2368",
-      "screenshotRefs": [
-        "admin-login.png"
-      ],
+      "screenshotRefs": ["admin-login.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized authentication form"
     },
     {
       "designId": "UI-033",
@@ -662,16 +897,13 @@
       "title": "管理成员待开通",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/pending-membership-page.tsx"
-      ],
+      "sources": ["web/src/pages/pending-membership-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2417",
-      "screenshotRefs": [
-        "admin-membership.png"
-      ],
+      "screenshotRefs": ["admin-membership.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized membership status"
     },
     {
       "designId": "UI-034",
@@ -680,9 +912,7 @@
       "title": "基础设施",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/system-health-page.tsx"
-      ],
+      "sources": ["web/src/pages/system-health-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2456",
       "screenshotRefs": [
@@ -691,7 +921,8 @@
         "audit/round41/admin-infrastructure-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized infrastructure dashboard"
     },
     {
       "designId": "UI-035",
@@ -700,9 +931,7 @@
       "title": "平台设置",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/settings-page.tsx"
-      ],
+      "sources": ["web/src/pages/settings-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2526",
       "screenshotRefs": [
@@ -711,7 +940,8 @@
         "audit/round41/admin-settings-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized settings forms"
     },
     {
       "designId": "UI-036",
@@ -721,15 +951,17 @@
       "site": "admin",
       "kind": "route",
       "sources": [
-        "web/src/pages/tenant-lifecycle-page.tsx"
+        "web/src/pages/tenant-lifecycle-page.tsx",
+        "web/src/pages/tenant-lifecycle-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 259,
       "figmaNodeId": "8:2603",
-      "screenshotRefs": [
-        "admin-tenant-lifecycle-mock.png"
-      ],
+      "screenshotRefs": ["admin-tenant-lifecycle-mock.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage and ObjectDetailPage"
     },
     {
       "designId": "UI-037",
@@ -738,16 +970,13 @@
       "title": "辖区运营概览",
       "site": "admin",
       "kind": "route",
-      "sources": [
-        "web/src/pages/jurisdiction-operations-page.tsx"
-      ],
+      "sources": ["web/src/pages/jurisdiction-operations-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:2675",
-      "screenshotRefs": [
-        "admin-jurisdiction-mock.png"
-      ],
+      "screenshotRefs": ["admin-jurisdiction-mock.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized jurisdiction operations dashboard"
     },
     {
       "designId": "UI-038",
@@ -757,7 +986,9 @@
       "site": "admin",
       "kind": "route",
       "sources": [
-        "web/src/pages/rulepacks-page.tsx"
+        "web/src/pages/rulepacks-page.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 259,
       "figmaNodeId": "8:2746",
@@ -767,7 +998,8 @@
         "audit/round41/admin-rulepacks-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-039",
@@ -777,15 +1009,16 @@
       "site": "admin",
       "kind": "route",
       "sources": [
-        "web/src/pages/rulepack-create-page.tsx"
+        "web/src/pages/rulepack-create-page.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 259,
       "figmaNodeId": "8:2802",
-      "screenshotRefs": [
-        "admin-rulepack-new.png"
-      ],
+      "screenshotRefs": ["admin-rulepack-new.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "VersionEditorPage"
     },
     {
       "designId": "UI-040",
@@ -795,15 +1028,16 @@
       "site": "admin",
       "kind": "route",
       "sources": [
-        "web/src/pages/rulepack-detail-page.tsx"
+        "web/src/pages/rulepack-detail-page.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 259,
       "figmaNodeId": "6:478",
-      "screenshotRefs": [
-        "admin-rulepack-detail.png"
-      ],
+      "screenshotRefs": ["admin-rulepack-detail.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ObjectDetailPage"
     },
     {
       "designId": "UI-041",
@@ -813,7 +1047,10 @@
       "site": "admin",
       "kind": "route",
       "sources": [
-        "web/src/pages/governed-knowledge-page.tsx"
+        "web/src/pages/governed-knowledge-page.tsx",
+        "web/src/pages/governed-knowledge-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 259,
       "figmaNodeId": "8:2878",
@@ -823,7 +1060,8 @@
         "audit/round41/admin-governed-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ListPage"
     },
     {
       "designId": "UI-042",
@@ -833,7 +1071,10 @@
       "site": "admin",
       "kind": "route",
       "sources": [
-        "web/src/pages/governed-knowledge-page.tsx"
+        "web/src/pages/governed-knowledge-page.tsx",
+        "web/src/pages/governed-knowledge-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 259,
       "figmaNodeId": "8:2934",
@@ -843,7 +1084,8 @@
         "audit/round41/admin-governed-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "VersionEditorPage"
     },
     {
       "designId": "UI-043",
@@ -853,7 +1095,10 @@
       "site": "admin",
       "kind": "route",
       "sources": [
-        "web/src/pages/governed-knowledge-page.tsx"
+        "web/src/pages/governed-knowledge-page.tsx",
+        "web/src/pages/governed-knowledge-page.css",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 259,
       "figmaNodeId": "8:3010",
@@ -863,7 +1108,8 @@
         "audit/round41/admin-governed-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ObjectDetailPage"
     },
     {
       "designId": "UI-044",
@@ -873,15 +1119,16 @@
       "site": "portal",
       "kind": "route",
       "sources": [
-        "web/src/portal-main.tsx"
+        "web/src/portal-main.tsx",
+        "web/src/pages/api-docs-page.tsx",
+        "web/src/pages/api-docs.css"
       ],
       "implementationIssue": 259,
       "figmaNodeId": "8:3083",
-      "screenshotRefs": [
-        "portal-api-docs.png"
-      ],
+      "screenshotRefs": ["portal-api-docs.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "portal-mounted API reference explorer"
     },
     {
       "designId": "UI-045",
@@ -891,7 +1138,10 @@
       "site": "client",
       "kind": "view",
       "sources": [
-        "web/src/pages/contracts-page.tsx"
+        "web/src/pages/contracts-page.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css",
+        "web/src/pages/contracts-page.css"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "6:296",
@@ -908,7 +1158,8 @@
         "audit/round41/contracts-ui2-geometry-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "embedded contract editor"
     },
     {
       "designId": "UI-046",
@@ -917,9 +1168,7 @@
       "title": "冻结执行对照",
       "site": "client",
       "kind": "view",
-      "sources": [
-        "web/src/pages/compare-page.tsx"
-      ],
+      "sources": ["web/src/pages/compare-page.tsx"],
       "implementationIssue": 258,
       "figmaNodeId": "8:3149",
       "screenshotRefs": [
@@ -930,7 +1179,8 @@
         "audit/round41/compare-detail-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized comparison diff"
     },
     {
       "designId": "UI-047",
@@ -939,9 +1189,7 @@
       "title": "页面不存在",
       "site": "client",
       "kind": "fallback",
-      "sources": [
-        "web/src/pages/not-found-page.tsx"
-      ],
+      "sources": ["web/src/pages/not-found-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:3236",
       "screenshotRefs": [
@@ -952,7 +1200,8 @@
         "audit/round41/not-found-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized not-found result"
     },
     {
       "designId": "UI-048",
@@ -961,16 +1210,13 @@
       "title": "管理页面不存在",
       "site": "admin",
       "kind": "fallback",
-      "sources": [
-        "web/src/admin-app.tsx"
-      ],
+      "sources": ["web/src/admin-app.tsx", "web/src/pages/not-found-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:3289",
-      "screenshotRefs": [
-        "admin-not-found.png"
-      ],
+      "screenshotRefs": ["admin-not-found.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized admin not-found result"
     },
     {
       "designId": "UI-049",
@@ -979,16 +1225,13 @@
       "title": "工作区不存在",
       "site": "client",
       "kind": "fallback",
-      "sources": [
-        "web/src/pages/workbench-module-page.tsx"
-      ],
+      "sources": ["web/src/pages/workbench-module-page.tsx"],
       "implementationIssue": 259,
       "figmaNodeId": "8:3328",
-      "screenshotRefs": [
-        "module-not-found.png"
-      ],
+      "screenshotRefs": ["module-not-found.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "specialized module not-found status"
     },
     {
       "designId": "UI-050",
@@ -998,7 +1241,9 @@
       "site": "client",
       "kind": "subview",
       "sources": [
-        "web/src/pages/review-page.tsx"
+        "web/src/pages/review-page.tsx",
+        "web/src/components/review-workspace.tsx",
+        "web/src/components/document-stage.tsx"
       ],
       "implementationIssue": 258,
       "figmaNodeId": "8:3381",
@@ -1010,7 +1255,8 @@
         "audit/round41/review-nav-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ReviewWorkspaceView"
     },
     {
       "designId": "UI-051",
@@ -1020,7 +1266,9 @@
       "site": "client",
       "kind": "subview",
       "sources": [
-        "web/src/pages/review-page.tsx"
+        "web/src/pages/review-page.tsx",
+        "web/src/components/review-workspace.tsx",
+        "web/src/components/document-stage.tsx"
       ],
       "implementationIssue": 258,
       "figmaNodeId": "8:3474",
@@ -1032,7 +1280,8 @@
         "audit/round41/review-nav-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ReviewWorkspaceView"
     },
     {
       "designId": "UI-052",
@@ -1042,7 +1291,9 @@
       "site": "client",
       "kind": "subview",
       "sources": [
-        "web/src/pages/review-page.tsx"
+        "web/src/pages/review-page.tsx",
+        "web/src/components/review-workspace.tsx",
+        "web/src/components/document-stage.tsx"
       ],
       "implementationIssue": 258,
       "figmaNodeId": "8:3558",
@@ -1052,7 +1303,8 @@
         "audit/round41/review-nav-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "ReviewWorkspaceView"
     },
     {
       "designId": "UI-053",
@@ -1063,7 +1315,9 @@
       "kind": "subview",
       "sources": [
         "web/src/pages/case-detail-page.tsx",
-        "web/src/components/material-collection-panel.tsx"
+        "web/src/components/material-collection-panel.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "8:3655",
@@ -1072,7 +1326,8 @@
         "audit/case-materials-ui2-parsing.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "embedded case material collection"
     },
     {
       "designId": "UI-054",
@@ -1082,7 +1337,12 @@
       "site": "client",
       "kind": "subview",
       "sources": [
-        "web/src/pages/contracts-page.tsx"
+        "web/src/pages/contracts-page.tsx",
+        "web/src/components/page-patterns.tsx",
+        "web/src/components/page-patterns.css",
+        "web/src/components/contract-payments-panel.tsx",
+        "web/src/components/contract-lifecycle-overview-panel.tsx",
+        "web/src/pages/contracts-page.css"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "8:3725",
@@ -1099,7 +1359,8 @@
         "audit/round41/contracts-ui2-geometry-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL"
+      "statusDetail": "PARTIAL",
+      "template": "embedded contract payment panel"
     }
   ]
 }

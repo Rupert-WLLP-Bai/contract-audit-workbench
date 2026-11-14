@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r6
+// Updated: 2026-11-12
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -24,19 +24,32 @@ import {
   useUpdateWorkbenchTask,
   useWorkbench,
 } from "../api/queries";
-import type {
-  Knowledge,
-  KnowledgeInput,
-  WorkbenchSnapshot,
-} from "../api/types";
+import type { Knowledge, KnowledgeInput, WorkbenchSnapshot } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { ListPage } from "../components/page-patterns";
 import { StatusText } from "../components/status-text";
 import { TechnicalDetail, TechnicalFieldGroup } from "../components/technical-detail";
 import { caseSelectPresentation } from "../components/case-select-presentation";
 import { QccMcpPanel } from "../components/qcc-mcp-panel";
-import { actorRoleLabel, caseHref, formatDateTime, parseLabel, parseTone, roleLabel, runLabel, runTone, taskKindLabel } from "../domain/review";
+import {
+  actorRoleLabel,
+  caseHref,
+  formatDateTime,
+  parseLabel,
+  parseTone,
+  roleLabel,
+  runLabel,
+  runTone,
+  taskKindLabel,
+} from "../domain/review";
 import { caseOptionLabel } from "../domain/case-identity";
-import { businessActionLabel, businessSourceTypeLabel, remediationStatusLabel, suppliedBusinessName } from "../domain/business-labels";
+import {
+  businessActionLabel,
+  businessSourceTypeLabel,
+  remediationStatusLabel,
+  suppliedBusinessName,
+} from "../domain/business-labels";
+import { knownOrganizationName, presentOrganizationMembers } from "../domain/organization";
 import { SettingsPage } from "./settings-page";
 import "./workbench-module-page.css";
 
@@ -108,9 +121,7 @@ export const WORKBENCH_MODULES = {
 
 export type WorkbenchModuleKey = keyof typeof WORKBENCH_MODULES;
 
-export function isWorkbenchModuleKey(
-  value: string,
-): value is WorkbenchModuleKey {
+export function isWorkbenchModuleKey(value: string): value is WorkbenchModuleKey {
   return Object.hasOwn(WORKBENCH_MODULES, value);
 }
 
@@ -162,8 +173,11 @@ const STATUS_LABELS: Record<string, string> = {
   error: "异常",
   degraded: "降级",
   unavailable: "不可用",
-  "已生成": "已生成", "当前身份可见": "当前身份可见", "状态未提供": "状态未提供",
-  "已记录": "已记录", "未报告": "未报告",
+  已生成: "已生成",
+  当前身份可见: "当前身份可见",
+  状态未提供: "状态未提供",
+  已记录: "已记录",
+  未报告: "未报告",
 };
 
 function statusLabel(status: string) {
@@ -171,10 +185,15 @@ function statusLabel(status: string) {
 }
 
 const TOOL_STATUS_LABELS: Record<string, string> = {
-  reserved: "调用已预留", completed: "调用完成", failed: "调用失败", cancelled: "调用已取消",
+  reserved: "调用已预留",
+  completed: "调用完成",
+  failed: "调用失败",
+  cancelled: "调用已取消",
 };
 const TEMPLATE_FIELD_TYPES: Record<string, string> = {
-  string: "文本", decimal: "小数", enum: "选项",
+  string: "文本",
+  decimal: "小数",
+  enum: "选项",
 };
 const FILE_TYPES: Record<string, string> = {
   "application/pdf": "PDF 文档",
@@ -185,7 +204,9 @@ const FILE_TYPES: Record<string, string> = {
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "Word 文档",
 };
 const TASK_PRIORITIES: Record<string, string> = {
-  high: "高优先级", medium: "中优先级", low: "低优先级",
+  high: "高优先级",
+  medium: "中优先级",
+  low: "低优先级",
 };
 
 function toolStatusLabel(status: string | null): string {
@@ -207,13 +228,20 @@ function taskPriorityLabel(priority: string): string {
 }
 
 function auditCaseName(item: WorkbenchSnapshot["audit"][number]): string {
-  return item.case_id === null ? "平台级事件" : suppliedBusinessName(item.case_title, "案件名称未提供");
+  return item.case_id === null
+    ? "平台级事件"
+    : suppliedBusinessName(item.case_title, "案件名称未提供");
 }
 
 function toolName(item: WorkbenchSnapshot["tools"][number]): string {
   // The current ledger projection repeats the capability as its name; it has
   // no independently supplied display name (workbenchTools on the server).
-  if (item.description === "持久工具调用账本中的实际能力" && item.name === item.id && item.capabilities.length === 1 && item.capabilities[0] === item.id)
+  if (
+    item.description === "持久工具调用账本中的实际能力" &&
+    item.name === item.id &&
+    item.capabilities.length === 1 &&
+    item.capabilities[0] === item.id
+  )
     return "工具名称未提供";
   return suppliedBusinessName(item.name, "工具名称未提供");
 }
@@ -235,14 +263,26 @@ function memberName(members: Map<string, string>, id: string): string {
   return suppliedBusinessName(members.get(id), "姓名未提供");
 }
 
+function shownOrganization(orgId: string): string {
+  return knownOrganizationName(orgId) ?? "组织名称未提供";
+}
+
 function auditFields(entries: WorkbenchSnapshot["audit"], memberView = false): DetailField[] {
   return entries.flatMap((entry, index) => [
     memberView
-      ? field(`${businessActionLabel(entry.action)}，${formatDateTime(entry.at)}`, `${auditCaseName(entry)}，${entry.summary}`)
-      : field(`${suppliedBusinessName(entry.actor_name, "操作人姓名未提供")}，${businessActionLabel(entry.action)}`, `${formatDateTime(entry.at)}，${entry.summary}`),
+      ? field(
+          `${businessActionLabel(entry.action)}，${formatDateTime(entry.at)}`,
+          `${auditCaseName(entry)}，${entry.summary}`,
+        )
+      : field(
+          `${suppliedBusinessName(entry.actor_name, "操作人姓名未提供")}，${businessActionLabel(entry.action)}`,
+          `${formatDateTime(entry.at)}，${entry.summary}`,
+        ),
     technicalField(`事件 ${index + 1} 操作编码`, entry.action),
     technicalField(`事件 ${index + 1} 标识`, entry.id),
-    ...(entry.case_id === null ? [] : [technicalField(`事件 ${index + 1} 案件标识`, entry.case_id)]),
+    ...(entry.case_id === null
+      ? []
+      : [technicalField(`事件 ${index + 1} 案件标识`, entry.case_id)]),
   ]);
 }
 
@@ -304,18 +344,16 @@ function knowledgePanels(
   };
 }
 
-function buildRecords(
-  snapshot: WorkbenchSnapshot,
-  module: WorkbenchModuleKey,
-): ModuleRecord[] {
+function buildRecords(snapshot: WorkbenchSnapshot, module: WorkbenchModuleKey): ModuleRecord[] {
   const caseById = new Map(snapshot.cases.map((item) => [item.id, item]));
-  const memberById = new Map(
-    snapshot.members.map((item) => [item.id, item.display_name]),
-  );
+  const memberById = new Map(snapshot.members.map((item) => [item.id, item.display_name]));
   const auditByCase = new Map<string, typeof snapshot.audit>();
   const auditByActor = new Map<string, typeof snapshot.audit>();
   const needsAudit =
-    module === "tasks" || module === "remediation" || module === "audit" || module === "organization";
+    module === "tasks" ||
+    module === "remediation" ||
+    module === "audit" ||
+    module === "organization";
   if (needsAudit) {
     for (const item of snapshot.audit) {
       if (item.case_id !== null) {
@@ -344,7 +382,9 @@ function buildRecords(
       )
         .flatMap((item) => [
           item.body ?? "",
-          ...item.fields.map((entry) => `${entry.label} ${entry.value || (entry.technical ? "未报告" : "")}`),
+          ...item.fields.map(
+            (entry) => `${entry.label} ${entry.value || (entry.technical ? "未报告" : "")}`,
+          ),
         ])
         .join(" ")}`.toLocaleLowerCase("zh-CN"),
   });
@@ -370,9 +410,7 @@ function buildRecords(
           field("版本", task.version),
         ]),
         处理记录: caseAudit.length
-          ? panel(
-              auditFields(caseAudit.slice(0, 8)),
-            )
+          ? panel(auditFields(caseAudit.slice(0, 8)))
           : emptyPanel("没有获取到相关案件的业务审计记录。"),
         关联材料: documents.length
           ? panel(
@@ -390,10 +428,7 @@ function buildRecords(
             )
           : emptyPanel("没有获取到案件材料。"),
         协作成员: panel([
-          field(
-            "当前责任人",
-            memberName(memberById, task.assignee_id),
-          ),
+          field("当前责任人", memberName(memberById, task.assignee_id)),
           technicalField("当前责任人标识", task.assignee_id),
           field(
             "案件负责人",
@@ -421,8 +456,8 @@ function buildRecords(
   if (module === "remediation")
     return snapshot.remediations.map((item) => {
       const documentIds = new Set(item.document_ids);
-      const documents = (documentsByCase.get(item.case_id) ?? []).filter(
-        (document) => documentIds.has(document.id),
+      const documents = (documentsByCase.get(item.case_id) ?? []).filter((document) =>
+        documentIds.has(document.id),
       );
       const caseAudit = auditByCase.get(item.case_id) ?? [];
       const panels: Record<string, DetailPanel> = {
@@ -441,7 +476,10 @@ function buildRecords(
         材料与版本: documents.length
           ? panel(
               documents.flatMap((document, index) => [
-                field(document.filename, `${roleLabel(document.role)}，${parseLabel(document.parse_status)}`),
+                field(
+                  document.filename,
+                  `${roleLabel(document.role)}，${parseLabel(document.parse_status)}`,
+                ),
                 technicalField(`材料 ${index + 1} 标识`, document.id),
                 technicalField(`材料 ${index + 1} 角色编码`, document.role),
                 technicalField(`材料 ${index + 1} 解析状态编码`, document.parse_status),
@@ -475,9 +513,7 @@ function buildRecords(
           ],
         ),
         操作历史: caseAudit.length
-          ? panel(
-              auditFields(caseAudit.slice(0, 8)),
-            )
+          ? panel(auditFields(caseAudit.slice(0, 8)))
           : emptyPanel("没有获取到相关案件的审计历史。"),
       };
       return make({
@@ -518,16 +554,9 @@ function buildRecords(
           "报告显示生成时保存的内容，不会随材料更新而改变。",
           links,
         ),
-        发现与决定: panel(
-          [],
-          "查看报告正文中的发现和审查判断，请打开 HTML 或 JSON 报告。",
-          links,
-        ),
+        发现与决定: panel([], "查看报告正文中的发现和审查判断，请打开 HTML 或 JSON 报告。", links),
         版本与来源: panel(
-          [
-            field("报告版本", item.version),
-            field("报告状态", "已生成"),
-          ],
+          [field("报告版本", item.version), field("报告状态", "已生成")],
           "报告正文保留了用于校验完整性的摘要，业务视图不显示该摘要。",
         ),
         导出记录: panel([field("生成时间", item.created_at)], null, links),
@@ -673,7 +702,9 @@ function buildRecords(
             field("实际调用数", usage?.calls ?? null),
             field("用量未知调用数", usage?.unknown_calls ?? null),
             field("已报告来源", usage ? `${usage.sources.length} 项` : null),
-            ...(usage?.sources.map((source, index) => technicalField(`来源 ${index + 1} 标识`, source)) ?? []),
+            ...(usage?.sources.map((source, index) =>
+              technicalField(`来源 ${index + 1} 标识`, source),
+            ) ?? []),
           ],
           "工作台没有返回单次调用记录；请在审查工作区的执行检查器中查看已保存的详细事件。",
           [{ label: "查看执行事件", href: caseHref(item.case_id, item.id) }],
@@ -683,10 +714,7 @@ function buildRecords(
             field("输入 tokens", usage?.input_tokens ?? null),
             field("输出 tokens", usage?.output_tokens ?? null),
             field("总 tokens", usage?.total_tokens ?? null),
-            field(
-              "成本",
-              usage?.cost === null || usage === null ? null : usage.cost,
-            ),
+            field("成本", usage?.cost === null || usage === null ? null : usage.cost),
           ],
           "没有返回的用量保持未知，不会推算。",
         ),
@@ -705,9 +733,7 @@ function buildRecords(
         id: item.id,
         title: suppliedBusinessName(item.case_title, "案件名称未提供"),
         subtitle:
-          item.updated_at != null
-            ? `更新于 ${formatDateTime(item.updated_at)}`
-            : "审查记录",
+          item.updated_at != null ? `更新于 ${formatDateTime(item.updated_at)}` : "审查记录",
         status: item.state,
         updatedAt: item.updated_at,
         caseId: item.case_id,
@@ -738,7 +764,7 @@ function buildRecords(
     });
 
   if (module === "organization")
-    return snapshot.members.map((item) => {
+    return presentOrganizationMembers(snapshot.members).map((item) => {
       const fields = [
         technicalField("身份 ID", item.id),
         field("显示姓名", suppliedBusinessName(item.display_name, "姓名未提供")),
@@ -746,7 +772,7 @@ function buildRecords(
         technicalField("角色编码", item.role),
         field("租户", "租户名称未提供"),
         technicalField("租户 ID", item.tenant_id),
-        field("组织", "组织名称未提供"),
+        field("组织", shownOrganization(item.org_id)),
         technicalField("组织 ID", item.org_id),
       ];
       const memberEvents = [...(auditByActor.get(item.id) ?? [])]
@@ -760,7 +786,7 @@ function buildRecords(
             technicalField("角色编码", item.role),
             field("租户", "租户名称未提供"),
             technicalField("租户 ID", item.tenant_id),
-            field("组织", "组织名称未提供"),
+            field("组织", shownOrganization(item.org_id)),
             technicalField("组织 ID", item.org_id),
           ],
           "这些信息来自公开成员目录。访问案件时，系统仍会逐次检查权限。",
@@ -772,7 +798,7 @@ function buildRecords(
             technicalField("角色编码", item.role),
             field("租户", "租户名称未提供"),
             technicalField("租户 ID", item.tenant_id),
-            field("组织", "组织名称未提供"),
+            field("组织", shownOrganization(item.org_id)),
             technicalField("组织 ID", item.org_id),
           ],
           "成员信息不含每个案件的授权明细；具体可查看范围以服务端授权为准。",
@@ -788,7 +814,7 @@ function buildRecords(
       return make({
         id: item.id,
         title: suppliedBusinessName(item.display_name, "姓名未提供"),
-        subtitle: `${actorRoleLabel(item.role)}，组织名称未提供`,
+        subtitle: `${actorRoleLabel(item.role)}，${shownOrganization(item.org_id)}`,
         status: "当前身份可见",
         updatedAt: null,
         caseId: null,
@@ -802,7 +828,10 @@ function buildRecords(
   if (module === "templates")
     return snapshot.templates.map((item) => {
       const fieldRows = item.fields.flatMap((entry, index) => [
-        field(suppliedBusinessName(entry.label, "字段名称未提供"), `${templateFieldTypeLabel(entry.type)}，${entry.required ? "必填" : "选填"}`),
+        field(
+          suppliedBusinessName(entry.label, "字段名称未提供"),
+          `${templateFieldTypeLabel(entry.type)}，${entry.required ? "必填" : "选填"}`,
+        ),
         technicalField(`字段 ${index + 1} 标识`, entry.key),
         technicalField(`字段 ${index + 1} 类型编码`, entry.type),
       ]);
@@ -845,7 +874,9 @@ function buildRecords(
   if (module === "tools")
     return snapshot.tools.map((item) => {
       const name = toolName(item);
-      const capabilityFields = item.capabilities.map((capability, index) => technicalField(`能力 ${index + 1} 标识`, capability));
+      const capabilityFields = item.capabilities.map((capability, index) =>
+        technicalField(`能力 ${index + 1} 标识`, capability),
+      );
       const panels: Record<string, DetailPanel> = {
         工具信息: panel([
           technicalField("工具 ID", item.id),
@@ -889,8 +920,7 @@ function buildRecords(
 
   return snapshot.audit.map((item) => {
     const caseLabel = auditCaseName(item);
-    const relatedAudit =
-      item.case_id === null ? [] : (auditByCase.get(item.case_id) ?? []);
+    const relatedAudit = item.case_id === null ? [] : (auditByCase.get(item.case_id) ?? []);
     const panels: Record<string, DetailPanel> = {
       事件详情: panel([
         technicalField("事件标识", item.id),
@@ -903,7 +933,11 @@ function buildRecords(
         field("摘要", item.summary),
       ]),
       变更内容: panel(
-        [field("操作", businessActionLabel(item.action)), technicalField("操作编码", item.action), field("摘要", item.summary)],
+        [
+          field("操作", businessActionLabel(item.action)),
+          technicalField("操作编码", item.action),
+          field("摘要", item.summary),
+        ],
         "只呈现服务端保存的审计摘要。",
       ),
       来源上下文: panel([
@@ -916,9 +950,7 @@ function buildRecords(
         item.case_id === null
           ? emptyPanel("平台级事件没有案件关联。")
           : relatedAudit.length > 1
-            ? panel(
-                auditFields(relatedAudit.slice(0, 12)),
-              )
+            ? panel(auditFields(relatedAudit.slice(0, 12)))
             : emptyPanel("没有获取到该案件的其他审计记录。"),
     };
     return make({
@@ -948,8 +980,7 @@ function tabNotice(module: WorkbenchModuleKey, tab: string): string | null {
     return "这里显示公开的角色和组织信息；访问资源时，系统仍会逐次检查权限。";
   if (module === "audit" && tab === "操作日志")
     return "这里显示与当前用户有关的业务审计记录，不是 HTTP 访问日志。";
-  if (module === "audit" && tab === "访问记录")
-    return "工作台的业务审计记录不包含 HTTP 访问日志。";
+  if (module === "audit" && tab === "访问记录") return "工作台的业务审计记录不包含 HTTP 访问日志。";
 
   if (module === "knowledge" && tab === "检索测试")
     return "输入关键词后，在当前工作台数据中按标题和正文进行文字匹配，不调用模型。";
@@ -974,15 +1005,12 @@ function tabMatches(
     if (tab === "我发起的") return record.task?.created_by === actorId;
   }
   if (module === "remediation") {
-    if (tab === "待整改")
-      return record.status === "open" || record.status === "reopened";
+    if (tab === "待整改") return record.status === "open" || record.status === "reopened";
     if (tab === "待复核") return record.status === "submitted";
     if (tab === "已关闭") return record.status === "closed";
   }
   if (module === "reports" && tab === "版本对比") {
-    const reportCount = snapshot.reports.filter(
-      (item) => item.case_id === record.caseId,
-    ).length;
+    const reportCount = snapshot.reports.filter((item) => item.case_id === record.caseId).length;
     return reportCount > 1;
   }
   if (module === "audit" && tab === "操作日志") {
@@ -993,7 +1021,10 @@ function tabMatches(
   return true;
 }
 
-function statusTone(status: string, module: WorkbenchModuleKey): "good" | "attention" | "bad" | "neutral" | "progress" {
+function statusTone(
+  status: string,
+  module: WorkbenchModuleKey,
+): "good" | "attention" | "bad" | "neutral" | "progress" {
   if (module === "knowledge") return "neutral";
   if (module === "evidence") return parseTone(status);
   if (module === "executions") return runTone(status);
@@ -1002,16 +1033,9 @@ function statusTone(status: string, module: WorkbenchModuleKey): "good" | "atten
     if (status === "failed") return "bad";
     return "neutral";
   }
-  if (status === "ready" || status === "closed" || status === "completed")
-    return "good";
-  if (status === "unavailable" || status === "failed" || status === "high")
-    return "bad";
-  if (
-    status === "unknown" ||
-    status === "submitted" ||
-    status === "open" ||
-    status === "reopened"
-  )
+  if (status === "ready" || status === "closed" || status === "completed") return "good";
+  if (status === "unavailable" || status === "failed" || status === "high") return "bad";
+  if (status === "unknown" || status === "submitted" || status === "open" || status === "reopened")
     return "attention";
   return "neutral";
 }
@@ -1103,21 +1127,23 @@ function TaskCreateForm({
       </label>
       <label>
         截止日期
-        <Input
-          type="date"
-          value={dueDate}
-          onChange={(event) => setDueDate(event.target.value)}
-        />
+        <Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
       </label>
       {create.isError ? <p role="alert">{errorMessage(create.error)}</p> : null}
-      {canCreateTask ? <Button
-        aria-label={String(create.isPending ? "正在保存" : "保存任务")}
-        type="primary"
-        htmlType="submit"
-        disabled={create.isPending || !creatableCases.some((item) => item.id === caseId) || assigneeId === ""}
-      >
-        {create.isPending ? "正在保存" : "保存任务"}
-      </Button> : null}
+      {canCreateTask ? (
+        <Button
+          aria-label={String(create.isPending ? "正在保存" : "保存任务")}
+          type="primary"
+          htmlType="submit"
+          disabled={
+            create.isPending ||
+            !creatableCases.some((item) => item.id === caseId) ||
+            assigneeId === ""
+          }
+        >
+          {create.isPending ? "正在保存" : "保存任务"}
+        </Button>
+      ) : null}
     </form>
   );
 }
@@ -1126,8 +1152,7 @@ function KnowledgeCreateForm({ onClose }: { onClose: () => void }) {
   const [id, setId] = useState("");
   const [title, setTitle] = useState("");
   const [version, setVersion] = useState("1.0.0");
-  const [sourceType, setSourceType] =
-    useState<KnowledgeInput["source_type"]>("synthetic_policy");
+  const [sourceType, setSourceType] = useState<KnowledgeInput["source_type"]>("synthetic_policy");
   const [effectiveAt, setEffectiveAt] = useState("");
   const [body, setBody] = useState("");
   const create = useCreateKnowledge();
@@ -1154,19 +1179,11 @@ function KnowledgeCreateForm({ onClose }: { onClose: () => void }) {
       </label>
       <label>
         标题
-        <Input
-          required
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-        />
+        <Input required value={title} onChange={(event) => setTitle(event.target.value)} />
       </label>
       <label>
         版本
-        <Input
-          required
-          value={version}
-          onChange={(event) => setVersion(event.target.value)}
-        />
+        <Input required value={version} onChange={(event) => setVersion(event.target.value)} />
       </label>
       <label>
         来源类型
@@ -1174,9 +1191,7 @@ function KnowledgeCreateForm({ onClose }: { onClose: () => void }) {
           aria-label={"来源类型"}
           value={String(sourceType)}
           onChange={(selectedValue) =>
-            setSourceType(
-              selectedValue === "reference" ? "reference" : "synthetic_policy",
-            )
+            setSourceType(selectedValue === "reference" ? "reference" : "synthetic_policy")
           }
           options={[
             { value: "synthetic_policy", label: businessSourceTypeLabel("synthetic_policy") },
@@ -1210,9 +1225,7 @@ function KnowledgeCreateForm({ onClose }: { onClose: () => void }) {
           aria-label={String(create.isPending ? "正在保存" : "保存知识条目")}
           type="primary"
           htmlType="submit"
-          disabled={
-            create.isPending || title.trim() === "" || body.trim() === ""
-          }
+          disabled={create.isPending || title.trim() === "" || body.trim() === ""}
         >
           {create.isPending ? "正在保存" : "保存知识条目"}
         </Button>
@@ -1225,8 +1238,7 @@ export function WorkbenchModulePage() {
   const { module: routeModule = "" } = useParams();
   // Model configuration moved to settings; keep old bookmarks working rather
   // than leaving a retired module URL on the generic empty state.
-  if (routeModule === "models")
-    return <Navigate to="/workbench/settings" replace />;
+  if (routeModule === "models") return <Navigate to="/workbench/settings" replace />;
   if (routeModule === "settings") return <SettingsPage audience="client" />;
   if (!isWorkbenchModuleKey(routeModule))
     return <PageStatus kind="empty" title="没有这个工作区页面" />;
@@ -1235,45 +1247,74 @@ export function WorkbenchModulePage() {
 
 function FrozenReportPreview({ caseId, reportId }: { caseId: string; reportId: string }) {
   const [attempt, setAttempt] = useState(0);
-  const [state, setState] = useState<{ status: "loading" | "ready" | "error"; html: string; error: string }>({
-    status: "loading", html: "", error: "",
+  const [state, setState] = useState<{
+    status: "loading" | "ready" | "error";
+    html: string;
+    error: string;
+  }>({
+    status: "loading",
+    html: "",
+    error: "",
   });
   useEffect(() => {
     let cancelled = false;
     setState({ status: "loading", html: "", error: "" });
-    fetch(paths.report(caseId, reportId, "html"), { credentials: "same-origin", headers: { Accept: "text/html" } })
+    fetch(paths.report(caseId, reportId, "html"), {
+      credentials: "same-origin",
+      headers: { Accept: "text/html" },
+    })
       .then(async (response) => {
         if (!response.ok) throw new Error(`报告正文请求失败（HTTP ${response.status}）`);
         const html = await response.text();
         if (!cancelled) setState({ status: "ready", html, error: "" });
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setState({ status: "error", html: "", error: cause instanceof Error ? cause.message : "报告正文请求失败" });
+        if (!cancelled)
+          setState({
+            status: "error",
+            html: "",
+            error: cause instanceof Error ? cause.message : "报告正文请求失败",
+          });
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [caseId, reportId, attempt]);
   if (state.status === "loading") return <p role="status">正在加载报告正文…</p>;
   if (state.status === "error") {
     return (
       <div className="module-report-error" role="alert">
         <span>{state.error}</span>
-        <Button type="primary" htmlType="button" onClick={() => setAttempt((value) => value + 1)}>重试</Button>
+        <Button type="primary" htmlType="button" onClick={() => setAttempt((value) => value + 1)}>
+          重试
+        </Button>
       </div>
     );
   }
-  return <iframe className="module-report-frame" title="报告正文预览" sandbox="" srcDoc={state.html} />;
+  return (
+    <iframe className="module-report-frame" title="报告正文预览" sandbox="" srcDoc={state.html} />
+  );
 }
 
-function TemplateFieldPreview({ fields }: { fields: WorkbenchSnapshot["templates"][number]["fields"] }) {
-  if (fields.length === 0) return <p className="module-evidence-note">服务端没有返回字段定义，无法生成占位预览。</p>;
+function TemplateFieldPreview({
+  fields,
+}: {
+  fields: WorkbenchSnapshot["templates"][number]["fields"];
+}) {
+  if (fields.length === 0)
+    return <p className="module-evidence-note">服务端没有返回字段定义，无法生成占位预览。</p>;
   return (
     <section className="module-template-preview" aria-label="模板字段占位预览">
-      <p className="module-evidence-note">服务端未返回范本正文；以下占位符仅由字段定义生成，不拼装合同正文。</p>
+      <p className="module-evidence-note">
+        服务端未返回范本正文；以下占位符仅由字段定义生成，不拼装合同正文。
+      </p>
       <ul>
         {fields.map((field) => (
           <li key={field.key}>
             <code>{`{{${suppliedBusinessName(field.label, "字段名称未提供")}}}`}</code>
-            <span>{templateFieldTypeLabel(field.type)} · {field.required ? "必填" : "选填"}</span>
+            <span>
+              {templateFieldTypeLabel(field.type)} · {field.required ? "必填" : "选填"}
+            </span>
           </li>
         ))}
       </ul>
@@ -1281,9 +1322,25 @@ function TemplateFieldPreview({ fields }: { fields: WorkbenchSnapshot["templates
   );
 }
 
-function OriginalEvidencePreview({ caseId, documentId, filename, mediaType }: { caseId: string; documentId: string; filename: string; mediaType: string }) {
-  const [state, setState] = useState<{ status: "loading" | "ready" | "error" | "unsupported"; url: string; error: string }>({
-    status: "loading", url: "", error: "",
+function OriginalEvidencePreview({
+  caseId,
+  documentId,
+  filename,
+  mediaType,
+}: {
+  caseId: string;
+  documentId: string;
+  filename: string;
+  mediaType: string;
+}) {
+  const [state, setState] = useState<{
+    status: "loading" | "ready" | "error" | "unsupported";
+    url: string;
+    error: string;
+  }>({
+    status: "loading",
+    url: "",
+    error: "",
   });
   const urlRef = useRef("");
   useEffect(() => {
@@ -1293,7 +1350,9 @@ function OriginalEvidencePreview({ caseId, documentId, filename, mediaType }: { 
     const pdf = mediaType === "application/pdf";
     if (!image && !pdf) {
       setState({ status: "unsupported", url: "", error: "" });
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+      };
     }
     setState({ status: "loading", url: "", error: "" });
     fetch(paths.documentOriginal(caseId, documentId), { credentials: "same-origin" })
@@ -1306,7 +1365,12 @@ function OriginalEvidencePreview({ caseId, documentId, filename, mediaType }: { 
         setState({ status: "ready", url, error: "" });
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setState({ status: "error", url: "", error: cause instanceof Error ? cause.message : "原件读取失败" });
+        if (!cancelled)
+          setState({
+            status: "error",
+            url: "",
+            error: cause instanceof Error ? cause.message : "原件读取失败",
+          });
       });
     return () => {
       cancelled = true;
@@ -1314,31 +1378,49 @@ function OriginalEvidencePreview({ caseId, documentId, filename, mediaType }: { 
     };
   }, [caseId, documentId, mediaType]);
   if (state.status === "loading") return <p role="status">正在加载原件预览…</p>;
-  if (state.status === "error") return <p role="alert" className="module-evidence-error">{state.error}</p>;
-  if (state.status === "unsupported") return <p className="module-evidence-note">该文件格式不提供内嵌预览，请使用“读取原件”。</p>;
-  if (mediaType.startsWith("image/")) return <img className="module-evidence-image" src={state.url} alt={filename} />;
-  return <iframe className="module-evidence-frame" title={`${filename}原件预览`} src={state.url} sandbox="" />;
+  if (state.status === "error")
+    return (
+      <p role="alert" className="module-evidence-error">
+        {state.error}
+      </p>
+    );
+  if (state.status === "unsupported")
+    return <p className="module-evidence-note">该文件格式不提供内嵌预览，请使用“读取原件”。</p>;
+  if (mediaType.startsWith("image/"))
+    return <img className="module-evidence-image" src={state.url} alt={filename} />;
+  return (
+    <iframe
+      className="module-evidence-frame"
+      title={`${filename}原件预览`}
+      src={state.url}
+      sandbox=""
+    />
+  );
 }
 
 function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<string>(WORKBENCH_MODULES[module].tabs[0]);
-  const [detailTab, setDetailTab] = useState<string>(
-    WORKBENCH_MODULES[module].details[0],
-  );
+  const [detailTab, setDetailTab] = useState<string>(WORKBENCH_MODULES[module].details[0]);
   const [selectedId, setSelectedId] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [updatedTaskId, setUpdatedTaskId] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const session = useSession();
   const actorScope = session.data
-    ? [session.data.audience, session.data.tenant_id, session.data.org_id, session.data.id, session.data.role, session.data.active_context?.context_version ?? ""].join("\u0000")
+    ? [
+        session.data.audience,
+        session.data.tenant_id,
+        session.data.org_id,
+        session.data.id,
+        session.data.role,
+        session.data.active_context?.context_version ?? "",
+      ].join("\u0000")
     : "";
   const query = useWorkbench("week", actorScope);
   const updateTask = useUpdateWorkbenchTask();
   const hasCachedModuleData = Boolean(session.data && query.data);
-  const moduleRevalidating =
-    hasCachedModuleData && (session.isFetching || query.isFetching);
+  const moduleRevalidating = hasCachedModuleData && (session.isFetching || query.isFetching);
   const moduleRevalidationFailed =
     hasCachedModuleData &&
     !session.isFetching &&
@@ -1371,18 +1453,11 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   }, [actorScope]);
   const availableSnapshot = query.isError ? undefined : query.data;
   const allRecords = useMemo(
-    () =>
-      availableSnapshot ? buildRecords(availableSnapshot, module) : [],
+    () => (availableSnapshot ? buildRecords(availableSnapshot, module) : []),
     [availableSnapshot, module],
   );
   const memberById = useMemo(
-    () =>
-      new Map(
-        (availableSnapshot?.members ?? []).map((item) => [
-          item.id,
-          item.display_name,
-        ]),
-      ),
+    () => new Map((availableSnapshot?.members ?? []).map((item) => [item.id, item.display_name])),
     [availableSnapshot?.members],
   );
   const queryText = search.trim().toLocaleLowerCase("zh-CN");
@@ -1391,37 +1466,19 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
       availableSnapshot
         ? allRecords.filter(
             (record) =>
-              (module !== "knowledge" ||
-                tab !== "检索测试" ||
-                queryText !== "") &&
-              tabMatches(
-                module,
-                tab,
-                record,
-                session.data?.id,
-                availableSnapshot,
-              ) &&
+              (module !== "knowledge" || tab !== "检索测试" || queryText !== "") &&
+              tabMatches(module, tab, record, session.data?.id, availableSnapshot) &&
               record.searchText.includes(queryText),
           )
         : [],
-    [
-      allRecords,
-      availableSnapshot,
-      module,
-      queryText,
-      session.data?.id,
-      tab,
-    ],
+    [allRecords, availableSnapshot, module, queryText, session.data?.id, tab],
   );
-  const requestedVersion =
-    module === "knowledge" ? searchParams.get("version") : null;
+  const requestedVersion = module === "knowledge" ? searchParams.get("version") : null;
   const selected = useMemo(
     () =>
       module === "knowledge" && requestedVersion !== null
         ? (records.find((record) => record.id === requestedVersion) ?? null)
-        : (records.find((record) => record.id === selectedId) ??
-          records[0] ??
-          null),
+        : (records.find((record) => record.id === selectedId) ?? records[0] ?? null),
     [module, records, requestedVersion, selectedId],
   );
   const knowledge = useKnowledge(
@@ -1438,28 +1495,24 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
       ? knowledge.data
       : null;
   const knowledgePanelSet = useMemo(
-    () =>
-      exactKnowledge
-        ? knowledgePanels(exactKnowledge, memberById)
-        : null,
+    () => (exactKnowledge ? knowledgePanels(exactKnowledge, memberById) : null),
     [exactKnowledge, memberById],
   );
   const refresh = () => void query.refetch();
 
   if ((session.isLoading || query.isLoading) && !hasCachedModuleData)
-    return (
-      <PageStatus
-        kind="loading"
-        title={`正在加载${WORKBENCH_MODULES[module].title}`}
-      />
-    );
+    return <PageStatus kind="loading" title={`正在加载${WORKBENCH_MODULES[module].title}`} />;
   if ((session.isError || !session.data) && !hasCachedModuleData)
     return (
       <PageStatus
         kind="error"
         title={`${WORKBENCH_MODULES[module].title}身份没有加载`}
         detail={errorMessage(session.error)}
-        action={<Button type="primary" htmlType="button" onClick={() => void session.refetch()}>重试</Button>}
+        action={
+          <Button type="primary" htmlType="button" onClick={() => void session.refetch()}>
+            重试
+          </Button>
+        }
       />
     );
   if ((query.isError || !query.data) && !hasCachedModuleData)
@@ -1469,12 +1522,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         title={`${WORKBENCH_MODULES[module].title}没有加载`}
         detail={errorMessage(query.error)}
         action={
-          <Button
-            aria-label={"重试"}
-            type="primary"
-            htmlType="button"
-            onClick={refresh}
-          >
+          <Button aria-label={"重试"} type="primary" htmlType="button" onClick={refresh}>
             重试
           </Button>
         }
@@ -1487,7 +1535,11 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         kind="error"
         title={`${WORKBENCH_MODULES[module].title}没有加载`}
         detail={errorMessage(query.error)}
-        action={<Button type="primary" htmlType="button" onClick={refresh}>重试</Button>}
+        action={
+          <Button type="primary" htmlType="button" onClick={refresh}>
+            重试
+          </Button>
+        }
       />
     );
   const canCompleteTasks =
@@ -1501,7 +1553,8 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   const selectedTask = selected?.task ?? null;
   const selectedRemediation = selected?.remediation ?? null;
   const memberNames = new Map(snapshot.members.map((item) => [item.id, item.display_name]));
-  const selectedAudit = module === "audit" ? snapshot.audit.find((item) => item.id === selected?.id) : undefined;
+  const selectedAudit =
+    module === "audit" ? snapshot.audit.find((item) => item.id === selected?.id) : undefined;
   const currentPanel =
     module === "knowledge"
       ? (knowledgePanelSet?.[detailTab] ?? null)
@@ -1511,11 +1564,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   const config = WORKBENCH_MODULES[module];
   const notice = tabNotice(module, tab);
   const periodLabel =
-    snapshot.period === "day"
-      ? "本日"
-      : snapshot.period === "week"
-        ? "本周"
-        : "本月";
+    snapshot.period === "day" ? "本日" : snapshot.period === "week" ? "本周" : "本月";
   const canCreateKnowledge = module === "knowledge";
   const emptyMessage =
     module === "knowledge" && tab === "检索测试" && queryText === ""
@@ -1592,379 +1641,456 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
 
   return (
     <>
-    <div
-      hidden={moduleRevalidating || moduleRevalidationFailed}
-      inert={moduleRevalidating || moduleRevalidationFailed}
-      aria-hidden={moduleRevalidating || moduleRevalidationFailed}
-      style={{ display: moduleRevalidating || moduleRevalidationFailed ? "none" : undefined }}
-    >
-    <section className="page module-page">
-      <header className="page-head module-page-head">
-        <div>
-          <h1>
-            {config.title}
-            <span className="module-total">{allRecords.length}</span>
-          </h1>
-          <p>
-            {config.description} 数据更新时间：{" "}
-            {formatDateTime(snapshot.generated_at)}。
-          </p>
-        </div>
-        <div className="module-actions">{headerAction}</div>
-      </header>
-      {module === "tools" ? <QccMcpPanel /> : null}
-      {createOpen && (canCreateTask || taskCapabilityRevalidating) ? (
-        <TaskCreateForm
-          snapshot={snapshot}
-          canCreateTask={canCreateTask}
-          onCreated={() => setCreateOpen(false)}
-        />
-      ) : null}
-      {createOpen && canCreateKnowledge ? (
-        <KnowledgeCreateForm onClose={() => setCreateOpen(false)} />
-      ) : null}
-      {updateTask.isError ? (
-        <p className="module-error" role="alert">
-          {errorMessage(updateTask.error)}
-        </p>
-      ) : null}
-      <dl className="module-stats" aria-label="真实数据摘要">
-        <div>
-          <dt>工作台集合</dt>
-          <dd>{allRecords.length}</dd>
-        </div>
-        <div>
-          <dt>匹配当前标签</dt>
-          <dd>{records.length}</dd>
-        </div>
-        <div>
-          <dt>数据周期</dt>
-          <dd>{periodLabel}</dd>
-        </div>
-        <div>
-          <dt>数据更新时间</dt>
-          <dd>
-            <time dateTime={snapshot.generated_at}>
-              {formatDateTime(snapshot.generated_at)}
-            </time>
-          </dd>
-        </div>
-      </dl>
-      <div className="module-toolbar">
-        {config.tabs.length > 1 ? (
-          <Tabs
-            aria-label={`${config.title}分类`}
-            activeKey={tab}
-            onChange={(key) => {
-              setTab(key);
-              if (module !== "knowledge") setSelectedId("");
-            }}
-            items={config.tabs.map((label) => ({ key: label, label }))}
-          />
-        ) : (
-          <h2 className="module-toolbar-title">{config.tabs[0]}</h2>
-        )}
-        <label className="module-search">
-          搜索当前数据
-          <Input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={
-              module === "knowledge"
-                ? "检索标题或制度正文"
-                : "搜索名称、编号、状态"
-            }
-          />
-        </label>
-      </div>
-      {notice ? (
-        <p className="module-note" role="status">
-          {notice}
-        </p>
-      ) : null}
-      <div className={module === "audit" ? "module-workspace module-workspace-audit" : ["reports", "evidence", "knowledge", "templates"].includes(module) ? "module-workspace module-workspace-reader" : "module-workspace"}>
-        <section
-          className="module-list-panel"
-          aria-label={`${config.title}记录`}
-        >
-          {records.length === 0 ? (
-            <p className="module-empty">{emptyMessage}</p>
-          ) : (
-            <Table
-              rowKey="id"
-              dataSource={records}
-              pagination={{
-                defaultPageSize: 20,
-                pageSizeOptions: [10, 20, 50],
-                showSizeChanger: true,
-                showTotal: (total, range) =>
-                  `显示 ${range[0]}-${range[1]} 条，共 ${total} 条`,
-              }}
-              size="small"
-              scroll={{ x: 440 }}
-              rowSelection={{
-                type: "radio",
-                selectedRowKeys: selected ? [selected.id] : [],
-                onChange: (keys) => selectRecord(String(keys[0] ?? "")),
-              }}
-              columns={[
-                {
-                  title: "记录",
-                  key: "title",
-                  render: (_, record) => (
-                    <Flex vertical gap={2}>
-                      <Button
-                        aria-label={
-                          module === "knowledge"
-                            ? `${record.title}，${record.subtitle}`
-                            : record.title
-                        }
-                        type="link"
-                        aria-pressed={selected?.id === record.id}
-                        onClick={() => selectRecord(record.id)}
-                        styles={{
-                          content: { whiteSpace: "normal", textAlign: "left" },
-                        }}
-                      >
-                        {record.title}
-                      </Button>
-                      <span className="meta">{record.subtitle}</span>
-                    </Flex>
-                  ),
-                },
-                {
-                  title: module === "knowledge" ? "来源类型" : "状态",
-                  key: "status",
-                  render: (_, record) => (
-                    <StatusText tone={statusTone(record.status, module)}>
-                      {module === "remediation" ? remediationStatusLabel(record.status) : module === "knowledge" ? businessSourceTypeLabel(record.status) : module === "evidence" ? parseLabel(record.status) : module === "executions" ? runLabel(record.status) : module === "tools" ? toolStatusLabel(record.toolStatus ?? null) : statusLabel(record.status)}
-                    </StatusText>
-                  ),
-                },
-                {
-                  title: "更新",
-                  key: "updated",
-                  render: (_, record) =>
-                    record.updatedAt
-                      ? formatDateTime(record.updatedAt)
-                      : "时间未报告",
-                },
-              ]}
-            />
-          )}
-        </section>
-        <aside className="module-detail-panel" aria-label="所选记录详情">
-          {selected ? (
+      <div
+        hidden={moduleRevalidating || moduleRevalidationFailed}
+        inert={moduleRevalidating || moduleRevalidationFailed}
+        aria-hidden={moduleRevalidating || moduleRevalidationFailed}
+        style={{ display: moduleRevalidating || moduleRevalidationFailed ? "none" : undefined }}
+      >
+        <ListPage
+          className="module-page"
+          headingClassName="module-page-head"
+          title={
             <>
-              <header className="module-detail-head">
-                <div>
-                  <TechnicalDetail
-                    value={selected.reference ?? selected.knowledgeId ?? selected.id}
-                    label="记录标识"
-                  />
-                  <h2>{selected.title}</h2>
-                  <span>{selected.subtitle}</span>
-                </div>
-                {selected.href ? (
-                  <Button
-                    aria-label={String(
-                      module === "reports"
-                        ? "打开报告"
-                        : module === "evidence"
-                          ? "读取材料原件"
-                          : "打开关联记录",
-                    )}
-                    type="text"
-                    href={selected.href}
-                    target={
-                      module === "reports" || module === "evidence"
-                        ? "_blank"
-                        : undefined
-                    }
-                    rel={
-                      module === "reports" || module === "evidence"
-                        ? "noreferrer"
-                        : undefined
-                    }
-                  >
-                    {module === "reports"
-                      ? "打开报告"
-                      : module === "evidence"
-                        ? "读取材料原件"
-                        : "打开关联记录"}
-                  </Button>
-                ) : null}
-              </header>
-              {module === "tasks" && selectedTask ? (
-                <dl className="workbench-record-summary" aria-label="所选任务摘要">
-                  <div><dt>当前状态</dt><dd>{statusLabel(selectedTask.status)}</dd></div>
-                  <div><dt>负责人员</dt><dd>{memberName(memberNames, selectedTask.assignee_id)}</dd></div>
-                  <div><dt>处理期限</dt><dd>{selectedTask.due_at ? formatDateTime(selectedTask.due_at) : "未设期限"}</dd></div>
-                  <div><dt>所属案件</dt><dd>{selected.subtitle}</dd></div>
-                </dl>
-              ) : null}
-              {module === "remediation" && selectedRemediation ? (
-                <dl className="workbench-record-summary" aria-label="所选整改摘要">
-                  <div><dt>当前状态</dt><dd>{remediationStatusLabel(selectedRemediation.status)}</dd></div>
-                  <div><dt>负责人员</dt><dd>{memberName(memberNames, selectedRemediation.assignee_id)}</dd></div>
-                  <div><dt>处理期限</dt><dd>{formatDateTime(selectedRemediation.due_at)}</dd></div>
-                  <div><dt>所属案件</dt><dd>{selected.subtitle}</dd></div>
-                </dl>
-              ) : null}
-              {selectedAudit ? (
-                <dl className="audit-event-summary" aria-label="所选审计事件摘要">
-                  <div><dt>业务动作</dt><dd>{businessActionLabel(selectedAudit.action)}</dd></div>
-                  <div><dt>操作者</dt><dd>{suppliedBusinessName(selectedAudit.actor_name, "操作人姓名未提供")}</dd></div>
-                  <div><dt>发生时间</dt><dd><time dateTime={selectedAudit.at}>{formatDateTime(selectedAudit.at)}</time></dd></div>
-                  <div><dt>目标案件</dt><dd>{auditCaseName(selectedAudit)}</dd></div>
-                </dl>
-              ) : null}
-              {module === "evidence" && tab === "完整性校验" ? null : (
-                <Tabs
-                  aria-label="记录详情分类"
-                  activeKey={detailTab}
-                  onChange={setDetailTab}
-                  items={config.details.map((label) => ({ key: label, label }))}
+              {config.title}
+              <span className="module-total">{allRecords.length}</span>
+            </>
+          }
+          description={
+            <>
+              {config.description} 数据更新时间： {formatDateTime(snapshot.generated_at)}。
+            </>
+          }
+          actions={<div className="module-actions">{headerAction}</div>}
+          beforeSummary={
+            <>
+              {module === "tools" ? <QccMcpPanel /> : null}
+              {createOpen && (canCreateTask || taskCapabilityRevalidating) ? (
+                <TaskCreateForm
+                  snapshot={snapshot}
+                  canCreateTask={canCreateTask}
+                  onCreated={() => setCreateOpen(false)}
                 />
-              )}
-              {currentPanel ? (
-                <div className={module === "audit" ? "module-detail-content audit-detail-card" : "module-detail-content"}>
-                  {module === "audit" ? <h3>{detailTab === "事件详情" ? "当前事项" : detailTab}</h3> : null}
-                  {module === "reports" && detailTab === "报告预览" && selected.caseId ? (
-                    <FrozenReportPreview caseId={selected.caseId} reportId={selected.id} />
-                  ) : null}
-                  {module === "evidence" && detailTab === "原文预览" && selected.caseId ? (
-                    <OriginalEvidencePreview caseId={selected.caseId} documentId={selected.id} filename={selected.title} mediaType={selected.mediaType ?? ""} />
-                  ) : null}
-                  {module === "templates" && detailTab === "模板预览" && selected.template ? (
-                    <TemplateFieldPreview fields={selected.template.fields} />
-                  ) : null}
-                  {currentPanel.body !== null ? (
-                    <p
-                      className={
-                        module === "knowledge"
-                          ? "module-knowledge-body"
-                          : "module-detail-note"
-                      }
-                    >
-                      {currentPanel.body}
-                    </p>
-                  ) : null}
-                  {currentPanel.fields.some((item) => !item.technical) ? (
-                    <dl className="module-detail-fields">
-                      {currentPanel.fields
-                        .filter((item) => !item.technical)
-                        .map((item) => (
-                          <div key={item.label}>
-                            <dt>{item.label}</dt>
-                            <dd>{item.value}</dd>
-                          </div>
-                        ))}
-                    </dl>
-                  ) : null}
-                  <TechnicalFieldGroup
-                    fields={currentPanel.fields
-                      .filter((item) => item.technical)
-                      .map((item) => ({ label: item.label, value: item.value }))}
-                  />
-                  {currentPanel.links.length > 0 ? (
-                    <div className="module-detail-links">
-                      {currentPanel.links.map((item) => (
-                        <a
-                          key={item.href}
-                          href={item.href}
-                          target={
-                            module === "reports" || module === "evidence"
-                              ? "_blank"
-                              : undefined
-                          }
-                          rel={
-                            module === "reports" || module === "evidence"
-                              ? "noreferrer"
-                              : undefined
-                          }
-                        >
-                          {item.label}
-                        </a>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : module === "knowledge" ? (
-                <p
-                  className="module-empty"
-                  role={
-                    knowledge.isError || (knowledge.data && !knowledge.isFetching)
-                      ? "alert"
-                      : "status"
-                  }
-                >
-                  {knowledge.isFetching
-                    ? "正在加载指定知识版本。"
-                    : knowledge.isError
-                      ? `知识版本详情没有加载：${errorMessage(knowledge.error)}`
-                      : knowledge.data
-                        ? "知识版本详情与所选版本不一致。"
-                        : "知识版本详情没有返回。"}
-                </p>
-              ) : (
-                <p className="module-empty">当前数据没有返回该分类的明细。</p>
-              )}
-              {selectedTask &&
-              selectedTask.status !== "completed" &&
-              selectedTask.can_complete === true &&
-              canCompleteTasks ? (
-                <Button
-                  aria-label={String(
-                    updatedTaskId === selectedTask.id
-                      ? "正在保存"
-                      : "标记任务完成",
-                  )}
-                  type="primary"
-                  className="module-complete-task"
-                  htmlType="button"
-                  disabled={updateTask.isPending}
-                  onClick={() => completeTask(selectedTask)}
-                >
-                  {updatedTaskId === selectedTask.id
-                    ? "正在保存"
-                    : "标记任务完成"}
-                </Button>
               ) : null}
-              {selected.caseId && module === "remediation" ? (
-                <Button
-                  aria-label={"进入案件整改与复核"}
-                  type="primary"
-                  className="module-complete-task"
-                  href={`/cases/${encodeURIComponent(selected.caseId)}`}
-                >
-                  进入案件整改与复核
-                </Button>
+              {createOpen && canCreateKnowledge ? (
+                <KnowledgeCreateForm onClose={() => setCreateOpen(false)} />
+              ) : null}
+              {updateTask.isError ? (
+                <p className="module-error" role="alert">
+                  {errorMessage(updateTask.error)}
+                </p>
               ) : null}
             </>
-          ) : (
-            <p className="module-empty">
-              {module === "knowledge" && requestedVersion !== null
-                ? "指定的知识版本不存在或未包含在当前筛选中。"
-                : "选择一条记录查看服务端返回的详情。"}
+          }
+          summary={
+            <dl className="module-stats" aria-label="真实数据摘要">
+              <div>
+                <dt>工作台集合</dt>
+                <dd>{allRecords.length}</dd>
+              </div>
+              <div>
+                <dt>匹配当前标签</dt>
+                <dd>{records.length}</dd>
+              </div>
+              <div>
+                <dt>数据周期</dt>
+                <dd>{periodLabel}</dd>
+              </div>
+              <div>
+                <dt>数据更新时间</dt>
+                <dd>
+                  <time dateTime={snapshot.generated_at}>
+                    {formatDateTime(snapshot.generated_at)}
+                  </time>
+                </dd>
+              </div>
+            </dl>
+          }
+          filters={
+            <div className="module-toolbar">
+              {config.tabs.length > 1 ? (
+                <Tabs
+                  aria-label={`${config.title}分类`}
+                  activeKey={tab}
+                  onChange={(key) => {
+                    setTab(key);
+                    if (module !== "knowledge") setSelectedId("");
+                  }}
+                  items={config.tabs.map((label) => ({ key: label, label }))}
+                />
+              ) : (
+                <h2 className="module-toolbar-title">{config.tabs[0]}</h2>
+              )}
+              <label className="module-search">
+                搜索当前数据
+                <Input
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder={
+                    module === "knowledge" ? "检索标题或制度正文" : "搜索名称、编号、状态"
+                  }
+                />
+              </label>
+            </div>
+          }
+        >
+          {notice ? (
+            <p className="module-note" role="status">
+              {notice}
             </p>
-          )}
-        </aside>
+          ) : null}
+          <div
+            className={
+              module === "audit"
+                ? "module-workspace module-workspace-audit"
+                : ["reports", "evidence", "knowledge", "templates"].includes(module)
+                  ? "module-workspace module-workspace-reader"
+                  : "module-workspace"
+            }
+          >
+            <section className="module-list-panel" aria-label={`${config.title}记录`}>
+              {records.length === 0 ? (
+                <p className="module-empty">{emptyMessage}</p>
+              ) : (
+                <Table
+                  rowKey="id"
+                  dataSource={records}
+                  pagination={{
+                    defaultPageSize: 20,
+                    pageSizeOptions: [10, 20, 50],
+                    showSizeChanger: true,
+                    showTotal: (total, range) => `显示 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+                  }}
+                  size="small"
+                  scroll={{ x: 440 }}
+                  rowSelection={{
+                    type: "radio",
+                    selectedRowKeys: selected ? [selected.id] : [],
+                    onChange: (keys) => selectRecord(String(keys[0] ?? "")),
+                  }}
+                  columns={[
+                    {
+                      title: "记录",
+                      key: "title",
+                      render: (_, record) => (
+                        <Flex vertical gap={2}>
+                          <Button
+                            aria-label={
+                              module === "knowledge"
+                                ? `${record.title}，${record.subtitle}`
+                                : record.title
+                            }
+                            type="link"
+                            aria-pressed={selected?.id === record.id}
+                            onClick={() => selectRecord(record.id)}
+                            styles={{
+                              content: { whiteSpace: "normal", textAlign: "left" },
+                            }}
+                          >
+                            {record.title}
+                          </Button>
+                          <span className="meta">{record.subtitle}</span>
+                        </Flex>
+                      ),
+                    },
+                    {
+                      title: module === "knowledge" ? "来源类型" : "状态",
+                      key: "status",
+                      render: (_, record) => (
+                        <StatusText tone={statusTone(record.status, module)}>
+                          {module === "remediation"
+                            ? remediationStatusLabel(record.status)
+                            : module === "knowledge"
+                              ? businessSourceTypeLabel(record.status)
+                              : module === "evidence"
+                                ? parseLabel(record.status)
+                                : module === "executions"
+                                  ? runLabel(record.status)
+                                  : module === "tools"
+                                    ? toolStatusLabel(record.toolStatus ?? null)
+                                    : statusLabel(record.status)}
+                        </StatusText>
+                      ),
+                    },
+                    {
+                      title: "更新",
+                      key: "updated",
+                      render: (_, record) =>
+                        record.updatedAt ? formatDateTime(record.updatedAt) : "时间未报告",
+                    },
+                  ]}
+                />
+              )}
+            </section>
+            <aside className="module-detail-panel" aria-label="所选记录详情">
+              {selected ? (
+                <>
+                  <header className="module-detail-head">
+                    <div>
+                      <TechnicalDetail
+                        value={selected.reference ?? selected.knowledgeId ?? selected.id}
+                        label="记录标识"
+                      />
+                      <h2>{selected.title}</h2>
+                      <span>{selected.subtitle}</span>
+                    </div>
+                    {selected.href ? (
+                      <Button
+                        aria-label={String(
+                          module === "reports"
+                            ? "打开报告"
+                            : module === "evidence"
+                              ? "读取材料原件"
+                              : "打开关联记录",
+                        )}
+                        type="text"
+                        href={selected.href}
+                        target={
+                          module === "reports" || module === "evidence" ? "_blank" : undefined
+                        }
+                        rel={
+                          module === "reports" || module === "evidence" ? "noreferrer" : undefined
+                        }
+                      >
+                        {module === "reports"
+                          ? "打开报告"
+                          : module === "evidence"
+                            ? "读取材料原件"
+                            : "打开关联记录"}
+                      </Button>
+                    ) : null}
+                  </header>
+                  {module === "tasks" && selectedTask ? (
+                    <dl className="workbench-record-summary" aria-label="所选任务摘要">
+                      <div>
+                        <dt>当前状态</dt>
+                        <dd>{statusLabel(selectedTask.status)}</dd>
+                      </div>
+                      <div>
+                        <dt>负责人员</dt>
+                        <dd>{memberName(memberNames, selectedTask.assignee_id)}</dd>
+                      </div>
+                      <div>
+                        <dt>处理期限</dt>
+                        <dd>
+                          {selectedTask.due_at ? formatDateTime(selectedTask.due_at) : "未设期限"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>所属案件</dt>
+                        <dd>{selected.subtitle}</dd>
+                      </div>
+                    </dl>
+                  ) : null}
+                  {module === "remediation" && selectedRemediation ? (
+                    <dl className="workbench-record-summary" aria-label="所选整改摘要">
+                      <div>
+                        <dt>当前状态</dt>
+                        <dd>{remediationStatusLabel(selectedRemediation.status)}</dd>
+                      </div>
+                      <div>
+                        <dt>负责人员</dt>
+                        <dd>{memberName(memberNames, selectedRemediation.assignee_id)}</dd>
+                      </div>
+                      <div>
+                        <dt>处理期限</dt>
+                        <dd>{formatDateTime(selectedRemediation.due_at)}</dd>
+                      </div>
+                      <div>
+                        <dt>所属案件</dt>
+                        <dd>{selected.subtitle}</dd>
+                      </div>
+                    </dl>
+                  ) : null}
+                  {selectedAudit ? (
+                    <dl className="audit-event-summary" aria-label="所选审计事件摘要">
+                      <div>
+                        <dt>业务动作</dt>
+                        <dd>{businessActionLabel(selectedAudit.action)}</dd>
+                      </div>
+                      <div>
+                        <dt>操作者</dt>
+                        <dd>
+                          {suppliedBusinessName(selectedAudit.actor_name, "操作人姓名未提供")}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>发生时间</dt>
+                        <dd>
+                          <time dateTime={selectedAudit.at}>
+                            {formatDateTime(selectedAudit.at)}
+                          </time>
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>目标案件</dt>
+                        <dd>{auditCaseName(selectedAudit)}</dd>
+                      </div>
+                    </dl>
+                  ) : null}
+                  {module === "evidence" && tab === "完整性校验" ? null : (
+                    <Tabs
+                      aria-label="记录详情分类"
+                      activeKey={detailTab}
+                      onChange={setDetailTab}
+                      items={config.details.map((label) => ({ key: label, label }))}
+                    />
+                  )}
+                  {currentPanel ? (
+                    <div
+                      className={
+                        module === "audit"
+                          ? "module-detail-content audit-detail-card"
+                          : "module-detail-content"
+                      }
+                    >
+                      {module === "audit" ? (
+                        <h3>{detailTab === "事件详情" ? "当前事项" : detailTab}</h3>
+                      ) : null}
+                      {module === "reports" && detailTab === "报告预览" && selected.caseId ? (
+                        <FrozenReportPreview caseId={selected.caseId} reportId={selected.id} />
+                      ) : null}
+                      {module === "evidence" && detailTab === "原文预览" && selected.caseId ? (
+                        <OriginalEvidencePreview
+                          caseId={selected.caseId}
+                          documentId={selected.id}
+                          filename={selected.title}
+                          mediaType={selected.mediaType ?? ""}
+                        />
+                      ) : null}
+                      {module === "templates" && detailTab === "模板预览" && selected.template ? (
+                        <TemplateFieldPreview fields={selected.template.fields} />
+                      ) : null}
+                      {currentPanel.body !== null ? (
+                        <p
+                          className={
+                            module === "knowledge" ? "module-knowledge-body" : "module-detail-note"
+                          }
+                        >
+                          {currentPanel.body}
+                        </p>
+                      ) : null}
+                      {currentPanel.fields.some((item) => !item.technical) ? (
+                        <dl className="module-detail-fields">
+                          {currentPanel.fields
+                            .filter((item) => !item.technical)
+                            .map((item) => (
+                              <div key={item.label}>
+                                <dt>{item.label}</dt>
+                                <dd>{item.value}</dd>
+                              </div>
+                            ))}
+                        </dl>
+                      ) : null}
+                      <TechnicalFieldGroup
+                        fields={currentPanel.fields
+                          .filter((item) => item.technical)
+                          .map((item) => ({ label: item.label, value: item.value }))}
+                      />
+                      {currentPanel.links.length > 0 ? (
+                        <div className="module-detail-links">
+                          {currentPanel.links.map((item) => (
+                            <a
+                              key={item.href}
+                              href={item.href}
+                              target={
+                                module === "reports" || module === "evidence" ? "_blank" : undefined
+                              }
+                              rel={
+                                module === "reports" || module === "evidence"
+                                  ? "noreferrer"
+                                  : undefined
+                              }
+                            >
+                              {item.label}
+                            </a>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : module === "knowledge" ? (
+                    <p
+                      className="module-empty"
+                      role={
+                        knowledge.isError || (knowledge.data && !knowledge.isFetching)
+                          ? "alert"
+                          : "status"
+                      }
+                    >
+                      {knowledge.isFetching
+                        ? "正在加载指定知识版本。"
+                        : knowledge.isError
+                          ? `知识版本详情没有加载：${errorMessage(knowledge.error)}`
+                          : knowledge.data
+                            ? "知识版本详情与所选版本不一致。"
+                            : "知识版本详情没有返回。"}
+                    </p>
+                  ) : (
+                    <p className="module-empty">当前数据没有返回该分类的明细。</p>
+                  )}
+                  {selectedTask &&
+                  selectedTask.status !== "completed" &&
+                  selectedTask.can_complete === true &&
+                  canCompleteTasks ? (
+                    <Button
+                      aria-label={String(
+                        updatedTaskId === selectedTask.id ? "正在保存" : "标记任务完成",
+                      )}
+                      type="primary"
+                      className="module-complete-task"
+                      htmlType="button"
+                      disabled={updateTask.isPending}
+                      onClick={() => completeTask(selectedTask)}
+                    >
+                      {updatedTaskId === selectedTask.id ? "正在保存" : "标记任务完成"}
+                    </Button>
+                  ) : null}
+                  {selected.caseId && module === "remediation" ? (
+                    <Button
+                      aria-label={"进入案件整改与复核"}
+                      type="primary"
+                      className="module-complete-task"
+                      href={`/cases/${encodeURIComponent(selected.caseId)}`}
+                    >
+                      进入案件整改与复核
+                    </Button>
+                  ) : null}
+                </>
+              ) : (
+                <p className="module-empty">
+                  {module === "knowledge" && requestedVersion !== null
+                    ? "指定的知识版本不存在或未包含在当前筛选中。"
+                    : "选择一条记录查看服务端返回的详情。"}
+                </p>
+              )}
+            </aside>
+          </div>
+        </ListPage>
       </div>
-    </section>
-    </div>
-    {moduleRevalidating ? (
-      <PageStatus kind="loading" title={`正在加载${WORKBENCH_MODULES[module].title}`} />
-    ) : null}
-    {moduleRevalidationFailed ? (
-      <PageStatus
-        kind="error"
-        title={session.isError ? `${WORKBENCH_MODULES[module].title}身份没有加载` : `${WORKBENCH_MODULES[module].title}没有加载`}
-        detail={errorMessage(session.isError ? session.error : query.error)}
-        action={<Button type="primary" htmlType="button" onClick={() => void (session.isError ? session.refetch() : query.refetch())}>重试</Button>}
-      />
-    ) : null}
+      {moduleRevalidating ? (
+        <PageStatus kind="loading" title={`正在加载${WORKBENCH_MODULES[module].title}`} />
+      ) : null}
+      {moduleRevalidationFailed ? (
+        <PageStatus
+          kind="error"
+          title={
+            session.isError
+              ? `${WORKBENCH_MODULES[module].title}身份没有加载`
+              : `${WORKBENCH_MODULES[module].title}没有加载`
+          }
+          detail={errorMessage(session.isError ? session.error : query.error)}
+          action={
+            <Button
+              type="primary"
+              htmlType="button"
+              onClick={() => void (session.isError ? session.refetch() : query.refetch())}
+            >
+              重试
+            </Button>
+          }
+        />
+      ) : null}
     </>
   );
 }

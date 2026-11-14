@@ -3,58 +3,67 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-14
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 package telemetry_test
 
 import (
-	"encoding/hex"
-	"encoding/json"
+	"crypto/sha256"
+	"encoding/binary"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
-	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"contractaudit/internal/execution"
 	"contractaudit/internal/telemetry"
+	metricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	tracecollectorpb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 func completedEvent(span, parent string) execution.Event {
 	duration := int64(7)
-	return execution.Event{SpanID: span, ParentSpanID: parent, NodeKind: "Lambda", Phase: "rulepack",
-		EventType: "node_completed", At: time.Unix(1780000000, 123456789), DurationMS: &duration, Status: "completed"}
+	return execution.Event{
+		SpanID: span, ParentSpanID: parent, NodeKind: "Lambda", Phase: "rulepack",
+		EventType: "node_completed", At: time.Unix(1780000000, 123456789),
+		DurationMS: &duration, Status: "completed",
+	}
 }
 
-func TestExporterPreservesTraceTreeWithoutProviderContent(t *testing.T) {
-	type captured struct {
-		path string
-		body []byte
-	}
-	bodies := make(chan captured, 4)
+func TestExporterUsesOTLPSDKAndPreservesTraceAndMetricProjection(t *testing.T) {
+	traceRequests := make(chan *tracecollectorpb.ExportTraceServiceRequest, 2)
+	metricRequests := make(chan *metricspb.ExportMetricsServiceRequest, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/json" ||
-			(r.URL.Path != "/collector/v1/traces" && r.URL.Path != "/collector/v1/metrics") {
-			t.Errorf("invalid OTLP request: %s %s %s", r.Method, r.URL.Path, r.Header.Get("Content-Type"))
+		if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/x-protobuf" {
+			t.Errorf("unexpected OTLP request: %s %s %s", r.Method, r.URL.Path, r.Header.Get("Content-Type"))
 		}
-		body, _ := io.ReadAll(r.Body)
-		bodies <- captured{path: r.URL.Path, body: body}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{}`))
+		switch r.URL.Path {
+		case "/collector/v1/traces":
+			traceRequests <- readTraceRequest(t, r.Body)
+		case "/collector/v1/metrics":
+			metricRequests <- readMetricRequest(t, r.Body)
+		default:
+			t.Errorf("unexpected OTLP endpoint %q", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		writeOTLPAck(w, r.URL.Path)
 	}))
 	defer server.Close()
-	exporter, err := telemetry.New(telemetry.Config{Endpoint: server.URL + "/collector", Service: "audit.worker", SampleRatio: 1})
+	exporter, err := telemetry.New(telemetry.Config{
+		Endpoint: server.URL + "/collector", Service: "audit.worker", InstanceID: "worker-7", SampleRatio: 1,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer exporter.Close()
 	root := completedEvent("root", "att_one")
 	root.ModelRef = "PRIVATE CONTRACT BODY"
 	root.ErrorCode = "secret=PRIVATE KEY"
@@ -62,135 +71,190 @@ func TestExporterPreservesTraceTreeWithoutProviderContent(t *testing.T) {
 	exporter.Record("run_one", "att_one", root)
 	exporter.Record("run_one", "att_one", completedEvent("child", "root"))
 	exporter.Close()
-	close(bodies)
-	var spans []map[string]any
-	var metricBodies [][]byte
-	for body := range bodies {
-		if strings.Contains(string(body.body), "PRIVATE") || strings.Contains(string(body.body), "tokens") {
-			t.Fatalf("provider content escaped the metadata boundary: %s", body.body)
-		}
-		if body.path == "/collector/v1/metrics" {
-			metricBodies = append(metricBodies, body.body)
-			continue
-		}
-		var request map[string]any
-		if err := json.Unmarshal(body.body, &request); err != nil {
-			t.Fatal(err)
-		}
-		for _, rawResource := range request["resourceSpans"].([]any) {
-			resource := rawResource.(map[string]any)
-			for _, rawScope := range resource["scopeSpans"].([]any) {
-				for _, rawSpan := range rawScope.(map[string]any)["spans"].([]any) {
-					spans = append(spans, rawSpan.(map[string]any))
-				}
-			}
-		}
+
+	traceRequest := <-traceRequests
+	spans := traces(traceRequest)
+	if len(spans) != 2 {
+		t.Fatalf("expected two exported spans, got %d", len(spans))
 	}
-	if len(spans) != 2 || exporter.Stats().Exported != 2 || exporter.Stats().Dropped != 0 || exporter.Stats().MetricsExported != uint64(2*len(metricBodies)) || exporter.Stats().MetricsFailed != 0 {
-		t.Fatalf("lost completed spans or execution metrics: spans=%v metrics=%d stats=%+v", spans, len(metricBodies), exporter.Stats())
+	resources := traceRequest.GetResourceSpans()
+	if len(resources) != 1 ||
+		stringAttr(resources[0].GetResource().GetAttributes(), "service.name") != "audit.worker" ||
+		stringAttr(resources[0].GetResource().GetAttributes(), "service.instance.id") != "worker-7" {
+		t.Fatalf("resource identity was not projected: %+v", resources)
 	}
-	var sawEvents, sawDuration bool
-	for _, body := range metricBodies {
-		var request map[string]any
-		if err := json.Unmarshal(body, &request); err != nil {
-			t.Fatal(err)
-		}
-		for _, rawResource := range request["resourceMetrics"].([]any) {
-			resource := rawResource.(map[string]any)
-			for _, rawScope := range resource["scopeMetrics"].([]any) {
-				for _, rawMetric := range rawScope.(map[string]any)["metrics"].([]any) {
-					item := rawMetric.(map[string]any)
-					switch item["name"] {
-					case "audit.execution.events":
-						sawEvents = true
-					case "audit.execution.duration_ms":
-						sawDuration = true
-					}
-				}
-			}
-		}
+	if stringAttr(spans[0].GetAttributes(), "audit.error_code") != "" ||
+		stringAttr(spans[0].GetAttributes(), "audit.run_id") != "run_one" {
+		t.Fatalf("metadata projection was not sanitized: %v", spans[0].GetAttributes())
 	}
-	if !sawEvents || !sawDuration {
-		t.Fatalf("execution metrics were not produced: %s", metricBodies)
+	if spans[0].GetTraceId() == nil || string(spans[0].GetTraceId()) != string(spans[1].GetTraceId()) ||
+		len(spans[0].GetParentSpanId()) != 0 || string(spans[1].GetParentSpanId()) != string(spans[0].GetSpanId()) {
+		t.Fatalf("OTLP span tree differs from durable event parentage: %+v", spans)
 	}
-	if spans[0]["traceId"] != spans[1]["traceId"] || spans[0]["parentSpanId"] != nil || spans[1]["parentSpanId"] != spans[0]["spanId"] {
-		t.Fatalf("OTLP tree differs from execution parentage: %v", spans)
+	expectedTrace := sha256.Sum256([]byte("att_one"))
+	if string(spans[0].GetTraceId()) != string(expectedTrace[:16]) ||
+		binary.BigEndian.Uint64(spans[0].GetSpanId()) == 0 ||
+		spans[0].GetKind().String() != "SPAN_KIND_INTERNAL" ||
+		spans[0].GetStatus().GetCode().String() != "STATUS_CODE_OK" ||
+		spans[0].GetEndTimeUnixNano()-spans[0].GetStartTimeUnixNano() != 7_000_000 {
+		t.Fatalf("invalid OTLP identity, timestamp or enum: %+v", spans[0])
 	}
-	for _, span := range spans {
-		trace, traceErr := hex.DecodeString(span["traceId"].(string))
-		id, spanErr := hex.DecodeString(span["spanId"].(string))
-		start, startErr := strconv.ParseInt(span["startTimeUnixNano"].(string), 10, 64)
-		end, endErr := strconv.ParseInt(span["endTimeUnixNano"].(string), 10, 64)
-		if traceErr != nil || spanErr != nil || len(trace) != 16 || len(id) != 8 ||
-			startErr != nil || endErr != nil || end-start != 7_000_000 || span["kind"] != float64(1) || span["status"].(map[string]any)["code"] != float64(1) {
-			t.Fatalf("invalid protocol identity, timestamp or enum: %v", span)
-		}
+
+	var metricRequest *metricspb.ExportMetricsServiceRequest
+	select {
+	case metricRequest = <-metricRequests:
+	case <-time.After(3 * time.Second):
+		t.Fatal("SDK did not export event metrics during shutdown")
+	}
+	items := metrics(metricRequest)
+	events := items["audit.execution.events"].GetSum().GetDataPoints()
+	duration := items["audit.execution.duration_ms"].GetGauge().GetDataPoints()
+	if len(events) != 1 || events[0].GetAsInt() != 2 || len(duration) != 1 ||
+		duration[0].GetAsInt() != 7 || metricStringAttr(events[0].GetAttributes(), "audit.phase") != "rulepack" {
+		t.Fatalf("unexpected SDK execution metrics: %+v %+v", events, duration)
+	}
+	stats := exporter.Stats()
+	if stats.Exported != 2 || stats.Dropped != 0 || stats.Unknown != 0 ||
+		stats.MetricsExported == 0 || stats.MetricsUnknown != 0 || stats.FailedRequests != 0 {
+		t.Fatalf("export acknowledgement accounting is incorrect: %+v", stats)
 	}
 }
 
-func TestExporterAcknowledgementFailureAccounting(t *testing.T) {
+func TestExporterCountsExactPartialAndUnconfirmedAcknowledgements(t *testing.T) {
 	for _, test := range []struct {
-		name, body string
-		status     int
-		exported   uint64
-		failed     uint64
+		name        string
+		contentType string
+		status      int
+		partial     bool
 	}{
-		{"success", `{}`, 200, 1, 0},
-		{"partial_string", `{"partialSuccess":{"rejectedSpans":"1","errorMessage":"private collector detail"}}`, 200, 0, 0},
-		{"partial_number", `{"partialSuccess":{"rejectedSpans":1}}`, 200, 0, 0},
-		{"bad_count", `{"partialSuccess":{"rejectedSpans":"2"}}`, 200, 0, 1},
-		{"null_ack", `null`, 200, 0, 1},
-		{"malformed", `{`, 200, 0, 1},
-		{"unavailable", `{"message":"private collector error"}`, 503, 0, 1},
-		{"oversized", `{"detail":"` + strings.Repeat("x", 65536) + `"}`, 200, 0, 1},
+		{name: "protobuf partial response", contentType: "application/x-protobuf", status: http.StatusOK, partial: true},
+		{name: "unconfirmed response", contentType: "application/json", status: http.StatusOK},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			var calls atomic.Int64
+			var traceCalls atomic.Int64
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				calls.Add(1)
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(test.status)
-				_, _ = io.WriteString(w, test.body)
+				if r.URL.Path == "/v1/traces" {
+					traceCalls.Add(1)
+					request := readTraceRequest(t, r.Body)
+					if test.partial {
+						w.Header().Set("Content-Type", test.contentType)
+						w.WriteHeader(test.status)
+						response, _ := proto.Marshal(&tracecollectorpb.ExportTraceServiceResponse{
+							PartialSuccess: &tracecollectorpb.ExportTracePartialSuccess{
+								RejectedSpans: 1, ErrorMessage: "private collector detail",
+							},
+						})
+						_, _ = w.Write(response)
+						if len(traces(request)) != 2 {
+							t.Errorf("expected two spans in one SDK export")
+						}
+						return
+					}
+					w.Header().Set("Content-Type", test.contentType)
+					w.WriteHeader(test.status)
+					_, _ = io.WriteString(w, "{}")
+					return
+				}
+				writeOTLPAck(w, r.URL.Path)
 			}))
 			defer server.Close()
-			exporter, err := telemetry.New(telemetry.Config{Endpoint: server.URL, Service: "audit.worker", SampleRatio: 1})
+			exporter, err := telemetry.New(telemetry.Config{
+				Endpoint: server.URL, Service: "audit.worker", SampleRatio: 1,
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			exporter.Record("run", "attempt", completedEvent("span", "attempt"))
+			exporter.Record("run", "attempt", completedEvent("one", "attempt"))
+			exporter.Record("run", "attempt", completedEvent("two", "attempt"))
 			exporter.Close()
 			stats := exporter.Stats()
-			wantCalls := int64(1)
-			if test.failed == 0 {
-				wantCalls = 2
+			if traceCalls.Load() != 1 {
+				t.Fatalf("SDK retried an export: calls=%d stats=%+v", traceCalls.Load(), stats)
 			}
-			if calls.Load() != wantCalls || stats.Exported != test.exported || stats.Dropped != 1-test.exported || stats.FailedRequests != test.failed {
-				t.Fatalf("acknowledgement was misreported or retried: calls=%d stats=%+v", calls.Load(), stats)
+			if test.partial {
+				if stats.Exported != 1 || stats.Dropped != 1 || stats.Unknown != 0 || stats.FailedRequests != 0 {
+					t.Fatalf("partial response was not counted exactly: %+v", stats)
+				}
+			} else if stats.Exported != 0 || stats.Dropped != 0 || stats.Unknown != 2 || stats.FailedRequests != 1 {
+				t.Fatalf("unconfirmed response was reported as successful: %+v", stats)
 			}
 		})
 	}
 }
 
-func TestExporterSlowCollectorCannotBlockProducerOrShutdown(t *testing.T) {
-	entered := make(chan struct{}, 1)
-	release := make(chan struct{})
+func TestExporterProjectsStatusParentageAndSanitizedMetadata(t *testing.T) {
+	traceRequests := make(chan *tracecollectorpb.ExportTraceServiceRequest, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case entered <- struct{}{}:
-		default:
+		if r.URL.Path == "/v1/traces" {
+			traceRequests <- readTraceRequest(t, r.Body)
 		}
-		select {
-		case <-release:
-		case <-r.Context().Done():
-		}
+		writeOTLPAck(w, r.URL.Path)
 	}))
 	defer server.Close()
-	defer close(release)
 	exporter, err := telemetry.New(telemetry.Config{Endpoint: server.URL, Service: "audit.worker", SampleRatio: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer exporter.Close()
+	duration := int64(9)
+	base := time.Unix(1780000000, 500000000)
+	events := []execution.Event{
+		{SpanID: "completed", ParentSpanID: "attempt_one", NodeKind: "CompletedNode", Phase: "phase_one", At: base, DurationMS: &duration, Status: "completed"},
+		{SpanID: "failed", ParentSpanID: "parent-span", NodeKind: "FailedNode", Phase: "bad phase!", At: base, DurationMS: &duration, Status: "failed", ErrorCode: "private=value"},
+		{SpanID: "cancelled", NodeKind: "CancelledNode", Phase: "phase.three", At: base, DurationMS: &duration, Status: "cancelled"},
+		{SpanID: "unknown", NodeKind: "UnknownNode", Phase: "phase-four", At: base, DurationMS: &duration, Status: "running"},
+	}
+	for _, event := range events {
+		exporter.Record("run/one", "attempt_one", event)
+	}
+	exporter.Close()
+	spans := traces(<-traceRequests)
+	byKind := make(map[string]*tracepb.Span)
+	for _, span := range spans {
+		byKind[stringAttr(span.GetAttributes(), "audit.node_kind")] = span
+	}
+	for kind, status := range map[string]int32{
+		"CompletedNode": 1, "FailedNode": 2, "CancelledNode": 2, "UnknownNode": 0,
+	} {
+		span := byKind[kind]
+		if span == nil || int32(span.GetStatus().GetCode()) != status {
+			t.Fatalf("status projection for %s: %+v", kind, span)
+		}
+	}
+	if len(byKind["CompletedNode"].GetParentSpanId()) != 0 ||
+		len(byKind["FailedNode"].GetParentSpanId()) != 8 ||
+		len(byKind["CancelledNode"].GetParentSpanId()) != 0 ||
+		byKind["FailedNode"].GetName() != "" ||
+		byKind["CompletedNode"].GetName() != "phase_one" ||
+		stringAttr(byKind["FailedNode"].GetAttributes(), "audit.error_code") != "" ||
+		stringAttr(byKind["FailedNode"].GetAttributes(), "audit.run_id") != "" {
+		t.Fatalf("parentage or sanitized metadata changed: %+v", byKind)
+	}
+}
+
+func TestExporterProducerDoesNotWaitForCollector(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/traces" {
+			select {
+			case entered <- struct{}{}:
+			default:
+			}
+			select {
+			case <-release:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		writeOTLPAck(w, r.URL.Path)
+	}))
+	defer server.Close()
+	exporter, err := telemetry.New(telemetry.Config{
+		Endpoint: server.URL, Service: "audit.worker", SampleRatio: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	event := completedEvent("span", "attempt")
 	exporter.Record("run", "attempt", event)
 	select {
@@ -208,144 +272,43 @@ func TestExporterSlowCollectorCannotBlockProducerOrShutdown(t *testing.T) {
 	select {
 	case <-produced:
 	case <-time.After(time.Second):
-		t.Fatal("a saturated exporter blocked business event publication")
-	}
-	if exporter.Stats().Dropped == 0 {
-		t.Fatal("the bounded queue failed to account for overflow")
+		t.Fatal("collector latency blocked durable event publication")
 	}
 	start := time.Now()
 	exporter.Close()
-	if time.Since(start) > 4*time.Second {
-		t.Fatal("shutdown exceeded the collector-independent deadline")
+	if time.Since(start) > 4*time.Second || exporter.Stats().Unknown == 0 {
+		t.Fatalf("shutdown or unknown accounting is incorrect: elapsed=%s stats=%+v", time.Since(start), exporter.Stats())
 	}
+	close(release)
 	exporter.Record("run", "attempt", event)
-	stats := exporter.Stats()
-	if stats.Exported != 0 || stats.Dropped != 4098 || stats.FailedRequests == 0 {
-		t.Fatalf("lost spans were unaccounted after saturation/shutdown: %+v", stats)
+	if exporter.Stats().Dropped != 1 {
+		t.Fatalf("closed exporter did not account for a local rejection: %+v", exporter.Stats())
 	}
 }
 
-func TestExporterSamplingDoesNotExportRejectedAttempts(t *testing.T) {
-	var calls atomic.Int64
+func TestExporterExecutionMetricsRemainCumulative(t *testing.T) {
+	metricRequests := make(chan *metricspb.ExportMetricsServiceRequest, 4)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{}`))
-	}))
-	defer server.Close()
-	exporter, err := telemetry.New(telemetry.Config{Endpoint: server.URL, Service: "audit.worker", SampleRatio: 0})
-	if err != nil {
-		t.Fatal(err)
-	}
-	exporter.Record("run", "attempt", completedEvent("root", "attempt"))
-	exporter.Record("run", "attempt", completedEvent("child", "root"))
-	exporter.Close()
-	if calls.Load() != 0 || exporter.Stats().SampledOut != 2 || exporter.Stats().Dropped != 0 {
-		t.Fatalf("sampled-out attempt reached collector or became delivery loss: calls=%d stats=%+v", calls.Load(), exporter.Stats())
-	}
-}
-
-type metricPoint struct {
-	Attributes []struct {
-		Key   string `json:"key"`
-		Value struct {
-			String string `json:"stringValue"`
-		} `json:"value"`
-	} `json:"attributes"`
-	Start string `json:"startTimeUnixNano"`
-	Time  string `json:"timeUnixNano"`
-	Value string `json:"asInt"`
-}
-
-type capturedMetric struct {
-	Name string `json:"name"`
-	Sum  *struct {
-		Temporality int           `json:"aggregationTemporality"`
-		Monotonic   bool          `json:"isMonotonic"`
-		Points      []metricPoint `json:"dataPoints"`
-	} `json:"sum"`
-	Gauge *struct {
-		Points []metricPoint `json:"dataPoints"`
-	} `json:"gauge"`
-}
-
-func decodeMetrics(t *testing.T, body []byte) map[string]capturedMetric {
-	t.Helper()
-	var payload struct {
-		Resources []struct {
-			Scopes []struct {
-				Metrics []capturedMetric `json:"metrics"`
-			} `json:"scopeMetrics"`
-		} `json:"resourceMetrics"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		t.Fatal(err)
-	}
-	metrics := make(map[string]capturedMetric)
-	for _, resource := range payload.Resources {
-		for _, scope := range resource.Scopes {
-			for _, metric := range scope.Metrics {
-				metrics[metric.Name] = metric
-			}
-		}
-	}
-	if len(metrics) != 2 {
-		t.Fatalf("expected event and duration metrics: %s", body)
-	}
-	return metrics
-}
-
-func receiveMetrics(t *testing.T, bodies <-chan []byte) []byte {
-	t.Helper()
-	select {
-	case body := <-bodies:
-		return body
-	case <-time.After(3 * time.Second):
-		t.Fatal("collector did not receive execution metrics")
-		return nil
-	}
-}
-
-func metricPointKey(point metricPoint) string {
-	var key strings.Builder
-	for _, attr := range point.Attributes {
-		key.WriteString(attr.Key)
-		key.WriteByte(0)
-		key.WriteString(attr.Value.String)
-		key.WriteByte(0)
-	}
-	return key.String()
-}
-
-func TestExporterMetricsRemainCumulativeAcrossBatches(t *testing.T) {
-	bodies := make(chan []byte, 2)
-	release := make(chan struct{})
-	var unblock sync.Once
-	var metricCalls atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/v1/metrics" {
-			body, _ := io.ReadAll(r.Body)
-			bodies <- body
-			if metricCalls.Add(1) == 1 {
-				select {
-				case <-release:
-				case <-r.Context().Done():
-				}
-			}
+			metricRequests <- readMetricRequest(t, r.Body)
 		}
-		_, _ = io.WriteString(w, `{}`)
+		writeOTLPAck(w, r.URL.Path)
 	}))
 	defer server.Close()
 	exporter, err := telemetry.New(telemetry.Config{Endpoint: server.URL, Service: "audit.worker", SampleRatio: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer exporter.Close()
-	defer unblock.Do(func() { close(release) })
 	first := completedEvent("first", "attempt")
 	exporter.Record("run", "attempt", first)
-	firstMetrics := decodeMetrics(t, receiveMetrics(t, bodies))
+	telemetry.FlushMetricsForTest(exporter)
+	firstMetrics := metrics(<-metricRequests)
+	firstPoints := firstMetrics["audit.execution.events"].GetSum().GetDataPoints()
+	if len(firstPoints) != 1 || firstPoints[0].GetAsInt() != 1 ||
+		firstMetrics["audit.execution.events"].GetSum().GetAggregationTemporality().String() != "AGGREGATION_TEMPORALITY_CUMULATIVE" {
+		t.Fatalf("first event counter was not cumulative: %+v", firstMetrics)
+	}
+
 	later := completedEvent("later", "attempt")
 	later.At = first.At.Add(10 * time.Second)
 	duration := int64(11)
@@ -358,212 +321,115 @@ func TestExporterMetricsRemainCumulativeAcrossBatches(t *testing.T) {
 	failed.At = first.At.Add(8 * time.Second)
 	failed.Status = "failed"
 	exporter.Record("run", "attempt", failed)
-	unblock.Do(func() { close(release) })
+	telemetry.FlushMetricsForTest(exporter)
+	secondMetrics := metrics(<-metricRequests)
+	points := secondMetrics["audit.execution.events"].GetSum().GetDataPoints()
+	var completedCount, failedCount int64
+	for _, point := range points {
+		switch metricStringAttr(point.GetAttributes(), "audit.status") {
+		case "completed":
+			completedCount = point.GetAsInt()
+		case "failed":
+			failedCount = point.GetAsInt()
+		}
+	}
+	durationPoints := secondMetrics["audit.execution.duration_ms"].GetGauge().GetDataPoints()
+	var latestCompleted float64
+	for _, point := range durationPoints {
+		if metricStringAttr(point.GetAttributes(), "audit.status") == "completed" {
+			latestCompleted = float64(point.GetAsInt())
+		}
+	}
+	if completedCount != 3 || failedCount != 1 || latestCompleted != 11 {
+		t.Fatalf("cumulative events or latest duration changed: counts=%d/%d duration=%v", completedCount, failedCount, latestCompleted)
+	}
 	exporter.Close()
-	secondMetrics := decodeMetrics(t, receiveMetrics(t, bodies))
-	firstSum := firstMetrics["audit.execution.events"].Sum
-	secondSum := secondMetrics["audit.execution.events"].Sum
-	if firstSum == nil || secondSum == nil || firstSum.Temporality != 2 || secondSum.Temporality != 2 ||
-		!firstSum.Monotonic || !secondSum.Monotonic || len(firstSum.Points) != 1 || len(secondSum.Points) != 2 {
-		t.Fatalf("events must contain one cumulative point per series: first=%+v second=%+v", firstSum, secondSum)
-	}
-	firstPoint := firstSum.Points[0]
-	firstStart, startErr := strconv.ParseInt(firstPoint.Start, 10, 64)
-	if startErr != nil || firstStart > first.At.UnixNano() || firstPoint.Value != "1" {
-		t.Fatalf("invalid first cumulative point: %+v", firstPoint)
-	}
-	points := make(map[string]metricPoint)
-	for _, point := range secondSum.Points {
-		key := metricPointKey(point)
-		if _, exists := points[key]; exists {
-			t.Fatalf("duplicate series in one metric batch: %+v", secondSum.Points)
-		}
-		points[key] = point
-	}
-	continued, ok := points[metricPointKey(firstPoint)]
-	if !ok || continued.Value != "3" || continued.Start != firstPoint.Start {
-		t.Fatalf("event counter reset across separated batches: first=%+v next=%+v", firstPoint, continued)
-	}
-	continuedTime, timeErr := strconv.ParseInt(continued.Time, 10, 64)
-	if timeErr != nil || continuedTime < later.At.UnixNano() {
-		t.Fatalf("out-of-order events moved the cumulative timestamp backwards: %+v", continued)
-	}
-	for key, point := range points {
-		if key != metricPointKey(firstPoint) && point.Value != "1" {
-			t.Fatalf("different statuses shared a counter: %+v", secondSum.Points)
-		}
-	}
-	gauge := secondMetrics["audit.execution.duration_ms"].Gauge
-	if gauge == nil || len(gauge.Points) != 2 {
-		t.Fatalf("duration gauge must contain one point per series: %+v", gauge)
-	}
-	for _, point := range gauge.Points {
-		if metricPointKey(point) == metricPointKey(firstPoint) && point.Value != "11" {
-			t.Fatalf("duration gauge did not retain the latest event: %+v", point)
-		}
-	}
-	if stats := exporter.Stats(); stats.Exported != 4 || stats.Dropped != 0 || stats.MetricsExported != 6 || stats.MetricsFailed != 0 {
-		t.Fatalf("metric accounting must count emitted data points: %+v", stats)
-	}
 }
 
-func TestExporterMetricsAcknowledgementAccounting(t *testing.T) {
-	for _, test := range []struct {
-		name, body, contentType string
-		status                  int
-		exported, failed        uint64
-	}{
-		{"success", `{}`, "application/json", 200, 2, 0},
-		{"warning", `{"partialSuccess":{"rejectedDataPoints":"0","errorMessage":"collector warning"}}`, "application/json", 200, 2, 0},
-		{"partial_string", `{"partialSuccess":{"rejectedDataPoints":"1"}}`, "application/json", 200, 1, 1},
-		{"partial_number", `{"partialSuccess":{"rejectedDataPoints":1}}`, "application/json", 200, 1, 1},
-		{"all_rejected", `{"partialSuccess":{"rejectedDataPoints":"2"}}`, "application/json", 200, 0, 2},
-		{"too_many", `{"partialSuccess":{"rejectedDataPoints":"3"}}`, "application/json", 200, 0, 2},
-		{"negative", `{"partialSuccess":{"rejectedDataPoints":"-1"}}`, "application/json", 200, 0, 2},
-		{"fraction", `{"partialSuccess":{"rejectedDataPoints":0.5}}`, "application/json", 200, 0, 2},
-		{"overflow", `{"partialSuccess":{"rejectedDataPoints":"9223372036854775808"}}`, "application/json", 200, 0, 2},
-		{"invalid_string", `{"partialSuccess":{"rejectedDataPoints":"unknown"}}`, "application/json", 200, 0, 2},
-		{"invalid_type", `{"partialSuccess":{"rejectedDataPoints":true}}`, "application/json", 200, 0, 2},
-		{"invalid_partial", `{"partialSuccess":[]}`, "application/json", 200, 0, 2},
-		{"null_ack", `null`, "application/json", 200, 0, 2},
-		{"array_ack", `[]`, "application/json", 200, 0, 2},
-		{"malformed", `{`, "application/json", 200, 0, 2},
-		{"trailing_json", `{} {}`, "application/json", 200, 0, 2},
-		{"wrong_content_type", `{}`, "text/plain", 200, 0, 2},
-		{"unavailable", `{}`, "application/json", 503, 0, 2},
-		{"oversized", `{"detail":"` + strings.Repeat("x", 65536) + `"}`, "application/json", 200, 0, 2},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			var metricCalls atomic.Int64
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/v1/metrics" {
-					metricCalls.Add(1)
-					w.Header().Set("Content-Type", test.contentType)
-					w.WriteHeader(test.status)
-					_, _ = io.WriteString(w, test.body)
-					return
-				}
-				w.Header().Set("Content-Type", "application/json")
-				_, _ = io.WriteString(w, `{}`)
-			}))
-			defer server.Close()
-			exporter, err := telemetry.New(telemetry.Config{Endpoint: server.URL, Service: "audit.worker", SampleRatio: 1})
-			if err != nil {
-				t.Fatal(err)
-			}
-			exporter.Record("run", "attempt", completedEvent("span", "attempt"))
-			exporter.Close()
-			stats := exporter.Stats()
-			if metricCalls.Load() != 1 || stats.MetricsExported != test.exported || stats.MetricsFailed != test.failed ||
-				stats.Exported != 1 || stats.Dropped != 0 || stats.FailedRequests != 0 {
-				t.Fatalf("metric acknowledgement was misreported or retried: calls=%d stats=%+v", metricCalls.Load(), stats)
-			}
-		})
-	}
-}
-
-func TestExporterMetricsBoundsSeriesWithoutLosingEvents(t *testing.T) {
-	bodies := make(chan []byte, 1)
+func TestExporterBoundsExecutionMetricSeriesWithoutLosingEvents(t *testing.T) {
+	metricRequests := make(chan *metricspb.ExportMetricsServiceRequest, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/v1/metrics" {
-			body, _ := io.ReadAll(r.Body)
-			bodies <- body
+			metricRequests <- readMetricRequest(t, r.Body)
 		}
-		_, _ = io.WriteString(w, `{}`)
+		writeOTLPAck(w, r.URL.Path)
 	}))
 	defer server.Close()
 	exporter, err := telemetry.New(telemetry.Config{Endpoint: server.URL, Service: "audit.worker", SampleRatio: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer exporter.Close()
-	counts := make(map[string]int64)
-	for i := range 1024 {
-		event := completedEvent("span", "attempt")
-		event.Phase = "phase_" + strconv.Itoa(i)
-		event.NodeKind = "tenant_" + strconv.Itoa(i)
-		event.Status = "actor_" + strconv.Itoa(i)
-		exporter.Record("run", "attempt", event)
-		metrics := decodeMetrics(t, receiveMetrics(t, bodies))
-		sum := metrics["audit.execution.events"].Sum
-		if sum == nil || len(sum.Points) != 1 {
-			t.Fatalf("each batch must export its one active series: %+v", sum)
-		}
-		point := sum.Points[0]
-		if i == 0 {
-			labels := map[string]string{}
-			for _, attr := range point.Attributes {
-				labels[attr.Key] = attr.Value.String
+	phases := []string{
+		"audit_review_execution_v1", "eino_component", "input_preparation", "deterministic_rules",
+		"model_review", "citation_verification", "single_contract_rules", "agent_review",
+		"authorized_input", "fact_extraction", "tool_evidence", "rulepack", "evidence_guard",
+		"persistence", "verified_finding", "model_request", "evidence_tool", "agent_review_result",
+		"acceptance", "execution", "terminal_persistence", "cancellation", "restart_recovery",
+		"authorization", "input", "gap_unsupported",
+	}
+	kinds := []string{
+		"attempt", "phase", "model_call", "citation_verification", "agent_review", "tool_call",
+		"eino", "Unknown", "Graph", "Workflow", "Chain", "Passthrough",
+	}
+	var count int
+	for _, phase := range phases {
+		for _, kind := range kinds {
+			if count == 300 {
+				break
 			}
-			if labels["audit.phase"] != "other" || labels["audit.node_kind"] != "other" || labels["audit.status"] != "other" {
-				t.Fatalf("unrecognized values escaped into metric labels: %+v", point)
-			}
+			event := completedEvent("event_"+strconv.Itoa(count), "attempt")
+			event.Phase, event.NodeKind = phase, kind
+			exporter.Record("run", "attempt", event)
+			count++
 		}
-		count, err := strconv.ParseInt(point.Value, 10, 64)
-		if err != nil {
-			t.Fatal(err)
+		if count == 300 {
+			break
 		}
-		counts[metricPointKey(point)] = count
 	}
 	exporter.Close()
-	var total int64
-	for _, count := range counts {
-		total += count
+	request := <-metricRequests
+	item := metrics(request)["audit.execution.events"]
+	points := item.GetSum().GetDataPoints()
+	if len(points) > 256 {
+		t.Fatalf("execution dimensions exceeded the cardinality bound: %d", len(points))
 	}
-	if len(counts) > 256 || total != 1024 || exporter.Stats().Dropped != 0 || exporter.Stats().MetricsFailed != 0 {
-		t.Fatalf("metric cardinality must stay bounded without losing events: series=%d total=%d stats=%+v", len(counts), total, exporter.Stats())
+	var total int64
+	for _, point := range points {
+		total += point.GetAsInt()
+	}
+	if len(points) == 0 || total != 300 {
+		t.Fatalf("bounded dimensions lost durable event counts: series=%d total=%d", len(points), total)
 	}
 }
 
-func TestExporterResourceIdentifiesServiceInstance(t *testing.T) {
-	bodies := make(chan []byte, 4)
+func TestExporterSamplingAndClosedRecord(t *testing.T) {
+	var calls atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/traces" {
-			body, _ := io.ReadAll(r.Body)
-			bodies <- body
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{}`)
+		calls.Add(1)
+		writeOTLPAck(w, r.URL.Path)
 	}))
 	defer server.Close()
 	exporter, err := telemetry.New(telemetry.Config{
-		Endpoint: server.URL, Service: "audit.worker", InstanceID: "worker-7", SampleRatio: 1,
+		Endpoint: server.URL, Service: "audit.worker", SampleRatio: 0,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	exporter.Record("run", "attempt", completedEvent("root", "attempt"))
-	var body []byte
-	select {
-	case body = <-bodies:
-	case <-time.After(2 * time.Second):
-		t.Fatal("trace export did not arrive")
-	}
+	exporter.Record("run", "attempt", completedEvent("child", "root"))
 	exporter.Close()
-	var request struct {
-		ResourceSpans []struct {
-			Resource struct {
-				Attributes []struct {
-					Key   string `json:"key"`
-					Value struct {
-						String string `json:"stringValue"`
-					} `json:"value"`
-				} `json:"attributes"`
-			} `json:"resource"`
-		} `json:"resourceSpans"`
+	if calls.Load() != 0 || exporter.Stats().SampledOut != 2 || exporter.Stats().Dropped != 0 {
+		t.Fatalf("sampled-out events reached the collector: calls=%d stats=%+v", calls.Load(), exporter.Stats())
 	}
-	if err := json.Unmarshal(body, &request); err != nil {
+	closed, err := telemetry.New(telemetry.Config{
+		Endpoint: server.URL, Service: "audit.worker", SampleRatio: 1,
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if len(request.ResourceSpans) != 1 {
-		t.Fatalf("resource spans missing: %s", body)
-	}
-	attributes := map[string]string{}
-	for _, item := range request.ResourceSpans[0].Resource.Attributes {
-		attributes[item.Key] = item.Value.String
-	}
-	if attributes["service.name"] != "audit.worker" || attributes["service.instance.id"] != "worker-7" {
-		t.Fatalf("replica identity missing from OTLP resource: %v", attributes)
+	closed.Close()
+	closed.Record("run", "attempt", completedEvent("after-close", "attempt"))
+	if closed.Stats().Dropped != 1 || closed.Stats().Unknown != 0 {
+		t.Fatalf("record after close was not resolved as a local drop: %+v", closed.Stats())
 	}
 }

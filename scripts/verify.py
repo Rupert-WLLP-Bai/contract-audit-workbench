@@ -4,12 +4,13 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-25
-# Updated: 2026-11-03
-# Revision: r3
+# Updated: 2026-11-12
+# Revision: r4
 # Copyright: See LICENSE
 # End file metadata.
 
 """Reproducible deterministic acceptance; optional real-browser release gate."""
+
 from __future__ import annotations
 
 import argparse
@@ -31,6 +32,8 @@ from typing import Callable
 from source_identity import source_identity
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
 # CI keeps collecting the historical in-repository paths. Other runs keep
 # verifier-owned artifacts in the sibling delivery tree.
 def default_output(root, environ):
@@ -50,8 +53,12 @@ STAGES = ("static", "go", "web", "coverage", "browser")
 # consumes files produced by the go and web jobs, so it must never clean them.
 STAGE_OUTPUTS = {
     "static": (),
-    "go": ("artifacts/go-coverage.out", "artifacts/evaluation.json",
-           "artifacts/agent-demo.json", "artifacts/ruleshadow-disabled.json"),
+    "go": (
+        "artifacts/go-coverage.out",
+        "artifacts/evaluation.json",
+        "artifacts/agent-demo.json",
+        "artifacts/ruleshadow-disabled.json",
+    ),
     "web": ("artifacts/vitest-results.json", "web/coverage"),
     "coverage": ("artifacts/coverage-summary.json",),
     "browser": ("artifacts/screenshots",),
@@ -101,7 +108,11 @@ def validate_go_test_results(text):
         raise ValueError("Go JSONL contains failed tests: " + ", ".join(failed))
     if passed < 1:
         raise ValueError("Go suite executed no passing test; empty -run matches are not acceptance")
-    return {"test_pass_events": passed, "skipped": 0, "packages_without_tests": packages_without_tests}
+    return {
+        "test_pass_events": passed,
+        "skipped": 0,
+        "packages_without_tests": packages_without_tests,
+    }
 
 
 def validate_web_test_results(value):
@@ -113,43 +124,65 @@ def validate_web_test_results(value):
     for key in ("numFailedTests", "numPendingTests", "numTodoTests", "numFailedTestSuites"):
         if value.get(key, 0) != 0:
             raise ValueError(f"Vitest reported nonzero {key}")
-    assertions = [assertion for suite in value.get("testResults", [])
-                  for assertion in suite.get("assertionResults", [])]
+    assertions = [
+        assertion
+        for suite in value.get("testResults", [])
+        for assertion in suite.get("assertionResults", [])
+    ]
     if len(assertions) != total or any(item.get("status") != "passed" for item in assertions):
         raise ValueError("Vitest assertion evidence is missing, skipped, todo, or failed")
     return {"tests": total, "passed": passed, "skipped": 0}
 
 
 def validate_agent_demo(value):
-    if (not isinstance(value, dict) or value.get("passed") is not True or
-            value.get("classification") != "D0_SYNTHETIC_CONTROL_REGRESSION" or
-            type(value.get("total")) is not int or value["total"] < 1 or
-            value.get("passed_count") != value["total"] or
-            len(value.get("results", [])) != value["total"] or
-            not all(row.get("passed") is True and row.get("violations") == []
-                    for row in value["results"])):
+    if (
+        not isinstance(value, dict)
+        or value.get("passed") is not True
+        or value.get("classification") != "D0_SYNTHETIC_CONTROL_REGRESSION"
+        or type(value.get("total")) is not int
+        or value["total"] < 1
+        or value.get("passed_count") != value["total"]
+        or len(value.get("results", [])) != value["total"]
+        or not all(
+            row.get("passed") is True and row.get("violations") == [] for row in value["results"]
+        )
+    ):
         raise ValueError("Agent control regression evidence is incomplete or failed")
     return {"synthetic_control_scenarios": value["total"], "live_model": "NOT_RUN"}
 
 
 def validate_rule_shadow(value):
     dataset = (ROOT / "testdata/decision-zh-v1.json").read_bytes()
-    if (value.get("schema_version") != "ruleshadow-report/v1" or value.get("passed") is not True or
-            value.get("mode") != "disabled" or
-            value.get("dataset_sha256") != hashlib.sha256(dataset).hexdigest()):
+    if (
+        value.get("schema_version") != "ruleshadow-report/v1"
+        or value.get("passed") is not True
+        or value.get("mode") != "disabled"
+        or value.get("dataset_sha256") != hashlib.sha256(dataset).hexdigest()
+    ):
         raise ValueError("RulePack smoke identity or disabled mode is invalid")
     results = value.get("baseline", {}).get("results", [])
     expected = {"ENT-COM-ADV-001", "ENT-TECH-BW-001", "ENT-TECH-SLA-001"}
-    if (len(results) != 3 or {row.get("rule_id") for row in results} != expected or
-            any(row.get("relation") != "conflict" or row.get("mandatory") is not True for row in results)):
+    if (
+        len(results) != 3
+        or {row.get("rule_id") for row in results} != expected
+        or any(
+            row.get("relation") != "conflict" or row.get("mandatory") is not True for row in results
+        )
+    ):
         raise ValueError("RulePack synthetic conflicts or mandatory rules are missing")
     rows = value.get("rows", [])
     ids = {item["id"] for item in json.loads(dataset)["cases"]}
-    if (len(rows) != len(ids) or {row.get("id") for row in rows} != ids or
-            any(row.get("rules_unchanged") is not True or
-                row.get("rule_output_sha256") != value.get("baseline_sha256") or
-                row.get("decision", {}).get("status") != "disabled" or
-                row.get("decision", {}).get("accepted_rules") != [] for row in rows)):
+    if (
+        len(rows) != len(ids)
+        or {row.get("id") for row in rows} != ids
+        or any(
+            row.get("rules_unchanged") is not True
+            or row.get("rule_output_sha256") != value.get("baseline_sha256")
+            or row.get("decision", {}).get("status") != "disabled"
+            or row.get("decision", {}).get("accepted_rules") != []
+            for row in rows
+        )
+    ):
         raise ValueError("Decision shadow changed rules or smoke evidence is incomplete")
     return {"mandatory_conflicts": 3, "invariance_cases": len(rows), "network": "disabled"}
 
@@ -210,13 +243,17 @@ def emit_failure_annotations(name, display):
             break
     if file_annotated:
         return
-    frame = re.search(r"(?<![\w/.-])((?:web/e2e|internal|e2e|cmd)/[^\s:()]+?\.(?:ts|tsx|go)):(\d+)(?::(\d+))?",
-                      display)
+    frame = re.search(
+        r"(?<![\w/.-])((?:web/e2e|internal|e2e|cmd)/[^\s:()]+?\.(?:ts|tsx|go)):(\d+)(?::(\d+))?",
+        display,
+    )
     if frame:
         filename, line, column = frame.group(1), frame.group(2), frame.group(3)
         suffix = f",col={column}" if column else ""
-        print(f"::error file={workflow_escape(filename, True)},line={line}{suffix},"
-              f"title={workflow_escape(name, True)}::{workflow_escape(name + ' failed')}")
+        print(
+            f"::error file={workflow_escape(filename, True)},line={line}{suffix},"
+            f"title={workflow_escape(name, True)}::{workflow_escape(name + ' failed')}"
+        )
         return
     if emitted:
         return
@@ -234,8 +271,10 @@ def write_step_summary(report):
         lines.extend([f"source identity: `{digest}`", ""])
     lines.extend(["| check | result | seconds | log |", "| --- | --- | --- | --- |"])
     for check in report.get("checks", []):
-        lines.append(f"| {check['name']} | {check.get('status', 'FAIL')} | "
-                     f"{check.get('seconds', 0)} | `{check.get('log', '')}` |")
+        lines.append(
+            f"| {check['name']} | {check.get('status', 'FAIL')} | "
+            f"{check.get('seconds', 0)} | `{check.get('log', '')}` |"
+        )
     if report.get("error"):
         lines.extend(["", f"error: {report['error']}"])
     with open(destination, "a", encoding="utf-8") as handle:
@@ -250,7 +289,8 @@ def report_path(stage):
 
 def save_report(report):
     report_path(report.get("stage", "all")).write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+    )
 
 
 def clean_outputs(paths):
@@ -298,9 +338,16 @@ def command_with_output_dir(check):
     if not OUT_IS_EXTERNAL:
         return list(check.cmd)
     if check.name == "coverage-gates":
-        return [*check.cmd, "--go", str(OUT / "go-coverage.out"),
-                "--web", str(OUT / "web-coverage" / "coverage-summary.json"),
-                "--out", str(OUT / "coverage-summary.json")]
+        return [
+            *check.cmd,
+            "--go",
+            str(OUT / "go-coverage.out"),
+            "--web",
+            str(OUT / "web-coverage" / "coverage-summary.json"),
+            "--out",
+            str(OUT / "coverage-summary.json"),
+        ]
+
     def relocate(argument):
         option, separator, value = argument.partition("=")
         path_value = value if separator else argument
@@ -325,7 +372,7 @@ def _process_group_has_live_members(process_group):
                 continue
             try:
                 stat = (entry / "stat").read_text()
-                fields = stat[stat.rfind(")") + 2:].split()
+                fields = stat[stat.rfind(")") + 2 :].split()
                 # After comm, fields start with state, ppid, pgrp.
                 if len(fields) > 2 and fields[2].isdecimal() and int(fields[2]) == process_group:
                     if fields[0] != "Z":
@@ -372,8 +419,14 @@ def _terminate_process_group(process_group, grace=3.0):
 def run_supervised(command, cwd, env, stdout, timeout):
     """Run a check in its own session and clean up only its child processes."""
     try:
-        process = subprocess.Popen(command, cwd=cwd, env=env, stdout=stdout,
-                                   stderr=subprocess.STDOUT, start_new_session=True)
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=env,
+            stdout=stdout,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
     except OSError as error:
         return None, type(error).__name__, str(error), False, None
 
@@ -407,8 +460,11 @@ def run_supervised(command, cwd, env, stdout, timeout):
         error_kind = type(error).__name__
         error_detail = str(error)
         if cleanup is None:
-            cleanup = {"performed": False, "sigkill_sent": False,
-                       "remaining_live_members": _process_group_has_live_members(process.pid)}
+            cleanup = {
+                "performed": False,
+                "sigkill_sent": False,
+                "remaining_live_members": _process_group_has_live_members(process.pid),
+            }
     if process.poll() is None:
         _signal_process_group(process.pid, signal.SIGKILL)
         try:
@@ -433,14 +489,28 @@ def prepare_browser(env):
     if not env.get("CHROMIUM_BIN"):
         candidates = []
         try:
-            candidates.append(subprocess.run(
-                ["node", "-e",
-                 "process.stdout.write(require('./web/node_modules/playwright').chromium.executablePath())"],
-                cwd=ROOT, env=env, capture_output=True, text=True, check=True).stdout.strip())
+            candidates.append(
+                subprocess.run(
+                    [
+                        "node",
+                        "-e",
+                        "process.stdout.write(require('./web/node_modules/playwright').chromium.executablePath())",
+                    ],
+                    cwd=ROOT,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                ).stdout.strip()
+            )
         except (OSError, subprocess.SubprocessError):
             pass
-        candidates += ["/usr/bin/chromium", "/usr/bin/chromium-browser",
-                       "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable"]
+        candidates += [
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+        ]
         executable = next((item for item in candidates if item and Path(item).is_file()), "")
         if not executable:
             raise RuntimeError(
@@ -459,92 +529,285 @@ def build_checks(go, bun):
         Check("go-version", "all", (go, "version")),
         Check("bun-version", "all", (bun, "--version")),
         Check("node-version", "all", ("node", "--version")),
-        Check("quality-tests", "static",
-              (sys.executable, "scripts/run_python_tests.py", "--root", "scripts")),
-        Check("infra-tests", "static",
-              (sys.executable, "scripts/run_python_tests.py", "--root", "deploy/tests")),
-        Check("fault-harness-tests", "static",
-              (sys.executable, "scripts/run_python_tests.py", "--root", "deployments/scripts")),
-        Check("workflow-syntax", "static", ('actionlint', '-shellcheck=', '-pyflakes=')),
-        Check("architecture-dependencies", "static",
-              (sys.executable, "scripts/architecture/check_architecture.py", "--repo", str(ROOT),
-               "--base", os.environ.get("CAW_FAST_BASE") or os.environ.get("BASE_SHA") or "origin/main",
-               "--out", str(OUT / "architecture-check.json"))),
+        Check(
+            "quality-tests",
+            "static",
+            (sys.executable, "scripts/run_python_tests.py", "--root", "scripts"),
+        ),
+        Check(
+            "infra-tests",
+            "static",
+            (sys.executable, "scripts/run_python_tests.py", "--root", "deploy/tests"),
+        ),
+        Check(
+            "fault-harness-tests",
+            "static",
+            (sys.executable, "scripts/run_python_tests.py", "--root", "deployments/scripts"),
+        ),
+        Check("workflow-syntax", "static", ("actionlint", "-shellcheck=", "-pyflakes=")),
+        Check(
+            "architecture-dependencies",
+            "static",
+            (
+                sys.executable,
+                "scripts/architecture/check_architecture.py",
+                "--repo",
+                str(ROOT),
+                "--base",
+                os.environ.get("CAW_FAST_BASE") or os.environ.get("BASE_SHA") or "origin/main",
+                "--out",
+                str(OUT / "architecture-check.json"),
+            ),
+        ),
         Check("format", "static", (sys.executable, "scripts/check_format.py")),
+        Check("python-ruff-lint", "static", ("ruff", "check", ".")),
+        Check("python-ruff-format", "static", ("ruff", "format", "--check", ".")),
+        Check("web-eslint", "static", (bun, "run", "lint"), cwd=ROOT / "web"),
+        Check("web-prettier", "static", (bun, "run", "format:check"), cwd=ROOT / "web"),
         Check("modules", "static", (go, "mod", "verify")),
         Check("vet", "static", (go, "vet", "./...")),
-        Check("go-tests", "go",
-              (go, "test", "-race", "-count=1", "-json", "-timeout=20m",
-               "-covermode=atomic", "-coverpkg=./internal/...",
-               "-coverprofile=artifacts/go-coverage.out", "./..."),
-              timeout=2400, jsonl=True,
-              validate=lambda path: validate_go_test_results(path.read_text())),
+        Check(
+            "go-tests",
+            "go",
+            (
+                go,
+                "test",
+                "-race",
+                "-count=1",
+                "-json",
+                "-timeout=20m",
+                "-covermode=atomic",
+                "-coverpkg=./internal/...",
+                "-coverprofile=artifacts/go-coverage.out",
+                "./...",
+            ),
+            timeout=2400,
+            jsonl=True,
+            validate=lambda path: validate_go_test_results(path.read_text()),
+        ),
         Check("web-typecheck", "web", (bun, "run", "typecheck"), cwd=ROOT / "web"),
-        Check("web-tests", "web",
-              (bun, "run", "test:coverage", "--reporter=default", "--reporter=json",
-               "--outputFile=../artifacts/vitest-results.json"), cwd=ROOT / "web",
-              timeout=900,
-              validate=lambda _: validate_web_test_results(
-                  json.loads((OUT / "vitest-results.json").read_text()))),
-        Check("web-cdp-helper-tests", "web",
-              (bun, "run", "test:cdp-helper"), cwd=ROOT / "web"),
-        Check("web-c1b-clock-tests", "browser",
-              (bun, "test", "e2e/c1b-clock.test.ts"), cwd=ROOT / "web"),
+        Check(
+            "web-tests",
+            "web",
+            (
+                bun,
+                "run",
+                "test:coverage",
+                "--reporter=default",
+                "--reporter=json",
+                "--outputFile=../artifacts/vitest-results.json",
+            ),
+            cwd=ROOT / "web",
+            timeout=900,
+            validate=lambda _: validate_web_test_results(
+                json.loads((OUT / "vitest-results.json").read_text())
+            ),
+        ),
+        Check("web-cdp-helper-tests", "web", (bun, "run", "test:cdp-helper"), cwd=ROOT / "web"),
+        Check(
+            "web-c1b-clock-tests",
+            "browser",
+            (bun, "test", "e2e/c1b-clock.test.ts"),
+            cwd=ROOT / "web",
+        ),
         Check("web-build", "web", (bun, "run", "build"), cwd=ROOT / "web"),
-        Check("backend-build", "go",
-              (go, "build", "-buildvcs=false", "-trimpath",
-               "-o", "artifacts/contractaudit", "./cmd/server")),
-        Check("backend-build-worker", "go",
-              (go, "build", "-buildvcs=false", "-trimpath",
-               "-o", "artifacts/contractaudit-worker", "./cmd/worker")),
-        Check("backend-build-toolgateway", "go",
-              (go, "build", "-buildvcs=false", "-trimpath",
-               "-o", "artifacts/contractaudit-toolgateway", "./cmd/toolgateway")),
-        Check("backend-build-migrate", "go",
-              (go, "build", "-buildvcs=false", "-trimpath",
-               "-o", "artifacts/contractaudit-migrate", "./cmd/migrate")),
-        Check("evaluate", "go",
-              (go, "run", "./cmd/eval", "-out", "artifacts/evaluation.json")),
-        Check("agent-demo", "go",
-              (go, "run", "./cmd/agentdemo", "-out", "artifacts/agent-demo.json"),
-              validate=lambda _: validate_agent_demo(
-                  json.loads((OUT / "agent-demo.json").read_text()))),
-        Check("rule-shadow", "go",
-              (go, "run", "./cmd/ruleshadow", "-publish-demo",
-               "-out", "artifacts/ruleshadow-disabled.json"),
-              validate=lambda _: validate_rule_shadow(
-                  json.loads((OUT / "ruleshadow-disabled.json").read_text()))),
+        Check(
+            "backend-build",
+            "go",
+            (
+                go,
+                "build",
+                "-buildvcs=false",
+                "-trimpath",
+                "-o",
+                "artifacts/contractaudit",
+                "./cmd/server",
+            ),
+        ),
+        Check(
+            "backend-build-worker",
+            "go",
+            (
+                go,
+                "build",
+                "-buildvcs=false",
+                "-trimpath",
+                "-o",
+                "artifacts/contractaudit-worker",
+                "./cmd/worker",
+            ),
+        ),
+        Check(
+            "backend-build-toolgateway",
+            "go",
+            (
+                go,
+                "build",
+                "-buildvcs=false",
+                "-trimpath",
+                "-o",
+                "artifacts/contractaudit-toolgateway",
+                "./cmd/toolgateway",
+            ),
+        ),
+        Check(
+            "backend-build-migrate",
+            "go",
+            (
+                go,
+                "build",
+                "-buildvcs=false",
+                "-trimpath",
+                "-o",
+                "artifacts/contractaudit-migrate",
+                "./cmd/migrate",
+            ),
+        ),
+        Check("evaluate", "go", (go, "run", "./cmd/eval", "-out", "artifacts/evaluation.json")),
+        Check(
+            "agent-demo",
+            "go",
+            (go, "run", "./cmd/agentdemo", "-out", "artifacts/agent-demo.json"),
+            validate=lambda _: validate_agent_demo(
+                json.loads((OUT / "agent-demo.json").read_text())
+            ),
+        ),
+        Check(
+            "rule-shadow",
+            "go",
+            (
+                go,
+                "run",
+                "./cmd/ruleshadow",
+                "-publish-demo",
+                "-out",
+                "artifacts/ruleshadow-disabled.json",
+            ),
+            validate=lambda _: validate_rule_shadow(
+                json.loads((OUT / "ruleshadow-disabled.json").read_text())
+            ),
+        ),
         Check("coverage-gates", "coverage", (sys.executable, "scripts/check_coverage.py")),
-        Check("browser-warranty", "browser",
-              (go, "test", "-tags", "browser", "-count=1", "-json", "-timeout=150s",
-               "./e2e", "-run", "^TestBrowserWarrantyConflictAndConfirm$"),
-              timeout=180, jsonl=True, continue_on_failure=True,
-              validate=lambda path: validate_go_test_results(path.read_text())),
-        Check("browser-telecom", "browser",
-              (go, "test", "-tags", "browser", "-count=1", "-json", "-timeout=330s",
-               "./e2e", "-run", "^TestBrowserTelecomC1BFullJourney$"),
-              timeout=360, jsonl=True, continue_on_failure=True,
-              validate=lambda path: validate_go_test_results(path.read_text())),
-        Check("browser-telecom-compatible", "browser",
-              (go, "test", "-tags", "browser", "-count=1", "-json", "-timeout=330s",
-               "./e2e", "-run", "^TestBrowserTelecomC1BCompatibleScenario$"),
-              timeout=360, jsonl=True, continue_on_failure=True,
-              validate=lambda path: validate_go_test_results(path.read_text())),
-        Check("browser-telecom-insufficient", "browser",
-              (go, "test", "-tags", "browser", "-count=1", "-json", "-timeout=330s",
-               "./e2e", "-run", "^TestBrowserTelecomC1BInsufficientScenario$"),
-              timeout=360, jsonl=True, continue_on_failure=True,
-              validate=lambda path: validate_go_test_results(path.read_text())),
-        Check("browser-d3-subject", "browser",
-              (go, "test", "-tags", "browser", "-count=1", "-json", "-timeout=210s",
-               "./e2e", "-run", "^TestBrowserD3SubjectControlledSourceSOD$"),
-              timeout=240, jsonl=True, continue_on_failure=True,
-              validate=lambda path: validate_go_test_results(path.read_text())),
-        Check("browser-object-history", "browser",
-              (go, "test", "-tags", "browser", "-count=1", "-json", "-timeout=630s",
-               "./e2e", "-run", "^TestBrowserObjectHistory$"),
-              timeout=660, jsonl=True, continue_on_failure=True,
-              validate=lambda path: validate_go_test_results(path.read_text())),
+        Check(
+            "browser-warranty",
+            "browser",
+            (
+                go,
+                "test",
+                "-tags",
+                "browser",
+                "-count=1",
+                "-json",
+                "-timeout=150s",
+                "./e2e",
+                "-run",
+                "^TestBrowserWarrantyConflictAndConfirm$",
+            ),
+            timeout=180,
+            jsonl=True,
+            continue_on_failure=True,
+            validate=lambda path: validate_go_test_results(path.read_text()),
+        ),
+        Check(
+            "browser-telecom",
+            "browser",
+            (
+                go,
+                "test",
+                "-tags",
+                "browser",
+                "-count=1",
+                "-json",
+                "-timeout=330s",
+                "./e2e",
+                "-run",
+                "^TestBrowserTelecomC1BFullJourney$",
+            ),
+            timeout=360,
+            jsonl=True,
+            continue_on_failure=True,
+            validate=lambda path: validate_go_test_results(path.read_text()),
+        ),
+        Check(
+            "browser-telecom-compatible",
+            "browser",
+            (
+                go,
+                "test",
+                "-tags",
+                "browser",
+                "-count=1",
+                "-json",
+                "-timeout=330s",
+                "./e2e",
+                "-run",
+                "^TestBrowserTelecomC1BCompatibleScenario$",
+            ),
+            timeout=360,
+            jsonl=True,
+            continue_on_failure=True,
+            validate=lambda path: validate_go_test_results(path.read_text()),
+        ),
+        Check(
+            "browser-telecom-insufficient",
+            "browser",
+            (
+                go,
+                "test",
+                "-tags",
+                "browser",
+                "-count=1",
+                "-json",
+                "-timeout=330s",
+                "./e2e",
+                "-run",
+                "^TestBrowserTelecomC1BInsufficientScenario$",
+            ),
+            timeout=360,
+            jsonl=True,
+            continue_on_failure=True,
+            validate=lambda path: validate_go_test_results(path.read_text()),
+        ),
+        Check(
+            "browser-d3-subject",
+            "browser",
+            (
+                go,
+                "test",
+                "-tags",
+                "browser",
+                "-count=1",
+                "-json",
+                "-timeout=210s",
+                "./e2e",
+                "-run",
+                "^TestBrowserD3SubjectControlledSourceSOD$",
+            ),
+            timeout=240,
+            jsonl=True,
+            continue_on_failure=True,
+            validate=lambda path: validate_go_test_results(path.read_text()),
+        ),
+        Check(
+            "browser-object-history",
+            "browser",
+            (
+                go,
+                "test",
+                "-tags",
+                "browser",
+                "-count=1",
+                "-json",
+                "-timeout=630s",
+                "./e2e",
+                "-run",
+                "^TestBrowserObjectHistory$",
+            ),
+            timeout=660,
+            jsonl=True,
+            continue_on_failure=True,
+            validate=lambda path: validate_go_test_results(path.read_text()),
+        ),
     )
 
 
@@ -561,8 +824,9 @@ def run_check(check, env, report, logs):
     process_group_cleanup = None
     try:
         with raw.open("w") as handle:
-            command_returncode, error_kind, error_detail, timed_out, process_group_cleanup = run_supervised(
-                command, check.cwd, env, handle, check.timeout)
+            command_returncode, error_kind, error_detail, timed_out, process_group_cleanup = (
+                run_supervised(command, check.cwd, env, handle, check.timeout)
+            )
     except OSError as error:
         with raw.open("a") as handle:
             handle.write(f"COMMAND SUPERVISION FAILED: {error}\n")
@@ -590,7 +854,9 @@ def run_check(check, env, report, logs):
                 handle.write(f"\n{failure}\n")
             display += f"\n{failure}"
     cleanup_failed = bool(process_group_cleanup and process_group_cleanup["remaining_live_members"])
-    passed = command_returncode == 0 and error_kind is None and failure is None and not cleanup_failed
+    passed = (
+        command_returncode == 0 and error_kind is None and failure is None and not cleanup_failed
+    )
     record = {
         "name": check.name,
         "stage": check.stage,
@@ -625,10 +891,15 @@ def run_check(check, env, report, logs):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--browser", action="store_true",
-                        help="require a real Chromium user journey")
-    parser.add_argument("--stage", choices=(*STAGES, "all"), default="all",
-                        help="run only one gate stage (default: all)")
+    parser.add_argument(
+        "--browser", action="store_true", help="require a real Chromium user journey"
+    )
+    parser.add_argument(
+        "--stage",
+        choices=(*STAGES, "all"),
+        default="all",
+        help="run only one gate stage (default: all)",
+    )
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     logs = OUT / "logs"
@@ -656,8 +927,7 @@ def main():
     }
     report["source_identity"] = source_identity(ROOT)
     checks = build_checks(go, bun)
-    selected = [check for check in checks
-                if selected_check(check, args.stage, args.browser)]
+    selected = [check for check in checks if selected_check(check, args.stage, args.browser)]
     if not selected:
         print(f"FAIL: stage {args.stage} selected no checks", file=sys.stderr)
         return 2
@@ -674,23 +944,24 @@ def main():
             executed.add(check.name)
             if not run_check(check, env, report, logs):
                 if not check.continue_on_failure:
-                    raise RuntimeError(
-                        f"{check.name} failed; see artifacts/logs/{check.name}.txt")
+                    raise RuntimeError(f"{check.name} failed; see artifacts/logs/{check.name}.txt")
                 failures.append(check.name)
         if failures:
             report["browser"] = "FAIL"
-            raise RuntimeError(
-                f"{', '.join(failures)} failed; see artifacts/logs/")
+            raise RuntimeError(f"{', '.join(failures)} failed; see artifacts/logs/")
         if source_identity(ROOT) != report["source_identity"]:
             if browser_selected:
                 report["browser"] = "FAIL"
             raise RuntimeError(
-                "Executable source changed during verification; rerun on a stable tree.")
-        report["browser"] = ("PASS" if browser_selected else
-                             "NOT_RUN: use make acceptance for release gate")
+                "Executable source changed during verification; rerun on a stable tree."
+            )
+        report["browser"] = (
+            "PASS" if browser_selected else "NOT_RUN: use make acceptance for release gate"
+        )
         report["passed"] = True
-        print("PASS: deterministic acceptance"
-              + (" including Chromium" if browser_selected else ""))
+        print(
+            "PASS: deterministic acceptance" + (" including Chromium" if browser_selected else "")
+        )
         return 0
     except (RuntimeError, subprocess.CalledProcessError) as error:
         report["error"] = str(error)
@@ -699,10 +970,16 @@ def main():
     finally:
         for check in selected:
             if check.name not in executed:
-                report["checks"].append({
-                    "name": check.name, "stage": check.stage, "status": "NOT_RUN",
-                    "returncode": None, "seconds": 0, "log": "",
-                })
+                report["checks"].append(
+                    {
+                        "name": check.name,
+                        "stage": check.stage,
+                        "status": "NOT_RUN",
+                        "returncode": None,
+                        "seconds": 0,
+                        "log": "",
+                    }
+                )
         report["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
         save_report(report)
         write_step_summary(report)

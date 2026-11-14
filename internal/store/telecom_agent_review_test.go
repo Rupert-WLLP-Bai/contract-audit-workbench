@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -115,6 +115,54 @@ func TestAgentReviewRulePackIdentityRejectsIncompleteCompilerMetadata(t *testing
 		})
 	}
 }
+
+func TestAgentReviewKnowledgeContextBudgetPreservesSameAttemptTakeoverInput(t *testing.T) {
+	const maxEvidenceBytes = 2 << 20
+	priorReadCalls := 1
+	takeoverBudget, takeoverReserved := agentReviewKnowledgeContextBudget(maxEvidenceBytes, priorReadCalls, true)
+	if takeoverBudget != maxEvidenceBytes || takeoverReserved != agentflow.KnowledgeReadMaxBytes {
+		t.Fatalf("same-attempt takeover changed the first-generation knowledge selection budget: context=%d reserved=%d",
+			takeoverBudget, takeoverReserved)
+	}
+	retryBudget, retryReserved := agentReviewKnowledgeContextBudget(maxEvidenceBytes, priorReadCalls, false)
+	if retryBudget != maxEvidenceBytes-agentflow.KnowledgeReadMaxBytes || retryReserved != takeoverReserved {
+		t.Fatalf("new attempt did not retain prior context reservation policy: context=%d reserved=%d",
+			retryBudget, retryReserved)
+	}
+}
+
+func TestRetryAttemptTakeoverAddsCurrentEventsAfterPriorAttemptBaseline(t *testing.T) {
+	baseElapsed := int64(700)
+	request := agentflow.Request{PriorEventCount: 11, PriorElapsedMS: &baseElapsed}
+	firstDuration, secondDuration, thirdDuration := int64(5), int64(0), int64(9)
+	events := []ExecutionEvent{
+		{Seq: 12, DurationMS: &firstDuration},
+		{Seq: 13, DurationMS: &secondDuration},
+		{Seq: 14, DurationMS: &thirdDuration},
+	}
+	if err := addCurrentAttemptRecoveryHistory(&request, events); err != nil {
+		t.Fatalf("merge retry attempt takeover history: %v", err)
+	}
+	if request.PriorEventCount != 14 || request.PriorElapsedMS == nil || *request.PriorElapsedMS != baseElapsed ||
+		request.CurrentAttemptPriorElapsedMS == nil || *request.CurrentAttemptPriorElapsedMS != 14 {
+		t.Fatalf("retry takeover overwrote its prior attempt baseline or lost current history: %+v", request)
+	}
+
+	request.PriorEventCount = 1023
+	request.CurrentAttemptPriorElapsedMS = nil
+	if err := addCurrentAttemptRecoveryHistory(&request, events); err == nil || request.PriorEventCount != 1023 || request.CurrentAttemptPriorElapsedMS != nil {
+		t.Fatalf("overflowing event sequence was clamped or partially applied: request=%+v err=%v", request, err)
+	}
+
+	request.PriorEventCount = 0
+	maxDuration, extraDuration := int64(1<<63-1), int64(1)
+	if err := addCurrentAttemptRecoveryHistory(&request, []ExecutionEvent{
+		{DurationMS: &maxDuration}, {DurationMS: &extraDuration},
+	}); err == nil || request.PriorEventCount != 0 || request.CurrentAttemptPriorElapsedMS != nil {
+		t.Fatalf("overflowing current-attempt elapsed was accepted or partially applied: request=%+v err=%v", request, err)
+	}
+}
+
 func TestAgentReviewPlannerFailurePreservesRuleFindingsAsPartial(t *testing.T) {
 	t.Setenv("AGENT_PLANNER_MODE", "fixture")
 	st, claim, caseID, _ := agentReviewFixture(t)

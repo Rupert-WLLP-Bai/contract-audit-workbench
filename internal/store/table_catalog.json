@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "schema_version": 44,
+  "schema_version": 45,
   "relations": [
     {
       "name": "activity",
@@ -443,6 +443,12 @@
     },
     {
       "name": "execution_agent_reviews",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "execution_agent_step_checkpoints",
       "classification": "TENANT_DATA",
       "tenant_column": true,
       "force_rls": true

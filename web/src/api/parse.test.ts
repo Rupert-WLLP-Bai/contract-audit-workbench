@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r4
+// Updated: 2026-11-14
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -55,13 +55,10 @@ describe("response parsers", () => {
       },
     });
     expect(parsed.operator_audit?.enabled).toBe(true);
-    expect(parsed.operator_audit?.connectors[0]?.connector_id).toBe(
-      "fixture.oss",
+    expect(parsed.operator_audit?.connectors[0]?.connector_id).toBe("fixture.oss");
+    expect(parseSettings({ operator_audit: { enabled: "true" } }).operator_audit?.enabled).toBe(
+      false,
     );
-    expect(
-      parseSettings({ operator_audit: { enabled: "true" } }).operator_audit
-        ?.enabled,
-    ).toBe(false);
   });
 
   it("parses the admin LLM endpoint without accepting a credential field", () => {
@@ -145,26 +142,65 @@ describe("response parsers", () => {
     const detail = parseCaseDetail({
       ...caseDefaults,
       id: "material-case",
-      materials: [{
-        material_id: "mat-a", role: "attachment", purpose: "supplement", legacy_status: "pending_confirmation",
-        legacy_selected: false, selected: false, current_document_id: "doc-a", current_version: 2,
-      }],
+      materials: [
+        {
+          material_id: "mat-a",
+          role: "attachment",
+          purpose: "supplement",
+          legacy_status: "pending_confirmation",
+          legacy_selected: false,
+          selected: false,
+          current_document_id: "doc-a",
+          current_version: 2,
+        },
+      ],
       material_versions: [
-        { material_id: "mat-a", version: 1, document_id: "doc-old", previous_document_id: null, created_at: "2026-10-30T00:00:00Z" },
-        { material_id: "mat-a", version: 2, document_id: "doc-a", previous_document_id: "doc-old", created_at: "2026-10-31T00:00:00Z" },
+        {
+          material_id: "mat-a",
+          version: 1,
+          document_id: "doc-old",
+          previous_document_id: null,
+          created_at: "2026-10-30T00:00:00Z",
+        },
+        {
+          material_id: "mat-a",
+          version: 2,
+          document_id: "doc-a",
+          previous_document_id: "doc-old",
+          created_at: "2026-10-31T00:00:00Z",
+        },
       ],
       material_selection: {
-        version: 3, status: "pending_confirmation", document_ids: [], candidate_document_ids: ["doc-a"], primary_material_id: null,
+        version: 3,
+        status: "pending_confirmation",
+        document_ids: [],
+        candidate_document_ids: ["doc-a"],
+        primary_material_id: null,
       },
     });
-    expect(detail.materials?.[0]).toMatchObject({ selected: false, legacy_selected: false, current_version: 2 });
+    expect(detail.materials?.[0]).toMatchObject({
+      selected: false,
+      legacy_selected: false,
+      current_version: 2,
+    });
     expect(detail.material_versions?.map((item) => item.document_id)).toEqual(["doc-old", "doc-a"]);
-    expect(detail.material_selection).toMatchObject({ status: "pending_confirmation", document_ids: [], candidate_document_ids: ["doc-a"] });
-    expect(() => parseCaseDetail({ ...caseDefaults, id: "partial", materials: [] })).toThrow("案件材料投影字段不完整");
+    expect(detail.material_selection).toMatchObject({
+      status: "pending_confirmation",
+      document_ids: [],
+      candidate_document_ids: ["doc-a"],
+    });
+    expect(() => parseCaseDetail({ ...caseDefaults, id: "partial", materials: [] })).toThrow(
+      "案件材料投影字段不完整",
+    );
   });
   it("parses upload replay identity and version", () => {
-    expect(parseUploadDocumentResult({ id: "doc-1", material_id: "mat-1", version: 1, replayed: true })).toEqual({
-      id: "doc-1", material_id: "mat-1", version: 1, replayed: true,
+    expect(
+      parseUploadDocumentResult({ id: "doc-1", material_id: "mat-1", version: 1, replayed: true }),
+    ).toEqual({
+      id: "doc-1",
+      material_id: "mat-1",
+      version: 1,
+      replayed: true,
     });
     expect(() => parseUploadDocumentResult({ id: "doc-1" })).toThrow();
   });
@@ -185,9 +221,7 @@ describe("response parsers", () => {
     const detail = parseCaseDetail({
       ...caseDefaults,
       id: "legacy-case",
-      documents: [
-        { id: "d1", digest: "original-digest", parse_status: "ready" },
-      ],
+      documents: [{ id: "d1", digest: "original-digest", parse_status: "ready" }],
     });
     const finding = parseFinding({
       id: "f1",
@@ -306,45 +340,105 @@ describe("response parsers", () => {
   });
 
   it("accepts an absent revision source and strictly parses complete attempt identities when present", () => {
-    const workspace = { run: { id: "current", case_id: "case", state: "completed" }, audit_events: [] };
-    const source = { current: { case_id: "case", run_id: "current", attempt_id: "current-attempt" },
-      previous: { case_id: "case", run_id: "previous", attempt_id: "previous-attempt" } };
+    const workspace = {
+      run: { id: "current", case_id: "case", state: "completed" },
+      audit_events: [],
+    };
+    const source = {
+      current: { case_id: "case", run_id: "current", attempt_id: "current-attempt" },
+      previous: { case_id: "case", run_id: "previous", attempt_id: "previous-attempt" },
+    };
     expect(parseReviewWorkspace(workspace).revision_comparison_source).toBeUndefined();
-    expect(parseReviewWorkspace({ ...workspace, revision_comparison_source: source }).revision_comparison_source).toEqual(source);
-    for (const invalid of [null, {}, { ...source, extra: true },
+    expect(
+      parseReviewWorkspace({ ...workspace, revision_comparison_source: source })
+        .revision_comparison_source,
+    ).toEqual(source);
+    for (const invalid of [
+      null,
+      {},
+      { ...source, extra: true },
       { ...source, previous: { ...source.previous, attempt_id: "" } },
-      { ...source, previous: { ...source.previous, extra: true } }]) {
-      expect(() => parseReviewWorkspace({ ...workspace, revision_comparison_source: invalid })).toThrow();
+      { ...source, previous: { ...source.previous, extra: true } },
+    ]) {
+      expect(() =>
+        parseReviewWorkspace({ ...workspace, revision_comparison_source: invalid }),
+      ).toThrow();
     }
   });
 
   it("distinguishes a top-level null attempt history from absent and conflicting attempt objects", () => {
     const base = { run: { id: "r1", case_id: "c1", state: "completed" }, audit_events: [] };
-    expect(parseReviewWorkspace(base)).toMatchObject({ review_attempts_reported: false, review_attempts_explicit_null: false });
-    expect(parseReviewWorkspace({ ...base, review_attempts: null })).toMatchObject({ review_attempts_reported: true, review_attempts_explicit_null: true });
-    expect(parseReviewWorkspace({ ...base, review_attempts: { attempt: null, attempts: [] } })).toMatchObject({ review_attempts_reported: true, review_attempts_explicit_null: false });
+    expect(parseReviewWorkspace(base)).toMatchObject({
+      review_attempts_reported: false,
+      review_attempts_explicit_null: false,
+    });
+    expect(parseReviewWorkspace({ ...base, review_attempts: null })).toMatchObject({
+      review_attempts_reported: true,
+      review_attempts_explicit_null: true,
+    });
+    expect(
+      parseReviewWorkspace({ ...base, review_attempts: { attempt: null, attempts: [] } }),
+    ).toMatchObject({ review_attempts_reported: true, review_attempts_explicit_null: false });
     expect(() => parseReviewWorkspace({ ...base, review_attempts: { attempts: [] } })).toThrow();
   });
 
   it("reads public attempts and frozen document identity without privileged diagnostics", () => {
     const attempt = {
-      id: "a1", run_id: "r1", ordinal: 1, retry_of_attempt_id: null,
-      state: "awaiting_human", accepted_at: "2026-10-21T06:00:00Z",
-      started_at: null, finished_at: null, history_kind: "frozen",
+      id: "a1",
+      run_id: "r1",
+      ordinal: 1,
+      retry_of_attempt_id: null,
+      state: "awaiting_human",
+      accepted_at: "2026-10-21T06:00:00Z",
+      started_at: null,
+      finished_at: null,
+      history_kind: "frozen",
       parsed_document_ids: ["parsed-1"],
     };
     const workspace = parseReviewWorkspace({
       run: { id: "r1", state: "awaiting_human", case_id: "c1" },
-      documents: [{ id: "d1", filename: "合同.txt", role: "draft_contract", parse_status: "ready", parsed_document: null, parsed_document_id: "parsed-1", text: "合同正文" }],
-      findings: [], execution: null, audit_events: [],
+      documents: [
+        {
+          id: "d1",
+          filename: "合同.txt",
+          role: "draft_contract",
+          parse_status: "ready",
+          parsed_document: null,
+          parsed_document_id: "parsed-1",
+          text: "合同正文",
+        },
+      ],
+      findings: [],
+      execution: null,
+      audit_events: [],
       review_attempts: { attempt, attempts: [attempt] },
-      business_events: [{ event_id: "event-1", run_id: "r1", actor: "u1", seq: 1, event_type: "review.started", correlation_ids: null }],
+      business_events: [
+        {
+          event_id: "event-1",
+          run_id: "r1",
+          actor: "u1",
+          seq: 1,
+          event_type: "review.started",
+          correlation_ids: null,
+        },
+      ],
     });
     expect(workspace.execution).toBeNull();
-    expect(workspace.review_attempts?.attempt).toMatchObject({ id: "a1", parsed_document_ids: ["parsed-1"], input_hash: null });
+    expect(workspace.review_attempts?.attempt).toMatchObject({
+      id: "a1",
+      parsed_document_ids: ["parsed-1"],
+      input_hash: null,
+    });
     expect(workspace.review_attempts?.attempts).toHaveLength(1);
-    expect(workspace.documents[0]).toMatchObject({ parsed_document: null, parsed_document_id: "parsed-1", text: "合同正文" });
-    expect(workspace.business_events?.[0]).toMatchObject({ event_id: "event-1", correlation_ids: [] });
+    expect(workspace.documents[0]).toMatchObject({
+      parsed_document: null,
+      parsed_document_id: "parsed-1",
+      text: "合同正文",
+    });
+    expect(workspace.business_events?.[0]).toMatchObject({
+      event_id: "event-1",
+      correlation_ids: [],
+    });
     expect(workspace.business_events?.[0]).not.toHaveProperty("hash");
   });
 
@@ -379,10 +473,7 @@ describe("response parsers", () => {
         queue_wait_ms: null,
       },
     });
-    expect(workspace.execution?.attempt.parsed_document_ids).toEqual([
-      "pd1",
-      "pd2",
-    ]);
+    expect(workspace.execution?.attempt.parsed_document_ids).toEqual(["pd1", "pd2"]);
   });
   it("preserves unknown token usage and null timestamps without converting them to zero", () => {
     const attempt = {
@@ -448,9 +539,7 @@ describe("response parsers", () => {
               finished_at: "2026-10-30T00:00:01.000Z",
               request_sha256: "request-digest",
               request_bytes: 42,
-              request_messages: [
-                { role: "user", content: "冻结原文", truncated: false },
-              ],
+              request_messages: [{ role: "user", content: "冻结原文", truncated: false }],
               request_truncated: false,
               response_sha256: "response-digest",
               response_bytes: 12,
@@ -532,9 +621,7 @@ describe("response parsers", () => {
   });
 
   it("keeps case summary defaults and rejects missing counts", () => {
-    expect(
-      parseCaseSummary({ id: "c1", document_count: 0, pending_decisions: 0 }),
-    ).toEqual({
+    expect(parseCaseSummary({ id: "c1", document_count: 0, pending_decisions: 0 })).toEqual({
       id: "c1",
       title: "未命名案件",
       contract_type: "",
@@ -569,27 +656,47 @@ describe("response parsers", () => {
     expect(() => parseCaseSummary({ document_count: 0, pending_decisions: 0 })).toThrow(
       "响应缺少 id",
     );
-    expect(() => parseCaseSummary({ id: "c1", pending_decisions: 0 })).toThrow(
-      "案件列表缺少数量",
-    );
-    expect(() => parseCaseSummary({ id: "c1", document_count: 0 })).toThrow(
-      "案件列表缺少数量",
-    );
+    expect(() => parseCaseSummary({ id: "c1", pending_decisions: 0 })).toThrow("案件列表缺少数量");
+    expect(() => parseCaseSummary({ id: "c1", document_count: 0 })).toThrow("案件列表缺少数量");
     expect(() => parseCaseSummary(null)).toThrow("case不是对象");
   });
 
   it("accepts optional case identity fields and rejects malformed fields", () => {
     const base = { id: "case-1", document_count: 0, pending_decisions: 0 };
-    expect(parseCaseSummary({ ...base, case_number: "案-1", customer: "客户", supplier: "供应商", owner_name: "张三" })).toMatchObject({
-      id: "case-1", case_number: "案-1", customer: "客户", supplier: "供应商", owner_name: "张三",
+    expect(
+      parseCaseSummary({
+        ...base,
+        case_number: "案-1",
+        customer: "客户",
+        supplier: "供应商",
+        owner_name: "张三",
+      }),
+    ).toMatchObject({
+      id: "case-1",
+      case_number: "案-1",
+      customer: "客户",
+      supplier: "供应商",
+      owner_name: "张三",
     });
     const detail = parseCaseDetail({
-      ...caseDefaults, id: "case-1", case_number: "案-1", customer: "客户", supplier: "供应商", owner_name: "张三",
+      ...caseDefaults,
+      id: "case-1",
+      case_number: "案-1",
+      customer: "客户",
+      supplier: "供应商",
+      owner_name: "张三",
     });
-    expect(detail).toMatchObject({ case_number: "案-1", customer: "客户", supplier: "供应商", owner_name: "张三" });
+    expect(detail).toMatchObject({
+      case_number: "案-1",
+      customer: "客户",
+      supplier: "供应商",
+      owner_name: "张三",
+    });
     expect(() => parseCaseSummary({ ...base, case_number: 1 })).toThrow(/case_number/);
     expect(() => parseCaseSummary({ ...base, owner_name: null })).toThrow(/owner_name/);
-    expect(() => parseCaseDetail({ ...caseDefaults, id: "case-1", owner_name: null })).toThrow(/owner_name/);
+    expect(() => parseCaseDetail({ ...caseDefaults, id: "case-1", owner_name: null })).toThrow(
+      /owner_name/,
+    );
   });
 
   it("parses case members and drops incomplete activity entries", () => {
@@ -685,10 +792,15 @@ describe("response parsers", () => {
       members: [],
     } as Record<string, unknown>;
     delete missingBusinessStatus.business_status;
-    expect(() => parseCaseDetail(missingBusinessStatus)).toThrow(
-      "响应缺少 business_status",
-    );
-    const missingArchive = { ...caseDefaults, id: "c1", business_line: "ENT", scenario: "s", business_status: "active", members: [] } as Record<string, unknown>;
+    expect(() => parseCaseDetail(missingBusinessStatus)).toThrow("响应缺少 business_status");
+    const missingArchive = {
+      ...caseDefaults,
+      id: "c1",
+      business_line: "ENT",
+      scenario: "s",
+      business_status: "active",
+      members: [],
+    } as Record<string, unknown>;
     delete missingArchive.archived_at;
     expect(() => parseCaseDetail(missingArchive)).toThrow("响应缺少 archived_at");
     expect(() =>
@@ -813,7 +925,9 @@ describe("response parsers", () => {
       version: 2,
       severity: "high",
       severity_source: { policy_id: "p1", clause: "3.1" },
-      decisions: [{ id: "d1", action: "confirm_risk", reason: "确认", actor: "未知人员", decided_at: "" }],
+      decisions: [
+        { id: "d1", action: "confirm_risk", reason: "确认", actor: "未知人员", decided_at: "" },
+      ],
     });
     expect(finding.evidence[0]?.status).toBe("missing");
     expect(
@@ -825,18 +939,10 @@ describe("response parsers", () => {
         decisions: "none",
       }),
     ).toMatchObject({ version: null, severity: null, evidence: [], decisions: [] });
-    expect(
-      parseFinding({ id: "f1", version: "2" }),
-    ).toMatchObject({ version: null });
-    expect(() =>
-      parseFinding({ id: "f1", evidence: [null] }),
-    ).toThrow("evidence不是对象");
-    expect(() =>
-      parseFinding({ id: "f1", decisions: [null] }),
-    ).toThrow("decision不是对象");
-    expect(() =>
-      parseFinding({ id: "f1", severity: 2 }),
-    ).toThrow("severity不是字符串或null");
+    expect(parseFinding({ id: "f1", version: "2" })).toMatchObject({ version: null });
+    expect(() => parseFinding({ id: "f1", evidence: [null] })).toThrow("evidence不是对象");
+    expect(() => parseFinding({ id: "f1", decisions: [null] })).toThrow("decision不是对象");
+    expect(() => parseFinding({ id: "f1", severity: 2 })).toThrow("severity不是字符串或null");
     expect(() =>
       parseFinding({
         id: "f1",
@@ -1032,11 +1138,13 @@ describe("response parser boundary values", () => {
       created_at: "",
       superseded: false,
     });
-    expect(parseCaseDetail({
-      ...caseDefaults,
-      id: "subject-context-changed",
-      subject_context_changed_after_latest_run: true,
-    }).subject_context_changed_after_latest_run).toBe(true);
+    expect(
+      parseCaseDetail({
+        ...caseDefaults,
+        id: "subject-context-changed",
+        subject_context_changed_after_latest_run: true,
+      }).subject_context_changed_after_latest_run,
+    ).toBe(true);
 
     const finding = parseFinding({
       id: "f1",
@@ -1059,7 +1167,14 @@ describe("response parser boundary values", () => {
     const client = parseActor({
       actor: { id: "u1", tenant_id: "t1", org_id: "o1", role: "", display_name: "" },
       audience: "client",
-      active_context: { membership_id: "m1", tenant_id: "t1", tenant_name: "租户一", org_id: "o1", org_name: "组织一", context_version: "1" },
+      active_context: {
+        membership_id: "m1",
+        tenant_id: "t1",
+        tenant_name: "租户一",
+        org_id: "o1",
+        org_name: "组织一",
+        context_version: "1",
+      },
       csrf_token: "csrf-client",
       principal_id: "principal-u1",
       context_switch_enabled: false,
@@ -1074,7 +1189,14 @@ describe("response parser boundary values", () => {
       parseActor({
         actor: { id: "u2", tenant_id: "t1", org_id: "o1" },
         audience: "admin",
-        active_context: { membership_id: "m2", tenant_id: "t1", tenant_name: "租户一", org_id: "o1", org_name: "组织一", context_version: "2" },
+        active_context: {
+          membership_id: "m2",
+          tenant_id: "t1",
+          tenant_name: "租户一",
+          org_id: "o1",
+          org_name: "组织一",
+          context_version: "2",
+        },
         csrf_token: "csrf-admin",
         principal_id: "principal-u2",
         context_switch_enabled: false,
@@ -1155,9 +1277,7 @@ describe("response parser boundary values", () => {
     });
     expect(settings.model).toEqual({ status: "", label: "" });
     expect(settings.redaction_policy).toBe("");
-    expect(settings.users).toEqual([
-      { id: "u1", display_name: "", role: "" },
-    ]);
+    expect(settings.users).toEqual([{ id: "u1", display_name: "", role: "" }]);
     expect(settings.execution).toMatchObject({
       total_attempts: 1,
       unknown_usage_calls: 0,
@@ -1175,9 +1295,9 @@ describe("response parser boundary values", () => {
   });
 
   it("keeps an empty acceptance job id", () => {
-    expect(
-      parseAcceptedReview({ id: "a1", attempt_id: "a2", job_id: "" }),
-    ).toMatchObject({ job_id: "" });
+    expect(parseAcceptedReview({ id: "a1", attempt_id: "a2", job_id: "" })).toMatchObject({
+      job_id: "",
+    });
   });
 
   it("rejects a zero remediation version", () => {
@@ -1268,9 +1388,7 @@ describe("response parser boundary values", () => {
             name: "审查模板",
             version: "1",
             digest: "digest-1",
-            fields: [
-              { key: "title", label: "标题", required: true, type: "text" },
-            ],
+            fields: [{ key: "title", label: "标题", required: true, type: "text" }],
           },
         ],
       }),
@@ -1280,9 +1398,7 @@ describe("response parser boundary values", () => {
         name: "审查模板",
         version: "1",
         digest: "digest-1",
-        fields: [
-          { key: "title", label: "标题", required: true, type: "text" },
-        ],
+        fields: [{ key: "title", label: "标题", required: true, type: "text" }],
       },
     ]);
   });
@@ -1304,6 +1420,72 @@ describe("response parser boundary values", () => {
       }),
     );
     expect(workspace.execution?.agent_review).toBeNull();
+  });
+
+  it("keeps a frozen planner and governed knowledge selection on diagnostics", () => {
+    const diagnostics = parseReviewDiagnostics({
+      case_id: "c1",
+      run_id: "r1",
+      execution: null,
+      audit_events: [],
+      snapshot: {
+        document_ids: ["doc-1"],
+        parsed_document_ids: ["parse-1"],
+        parse_selection_hash: "parse-hash",
+        parser_configuration_id: "parser-1",
+        rule_set_hash: "rules",
+        playbook_hash: "playbook",
+        model_ref: "panda-local/model",
+        comparator_ref: null,
+        governed_knowledge: {
+          snapshot_sha256: "sha",
+          rule_pack: { pack_id: "telecom-governed", version: "1", content_sha256: "pack" },
+          required_policies: [
+            {
+              ref: { knowledge_id: "policy-1", version_id: "v1" },
+              kind: "policy",
+              selection_reason: "in scope",
+            },
+          ],
+          optional_candidates: [],
+        },
+        planner: {
+          mode: "deterministic_planner",
+          configuration_id: "planner-id",
+          model_configuration_id: null,
+          prompt_version: "scope-tool-selection/v5",
+          schema_version: "agent-plan/v4",
+          runtime_version: "runtime",
+          tool_catalog_version: "catalog",
+          max_rounds: 2,
+        },
+      },
+    });
+    expect(diagnostics.snapshot?.planner?.mode).toBe("deterministic_planner");
+    expect(diagnostics.snapshot?.planner?.model_configuration_id).toBeNull();
+    expect(diagnostics.snapshot?.parsed_document_ids).toEqual(["parse-1"]);
+    expect(diagnostics.snapshot?.governed_knowledge?.rulepack?.id).toBe("telecom-governed");
+    expect(diagnostics.snapshot?.governed_knowledge?.selections).toEqual([
+      expect.objectContaining({ knowledge_id: "policy-1", required: true }),
+    ]);
+    expect(diagnostics.execution).toBeNull();
+  });
+
+  it("drops a malformed planner without dropping the rest of the diagnostics snapshot", () => {
+    const diagnostics = parseReviewDiagnostics({
+      case_id: "c1",
+      run_id: "r1",
+      execution: null,
+      audit_events: [],
+      snapshot: {
+        document_ids: ["doc-1"],
+        planner: { mode: "not-a-mode" },
+        governed_knowledge: null,
+      },
+    });
+    expect(diagnostics.snapshot?.document_ids).toEqual(["doc-1"]);
+    expect(diagnostics.snapshot?.planner).toBeUndefined();
+    expect(diagnostics.snapshot?.governed_knowledge).toBeNull();
   });
 
   it("parses review diagnostics with an empty audit event list", () => {

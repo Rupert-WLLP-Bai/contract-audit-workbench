@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r7
+// Updated: 2026-11-14
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -136,9 +136,14 @@ type Client struct {
 	configurationID string
 }
 
+// DefaultProviderRequestTimeout bounds a provider call through the gateway.
+// DefaultRequestTimeout adds time for gateway processing and response delivery.
+const DefaultProviderRequestTimeout = 10 * time.Minute
+const DefaultRequestTimeout = DefaultProviderRequestTimeout + 30*time.Second
+
 // New returns a client. The timeout covers one review or one image.
 func New(cfg Config) *Client {
-	return NewWithHTTPClient(cfg, &http.Client{Timeout: 120 * time.Second})
+	return NewWithHTTPClient(cfg, &http.Client{Timeout: DefaultRequestTimeout})
 }
 
 // NewWithHTTPClient returns a client that sends every call through the
@@ -290,6 +295,7 @@ func (c *Client) Generate(ctx context.Context, messages []*schema.Message, _ ...
 	if err := validatePlannerMessages(ctx, messages); err != nil {
 		return nil, err
 	}
+	ctx = WithCallPurpose(ctx, CallPurposePlanner)
 	completion, err := c.postChatMessages(ctx, c.cfg.ChatModel, []chatMessage{
 		{Role: string(messages[0].Role), Content: messages[0].Content},
 		{Role: string(messages[1].Role), Content: messages[1].Content},
@@ -354,6 +360,7 @@ func (c *Client) Transcribe(ctx context.Context, media string, body []byte) (str
 		return "", fmt.Errorf("%w: missing context", ErrRequest)
 	}
 	ctx = context.WithValue(ctx, transcriptionCallKey{}, true)
+	ctx = WithCallPurpose(ctx, CallPurposeOCR)
 	if len(body) == 0 {
 		return "", fmt.Errorf("%w: empty image", ErrUnusable)
 	}

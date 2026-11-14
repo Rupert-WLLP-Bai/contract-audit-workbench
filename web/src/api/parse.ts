@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r5
+// Updated: 2026-11-14
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -33,6 +33,9 @@ import type {
   ExecutionUsage,
   Finding,
   FindingVerification,
+  FrozenKnowledgeSelectionView,
+  FrozenKnowledgeView,
+  FrozenRulePackIdentity,
   FindingCounts,
   HumanDecision,
   LLMEndpointView,
@@ -66,12 +69,11 @@ import { isRecord } from "./guards";
 import { enumValue, invalidResponse } from "./respond";
 import { parseAgentReview } from "./agent-review";
 import { parseBusinessAgentReview } from "./business-agent-review";
+import { parseContractFacts } from "./contract-facts";
 import { wireEnums } from "./wire.generated";
 function nonNegativeIntegerOrNull(value: unknown): number | null {
   const result = numberOrNull(value);
-  return result !== null && Number.isInteger(result) && result >= 0
-    ? result
-    : null;
+  return result !== null && Number.isInteger(result) && result >= 0 ? result : null;
 }
 
 function requiredCount(record: Record<string, unknown>, key: string): number {
@@ -80,10 +82,7 @@ function requiredCount(record: Record<string, unknown>, key: string): number {
   return result;
 }
 
-function nullableString(
-  record: Record<string, unknown>,
-  key: string,
-): string | null {
+function nullableString(record: Record<string, unknown>, key: string): string | null {
   const value = record[key];
   return typeof value === "string" ? value : null;
 }
@@ -94,55 +93,34 @@ function stringArrayValue(value: unknown, key: string): string[] {
   return value as string[];
 }
 
-function stringArrayOrEmpty(
-  record: Record<string, unknown>,
-  key: string,
-): string[] {
+function stringArrayOrEmpty(record: Record<string, unknown>, key: string): string[] {
   const value = record[key];
-  return value === undefined || value === null
-    ? []
-    : stringArrayValue(value, key);
+  return value === undefined || value === null ? [] : stringArrayValue(value, key);
 }
 
-function requiredBoolean(
-  record: Record<string, unknown>,
-  key: string,
-): boolean {
+function requiredBoolean(record: Record<string, unknown>, key: string): boolean {
   if (typeof record[key] !== "boolean") fail(`响应缺少有效的 ${key}`);
   return record[key] as boolean;
 }
 
-function requiredStringArray(
-  record: Record<string, unknown>,
-  key: string,
-): string[] {
+function requiredStringArray(record: Record<string, unknown>, key: string): string[] {
   return stringArrayValue(record[key], key);
 }
 
-function requiredNullableString(
-  record: Record<string, unknown>,
-  key: string,
-): string | null {
+function requiredNullableString(record: Record<string, unknown>, key: string): string | null {
   if (!Object.hasOwn(record, key)) fail(`响应缺少 ${key}`);
   const value = record[key];
-  if (value !== null && typeof value !== "string")
-    fail(`${key}不是字符串或null`);
+  if (value !== null && typeof value !== "string") fail(`${key}不是字符串或null`);
   return value as string | null;
 }
 
-function optionalNullableString(
-  record: Record<string, unknown>,
-  key: string,
-): string | null {
+function optionalNullableString(record: Record<string, unknown>, key: string): string | null {
   if (!(key in record) || record[key] === null) return null;
   if (typeof record[key] !== "string") fail(`${key}不是字符串或null`);
   return record[key] as string;
 }
 
-function requiredPositiveInteger(
-  record: Record<string, unknown>,
-  key: string,
-): number {
+function requiredPositiveInteger(record: Record<string, unknown>, key: string): number {
   const value = requiredCount(record, key);
   if (value < 1) fail(`${key}必须大于0`);
   return value;
@@ -187,12 +165,13 @@ function parseUsage(value: unknown): ExecutionUsage | null {
 }
 function parseReviewScope(value: unknown) {
   if (!isRecord(value)) return undefined;
-  const id = optionalString(value, "id"), rule_set_id = optionalString(value, "rule_set_id");
-  const rule_set_version = optionalString(value, "rule_set_version"), rule_set_hash = optionalString(value, "rule_set_hash");
+  const id = optionalString(value, "id"),
+    rule_set_id = optionalString(value, "rule_set_id");
+  const rule_set_version = optionalString(value, "rule_set_version"),
+    rule_set_hash = optionalString(value, "rule_set_hash");
   if (!id || !rule_set_id || !rule_set_version || !rule_set_hash) return undefined;
   return { id, rule_set_id, rule_set_version, rule_set_hash };
 }
-
 
 function parseExecutionAttempt(value: unknown): ExecutionAttempt {
   const record = recordOf(value, "attempt");
@@ -212,10 +191,17 @@ function parseExecutionAttempt(value: unknown): ExecutionAttempt {
     review_scope: parseReviewScope(record.review_scope),
     history_kind: requiredString(record, "history_kind"),
     frozen_result_available: record.frozen_result_available === true,
-    outcome: isRecord(record.outcome) && typeof record.outcome.reason === "string" &&
-      typeof record.outcome.agent_stage === "string" && typeof record.outcome.retry_cause === "string"
-      ? { reason: record.outcome.reason, agent_stage: record.outcome.agent_stage, retry_cause: record.outcome.retry_cause }
-      : undefined,
+    outcome:
+      isRecord(record.outcome) &&
+      typeof record.outcome.reason === "string" &&
+      typeof record.outcome.agent_stage === "string" &&
+      typeof record.outcome.retry_cause === "string"
+        ? {
+            reason: record.outcome.reason,
+            agent_stage: record.outcome.agent_stage,
+            retry_cause: record.outcome.retry_cause,
+          }
+        : undefined,
   };
 }
 
@@ -249,11 +235,13 @@ function parseModelCallTrace(value: unknown): ModelCallTrace | null {
     ? value.request_messages.flatMap((entry) => {
         if (!isRecord(entry) || typeof entry.role !== "string" || typeof entry.content !== "string")
           return [];
-        return [{
-          role: entry.role,
-          content: entry.content,
-          truncated: entry.truncated === true,
-        }];
+        return [
+          {
+            role: entry.role,
+            content: entry.content,
+            truncated: entry.truncated === true,
+          },
+        ];
       })
     : [];
   return {
@@ -288,19 +276,13 @@ function requiredString(record: Record<string, unknown>, key: string): string {
   if (typeof value !== "string" || value.trim() === "") fail(`响应缺少 ${key}`);
   return value;
 }
-function requiredStringValue(
-  record: Record<string, unknown>,
-  key: string,
-): string {
+function requiredStringValue(record: Record<string, unknown>, key: string): string {
   const value = record[key];
   if (typeof value !== "string") fail(`响应缺少 ${key}`);
   return value;
 }
 
-function optionalString(
-  record: Record<string, unknown>,
-  key: string,
-): string | null {
+function optionalString(record: Record<string, unknown>, key: string): string | null {
   const value = record[key];
   if (typeof value !== "string") return null;
   return value;
@@ -372,10 +354,14 @@ export function parseCaseSummary(value: unknown): CaseSummary {
     scenario: optionalString(record, "scenario") ?? undefined,
     business_status: optionalString(record, "business_status") ?? undefined,
     archived_at: nullableString(record, "archived_at"),
-    ...(record.case_number === undefined ? {} : { case_number: requiredStringValue(record, "case_number") }),
+    ...(record.case_number === undefined
+      ? {}
+      : { case_number: requiredStringValue(record, "case_number") }),
     ...(record.customer === undefined ? {} : { customer: requiredStringValue(record, "customer") }),
     ...(record.supplier === undefined ? {} : { supplier: requiredStringValue(record, "supplier") }),
-    ...(record.owner_name === undefined ? {} : { owner_name: requiredStringValue(record, "owner_name") }),
+    ...(record.owner_name === undefined
+      ? {}
+      : { owner_name: requiredStringValue(record, "owner_name") }),
   };
 }
 
@@ -417,10 +403,7 @@ export function parseCaseList(value: unknown): CaseSummary[] {
   return items(value, "案件列表", "案件列表", parseCaseSummary);
 }
 
-function nullableValueString(
-  record: Record<string, unknown>,
-  key: string,
-): string | null {
+function nullableValueString(record: Record<string, unknown>, key: string): string | null {
   const value = nullableString(record, key);
   return value !== null && value.trim() !== "" ? value : null;
 }
@@ -464,18 +447,11 @@ function parseDocument(value: unknown): DocumentVersion {
   };
 }
 
-function recordList<T>(
-  value: unknown,
-  parse: (entry: unknown) => T,
-): T[] {
+function recordList<T>(value: unknown, parse: (entry: unknown) => T): T[] {
   return Array.isArray(value) ? value.map(parse) : [];
 }
 
-function requiredRecordList<T>(
-  value: unknown,
-  field: string,
-  parse: (entry: unknown) => T,
-): T[] {
+function requiredRecordList<T>(value: unknown, field: string, parse: (entry: unknown) => T): T[] {
   if (!Array.isArray(value)) fail(`${field}不是数组`);
   return value.map(parse);
 }
@@ -496,9 +472,7 @@ function parseActivity(value: unknown): ActivityItem | null {
 
 function parseActivityItems(value: unknown): ActivityItem[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .map(parseActivity)
-    .filter((item): item is ActivityItem => item !== null);
+  return value.map(parseActivity).filter((item): item is ActivityItem => item !== null);
 }
 
 function parseCounts(value: unknown): FindingCounts | null {
@@ -531,8 +505,14 @@ function parseMembers(value: unknown[]): CaseDetail["members"] {
 function parseMaterialProjection(value: unknown): MaterialProjection {
   const record = recordOf(value, "material");
   const role = enumValue(requiredString(record, "role"), wireEnums["MaterialProjection.role"]);
-  const purpose = enumValue(requiredString(record, "purpose"), wireEnums["MaterialProjection.purpose"]);
-  const legacyStatus = enumValue(requiredString(record, "legacy_status"), wireEnums["MaterialProjection.legacy_status"]);
+  const purpose = enumValue(
+    requiredString(record, "purpose"),
+    wireEnums["MaterialProjection.purpose"],
+  );
+  const legacyStatus = enumValue(
+    requiredString(record, "legacy_status"),
+    wireEnums["MaterialProjection.legacy_status"],
+  );
   if (role === null) fail("material.role 无效");
   if (purpose === null) fail("material.purpose 无效");
   if (legacyStatus === null) fail("material.legacy_status 无效");
@@ -561,14 +541,22 @@ function parseMaterialVersionProjection(value: unknown): MaterialVersionProjecti
 
 export function parseMaterialSelectionProjection(value: unknown): MaterialSelectionProjection {
   const record = recordOf(value, "material_selection");
-  const status = enumValue(requiredString(record, "status"), wireEnums["MaterialSelectionProjection.status"]);
+  const status = enumValue(
+    requiredString(record, "status"),
+    wireEnums["MaterialSelectionProjection.status"],
+  );
   if (status === null) fail("material_selection.status 无效");
   return {
     version: requiredCount(record, "version"),
     status,
     document_ids: stringArrayValue(record.document_ids, "material_selection.document_ids"),
     ...(Object.hasOwn(record, "candidate_document_ids")
-      ? { candidate_document_ids: stringArrayValue(record.candidate_document_ids, "material_selection.candidate_document_ids") }
+      ? {
+          candidate_document_ids: stringArrayValue(
+            record.candidate_document_ids,
+            "material_selection.candidate_document_ids",
+          ),
+        }
       : {}),
     primary_material_id: optionalNullableString(record, "primary_material_id"),
   };
@@ -594,10 +582,14 @@ export function parseCaseDetail(value: unknown): CaseDetail {
   return {
     id: requiredString(record, "id"),
     title: optionalString(record, "title") ?? "未命名案件",
-    ...(record.case_number === undefined ? {} : { case_number: requiredStringValue(record, "case_number") }),
+    ...(record.case_number === undefined
+      ? {}
+      : { case_number: requiredStringValue(record, "case_number") }),
     ...(record.customer === undefined ? {} : { customer: requiredStringValue(record, "customer") }),
     ...(record.supplier === undefined ? {} : { supplier: requiredStringValue(record, "supplier") }),
-    ...(record.owner_name === undefined ? {} : { owner_name: requiredStringValue(record, "owner_name") }),
+    ...(record.owner_name === undefined
+      ? {}
+      : { owner_name: requiredStringValue(record, "owner_name") }),
     contract_type: optionalString(record, "contract_type") ?? "",
     created_at: optionalString(record, "created_at") ?? "",
     updated_at: optionalString(record, "updated_at") ?? "",
@@ -605,7 +597,11 @@ export function parseCaseDetail(value: unknown): CaseDetail {
     ...(projectionPresence.every(Boolean)
       ? {
           materials: requiredRecordList(record.materials, "materials", parseMaterialProjection),
-          material_versions: requiredRecordList(record.material_versions, "material_versions", parseMaterialVersionProjection),
+          material_versions: requiredRecordList(
+            record.material_versions,
+            "material_versions",
+            parseMaterialVersionProjection,
+          ),
           material_selection: parseMaterialSelectionProjection(record.material_selection),
         }
       : {}),
@@ -616,7 +612,9 @@ export function parseCaseDetail(value: unknown): CaseDetail {
     revision_pending: record.revision_pending === true,
     configuration_pending: record.configuration_pending === true,
     ...(typeof record.subject_context_changed_after_latest_run === "boolean"
-      ? { subject_context_changed_after_latest_run: record.subject_context_changed_after_latest_run }
+      ? {
+          subject_context_changed_after_latest_run: record.subject_context_changed_after_latest_run,
+        }
       : {}),
     business_line: requiredStringValue(record, "business_line"),
     scenario: requiredStringValue(record, "scenario"),
@@ -665,9 +663,7 @@ function parseDecision(value: unknown): HumanDecision {
   };
 }
 
-function parseFindingSeveritySource(
-  value: unknown,
-): FindingSeveritySource | null {
+function parseFindingSeveritySource(value: unknown): FindingSeveritySource | null {
   if (value === null || value === undefined) return null;
   const record = recordOf(value, "finding severity source");
   return {
@@ -682,9 +678,7 @@ export function parseFinding(value: unknown): Finding {
   const record = recordOf(value, "finding");
   const version = numberOrNull(record.version);
   const verification: FindingVerification =
-    typeof record.unverified_reason === "string"
-      ? "unverified"
-      : "unknown";
+    typeof record.unverified_reason === "string" ? "unverified" : "unknown";
   return {
     id: requiredString(record, "id"),
     origin: optionalString(record, "origin") ?? "unknown",
@@ -723,9 +717,7 @@ function parseReviewDocument(value: unknown): ReviewDocument {
     parsed_document_id: optionalString(record, "parsed_document_id"),
     text: optionalString(record, "text"),
     clauses: Array.isArray(record.clauses)
-      ? record.clauses
-          .map(parseClause)
-          .filter((item): item is ClauseNode => item !== null)
+      ? record.clauses.map(parseClause).filter((item): item is ClauseNode => item !== null)
       : [],
   };
 }
@@ -747,15 +739,12 @@ function parseReviewRun(value: unknown): ReviewRun {
 function parseExecution(value: unknown): Execution | null {
   if (value === null || value === undefined) return null;
   const record = recordOf(value, "execution");
-  if (record.schema_version !== "audit-execution/v1")
-    fail("不支持的执行记录版本");
+  if (record.schema_version !== "audit-execution/v1") fail("不支持的执行记录版本");
   const attempt = parseExecutionAttempt(record.attempt);
   const attempts = Array.isArray(record.attempts)
     ? record.attempts.map(parseExecutionAttempt)
     : [attempt];
-  const events = Array.isArray(record.events)
-    ? record.events.map(parseExecutionEvent)
-    : [];
+  const events = Array.isArray(record.events) ? record.events.map(parseExecutionEvent) : [];
   return {
     schema_version: "audit-execution/v1",
     attempt,
@@ -768,9 +757,7 @@ function parseExecution(value: unknown): Execution | null {
     usage: parseUsage(record.usage),
     all_attempts_usage: parseUsage(record.all_attempts_usage),
     duration_ms: nonNegativeIntegerOrNull(record.duration_ms),
-    first_verified_finding_ms: nonNegativeIntegerOrNull(
-      record.first_verified_finding_ms,
-    ),
+    first_verified_finding_ms: nonNegativeIntegerOrNull(record.first_verified_finding_ms),
     queue_wait_ms: nonNegativeIntegerOrNull(record.queue_wait_ms),
   };
 }
@@ -802,58 +789,158 @@ export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
   if (!Array.isArray(record.audit_events)) fail("审查工作区缺少 audit_events");
   const run = parseReviewRun(record.run);
   const reviewAttempts = parseReviewAttempts(record.review_attempts);
-  const legalAuthorities = record.legal_authorities === undefined
-    ? undefined
-    : parseFrozenLegalReviewProjection(record.legal_authorities);
-  const source = record.revision_comparison_source === undefined
-    ? undefined : parseRevisionComparisonSource(record.revision_comparison_source);
-  if (legalAuthorities && (legalAuthorities.run_id !== run.id ||
-      legalAuthorities.attempt_id !== reviewAttempts?.attempt?.id)) {
+  const legalAuthorities =
+    record.legal_authorities === undefined
+      ? undefined
+      : parseFrozenLegalReviewProjection(record.legal_authorities);
+  const source =
+    record.revision_comparison_source === undefined
+      ? undefined
+      : parseRevisionComparisonSource(record.revision_comparison_source);
+  if (
+    legalAuthorities &&
+    (legalAuthorities.run_id !== run.id ||
+      legalAuthorities.attempt_id !== reviewAttempts?.attempt?.id)
+  ) {
     fail("冻结法律依据不属于当前审查及所选执行记录");
   }
   return {
     run,
-    documents: Array.isArray(record.documents)
-      ? record.documents.map(parseReviewDocument)
-      : [],
-    findings: Array.isArray(record.findings)
-      ? record.findings.map(parseFinding)
-      : [],
+    documents: Array.isArray(record.documents) ? record.documents.map(parseReviewDocument) : [],
+    findings: Array.isArray(record.findings) ? record.findings.map(parseFinding) : [],
     review_attempts: reviewAttempts,
     review_attempts_reported: Object.prototype.hasOwnProperty.call(record, "review_attempts"),
     review_attempts_explicit_null: record.review_attempts === null,
     agent_review: parseBusinessAgentReview(record.agent_review),
+    contract_facts: parseContractFacts(record.contract_facts),
     execution: parseExecution(record.execution),
     snapshot: parseSnapshot(record.snapshot),
-    evaluations: Array.isArray(record.evaluations)
-      ? record.evaluations.map(parseEvaluation)
-      : [],
+    evaluations: Array.isArray(record.evaluations) ? record.evaluations.map(parseEvaluation) : [],
     audit_events: record.audit_events.map(parseAuditEvent),
     business_events: Array.isArray(record.business_events)
       ? record.business_events.map(parseBusinessAuditEvent)
       : [],
     previous_run_id: optionalString(record, "previous_run_id"),
-    revisions: Array.isArray(record.revisions)
-      ? record.revisions.map(parseRevision)
-      : [],
-    revision_comparison_reason: optionalString(
-      record,
-      "revision_comparison_reason",
-    ),
+    revisions: Array.isArray(record.revisions) ? record.revisions.map(parseRevision) : [],
+    revision_comparison_reason: optionalString(record, "revision_comparison_reason"),
     ...(legalAuthorities === undefined ? {} : { legal_authorities: legalAuthorities }),
     ...(source === undefined ? {} : { revision_comparison_source: source }),
   };
 }
 
-function parseRevisionComparisonSource(value: unknown): NonNullable<ReviewWorkspace["revision_comparison_source"]> {
+function parseRevisionComparisonSource(
+  value: unknown,
+): NonNullable<ReviewWorkspace["revision_comparison_source"]> {
   const source = recordOf(value, "修订对照来源");
-  if (Object.keys(source).some((key) => key !== "current" && key !== "previous")) fail("修订对照来源格式错误");
+  if (Object.keys(source).some((key) => key !== "current" && key !== "previous"))
+    fail("修订对照来源格式错误");
   function side(value: unknown) {
     const item = recordOf(value, "修订对照来源身份");
-    if (Object.keys(item).some((key) => !["case_id", "run_id", "attempt_id"].includes(key))) fail("修订对照来源身份格式错误");
-    return { case_id: requiredString(item, "case_id"), run_id: requiredString(item, "run_id"), attempt_id: requiredString(item, "attempt_id") };
+    if (Object.keys(item).some((key) => !["case_id", "run_id", "attempt_id"].includes(key)))
+      fail("修订对照来源身份格式错误");
+    return {
+      case_id: requiredString(item, "case_id"),
+      run_id: requiredString(item, "run_id"),
+      attempt_id: requiredString(item, "attempt_id"),
+    };
   }
   return { current: side(source.current), previous: side(source.previous) };
+}
+
+const FROZEN_PLANNER_MODES = new Set([
+  "fixed_chain",
+  "deterministic_planner",
+  "model_fixture",
+  "model_live",
+]);
+
+function optionalIDList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const ids = value.filter((item): item is string => typeof item === "string" && item !== "");
+  return ids.length > 0 ? ids : undefined;
+}
+
+function parseFrozenPlanner(value: unknown): RunSnapshot["planner"] {
+  if (!isRecord(value)) return undefined;
+  const mode = typeof value.mode === "string" ? value.mode : "";
+  const configurationID = typeof value.configuration_id === "string" ? value.configuration_id : "";
+  const promptVersion = typeof value.prompt_version === "string" ? value.prompt_version : "";
+  const schemaVersion = typeof value.schema_version === "string" ? value.schema_version : "";
+  const runtimeVersion = typeof value.runtime_version === "string" ? value.runtime_version : "";
+  const toolCatalogVersion =
+    typeof value.tool_catalog_version === "string" ? value.tool_catalog_version : "";
+  const rounds = value.max_rounds;
+  const modelID = value.model_configuration_id;
+  if (
+    !FROZEN_PLANNER_MODES.has(mode) ||
+    configurationID === "" ||
+    promptVersion === "" ||
+    schemaVersion === "" ||
+    runtimeVersion === "" ||
+    toolCatalogVersion === "" ||
+    typeof rounds !== "number" ||
+    !Number.isInteger(rounds) ||
+    rounds < 0 ||
+    (modelID !== null && typeof modelID !== "string")
+  ) {
+    return undefined;
+  }
+  return {
+    mode,
+    configuration_id: configurationID,
+    model_configuration_id: typeof modelID === "string" && modelID !== "" ? modelID : null,
+    prompt_version: promptVersion,
+    schema_version: schemaVersion,
+    runtime_version: runtimeVersion,
+    tool_catalog_version: toolCatalogVersion,
+    max_rounds: rounds,
+  };
+}
+
+function parseFrozenKnowledge(value: unknown): FrozenKnowledgeView | null | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return null;
+  const snapshotSHA = typeof value.snapshot_sha256 === "string" ? value.snapshot_sha256 : "";
+  let rulepack: FrozenRulePackIdentity | null = null;
+  if (isRecord(value.rule_pack)) {
+    const id = value.rule_pack.pack_id;
+    const version = value.rule_pack.version;
+    const hash = value.rule_pack.content_sha256;
+    if (typeof id === "string" && id !== "" && typeof version === "string" && version !== "") {
+      rulepack = {
+        id,
+        version,
+        content_sha256: typeof hash === "string" ? hash : "",
+      };
+    }
+  }
+  const selections: FrozenKnowledgeSelectionView[] = [];
+  for (const key of ["required_policies", "optional_candidates"] as const) {
+    const list = value[key];
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      if (!isRecord(item) || !isRecord(item.ref)) continue;
+      const knowledgeID = item.ref.knowledge_id;
+      const versionID = item.ref.version_id;
+      if (
+        typeof knowledgeID !== "string" ||
+        knowledgeID === "" ||
+        typeof versionID !== "string" ||
+        versionID === ""
+      ) {
+        continue;
+      }
+      selections.push({
+        knowledge_id: knowledgeID,
+        version_id: versionID,
+        kind: typeof item.kind === "string" ? item.kind : "",
+        selection_reason: typeof item.selection_reason === "string" ? item.selection_reason : "",
+        required: key === "required_policies",
+      });
+    }
+  }
+  if (snapshotSHA === "" && rulepack === null && selections.length === 0) return null;
+  return { snapshot_sha256: snapshotSHA, rulepack, selections };
 }
 
 function parseSnapshot(value: unknown): RunSnapshot | null {
@@ -867,10 +954,18 @@ function parseSnapshot(value: unknown): RunSnapshot | null {
     if (!versionId || !/^[0-9a-f]{64}$/.test(digest)) fail("运行配置快照格式错误");
     adoptedTenantConfig = { version_id: versionId, digest };
   }
+  const planner = parseFrozenPlanner(value.planner);
+  const governedKnowledge = parseFrozenKnowledge(value.governed_knowledge);
+  const parsedDocumentIDs = optionalIDList(value.parsed_document_ids);
+  const parseSelectionHash = optionalString(value, "parse_selection_hash");
+  const parserConfigurationID = optionalString(value, "parser_configuration_id");
   return {
     document_ids: Array.isArray(value.document_ids)
       ? value.document_ids.filter((id): id is string => typeof id === "string")
       : [],
+    ...(parsedDocumentIDs === undefined ? {} : { parsed_document_ids: parsedDocumentIDs }),
+    ...(parseSelectionHash ? { parse_selection_hash: parseSelectionHash } : {}),
+    ...(parserConfigurationID ? { parser_configuration_id: parserConfigurationID } : {}),
     business_at: optionalString(value, "business_at"),
     rule_set_hash: optionalString(value, "rule_set_hash") ?? "",
     playbook_hash: optionalString(value, "playbook_hash") ?? "",
@@ -878,6 +973,8 @@ function parseSnapshot(value: unknown): RunSnapshot | null {
     review_scope: parseReviewScope(value.review_scope),
     comparator_ref: optionalString(value, "comparator_ref"),
     ...(adoptedTenantConfig === undefined ? {} : { adopted_tenant_config: adoptedTenantConfig }),
+    ...(planner === undefined ? {} : { planner }),
+    ...(governedKnowledge === undefined ? {} : { governed_knowledge: governedKnowledge }),
   };
 }
 
@@ -907,8 +1004,7 @@ function parseRevision(value: unknown): RevisionComparison {
     domain: optionalString(row, "domain") ?? "",
     relation: optionalString(row, "relation") ?? "unknown",
     claim: optionalString(row, "claim") ?? "",
-    prior_decision:
-      row.prior_decision == null ? null : parseDecision(row.prior_decision),
+    prior_decision: row.prior_decision == null ? null : parseDecision(row.prior_decision),
   };
 }
 
@@ -922,8 +1018,7 @@ export function parseActor(value: unknown): Actor {
   if (!/^[1-9][0-9]*$/.test(contextVersion)) fail("会话 context_version 无效");
   return {
     id: requiredString(actor, "id"),
-    display_name:
-      optionalString(actor, "display_name") ?? requiredString(actor, "id"),
+    display_name: optionalString(actor, "display_name") ?? requiredString(actor, "id"),
     role: optionalString(actor, "role") ?? "",
     tenant_id: requiredString(actor, "tenant_id"),
     org_id: requiredString(actor, "org_id"),
@@ -999,7 +1094,10 @@ export function parseGenerationRecord(value: unknown): GenerationRecord {
   const record = recordOf(value, "generation");
   const materialId = optionalString(record, "material_id");
   const version = record.version === undefined ? null : numberOrNull(record.version);
-  if (record.version !== undefined && (version === null || !Number.isInteger(version) || version < 1))
+  if (
+    record.version !== undefined &&
+    (version === null || !Number.isInteger(version) || version < 1)
+  )
     fail("generation.version 无效");
   if (record.replayed !== undefined && typeof record.replayed !== "boolean")
     fail("generation.replayed 无效");
@@ -1014,8 +1112,7 @@ export function parseGenerationRecord(value: unknown): GenerationRecord {
 export function parseRemediation(value: unknown): Remediation {
   const record = recordOf(value, "remediation");
   const status = requiredString(record, "status");
-  if (!["open", "submitted", "closed", "reopened"].includes(status))
-    fail("整改状态无效");
+  if (!["open", "submitted", "closed", "reopened"].includes(status)) fail("整改状态无效");
   return {
     id: requiredString(record, "id"),
     case_id: requiredString(record, "case_id"),
@@ -1030,10 +1127,7 @@ export function parseRemediation(value: unknown): Remediation {
     document_ids: requiredStringArray(record, "document_ids"),
     reason: optionalString(record, "reason") ?? "",
     verification_run_id: optionalNullableString(record, "verification_run_id"),
-    verification_attempt_id: optionalNullableString(
-      record,
-      "verification_attempt_id",
-    ),
+    verification_attempt_id: optionalNullableString(record, "verification_attempt_id"),
     created_at: requiredString(record, "created_at"),
     updated_at: requiredString(record, "updated_at"),
   };
@@ -1055,12 +1149,7 @@ export function parseReportRecord(value: unknown): ReportRecord {
 }
 
 export function parseArchiveRecord(value: unknown): ArchiveRecord {
-  return requiredStringRecord(value, "archive", [
-    "case_id",
-    "report_id",
-    "reason",
-    "archived_at",
-  ]);
+  return requiredStringRecord(value, "archive", ["case_id", "report_id", "reason", "archived_at"]);
 }
 
 function parseBusinessAuditEvent(value: unknown): BusinessAuditEvent {
@@ -1101,9 +1190,7 @@ function parseSettingsUser(value: unknown): SettingsUser | null {
   };
 }
 
-function parseOperationalMetadata(
-  value: unknown,
-): ExecutionOperationalMetadata | null {
+function parseOperationalMetadata(value: unknown): ExecutionOperationalMetadata | null {
   if (value === null || value === undefined) return null;
   const record = recordOf(value, "execution settings");
   return {
@@ -1133,9 +1220,7 @@ function parseOperatorConnector(value: unknown): OperatorConnectorInfo | null {
   };
 }
 
-function parseOperatorAuditSettings(
-  value: unknown,
-): OperatorAuditSettings | null {
+function parseOperatorAuditSettings(value: unknown): OperatorAuditSettings | null {
   if (!isRecord(value)) return null;
   return {
     enabled: value.enabled === true,
@@ -1162,9 +1247,7 @@ export function parseSettings(value: unknown): SettingsView {
     },
     redaction_policy: optionalString(record, "redaction_policy") ?? "",
     users: Array.isArray(record.users)
-      ? record.users
-          .map(parseSettingsUser)
-          .filter((item): item is SettingsUser => item !== null)
+      ? record.users.map(parseSettingsUser).filter((item): item is SettingsUser => item !== null)
       : [],
     execution: parseOperationalMetadata(record.execution),
     operator_audit: parseOperatorAuditSettings(record.operator_audit),
@@ -1197,11 +1280,7 @@ export function parseLLMProbe(value: unknown): LLMProbeResult {
 }
 
 export function parseId(value: unknown): string {
-  if (
-    !isRecord(value) ||
-    typeof value.id !== "string" ||
-    value.id.trim() === ""
-  ) {
+  if (!isRecord(value) || typeof value.id !== "string" || value.id.trim() === "") {
     fail("服务没有返回编号");
   }
   return value.id;

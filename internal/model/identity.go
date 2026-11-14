@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -49,13 +49,15 @@ func configurationID(cfg Config) string {
 	return id
 }
 
-// StructuredResponseFormat returns one of the two server-owned schemas.
+// StructuredResponseFormat returns one of the server-owned response schemas.
 func StructuredResponseFormat(kind string) json.RawMessage {
 	switch kind {
 	case "warranty":
 		return json.RawMessage(warrantyResponseFormat)
 	case "cloud_contract":
 		return json.RawMessage(cloudResponseFormat)
+	case "contract_facts":
+		return json.RawMessage(contractFactsResponseFormat)
 	default:
 		return nil
 	}
@@ -63,6 +65,8 @@ func StructuredResponseFormat(kind string) json.RawMessage {
 
 const warrantyResponseFormat = `{"type":"json_schema","json_schema":{"name":"warranty_review","strict":true,"schema":{"type":"object","properties":{"claim":{"type":"string"},"relation":{"type":"string"},"disposition":{"type":"string"},"quotes":{"type":"array","items":{"type":"object","properties":{"document_id":{"type":"string"},"quote":{"type":"string"}},"required":["document_id","quote"],"additionalProperties":false}}},"required":["claim","relation","disposition","quotes"],"additionalProperties":false}}}`
 const cloudResponseFormat = `{"type":"json_schema","json_schema":{"name":"cloud_contract_review","strict":true,"schema":{"type":"object","properties":{"findings":{"type":"array","items":{"type":"object","properties":{"domain":{"type":"string"},"policy_clause":{"type":"string"},"claim":{"type":"string"},"document_id":{"type":"string"},"quote":{"type":"string"}},"required":["domain","policy_clause","claim","document_id","quote"],"additionalProperties":false}}},"required":["findings"],"additionalProperties":false}}}`
+const contractFactsResponseSchema = `{"type":"object","properties":{"fields":{"type":"array","items":{"type":"object","properties":{"field":{"type":"string","enum":["parties","contract_amount","tax_treatment","business_dates","term","payment_schedule","subject_matter","exceptions"]},"status":{"type":"string","enum":["known","unknown","conflicting"]},"value":{"type":"string"},"citations":{"type":"array","items":{"type":"object","properties":{"quote":{"type":"string"}},"required":["quote"],"additionalProperties":false}}},"required":["field","status","value","citations"],"additionalProperties":false}}},"required":["fields"],"additionalProperties":false}`
+const contractFactsResponseFormat = `{"type":"json_schema","json_schema":{"name":"single_contract_facts","strict":true,"schema":` + contractFactsResponseSchema + `}}`
 
 // StructuredConfigurationIDFor binds the optional fixed response contract to
 // the selected provider, without changing the legacy identity when disabled.

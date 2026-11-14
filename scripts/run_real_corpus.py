@@ -4,8 +4,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-27
-# Updated: 2026-10-31
-# Revision: r1
+# Updated: 2026-11-14
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -34,6 +34,16 @@ from seed_telecom import read_dotenv
 ROOT = Path(__file__).resolve().parents[1]
 ROLES = {"draft_contract", "procurement", "award", "attachment"}
 PENDING = {"accepted", "queued", "running"}
+CONTRACT_FACT_FIELDS = {
+    "parties",
+    "contract_amount",
+    "tax_treatment",
+    "business_dates",
+    "term",
+    "payment_schedule",
+    "subject_matter",
+    "exceptions",
+}
 
 
 class RunnerError(RuntimeError):
@@ -56,7 +66,11 @@ def load_manifest(path):
 
 
 def check_manifest_identity(manifest):
-    if not isinstance(manifest, dict) or manifest.get("version") != 1 or isinstance(manifest.get("version"), bool):
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("version") != 1
+        or isinstance(manifest.get("version"), bool)
+    ):
         raise RunnerError("manifest version must be 1")
     if not isinstance(manifest.get("dataset_id"), str) or not manifest["dataset_id"].strip():
         raise RunnerError("manifest dataset_id is required")
@@ -66,7 +80,10 @@ def check_manifest_identity(manifest):
 
 
 def check_case(case, ids):
-    if not isinstance(case, dict) or any(not isinstance(case.get(k), str) or not case[k].strip() for k in ("id", "title", "contract_type")):
+    if not isinstance(case, dict) or any(
+        not isinstance(case.get(k), str) or not case[k].strip()
+        for k in ("id", "title", "contract_type")
+    ):
         raise RunnerError("each case requires id, title and contract_type")
     if case["id"] in ids:
         raise RunnerError(f"duplicate case id: {case['id']}")
@@ -77,7 +94,11 @@ def check_case(case, ids):
 
 
 def check_material(case_id, material, base):
-    if not isinstance(material, dict) or material.get("role") not in ROLES or material.get("data_class") != "original":
+    if (
+        not isinstance(material, dict)
+        or material.get("role") not in ROLES
+        or material.get("data_class") != "original"
+    ):
         raise RunnerError(f"invalid material role or data_class in {case_id}")
     if not isinstance(material.get("source"), str) or not material["source"].strip():
         raise RunnerError(f"material source required in {case_id}")
@@ -106,12 +127,21 @@ def material_bytes(material):
 class API:
     def __init__(self, base, timeout):
         parsed = urllib.parse.urlsplit(base)
-        if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or getattr(parsed, "pass" + "word") or parsed.query or parsed.fragment:
+        if (
+            parsed.scheme not in ("http", "https")
+            or not parsed.hostname
+            or parsed.username
+            or getattr(parsed, "pass" + "word")
+            or parsed.query
+            or parsed.fragment
+        ):
             raise RunnerError("invalid API base URL")
         self.base = base.rstrip("/")
         self.origin = f"{parsed.scheme}://{parsed.netloc}"
         self.timeout = timeout
-        self.client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        self.client = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+        )
 
     def request(self, method, path, payload=None, content_type=None, timeout=None):
         headers = {"Accept": "application/json", "Origin": self.origin}
@@ -126,7 +156,13 @@ class API:
                 return json.load(response)
         except urllib.error.HTTPError as exc:
             raise RunnerError(f"{method} {path} returned HTTP {exc.code}") from exc
-        except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError, UnicodeError) as exc:
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            OSError,
+            json.JSONDecodeError,
+            UnicodeError,
+        ) as exc:
             raise RunnerError(f"{method} {path} failed ({type(exc).__name__})") from exc
 
     def upload(self, case_id, material):
@@ -134,13 +170,20 @@ class API:
         boundary = uuid.uuid4().hex
         filename = Path(material["_resolved"]).name
         # Quoted-string escaping prevents a filename from altering multipart headers.
-        filename = filename.replace('\\', '\\\\').replace('"', '\\"')
+        filename = filename.replace("\\", "\\\\").replace('"', '\\"')
         mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-        prefix = (f'--{boundary}\r\nContent-Disposition: form-data; name="role"\r\n\r\n{material["role"]}\r\n'
-                  f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-                  f'Content-Type: {mime}\r\n\r\n').encode("utf-8")
+        prefix = (
+            f'--{boundary}\r\nContent-Disposition: form-data; name="role"\r\n\r\n{material["role"]}\r\n'
+            f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            f"Content-Type: {mime}\r\n\r\n"
+        ).encode("utf-8")
         body = prefix + data + f"\r\n--{boundary}--\r\n".encode("ascii")
-        return self.request("POST", f"/api/cases/{case_id}/documents", body, f"multipart/form-data; boundary={boundary}")
+        return self.request(
+            "POST",
+            f"/api/cases/{case_id}/documents",
+            body,
+            f"multipart/form-data; boundary={boundary}",
+        )
 
 
 def save(path, result):
@@ -154,6 +197,7 @@ def save(path, result):
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
 
 def snapshot_model_calls(source, output, started_at, finished_at):
     source = Path(source).resolve(strict=True)
@@ -187,22 +231,366 @@ def snapshot_model_calls(source, output, started_at, finished_at):
     return count
 
 
+def model_call_purpose_counts(events):
+    counts = {}
+    for event in events:
+        if not isinstance(event, dict) or event.get("node_kind") != "model_call":
+            continue
+        if event.get("event_type") not in {"model_completed", "model_failed"}:
+            continue
+        purpose = event.get("phase")
+        purpose = purpose if isinstance(purpose, str) and purpose else "unclassified"
+        counts[purpose] = counts.get(purpose, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def request_diagnostics(api, case_id, run_id, attempt_id):
+    if not case_id or not run_id or not attempt_id:
+        return {
+            "status": "BLOCKED",
+            "reason": "diagnostics requires the accepted case, run, and attempt identities",
+        }
+    path = (
+        f"/api/cases/{urllib.parse.quote(case_id, safe='')}/reviews/"
+        f"{urllib.parse.quote(run_id, safe='')}/diagnostics?"
+        f"{urllib.parse.urlencode({'attempt_id': attempt_id})}"
+    )
+    try:
+        response = api.request("GET", path)
+    except RunnerError as exc:
+        match = re.search(r"returned HTTP (\d{3})$", str(exc))
+        status = "BLOCKED" if match and int(match.group(1)) in {401, 403} else "NOT_RUN"
+        reason = (
+            "diagnostics access was denied"
+            if status == "BLOCKED"
+            else "diagnostics endpoint was unavailable"
+        )
+        return {"status": status, "reason": reason}
+
+    if not isinstance(response, dict):
+        return {
+            "status": "BLOCKED",
+            "reason": "diagnostics response is not an object",
+            "response": response,
+        }
+    execution = response.get("execution")
+    attempt = execution.get("attempt") if isinstance(execution, dict) else None
+    events = execution.get("events") if isinstance(execution, dict) else None
+    if response.get("case_id") != case_id or response.get("run_id") != run_id:
+        return {
+            "status": "BLOCKED",
+            "reason": "diagnostics response case or run identity does not match",
+            "response": response,
+        }
+    if (
+        not isinstance(attempt, dict)
+        or attempt.get("id") != attempt_id
+        or attempt.get("run_id") != run_id
+    ):
+        return {
+            "status": "BLOCKED",
+            "reason": "diagnostics response attempt identity does not match",
+            "response": response,
+        }
+    if not isinstance(events, list) or any(
+        not isinstance(event, dict) or event.get("attempt_id") != attempt_id for event in events
+    ):
+        return {
+            "status": "BLOCKED",
+            "reason": "diagnostics events are not bound to the accepted attempt",
+            "response": response,
+        }
+    return {"status": "PASS", "response": response}
+
+
+def diagnostics_execution(diagnostics, case_id, run_id, attempt_id):
+    if not isinstance(diagnostics, dict) or diagnostics.get("status") != "PASS":
+        return None
+    if not case_id or not run_id or not attempt_id:
+        return None
+    response = diagnostics.get("response")
+    execution = response.get("execution") if isinstance(response, dict) else None
+    if not isinstance(response, dict) or not isinstance(execution, dict):
+        return None
+    attempt = execution.get("attempt")
+    events = execution.get("events")
+    if response.get("case_id") != case_id:
+        return None
+    if response.get("run_id") != run_id:
+        return None
+    if not isinstance(attempt, dict) or attempt.get("id") != attempt_id:
+        return None
+    if attempt.get("run_id") != run_id:
+        return None
+    if not isinstance(events, list) or any(
+        not isinstance(event, dict) or event.get("attempt_id") != attempt_id for event in events
+    ):
+        return None
+    return execution
+
+
+def contract_facts_acceptance(workspace, diagnostics, case_id, run_id, attempt_id):
+    execution = diagnostics_execution(diagnostics, case_id, run_id, attempt_id)
+    events = (execution.get("events") or []) if execution else []
+    calls = [
+        event
+        for event in events
+        if isinstance(event, dict)
+        and event.get("node_kind") == "model_call"
+        and event.get("phase") == "contract_facts"
+        and event.get("event_type") in {"model_completed", "model_failed"}
+    ]
+    completed = any(event.get("event_type") == "model_completed" for event in calls)
+    failed = any(event.get("event_type") == "model_failed" for event in calls)
+    projection = workspace.get("contract_facts")
+    diagnostics_status = diagnostics.get("status") if isinstance(diagnostics, dict) else "NOT_RUN"
+    if diagnostics_status not in {"PASS", "BLOCKED", "NOT_RUN"}:
+        diagnostics_status = "BLOCKED"
+    if diagnostics_status == "PASS" and execution is None:
+        diagnostics_status = "BLOCKED"
+    if diagnostics_status != "PASS":
+        request_completion = {
+            "status": diagnostics_status,
+            "reason": (diagnostics.get("reason") if isinstance(diagnostics, dict) else None)
+            or "authorized diagnostics could not confirm whether the model request ran",
+        }
+    elif completed:
+        request_completion = {
+            "status": "PASS",
+            "reason": "a contract_facts model request completed",
+        }
+    elif failed:
+        request_completion = {"status": "FAIL", "reason": "the contract_facts model request failed"}
+    else:
+        request_completion = {
+            "status": "NOT_RUN",
+            "reason": "no controlled async new-admission facts request event; synchronous and legacy attempts do not count",
+        }
+
+    golden_quality = {
+        "status": "NOT_RUN",
+        "reason": "the selected attempt was not compared with frozen golden fact annotations; output validity and coverage are not quality evidence",
+    }
+    structured_output = {
+        "status": "NOT_RUN",
+        "reason": "no completed structured facts output was observed",
+    }
+
+    # An explicit invalid marker is itself an authoritative result of the
+    # selected attempt projection; missing diagnostics cannot turn it into
+    # "not run".
+    if isinstance(projection, dict) and projection.get("structured_output_status") == "invalid":
+        return {
+            "request_completion": request_completion,
+            "structured_output": {
+                "status": "FAIL",
+                "reason": "the facts projection records invalid structured JSON",
+            },
+            "golden_fact_quality": golden_quality,
+        }
+    if projection is None:
+        if completed:
+            structured_output = {
+                "status": "FAIL",
+                "reason": "completed facts request has no isolated structured facts projection",
+            }
+        return {
+            "request_completion": request_completion,
+            "structured_output": structured_output,
+            "golden_fact_quality": golden_quality,
+        }
+
+    if (
+        not isinstance(projection, dict)
+        or projection.get("schema_version") != "contract-facts/v1"
+        or projection.get("attempt_id") != attempt_id
+    ):
+        structured_output = {
+            "status": "FAIL",
+            "reason": "facts projection discriminator or attempt identity is invalid",
+        }
+        return {
+            "request_completion": request_completion,
+            "structured_output": structured_output,
+            "golden_fact_quality": golden_quality,
+        }
+    fields = projection.get("fields")
+    if (
+        not isinstance(fields, list)
+        or len(fields) != len(CONTRACT_FACT_FIELDS)
+        or {field.get("field") for field in fields if isinstance(field, dict)}
+        != CONTRACT_FACT_FIELDS
+    ):
+        structured_output = {
+            "status": "FAIL",
+            "reason": "facts projection does not contain the exact bounded field set",
+        }
+        return {
+            "request_completion": request_completion,
+            "structured_output": structured_output,
+            "golden_fact_quality": golden_quality,
+        }
+    if projection.get("status") not in {"suggested", "partial"} or not isinstance(
+        projection.get("input_truncated"), bool
+    ):
+        structured_output = {
+            "status": "FAIL",
+            "reason": "facts projection coverage identity is invalid",
+        }
+        return {
+            "request_completion": request_completion,
+            "structured_output": structured_output,
+            "golden_fact_quality": golden_quality,
+        }
+    if any(
+        not isinstance(field, dict)
+        or field.get("status") not in {"known", "unknown", "conflicting"}
+        for field in fields
+    ):
+        structured_output = {
+            "status": "FAIL",
+            "reason": "facts projection contains an unknown field status",
+        }
+        return {
+            "request_completion": request_completion,
+            "structured_output": structured_output,
+            "golden_fact_quality": golden_quality,
+        }
+    source = projection.get("source")
+    if (
+        not isinstance(source, dict)
+        or not source.get("document_id")
+        or not source.get("parsed_document_id")
+    ):
+        structured_output = {
+            "status": "FAIL",
+            "reason": "facts projection lacks frozen source identity",
+        }
+        return {
+            "request_completion": request_completion,
+            "structured_output": structured_output,
+            "golden_fact_quality": golden_quality,
+        }
+    frozen_source = any(
+        isinstance(document, dict)
+        and document.get("id") == source["document_id"]
+        and document.get("parsed_document_id") == source["parsed_document_id"]
+        for document in workspace.get("documents", [])
+    )
+    if not frozen_source:
+        structured_output = {
+            "status": "FAIL",
+            "reason": "facts projection source is not a document in the selected workspace",
+        }
+        return {
+            "request_completion": request_completion,
+            "structured_output": structured_output,
+            "golden_fact_quality": golden_quality,
+        }
+
+    coverage = {
+        "projection_status": projection.get("status"),
+        "input_truncated": projection["input_truncated"],
+        "unknown_fields": sorted(
+            field["field"]
+            for field in fields
+            if isinstance(field, dict) and field.get("status") == "unknown"
+        ),
+        "conflicting_fields": sorted(
+            field["field"]
+            for field in fields
+            if isinstance(field, dict) and field.get("status") == "conflicting"
+        ),
+    }
+    output_status = projection.get("structured_output_status")
+    if not completed:
+        reason = (
+            "authorized diagnostics could not verify a completed facts request"
+            if diagnostics_status != "PASS"
+            else "no completed contract_facts request event proves that the retained projection came from a completed call"
+        )
+        structured_output = {
+            "status": "NOT_RUN",
+            "reason": reason,
+            "coverage": coverage,
+        }
+    elif projection.get("status") not in {"suggested", "partial"}:
+        structured_output = {
+            "status": "FAIL",
+            "reason": "facts projection status is invalid",
+            "coverage": coverage,
+        }
+    elif output_status == "invalid":
+        structured_output = {
+            "status": "FAIL",
+            "reason": "the completed request returned invalid structured JSON",
+            "coverage": coverage,
+        }
+    elif output_status != "valid":
+        structured_output = {
+            "status": "FAIL",
+            "reason": "the completed request did not return a valid structured facts output",
+            "coverage": coverage,
+        }
+    else:
+        has_partial_coverage = projection["input_truncated"] or any(
+            field.get("status") != "known" for field in fields
+        )
+        expected_projection_status = (
+            "partial" if has_partial_coverage or output_status != "valid" else "suggested"
+        )
+        if projection.get("status") != expected_projection_status:
+            return {
+                "request_completion": request_completion,
+                "structured_output": {
+                    "status": "FAIL",
+                    "reason": "facts projection status does not match its coverage",
+                    "coverage": coverage,
+                },
+                "golden_fact_quality": golden_quality,
+            }
+        structured_output = {
+            "status": "PASS",
+            "reason": "the completed facts request produced a valid bounded structured projection; this does not establish fact quality",
+            "coverage": coverage,
+        }
+    return {
+        "request_completion": request_completion,
+        "structured_output": structured_output,
+        "golden_fact_quality": golden_quality,
+    }
+
 
 def run(args):
-    delivery = Path(os.environ.get("CAW_DELIVERY_DIR", ROOT.parent / "contract-audit-delivery")).expanduser().resolve()
+    delivery = (
+        Path(os.environ.get("CAW_DELIVERY_DIR", ROOT.parent / "contract-audit-delivery"))
+        .expanduser()
+        .resolve()
+    )
     if delivery.is_relative_to(ROOT):
         raise RunnerError("delivery directory must be outside the source repository")
     parent = delivery / "test-runs"
     parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     output = Path(tempfile.mkdtemp(prefix="real-corpus-", dir=parent))
     result_path = output / "result.json"
-    result = {"status": "running", "started_at": dt.datetime.now(dt.timezone.utc).isoformat(), "manifest": str(args.manifest.resolve()), "model_record_dir": str(args.model_record_dir.resolve()) if args.model_record_dir else None, "model_record_time": args.model_record_time, "review_scope": args.review_scope, "cases": []}
+    result = {
+        "status": "running",
+        "started_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "manifest": str(args.manifest.resolve()),
+        "model_record_dir": str(args.model_record_dir.resolve()) if args.model_record_dir else None,
+        "model_record_time": args.model_record_time,
+        "review_scope": args.review_scope,
+        "cases": [],
+    }
     save(result_path, result)
     print(f"output: {output}", flush=True)
     current = None
     try:
         manifest_path, manifest = load_manifest(args.manifest)
-        result.update(dataset_id=manifest["dataset_id"], manifest_sha256=hashlib.sha256(manifest_path.read_bytes()).hexdigest())
+        result.update(
+            dataset_id=manifest["dataset_id"],
+            manifest_sha256=hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+        )
         by_id = {case["id"]: case for case in manifest["cases"]}
         selected = list(dict.fromkeys(args.case_id or by_id))
         unknown = [case_id for case_id in selected if case_id not in by_id]
@@ -214,18 +602,38 @@ def run(args):
                 material_bytes(material)
         settings = read_dotenv(args.env_file)
         settings.update(os.environ)
-        api = API(args.base or settings.get("API_BASE_URL", "http://127.0.0.1:8080"), args.request_timeout)
-        session = api.request("POST", "/api/session", {"username": args.username or settings.get("DEMO_USERNAME", "demo-admin"), "pass" + "word": settings.get("DEMO_PASSWORD", "admin-demo")})
+        api = API(
+            args.base or settings.get("API_BASE_URL", "http://127.0.0.1:8080"), args.request_timeout
+        )
+        session = api.request(
+            "POST",
+            "/api/session",
+            {
+                "username": args.username or settings.get("DEMO_USERNAME", "demo-admin"),
+                "pass" + "word": settings.get("DEMO_PASSWORD", "admin-demo"),
+            },
+        )
         if not session.get("actor", {}).get("id"):
             raise RunnerError("login response lacks actor ID")
         result["actor_id"] = session["actor"]["id"]
         save(result_path, result)
         for case_id in selected:
             case = by_id[case_id]
-            current = {"manifest_case_id": case_id, "title": case["title"], "review_scope": args.review_scope, "status": "creating", "started_at": dt.datetime.now(dt.timezone.utc).isoformat(), "materials": []}
+            current = {
+                "manifest_case_id": case_id,
+                "title": case["title"],
+                "review_scope": args.review_scope,
+                "status": "creating",
+                "started_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                "materials": [],
+            }
             result["cases"].append(current)
             save(result_path, result)
-            created = api.request("POST", "/api/cases", {"title": case["title"], "contract_type": case["contract_type"]})
+            created = api.request(
+                "POST",
+                "/api/cases",
+                {"title": case["title"], "contract_type": case["contract_type"]},
+            )
             current["case_id"] = created.get("id")
             if not current["case_id"]:
                 raise RunnerError("case creation returned no ID")
@@ -233,7 +641,9 @@ def run(args):
             current["status"] = "uploading"
             save(result_path, result)
             for material in case["materials"]:
-                item = {key: material[key] for key in ("role", "path", "sha256", "data_class", "source")}
+                item = {
+                    key: material[key] for key in ("role", "path", "sha256", "data_class", "source")
+                }
                 item["original_path"] = material["_resolved"]
                 item["status"] = "uploading"
                 current["materials"].append(item)
@@ -243,7 +653,14 @@ def run(args):
                 if not item["document_id"]:
                     raise RunnerError("upload returned no document ID")
                 current["case_detail"] = api.request("GET", prefix)
-                doc = next((doc for doc in current["case_detail"].get("documents", []) if doc.get("id") == item["document_id"]), {})
+                doc = next(
+                    (
+                        doc
+                        for doc in current["case_detail"].get("documents", [])
+                        if doc.get("id") == item["document_id"]
+                    ),
+                    {},
+                )
                 item["uploaded_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
                 item["parse_status"] = doc.get("parse_status")
                 save(result_path, result)
@@ -251,13 +668,24 @@ def run(args):
                     item["status"] = "parsing"
                     item["parse_started_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
                     save(result_path, result)
-                    item["parse_response"] = api.request("POST", f"{prefix}/documents/{item['document_id']}/parse", {})
+                    item["parse_response"] = api.request(
+                        "POST", f"{prefix}/documents/{item['document_id']}/parse", {}
+                    )
                     item["parse_finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
                     current["case_detail"] = api.request("GET", prefix)
-                    doc = next((doc for doc in current["case_detail"].get("documents", []) if doc.get("id") == item["document_id"]), {})
+                    doc = next(
+                        (
+                            doc
+                            for doc in current["case_detail"].get("documents", [])
+                            if doc.get("id") == item["document_id"]
+                        ),
+                        {},
+                    )
                     item["parse_status"] = doc.get("parse_status")
                 if item["parse_status"] != "ready":
-                    raise RunnerError(f"document {item['document_id']} parse status: {item['parse_status']}")
+                    raise RunnerError(
+                        f"document {item['document_id']} parse status: {item['parse_status']}"
+                    )
                 item["status"] = "parsed"
                 save(result_path, result)
             current["status"] = "starting_review"
@@ -276,9 +704,16 @@ def run(args):
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise RunnerError(f"review {current['run_id']} timed out")
-                workspace = api.request("GET", f"{prefix}/reviews/{current['run_id']}", timeout=min(args.request_timeout, remaining))
+                workspace = api.request(
+                    "GET",
+                    f"{prefix}/reviews/{current['run_id']}",
+                    timeout=min(args.request_timeout, remaining),
+                )
                 current["workspace"] = workspace
-                current["attempt_id"] = current["attempt_id"] or (workspace.get("execution") or {}).get("attempt", {}).get("id")
+                summary_attempt = (
+                    (workspace.get("review_attempts") or {}).get("attempt") or {}
+                ).get("id")
+                current["attempt_id"] = current["attempt_id"] or summary_attempt
                 state = workspace.get("run", {}).get("state")
                 current["run_state"] = state
                 save(result_path, result)
@@ -288,9 +723,18 @@ def run(args):
                     break
                 time.sleep(min(0.5, max(0, deadline - time.monotonic())))
             current["review_finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
-            execution = workspace.get("execution") or {}
-            attempt = execution.get("attempt") or {}
-            events = execution.get("events") or []
+            diagnostics = request_diagnostics(
+                api, current["case_id"], current["run_id"], current["attempt_id"]
+            )
+            current["diagnostics"] = diagnostics
+            execution = diagnostics_execution(
+                diagnostics, current["case_id"], current["run_id"], current["attempt_id"]
+            )
+            attempt = (execution.get("attempt") or {}) if execution else {}
+            events = (execution.get("events") or []) if execution else []
+            current["model_call_purposes"] = (
+                model_call_purpose_counts(events) if execution else None
+            )
             if args.review_scope == "single_contract_precheck":
                 # Precheck attempts terminate as run state "partial" by design
                 # (precheck_scope_limited): the scope runs the deterministic
@@ -306,7 +750,10 @@ def run(args):
                 # runner accepted, for the same run, under frozen history.
                 if not current["attempt_id"] or summary.get("id") != current["attempt_id"]:
                     raise RunnerError("precheck summary is not the accepted attempt")
-                if summary.get("run_id") != current["run_id"] or run_view.get("id") not in (None, current["run_id"]):
+                if summary.get("run_id") != current["run_id"] or run_view.get("id") not in (
+                    None,
+                    current["run_id"],
+                ):
                     raise RunnerError("precheck summary is not the accepted run")
                 if summary.get("history_kind") != "frozen":
                     raise RunnerError("precheck attempt history is not frozen")
@@ -326,15 +773,55 @@ def run(args):
                 }
                 current["model_call_acceptance"] = {
                     "status": "NOT_APPLICABLE",
-                    "reason": "single_contract_precheck on a non-governed public case runs deterministic payment-rule checks only; no agent review or text-model call is executed in this scope",
+                    "reason": "single_contract_precheck does not run five-domain planner review; contract fact extraction is reported separately",
                 }
+                current["contract_facts_acceptance"] = contract_facts_acceptance(
+                    workspace,
+                    diagnostics,
+                    current["case_id"],
+                    current["run_id"],
+                    current["attempt_id"],
+                )
             else:
                 if state not in {"completed", "awaiting_human"}:
                     raise RunnerError(f"review ended in {state}")
-                if attempt.get("state") != "completed" or not any(event.get("node_kind") == "model_call" and event.get("event_type") == "model_completed" for event in events):
-                    raise RunnerError("review lacks a completed model execution")
-                current["model_call_acceptance"] = {"status": "PASS",
-                                                    "reason": "full review completed with a recorded model_completed event"}
+                if execution is None:
+                    diagnostics_status = diagnostics.get("status", "NOT_RUN")
+                    if diagnostics_status == "PASS":
+                        diagnostics_status = "BLOCKED"
+                    current["model_call_acceptance"] = {
+                        "status": diagnostics_status,
+                        "reason": diagnostics.get("reason")
+                        or "authorized diagnostics could not verify model execution",
+                    }
+                else:
+                    completed_review_calls = [
+                        event
+                        for event in events
+                        if isinstance(event, dict)
+                        and event.get("node_kind") == "model_call"
+                        and event.get("event_type") == "model_completed"
+                        and event.get("phase") not in {"contract_facts", "ocr"}
+                    ]
+                    if attempt.get("state") != "completed" or not completed_review_calls:
+                        raise RunnerError("review lacks a completed model execution")
+                    current["model_call_acceptance"] = {
+                        "status": "PASS",
+                        "purposes": sorted(
+                            {
+                                event.get("phase") if event.get("phase") else "unclassified"
+                                for event in completed_review_calls
+                            }
+                        ),
+                        "reason": "full review completed with a planner or other non-facts, non-OCR model_completed event",
+                    }
+                current["contract_facts_acceptance"] = contract_facts_acceptance(
+                    workspace,
+                    diagnostics,
+                    current["case_id"],
+                    current["run_id"],
+                    current["attempt_id"],
+                )
             current["status"] = "complete"
             current["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
             save(result_path, result)
@@ -359,12 +846,27 @@ def run(args):
         result["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
         if args.model_record_dir:
             try:
-                result["model_record_count"] = snapshot_model_calls(args.model_record_dir, output, result["started_at"], result["finished_at"])
-                result["ocr_acceptance"] = ({"status": "NOT_RUN", "record_count": result["model_record_count"],
-                                             "note": "model calls are recorded; per-page OCR completeness and fact checks are evaluated separately"} if result["model_record_count"] else
-                                            {"status": "NOT_RUN", "record_count": 0,
-                                             "reason": "no OCR transcription was needed or reached for this case"})
-                if result["status"] == "complete" and result["model_record_count"] == 0 and result.get("review_scope") != "single_contract_precheck":
+                result["model_record_count"] = snapshot_model_calls(
+                    args.model_record_dir, output, result["started_at"], result["finished_at"]
+                )
+                result["ocr_acceptance"] = (
+                    {
+                        "status": "NOT_RUN",
+                        "record_count": result["model_record_count"],
+                        "note": "model calls are recorded; per-page OCR completeness and fact checks are evaluated separately",
+                    }
+                    if result["model_record_count"]
+                    else {
+                        "status": "NOT_RUN",
+                        "record_count": 0,
+                        "reason": "no OCR transcription was needed or reached for this case",
+                    }
+                )
+                if (
+                    result["status"] == "complete"
+                    and result["model_record_count"] == 0
+                    and result.get("review_scope") != "single_contract_precheck"
+                ):
                     raise RunnerError("completed review has no recorded model call")
             except (OSError, ValueError, KeyError, RunnerError) as exc:
                 result["model_record_error"] = type(exc).__name__
@@ -389,14 +891,26 @@ def positive(value):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", required=True, type=Path)
-    parser.add_argument("--case-id", action="append", help="manifest case ID; repeat to select multiple")
+    parser.add_argument(
+        "--case-id", action="append", help="manifest case ID; repeat to select multiple"
+    )
     parser.add_argument("--base", help="API base URL; defaults to API_BASE_URL")
     parser.add_argument("--username", help="login name; defaults to DEMO_USERNAME")
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
-    parser.add_argument("--review-scope", choices=("full_review", "single_contract_precheck"), default="full_review", help="scope sent in POST /api/cases/{caseID}/reviews; single_contract_precheck is required for single-material cases")
+    parser.add_argument(
+        "--review-scope",
+        choices=("full_review", "single_contract_precheck"),
+        default="full_review",
+        help="scope sent in POST /api/cases/{caseID}/reviews; single_contract_precheck is required for single-material cases",
+    )
     parser.add_argument("--review-timeout", type=positive, default=900)
     parser.add_argument("--request-timeout", type=positive, default=600)
-    parser.add_argument("--model-record-dir", required=True, type=Path, help="independent model recorder output directory")
+    parser.add_argument(
+        "--model-record-dir",
+        required=True,
+        type=Path,
+        help="independent model recorder output directory",
+    )
     parser.add_argument("--model-record-time", help="independent model recorder time identifier")
     args = parser.parse_args()
     args.model_record_dir = args.model_record_dir.expanduser()

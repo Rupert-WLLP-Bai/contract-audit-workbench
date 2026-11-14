@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: StartReview retains the existing ungoverned entry point. Governed cases must use StartReviewAt with the business instant being reviewed. Related `store` operations include StartReview, StartReviewAt, StartReviewAtWithEvidenceCutoff, StartReviewScope.
+// Purpose: Preserves authoritative review admission, retry and worker transactions while consuming domain-owned frozen values and compatible hash adapters.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r4
+// Updated: 2026-11-14
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,9 +12,7 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,6 +27,7 @@ import (
 	"contractaudit/internal/docir"
 	"contractaudit/internal/engine"
 	"contractaudit/internal/execution"
+	executionapp "contractaudit/internal/execution/app"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/model"
 
@@ -290,7 +289,16 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	// in a separate read, so the pack that is frozen is the pack the acceptance
 	// write saw under its own locks. The planner configuration is frozen in the
 	// same signature so a retry can never switch prompt or limits.
-	plannerConfiguration, err := s.plannerConfigurationForAcceptance(signatureModelConfigurationID(models))
+	factsChatModel, factsConfigurationID := "", ""
+	if scope == ReviewScopeSingleContract && !isGovernedReviewCase(caseItem) && durable && models != nil {
+		if factsModel, ok := models.(contractFactsModel); ok {
+			factsConfigurationID = factsModel.ContractFactsConfigurationID()
+			if factsConfigurationID != "" {
+				factsChatModel = models.Name()
+			}
+		}
+	}
+	plannerConfiguration, err := s.plannerConfigurationForAcceptance(signatureModelConfigurationID(models), factsChatModel, factsConfigurationID)
 	if err != nil {
 		return "", err
 	}
@@ -1126,8 +1134,11 @@ func (s *Store) executeAttempt(runID, attemptID string, models Models) {
 }
 
 func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID string, models Models) {
-	ctx, cancel := context.WithTimeout(parent, reviewExecutionLimit)
+	started := time.Now()
+	work, cancel := context.WithCancel(parent)
 	defer cancel()
+	ctx, cancelPreparation := context.WithDeadline(work, started.Add(reviewExecutionLimit))
+	defer cancelPreparation()
 	scope, bound := model.DelegatedScopeFromContext(ctx)
 	if !bound || (scope.Kind != "execution" && scope.Kind != "execution_prepare") {
 		if claim, ok := s.claimForAttempt(attemptID); ok {
@@ -1169,6 +1180,18 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
 	}
+	if err := ctx.Err(); err != nil {
+		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
+		return
+	}
+	limit := reviewExecutionLimit
+	if claim, ok := s.claimForAttempt(attemptID); ok && longFactsReview(initial, claim, runID, attemptID) {
+		limit += model.DefaultRequestTimeout
+	}
+	// Preparation is limited separately, but the chosen deadline is always
+	// measured from the original start and remains a child of the same parent.
+	ctx, cancelExecution := reviewWorkContext(work, ctx, started, limit)
+	defer cancelExecution()
 	frozenScope := initial.snapshotOf(runID)
 	if frozenScope.RuleSetHash == engine.SingleContractRuleSetHash() || frozenScope.PlaybookHash == engine.SingleContractPlaybookHash() {
 		if !isSingleContractSnapshot(frozenScope) {
@@ -1188,183 +1211,51 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 	}
 	runCtx := execution.WithSpan(ctx, attemptID)
 	runCtx = model.WithCallObserver(runCtx, attemptModelObserver{recorder: recorder})
-	var docs []Interpreted
-	var proposal model.Warranty
-	var modelErr error
-	rulesPublished := false
-	pipelineErr := execution.Run(runCtx, recorder,
-		execution.Stage{Name: "input_preparation", Run: func(stageCtx context.Context) error {
-			var err error
-			docs, err = s.prepareAttempt(stageCtx, runID, attemptID, models)
-			return err
-		}},
-		execution.Stage{Name: "deterministic_rules", Run: func(stageCtx context.Context) error {
-			if len(docs) == 0 {
-				return errors.New("frozen input is unavailable")
-			}
-			if err := s.publishRuleResults(stageCtx, runID, attemptID, docs); err != nil {
-				return err
-			}
-			rulesPublished = true
-			return nil
-		}},
-		execution.Stage{Name: "model_review", Run: func(stageCtx context.Context) error {
-			if readyCount(docs) < 2 {
-				modelErr = errors.New("insufficient_ready_documents")
-				return modelErr
-			}
-			if models == nil {
-				modelErr = errModelNotConfigured
-				return modelErr
-			}
-			materials := make([]model.Material, len(docs))
-			for i, doc := range docs {
-				materials[i] = model.Material{ID: doc.Document.ID, Role: doc.Document.Role, Text: doc.Text, Ready: doc.Ready, ParseError: doc.ParseError}
-			}
-			proposal, modelErr = models.Warranty(stageCtx, materials)
-			if recordErr := recorder.err(); recordErr != nil {
-				return recordErr
-			}
-			return modelErr
-		}},
-		execution.Stage{Name: "citation_verification", Run: func(stageCtx context.Context) error {
-			sources := sourcesOf(docs)
-			quotes := make([]engine.QuoteRef, len(proposal.Quotes))
-			for i, quote := range proposal.Quotes {
-				quotes[i] = engine.QuoteRef{DocumentID: quote.DocumentID, Quote: quote.Quote}
-			}
-			_, drafts, err := engine.AcceptWarranty(sources, engine.Proposal{
-				Claim: proposal.Claim, Relation: proposal.Relation,
-				Disposition: proposal.Disposition, Quotes: quotes,
-			})
-			if err != nil {
-				modelErr = err
-				return err
-			}
-			var added []Finding
-			if err := s.updateExecutionContext(stageCtx, attemptID, func(next *state) error {
-				for _, draft := range drafts {
-					idx := -1
-					for i := range next.Findings {
-						finding := &next.Findings[i]
-						if finding.AttemptID == attemptID && finding.Origin == "rule" && finding.Domain == draft.Domain && finding.Relation == draft.Relation && finding.Claim == draft.Claim {
-							idx = i
-							break
-						}
-					}
-					if idx < 0 {
-						made, err := materialize(runIDCase(*next, runID), runID, attemptID, stamp(), []engine.Draft{draft}, docs)
-						if err != nil {
-							return err
-						}
-						next.Findings = append(next.Findings, made...)
-						added = append(added, made...)
-						continue
-					}
-					finding := &next.Findings[idx]
-					finding.DispositionSuggestion = draft.Disposition
-					finding.UnverifiedReason = draft.UnverifiedReason
-					for _, anchor := range draft.Anchors {
-						found := false
-						for _, existing := range finding.Anchors {
-							if existing.DocumentID == anchor.DocumentID && existing.ParsedDocumentID == parsedDocumentID(docs, anchor.DocumentID) && existing.Quote == anchor.Quote && existing.Status == anchor.Status && existing.Start == anchor.Start && existing.End == anchor.End {
-								found = true
-								break
-							}
-						}
-						if found {
-							continue
-						}
-						id, err := newID("ev_")
-						if err != nil {
-							return err
-						}
-						parsedID, normalizedDigest := parsedIdentity(docs, anchor.DocumentID)
-						finding.Anchors = append(finding.Anchors, Anchor{
-							ID: id, DocumentID: anchor.DocumentID, ParsedDocumentID: parsedID, NormalizedDigest: normalizedDigest,
-							Quote: anchor.Quote, Status: anchor.Status, Start: anchor.Start, End: anchor.End,
-							Reason: anchor.Reason, Page: anchor.Page, ElementID: anchor.ElementID,
-						})
-					}
-				}
-				return nil
-			}); err != nil {
-				return err
-			}
-			if hasVerifiedFinding(added) {
-				return s.recordFirstVerifiedFinding(stageCtx, recorder, attemptID)
-			}
-			return nil
-		}},
-	)
-	if parent.Err() != nil {
-		return
+	attempt := executionapp.FrozenAttempt{RunID: runID, AttemptID: attemptID, CaseID: runIDCase(initial, runID), RuleSetHash: frozenScope.RuleSetHash, PlaybookHash: frozenScope.PlaybookHash}
+	if item, ok := initial.caseByID(attempt.CaseID); ok {
+		attempt.TenantID, attempt.OrgID = item.TenantID, item.OwnerOrgID
 	}
-	if !rulesPublished || pipelineErr != nil {
-		readCtx := ctx
-		cancelRead := func() {}
-		if ctx.Err() != nil {
-			readCtx, cancelRead = context.WithTimeout(parent, attemptFinalizeTimeout)
-		}
-		latest, err := s.snapshotForAttemptMetadataContext(readCtx, attemptID)
-		cancelRead()
-		if err != nil {
-			_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
-			return
-		}
-		if !rulesPublished {
-			rulesPublished = len(latest.findingsForAttempt(runID, attemptID)) > 0 || len(latest.evaluationsForAttempt(runID, attemptID)) > 0
-		}
-		if pipelineErr != nil {
-			if current, ok := latest.attemptByID(attemptID); !ok || !attemptActive(current.State) {
-				return
-			}
-		}
+	var warranty executionapp.WarrantyModel
+	if models != nil {
+		warranty = models
 	}
+	bridge := standardExecutionBridge{store: s, parent: parent, models: models, recorder: recorder}
+	executionapp.RunStandard(parent, runCtx, attempt, warranty, errModelNotConfigured, attemptFinalizeTimeout, bridge, recorder, standardExecutionCodec{}, standardExecutionCodec{})
+}
 
-	partialReason := ""
-	terminalState := "completed"
-	errorCode := ""
-	if pipelineErr != nil {
-		if recorder.err() != nil {
-			terminalState = "failed"
-			errorCode = "execution_persistence_failed"
-		} else if modelErr != nil && rulesPublished {
-			terminalState = "partial"
-			if errors.Is(modelErr, model.ErrRequest) {
-				errorCode = "model_request_failed"
-			} else if errors.Is(modelErr, model.ErrUnusable) {
-				errorCode = "model_output_unusable"
-			} else if errors.Is(modelErr, engine.ErrRejected) {
-				errorCode = "model_evidence_rejected"
-			} else if errors.Is(modelErr, errModelNotConfigured) {
-				errorCode = "model_not_configured"
-			} else if errors.Is(modelErr, context.DeadlineExceeded) {
-				errorCode = "model_timeout"
-			} else if errors.Is(modelErr, context.Canceled) {
-				errorCode = "model_cancelled"
-			} else {
-				errorCode = "model_incomplete"
-			}
-			partialReason = publicModelError(modelErr)
-			if readyCount(docs) < len(docs) {
-				partialReason += " 有材料解析失败，结果不能当成完整审查。"
-			}
-		} else {
-			terminalState = "failed"
-			errorCode = "execution_failed"
-			if rulesPublished {
-				errorCode = "execution_persistence_failed"
-			}
-		}
-	} else if readyCount(docs) < len(docs) {
-		terminalState = "partial"
-		partialReason = "有材料解析失败，结果不能当成完整审查。"
-		errorCode = "document_parse_incomplete"
+func reviewWorkContext(work, preparation context.Context, started time.Time, limit time.Duration) (context.Context, context.CancelFunc) {
+	if preparation.Err() != nil {
+		return preparation, func() {}
 	}
-	if err := s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, terminalState, partialReason, errorCode); err != nil {
-		return
+	if !time.Now().Before(started.Add(reviewExecutionLimit)) {
+		return context.WithDeadline(preparation, started.Add(reviewExecutionLimit))
 	}
+	if resolvedScope, ok := model.DelegatedScopeFromContext(preparation); ok {
+		work = model.WithDelegatedScope(work, resolvedScope)
+	}
+	return context.WithDeadline(work, started.Add(limit))
+}
+
+// longFactsReview only changes the time allowance for a live durable attempt
+// whose accepted, valid configuration includes the facts capability.
+func longFactsReview(st state, claim JobClaim, runID, attemptID string) bool {
+	if claim.JobID == "" || claim.RunID != runID || claim.AttemptID != attemptID || !isSingleContractSnapshot(st.snapshotOf(runID)) {
+		return false
+	}
+	run, ok := st.runByID(runID)
+	if !ok {
+		return false
+	}
+	item, ok := st.caseByID(run.CaseID)
+	if !ok || isGovernedReviewCase(item) {
+		return false
+	}
+	attempt, ok := st.attemptByID(attemptID)
+	if !ok || attempt.RunID != runID {
+		return false
+	}
+	planner, err := FrozenPlannerConfiguration(attempt)
+	return err == nil && planner.ContractFacts != nil && planner.ContractFacts.Validate() == nil
 }
 
 func (s *Store) markAttemptStarted(ctx context.Context, runID, attemptID string) error {
@@ -1462,36 +1353,46 @@ func markAttemptStartedInState(st *state, runID, attemptID string, generation *i
 	return nil
 }
 
+type preparedAttempt struct {
+	documents []Interpreted
+	inputHash string
+}
+
 func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, models Models) ([]Interpreted, error) {
+	result, err := s.prepareAttemptResult(ctx, runID, attemptID, models)
+	return result.documents, err
+}
+
+func (s *Store) prepareAttemptResult(ctx context.Context, runID, attemptID string, models Models) (preparedAttempt, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return preparedAttempt{}, err
 	}
 	st, err := s.snapshotForAttemptContext(ctx, attemptID)
 	if err != nil {
-		return nil, err
+		return preparedAttempt{}, err
 	}
 	snapshot := st.snapshotOf(runID)
 	if input, ok := st.attemptInput(attemptID); ok {
 		if input.RunID != runID || input.AttemptID != attemptID {
-			return nil, errors.New("attempt frozen input identity mismatch")
+			return preparedAttempt{}, errors.New("attempt frozen input identity mismatch")
 		}
 		inputHash, err := frozenInputHash(snapshot, input.Documents)
 		if err != nil || inputHash != input.InputHash || !frozenInputMatchesSnapshot(snapshot, input.Documents) ||
 			!attemptSelectionsMatchFrozen(st.parseSelectionsForAttempt(attemptID), input.Documents) {
-			return nil, errors.New("attempt frozen input integrity check failed")
+			return preparedAttempt{}, errors.New("attempt frozen input integrity check failed")
 		}
 		if err := s.verifyFrozenDocumentsContext(ctx, st, input.Documents); err != nil {
-			return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
+			return preparedAttempt{}, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
 		}
-		return interpretedFromFrozen(input.Documents), nil
+		return preparedAttempt{documents: interpretedFromFrozen(input.Documents), inputHash: input.InputHash}, nil
 	}
 	attempt, ok := st.attemptByID(attemptID)
 	if !ok || attempt.RunID != runID || !attemptActive(attempt.State) {
-		return nil, errors.New("attempt is not active for input preparation")
+		return preparedAttempt{}, errors.New("attempt is not active for input preparation")
 	}
 	selections := st.parseSelectionsForAttempt(attemptID)
 	if len(selections) == 0 || len(selections) != len(snapshot.DocumentIDs) {
-		return nil, errors.New("attempt has no complete pinned parse selection")
+		return preparedAttempt{}, errors.New("attempt has no complete pinned parse selection")
 	}
 	frozen := make([]FrozenDocument, len(selections))
 	artifacts := make([]ParsedDocument, 0, len(selections))
@@ -1499,20 +1400,20 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 	var claim JobClaim
 	if requireRemote {
 		if documentPreparer == nil {
-			return nil, ErrRemoteDocumentPreparationRequired
+			return preparedAttempt{}, ErrRemoteDocumentPreparationRequired
 		}
 		var hasClaim bool
 		claim, hasClaim = s.claimForAttempt(attemptID)
 		if !hasClaim || claim.JobID == "" || claim.AttemptID != attemptID || claim.RunID != runID {
-			return nil, errors.New("remote document preparation requires the current durable job claim")
+			return preparedAttempt{}, errors.New("remote document preparation requires the current durable job claim")
 		}
 		if !claimMatchesExecutionScope(ctx, claim) {
-			return nil, errLeaseLost
+			return preparedAttempt{}, errLeaseLost
 		}
 	}
 	for i, selection := range selections {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return preparedAttempt{}, err
 		}
 		if requireRemote {
 			prepared, err := documentPreparer.PrepareAttemptDocument(ctx, PrepareDocumentRequest{
@@ -1521,7 +1422,7 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 				RunID: runID, AttemptID: attemptID, DocumentID: selection.DocumentID, Selection: selection,
 			})
 			if err != nil {
-				return nil, err
+				return preparedAttempt{}, err
 			}
 			parsed := parsedDocumentFromFrozen(prepared)
 			if prepared.Document.ID != selection.DocumentID || prepared.Document.Digest != selection.OriginalDigest ||
@@ -1529,10 +1430,10 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 				prepared.OriginalHash != selection.OriginalDigest || parsed.ID != selection.ParsedDocumentID || parsed.SelectionOrder != selection.SelectionOrder ||
 				parsed.ParserID != selection.ParserID || parsed.ParserVersion != selection.ParserVersion || parsed.ConfigHash != selection.ConfigHash ||
 				parsed.NormalizationVersion != selection.NormalizationVersion || (selection.ArtifactDigest != "" && parsed.ArtifactDigest != selection.ArtifactDigest) {
-				return nil, errors.New("remote document response differs from the pinned parse selection")
+				return preparedAttempt{}, errors.New("remote document response differs from the pinned parse selection")
 			}
 			if err := verifyParsed(parsed, prepared.Document); err != nil {
-				return nil, fmt.Errorf("remote parsed artifact integrity check failed: %w", err)
+				return preparedAttempt{}, fmt.Errorf("remote parsed artifact integrity check failed: %w", err)
 			}
 			frozen[i] = prepared
 			bindFrozenMaterialIdentity(st, &frozen[i])
@@ -1540,14 +1441,14 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 		}
 		doc, ok := st.documentByIdentity(selection.DocumentID, selection.OriginalDigest)
 		if !ok || doc.CaseID != runIDCase(st, runID) {
-			return nil, errors.New("pinned parse selection original is unavailable")
+			return preparedAttempt{}, errors.New("pinned parse selection original is unavailable")
 		}
 		parsed, exists := st.parsedByID(selection.ParsedDocumentID)
 		if !exists {
 			parserID, parserVersion, configHash := parserConfigurationFor(doc, models)
 			if parserID != selection.ParserID || parserVersion != selection.ParserVersion || configHash != selection.ConfigHash ||
 				selection.NormalizationVersion != docir.NormalizationVersion {
-				return nil, errors.New("pinned parser configuration is unavailable")
+				return preparedAttempt{}, errors.New("pinned parser configuration is unavailable")
 			}
 			parseCtx, parseModels := ctx, models
 			var ocrChild model.DelegatedScope
@@ -1556,18 +1457,18 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 				case kindImage:
 					user, ok := ctx.Value(embeddedAdmissionKey{}).(accounts.User)
 					if !ok {
-						return nil, errAttemptAuthorizationRevoked
+						return preparedAttempt{}, errAttemptAuthorizationRevoked
 					}
 					child, err := s.mintEmbeddedOCRAuthority(ctx, user, scope, doc, selection)
 					if err != nil {
-						return nil, err
+						return preparedAttempt{}, err
 					}
 					ocrChild = child
 					parseCtx = model.WithDelegatedScope(ctx, modelScope(child, models))
 				case kindPDF, kindDOCX:
 					user, ok := ctx.Value(embeddedAdmissionKey{}).(accounts.User)
 					if !ok {
-						return nil, errAttemptAuthorizationRevoked
+						return preparedAttempt{}, errAttemptAuthorizationRevoked
 					}
 					parseCtx = s.withEmbeddedDerivedOCR(ctx, user, scope, doc, selection, models)
 				}
@@ -1575,13 +1476,13 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 			interpreted := s.interpretUnpersistedWithModels(parseCtx, doc, parseModels)
 			if ocrChild.Action != "" {
 				if _, err := s.ResolveOperationAuthority(ctx, ocrChild, "document"); err != nil {
-					return nil, errAttemptAuthorizationRevoked
+					return preparedAttempt{}, errAttemptAuthorizationRevoked
 				}
 			}
 			var err error
 			parsed, err = makeParsedWithSelection(doc, interpreted, selection)
 			if err != nil {
-				return nil, err
+				return preparedAttempt{}, err
 			}
 			artifacts = append(artifacts, parsed)
 		}
@@ -1590,29 +1491,29 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 			parsed.ParserID != selection.ParserID || parsed.ParserVersion != selection.ParserVersion || parsed.ConfigHash != selection.ConfigHash ||
 			parsed.NormalizationVersion != selection.NormalizationVersion ||
 			(selection.ArtifactDigest != "" && selection.ArtifactDigest != parsed.ArtifactDigest) {
-			return nil, errors.New("pinned parse selection differs from its artifact")
+			return preparedAttempt{}, errors.New("pinned parse selection differs from its artifact")
 		}
 		if exists {
 			scope, preparing := model.DelegatedScopeFromContext(ctx)
 			if preparing && scope.Kind == "execution_prepare" {
 				if err := verifyParsed(parsed, doc); err != nil {
-					return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
+					return preparedAttempt{}, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
 				}
 			} else if err := s.verifyParsedRecordContext(ctx, parsed, doc); err != nil {
-				return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
+				return preparedAttempt{}, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
 			}
 		} else if err := verifyParsed(parsed, doc); err != nil {
-			return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
+			return preparedAttempt{}, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
 		}
 		frozen[i] = frozenFromParsed(doc, parsed)
 		bindFrozenMaterialIdentity(st, &frozen[i])
 	}
 	if !frozenInputMatchesSnapshot(snapshot, frozen) {
-		return nil, errors.New("pinned parse selection does not match the run snapshot")
+		return preparedAttempt{}, errors.New("pinned parse selection does not match the run snapshot")
 	}
 	inputHash, err := frozenInputHash(snapshot, frozen)
 	if err != nil {
-		return nil, err
+		return preparedAttempt{}, err
 	}
 	input := AttemptInput{AttemptID: attemptID, RunID: runID, InputHash: inputHash, FrozenAt: stamp(), Documents: frozen}
 	if err := s.updateExecutionContext(ctx, attemptID, func(next *state) error {
@@ -1669,80 +1570,19 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 		}
 		return appendAudit(next, runID, "system", "attempt_input_frozen", []string{attemptID})
 	}); err != nil {
-		return nil, err
+		return preparedAttempt{}, err
 	}
 	if scope, ok := model.DelegatedScopeFromContext(ctx); ok && scope.Kind == "execution_prepare" {
-		return interpretedFromFrozen(frozen), nil
+		return preparedAttempt{documents: interpretedFromFrozen(frozen), inputHash: inputHash}, nil
 	}
 	latest, err := s.snapshotForAttemptContext(ctx, attemptID)
 	if err != nil {
-		return nil, err
+		return preparedAttempt{}, err
 	}
 	if err := s.verifyFrozenDocumentsContext(ctx, latest, frozen); err != nil {
-		return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
+		return preparedAttempt{}, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
 	}
-	return interpretedFromFrozen(frozen), nil
-}
-
-func (s *Store) publishRuleResults(ctx context.Context, runID, attemptID string, docs []Interpreted) error {
-	sources := sourcesOf(docs)
-	evaluation := engine.Evaluate(sources)
-	extras := engine.CrossFile(sources)
-	drafts := engine.Findings(evaluation)
-	for _, extra := range extras {
-		drafts = append(drafts, engine.Findings(extra)...)
-	}
-	attemptState, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
-	if err != nil {
-		return err
-	}
-	made, err := materialize(runIDCase(attemptState, runID), runID, attemptID, stamp(), drafts, docs)
-	if err != nil {
-		return err
-	}
-	madeByDomain := make(map[string]string, len(made))
-	for _, finding := range made {
-		madeByDomain[finding.Domain] = finding.ID
-	}
-	var evaluations []ConstraintEval
-	appendEval := func(ev engine.Evaluation, findingID string) error {
-		id, err := newID("evl_")
-		if err != nil {
-			return err
-		}
-		evaluations = append(evaluations, ConstraintEval{
-			ID: id, RunID: runID, AttemptID: attemptID, CaseID: runIDCase(attemptState, runID),
-			Domain: ev.Domain, Relation: ev.Relation, RuleVersion: ev.RuleVersion, Reason: ev.Reason, FindingID: findingID,
-		})
-		return nil
-	}
-	findingID := ""
-	if id, ok := madeByDomain[evaluation.Domain]; ok {
-		findingID = id
-	}
-	if err := appendEval(evaluation, findingID); err != nil {
-		return err
-	}
-	for _, ev := range extras {
-		id := ""
-		if mapped, ok := madeByDomain[ev.Domain]; ok {
-			id = mapped
-		}
-		if err := appendEval(ev, id); err != nil {
-			return err
-		}
-	}
-	if err := s.updateExecutionContext(ctx, attemptID, func(st *state) error {
-		st.Findings = append(st.Findings, made...)
-		st.Evaluations = append(st.Evaluations, evaluations...)
-		return nil
-	}); err != nil {
-		return err
-	}
-	if hasVerifiedFinding(made) {
-		return s.recordFirstVerifiedFinding(ctx, attemptRecorder{store: s, attemptID: attemptID}, attemptID)
-	}
-	return nil
+	return preparedAttempt{documents: interpretedFromFrozen(frozen), inputHash: inputHash}, nil
 }
 
 func (s *Store) recordFirstVerifiedFinding(ctx context.Context, recorder attemptRecorder, attemptID string) error {
@@ -2030,7 +1870,11 @@ func (r attemptRecorder) RecordExecutionEvent(ctx context.Context, event executi
 }
 
 func (r attemptRecorder) StartModelCall(ctx context.Context, modelRef string) (context.Context, func(model.CallObservation)) {
-	spanCtx, finish, err := execution.StartSpan(ctx, r, "model_call", "model_request", modelRef)
+	phase := model.CallPurpose(ctx)
+	if phase == "" {
+		phase = "model_request"
+	}
+	spanCtx, finish, err := execution.StartSpan(ctx, r, "model_call", phase, modelRef)
 	if err != nil {
 		r.remember(err)
 		cancelled, cancel := context.WithCancel(ctx)
@@ -2537,89 +2381,6 @@ func interpretedFromFrozen(frozen []FrozenDocument) []Interpreted {
 		}
 	}
 	return out
-}
-
-func inputHashVersion(snapshot RunSnapshot) int {
-	if snapshot.InputHashVersion == 0 {
-		return 1
-	}
-	return snapshot.InputHashVersion
-}
-
-func frozenInputHash(snapshot RunSnapshot, docs []FrozenDocument) (string, error) {
-	snapshot = scopeSnapshot(snapshot)
-	snapshot.RunID = ""
-	sort.Strings(snapshot.DocumentIDs)
-	sort.Strings(snapshot.ParsedDocumentIDs)
-	var raw []byte
-	var err error
-	switch inputHashVersion(snapshot) {
-	case 1:
-		raw, err = json.Marshal(struct {
-			Snapshot  RunSnapshot      `json:"snapshot"`
-			Documents []FrozenDocument `json:"documents"`
-		}{Snapshot: snapshot, Documents: docs})
-	case 2:
-		if snapshot.AdoptedTenantConfigVersionID == "" || !validPreparationHash(snapshot.AdoptedTenantConfigDigest) {
-			return "", errors.New("invalid adopted tenant config for frozen input")
-		}
-		raw, err = json.Marshal(struct {
-			Domain          string           `json:"domain"`
-			ConfigVersionID string           `json:"config_version_id"`
-			ConfigDigest    string           `json:"config_digest"`
-			Snapshot        RunSnapshot      `json:"snapshot"`
-			Documents       []FrozenDocument `json:"documents"`
-		}{Domain: "review-frozen-input/v2", ConfigVersionID: snapshot.AdoptedTenantConfigVersionID, ConfigDigest: snapshot.AdoptedTenantConfigDigest, Snapshot: snapshot, Documents: docs})
-	default:
-		return "", errors.New("unsupported frozen input hash version")
-	}
-	if err != nil {
-		return "", err
-	}
-	digest := sha256.Sum256(raw)
-	return hex.EncodeToString(digest[:]), nil
-}
-
-func frozenInputMatchesSnapshot(snapshot RunSnapshot, docs []FrozenDocument) bool {
-	ids := make([]string, len(docs))
-	for i, doc := range docs {
-		ids[i] = doc.ParsedDocumentID
-	}
-	return sameDocumentSet(snapshot.ParsedDocumentIDs, ids) &&
-		snapshot.ParseSelectionHash == selectionHash(docs) &&
-		snapshot.ParserConfigurationID == frozenConfigHash(docs)
-}
-
-// attemptOutputHash derives the canonical output identity of one attempt. The
-// caller supplies the verified agent-review digest of the same attempt (empty
-// when the attempt has no agent-flow record), so a persisted projection is part
-// of the frozen output and can never be swapped afterwards.
-func attemptOutputHash(st state, runID, attemptID, agentReviewDigest string) (string, error) {
-	findings := st.findingsForAttempt(runID, attemptID)
-	attempt, _ := st.attemptByID(attemptID)
-	for i := range findings {
-		// Human decision concurrency versions are not part of the frozen rule output.
-		findings[i].Version = 0
-	}
-	raw, err := json.Marshal(struct {
-		Findings               []Finding        `json:"findings"`
-		Evaluations            []ConstraintEval `json:"evaluations"`
-		RulePackHash           string           `json:"rulepack_hash,omitempty"`
-		RulePackSnapshotDigest string           `json:"rulepack_snapshot_digest,omitempty"`
-		RulePackCompilerRef    string           `json:"rulepack_compiler_ref,omitempty"`
-		AgentReviewSHA256      string           `json:"agent_review_sha256,omitempty"`
-	}{
-		Findings: findings, Evaluations: st.evaluationsForAttempt(runID, attemptID),
-		RulePackHash:           attempt.RulePackHash,
-		RulePackSnapshotDigest: attempt.RulePackSnapshotDigest,
-		RulePackCompilerRef:    attempt.RulePackCompilerRef,
-		AgentReviewSHA256:      agentReviewDigest,
-	})
-	if err != nil {
-		return "", err
-	}
-	digest := sha256.Sum256(raw)
-	return hex.EncodeToString(digest[:]), nil
 }
 
 // agentReviewDigestFor reads the verified projection digest of one attempt

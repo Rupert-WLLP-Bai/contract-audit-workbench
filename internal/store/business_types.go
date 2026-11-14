@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-12
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -170,6 +170,11 @@ type reportEnvelope struct {
 	// AgentReviewSHA256 commits the exact bytes above and lets consumers re-derive
 	// the canonical attempt output hash. Both remain absent for legacy attempts.
 	AgentReviewSHA256 string `json:"agent_review_sha256,omitempty"`
+	// ContractFacts is a separate, versioned suggestion projection. It is never
+	// embedded in AgentReview or consumed as a five-domain review.
+	ContractFacts       json.RawMessage `json:"contract_facts,omitempty"`
+	ContractFactsBytes  []byte          `json:"contract_facts_bytes,omitempty"`
+	ContractFactsSHA256 string          `json:"contract_facts_sha256,omitempty"`
 }
 
 // FrozenLegalReviewProjection is the business-facing projection of the exact

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: provides private, path-style S3-compatible object storage. Related `objectstore` operations include New, Put, Get, validateOperation.
+// Purpose: Adapts the official AWS S3 SDK to private path-style Put/Get while enforcing original-object key, size, signed SHA-256 metadata, response, cancellation and redacted-error contracts.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-12
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,7 +14,6 @@ package objectstore
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -23,16 +22,22 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsv4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go/middleware"
 )
 
 // MaxObjectBytes is the largest original object or downloaded object accepted.
 const MaxObjectBytes = 32 << 20
+
+const maxServiceErrorBodyBytes = 64 << 10
 
 var (
 	// ErrInvalidConfig indicates that the S3 endpoint or credentials are invalid.
@@ -60,12 +65,8 @@ type Config struct {
 
 // S3 stores objects in a private S3-compatible bucket using path-style requests.
 type S3 struct {
-	endpoint  url.URL
-	bucket    string
-	region    string
-	accessKey string
-	secretKey string
-	client    *http.Client
+	bucket string
+	client *awss3.Client
 }
 
 // New validates configuration and creates an S3-compatible object store.
@@ -98,13 +99,37 @@ func New(config Config) (*S3, error) {
 		},
 	}
 	return &S3{
-		endpoint:  endpoint,
-		bucket:    config.Bucket,
-		region:    config.Region,
-		accessKey: config.AccessKey,
-		secretKey: config.SecretKey,
-		client:    client,
+		bucket: config.Bucket,
+		client: newSDKClient(config, endpoint, responseMetadataHTTPClient{next: client}),
 	}, nil
+}
+
+func newSDKClient(config Config, endpoint url.URL, httpClient awss3.HTTPClient) *awss3.Client {
+	credentials := aws.NewCredentialsCache(aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) {
+		return aws.Credentials{
+			AccessKeyID:     config.AccessKey,
+			SecretAccessKey: config.SecretKey,
+			Source:          "objectstore configuration",
+		}, nil
+	}))
+	return awss3.New(awss3.Options{
+		Region:                       config.Region,
+		Credentials:                  credentials,
+		BaseEndpoint:                 aws.String(endpoint.String()),
+		UsePathStyle:                 true,
+		HTTPClient:                   httpClient,
+		RetryMaxAttempts:             1,
+		RequestChecksumCalculation:   aws.RequestChecksumCalculationWhenRequired,
+		ResponseChecksumValidation:   aws.ResponseChecksumValidationWhenRequired,
+		ContinueHeaderThresholdBytes: -1,
+		APIOptions:                   []func(*middleware.Stack) error{forceSignedPayloadHash},
+	})
+}
+
+func forceSignedPayloadHash(stack *middleware.Stack) error {
+	computedHash := &awsv4.ComputePayloadSHA256{}
+	_, err := stack.Finalize.Swap(computedHash.ID(), computedHash)
+	return err
 }
 
 // Put writes one object and stores its SHA-256 digest as signed S3 user metadata.
@@ -120,17 +145,21 @@ func (s *S3) Put(ctx context.Context, key string, content []byte) error {
 	}
 
 	digest := sha256.Sum256(content)
-	digestHex := hex.EncodeToString(digest[:])
-	request, err := s.newRequest(ctx, http.MethodPut, key, content, digestHex)
-	if err != nil {
-		return err
-	}
-	response, err := s.client.Do(request)
+	requestCtx, responseState := withResponseState(ctx)
+	_, err := s.client.PutObject(requestCtx, &awss3.PutObjectInput{
+		Bucket:        aws.String(s.bucket),
+		Key:           aws.String(key),
+		Body:          bytes.NewReader(content),
+		ContentLength: aws.Int64(int64(len(content))),
+		Metadata:      map[string]string{"sha256": hex.EncodeToString(digest[:])},
+	})
 	if err != nil {
 		return requestError(ctx)
 	}
-	defer response.Body.Close()
-	return validatePutResponse(response)
+	if !validPutStatus(responseState.statusCode) {
+		return ErrRequestFailed
+	}
+	return nil
 }
 
 // Get downloads one object and verifies its bytes against the stored SHA-256 metadata.
@@ -138,17 +167,24 @@ func (s *S3) Get(ctx context.Context, key string) ([]byte, error) {
 	if err := validateOperation(s, ctx, key); err != nil {
 		return nil, err
 	}
-	emptyDigest := sha256.Sum256(nil)
-	emptyDigestHex := hex.EncodeToString(emptyDigest[:])
-	request, err := s.newRequest(ctx, http.MethodGet, key, nil, emptyDigestHex)
+	requestCtx, responseState := withResponseState(ctx)
+	response, err := s.client.GetObject(requestCtx, &awss3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
 	if err != nil {
-		return nil, err
-	}
-	response, err := s.client.Do(request)
-	if err != nil {
+		if responseState.statusCode == http.StatusNotFound {
+			return nil, ErrObjectNotFound
+		}
 		return nil, requestError(ctx)
 	}
+	if response == nil || response.Body == nil {
+		return nil, ErrRequestFailed
+	}
 	defer response.Body.Close()
+	if responseState.statusCode != http.StatusOK {
+		return nil, ErrRequestFailed
+	}
 	return readGetResponse(ctx, response)
 }
 
@@ -169,34 +205,29 @@ func requestError(ctx context.Context) error {
 	return ErrRequestFailed
 }
 
-func validatePutResponse(response *http.Response) error {
-	if response.StatusCode == http.StatusOK || response.StatusCode == http.StatusCreated || response.StatusCode == http.StatusNoContent {
-		return nil
-	}
-	return ErrRequestFailed
+func validPutStatus(statusCode int) bool {
+	return statusCode == http.StatusOK || statusCode == http.StatusCreated || statusCode == http.StatusNoContent
 }
 
-func readGetResponse(ctx context.Context, response *http.Response) ([]byte, error) {
-	if response.StatusCode == http.StatusNotFound {
-		return nil, ErrObjectNotFound
-	}
-	if response.StatusCode != http.StatusOK {
-		return nil, ErrRequestFailed
+func readGetResponse(ctx context.Context, response *awss3.GetObjectOutput) ([]byte, error) {
+	if response.ContentLength != nil && *response.ContentLength > MaxObjectBytes {
+		return nil, ErrObjectTooLarge
 	}
 	content, err := readLimitedObject(ctx, response)
 	if err != nil {
 		return nil, err
 	}
-	if err := verifyObjectDigest(content, response.Header.Values("X-Amz-Meta-Sha256")); err != nil {
+	digest, ok := response.Metadata["sha256"]
+	if !ok {
+		return nil, ErrIntegrity
+	}
+	if err := verifyObjectDigest(content, digest); err != nil {
 		return nil, err
 	}
 	return content, nil
 }
 
-func readLimitedObject(ctx context.Context, response *http.Response) ([]byte, error) {
-	if response.ContentLength > MaxObjectBytes {
-		return nil, ErrObjectTooLarge
-	}
+func readLimitedObject(ctx context.Context, response *awss3.GetObjectOutput) ([]byte, error) {
 	content, err := io.ReadAll(io.LimitReader(response.Body, MaxObjectBytes+1))
 	if err != nil {
 		return nil, requestError(ctx)
@@ -207,11 +238,8 @@ func readLimitedObject(ctx context.Context, response *http.Response) ([]byte, er
 	return content, nil
 }
 
-func verifyObjectDigest(content []byte, metadataValues []string) error {
-	if len(metadataValues) != 1 {
-		return ErrIntegrity
-	}
-	storedDigest, err := hex.DecodeString(metadataValues[0])
+func verifyObjectDigest(content []byte, metadataValue string) error {
+	storedDigest, err := hex.DecodeString(metadataValue)
 	if err != nil || len(storedDigest) != sha256.Size {
 		return ErrIntegrity
 	}
@@ -222,68 +250,52 @@ func verifyObjectDigest(content []byte, metadataValues []string) error {
 	return nil
 }
 
-func (s *S3) newRequest(ctx context.Context, method, key string, body []byte, digest string) (*http.Request, error) {
-	objectURL := s.endpoint
-	basePath := strings.TrimRight(objectURL.Path, "/")
-	objectPath := basePath + "/" + s.bucket + "/" + key
-	objectURL.Path = objectPath
-	objectURL.RawPath = encodePath(objectPath)
-	objectURL.RawQuery = ""
-	request, err := http.NewRequestWithContext(ctx, method, objectURL.String(), bytes.NewReader(body))
-	if err != nil {
-		return nil, ErrRequestFailed
-	}
-	request.Header.Set("Accept-Encoding", "identity")
-	request.Header.Set("X-Amz-Content-Sha256", digest)
-	request.Header.Set("X-Amz-Date", time.Now().UTC().Format("20060102T150405Z"))
-	if method == http.MethodPut {
-		request.Header.Set("X-Amz-Meta-Sha256", digest)
-	}
-	if err := s.sign(request, digest); err != nil {
-		return nil, ErrRequestFailed
-	}
-	return request, nil
+type responseMetadataHTTPClient struct {
+	next awss3.HTTPClient
 }
 
-func (s *S3) sign(request *http.Request, payloadDigest string) error {
-	canonicalQuery, err := canonicalQuery(request.URL.RawQuery)
-	if err != nil {
-		return err
-	}
+type responseStateContextKey struct{}
 
-	signedHeaders := []string{"host", "x-amz-content-sha256", "x-amz-date"}
-	if request.Method == http.MethodPut {
-		signedHeaders = append(signedHeaders, "x-amz-meta-sha256")
+type responseState struct {
+	statusCode int
+}
+
+func withResponseState(ctx context.Context) (context.Context, *responseState) {
+	state := &responseState{}
+	return context.WithValue(ctx, responseStateContextKey{}, state), state
+}
+
+func (client responseMetadataHTTPClient) Do(request *http.Request) (*http.Response, error) {
+	response, err := client.next.Do(request)
+	if response == nil {
+		return response, err
 	}
-	canonicalHeaders := strings.Builder{}
-	for _, name := range signedHeaders {
-		value := request.URL.Host
-		if name != "host" {
-			value = request.Header.Get(name)
+	if state, ok := request.Context().Value(responseStateContextKey{}).(*responseState); ok {
+		state.statusCode = response.StatusCode
+	}
+	const digestHeader = "X-Amz-Meta-Sha256"
+	values := response.Header.Values(digestHeader)
+	if len(values) > 1 {
+		// The pinned SDK maps repeated metadata headers to their first value. Keep
+		// duplicates invalid so the package does not accept ambiguous evidence.
+		response.Header.Set(digestHeader, strings.Join(values, ","))
+	}
+	if response.Body != nil && (response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices) {
+		response.Body = &limitedErrorResponseBody{
+			ReadCloser: response.Body,
+			reader:     io.LimitReader(response.Body, maxServiceErrorBodyBytes),
 		}
-		canonicalHeaders.WriteString(name)
-		canonicalHeaders.WriteByte(':')
-		canonicalHeaders.WriteString(strings.Join(strings.Fields(value), " "))
-		canonicalHeaders.WriteByte('\n')
 	}
-	signedHeaderNames := strings.Join(signedHeaders, ";")
-	canonicalRequest := request.Method + "\n" + request.URL.EscapedPath() + "\n" + canonicalQuery + "\n" +
-		canonicalHeaders.String() + "\n" + signedHeaderNames + "\n" + payloadDigest
-	canonicalRequestDigest := sha256.Sum256([]byte(canonicalRequest))
+	return response, err
+}
 
-	date := request.Header.Get("X-Amz-Date")
-	shortDate := date[:8]
-	scope := shortDate + "/" + s.region + "/s3/aws4_request"
-	stringToSign := "AWS4-HMAC-SHA256\n" + date + "\n" + scope + "\n" + hex.EncodeToString(canonicalRequestDigest[:])
+type limitedErrorResponseBody struct {
+	io.ReadCloser
+	reader io.Reader
+}
 
-	dateKey := hmacSHA256([]byte("AWS4"+s.secretKey), shortDate)
-	regionKey := hmacSHA256(dateKey, s.region)
-	serviceKey := hmacSHA256(regionKey, "s3")
-	signingKey := hmacSHA256(serviceKey, "aws4_request")
-	signature := hex.EncodeToString(hmacSHA256(signingKey, stringToSign))
-	request.Header.Set("Authorization", "AWS4-HMAC-SHA256 Credential="+s.accessKey+"/"+scope+
-		", SignedHeaders="+signedHeaderNames+", Signature="+signature)
-	return nil
+func (body *limitedErrorResponseBody) Read(p []byte) (int, error) {
+	return body.reader.Read(p)
 }
 
 func parseEndpoint(value string) (url.URL, error) {
@@ -485,73 +497,4 @@ func validSchemeName(name string) bool {
 
 func validSchemeCharacter(b byte) bool {
 	return isASCIIAlpha(b) || b >= '0' && b <= '9' || b == '+' || b == '.' || b == '-'
-}
-
-func canonicalQuery(raw string) (string, error) {
-	if raw == "" {
-		return "", nil
-	}
-	pairs, err := parseCanonicalQuery(raw)
-	if err != nil {
-		return "", err
-	}
-	slices.SortFunc(pairs, func(a, b canonicalQueryPair) int {
-		if order := strings.Compare(a.key, b.key); order != 0 {
-			return order
-		}
-		return strings.Compare(a.value, b.value)
-	})
-	return formatCanonicalQuery(pairs), nil
-}
-
-type canonicalQueryPair struct{ key, value string }
-
-func parseCanonicalQuery(raw string) ([]canonicalQueryPair, error) {
-	pairs := make([]canonicalQueryPair, 0, strings.Count(raw, "&")+1)
-	for _, item := range strings.Split(raw, "&") {
-		if item == "" {
-			continue
-		}
-		name, value, hasValue := strings.Cut(item, "=")
-		decodedName, err := url.PathUnescape(name)
-		if err != nil {
-			return nil, err
-		}
-		if !hasValue {
-			value = ""
-		}
-		decodedValue, err := url.PathUnescape(value)
-		if err != nil {
-			return nil, err
-		}
-		pairs = append(pairs, canonicalQueryPair{key: awsEncode(decodedName), value: awsEncode(decodedValue)})
-	}
-	return pairs, nil
-}
-
-func formatCanonicalQuery(pairs []canonicalQueryPair) string {
-	var query strings.Builder
-	for i, item := range pairs {
-		if i > 0 {
-			query.WriteByte('&')
-		}
-		query.WriteString(item.key)
-		query.WriteByte('=')
-		query.WriteString(item.value)
-	}
-	return query.String()
-}
-
-func encodePath(path string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(url.QueryEscape(path), "+", "%20"), "%2F", "/")
-}
-
-func awsEncode(value string) string {
-	return strings.ReplaceAll(url.QueryEscape(value), "+", "%20")
-}
-
-func hmacSHA256(key []byte, value string) []byte {
-	mac := hmac.New(sha256.New, key)
-	_, _ = io.WriteString(mac, value)
-	return mac.Sum(nil)
 }

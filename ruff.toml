@@ -1,0 +1,17 @@
+# File metadata (manifest mirror):
+# Purpose: Defines the pinned Ruff version, Python 3.10 language target and shared lint/format policy used by incremental and full engineering commands.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-12
+# Updated: 2026-11-12
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
+required-version = "0.17.4"
+target-version = "py310"
+line-length = 100
+extend-exclude = ["docs-site", "web"]
+
+[lint]
+select = ["E4", "E7", "E9", "F"]

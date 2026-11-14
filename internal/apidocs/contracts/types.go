@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-05
-// Revision: r9
+// Updated: 2026-11-12
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -3101,15 +3101,29 @@ type Run struct {
 	Partial_reason  any    `json:"partial_reason" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
 	Failure_message any    `json:"failure_message" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
 }
+type FrozenPlannerIdentity struct {
+	Mode                   string `json:"mode" openapi:"{\"type\":\"string\",\"enum\":[\"fixed_chain\",\"deterministic_planner\",\"model_fixture\",\"model_live\"]}"`
+	Configuration_id       string `json:"configuration_id" openapi:"{\"type\":\"string\"}"`
+	Model_configuration_id any    `json:"model_configuration_id" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
+	Prompt_version         string `json:"prompt_version" openapi:"{\"type\":\"string\"}"`
+	Schema_version         string `json:"schema_version" openapi:"{\"type\":\"string\"}"`
+	Runtime_version        string `json:"runtime_version" openapi:"{\"type\":\"string\"}"`
+	Tool_catalog_version   string `json:"tool_catalog_version" openapi:"{\"type\":\"string\"}"`
+	Max_rounds             int64  `json:"max_rounds" openapi:"{\"type\":\"integer\",\"minimum\":0}"`
+}
 type Snapshot struct {
-	Adopted_tenant_config any                 `json:"adopted_tenant_config" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/AdoptedTenantConfigIdentity\"},{\"type\":\"null\"}],\"description\":\"该次新运行实际冻结的租户配置版本；历史未记录时为null，不从当前配置推断。\"}"`
-	Document_ids          []string            `json:"document_ids" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\"}"`
-	Rule_set_hash         string              `json:"rule_set_hash" openapi:"{\"type\":\"string\"}"`
-	Playbook_hash         string              `json:"playbook_hash" openapi:"{\"type\":\"string\"}"`
-	Model_ref             any                 `json:"model_ref" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
-	Comparator_ref        any                 `json:"comparator_ref" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
-	Review_scope          ReviewScopeIdentity `json:"review_scope,omitempty" openapi:"{\"$ref\":\"#/components/schemas/ReviewScopeIdentity\"}"`
-	Governed_knowledge    any                 `json:"governed_knowledge" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/ReviewKnowledgeSnapshot\"},{\"type\":\"null\"}]}"`
+	Adopted_tenant_config   any                    `json:"adopted_tenant_config" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/AdoptedTenantConfigIdentity\"},{\"type\":\"null\"}],\"description\":\"该次新运行实际冻结的租户配置版本；历史未记录时为null，不从当前配置推断。\"}"`
+	Document_ids            []string               `json:"document_ids" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\"}"`
+	Parsed_document_ids     []string               `json:"parsed_document_ids,omitempty" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\"}"`
+	Parse_selection_hash    string                 `json:"parse_selection_hash,omitempty" openapi:"{\"type\":\"string\"}"`
+	Parser_configuration_id string                 `json:"parser_configuration_id,omitempty" openapi:"{\"type\":\"string\"}"`
+	Rule_set_hash           string                 `json:"rule_set_hash" openapi:"{\"type\":\"string\"}"`
+	Playbook_hash           string                 `json:"playbook_hash" openapi:"{\"type\":\"string\"}"`
+	Model_ref               any                    `json:"model_ref" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
+	Comparator_ref          any                    `json:"comparator_ref" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
+	Review_scope            ReviewScopeIdentity    `json:"review_scope,omitempty" openapi:"{\"$ref\":\"#/components/schemas/ReviewScopeIdentity\"}"`
+	Planner                 *FrozenPlannerIdentity `json:"planner,omitempty" openapi:"{\"$ref\":\"#/components/schemas/FrozenPlannerIdentity\"}"`
+	Governed_knowledge      any                    `json:"governed_knowledge" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/ReviewKnowledgeSnapshot\"},{\"type\":\"null\"}]}"`
 }
 type Evaluation struct {
 	Id            string   `json:"id" openapi:"{\"type\":\"string\"}"`
@@ -3159,8 +3173,44 @@ type Workspace struct {
 	Execution                  any                         `json:"execution" openapi:"{\"type\":\"null\"}"`
 	Review_attempts            any                         `json:"review_attempts" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/BusinessAttempts\"},{\"type\":\"null\"}]}"`
 	Agent_review               any                         `json:"agent_review" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/BusinessAgentReview\"},{\"type\":\"null\"}]}"`
+	Contract_facts             any                         `json:"contract_facts" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/ContractFactsProjection\"},{\"type\":\"null\"}],\"description\":\"单合同事实建议；独立于五域审查，不构成风险结论。\"}"`
 	Business_events            []BusinessAuditEvent        `json:"business_events" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/BusinessAuditEvent\"}"`
 }
+type ContractFactsSource struct {
+	Document_id        string `json:"document_id" openapi:"{\"type\":\"string\",\"minLength\":1}"`
+	Parsed_document_id string `json:"parsed_document_id" openapi:"{\"type\":\"string\",\"minLength\":1}"`
+	Original_digest    string `json:"original_digest" openapi:"{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"}"`
+	Normalized_digest  string `json:"normalized_digest" openapi:"{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"}"`
+}
+
+type ContractFactsCitation struct {
+	Document_id        string `json:"document_id" openapi:"{\"type\":\"string\",\"minLength\":1}"`
+	Parsed_document_id string `json:"parsed_document_id" openapi:"{\"type\":\"string\",\"minLength\":1}"`
+	Original_digest    string `json:"original_digest" openapi:"{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"}"`
+	Normalized_digest  string `json:"normalized_digest" openapi:"{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"}"`
+	Quote              string `json:"quote" openapi:"{\"type\":\"string\",\"minLength\":1,\"maxLength\":500}"`
+	Start              int64  `json:"start" openapi:"{\"type\":\"integer\",\"minimum\":0}"`
+	End                int64  `json:"end" openapi:"{\"type\":\"integer\",\"minimum\":1}"`
+}
+
+type ContractFact struct {
+	Field     string                  `json:"field" openapi:"{\"type\":\"string\",\"enum\":[\"parties\",\"contract_amount\",\"tax_treatment\",\"business_dates\",\"term\",\"payment_schedule\",\"subject_matter\",\"exceptions\"]}"`
+	Status    string                  `json:"status" openapi:"{\"type\":\"string\",\"enum\":[\"known\",\"unknown\",\"conflicting\"]}"`
+	Value     string                  `json:"value" openapi:"{\"type\":\"string\",\"maxLength\":1200}"`
+	Citations []ContractFactsCitation `json:"citations" openapi:"{\"type\":\"array\",\"maxItems\":3}" openapi_items:"{\"$ref\":\"#/components/schemas/ContractFactsCitation\"}"`
+}
+
+type ContractFactsProjection struct {
+	Schema_version           string              `json:"schema_version" openapi:"{\"type\":\"string\",\"const\":\"contract-facts/v1\"}"`
+	Attempt_id               string              `json:"attempt_id" openapi:"{\"type\":\"string\",\"minLength\":1}"`
+	Status                   string              `json:"status" openapi:"{\"type\":\"string\",\"enum\":[\"suggested\",\"partial\"]}"`
+	Structured_output_status string              `json:"structured_output_status" openapi:"{\"type\":\"string\",\"enum\":[\"valid\",\"invalid\",\"not_returned\"]}"`
+	Source                   ContractFactsSource `json:"source" openapi:"{\"$ref\":\"#/components/schemas/ContractFactsSource\"}"`
+	Input_codepoints         int64               `json:"input_codepoints" openapi:"{\"type\":\"integer\",\"minimum\":1,\"maximum\":32000}"`
+	Input_truncated          bool                `json:"input_truncated" openapi:"{\"type\":\"boolean\"}"`
+	Fields                   []ContractFact      `json:"fields" openapi:"{\"type\":\"array\",\"minItems\":8,\"maxItems\":8}" openapi_items:"{\"$ref\":\"#/components/schemas/ContractFact\"}"`
+}
+
 type BusinessSnapshot struct {
 	Document_ids          []string            `json:"document_ids" openapi:"{\"type\":[\"array\",\"null\"]}" openapi_items:"{\"type\":\"string\"}"`
 	Business_at           any                 `json:"business_at,omitempty" openapi:"{\"type\":[\"string\",\"null\"],\"format\":\"date-time\",\"description\":\"该次审查尝试冻结的业务时间；历史记录未保存时为null，不取当前查询时间。\"}"`
@@ -4471,10 +4521,15 @@ var SchemaRules = map[string]string{
 	"Finding":                                "{\"type\":\"object\",\"required\":[\"id\",\"origin\",\"domain\",\"claim\",\"relation\",\"confidence\",\"evidence\",\"disposition_suggestion\",\"unverified_reason\",\"version\",\"decisions\",\"revision_mark\"],\"additionalProperties\":false}",
 	"Run":                                    "{\"type\":\"object\",\"required\":[\"id\",\"state\",\"updated_at\",\"case_id\",\"started_at\",\"partial_reason\",\"failure_message\"],\"additionalProperties\":false}",
 	"Snapshot":                               "{\"type\":\"object\",\"required\":[\"document_ids\",\"rule_set_hash\",\"playbook_hash\",\"model_ref\",\"comparator_ref\",\"governed_knowledge\"],\"additionalProperties\":false}",
+	"FrozenPlannerIdentity":                  "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"mode\",\"configuration_id\",\"model_configuration_id\",\"prompt_version\",\"schema_version\",\"runtime_version\",\"tool_catalog_version\",\"max_rounds\"]}",
 	"Evaluation":                             "{\"type\":\"object\",\"required\":[\"id\",\"domain\",\"relation\",\"rule_version\",\"reason\",\"finding_id\",\"rule_id\",\"capability_id\",\"reason_code\",\"fact_ids\",\"object_refs\"],\"additionalProperties\":false}",
 	"AuditEvent":                             "{\"type\":\"object\",\"required\":[\"event_id\",\"run_id\",\"actor\",\"seq\",\"event_type\",\"prev_hash\",\"hash\",\"correlation_ids\"],\"additionalProperties\":false}",
 	"Revision":                               "{\"type\":\"object\",\"required\":[\"mark\",\"finding_id\",\"previous_finding_id\",\"domain\",\"relation\",\"claim\",\"evidence\",\"prior_decision\"],\"additionalProperties\":false}",
-	"Workspace":                              "{\"type\":\"object\",\"required\":[\"run\",\"documents\",\"findings\",\"evaluations\",\"snapshot\",\"audit_events\",\"previous_run_id\",\"revision_comparison_reason\",\"revisions\",\"execution\",\"review_attempts\",\"agent_review\",\"business_events\"],\"additionalProperties\":false}",
+	"Workspace":                              "{\"type\":\"object\",\"required\":[\"run\",\"documents\",\"findings\",\"evaluations\",\"snapshot\",\"audit_events\",\"previous_run_id\",\"revision_comparison_reason\",\"revisions\",\"execution\",\"review_attempts\",\"agent_review\",\"contract_facts\",\"business_events\"],\"additionalProperties\":false}",
+	"ContractFactsSource":                    "{\"type\":\"object\",\"required\":[\"document_id\",\"parsed_document_id\",\"original_digest\",\"normalized_digest\"],\"additionalProperties\":false}",
+	"ContractFactsCitation":                  "{\"type\":\"object\",\"required\":[\"document_id\",\"parsed_document_id\",\"original_digest\",\"normalized_digest\",\"quote\",\"start\",\"end\"],\"additionalProperties\":false}",
+	"ContractFact":                           "{\"type\":\"object\",\"required\":[\"field\",\"status\",\"value\",\"citations\"],\"additionalProperties\":false}",
+	"ContractFactsProjection":                "{\"type\":\"object\",\"required\":[\"schema_version\",\"attempt_id\",\"status\",\"structured_output_status\",\"source\",\"input_codepoints\",\"input_truncated\",\"fields\"],\"additionalProperties\":false}",
 	"BusinessSnapshot":                       "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"document_ids\",\"adopted_tenant_config\"]}",
 	"AdoptedTenantConfigIdentity":            "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"version_id\",\"digest\"]}",
 	"BusinessAttempt":                        "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"id\",\"run_id\",\"ordinal\",\"retry_of_attempt_id\",\"state\",\"accepted_at\",\"started_at\",\"finished_at\",\"history_kind\",\"parsed_document_ids\",\"frozen_result_available\"]}",
@@ -4911,10 +4966,15 @@ func Types() map[string]reflect.Type {
 		"Finding":                                reflect.TypeOf((*Finding)(nil)).Elem(),
 		"Run":                                    reflect.TypeOf((*Run)(nil)).Elem(),
 		"Snapshot":                               reflect.TypeOf((*Snapshot)(nil)).Elem(),
+		"FrozenPlannerIdentity":                  reflect.TypeOf((*FrozenPlannerIdentity)(nil)).Elem(),
 		"Evaluation":                             reflect.TypeOf((*Evaluation)(nil)).Elem(),
 		"AuditEvent":                             reflect.TypeOf((*AuditEvent)(nil)).Elem(),
 		"Revision":                               reflect.TypeOf((*Revision)(nil)).Elem(),
 		"Workspace":                              reflect.TypeOf((*Workspace)(nil)).Elem(),
+		"ContractFactsSource":                    reflect.TypeOf((*ContractFactsSource)(nil)).Elem(),
+		"ContractFactsCitation":                  reflect.TypeOf((*ContractFactsCitation)(nil)).Elem(),
+		"ContractFact":                           reflect.TypeOf((*ContractFact)(nil)).Elem(),
+		"ContractFactsProjection":                reflect.TypeOf((*ContractFactsProjection)(nil)).Elem(),
 		"BusinessSnapshot":                       reflect.TypeOf((*BusinessSnapshot)(nil)).Elem(),
 		"AdoptedTenantConfigIdentity":            reflect.TypeOf((*AdoptedTenantConfigIdentity)(nil)).Elem(),
 		"BusinessAttempt":                        reflect.TypeOf((*BusinessAttempt)(nil)).Elem(),
