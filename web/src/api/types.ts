@@ -164,11 +164,7 @@ export interface BoundingBox {
   height: number;
 }
 
-export type AnchorStatus =
-  | "located"
-  | "anchor_mismatch"
-  | "unlocatable"
-  | "missing";
+export type AnchorStatus = "located" | "anchor_mismatch" | "unlocatable" | "missing";
 
 export interface EvidenceAnchor {
   id: string;
@@ -185,7 +181,8 @@ export interface EvidenceAnchor {
 
 // The UI displays only these fields of the server's decision history.
 export type HumanDecision = Pick<
-  WireSchemas["Decision"], "id" | "action" | "reason" | "actor" | "decided_at"
+  WireSchemas["Decision"],
+  "id" | "action" | "reason" | "actor" | "decided_at"
 >;
 
 export interface FindingSeveritySource {
@@ -231,7 +228,6 @@ export interface ReviewScopeIdentity {
   rule_set_version: string;
   rule_set_hash: string;
 }
-
 
 export interface ExecutionAttempt {
   id: string;
@@ -318,16 +314,9 @@ export interface ExecutionEvent {
 }
 
 export type AgentReviewDomain =
-  | "compliance"
-  | "commercial"
-  | "technical"
-  | "fulfillment"
-  | "counterparty";
+  "compliance" | "commercial" | "technical" | "fulfillment" | "counterparty";
 export type AgentPlannerMode =
-  | "fixed_chain"
-  | "deterministic_planner"
-  | "model_fixture"
-  | "model_live";
+  "fixed_chain" | "deterministic_planner" | "model_fixture" | "model_live";
 export type AgentReviewStatus =
   | "queued"
   | "planning"
@@ -346,16 +335,9 @@ export type AgentReviewCapabilityStatus =
   | "unknown"
   | "unsupported"
   | "not_applicable";
-export type AgentReviewDomainStatus =
-  | "not_requested"
-  | AgentReviewCapabilityStatus;
+export type AgentReviewDomainStatus = "not_requested" | AgentReviewCapabilityStatus;
 export type AgentReviewGapStatus =
-  | "open"
-  | "resolved"
-  | "completed"
-  | "insufficient"
-  | "unsupported"
-  | "unknown";
+  "open" | "resolved" | "completed" | "insufficient" | "unsupported" | "unknown";
 export type AgentReviewCallStatus =
   | "planned"
   | "running"
@@ -383,10 +365,7 @@ export type AgentReviewPlanStatus =
   | "partial"
   | "fallback";
 export type AgentReviewEvidenceVerification =
-  | "verified"
-  | "typed_semantic_and_frozen_quote_verified"
-  | "unknown"
-  | "rejected";
+  "verified" | "typed_semantic_and_frozen_quote_verified" | "unknown" | "rejected";
 export type AgentReviewAnchorStatus = "located" | "unlocatable";
 export type AgentReviewEventKind =
   | "planning"
@@ -412,11 +391,7 @@ export type AgentReviewEventKind =
   | "plan_accepted"
   | "tool_failed"
   | "tool_completed";
-export type AgentReviewRelation =
-  | "compatible"
-  | "conflict"
-  | "insufficient"
-  | "not_applicable";
+export type AgentReviewRelation = "compatible" | "conflict" | "insufficient" | "not_applicable";
 
 export interface AgentReviewSourceSnapshot {
   document_ids: string[];
@@ -583,18 +558,11 @@ export type AgentReviewAdvisoryStatus =
   | "persistence_failed"
   | "config_mismatch";
 
-export type AgentReviewAdvisoryBand =
-  | "relevant"
-  | "uncertain"
-  | "not_relevant"
-  | "unknown";
+export type AgentReviewAdvisoryBand = "relevant" | "uncertain" | "not_relevant" | "unknown";
 
 export type AgentReviewAdvisoryMode = "advisory" | "fixture";
 
-export type AgentReviewAdvisoryProvider =
-  | "model-gateway"
-  | "local-fixture"
-  | "direct";
+export type AgentReviewAdvisoryProvider = "model-gateway" | "local-fixture" | "direct";
 
 export interface AgentReviewKnowledgeAdvisoryCandidate {
   knowledge_id: string;
@@ -690,7 +658,6 @@ export interface ReviewDiagnostics {
   snapshot: RunSnapshot | null;
   audit_events: AuditEvent[];
 }
-
 
 export interface AcceptedReview {
   id: string;
@@ -983,21 +950,10 @@ export type WorkbenchPeriod = "day" | "week" | "month";
 
 export type CaseProfile = WireSchemas["CaseProfile"];
 
-export type SubjectRole =
-  | "customer"
-  | "supplier"
-  | "contractor"
-  | "service_provider"
-  | "other";
+export type SubjectRole = "customer" | "supplier" | "contractor" | "service_provider" | "other";
 export type SubjectVerificationState = "pending_verification" | "verified";
-export type SubjectBindingState =
-  | "active"
-  | "inactive"
-  | "pending_confirmation";
-export type SubjectSourceKind =
-  | "user_asserted"
-  | "official_identifier"
-  | "authorized_correction";
+export type SubjectBindingState = "active" | "inactive" | "pending_confirmation";
+export type SubjectSourceKind = "user_asserted" | "official_identifier" | "authorized_correction";
 export type SubjectClaimSourceKind = SubjectSourceKind | "synthetic_controlled_snapshot";
 export type SubjectVerificationScope = "synthetic_controlled" | "official_controlled" | "ordinary";
 export type SubjectAliasKind = "legal" | "trade" | "former" | "other";
@@ -1036,8 +992,7 @@ export interface MaskedSubjectIdentifier extends SubjectIdentifierProjection {
   masked_value: string;
 }
 
-export interface SubjectIdentityClaim extends SubjectIdentifierProjection {
-}
+export type SubjectIdentityClaim = SubjectIdentifierProjection;
 
 export interface SubjectCreateInput {
   display_name: string;
@@ -1367,16 +1322,17 @@ interface SubjectChangeProposalBase {
   basis_refs: SubjectChangeBasisInput[];
 }
 
-export type SubjectChangeProposalInput = SubjectChangeProposalBase & (
-  | {
-      target: { kind: "subject"; subject_id: string; binding_id: null };
-      patch: SubjectIdentityChangePatch;
-    }
-  | {
-      target: { kind: "case_subject_role"; subject_id: string; binding_id: string };
-      patch: CaseRoleChangePatch;
-    }
-);
+export type SubjectChangeProposalInput = SubjectChangeProposalBase &
+  (
+    | {
+        target: { kind: "subject"; subject_id: string; binding_id: null };
+        patch: SubjectIdentityChangePatch;
+      }
+    | {
+        target: { kind: "case_subject_role"; subject_id: string; binding_id: string };
+        patch: CaseRoleChangePatch;
+      }
+  );
 
 export interface SubjectChangeProposalResult {
   request_id: string;
