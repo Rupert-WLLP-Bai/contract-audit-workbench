@@ -175,7 +175,7 @@ func TestSelectionTraceAcceptsContentAndInputBoundaries(t *testing.T) {
 func TestSelectionTraceCandidateAndReferenceLimits(t *testing.T) {
 	for _, count := range []int{MaxKnowledgeRecords, MaxKnowledgeRecords + 1} {
 		request := selectionWithoutPolicy()
-		for i := 0; i < count; i++ {
+		for i := range count {
 			request.KnowledgeSelection.Candidates = append(request.KnowledgeSelection.Candidates, omittedGuidance(fmt.Sprintf("optional-%d", i)))
 		}
 		request.KnowledgeSelection.Budget.OptionalCandidates, request.KnowledgeSelection.Budget.OptionalOmitted = count, count

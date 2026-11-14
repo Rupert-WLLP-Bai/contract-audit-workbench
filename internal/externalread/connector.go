@@ -509,7 +509,7 @@ func validObjectID(objectID string) bool {
 	if strings.Contains(objectID, urlSchemeSeparator) {
 		return false
 	}
-	for _, segment := range strings.Split(objectID, "/") {
+	for segment := range strings.SplitSeq(objectID, "/") {
 		if segment == "." || segment == ".." {
 			return false
 		}

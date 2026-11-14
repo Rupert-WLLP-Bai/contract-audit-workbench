@@ -9,16 +9,12 @@
 // End file metadata.
 
 import { Alert, Button, Input, Select, Tag } from "antd";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   createContractAcceptance,
   createContractDelivery,
-  listContractAcceptances,
-  listContractDeliveries,
   recordContractRectification,
   type ContractAcceptance,
-  type ContractAcceptanceList,
-  type ContractDeliveryList,
   type ContractDetail,
   type MaterialRef,
 } from "../api/contracts";
@@ -32,6 +28,7 @@ import { paths } from "../api/paths";
 import { useCaseDetail, useCases } from "../api/queries";
 import type { Actor, CaseSummary } from "../api/types";
 import { caseOptionLabel } from "../domain/case-identity";
+import { useContractFulfillmentQuery } from "../features/contracts/queries";
 import { caseSelectPresentation } from "./case-select-presentation";
 import { ContractRemindersPanel } from "./contract-reminders-panel";
 import type { WireSchemas } from "../api/wire.generated";
@@ -105,13 +102,21 @@ export function ContractFulfillmentPanel({
 }) {
   const contractId = detail.summary.contract_id;
   const revisionId = detail.current_revision_id;
-  const actorKey = actor
-    ? [actor.audience, actor.tenant_id, actor.org_id, actor.id, actor.role].join("\u0000")
-    : "anonymous";
   const canManage = detail.summary.authority_mode === "native" && detail.draft !== undefined;
   const active =
     detail.summary.contract_state === "registered" ||
     detail.summary.contract_state === "performing";
+  const fulfillmentQuery = useContractFulfillmentQuery(
+    contractId,
+    revisionId,
+    detail.summary.row_version,
+    actor,
+    active,
+  );
+  const fulfillment = fulfillmentQuery.isError ? null : fulfillmentQuery.data;
+  const deliveries = fulfillment?.deliveries ?? null;
+  const acceptances = fulfillment?.acceptances ?? null;
+  const loading = fulfillmentQuery.isFetching;
   const cases = useCases();
   const [caseId, setCaseId] = useState<string>();
   const caseVisible =
@@ -127,11 +132,10 @@ export function ContractFulfillmentPanel({
       setMaterialId(undefined);
     }
   }, [caseId, cases.data, cases.isError, cases.isSuccess]);
-  const [deliveries, setDeliveries] = useState<ContractDeliveryList | null>(null);
-  const [acceptances, setAcceptances] = useState<ContractAcceptanceList | null>(null);
-  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const error =
+    actionError ?? (fulfillmentQuery.error ? errorMessage(fulfillmentQuery.error) : null);
   const [message, setMessage] = useState<string | null>(null);
   const [deliveryItem, setDeliveryItem] = useState<string>();
   const [deliveryPlan, setDeliveryPlan] = useState<number>();
@@ -152,43 +156,6 @@ export function ContractFulfillmentPanel({
     { description: "", responsible: "", remediation_due: "", failed_quantity: "" },
   ]);
   const [rectificationNotes, setRectificationNotes] = useState<Record<string, string>>({});
-  const requestGeneration = useRef(0);
-
-  async function reload() {
-    const generation = ++requestGeneration.current;
-    if (!contractId || !active) {
-      setDeliveries(null);
-      setAcceptances(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    setDeliveries(null);
-    setAcceptances(null);
-    try {
-      const [deliveryResult, acceptanceResult] = await Promise.all([
-        listContractDeliveries(contractId),
-        listContractAcceptances(contractId),
-      ]);
-      if (generation !== requestGeneration.current) return;
-      setDeliveries(deliveryResult);
-      setAcceptances(acceptanceResult);
-    } catch (caught) {
-      if (generation !== requestGeneration.current) return;
-      setDeliveries(null);
-      setAcceptances(null);
-      setError(errorMessage(caught));
-    } finally {
-      if (generation === requestGeneration.current) setLoading(false);
-    }
-  }
-  useEffect(() => {
-    void reload();
-    return () => {
-      requestGeneration.current++;
-    };
-  }, [contractId, revisionId, active, actorKey]);
 
   const materials = useMemo(() => {
     const source = caseDetail.data;
@@ -258,7 +225,7 @@ export function ContractFulfillmentPanel({
   ) {
     if (!actor) return;
     setBusy(true);
-    setError(null);
+    setActionError(null);
     setMessage(null);
     let pending: Awaited<ReturnType<typeof pendingMutationKey>> | null = null;
     try {
@@ -271,10 +238,10 @@ export function ContractFulfillmentPanel({
       await send(pending.key);
       clearPendingMutationKey(pending.storageKey);
       await onRefresh();
-      await reload();
+      await fulfillmentQuery.refetch();
       setMessage("履约事实已追加。原冻结修订、合同文本和既有事实保持不变。");
     } catch (caught) {
-      setError(errorMessage(caught));
+      setActionError(errorMessage(caught));
     } finally {
       setBusy(false);
     }

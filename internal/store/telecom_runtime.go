@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -212,13 +213,7 @@ func validateCloudPolicyBindings(snapshot RunSnapshot, knowledge ReviewKnowledge
 }
 
 func cloudBindingCoversRule(binding PolicyRuleBinding, ruleID string) bool {
-	bound := false
-	for _, id := range binding.RuleIDs {
-		if id == ruleID {
-			bound = true
-			break
-		}
-	}
+	bound := slices.Contains(binding.RuleIDs, ruleID)
 	if !bound {
 		return false
 	}

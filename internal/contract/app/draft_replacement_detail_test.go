@@ -73,8 +73,8 @@ func TestLoadDraftDetailPrefersFrozenRevisionAndRetainsWarningsAndReviewGate(t *
 	record := clmcontract.Aggregate{
 		TenantID: "tenant", ContractID: "contract", AuthorityMode: "native",
 		LifecycleState: "registered", ValidityState: "active", RowVersion: 3,
-		CurrentRevisionID: &revisionID, SourceSystem: str("legacy"),
-		ExternalContractID: str("source-1"), SourceVersion: str("v1"),
+		CurrentRevisionID: &revisionID, SourceSystem: new("legacy"),
+		ExternalContractID: new("source-1"), SourceVersion: new("v1"),
 	}
 	queries := &draftQueriesStub{facts: clmcontract.DraftDetailFacts{
 		HasRevision: true, RevisionSnapshot: frozenBytes, HasDraft: true, DraftContent: workingBytes,
@@ -144,11 +144,11 @@ func TestListMyDraftsRechecksReadAuthorityBeforeProjectingSummary(t *testing.T) 
 		return clmcontract.DraftRecoveryRow{
 			Record: clmcontract.Aggregate{
 				TenantID: "tenant", ContractID: contractID, OwnerOrgID: orgID,
-				AuthorityMode: "native", ContractNumber: str(contractID + "-number"),
+				AuthorityMode: "native", ContractNumber: new(contractID + "-number"),
 				LifecycleState: "draft", ValidityState: "active", RowVersion: 4,
 				CreatedBy: "actor", CreatedAt: createdAt, UpdatedAt: updatedAt,
 			},
-			Name: name, Amount: str(amount), Currency: str("CNY"), UpdatedAt: updatedAt,
+			Name: name, Amount: new(amount), Currency: new("CNY"), UpdatedAt: updatedAt,
 		}
 	}
 	queries := &draftQueriesStub{rows: []clmcontract.DraftRecoveryRow{
@@ -267,4 +267,5 @@ func (*replaceRepositoryStub) ReplaceDraft(context.Context, clmcontract.Aggregat
 	return clmcontract.Aggregate{}, errors.New("unexpected replacement")
 }
 
-func str(value string) *string { return &value }
+//go:fix inline
+func str(value string) *string { return new(value) }

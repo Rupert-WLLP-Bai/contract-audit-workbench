@@ -566,7 +566,7 @@ func TestToolGatewayClaimAuthorityRechecksLiveFrozenJobThroughCoreHTTP(t *testin
 	}
 	request := store.ToolInvocationContext{TenantID: claim.TenantID, OrgID: claim.OrgID, JobID: claim.JobID,
 		WorkerID: claim.WorkerID, Generation: claim.Generation, CaseID: claim.CaseID, RunID: claim.RunID, AttemptID: claim.AttemptID}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		authority, err := resolver.AuthorizeToolResolution(env.ctx, request)
 		if err != nil || authority.User.ID != claim.ActorID || authority.TenantID != claim.TenantID || authority.CaseID != claim.CaseID {
 			t.Fatalf("Core claim authority pass %d=%+v err=%v", i+1, authority, err)

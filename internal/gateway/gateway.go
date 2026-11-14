@@ -232,7 +232,7 @@ func validateHealthThresholds(config Config) error {
 
 func splitList(value string) []string {
 	var items []string
-	for _, item := range strings.Split(value, ",") {
+	for item := range strings.SplitSeq(value, ",") {
 		if item = strings.TrimSpace(item); item != "" {
 			items = append(items, item)
 		}

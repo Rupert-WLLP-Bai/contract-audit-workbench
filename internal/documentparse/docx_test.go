@@ -284,7 +284,7 @@ func TestDOCXRejectsIncompleteAndUnboundedPackages(t *testing.T) {
 func TestDOCXEnforcesZIPEntryAndExpansionLimits(t *testing.T) {
 	plain := docxFixture(t, "plain.docx")
 	tooMany := make(map[string][]byte, docxMaxEntries-2)
-	for index := 0; index < docxMaxEntries-2; index++ {
+	for index := range docxMaxEntries - 2 {
 		tooMany[fmt.Sprintf("extra/%04d.xml", index)] = nil
 	}
 	largeTotal := bytes.Repeat([]byte{'x'}, 13<<20)

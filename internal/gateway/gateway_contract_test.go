@@ -135,7 +135,6 @@ func TestPublicOperationsUseOnlyTheirOwningServiceCredential(t *testing.T) {
 	var calls []received
 	servers := make(map[string]*httptest.Server)
 	for _, role := range []string{"core", "document", "execution", "tool"} {
-		role := role
 		servers[role] = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/health/ready" {
 				w.WriteHeader(http.StatusOK)
@@ -291,7 +290,7 @@ func TestKnownBadReplicaIsSkippedAndAllUnhealthyReturns503(t *testing.T) {
 	if readyResponse.StatusCode != http.StatusOK {
 		t.Fatalf("edge readiness route answered %d while each service had a healthy replica", readyResponse.StatusCode)
 	}
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := range 2 {
 		response, err := http.Get(edge.URL + "/api/cases")
 		if err != nil {
 			t.Fatal(err)
@@ -376,7 +375,7 @@ func TestSafeReadFailsOverAndQuarantinesFailedReplica(t *testing.T) {
 	failedReplicaID := coreUpstream.replicas[0].identity
 	healthyReplicaID := coreUpstream.replicas[1].identity
 
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := range 2 {
 		response, err := http.Get(edge.URL + "/api/cases")
 		if err != nil {
 			t.Fatal(err)

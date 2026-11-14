@@ -37,7 +37,7 @@ func TestConcurrentIdenticalBlobUploadsAreAtomic(t *testing.T) {
 	start := make(chan struct{})
 	errs := make(chan error, 16)
 	var wg sync.WaitGroup
-	for i := 0; i < 16; i++ {
+	for range 16 {
 		wg.Add(1)
 		go func() { defer wg.Done(); <-start; errs <- writeBlob(dir, digest, body) }()
 	}
@@ -122,7 +122,7 @@ func TestConcurrentDatabaseInitialization(t *testing.T) {
 	start := make(chan struct{})
 	errs := make(chan error, 8)
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		wg.Add(1)
 		go func() { defer wg.Done(); <-start; errs <- ensureDatabase(context.Background(), sel) }()
 	}

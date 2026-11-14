@@ -12,6 +12,7 @@ package httpapi
 
 import (
 	"net/http"
+	"slices"
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/agentflow"
@@ -154,12 +155,7 @@ func findVerifiedEvidence(items []agentflow.VerifiedEvidence, evidenceID string)
 }
 
 func containsString(items []string, value string) bool {
-	for _, item := range items {
-		if item == value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(items, value)
 }
 
 // frozenAttemptDocument returns the only document of this case whose frozen

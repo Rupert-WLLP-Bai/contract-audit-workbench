@@ -616,7 +616,7 @@ func TestOperatorCollectionClaimZeroRowRollbackAndRecovery(t *testing.T) {
 		t.Fatalf("confirm frozen association=%+v replay=%v err=%v", confirmed, replayed, err)
 	}
 	bindingInput := OperatorObjectBindingInput{
-		ContractObject:  OperatorContractObject{ObjectType: "service", ObjectID: fixture.Option.ObjectRef, Label: strPtr("专线 LINE-OBJ-001")},
+		ContractObject:  OperatorContractObject{ObjectType: "service", ObjectID: fixture.Option.ObjectRef, Label: new("专线 LINE-OBJ-001")},
 		ExternalObject:  OperatorExternalObject{ConnectorID: "fixture.oss", ExternalObjectID: "fixture-line-c310"},
 		ServiceObjectID: fixture.Object.ServiceObjectID, ExpectedObjectVersion: confirmed.Version, ExpectedAssociationVersion: confirmed.AssociationVersion,
 		EffectiveFrom: businessAt.Add(-24 * time.Hour), EffectiveUntil: businessAt.Add(24 * time.Hour), Confirmed: true,

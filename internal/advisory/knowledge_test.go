@@ -203,14 +203,14 @@ func TestBuildKnowledgeRequestStaysWithinTheStateBudget(t *testing.T) {
 	configuration := testConfiguration()
 	configuration.MaxCandidates = 16
 	gaps := make([]KnowledgeGap, 0, maxStateGaps)
-	for index := 0; index < maxStateGaps; index++ {
+	for index := range maxStateGaps {
 		gaps = append(gaps, KnowledgeGap{
 			Domain:     strings.Repeat("a", 60),
 			Capability: strings.Repeat("c", 55) + fmt.Sprintf("%06d", index),
 		})
 	}
 	candidates := make([]KnowledgeCandidate, 0, 20)
-	for index := 0; index < 20; index++ {
+	for range 20 {
 		candidates = append(candidates, KnowledgeCandidate{
 			Kind:            "guidance",
 			Summary:         strings.Repeat("规", 170),

@@ -111,7 +111,7 @@ func writeText(ctx context.Context, pdf *gopdf.GoPdf, text string, y *float64, l
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	for _, paragraph := range strings.Split(text, "\n") {
+	for paragraph := range strings.SplitSeq(text, "\n") {
 		if paragraph == "" {
 			*y += lineHeight
 			continue

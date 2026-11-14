@@ -13,6 +13,7 @@ package agentflow
 import (
 	"context"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -190,12 +191,7 @@ func compareCandidateValues(left, right semanticCandidate) (string, string, stri
 }
 
 func containsCapability(capabilities []string, want string) bool {
-	for _, capability := range capabilities {
-		if capability == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(capabilities, want)
 }
 
 func comparisonSources(domain Domain, capability string, evidence []Evidence) (left, right []Evidence) {

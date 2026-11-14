@@ -502,10 +502,7 @@ func verifyArticleAssertions(input CaptureInput, extracted []extractedArticle) (
 
 func firstRuneDifference(left, right string) int {
 	a, b := []rune(left), []rune(right)
-	limit := len(a)
-	if len(b) < limit {
-		limit = len(b)
-	}
+	limit := min(len(b), len(a))
 	for i := 0; i < limit; i++ {
 		if a[i] != b[i] {
 			return i

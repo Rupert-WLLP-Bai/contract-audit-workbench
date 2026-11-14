@@ -140,7 +140,7 @@ func KeyringFromEnv() (*Keyring, error) {
 		keyID = "internal-v1"
 	}
 	keys := map[string][]byte{keyID: []byte(secret)}
-	for _, pair := range strings.Split(os.Getenv("CAW_APPROVAL_CREDENTIAL_PREVIOUS_KEYS"), ",") {
+	for pair := range strings.SplitSeq(os.Getenv("CAW_APPROVAL_CREDENTIAL_PREVIOUS_KEYS"), ",") {
 		pair = strings.TrimSpace(pair)
 		if pair == "" {
 			continue

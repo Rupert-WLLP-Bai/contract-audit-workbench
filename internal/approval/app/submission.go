@@ -150,7 +150,7 @@ func Submit(ctx context.Context, p PreparedSubmission, tenantID, actorID string,
 		if receipt.ContractID != p.ContractID {
 			return empty, fault.Conflict("Idempotency-Key已用于其他合同")
 		}
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			record, err := contracts.LoadContract(ctx, tenantID, p.ContractID)
 			if err != nil {
 				return empty, err

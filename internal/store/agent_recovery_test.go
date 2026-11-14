@@ -45,9 +45,9 @@ func TestPriorFailureObservationsRestoreOnlyPersistedFailures(t *testing.T) {
 		Plan: agentflow.AgentPlan{Rounds: []agentflow.PlanRound{{
 			Round: 1,
 			Calls: []agentflow.PlannedCall{
-				{ToolID: toolID, ToolVersion: toolVersion, GapID: gap.ID, CapabilityID: gap.Capability, Status: "failed", ReasonCode: stringPointer("tool_error_or_unverified_result")},
+				{ToolID: toolID, ToolVersion: toolVersion, GapID: gap.ID, CapabilityID: gap.Capability, Status: "failed", ReasonCode: new("tool_error_or_unverified_result")},
 				{ToolID: completedTool, ToolVersion: "v1", GapID: gap.ID, CapabilityID: gap.Capability, Status: "completed"},
-				{ToolID: "unknown.tool", ToolVersion: "v1", GapID: gap.ID, CapabilityID: gap.Capability, Status: "failed", ReasonCode: stringPointer("unknown_tool")},
+				{ToolID: "unknown.tool", ToolVersion: "v1", GapID: gap.ID, CapabilityID: gap.Capability, Status: "failed", ReasonCode: new("unknown_tool")},
 			},
 		}}},
 	}

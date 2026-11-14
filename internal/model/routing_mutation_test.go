@@ -21,7 +21,7 @@ import (
 // 64 criteria and 2048 bytes of instructions are accepted.
 func TestRoutingInputBoundsAreInclusive(t *testing.T) {
 	criteria := make(map[string]string, 64)
-	for index := 0; index < 64; index++ {
+	for index := range 64 {
 		criteria[fmt.Sprintf("criterion-%d", index)] = "description"
 	}
 	if !routingInputInBounds(strings.Repeat("s", 32<<10), criteria, "instructions") {
@@ -34,7 +34,7 @@ func TestRoutingInputBoundsAreInclusive(t *testing.T) {
 		t.Fatal("state above 32 KiB accepted")
 	}
 	over := make(map[string]string, 65)
-	for index := 0; index < 65; index++ {
+	for index := range 65 {
 		over[fmt.Sprintf("criterion-%d", index)] = "description"
 	}
 	if routingInputInBounds("state", over, "instructions") {

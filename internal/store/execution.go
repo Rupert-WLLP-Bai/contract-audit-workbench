@@ -1041,7 +1041,7 @@ func (s *Store) cancelAttemptInState(st *state, user accounts.User, caseID, runI
 		}
 	}
 	appendExecutionEvent(st, ExecutionEvent{
-		AttemptID: attempt.ID, SpanID: stringPointer(attempt.ID), NodeKind: "attempt",
+		AttemptID: attempt.ID, SpanID: new(attempt.ID), NodeKind: "attempt",
 		Phase: "cancellation", EventType: "attempt_cancelled", At: finishedAt,
 		Status: "cancelled", ErrorCode: &errorCode,
 	})
@@ -1338,7 +1338,7 @@ func markAttemptStartedInState(st *state, runID, attemptID string, generation *i
 	}
 	attempt.State = "running"
 	if attempt.StartedAt == nil {
-		attempt.StartedAt = stringPointer(occurred)
+		attempt.StartedAt = new(occurred)
 	}
 	if st.Runs[runIndex].State != "running" {
 		st.Runs[runIndex].State = "running"
@@ -1346,8 +1346,8 @@ func markAttemptStartedInState(st *state, runID, attemptID string, generation *i
 		appendRunEvent(st, runID, "running")
 	}
 	appendExecutionEvent(st, ExecutionEvent{
-		AttemptID: attemptID, SpanID: stringPointer(attemptID), NodeKind: "attempt", Phase: "execution",
-		EventType: "attempt_started", At: occurred, RecordedAt: stringPointer(recorded), EventKey: stringPointer(eventKey),
+		AttemptID: attemptID, SpanID: new(attemptID), NodeKind: "attempt", Phase: "execution",
+		EventType: "attempt_started", At: occurred, RecordedAt: new(recorded), EventKey: stringPointer(eventKey),
 		Generation: generation, Status: "running",
 	})
 	return nil
@@ -1445,7 +1445,7 @@ func (s *Store) prepareAttemptResult(ctx context.Context, runID, attemptID strin
 		}
 		parsed, exists := st.parsedByID(selection.ParsedDocumentID)
 		if !exists {
-			parserID, parserVersion, configHash := parserConfigurationFor(doc, models)
+			parserID, parserVersion, configHash := s.parserConfigurationWithModels(doc, models)
 			if parserID != selection.ParserID || parserVersion != selection.ParserVersion || configHash != selection.ConfigHash ||
 				selection.NormalizationVersion != docir.NormalizationVersion {
 				return preparedAttempt{}, errors.New("pinned parser configuration is unavailable")
@@ -1565,7 +1565,7 @@ func (s *Store) prepareAttemptResult(ctx context.Context, runID, attemptID strin
 		for i := range next.Attempts {
 			if next.Attempts[i].ID == attemptID {
 				next.Attempts[i].HistoryKind = "frozen"
-				next.Attempts[i].InputHash = stringPointer(inputHash)
+				next.Attempts[i].InputHash = new(inputHash)
 			}
 		}
 		return appendAudit(next, runID, "system", "attempt_input_frozen", []string{attemptID})
@@ -1753,7 +1753,7 @@ func (s *Store) finishAttempt(ctx context.Context, runID, attemptID, stateName, 
 			errorCodePointer = &errorCode
 		}
 		appendExecutionEvent(st, ExecutionEvent{
-			AttemptID: attemptID, SpanID: stringPointer(attemptID), NodeKind: "attempt",
+			AttemptID: attemptID, SpanID: new(attemptID), NodeKind: "attempt",
 			Phase: "terminal_persistence", EventType: "attempt_finished", At: finishedAt,
 			Status: stateName, ErrorCode: errorCodePointer,
 		})
@@ -1802,19 +1802,19 @@ func (r attemptRecorder) RecordExecutionEvent(ctx context.Context, event executi
 	}
 	var parentID *string
 	if event.ParentSpanID != "" {
-		parentID = stringPointer(event.ParentSpanID)
+		parentID = new(event.ParentSpanID)
 	}
 	var spanID *string
 	if event.SpanID != "" {
-		spanID = stringPointer(event.SpanID)
+		spanID = new(event.SpanID)
 	}
 	var modelRef *string
 	if event.ModelRef != "" {
-		modelRef = stringPointer(event.ModelRef)
+		modelRef = new(event.ModelRef)
 	}
 	var errorCode *string
 	if event.ErrorCode != "" {
-		errorCode = stringPointer(event.ErrorCode)
+		errorCode = new(event.ErrorCode)
 	}
 	var usage *UsageObservation
 	if event.Usage != nil {
@@ -1830,7 +1830,7 @@ func (r attemptRecorder) RecordExecutionEvent(ctx context.Context, event executi
 		Trace: event.Trace,
 	}
 	if event.EventKey != "" {
-		stored.EventKey = stringPointer(event.EventKey)
+		stored.EventKey = new(event.EventKey)
 	}
 	var err error
 	if claim, claimed := r.store.claimForAttempt(r.attemptID); claimed && r.runID != "" &&
@@ -2182,7 +2182,7 @@ func (s *Store) interruptAttempt(ctx context.Context, attemptID, runID string, s
 			}
 		}
 		appendExecutionEvent(next, ExecutionEvent{
-			AttemptID: attemptID, SpanID: stringPointer(attemptID), NodeKind: "attempt", Phase: "restart_recovery",
+			AttemptID: attemptID, SpanID: new(attemptID), NodeKind: "attempt", Phase: "restart_recovery",
 			EventType: "attempt_interrupted", At: finishedAt, Status: "interrupted", ErrorCode: &code,
 		})
 		appendRunEvent(next, runIDForEvent, "interrupted")
@@ -2297,7 +2297,7 @@ func appendExecutionEvent(st *state, event ExecutionEvent) {
 
 func acceptedEvent(attempt Attempt) ExecutionEvent {
 	return ExecutionEvent{
-		Seq: 1, AttemptID: attempt.ID, SpanID: stringPointer(attempt.ID), NodeKind: "attempt",
+		Seq: 1, AttemptID: attempt.ID, SpanID: new(attempt.ID), NodeKind: "attempt",
 		Phase: "acceptance", EventType: "attempt_accepted", At: attempt.AcceptedAt, Status: "accepted",
 	}
 }
@@ -2421,7 +2421,8 @@ func runIDCase(st state, runID string) string {
 	return run.CaseID
 }
 
-func stringPointer(value string) *string { return &value }
+//go:fix inline
+func stringPointer(value string) *string { return new(value) }
 
 func eventAttemptIDs(st state, runID string) []string {
 	var ids []string

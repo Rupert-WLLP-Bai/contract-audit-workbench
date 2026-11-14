@@ -173,7 +173,7 @@ func docxChoiceSupported(node *docxNode) (bool, error) {
 	if requires == "" {
 		return false, fmt.Errorf("DOCX: AlternateContent choice has no Requires")
 	}
-	for _, prefix := range strings.Fields(requires) {
+	for prefix := range strings.FieldsSeq(requires) {
 		uri, bound := node.namespaces[prefix]
 		if !bound || uri == "" {
 			return false, fmt.Errorf("DOCX: AlternateContent requires undeclared prefix %q", prefix)

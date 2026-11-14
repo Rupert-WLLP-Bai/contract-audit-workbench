@@ -146,7 +146,7 @@ func TestSystemOneRejectsOversizedEncodedRequest(t *testing.T) {
 	called := false
 	client := systemOneClient(t, func(http.ResponseWriter, *http.Request) { called = true })
 	questions := make(map[string]jev.NoulQuestion, 16)
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		questions[fmt.Sprintf("candidate_%d_relevance", i)] = jev.NoulQuestion{
 			Instructions: strings.Repeat("i", 2048),
 			Criteria:     jev.NoulCriteria{True: strings.Repeat("t", 512), False: strings.Repeat("f", 512)},

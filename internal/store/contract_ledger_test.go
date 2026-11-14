@@ -28,7 +28,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func textPointer(value string) *string { return &value }
+//go:fix inline
+func textPointer(value string) *string { return new(value) }
 
 func faultStatus(err error) int {
 	var item *fault.Error
@@ -43,11 +44,11 @@ func TestContractLedgerFilterValidation(t *testing.T) {
 		name   string
 		filter ContractLedgerFilter
 	}{
-		{"amount order", ContractLedgerFilter{AmountMin: textPointer("100.00"), AmountMax: textPointer("99.99")}},
-		{"amount shape", ContractLedgerFilter{AmountMin: textPointer("100")}},
-		{"negative amount", ContractLedgerFilter{AmountMin: textPointer("-1.00")}},
-		{"date order", ContractLedgerFilter{SigningDateFrom: textPointer("2026-02-02"), SigningDateTo: textPointer("2026-01-01")}},
-		{"date shape", ContractLedgerFilter{SigningDateFrom: textPointer("2026-2-1")}},
+		{"amount order", ContractLedgerFilter{AmountMin: new("100.00"), AmountMax: new("99.99")}},
+		{"amount shape", ContractLedgerFilter{AmountMin: new("100")}},
+		{"negative amount", ContractLedgerFilter{AmountMin: new("-1.00")}},
+		{"date order", ContractLedgerFilter{SigningDateFrom: new("2026-02-02"), SigningDateTo: new("2026-01-01")}},
+		{"date shape", ContractLedgerFilter{SigningDateFrom: new("2026-2-1")}},
 		{"created order", ContractLedgerFilter{CreatedFrom: ledgerTimePointer("2026-02-02T00:00:00Z"), CreatedTo: ledgerTimePointer("2026-01-01T00:00:00Z")}},
 		{"state enum", ContractLedgerFilter{ContractState: "unknown"}},
 		{"workflow enum", ContractLedgerFilter{WorkflowState: "approved"}},
@@ -65,8 +66,8 @@ func TestContractLedgerFilterValidation(t *testing.T) {
 	}
 	valid := ContractLedgerFilter{
 		Text: "  合同  ", SupplierName: " 供应商 ",
-		AmountMin: textPointer("0.00"), AmountMax: textPointer("100.00"),
-		SigningDateFrom: textPointer("2026-01-01"), SigningDateTo: textPointer("2026-12-31"),
+		AmountMin: new("0.00"), AmountMax: new("100.00"),
+		SigningDateFrom: new("2026-01-01"), SigningDateTo: new("2026-12-31"),
 		CreatedFrom: ledgerTimePointer("2026-01-01T08:00:00+08:00"),
 	}
 	if err := validateContractLedgerFilter(&valid); err != nil {

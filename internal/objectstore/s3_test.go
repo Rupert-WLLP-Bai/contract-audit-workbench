@@ -260,7 +260,7 @@ func TestPutDoesNotRetryServiceFailure(t *testing.T) {
 }
 
 func signedHeaderNames(authorization string) string {
-	for _, field := range strings.Split(authorization, ",") {
+	for field := range strings.SplitSeq(authorization, ",") {
 		name, value, ok := strings.Cut(strings.TrimSpace(field), "=")
 		if ok && name == "SignedHeaders" {
 			return value

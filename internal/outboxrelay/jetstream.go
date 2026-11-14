@@ -120,10 +120,7 @@ func Dial(ctx context.Context, config Config) (*JetStreamBroker, error) {
 // NATS cluster does not make the stream replicated by itself; Replicas must be
 // set to 3 on a cluster with three peers.
 func streamConfig(config Config) jetstream.StreamConfig {
-	replicas := config.Replicas
-	if replicas < 1 {
-		replicas = 1
-	}
+	replicas := max(config.Replicas, 1)
 	return jetstream.StreamConfig{
 		Name:        config.Stream,
 		Subjects:    []string{config.Subject},

@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 
 	"contractaudit/internal/clmenvelope"
 	"contractaudit/internal/fault"
@@ -59,12 +60,7 @@ type clmRestrictedFingerprintSet struct {
 }
 
 func clmRestrictedFieldPath(path string) bool {
-	for _, candidate := range clmRestrictedFieldPaths {
-		if path == candidate {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(clmRestrictedFieldPaths, path)
 }
 
 // computeRestrictedFingerprints is called on the plaintext snapshot inside the

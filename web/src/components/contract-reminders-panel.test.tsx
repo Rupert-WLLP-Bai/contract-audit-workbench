@@ -8,7 +8,9 @@
 // Copyright: See LICENSE
 // End file metadata.
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
+import type { PropsWithChildren } from "react";
 import { expect, it, vi } from "vitest";
 import {
   listContractReminders,
@@ -90,8 +92,15 @@ it("allows a second distinct plan and keeps reminder history readable after the 
   };
   vi.mocked(listContractReminders).mockResolvedValue(response);
   const onRefresh = vi.fn(async () => {});
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+  function QueryWrapper({ children }: PropsWithChildren) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  }
   const view = render(
     <ContractRemindersPanel detail={detail} actor={actor} canManage onRefresh={onRefresh} />,
+    { wrapper: QueryWrapper },
   );
   expect(await screen.findByRole("button", { name: "确认提醒我" })).toBeVisible();
   expect(screen.getByRole("heading", { name: "提醒记录" })).toBeVisible();

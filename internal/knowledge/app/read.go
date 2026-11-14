@@ -153,10 +153,7 @@ func ListGovernedKnowledgeHistory(ctx context.Context, repository KnowledgeReadR
 	const batchSize = 128
 	checked := make(map[string]bool)
 	for start := 0; start < len(entries); start += batchSize {
-		end := start + batchSize
-		if end > len(entries) {
-			end = len(entries)
-		}
+		end := min(start+batchSize, len(entries))
 		ids := make([]string, 0, end-start)
 		pending := make(map[string]bool)
 		for _, entry := range entries[start:end] {

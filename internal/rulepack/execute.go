@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -688,12 +689,7 @@ func factIDsAndCitations(facts []Fact, citations []Citation) ([]string, []Citati
 }
 
 func containsString(values []string, value string) bool {
-	for _, candidate := range values {
-		if candidate == value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, value)
 }
 
 func bandwidthMbit(value *big.Rat, unit string) *big.Rat {

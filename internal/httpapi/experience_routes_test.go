@@ -12,6 +12,7 @@ package httpapi_test
 
 import (
 	"context"
+	"maps"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -433,13 +434,9 @@ func TestGovernedKnowledgeLifecycleAndAuthorizationOverHTTP(t *testing.T) {
 		{"preview-ambiguous", "带宽不低于100 Mbit/s。带宽不低于200 Mbit/s。", "带宽不低于100 Mbit/s", "ambiguous"},
 	} {
 		other := make(map[string]any, len(content))
-		for key, value := range content {
-			other[key] = value
-		}
+		maps.Copy(other, content)
 		binding := make(map[string]any)
-		for key, value := range content["binding"].(map[string]any) {
-			binding[key] = value
-		}
+		maps.Copy(binding, content["binding"].(map[string]any))
 		other["knowledge_id"], other["body"], other["binding"] = tc.id, tc.body, binding
 		binding["source_spans"] = []any{map[string]any{"rule_id": "ENT-TECH-BW-001", "start": 0, "end": len([]rune(tc.quote)), "quote": tc.quote}}
 		status, otherDraft := api.do(t, http.MethodPost, path, map[string]any{"content": other, "idempotency_key": tc.id})

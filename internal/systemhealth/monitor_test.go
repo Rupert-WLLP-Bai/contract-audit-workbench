@@ -150,7 +150,7 @@ func TestDockerInspectionIsBoundedAndKeepsPartialResults(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/containers/json" {
 			items := make([]any, 0, total)
-			for i := 0; i < total; i++ {
+			for i := range total {
 				id := "svc-" + strconv.Itoa(i)
 				items = append(items, map[string]any{
 					"Id": id + "-id", "Names": []string{"/ours-" + id + "-1"}, "Image": "image:" + id,

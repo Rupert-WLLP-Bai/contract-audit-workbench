@@ -251,8 +251,8 @@ func decodeSSE(body io.Reader) (json.RawMessage, error) {
 	var data []string
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasPrefix(line, "data:") {
-			data = append(data, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+		if after, ok := strings.CutPrefix(line, "data:"); ok {
+			data = append(data, strings.TrimSpace(after))
 			continue
 		}
 		if line == "" && len(data) > 0 {

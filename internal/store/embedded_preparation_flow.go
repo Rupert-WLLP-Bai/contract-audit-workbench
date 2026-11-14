@@ -173,7 +173,7 @@ func (s *Store) withEmbeddedDerivedOCR(ctx context.Context, user accounts.User, 
 			return "", err
 		}
 		childCtx := model.WithDelegatedScope(pageCtx, modelScope(child, models))
-		text, err := transcribe(childCtx, models, Document{MediaType: media}, body)
+		text, err := s.transcribe(childCtx, models, Document{MediaType: media}, body)
 		if err != nil {
 			return "", err
 		}

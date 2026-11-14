@@ -77,7 +77,7 @@ func TestAdvisoryRecordCandidateCountAndRankBoundaries(t *testing.T) {
 		fixture.record.Candidates = []KnowledgeCandidate{}
 		fixture.record.Advisory.Candidates = []KnowledgeAdvisoryCandidate{}
 		fixture.request.Knowledge = nil
-		for i := 0; i < count; i++ {
+		for i := range count {
 			id := fmt.Sprintf("candidate-%02d", i)
 			advice := KnowledgeAdvisoryCandidate{KnowledgeID: id, VersionID: "v1", ContentSHA256: TextHash(id),
 				Alias: id, Probability: &fixture.probA, Band: "not_relevant", RankBefore: i + 1, RankAfter: i + 1}

@@ -136,7 +136,7 @@ func TestCLMOutboxRelayRetryConsumerRefreshDoesNotChangeBusinessFacts(t *testing
 		t.Fatalf("create fixture case through Core: %v", err)
 	}
 	draftContent := store.DraftContent{
-		Contract: &store.ContractBasics{Name: "CLM relay bridge fixture", Currency: "CNY", Amount: "100000.00", SettlementMode: "fixed_total", PricesIncludeTax: boolPointer(true)},
+		Contract: &store.ContractBasics{Name: "CLM relay bridge fixture", Currency: "CNY", Amount: "100000.00", SettlementMode: "fixed_total", PricesIncludeTax: new(true)},
 		Supplier: &store.Supplier{Name: "示例供应商有限公司", BankAccount: "6222020200001234567", PayeeName: "示例供应商有限公司"},
 		Items:    []store.DraftItem{{ItemID: "c6052c81-8b05-49ce-89e9-f6e9c6403c10", Name: "交换机", Quantity: "10.000000", Unit: "台", UnitPrice: "10000.0000", LineAmount: "100000.00"}},
 		Funding:  []store.DraftFunding{{Nature: "self", Channel: "unit", Amount: "100000.00"}},
@@ -402,4 +402,5 @@ func dsnWithUserPassword(raw, username, password string) (string, error) {
 	return parsed.String(), nil
 }
 
-func boolPointer(value bool) *bool { return &value }
+//go:fix inline
+func boolPointer(value bool) *bool { return new(value) }

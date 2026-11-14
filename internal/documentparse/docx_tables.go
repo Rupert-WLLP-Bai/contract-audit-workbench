@@ -12,6 +12,7 @@ package documentparse
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"unicode/utf8"
 
@@ -283,10 +284,5 @@ func docxHasVisibility(node *docxNode) bool {
 	if node.word("vanish") || node.word("specVanish") {
 		return true
 	}
-	for _, child := range node.children {
-		if docxHasVisibility(child) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(node.children, docxHasVisibility)
 }

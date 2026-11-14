@@ -13,6 +13,7 @@ package reviewimpact_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -161,12 +162,7 @@ func findCheck(t *testing.T, plan auditext.ImpactPlan, id string) auditext.Impac
 }
 
 func contains(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, want)
 }
 
 func requireAction(t *testing.T, check auditext.ImpactCheck, action auditext.ImpactAction, reason string) {

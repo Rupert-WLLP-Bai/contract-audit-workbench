@@ -11,6 +11,7 @@
 package store
 
 import (
+	"maps"
 	"testing"
 	"time"
 )
@@ -173,9 +174,7 @@ func TestRuntimeTimeoutDefaultsPreserveExplicitSettings(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			original := make(map[string]string, len(tt.params))
-			for key, value := range tt.params {
-				original[key] = value
-			}
+			maps.Copy(original, tt.params)
 			applyRuntimeTimeoutDefaults(tt.params)
 			if tt.params["options"] != tt.options {
 				t.Fatalf("options = %q, want %q", tt.params["options"], tt.options)

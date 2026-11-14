@@ -201,7 +201,7 @@ func TestPlanServiceObjectAssociationConfirmsPendingIdentityAtomically(t *testin
 		Association: ServiceObjectContractAssociation{
 			MaterialID: "material-1", MaterialVersion: 2, DocumentID: "doc-v2",
 			ParsedDocumentID: "parse-7", SourceRunID: "run-1", SourceAttemptID: "attempt-1",
-			ObjectRef: "LINE-A", FactRefs: []ServiceObjectFactRef{{Fact: rulepack.Fact{ID: "fact-1", RuleID: "bandwidth", Dimension: "minimum_bandwidth", ObjectRef: "LINE-A", Value: "100", Unit: "Mbps", SourceRole: "draft_contract", MeasurementWindow: "calendar_month", TimeZone: "Asia/Shanghai", Calendar: "gregorian", OutageDefinition: "all_service_unavailability", Exclusions: []string{"planned"}, Basis: "约定最低带宽", Applicable: boolPointer(false), Citations: []rulepack.Citation{{SourceID: "doc-v2", SourceVersion: "parse-7", TenantID: "tenant-1", CaseID: "case-1", SourceDigest: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", Start: 10, End: 23, Quote: "最低带宽 100 Mbps"}}}, DocumentID: "doc-v2", ParsedDocumentID: "parse-7", CanonicalFactSHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},
+			ObjectRef: "LINE-A", FactRefs: []ServiceObjectFactRef{{Fact: rulepack.Fact{ID: "fact-1", RuleID: "bandwidth", Dimension: "minimum_bandwidth", ObjectRef: "LINE-A", Value: "100", Unit: "Mbps", SourceRole: "draft_contract", MeasurementWindow: "calendar_month", TimeZone: "Asia/Shanghai", Calendar: "gregorian", OutageDefinition: "all_service_unavailability", Exclusions: []string{"planned"}, Basis: "约定最低带宽", Applicable: new(false), Citations: []rulepack.Citation{{SourceID: "doc-v2", SourceVersion: "parse-7", TenantID: "tenant-1", CaseID: "case-1", SourceDigest: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", Start: 10, End: 23, Quote: "最低带宽 100 Mbps"}}}, DocumentID: "doc-v2", ParsedDocumentID: "parse-7", CanonicalFactSHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},
 		},
 	}
 	candidate.Association.FactRefs[0].CanonicalFactSHA256, _ = canonicalRuleFactSHA256(candidate.Association.FactRefs[0].Fact)
@@ -381,4 +381,5 @@ func validAssociationCandidate(objectVersion, associationVersion int, materialID
 	return candidate
 }
 
-func boolPointer(value bool) *bool { return &value }
+//go:fix inline
+func boolPointer(value bool) *bool { return new(value) }

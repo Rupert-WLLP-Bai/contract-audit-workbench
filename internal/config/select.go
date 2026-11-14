@@ -23,6 +23,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -227,12 +228,7 @@ func normalizeMode(raw string) (string, error) {
 }
 
 func shared(name string, blocked ...string) bool {
-	for _, other := range blocked {
-		if name == other {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(blocked, name)
 }
 
 func first(value, fallback string) string {

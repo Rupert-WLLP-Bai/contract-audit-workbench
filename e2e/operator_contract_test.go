@@ -241,7 +241,6 @@ func TestOperatorGoldenCases(t *testing.T) {
 	seen := make(map[string]bool, len(file.Cases))
 	evaluator := fulfillment.New()
 	for _, tc := range file.Cases {
-		tc := tc
 		t.Run(tc.ID, func(t *testing.T) {
 			seen[tc.ID] = true
 			if tc.DataClass != auditext.DataClassSynthetic {
@@ -685,7 +684,6 @@ func TestOperatorImpactPlan(t *testing.T) {
 	seen := make(map[string]bool, len(file.Cases))
 
 	for _, tc := range file.Cases {
-		tc := tc
 		t.Run(tc.ID, func(t *testing.T) {
 			seen[tc.ID] = true
 			if tc.DataClass != auditext.DataClassSynthetic {

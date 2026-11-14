@@ -66,7 +66,6 @@ func TestSubjectSourceVersionContentIsStableAcrossCasesStoresAndReopen(t *testin
 	results := make(chan snapshotResult, len(attempts))
 	var writers sync.WaitGroup
 	for _, attempt := range attempts {
-		attempt := attempt
 		writers.Add(1)
 		go func() {
 			defer writers.Done()

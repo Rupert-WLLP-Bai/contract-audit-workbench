@@ -51,6 +51,7 @@ type Store struct {
 	claimMu                sync.Mutex
 	claims                 map[string]JobClaim
 	operationAuthority     OperationAuthorityResolver
+	localOCR               LocalOCR
 	operationContexts      map[string]model.DelegatedScope
 	dir                    string
 	st                     state

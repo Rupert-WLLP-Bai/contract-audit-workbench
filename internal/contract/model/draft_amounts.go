@@ -12,6 +12,7 @@ package contract
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 
 	"contractaudit/internal/contractmoney"
@@ -115,13 +116,7 @@ func draftRatioBase(payments []DraftPaymentPlan, stage contractmoney.Stage) (str
 		if plan.RatioBase == "" {
 			continue
 		}
-		known := false
-		for _, value := range distinct {
-			if value == plan.RatioBase {
-				known = true
-				break
-			}
-		}
+		known := slices.Contains(distinct, plan.RatioBase)
 		if !known {
 			distinct = append(distinct, plan.RatioBase)
 		}

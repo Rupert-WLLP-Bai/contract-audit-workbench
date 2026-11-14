@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -386,12 +387,7 @@ func EvaluateLegalAuthorityApplicability(references []rulepack.LegalAuthorityRef
 }
 
 func containsLegalValue(values []string, value string) bool {
-	for _, candidate := range values {
-		if candidate == value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, value)
 }
 
 func firstLegalMissingReason(gaps []FrozenLegalDependencyGap) string {

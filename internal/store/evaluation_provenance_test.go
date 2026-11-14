@@ -346,7 +346,7 @@ func TestEvaluationEvidenceBindsAttemptAndOutputHash(t *testing.T) {
 		t.Fatal("a forged span was accepted for the selected parse")
 	}
 	badAttempt := attempt
-	badAttempt.InputHash = stringPointer("another-input")
+	badAttempt.InputHash = new("another-input")
 	if err := validateTelecomEvidenceInput(st, badAttempt, fixture.caseItem, output, fixture.docs); err == nil {
 		t.Fatal("citations were attached to another frozen attempt input")
 	}

@@ -218,7 +218,7 @@ func validCLMSubject(value string) bool {
 	if value == "" || len(value) > 255 {
 		return false
 	}
-	for _, token := range strings.Split(value, ".") {
+	for token := range strings.SplitSeq(value, ".") {
 		if token == "" {
 			return false
 		}
@@ -453,7 +453,7 @@ func operatorAuditExternalEvidenceConfig(mode, evidenceMode string) (externalrea
 
 func splitList(raw string) []string {
 	var out []string
-	for _, item := range strings.Split(raw, ",") {
+	for item := range strings.SplitSeq(raw, ",") {
 		if item = strings.TrimSpace(item); item != "" {
 			out = append(out, item)
 		}

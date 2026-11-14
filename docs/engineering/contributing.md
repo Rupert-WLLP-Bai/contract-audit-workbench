@@ -3,8 +3,8 @@
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
-<!-- Updated: 2026-11-12 -->
-<!-- Revision: r4 -->
+<!-- Updated: 2026-11-14 -->
+<!-- Revision: r5 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -27,6 +27,12 @@
 ## 工程工具
 
 Web 代码使用 ESLint 9、typescript-eslint、React Hooks 规则和 Prettier；ESLint 查代码问题，Prettier 管格式。TypeScript 的类型和未使用声明由现有 `tsc` 选项检查，ESLint 不重复启用这两类检查。Python 使用 Ruff，目标版本为 Python 3.10，规则只选基础语法、常见错误和未使用项。工具版本固定在 `web/package.json`、`web/bun.lock` 与 `requirements-dev.txt`。
+
+### 实现风格
+
+- Go 1.26 优先使用标准库惯用法（如 `slices`、`maps`、`strings.Cut`、`reflect.TypeFor` 和内置 `new`），让业务条件与错误链易读、易调试；保留 request、task 和 attempt 追踪信息，避免代码高尔夫。
+- React 远程读取使用 TanStack Query；查询键包含完整有效 actor 上下文，查询函数传递取消信号。授权错误（尤其 403）后不继续展示缓存数据。
+- 只为可复用的领域行为建立接口或 Hook；避免单用途万能层和压缩业务判断的嵌套表达式。
 
 本地安装及完整静态检查：
 

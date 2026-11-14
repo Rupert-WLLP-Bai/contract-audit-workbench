@@ -15,6 +15,7 @@ package agentflow
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"contractaudit/internal/access"
@@ -39,12 +40,7 @@ func Domains() []Domain {
 }
 
 func validDomain(domain Domain) bool {
-	for _, value := range Domains() {
-		if domain == value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(Domains(), domain)
 }
 
 var (

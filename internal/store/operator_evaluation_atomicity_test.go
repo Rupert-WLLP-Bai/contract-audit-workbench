@@ -166,7 +166,7 @@ func completeOperatorSingleEvaluationFixture(t *testing.T, core *Store, ctx cont
 	}
 	at := time.Now().UTC().Truncate(time.Microsecond)
 	from, until := at.Add(-time.Hour), at.Add(time.Hour)
-	binding, err := core.CreateOperatorObjectBinding(ctx, actor, f.CaseID, OperatorObjectBindingInput{ContractObject: OperatorContractObject{ObjectType: "service", ObjectID: f.Option.ObjectRef, Label: strPtr("专线")}, ExternalObject: OperatorExternalObject{ConnectorID: "fixture.oss", ExternalObjectID: "fixture-c311"}, ServiceObjectID: f.Object.ServiceObjectID, ExpectedObjectVersion: confirmed.Version, ExpectedAssociationVersion: confirmed.AssociationVersion, EffectiveFrom: from, EffectiveUntil: until, Confirmed: true}, "c311-binding")
+	binding, err := core.CreateOperatorObjectBinding(ctx, actor, f.CaseID, OperatorObjectBindingInput{ContractObject: OperatorContractObject{ObjectType: "service", ObjectID: f.Option.ObjectRef, Label: new("专线")}, ExternalObject: OperatorExternalObject{ConnectorID: "fixture.oss", ExternalObjectID: "fixture-c311"}, ServiceObjectID: f.Object.ServiceObjectID, ExpectedObjectVersion: confirmed.Version, ExpectedAssociationVersion: confirmed.AssociationVersion, EffectiveFrom: from, EffectiveUntil: until, Confirmed: true}, "c311-binding")
 	if err != nil {
 		t.Fatal(err)
 	}

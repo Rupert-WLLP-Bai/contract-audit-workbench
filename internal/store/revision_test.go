@@ -12,6 +12,7 @@ package store
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -223,12 +224,7 @@ func hasIDs(got []string, want ...string) bool {
 }
 
 func containsID(ids []string, want string) bool {
-	for _, id := range ids {
-		if id == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ids, want)
 }
 
 func revisionAdmin(t *testing.T) accounts.User {

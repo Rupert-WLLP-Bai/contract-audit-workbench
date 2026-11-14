@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -502,7 +503,7 @@ func isJSONContentType(value string) bool {
 func acceptsJSONAndSSE(values []string) bool {
 	acceptedJSON, acceptedSSE := false, false
 	for _, value := range values {
-		for _, part := range strings.Split(value, ",") {
+		for part := range strings.SplitSeq(value, ",") {
 			mediaType, ok := acceptableMediaType(part)
 			if !ok {
 				continue
@@ -928,13 +929,7 @@ func supportedCapabilities() [3]string {
 
 func validateParams(params map[string]json.RawMessage, allowed ...string) *rpcFailure {
 	for key := range params {
-		matched := false
-		for _, candidate := range allowed {
-			if key == candidate {
-				matched = true
-				break
-			}
-		}
+		matched := slices.Contains(allowed, key)
 		if !matched {
 			return invalidParams("Request contains an unsupported parameter.")
 		}

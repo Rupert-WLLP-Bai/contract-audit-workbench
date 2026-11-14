@@ -317,7 +317,7 @@ func currentReadinessMaterials(ctx context.Context, s *Store, st state, caseID s
 				item.Purpose = purpose
 			}
 		}
-		parserID, parserVersion, configHash := parserConfigurationFor(doc, models)
+		parserID, parserVersion, configHash := s.parserConfigurationWithModels(doc, models)
 		parsed, found := st.latestParsed(doc.ID, configHash)
 		if !found {
 			if prior, exists := st.latestParsed(doc.ID, ""); exists {

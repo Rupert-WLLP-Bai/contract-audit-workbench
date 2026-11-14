@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"contractaudit/internal/config"
@@ -76,12 +77,7 @@ func ownedTable(owner, table string) bool {
 	if owner == "worker" {
 		owner = "execution"
 	}
-	for _, owned := range serviceOwnedTables[owner] {
-		if owned == table {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(serviceOwnedTables[owner], table)
 }
 
 func (s *Store) ValidateServiceDatabaseRole(ctx context.Context, service string) error {

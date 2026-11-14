@@ -210,7 +210,7 @@ func TestImageOCRFeedsReview(t *testing.T) {
 func quotesFromPrompt(prompt string) []map[string]string {
 	var quotes []map[string]string
 	var id string
-	for _, line := range strings.Split(prompt, "\n") {
+	for line := range strings.SplitSeq(prompt, "\n") {
 		if _, rest, ok := strings.Cut(line, "document_id="); ok {
 			id, _, _ = strings.Cut(rest, " ")
 			id = strings.TrimSpace(id)

@@ -34,8 +34,8 @@ func (s *Store) readUploadReceipt(ctx context.Context, user accounts.User, caseI
 	if err := setLocalScope(ctx, tx, userScope(user)); err != nil {
 		return DocumentUploadResult{}, false, err
 	}
-	if strings.HasPrefix(key, "intake-upload-") {
-		operationID := "intake_" + strings.TrimPrefix(key, "intake-upload-")
+	if after, ok := strings.CutPrefix(key, "intake-upload-"); ok {
+		operationID := "intake_" + after
 		if validCaseIntakeID(operationID) {
 			if err := setIntakeRecoverySelector(ctx, tx, operationID, "", key); err != nil {
 				return DocumentUploadResult{}, false, err

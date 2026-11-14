@@ -20,6 +20,7 @@ import (
 	"errors"
 	"math"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -203,10 +204,8 @@ func decodeAudience(raw json.RawMessage) ([]string, error) {
 	if err := json.Unmarshal(raw, &multiple); err != nil || len(multiple) == 0 {
 		return nil, errors.New("invalid audience")
 	}
-	for _, value := range multiple {
-		if value == "" {
-			return nil, errors.New("empty audience")
-		}
+	if slices.Contains(multiple, "") {
+		return nil, errors.New("empty audience")
 	}
 	return multiple, nil
 }
@@ -341,10 +340,5 @@ func supportsVerify(operations []string) bool {
 	if len(operations) == 0 {
 		return true
 	}
-	for _, operation := range operations {
-		if operation == "verify" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(operations, "verify")
 }

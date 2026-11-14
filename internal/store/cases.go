@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"github.com/jackc/pgx/v5"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -340,10 +341,8 @@ func (s *Store) AddMember(user accounts.User, caseID, memberID string) error {
 		if err := businessWritable(st.Cases[idx]); err != nil {
 			return err
 		}
-		for _, id := range st.Cases[idx].MemberIDs {
-			if id == member.ID {
-				return nil
-			}
+		if slices.Contains(st.Cases[idx].MemberIDs, member.ID) {
+			return nil
 		}
 		st.Cases[idx].MemberIDs = append(append([]string{}, st.Cases[idx].MemberIDs...), member.ID)
 		st.Cases[idx].UpdatedAt = stamp()
@@ -359,10 +358,7 @@ func (s *Store) summarize(st *state, item Case) CaseSummary {
 	}
 	view := s.viewRun(st, run)
 	run.State = view.State
-	run.UpdatedAt = item.UpdatedAt
-	if view.Run.UpdatedAt > run.UpdatedAt {
-		run.UpdatedAt = view.Run.UpdatedAt
-	}
+	run.UpdatedAt = max(view.Run.UpdatedAt, item.UpdatedAt)
 	summary.Run = &run
 	summary.State = view.State
 	summary.PartialReason = view.PartialReason

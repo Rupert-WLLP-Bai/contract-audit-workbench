@@ -466,7 +466,7 @@ func validKeySegments(key string) bool {
 			return false
 		}
 	}
-	for _, segment := range strings.Split(key, "/") {
+	for segment := range strings.SplitSeq(key, "/") {
 		if segment == "" || segment == "." || segment == ".." {
 			return false
 		}

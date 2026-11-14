@@ -18,6 +18,7 @@ import (
 	"errors"
 	"math"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -218,7 +219,7 @@ func (s *Store) CreateWorkbenchTask(user accounts.User, caseID string, input Wor
 		return WorkbenchTask{}, err
 	}
 	now := stamp()
-	task.ID, task.CaseID, task.Version, task.CreatedAt, task.UpdatedAt, task.CreatedBy = id, caseID, 1, now, now, stringPointer(current.ID)
+	task.ID, task.CaseID, task.Version, task.CreatedAt, task.UpdatedAt, task.CreatedBy = id, caseID, 1, now, now, new(current.ID)
 	record := workbenchTaskRecord{Task: task, TenantID: item.TenantID, OrgID: item.OwnerOrgID}
 	if err := s.updateCaseAs(current, caseID, func(next *state) error {
 		currentCase, err := s.requireBusinessWrite(next, current, caseID)
@@ -700,12 +701,7 @@ func isCaseMember(item Case, userID string) bool {
 	if item.OwnerID == userID {
 		return true
 	}
-	for _, memberID := range item.MemberIDs {
-		if memberID == userID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(item.MemberIDs, userID)
 }
 
 func normalizeNullableRFC3339(value *string) (*string, error) {
@@ -1077,8 +1073,8 @@ func workbenchDocumentsForCase(st state, item Case) []WorkbenchDocument {
 			ParseStatus: "pending", Superseded: replaced[document.ID], CreatedAt: document.CreatedAt,
 		}
 		if hasParsed {
-			normalizedDigest := stringPointer(parsed.NormalizedDigest)
-			irDigest := stringPointer(parsed.IRDigest)
+			normalizedDigest := new(parsed.NormalizedDigest)
+			irDigest := new(parsed.IRDigest)
 			if parsed.NormalizedDigest == "" {
 				normalizedDigest = nil
 			}
@@ -1095,7 +1091,7 @@ func workbenchDocumentsForCase(st state, item Case) []WorkbenchDocument {
 				entry.ParseStatus = "ready"
 			} else {
 				entry.ParseStatus = "failed"
-				entry.ParseError = stringPointer(parsed.ParseError)
+				entry.ParseError = new(parsed.ParseError)
 			}
 		}
 		out = append(out, entry)

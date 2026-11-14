@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -480,10 +481,8 @@ func evidenceResolvedGap(review agentflow.AgentReview, gap agentflow.GapReport) 
 	if gap.Status != "resolved" {
 		return false
 	}
-	for _, id := range review.UnresolvedGapIDs {
-		if id == gap.GapID {
-			return false
-		}
+	if slices.Contains(review.UnresolvedGapIDs, gap.GapID) {
+		return false
 	}
 	count := 0
 	valid := false

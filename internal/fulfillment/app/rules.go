@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"math/big"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -201,10 +202,8 @@ func acceptancePlanForItem(draft clmcontract.DraftContent, sequence *int, itemID
 			continue
 		}
 		if len(plan.ItemIDs) > 0 {
-			for _, candidate := range plan.ItemIDs {
-				if candidate == itemID {
-					return plan, nil
-				}
+			if slices.Contains(plan.ItemIDs, itemID) {
+				return plan, nil
 			}
 			return nil, fault.Invalid("验收计划不覆盖该冻结商品行")
 		}

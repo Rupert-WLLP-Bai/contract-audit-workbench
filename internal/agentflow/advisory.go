@@ -14,6 +14,7 @@ import (
 	"errors"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -226,7 +227,7 @@ func advisoryFeatures(raw string) ([]string, string) {
 	}
 	seen := map[string]bool{}
 	features := []string{}
-	for _, item := range strings.Split(raw, ",") {
+	for item := range strings.SplitSeq(raw, ",") {
 		feature := strings.ToLower(strings.TrimSpace(item))
 		if feature == "" {
 			continue
@@ -326,10 +327,5 @@ func (configuration *AdvisoryConfiguration) Supports(feature string) bool {
 	if configuration == nil {
 		return false
 	}
-	for _, enabled := range configuration.Features {
-		if enabled == feature {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(configuration.Features, feature)
 }

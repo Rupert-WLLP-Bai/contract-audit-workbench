@@ -9,14 +9,11 @@
 // End file metadata.
 
 import { Alert, Button, Empty, Table, type TableColumnsType } from "antd";
-import { useEffect, useMemo, useState } from "react";
-import {
-  listMyContractReminderInbox,
-  type ContractLedgerItem,
-  type ContractReminderInboxItem,
-} from "../api/contracts";
+import { useMemo } from "react";
+import { type ContractLedgerItem, type ContractReminderInboxItem } from "../api/contracts";
 import { ApiError, errorMessage } from "../api/http";
 import type { Actor } from "../api/types";
+import { useContractReminderInboxQuery } from "../features/contracts/queries";
 
 function planLabel(item: ContractReminderInboxItem): string {
   const kind =
@@ -57,44 +54,14 @@ export function ContractReminderInbox({
   contracts: ContractLedgerItem[];
   onOpenContract: (contractId: string) => Promise<void>;
 }) {
-  const [items, setItems] = useState<ContractReminderInboxItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-  const actorKey = actor
-    ? [actor.audience, actor.tenant_id, actor.org_id, actor.id, actor.role].join("\u0000")
-    : "anonymous";
+  const inbox = useContractReminderInboxQuery(actor);
+  const items = inbox.isError ? [] : (inbox.data?.items ?? []);
+  const loading = inbox.isFetching;
+  const error = inbox.error ? inboxError(inbox.error) : null;
   const contractByID = useMemo(
     () => new Map(contracts.map((item) => [item.contract_id, item])),
     [contracts],
   );
-
-  useEffect(() => {
-    const controller = new AbortController();
-    if (!actor) {
-      setItems([]);
-      setLoading(false);
-      setError(null);
-      return () => controller.abort();
-    }
-    setItems([]);
-    setLoading(true);
-    setError(null);
-    void listMyContractReminderInbox(controller.signal)
-      .then((result) => {
-        if (!controller.signal.aborted) setItems(result.items);
-      })
-      .catch((caught: unknown) => {
-        if (!controller.signal.aborted) {
-          setItems([]);
-          setError(inboxError(caught));
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [actor, actorKey, reloadKey]);
 
   const columns = useMemo<TableColumnsType<ContractReminderInboxItem>>(
     () => [
@@ -144,11 +111,7 @@ export function ContractReminderInbox({
           <h2>我的履约提醒</h2>
           <p>仅显示已成功保存的站内投递，并再次按当前身份和合同读取权限过滤；不表示已读。</p>
         </div>
-        <Button
-          onClick={() => setReloadKey((value) => value + 1)}
-          loading={loading}
-          disabled={!actor}
-        >
+        <Button onClick={() => void inbox.refetch()} loading={loading} disabled={!actor}>
           刷新提醒
         </Button>
       </div>

@@ -33,8 +33,8 @@ func tenantBundleFixture(t *testing.T) ([]byte, ed25519.PublicKey, string) {
 		ExportedAt: "2026-11-02T00:00:00Z", HistoryCutoff: "2026-11-01T23:59:00Z",
 		Decisions: []HistoryRecord{}, ManualFindings: []HistoryRecord{}, TenantID: "tenant-a",
 	}
-	report := []byte(fmt.Sprintf(`{"schema_version":"case-report/v1","report_id":"report-a","report_version":1,"case":{"id":"case-a"},"run":{"id":"run-a","case_id":"case-a"},"attempt":{"id":"attempt-a","run_id":"run-a"},"input":{"attempt_id":"attempt-a","run_id":"run-a","input_hash":"%s","documents":[]},"input_hash":"%s","output_hash":"%s","decision_snapshot_hash":"%s","decisions":[],"rulepack":{"availability":"unavailable","snapshot":null,"snapshot_sha256":""}}`,
-		inputHash, inputHash, outputHash, hex.EncodeToString(decisionHash[:])))
+	report := fmt.Appendf(nil, `{"schema_version":"case-report/v1","report_id":"report-a","report_version":1,"case":{"id":"case-a"},"run":{"id":"run-a","case_id":"case-a"},"attempt":{"id":"attempt-a","run_id":"run-a"},"input":{"attempt_id":"attempt-a","run_id":"run-a","input_hash":"%s","documents":[]},"input_hash":"%s","output_hash":"%s","decision_snapshot_hash":"%s","decisions":[],"rulepack":{"availability":"unavailable","snapshot":null,"snapshot_sha256":""}}`,
+		inputHash, inputHash, outputHash, hex.EncodeToString(decisionHash[:]))
 	history := []byte(`{"cutoff":"2026-11-01T23:59:00Z","scope":"case:case-a","records":[]}`)
 	originals := []byte(`{"case_id":"case-a","run_id":"run-a","attempt_id":"attempt-a","entries":[]}`)
 	sources := []Source{

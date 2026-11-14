@@ -10,6 +10,8 @@
 
 package systemhealth
 
+import "maps"
+
 import "fmt"
 
 // replicaExpectation is the desired replica count for one logical service and
@@ -39,9 +41,7 @@ func mergeExpectations(configured map[string]int, deployments map[string]replica
 	for id, count := range configured {
 		result[id] = replicaExpectation{desired: count, source: "config"}
 	}
-	for id, expectation := range deployments {
-		result[id] = expectation
-	}
+	maps.Copy(result, deployments)
 	return result
 }
 

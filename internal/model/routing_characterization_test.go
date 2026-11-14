@@ -37,7 +37,7 @@ func TestRouteChoiceRejectsInvalidInputBeforeNetwork(t *testing.T) {
 
 	single := map[string]string{"bandwidth": "带宽证据"}
 	tooMany := make(map[string]string, 65)
-	for i := 0; i < 65; i++ {
+	for i := range 65 {
 		tooMany[strings.Repeat("k", 1)+string(rune('a'+i%26))+strings.Repeat("x", i)] = "描述"
 	}
 	tests := []struct {

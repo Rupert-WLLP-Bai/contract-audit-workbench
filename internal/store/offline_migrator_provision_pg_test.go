@@ -92,7 +92,7 @@ func TestOfflineMigratorFreshAndControlledLegacyBootstrap(t *testing.T) {
 				t.Log("upgrading existing isolated schema 42 with the actual offline migrator")
 				t.Setenv("MIGRATOR_DATABASE_URL", migratorDSN)
 			}
-			for round := 0; round < 2; round++ {
+			for round := range 2 {
 				if round > 0 {
 					var version int
 					want := schemaMaxCompatibleVersion

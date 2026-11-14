@@ -144,7 +144,7 @@ func TestExportColumnLimitsDoNotExpandSavedViews(t *testing.T) {
 
 func TestExportProjectionMaterializesLabelsAndOnlySelectedFields(t *testing.T) {
 	columns := []string{"contract_state_label", "supplier_name"}
-	item := Item{ContractState: "draft", SupplierName: stringPointer("供应商")}
+	item := Item{ContractState: "draft", SupplierName: new("供应商")}
 	row := ExportRowValues(item, columns)
 	if len(row) != len(columns) || row["supplier_name"] != "供应商" {
 		t.Fatalf("projection shape = %#v", row)
@@ -161,4 +161,5 @@ func TestExportProjectionMaterializesLabelsAndOnlySelectedFields(t *testing.T) {
 	}
 }
 
-func stringPointer(value string) *string { return &value }
+//go:fix inline
+func stringPointer(value string) *string { return new(value) }

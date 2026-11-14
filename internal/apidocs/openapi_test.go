@@ -69,7 +69,7 @@ func TestContractIsValidJSONWithInternalReferences(t *testing.T) {
 					t.Fatalf("external reference breaks offline contract: %s", raw)
 				}
 				var found any = spec
-				for _, part := range strings.Split(strings.TrimPrefix(raw, "#/"), "/") {
+				for part := range strings.SplitSeq(strings.TrimPrefix(raw, "#/"), "/") {
 					object, ok := found.(map[string]any)
 					if !ok {
 						t.Fatalf("invalid reference: %s", raw)

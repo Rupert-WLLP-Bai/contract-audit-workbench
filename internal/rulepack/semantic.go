@@ -592,14 +592,8 @@ func runeContext(text string, start, end, before, after int) string {
 	runes := []rune(text)
 	startRune := utf8.RuneCountInString(text[:start])
 	endRune := utf8.RuneCountInString(text[:end])
-	left := startRune - before
-	if left < 0 {
-		left = 0
-	}
-	right := endRune + after
-	if right > len(runes) {
-		right = len(runes)
-	}
+	left := max(startRune-before, 0)
+	right := min(endRune+after, len(runes))
 	return string(runes[left:right])
 }
 

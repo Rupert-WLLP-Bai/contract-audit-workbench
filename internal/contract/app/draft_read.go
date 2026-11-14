@@ -95,13 +95,13 @@ func LoadDraftDetail(ctx context.Context, record clmcontract.Aggregate, reposito
 		if facts.SourceObservation != nil {
 			detail.SourceObservedState = facts.SourceObservation.State
 			detail.SourceObservationDisposition = facts.SourceObservation.Disposition
-			detail.SourceObservedAt = timePointer(facts.SourceObservation.ObservedAt)
+			detail.SourceObservedAt = new(facts.SourceObservation.ObservedAt)
 		}
 	} else if detail.SourceRef != nil {
 		if facts.LegacyImport == nil {
 			return clmcontract.DraftDetail{}, fault.NotFound("没有找到对应记录")
 		}
-		detail.SourceObservedAt = timePointer(facts.LegacyImport.ImportedAt)
+		detail.SourceObservedAt = new(facts.LegacyImport.ImportedAt)
 		if facts.LegacyImport.ApprovalHistoryStatus == "unknown" {
 			detail.Warnings = append(detail.Warnings, "approval_history_unknown")
 		}
@@ -178,4 +178,5 @@ func sourceRef(record clmcontract.Aggregate) *clmcontract.SourceRef {
 	return &clmcontract.SourceRef{System: *record.SourceSystem, ID: *record.ExternalContractID, SourceVersion: *record.SourceVersion}
 }
 
-func timePointer(value time.Time) *time.Time { return &value }
+//go:fix inline
+func timePointer(value time.Time) *time.Time { return new(value) }

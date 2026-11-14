@@ -313,7 +313,7 @@ func pdfPageCount(info string) (int, error) {
 // field is ambiguous and rejected.
 func pdfMetadataFields(info string) (map[string]string, error) {
 	fields := make(map[string]string, 4)
-	for _, line := range strings.Split(info, "\n") {
+	for line := range strings.SplitSeq(info, "\n") {
 		key, value, ok := strings.Cut(line, ":")
 		if !ok || (key != "Pages" && key != "Encrypted" && key != "Form" && key != "JavaScript") {
 			continue
@@ -340,7 +340,7 @@ func pdfValidateMetadata(fields map[string]string) error {
 // pdfCheckPageSizes requires one valid geometry per observed page.
 func pdfCheckPageSizes(info string, pages int) error {
 	seen := make([]bool, pages)
-	for _, line := range strings.Split(info, "\n") {
+	for line := range strings.SplitSeq(info, "\n") {
 		match := pdfPageSize.FindStringSubmatch(line)
 		if match == nil {
 			continue
@@ -522,7 +522,7 @@ func pdfRun(ctx context.Context, limit int, tool string, args ...string) ([]byte
 func pdfClassifyDiagnostics(stderr string) (bool, error) {
 	untrusted := false
 	jpxPending, jpxHeader := false, false
-	for _, line := range strings.Split(stderr, "\n") {
+	for line := range strings.SplitSeq(stderr, "\n") {
 		line = strings.TrimSuffix(line, "\r")
 		if strings.TrimSpace(line) == "" {
 			continue

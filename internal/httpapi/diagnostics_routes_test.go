@@ -69,7 +69,7 @@ func TestReviewDiagnosticsRequiresRoleAndCurrentCaseAccess(t *testing.T) {
 	cacheControl := res.Header.Values("Cache-Control")
 	noStore := false
 	for _, value := range cacheControl {
-		for _, directive := range strings.Split(value, ",") {
+		for directive := range strings.SplitSeq(value, ",") {
 			if strings.EqualFold(strings.TrimSpace(directive), "no-store") {
 				noStore = true
 			}

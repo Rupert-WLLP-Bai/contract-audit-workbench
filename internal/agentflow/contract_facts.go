@@ -79,9 +79,9 @@ func ResolvePlannerConfigurationWithContractFacts(modelConfigurationID, chatMode
 
 func (configuration ContractFactsConfiguration) Validate() error {
 	if configuration.ConfigurationID == "" || configuration.ModelConfigurationID == "" || configuration.ChatModel == "" ||
-		configuration.PromptVersion != model.ContractFactsPromptVersion || configuration.SchemaVersion != model.ContractFactsSchemaVersion ||
+		(configuration.PromptVersion != model.ContractFactsPromptVersion && configuration.PromptVersion != model.LegacyContractFactsPromptVersion) || configuration.SchemaVersion != model.ContractFactsSchemaVersion ||
 		configuration.MaxInputCodepoints != model.ContractFactsMaxRunes ||
-		model.ContractFactsConfigurationID(configuration.ModelConfigurationID, configuration.ChatModel) != configuration.ConfigurationID {
+		model.ContractFactsConfigurationIDForVersion(configuration.ModelConfigurationID, configuration.ChatModel, configuration.PromptVersion) != configuration.ConfigurationID {
 		return errors.New("contract facts configuration is invalid")
 	}
 	return nil
@@ -321,7 +321,7 @@ func (projection ContractFactsProjection) Validate() error {
 		(projection.Status != "suggested" && projection.Status != "partial") || projection.ModelConfigurationID == "" ||
 		!validContractFactsDigest(projection.ConfigurationID) || !validContractFactsDigest(projection.ModelConfigurationID) ||
 		(projection.FailureCode != "" && !validContractFactsFailureCode(projection.FailureCode)) ||
-		projection.PromptVersion != model.ContractFactsPromptVersion ||
+		(projection.PromptVersion != model.ContractFactsPromptVersion && projection.PromptVersion != model.LegacyContractFactsPromptVersion) ||
 		projection.InputCodepoints < 1 || projection.InputCodepoints > model.ContractFactsMaxRunes ||
 		projection.Source.DocumentID == "" || projection.Source.ParsedDocumentID == "" ||
 		!validContractFactsDigest(projection.Source.OriginalDigest) || !validContractFactsDigest(projection.Source.NormalizedDigest) ||

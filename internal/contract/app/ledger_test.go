@@ -103,7 +103,7 @@ func (f *boundedWorkflowFacts) InReview(_ context.Context, _ string, ids []strin
 func TestWorkflowLedgerReaderSkipsNonmatchingMalformedContentAndKeepsBatchesBounded(t *testing.T) {
 	base := time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC)
 	rows := make(ledgerRows, 0, 20003)
-	for i := 0; i < 20003; i++ {
+	for i := range 20003 {
 		id := fmt.Sprintf("00000000-0000-4000-8000-%012d", 20003-i)
 		row := ledgerTestRow(id, base.Add(time.Duration(20003-i)*time.Second))
 		row.Aggregate.AuthorityMode = "native"

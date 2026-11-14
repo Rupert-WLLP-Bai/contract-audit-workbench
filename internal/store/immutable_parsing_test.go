@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -808,12 +809,7 @@ func parsedDocumentIDFromFrozen(docs []FrozenDocument, documentID string) string
 }
 
 func contains(values []string, value string) bool {
-	for _, candidate := range values {
-		if candidate == value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, value)
 }
 
 func TestParsedDocumentReferencesProjectFromAttemptInput(t *testing.T) {

@@ -223,12 +223,12 @@ func TestContractDraftRecoveryRequiresCurrentReadGrant(t *testing.T) {
 	queries := contractDraftRecoveryRowsStub{rows: []clmcontract.DraftRecoveryRow{{
 		Record: clmcontract.Aggregate{
 			TenantID: "read-tenant", ContractID: "read-contract", OwnerOrgID: "read-org",
-			AuthorityMode: "native", ContractNumber: contractDraftStringPointer("READ-001"),
+			AuthorityMode: "native", ContractNumber: new("READ-001"),
 			LifecycleState: "draft", ValidityState: "active", RowVersion: 1,
 			CreatedBy: "draft-owner", CreatedAt: now, UpdatedAt: now,
 		},
-		Name: "授权后可见的草稿标题", Amount: contractDraftStringPointer("987654.00"),
-		Currency: contractDraftStringPointer("CNY"), UpdatedAt: now,
+		Name: "授权后可见的草稿标题", Amount: new("987654.00"),
+		Currency: new("CNY"), UpdatedAt: now,
 	}}}
 	reader := accounts.MembershipUser("draft-owner", "合同经办人", "clerk", "read-tenant", "read-org",
 		"draft-test", "owner", []access.Grant{{Role: "case_owner", Scope: "self"}})
@@ -283,7 +283,8 @@ func (r contractDraftRecoveryRowsStub) ListMyDraftRows(context.Context, string, 
 	return r.rows, nil
 }
 
-func contractDraftStringPointer(value string) *string { return &value }
+//go:fix inline
+func contractDraftStringPointer(value string) *string { return new(value) }
 
 func TestLegacyImportKeepsHistoryUnknownAndVerifiesMaterial(t *testing.T) {
 	fixture, recovery := newContractDraftTestEnv(t)

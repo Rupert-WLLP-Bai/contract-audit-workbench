@@ -470,7 +470,7 @@ func TestTwoDigitIdentifiersPinned(t *testing.T) {
 	}
 
 	var paged strings.Builder
-	for i := 0; i < 12; i++ {
+	for i := range 12 {
 		if i > 0 {
 			paged.WriteString("\f")
 		}

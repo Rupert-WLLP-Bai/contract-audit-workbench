@@ -44,7 +44,7 @@ func ready(id, role, text string) engine.Source {
 // not the identity.
 func piAgentIdentity(raw string) string {
 	var blocks []string
-	for _, part := range strings.Split(raw, "\n\n") {
+	for part := range strings.SplitSeq(raw, "\n\n") {
 		if strings.TrimSpace(part) == "" {
 			continue
 		}

@@ -149,7 +149,7 @@ func TestStepJournalRecoversKnowledgeAndToolAcrossTwoTakeovers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for takeover := int64(0); takeover < 3; takeover++ {
+	for takeover := range int64(3) {
 		if takeover > 0 {
 			journal.generation++
 			request.PriorKnowledgeReadCount = 1
@@ -210,7 +210,8 @@ func TestStepJournalRecoversKnowledgeAndToolAcrossTwoTakeovers(t *testing.T) {
 	}
 }
 
-func int64Pointer(value int64) *int64 { return &value }
+//go:fix inline
+func int64Pointer(value int64) *int64 { return new(value) }
 
 func TestRecoveredElapsedBudgetAddsPriorAttemptAndCurrentAttemptMaximum(t *testing.T) {
 	priorAttempt := int64(900)

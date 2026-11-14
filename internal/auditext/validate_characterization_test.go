@@ -56,8 +56,9 @@ func invalidRequest(section string) string {
 	return invalidRequestText + ": " + section
 }
 
+//go:fix inline
 func ptr[T any](value T) *T {
-	return &value
+	return new(value)
 }
 
 func validField() Field {
@@ -317,7 +318,7 @@ func TestObservationValidatePinned(t *testing.T) {
 	}{
 		{"valid", nil, nil, ""},
 		{"valid record version", func(o *Observation) { o.RecordVersion = &validRecordVersion }, nil, ""},
-		{"record version maximum length", func(o *Observation) { o.RecordVersion = ptr(strings.Repeat("v", 128)) }, nil, ""},
+		{"record version maximum length", func(o *Observation) { o.RecordVersion = new(strings.Repeat("v", 128)) }, nil, ""},
 		{"payload maximum length", func(o *Observation) { o.PayloadRef = &maximumPayload }, nil, ""},
 		{"stale without payload or fields", func(o *Observation) {
 			o.Availability = AvailabilityStale
@@ -356,8 +357,8 @@ func TestObservationValidatePinned(t *testing.T) {
 		{"bad object binding version", func(o *Observation) { o.ObjectBindingVersion = "-binding" }, nil, invalidRequest("observation identity")},
 		{"bad external object id", func(o *Observation) { o.ExternalObjectID = "line 001" }, nil, invalidRequest("observation identity")},
 		{"bad record id", func(o *Observation) { o.RecordID = "" }, nil, invalidRequest("observation identity")},
-		{"empty record version", func(o *Observation) { o.RecordVersion = ptr("") }, nil, invalidRequest("record version")},
-		{"record version too long", func(o *Observation) { o.RecordVersion = ptr(strings.Repeat("v", 129)) }, nil, invalidRequest("record version")},
+		{"empty record version", func(o *Observation) { o.RecordVersion = new("") }, nil, invalidRequest("record version")},
+		{"record version too long", func(o *Observation) { o.RecordVersion = new(strings.Repeat("v", 129)) }, nil, invalidRequest("record version")},
 		{"zero observed at", func(o *Observation) { o.ObservedAt = time.Time{} }, nil, invalidRequest("observation time")},
 		{"zero effective from", func(o *Observation) { o.EffectiveFrom = time.Time{} }, nil, invalidRequest("observation time")},
 		{"zero effective until", func(o *Observation) { o.EffectiveUntil = time.Time{} }, nil, invalidRequest("observation time")},
@@ -368,7 +369,7 @@ func TestObservationValidatePinned(t *testing.T) {
 		{"bad reason code", func(o *Observation) { o.ReasonCode = "read succeeded" }, nil, invalidRequest("reason code")},
 		{"payload reference too long", func(o *Observation) { o.PayloadRef = &longPayload }, nil, invalidRequest("payload reference")},
 		{"available without payload", func(o *Observation) { o.PayloadRef = nil }, nil, invalidRequest("available observation requires a payload")},
-		{"available with empty payload", func(o *Observation) { o.PayloadRef = ptr("") }, nil, invalidRequest("available observation requires a payload")},
+		{"available with empty payload", func(o *Observation) { o.PayloadRef = new("") }, nil, invalidRequest("available observation requires a payload")},
 		{"available without fields", func(o *Observation) { o.Fields = nil }, nil, invalidRequest("available observation requires fields")},
 		{"too many fields", func(o *Observation) {
 			o.Fields = make([]Field, 33)
@@ -401,10 +402,10 @@ func TestObservationValidatePinned(t *testing.T) {
 		}, nil, unauthorizedText},
 		{"identity before record version", func(o *Observation) {
 			o.SnapshotID = "bad id"
-			o.RecordVersion = ptr("")
+			o.RecordVersion = new("")
 		}, nil, invalidRequest("observation identity")},
 		{"record version before time", func(o *Observation) {
-			o.RecordVersion = ptr("")
+			o.RecordVersion = new("")
 			o.ObservedAt = time.Time{}
 		}, nil, invalidRequest("record version")},
 		{"time before interval", func(o *Observation) {
@@ -665,19 +666,19 @@ func TestImpactPlanValidatePinned(t *testing.T) {
 		}, ""},
 		{"valid maximum changed inputs", func(p *ImpactPlan) {
 			p.ChangedInputs = nil
-			for i := 0; i < 128; i++ {
+			for i := range 128 {
 				p.ChangedInputs = append(p.ChangedInputs, "external.input-"+string(rune('a'+i%26)))
 			}
 		}, ""},
 		{"valid maximum checks", func(p *ImpactPlan) {
 			p.Checks = nil
-			for i := 0; i < 128; i++ {
+			for i := range 128 {
 				p.Checks = append(p.Checks, ImpactCheck{CheckID: "check-" + string(rune('a'+i%26)), Action: ImpactDeny, Reasons: []string{"reason-a"}})
 			}
 		}, ""},
 		{"valid maximum reasons", func(p *ImpactPlan) {
 			p.Checks[0].Reasons = nil
-			for i := 0; i < 32; i++ {
+			for i := range 32 {
 				p.Checks[0].Reasons = append(p.Checks[0].Reasons, "reason-"+string(rune('a'+i%26)))
 			}
 		}, ""},
@@ -698,7 +699,7 @@ func TestImpactPlanValidatePinned(t *testing.T) {
 		}, invalidRequest("fallback reason")},
 		{"missing fallback reason", func(p *ImpactPlan) { p.DependencyComplete = false; p.Fallback = FallbackFull }, invalidRequest("fallback reason")},
 		{"too many changed inputs", func(p *ImpactPlan) {
-			for i := 0; i < 128; i++ {
+			for i := range 128 {
 				p.ChangedInputs = append(p.ChangedInputs, "external.input-"+string(rune('a'+i%26)))
 			}
 		}, invalidRequest("too many changed inputs")},
@@ -769,7 +770,7 @@ func TestFrozenInputValidatePinned(t *testing.T) {
 		{"rule pack version maximum length", func(f *FrozenInput) { f.RulePackVersion = strings.Repeat("1", 128) }, ""},
 		{"sixty four facts", func(f *FrozenInput) {
 			f.Facts = nil
-			for i := 0; i < 64; i++ {
+			for i := range 64 {
 				f.Facts = append(f.Facts, Fact{Name: "fact-" + string(rune('a'+i%26)) + string(rune('a'+i/26)), Value: ExactQuantity{Value: "1", Unit: "Mbit/s"}})
 			}
 		}, ""},
@@ -795,7 +796,7 @@ func TestFrozenInputValidatePinned(t *testing.T) {
 		{"zero business time", func(f *FrozenInput) { f.BusinessAt = time.Time{} }, invalidRequest("business time")},
 		{"too many facts", func(f *FrozenInput) {
 			f.Facts = nil
-			for i := 0; i < 65; i++ {
+			for i := range 65 {
 				f.Facts = append(f.Facts, Fact{Name: "fact-" + string(rune('a'+i%26)) + string(rune('a'+i/26)), Value: ExactQuantity{Value: "1", Unit: "Mbit/s"}})
 			}
 		}, invalidRequest("too many facts")},
@@ -820,7 +821,7 @@ func TestFrozenInputValidatePinned(t *testing.T) {
 		{"business time before facts", func(f *FrozenInput) { f.BusinessAt = time.Time{}; f.Facts = append(f.Facts, validFactRecord()) }, invalidRequest("business time")},
 		{"fact count before duplicate", func(f *FrozenInput) {
 			f.Facts = nil
-			for i := 0; i < 65; i++ {
+			for i := range 65 {
 				f.Facts = append(f.Facts, Fact{Name: "fact-" + string(rune('a'+i%26)) + string(rune('a'+i/26)), Value: ExactQuantity{Value: "1", Unit: "Mbit/s"}})
 			}
 			f.Facts[64] = f.Facts[0]

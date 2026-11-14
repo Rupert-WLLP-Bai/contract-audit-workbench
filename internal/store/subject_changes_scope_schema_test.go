@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -287,7 +288,6 @@ func TestSubjectDecisionRechecksEveryAffectedCaseAndHidesUnauthorizedCases(t *te
 	sameKeyResults := make(chan decisionResult, 2)
 	var sameKeyWriters sync.WaitGroup
 	for _, store := range []*Store{core, coreSecond} {
-		store := store
 		sameKeyWriters.Add(1)
 		go func() {
 			defer sameKeyWriters.Done()
@@ -401,7 +401,6 @@ func TestSubjectDecisionRechecksEveryAffectedCaseAndHidesUnauthorizedCases(t *te
 		actor accounts.User
 		key   string
 	}{{core, reviewer, "scope-cas-success-a"}, {coreSecond, reviewer2, "scope-cas-success-b"}} {
-		call := call
 		decisionWriters.Add(1)
 		go func() {
 			defer decisionWriters.Done()
@@ -457,10 +456,8 @@ func addSubjectTestMember(st *state, caseID, userID string) error {
 		if st.Cases[i].ID != caseID {
 			continue
 		}
-		for _, memberID := range st.Cases[i].MemberIDs {
-			if memberID == userID {
-				return nil
-			}
+		if slices.Contains(st.Cases[i].MemberIDs, userID) {
+			return nil
 		}
 		st.Cases[i].MemberIDs = append(st.Cases[i].MemberIDs, userID)
 		return nil

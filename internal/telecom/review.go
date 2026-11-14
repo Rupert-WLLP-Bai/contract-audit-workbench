@@ -480,7 +480,7 @@ func contractAmount(request rulepack.Request, object string, authority bool) (*b
 		if !amountSourceRole(source.Role, authority) {
 			continue
 		}
-		for _, line := range strings.Split(source.Text, "\n") {
+		for line := range strings.SplitSeq(source.Text, "\n") {
 			current, currentTax, ok := parseContractAmountLine(line, object)
 			if !ok {
 				continue

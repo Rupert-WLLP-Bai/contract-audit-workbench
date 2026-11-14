@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 
 	"contractaudit/internal/accounts"
@@ -238,10 +239,5 @@ func (s *Store) SaveLLMModelSelection(ctx context.Context, user accounts.User, r
 }
 
 func containsModelID(models []string, want string) bool {
-	for _, model := range models {
-		if model == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(models, want)
 }

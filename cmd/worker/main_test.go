@@ -312,7 +312,7 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 		go func() {
 			done <- claimJobs(ctx, env.worker.Store, workerID, 5*time.Second, time.Second, 10*time.Millisecond, nil)
 		}()
-		for job := 0; job < 2; job++ {
+		for job := range 2 {
 			select {
 			case <-modelCalls:
 			case err := <-done:

@@ -178,7 +178,7 @@ func TestToolCallTenantMinuteBudgetIsSharedAcrossPoolsAndAttempts(t *testing.T) 
 	start := make(chan struct{})
 	var workers sync.WaitGroup
 	const workerCount = 8
-	for workerIndex := 0; workerIndex < workerCount; workerIndex++ {
+	for workerIndex := range workerCount {
 		workers.Add(1)
 		go func(offset int) {
 			defer workers.Done()

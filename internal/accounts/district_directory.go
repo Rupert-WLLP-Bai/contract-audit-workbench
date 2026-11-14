@@ -10,15 +10,15 @@
 
 package accounts
 
+import "maps"
+
 // additionalDistrictLogins is the number of district accounts appended to the
 // nine fixed demonstration logins. Their case-scoped grants follow the same
 // role rules as those logins.
 const additionalDistrictLogins = 47
 
 func appendDistrictLogins(current []record) []record {
-	for id, hash := range districtPasswordHashes {
-		demoHashes[id] = hash
-	}
+	maps.Copy(demoHashes, districtPasswordHashes)
 	for _, item := range districtLogins {
 		current = append(current, seedIn(item.id, item.name, item.role, item.id+"-demo", LocalDemoTenant, item.orgID))
 	}

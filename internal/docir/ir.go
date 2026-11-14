@@ -138,7 +138,7 @@ func buildText(raw string) (string, []Block, []Page) {
 		page := pageMarker(paged, i)
 		pageStart := offset
 		wrote := false
-		for _, part := range strings.Split(segment, "\n\n") {
+		for part := range strings.SplitSeq(segment, "\n\n") {
 			text := strings.TrimSpace(part)
 			if text == "" {
 				continue

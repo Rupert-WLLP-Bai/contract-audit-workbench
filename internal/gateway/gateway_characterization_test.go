@@ -393,7 +393,7 @@ func TestProbeTransitionsKeepFailureAndRecoveryLogDurations(t *testing.T) {
 	}
 
 	var initialReady, unavailable, recovered bool
-	for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(logs.String()), "\n") {
 		switch {
 		case strings.Contains(line, "previous=unknown state=healthy source=probe"):
 			initialReady = true
@@ -418,7 +418,7 @@ func TestProbeTransitionsKeepFailureAndRecoveryLogDurations(t *testing.T) {
 }
 
 func transitionDurationBetween(line string, minimum, maximum int64) bool {
-	for _, field := range strings.Fields(line) {
+	for field := range strings.FieldsSeq(line) {
 		if !strings.HasPrefix(field, "transition_ms=") {
 			continue
 		}

@@ -61,10 +61,7 @@ type modelBudgetQueryer interface {
 }
 
 func reserveModelBudgetDirect(ctx context.Context, q modelBudgetQueryer, schema string, lease ModelCallLease, limits ModelBudgetLimits, input, output int64) (bool, error) {
-	leaseMillis := limits.LeaseDuration.Milliseconds()
-	if leaseMillis < 1 {
-		leaseMillis = 1
-	}
+	leaseMillis := max(limits.LeaseDuration.Milliseconds(), 1)
 	query := `SELECT ` + pgx.Identifier{schema, "model_budget_reserve"}.Sanitize() + `($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`
 	var reserved bool
 	err := q.QueryRow(ctx, query,

@@ -411,7 +411,7 @@ func configuredAllowlistContains(envName, value string) bool {
 	if strings.TrimSpace(value) == "" {
 		return false
 	}
-	for _, entry := range strings.Split(os.Getenv(envName), ",") {
+	for entry := range strings.SplitSeq(os.Getenv(envName), ",") {
 		if strings.TrimSpace(entry) == value {
 			return true
 		}

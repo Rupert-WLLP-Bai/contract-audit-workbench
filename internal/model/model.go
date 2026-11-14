@@ -941,8 +941,8 @@ func extractJSON(content string) string {
 	s := strings.TrimSpace(content)
 	if strings.HasSuffix(s, "```") {
 		for _, prefix := range []string{"```json\n", "```\n", "```json\r\n", "```\r\n"} {
-			if strings.HasPrefix(s, prefix) {
-				return strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(s, prefix), "```"))
+			if after, ok := strings.CutPrefix(s, prefix); ok {
+				return strings.TrimSpace(strings.TrimSuffix(after, "```"))
 			}
 		}
 	}

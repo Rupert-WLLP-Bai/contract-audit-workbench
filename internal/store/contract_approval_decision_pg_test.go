@@ -453,7 +453,7 @@ func TestConcurrentApprovalDecisionsCommitExactlyOnce(t *testing.T) {
 	}
 	start := make(chan struct{})
 	results := make(chan outcome, 2)
-	for index := 0; index < 2; index++ {
+	for index := range 2 {
 		go func(index int) {
 			<-start
 			result, err := fixture.core.DecideApprovalTask(ctx, reviewer, DecideApprovalTaskInput{
@@ -466,7 +466,7 @@ func TestConcurrentApprovalDecisionsCommitExactlyOnce(t *testing.T) {
 	}
 	close(start)
 	successes, conflicts := 0, 0
-	for index := 0; index < 2; index++ {
+	for range 2 {
 		select {
 		case got := <-results:
 			switch {

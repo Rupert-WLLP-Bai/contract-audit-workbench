@@ -127,7 +127,6 @@ func TestLegalWireContractFixtures(t *testing.T) {
 		{name: "frozen-legal-authorities.json", value: frozenLegalProjection},
 	}
 	for _, fixture := range fixtures {
-		fixture := fixture
 		t.Run(fixture.name, func(t *testing.T) {
 			encoded, err := json.MarshalIndent(fixture.value, "", "  ")
 			if err != nil {

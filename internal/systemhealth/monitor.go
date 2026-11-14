@@ -276,7 +276,6 @@ func (m *Monitor) inspectDockerTargets(ctx context.Context, targets []dockerTarg
 	var inspections errgroup.Group
 	inspections.SetLimit(dockerInspectLimit)
 	for i := range targets {
-		i := i
 		inspections.Go(func() error {
 			inspectCtx, cancel := context.WithTimeout(ctx, dockerInspectTimeout)
 			defer cancel()
