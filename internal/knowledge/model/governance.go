@@ -281,6 +281,9 @@ func VersionID(tenantID, knowledgeID, displayVersion string) string {
 	return SHA256(raw)
 }
 
+// ValidResourceID reports whether a Knowledge identifier obeys the existing resource ID rules.
+func ValidResourceID(value string) bool { return validResourceID(value) }
+
 func validResourceID(value string) bool {
 	if value == "" || len(value) > maxKnowledgeResourceIDBytes || !utf8.ValidString(value) {
 		return false

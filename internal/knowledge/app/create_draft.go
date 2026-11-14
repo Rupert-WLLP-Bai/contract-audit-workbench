@@ -360,7 +360,9 @@ func validateLegalCaptureMetadata(content model.GovernedKnowledgeContent, captur
 	return nil
 }
 
-func validateLegalCaptureReference(ctx context.Context, facts LegalFactsReader, content model.GovernedKnowledgeContent, capture *LegalCaptureFacts) error {
+func validateLegalCaptureReference(ctx context.Context, facts interface {
+	LoadLegalArticleIndex(context.Context, *LegalCaptureFacts) ([]legalnorm.VerifiedArticle, error)
+}, content model.GovernedKnowledgeContent, capture *LegalCaptureFacts) error {
 	if capture == nil {
 		return fault.Conflict("法律条文引用的原始来源快照不存在")
 	}

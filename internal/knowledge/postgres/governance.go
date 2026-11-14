@@ -28,6 +28,10 @@ func NewGovernance(db platformpostgres.Executor) *Governance {
 var _ app.CreateDraftRepository = (*Governance)(nil)
 var _ app.CommandRepository = (*Governance)(nil)
 var _ app.KnowledgeReadRepository = (*Governance)(nil)
+var _ app.LegalDraftPrepareRepository = (*Governance)(nil)
+var _ app.LegalDraftRepository = (*Governance)(nil)
+var _ app.ImportedLegalReferenceReader = (*Governance)(nil)
+var _ app.PublishedLegalCaptureReader = (*Governance)(nil)
 
 func (g *Governance) IdempotencyReceipt(ctx context.Context, identity app.CreateDraftIdentity, key string) (string, []byte, bool, error) {
 	var digest string
@@ -237,4 +241,17 @@ func (g *Governance) ActiveKnowledge(ctx context.Context, tenant string) ([]app.
 		return nil, err
 	}
 	return ids, nil
+}
+
+// ImportedLegalContentSHA is the legacy replay projection; it does not inspect
+// current pointer, body, approval, or Legal-owned capture rows.
+func (g *Governance) ImportedLegalContentSHA(ctx context.Context, tenant, captureID string, ref model.KnowledgeRef) (string, error) {
+	var digest string
+	err := g.db.QueryRow(ctx, `SELECT content_sha256 FROM governed_knowledge_versions WHERE tenant_id=$1 AND knowledge_id=$2 AND version_id=$3 AND kind='legal' AND legal_capture_snapshot_id=$4`, tenant, ref.KnowledgeID, ref.VersionID, captureID).Scan(&digest)
+	return digest, err
+}
+func (g *Governance) HasPublishedLegalCapture(ctx context.Context, tenant, captureID string) (bool, error) {
+	var referenced bool
+	err := g.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM governed_knowledge_versions v JOIN governed_knowledge_state s USING (tenant_id,knowledge_id,version_id) WHERE v.tenant_id=$1 AND v.kind='legal' AND v.legal_capture_snapshot_id=$2 AND s.status IN ('published','withdrawn'))`, tenant, captureID).Scan(&referenced)
+	return referenced, err
 }

@@ -24,6 +24,7 @@ import (
 	knowledgeApp "contractaudit/internal/knowledge/app"
 	knowledgeModel "contractaudit/internal/knowledge/model"
 	knowledgePostgres "contractaudit/internal/knowledge/postgres"
+	legalPostgres "contractaudit/internal/legal/postgres"
 	platformpostgres "contractaudit/internal/platform/postgres"
 	"contractaudit/internal/rulepack"
 
@@ -526,22 +527,13 @@ func queryGovernedKnowledgeRows(ctx context.Context, tx pgx.Tx, tenant, suffix s
 	if len(captureIDs) == 0 {
 		return versions, captures, nil
 	}
-	rows, err = tx.Query(ctx, `SELECT `+legalCaptureReferenceColumns+` FROM legal_source_captures WHERE tenant_id=$1 AND capture_snapshot_id=ANY($2::text[])`, tenant, captureIDs)
+	raw, err := legalPostgres.NewCaptures(platformpostgres.Bind(tx)).ReadReferences(ctx, tenant, captureIDs)
 	if err != nil {
 		return nil, nil, err
 	}
-	for rows.Next() {
-		var capture legalCaptureReference
-		if err := capture.scan(rows); err != nil {
-			rows.Close()
-			return nil, nil, err
-		}
-		captures[capture.id] = &capture
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return nil, nil, err
+	for id, value := range raw {
+		capture := mapLegalCaptureReference(value)
+		captures[id] = &capture
 	}
 	return versions, captures, nil
 }

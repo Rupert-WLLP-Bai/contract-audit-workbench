@@ -10,7 +10,9 @@ import (
 	"contractaudit/internal/fault"
 	knowledgeApp "contractaudit/internal/knowledge/app"
 	knowledgeModel "contractaudit/internal/knowledge/model"
+	legalPostgres "contractaudit/internal/legal/postgres"
 	"contractaudit/internal/legalnorm"
+	platformpostgres "contractaudit/internal/platform/postgres"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -89,41 +91,25 @@ func (facts governedKnowledgeFacts) AuthorizeExperienceAncestors(ctx context.Con
 }
 
 func (facts governedKnowledgeFacts) LoadLegalCapture(ctx context.Context, snapshotID string) (*knowledgeApp.LegalCaptureFacts, error) {
-	var capture legalCaptureReference
-	err := capture.scan(facts.tx.QueryRow(ctx, `SELECT `+legalCaptureReferenceColumns+` FROM legal_source_captures WHERE tenant_id=$1 AND capture_snapshot_id=$2`,
-		accounts.Tenant(facts.admin), snapshotID))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, fault.Conflict("法律条文引用的原始来源快照不存在")
-	}
+	raw, found, err := legalPostgres.NewCaptures(platformpostgres.Bind(facts.tx)).ReadReference(ctx, accounts.Tenant(facts.admin), snapshotID)
 	if err != nil {
 		return nil, err
 	}
-	return knowledgeLegalCaptureFacts(capture), nil
+	if !found {
+		return nil, fault.Conflict("法律条文引用的原始来源快照不存在")
+	}
+	return knowledgeLegalCaptureFacts(mapLegalCaptureReference(raw)), nil
 }
 
 func (facts governedKnowledgeFacts) LoadLegalCaptures(ctx context.Context, snapshotIDs []string) (map[string]*knowledgeApp.LegalCaptureFacts, error) {
-	out := make(map[string]*knowledgeApp.LegalCaptureFacts, len(snapshotIDs))
-	if len(snapshotIDs) == 0 {
-		return out, nil
-	}
-	rows, err := facts.tx.Query(ctx, `SELECT `+legalCaptureReferenceColumns+` FROM legal_source_captures WHERE tenant_id=$1 AND capture_snapshot_id=ANY($2::text[])`,
-		accounts.Tenant(facts.admin), snapshotIDs)
+	raw, err := legalPostgres.NewCaptures(platformpostgres.Bind(facts.tx)).ReadReferences(ctx, accounts.Tenant(facts.admin), snapshotIDs)
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		var capture legalCaptureReference
-		if err := capture.scan(rows); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		out[capture.id] = knowledgeLegalCaptureFacts(capture)
+	out := make(map[string]*knowledgeApp.LegalCaptureFacts, len(raw))
+	for id, value := range raw {
+		out[id] = knowledgeLegalCaptureFacts(mapLegalCaptureReference(value))
 	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, err
-	}
-	rows.Close()
 	return out, nil
 }
 

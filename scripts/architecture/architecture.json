@@ -184,7 +184,9 @@
           "internal/legal/app"
         ],
         "transport": [],
-        "postgres": []
+        "postgres": [
+          "internal/legal/postgres"
+        ]
       }
     ]
   }
