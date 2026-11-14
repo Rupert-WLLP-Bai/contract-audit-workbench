@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Presents frozen contract plan dates and authorized creation and cancellation of fulfillment reminders.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Alert, Button, Empty, Form, InputNumber, Select, Tag } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {

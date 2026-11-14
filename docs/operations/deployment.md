@@ -1,10 +1,10 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: 说明“部署模式”的操作或技术边界：历史固定基线 `0421831c5ca86fdf56ea6d32939da4f825f08c3d` 的应用兼容 schema 为 `[26,26]`；PR [#140](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/140) 合入后的固定源码 `595fe2f` 接受 `[28,28]`。PR [#144](https://github.com/Rupert-WLLP-Bai/contract -->
+<!-- Purpose: Documents deployment profiles, migration compatibility, service roles and configuration for the current source revision. -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
-<!-- Updated: 2026-11-12 -->
-<!-- Revision: r5 -->
+<!-- Updated: 2026-11-14 -->
+<!-- Revision: r6 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 

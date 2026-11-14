@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Displays the current user’s authorized delivered fulfillment reminders and links to their contracts.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Alert, Button, Empty, Table, type TableColumnsType } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import {

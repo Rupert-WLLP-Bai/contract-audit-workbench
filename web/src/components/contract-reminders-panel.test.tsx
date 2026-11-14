@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks that distinct frozen plans can each receive reminders and that closed contracts retain readable reminder history.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { screen, waitFor } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import {

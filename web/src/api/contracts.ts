@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Defines contract registration and resumable-draft models, parses masked restricted fields and source/material references, and submits full-replacement drafts without treating client values as authoritative.
+// Purpose: Defines and parses contract lifecycle and reminder APIs using generated wire schemas, scoped mutations and server-authoritative revisions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-05
-// Revision: r5
+// Updated: 2026-11-14
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
