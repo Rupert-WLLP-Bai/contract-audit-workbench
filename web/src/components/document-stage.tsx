@@ -649,7 +649,6 @@ const TextDocumentBody = memo(function TextDocumentBody({
   textIndex: providedTextIndex,
   quoteScope,
   keyClause,
-  onClearKeyClause,
   onQuoteSelectionChange,
 }: {
   document: ReviewDocument;
