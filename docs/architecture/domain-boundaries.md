@@ -261,3 +261,21 @@ Store 保留原 `commandContext`、trusted admin、Core/只读门禁、mutex、s
 保留现有 DTO 直接字段、JSON tags/顺序、scrubbed capture ID 后的 request digest、有序文章 manifest 原字节及摘要、raw/status bytes、DB created_at、历史字段和错误。获取捕获的案件路径仍先当前案件 Read，再查精确 published/withdrawn Knowledge 引用，最后读取指定 immutable capture；该查询经 Knowledge 自己的接口实现，不放入 Legal PG。后续 #307 迁移适用事实管理，#308 迁移 Subject，不扩大本次事务或专业结论。TextCheckStatus PASS 仅代表来源文字核验；LegalReviewStatus 继续 NOT_RUN。
 
 schema45、五个服务数据库角色、RLS、append-only 和 PostgreSQL 权威不改。whole-refactor freeze 前所有测试、编译、门禁、app/browser 与真实模型/OCR 为 NOT_RUN；草稿本身不是实施或运行验收证据。
+
+## #307 法律适用事实写入与精确材料依据
+
+状态：采纳，实施前决策。基于 #306 已审查源码候选 `29639c95e297287cb3b26d287bfe5ecec835b938`，在 #307 新增窄桥前明确下列边界；源码候选不是运行验收。
+
+Legal model/app 承接现有输入规范化、维度枚举、请求摘要、时序与幂等、Record CAS/追加、Resolve/History 和 frozen authority gate 规则。Legal PostgreSQL adapter 只访问 `case_legal_applicability_facts`、`case_legal_applicability_fact_versions`（捕获表继续其既有 owner），使用调用者同一非拥有事务；不得读写 Case、Subject、Document、Knowledge 或 Run 表。公开 Store DTO/方法与 HTTP wire 继续兼容；复用 #305/#306 已落地能力，不重复冻结或导入流程。
+
+Store 保留原 Core/只读门禁、trusted actor、命令证明、ReadCommitted 与 schema advisory→scope→case advisory 锁、目标 Case 当前 Read/Manage、原提交围栏。Record 在当前 Manage 后计算原 request digest，查该 actor/dimension/key 的版本 receipt；命中后精确读取原版本并核 basis manifest，再比 digest、原 Manage 检查并提交。重放先于 businessWritable、材料、Subject pin 和 CAS，也不额外加原分支没有的 trustedUser 查询；contextTx 的提交证明不变。miss 才走原业务可写、材料依据、server now/normalize、Subject pin、head lock/CAS、append/head更新，最后按原路径 trustedUser/Manage 复验并提交。
+
+准许的专用过渡材料能力为 VerifyLegalApplicabilityBasis：服务端绑定 tenant/org/case 与原事务，miss 在业务可写后对所有 BasisRefs 形式调用；内部沿原 loadState(ctx,tx,true)→精确本案 tenant/org/ID→BasisProvided 顺序，再在有依据时复用既有严格 Document/material resolver。请求不携带权限，不给 app state、pool、pgx.Tx、任意 SQL 或通用业务 callback。严格锚点限1–8个，核 material/version/document 及指定 ready parse 的同案身份和 digest、Unicode span/quote SHA；只返回原 canonical materialAnchorProjection JSON、精确引用身份及该引用 Documents 最大 CreatedAt（UTC微秒），空依据按原 []/nil。原格式/缺案/原文不匹配/取得时间错误顺序保持；材料取得时间不是业务发生时间，晚于 cutoff 的依据不能回写旧审查。
+
+Subject 有两种独立精确读取协议。Record 原一条 joined query 同时取 binding head、current binding version 字段及 subjects.current_version；无行或版本/主体/state stale 先409，随后 role mismatch 为原422，全部匹配才查同case+role active count并按scope note判定422。不能复用把role并入stale的Resolver判断改变错误。Resolve/Freeze 继续 #305 的 binding缺失先stale、存在总读取subject current、fresh后才count协议。两类桥都只返回 found/版本/subject/role/state/count 原始事实，规则归Legal，物理owner仍Subject，角色/租户/锁/RLS不扩大。
+
+Record 从 head FOR UPDATE 取当前版本后先 expectedVersion；仅新family才生成factID、INSERT head(current_version1)，然后 append immutable version；已有family则 append后CAS前进head。receipt是原fact version上的actor/key/digest，不另建表或对历史UPDATE。任何后续失败同事务回滚，保留原唯一约束、append-only、fence与真实PG角色。Resolve/History 保留原RR/read-only、scope、case锁、Read与commit复验、limit/cursor/排序/nil[]语义；family读取须保留逐行scan→basis校验→head一致性→下一行/Rows.Err的错误次序，不以先收集全部行提前抛末尾错误。
+
+#305 Standards建议在此收口：Legal维度来自唯一枚举源，Store与app复用Legal ParseFactTime的RFC3339+UTC微秒语义；SameTimestamp保持原RFC3339 Equal精确时刻，不能改用截断比较。`rulepackAuthorityGates` 迁纯Legal规则并保留legacy missing→not_applicable→unknown优先、unknown理由字典序和key排序，Store仅兼容转发。已有Subject/operator严格材料resolver消费者不顺手删除；窄桥随对应领域契约逐项迁出，AR020消费审计后再删除死接口。
+
+schema45、数据库服务角色、当前授权、预算/租约/Outbox/PG权威和所有旧冻结快照不变。全部测试、编译、门禁、数据库、app/browser与真实模型/OCR在整轮重构后固定候选统一验证，当前NOT_RUN。
