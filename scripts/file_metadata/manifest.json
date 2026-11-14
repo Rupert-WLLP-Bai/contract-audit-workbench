@@ -62540,15 +62540,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "bd86d3e6c77f4a0c52788232ee01fd2e85ac0054",
           "path": "internal/testsupport/oidcfixture/fixture.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
