@@ -45,7 +45,7 @@ func TestContractFactsProjectionIsSeparatelyAuthorizedAndFrozen(t *testing.T) {
 		frozenOCRModel: &frozenOCRModel{}, modelConfigurationID: modelConfigurationID,
 		factsConfigurationID: factsConfigurationID,
 	})
-	caseID, err := st.CreateCase(admin, "单合同事实投影", "service")
+	caseID, err := st.CreateCase(admin, "单合同事实投影", "procurement_ict")
 	if err != nil {
 		t.Fatal(err)
 	}
