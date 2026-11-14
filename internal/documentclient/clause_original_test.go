@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,7 +16,7 @@ func TestClauseOriginalHTTPSessionAndRefusals(t *testing.T) {
 	status := http.StatusOK
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie("session")
-		if err != nil || cookie.Value != "private-session" || r.Method != http.MethodGet || r.URL.Path != "/api/cases/case-1/documents/doc-1/original" {
+		if err != nil || cookie.Value != "private-session" || r.Header.Get("X-Contract-Service-Key") != strings.Repeat("d", 40) || r.Method != http.MethodGet || r.URL.Path != "/api/cases/case-1/documents/doc-1/original" {
 			t.Errorf("wrong original request or session")
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -26,7 +27,7 @@ func TestClauseOriginalHTTPSessionAndRefusals(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client, err := NewClauseOriginalReader(server.URL, time.Second)
+	client, err := NewClauseOriginalReader(server.URL, strings.Repeat("d", 40), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +51,7 @@ func TestClauseOriginalRefusesCrossOriginRedirectAndCancellation(t *testing.T) {
 	defer destination.Close()
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, destination.URL, http.StatusFound) }))
 	defer origin.Close()
-	client, err := NewClauseOriginalReader(origin.URL, time.Second)
+	client, err := NewClauseOriginalReader(origin.URL, strings.Repeat("d", 40), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}

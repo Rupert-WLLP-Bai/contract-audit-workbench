@@ -128,6 +128,8 @@ Document 通过短期 opaque ticket 向 Core 回查一次建案上传授权。Do
 
 生产 Document、Worker、Tool Gateway 和 Execution 必须设置 `CORE_AUTHORITY_URL` 为指向现有 Core API 的 HTTPS origin。可通过 `CORE_AUTHORITY_CA_FILE` 指向容器内可信 PEM CA bundle；空值使用系统证书库。证书链和 URL hostname 必须匹配。生产必须省略或设置 `CORE_AUTHORITY_ALLOW_INSECURE_DEV=false`；设置 true、未知 APP_ENV、非法布尔值、无可信证书或非 HTTPS URL 都会拒绝启动。开发例外只允许上述精确 `http://core-api:8081` 或带显式端口的 loopback origin；不会接受任意内部网段地址。客户端不使用环境代理，也不跟随重定向。生产 endpoint、DNS/TLS 终止和 CA 配置由交付平台提供；未配置时不得称为生产可用。Document 的 `CORE_DOCUMENT_TOKEN` 只认证配对请求，不能代替 TLS 对 Core 响应进行服务器认证；Tool Gateway 使用用户当前 session bearer 请求 Core，Execution 使用浏览器当前 session bearer 请求 Core，响应均依靠 TLS 验证且不新增 service token。
 
+条款建议接受时，Core 使用既有 `DOCUMENT_SERVICE_URL` 和成对的 `CORE_DOCUMENT_TOKEN`，读取 Document 的精确原件 GET 路由并核对修改稿字节。此凭据在该路径只增加读取入口，不能访问其他公开路由；请求同时携带本次用户会话，Document 仍核验当前案件权限。两项配置须在 Core/Document 配对，传输使用交付环境的受信链路；生产部署为该地址提供 HTTPS 及可信证书。客户端不使用环境代理，不跟随重定向，并限制响应大小和时间。材料服务或当前授权不可用时，保留已上传材料，接受阶段拒绝继续。
+
 `TOOL_CORE_AUTHORITY_TOKEN` 是 Tool Gateway 调用 Core job-claim authority endpoint 的独立高熵凭据，由 `make app-bootstrap` 或受控部署秘密管理生成；只注入 Core 和 Tool Gateway，并且必须不同于 `WORKER_CORE_TOKEN`、`WORKER_TOOL_TOKEN`、`GATEWAY_TOOL_TOKEN`、`CORE_DOCUMENT_TOKEN` 等服务凭据。它不会授予 Tool 数据库身份表权限。Worker 使用独立 `WORKER_CORE_TOKEN` 解析其确切 job claim；Worker 和 Tool 的 authority 回查都要求上述 Core TLS 配置。密钥缺失、复用或 Core endpoint 不可达时，相关调用拒绝继续，不降级到目录租户或 actor 字段。
 
 私有配置设置 `OBSERVE=1` 与 `GRAFANA_ADMIN_PASSWORD` 后，`apps-up` / `apps-up-fixture` 会一并启动 Collector、Tempo、Prometheus 和 Grafana；`apps-down` 同时停止。Collector 地址为 `http://otel-collector:4318`。Grafana、Tempo、Prometheus 默认仅绑定主机回环端口 13000、13200、19090。导出的执行指标带有有限标签组合，不包含合同原文。

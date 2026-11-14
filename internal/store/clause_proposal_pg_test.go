@@ -3,16 +3,19 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	contract "contractaudit/internal/contract/model"
-	"contractaudit/internal/documentclient"
 )
+
+type clauseOriginalTestReader func(context.Context, string, string, string) ([]byte, error)
+
+func (f clauseOriginalTestReader) ReadClauseOriginal(ctx context.Context, caseID, documentID, token string) ([]byte, error) {
+	return f(ctx, caseID, documentID, token)
+}
 
 func TestClauseProposalRestrictedRoleLifecycle(t *testing.T) {
 	fixture, _ := newApprovalDecisionEnv(t)
@@ -83,32 +86,18 @@ func TestClauseProposalRestrictedRoleLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Exercise real HTTP and session authentication, while reading through the restricted Document Store.
+	// Narrow in-package bridge; the production HTTP handler is exercised by
+	// TestClauseOriginalProductionDocumentService in the external test package.
 	calls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	reader := clauseOriginalTestReader(func(ctx context.Context, caseID, documentID, token string) ([]byte, error) {
 		calls++
-		cookie, e := r.Cookie("session")
-		if e != nil || r.URL.Path != "/api/cases/"+fixture.caseID+"/documents/"+upload.DocumentID+"/original" {
-			http.Error(w, "denied", http.StatusForbidden)
-			return
+		user, audience, err := core.AuthenticateSession(ctx, token)
+		if err != nil || audience != "client" {
+			return nil, errors.New("session unavailable")
 		}
-		user, audience, e := core.AuthenticateSession(r.Context(), cookie.Value)
-		if e != nil || audience != "client" {
-			http.Error(w, "denied", http.StatusForbidden)
-			return
-		}
-		_, body, e := document.OriginalContext(r.Context(), user, fixture.caseID, upload.DocumentID)
-		if e != nil {
-			http.Error(w, "denied", http.StatusForbidden)
-			return
-		}
-		_, _ = w.Write(body)
-	}))
-	defer server.Close()
-	reader, err := documentclient.NewClauseOriginalReader(server.URL, 5*time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+		_, body, err := document.OriginalContext(ctx, user, caseID, documentID)
+		return body, err
+	})
 	core.UseClauseOriginalReader(reader)
 	ctx = WithClauseDocumentSession(ctx, fixture.sessionToken)
 	decision := contract.ClauseProposalDecision{Action: "accept", Confirmed: true, ExpectedVersion: 1, ContractID: created.Summary.ContractID, ExpectedContractRowVersion: original.RowVersion, MaterialID: materialID, DocumentID: upload.DocumentID, SHA256: sha256Bytes([]byte(derived)), IdempotencyKey: "clause-decision-1"}

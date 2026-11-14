@@ -27,6 +27,11 @@ func ServiceHandler(st *store.Store, opt Options, role, credential string) (http
 	if err := validateServiceHandlerConfig(role, credential, opt); err != nil {
 		return nil, err
 	}
+	if secret := opt.ClauseOriginalCredential; secret != "" {
+		if role != "document" || len(secret) < 32 || strings.TrimSpace(secret) != secret || subtle.ConstantTimeCompare([]byte(secret), []byte(credential)) == 1 {
+			return nil, errors.New("clause original reader requires a private Document credential distinct from the gateway")
+		}
+	}
 	if err := configureExperienceDelivery(role, credential, &opt); err != nil {
 		return nil, err
 	}
@@ -226,7 +231,7 @@ func buildServiceHandler(st *store.Store, opt Options, role, credential string) 
 	if len(opt.ContractSourceCredentials) > 0 {
 		mux.Handle("/internal/v1/contract-source-observations", contractSourceObservationHandler(st, opt.ContractSourceCredentials))
 	}
-	mux.Handle("/", serviceRequestHandler(api, role, credential))
+	mux.Handle("/", serviceRequestHandler(api, role, credential, opt.ClauseOriginalCredential))
 	return mux
 }
 
@@ -258,14 +263,19 @@ func validateContractSources(role, gatewayCredential string, opt *Options) error
 	return nil
 }
 
-func serviceRequestHandler(api http.Handler, role, credential string) http.Handler {
+func serviceRequestHandler(api http.Handler, role, credential, clauseOriginalCredential string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !OperationOwnedBy(role, r.Method, r.URL.EscapedPath()) {
 			http.NotFound(w, r)
 			return
 		}
 		values := r.Header.Values("X-Contract-Service-Key")
-		if len(values) != 1 || subtle.ConstantTimeCompare([]byte(values[0]), []byte(credential)) != 1 {
+		valid := len(values) == 1 && subtle.ConstantTimeCompare([]byte(values[0]), []byte(credential)) == 1
+		if !valid && len(values) == 1 && role == "document" && clauseOriginalCredential != "" && r.Method == http.MethodGet && r.URL.RawQuery == "" {
+			segments, ok := RouteSegments(r.URL.EscapedPath())
+			valid = ok && len(segments) == 6 && segments[0] == "api" && segments[1] == "cases" && segments[3] == "documents" && segments[5] == "original" && subtle.ConstantTimeCompare([]byte(values[0]), []byte(clauseOriginalCredential)) == 1
+		}
+		if !valid {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "service authentication required", "code": "service_unauthenticated"})
 			return
 		}

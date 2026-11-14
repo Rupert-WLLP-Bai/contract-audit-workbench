@@ -81,7 +81,7 @@ func run() error {
 		return err
 	}
 	public, err := httpapi.ServiceHandler(app.Store, httpapi.Options{
-		CORSOrigins: origins(), Models: app.Models, Durable: app.Durable, SecureCookies: app.SecureCookies, SessionAuthorityResolver: sessionResolver,
+		CORSOrigins: origins(), Models: app.Models, Durable: app.Durable, SecureCookies: app.SecureCookies, SessionAuthorityResolver: sessionResolver, ClauseOriginalCredential: serviceConfig.IntakeCredential,
 	}, "document", strings.TrimSpace(os.Getenv("GATEWAY_ROLE_TOKEN")))
 	if err != nil {
 		return err

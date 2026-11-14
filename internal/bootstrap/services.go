@@ -299,5 +299,5 @@ func configuredClauseOriginalReader() (store.ClauseOriginalReader, error) {
 	if endpoint == "" {
 		return nil, nil
 	}
-	return documentclient.NewClauseOriginalReader(endpoint, 2*time.Minute)
+	return documentclient.NewClauseOriginalReader(endpoint, strings.TrimSpace(os.Getenv("CORE_DOCUMENT_TOKEN")), 2*time.Minute)
 }
