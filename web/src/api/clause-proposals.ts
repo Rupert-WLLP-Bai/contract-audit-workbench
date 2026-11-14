@@ -1,9 +1,9 @@
 // File metadata (manifest mirror):
-// Purpose: Reads and writes case-scoped clause proposals while preserving frozen Unicode evidence, append-only decisions, and separate upload and acceptance idempotency.
+// Purpose: Uses generated wire contracts for authorized proposal listing, creation, derived text and explicit decisions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-15
-// Updated: 2026-11-15
+// Created: 2026-11-14
+// Updated: 2026-11-14
 // Revision: r1
 // Copyright: See LICENSE
 // End file metadata.

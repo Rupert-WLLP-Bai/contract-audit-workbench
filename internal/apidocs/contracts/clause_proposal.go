@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines public request and response contracts for frozen clause proposals and confirmed revision decisions.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package contracts
 
 import contract "contractaudit/internal/contract/model"

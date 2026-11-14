@@ -1,9 +1,9 @@
 // File metadata (manifest mirror):
-// Purpose: Creates and resolves clause proposals against the selected frozen review, and resumes Document upload separately from contract acceptance.
+// Purpose: Presents frozen clause candidates and human decisions, previews derived text, and resumes uploaded material separately from atomic contract acceptance.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-15
-// Updated: 2026-11-15
+// Created: 2026-11-14
+// Updated: 2026-11-14
 // Revision: r1
 // Copyright: See LICENSE
 // End file metadata.
