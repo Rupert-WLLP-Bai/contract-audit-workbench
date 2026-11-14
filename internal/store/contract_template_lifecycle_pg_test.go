@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises governed template publication, exact adoption, scenario isolation, withdrawal, authorized idempotent replay and immutable history using restricted Core and Document database roles.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Resolves explicitly selected or listed governed contract templates through exact immutable versions, case applicability, publication approval and source authorization.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package app
 
 import (

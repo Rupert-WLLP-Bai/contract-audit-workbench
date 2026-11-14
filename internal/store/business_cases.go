@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: CreateCaseWithBusinessContext records an optional request key in the same transaction as the case and its creation activity. Related `store` operations include CreateCaseWithBusiness, CreateCaseWithBusinessContext, businessWritable, requireBusinessWrite.
+// Purpose: Coordinates authorized case creation, primary-material generation and idempotent receipts, preserving exact template adoption, explicit replacement and immutable generated history.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

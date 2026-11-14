@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders TemplateGenerationPanel, the template generation panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.
+// Purpose: Lets authorized users explicitly choose an exact case template version, generate or replace primary materials through idempotent commands, and inspect immutable generation history.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks that plain-text template rendering rejects malformed field sets, nested placeholders, invalid dates/decimals and control-character injection while preserving repeated substitutions.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package contracttemplate_test
 
 import (

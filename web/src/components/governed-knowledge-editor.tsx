@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders KnowledgeEditor, the governed knowledge editor workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.
+// Purpose: Edits governed knowledge content and bounded contract-template fields with type-specific validation, exact source bindings and accessible form feedback.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-08
-// Revision: r3
+// Updated: 2026-11-14
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Defines governed Knowledge content, version, command and history values with canonical identity, metadata, lifecycle, source, and resource identifier rules.
+// Purpose: Defines immutable governed knowledge content, bounded typed contract templates, canonical identity, scope and lifecycle validation while preserving historical encodings.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-13
+// Created: 2026-11-14
 // Updated: 2026-11-14
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
