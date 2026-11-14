@@ -335,3 +335,33 @@ Execution model 拥有 Run、Attempt、ReviewScopeIdentity、AttemptParseSelecti
 兼容排序副作用单独约定：旧 frozenInputHash 在 scopeSnapshot 后按值复制snapshot但对两组ID的共享slice原地sort，部分调用者可能观察到同次流程顺序。Store旧同名forwarder继续在原位置执行这两次sort以保持调用者行为；新的纯model计算在自有拷贝排序，保留同样canonical bytes与document输入次序，不通过本次迁移修改旧acceptance的持久行或扩大纯函数写入。Finding Version清零用于输出hash时同样只处理用于计算的拷贝，不引入对旧人工决定/冻结输出的写回。
 
 实际新增Execution model路径在真实接线后由root登记到已有Execution领域，Operator仍待实际纵切收口再登记；不新增服务角色/表/schema或互相导入app/PG。必要SOURCE固定v1/v2历史bytes、静态槽实例化的wire、精确selection/空artifact兼容、output人工Version排除及model不改输入；所有执行仍NOT_RUN，待整轮源码冻结后统一验收。
+
+## #310 映射审批与采集租约的迁移边界
+
+状态：采纳，实施前决策。基于 #309 源码候选 `0ebc1ce5a274c8aacf6c0c1703160b91bb033ad9`，迁移既有初始人工映射、四版本 CAS 更正、异人决定、只读采集租约及管理读取。复用既有 Operator 模型、冻结预览、`auditext.ReadConnector`、`Observation.Validate` 与非拥有 PG executor，不增加真实接入、外部写回或任务平台。Operator 是业务域，数据库写角色仍为 Core；schema45、五个服务角色、RLS、PG 权威不变。#311 评估和 Impact 另行迁移，其既有 binding/snapshot 精确读取可薄转发新 owner，不复制第二套 SQL。
+
+公开 DTO 保留字段、tag、顺序、nil、时间和完整 response body 语义，Store 用直接 alias 兼容。私有请求摘要作为本域存储事实与 DTO 分离：采用 `BindingRecord{Value,RequestSHA256}`、`MappingChangeRecord{Value,RequestSHA256}`、`SnapshotRecord{Value,RequestSHA256}` 等具名 record，不能把私有 SHA 增为用户响应字段。PG scan 保存列 SHA，历史 response_body 按原位置完整覆盖公开 DTO 后仍保留该列 SHA，不做非零字段合并。record 不作为 HTTP 或响应回执编码；旧 helper 中真正比较摘要的消费者改用 record，仅需公开业务值的消费者拆 Value。Snapshot 的 CollectionID 继续隐藏；Evaluation 的同类私有元数据由 #311 承接。
+
+映射 model/app 拥有输入规范化、四个 expected pins、canonical before/after/impact/request 摘要、SOD 与真实应用编排；本域 PG 只读写 bindings、lineages、requests、decisions、collection claims、snapshot sets、observations 及既有 service-object 自有行，不查询 Case、Document、Execution、Subject 或其它领域表，不设置身份、scope 或事务。沿用同一个调用者绑定 executor，Store 保留原受信身份、Case 授权、锁、RLS、事务生命周期与提交证明。不能把完整原 Preview/Propose/Decide/Collect、当前 tuple loader 或业务事务体改名为 callback。
+
+身份修正的私有已审核 capability 与 identity-change planner 一起进入实际 Operator app 决定编排包。只有完整提案、异人、CAS、after/impact 摘要和依据复核通过后，才在包内私有构造并使用；不公开 `Validated:true`、可信批准结构或任意构造器。Store/PG 只承接 app 产生的实际追加记录和原事务，不替调用方伪造批准。只测该私有 planner 的旧 Store 测试可迁到 owner 包，规则保持唯一。identity 修正继续复制原 association 的完整 FactRefs、FactsCanonicalJSON 与 SHA，不查询新解析替换冻结事实。
+
+材料依据复用现有唯一严格 resolver `validateSubjectBasisRefs`，限原已授权 tenant/org/case 及同事务实际 state，继续核 1–8 anchors、精确 material/version/document/parse、ready/原件证明、rune span 和 quote SHA。准许的 Store 窄桥只返回 canonical verified anchors，并保留原 resolver 错误；Operator app 在原调用点负责非空和逐项匹配当前 association 的四个 pins，保持原三类错误顺序。此桥承接 #308 已允许的严格材料 resolver，不传整份 Case/Document/state，也不复制严格 decoder、原件证明或把整个 `validateMappingChangeBasis` 作为回调。
+
+可选合同关联更正复用 #309 的 `PreviewFacts[D]`、`Preview[D]` 及逐阶段精确冻结证明：run/attempt/input/output、parse selections、Document IO、同事务 agent digest 和 RulePack。Operator app 比较目标 ObjectRef、facts/candidate 摘要并规划关联，不能调用会拒绝已有 mapping 的普通 Confirm。basis 和可选 target 的读取保持各原入口的顺序，不提前扫描、扩大授权或用当前 parse 重算旧提案。
+
+初始绑定保留原外层 Manage、专线场景、输入及时间默认、bindingID、legacy/pinned 请求摘要与回执优先次序。外层以原 user 解析 current，`withOperatorTx` 仍传原 user 并再次 trustedUser，闭包回执和写入使用外层 current，不能统一替换。miss 才要求正对象版本、精确 head/identity/association，随后 mappingID、序列化、UTC 微秒 now、binding 和 lineage 写入。旧无 pin 请求只允许已有精确回执重放；不新增原锁内没有的 Case 或 businessWritable 检查。
+
+Preview、Proposal、Get、Decision 分别保留原外层和事务内授权、visibleCase 隐藏、writable、回执先后及错误文案。`withOperatorTx` 写路径为 mutex→begin→schema advisory→case advisory→scope，读路径只设 scope；不能与服务对象命令的不同锁序混同。Proposal replay 不重取 mapping 或依据，Decision replay 不重取 request，但各自仍先经过原当前 Case 权限及 writable。异人沿用真实 userID 或 issuer/subject 规则，不按显示名识别。
+
+Decision 在全部校验后依次生成 decisionID、取 UTC 微秒 now、approve 分支生成 bindingID 并推进 mappingVersion、编码结果，再 INSERT 决定与回执；reject 到此结束。approve 继续原计划和写序：identity 分支在 identity/association 追加后、binding INSERT 前更新 service-object 双指针；target-association 分支在 association 追加、binding INSERT 后更新 association head；最后才 mapping lineage CAS。四个 expected pins、After/Impact/SHA、各独立 clock/ID、out+err 与 replay 语义不变，所有行与决定同事务提交或回滚。
+
+采集先验证明确 businessAt、confirmed exact binding、有效区间和 connector identity，计算请求 SHA 并生成 owner/collectionID，保留包括 replay 前分配 ID 的原时点。事务 A 在原 loadState/当前 Case Review 后锁 claim，先处理 completed 及 legacy snapshot 重放；miss 才检查 connector 与 writable，按 DB 时钟写五分钟 lease。接管分支仍用原应用时钟判断过期，再推进 generation。A 提交后才调用既有只读 connector，并验证 scope 和 observation；completed replay 重载实际 snapshot 与有序 observations，不能仅返回 response_body。
+
+只有原 connector 读取和 observation 验证两类失败才 best-effort 条件 Release。读取后的授权版本变化、ID/编码或事务 B 失败继续让原 lease 到期或接管，不新增自动清理。Release 按 tenant/org/case/actor/key/generation/owner/status 精确更新。采集不是外部系统和 PG 的跨系统原子事务。
+
+事务 B 先锁 claim，以 DB clock 检查 status、generation、owner、lease，再原 loadState/当前 Case/trusted/writable/Review/grantVersion 复验，随后 now、snapshot/observation 追加、response JSON、精确 completed claim CAS。零影响行保持原 409，整笔 B 回滚，A 已提交的 in_progress claim 保留。CAS 前 completed receipt 只在待写 response JSON 中，尚未落库；不可把它作为 CAS 零行故障前置。app 以明确 typed 阶段和本域 repo 端口组织流程，Store 固定 A commit→事务外 connector→B commit，不向 app 开放任意事务回调。
+
+本域读取目录、精确 binding/snapshot、按 key 或 collectionID 的采集状态继续原授权、首错、时间与 partial out+err，通过 Operator 自有 PG 完成。必要 SOURCE 在真实会话和 Core operation authority 下触达事务 B：snapshot/observation 已写、原 claim/token/lease 精确有效后，用测试专用非事务 marker 证明最终 CAS 被拦并返回零行；比较 B 前后完整行及旧成功历史，按已有受控过期或测试显式 Release 恢复同 key，再证明 completed replay 不读 connector。复用已有 SOD、四 CAS、并发与接管矩阵，不重复镜像用例。
+
+实际实施按模型和 record、初始映射与读取/提案、决定、采集 A、事务外调用及 B/Release/读取、必要故障 SOURCE 串行，开始每段重新核对实际 API。元信息头部/manifest、所有测试、编译、go list、门禁、数据库、app/browser、模型/OCR 仍待全轮源码冻结后统一执行，当前 NOT_RUN。#183 真实接入保持 NOT_APPLICABLE，#95/#99 外部专业/试用/交接继续暂缓。
