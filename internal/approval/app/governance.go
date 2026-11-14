@@ -51,6 +51,7 @@ func PublishTemplate(ctx context.Context, tenantID, actorID string, input model.
 type Directory interface {
 	LookupUser(string) (accounts.User, bool)
 }
+
 func NormalizeRoleBindings(tenantID string, input []model.WorkflowRoleBindingInput, directory Directory) ([]model.WorkflowRoleBindingSummary, error) {
 	seenScopes := map[string]bool{}
 	out := make([]model.WorkflowRoleBindingSummary, 0, len(input))
