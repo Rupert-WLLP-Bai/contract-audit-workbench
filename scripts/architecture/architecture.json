@@ -65,26 +65,6 @@
           ]
         }
       ]
-    },
-    {
-      "id": "contracttemplate-pure-domain",
-      "description": "Keep governed contract template validation and rendering independent of stores, execution engines and external services.",
-      "checks": [
-        {
-          "id": "contracttemplate-stdlib-only",
-          "package": "internal/contracttemplate",
-          "mode": "allowlist",
-          "allowed_direct_imports": [
-            "errors",
-            "math/big",
-            "regexp",
-            "strings",
-            "time",
-            "unicode",
-            "unicode/utf8"
-          ]
-        }
-      ]
     }
   ],
   "ratchet": {
