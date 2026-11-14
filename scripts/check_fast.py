@@ -75,9 +75,7 @@ SKIP_PARTS = frozenset(
         "venv",
     }
 )
-GO_SKIP_PARTS = frozenset(
-    {".git", ".venv", "artifacts", "dist", "node_modules", "vendor", "web"}
-)
+GO_SKIP_PARTS = frozenset({".git", ".venv", "artifacts", "dist", "node_modules", "vendor", "web"})
 DB_ENV_KEYS = ("TEST_DATABASE_URL", "MIGRATOR_DATABASE_URL", "MODEL_DATABASE_URL")
 
 WEB_BUILD_FILES = frozenset(
@@ -151,9 +149,7 @@ TENANT_AUTHORITY_BOOTSTRAP_TESTS = (
     "TestDelegatedPreparationRejectsForgedClaimFieldsAndRevokedReview",
     "TestDistributedMembershipAdmissionAndModelSettlement",
 )
-OFFLINE_MIGRATOR_BOOTSTRAP_TESTS = (
-    "TestOfflineMigratorFreshAndControlledLegacyBootstrap",
-)
+OFFLINE_MIGRATOR_BOOTSTRAP_TESTS = ("TestOfflineMigratorFreshAndControlledLegacyBootstrap",)
 CASE_INTAKE_AUTHORITY_TESTS = (
     "TestCaseIntakePendingOwnerResumeArchiveAndReceiptPostgres",
     "TestCaseIntakePendingLegacyAndCurrentCaseAuthorityPostgres",
@@ -193,9 +189,7 @@ REPORT_RECEIPT_TESTS = (
     "TestReportReceiptReplayPreservesSessionOriginOrganizationPostgres",
 )
 REPORT_RECEIPT_HTTP_TESTS = ("TestReportReceiptReplayAfterLoginHTTP",)
-CONTRACT_SIGNING_TESTS = (
-    "TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision",
-)
+CONTRACT_SIGNING_TESTS = ("TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision",)
 CONTRACT_FULFILLMENT_TESTS = (
     "TestContractFulfillmentPartialAcceptanceAndLinearRetest",
     "TestContractFulfillmentLegacyMigrationSkipsUnknownPlans",
@@ -210,9 +204,7 @@ CLM_OUTBOX_STORE_TESTS = (
     "TestCLMMaintenanceRoleNonSuperuserBootstrapAndRerun",
     "TestCLMOutboxMaintenanceRoleClaimLeaseAndMetrics",
 )
-CLM_OUTBOX_RELAY_TESTS = (
-    "TestCLMOutboxRelayRetryConsumerRefreshDoesNotChangeBusinessFacts",
-)
+CLM_OUTBOX_RELAY_TESTS = ("TestCLMOutboxRelayRetryConsumerRefreshDoesNotChangeBusinessFacts",)
 CONTEXT_FENCE_TESTS = ("TestSessionContextSwitchSupportExpiryAndWriteFence",)
 
 
@@ -374,9 +366,7 @@ def _normalize_stem(value: str) -> str:
 
 
 def _is_auth(path: str) -> bool:
-    if path.startswith(
-        ("internal/identity/", "internal/access/", "internal/accounts/")
-    ):
+    if path.startswith(("internal/identity/", "internal/access/", "internal/accounts/")):
         return True
     if path.startswith("internal/store/") and "authorization" in _stem(path):
         return True
@@ -388,9 +378,7 @@ def _is_auth(path: str) -> bool:
 def _is_session(path: str) -> bool:
     if path.startswith("internal/identity/"):
         return True
-    return "session" in _stem(path) and path.startswith(
-        ("internal/store/", "internal/httpapi/")
-    )
+    return "session" in _stem(path) and path.startswith(("internal/store/", "internal/httpapi/"))
 
 
 def _is_tenant(path: str) -> bool:
@@ -566,9 +554,7 @@ def _is_tenant_identity_http(path: str) -> bool:
 def _is_migration(path: str) -> bool:
     if path.startswith("internal/store/") and "schema" in _stem(path):
         return True
-    if not path.startswith(
-        ("cmd/migrate/", "deploy/", "deployments/", "internal/", "scripts/")
-    ):
+    if not path.startswith(("cmd/migrate/", "deploy/", "deployments/", "internal/", "scripts/")):
         return False
     return "migrat" in path.lower()
 
@@ -583,8 +569,7 @@ def _is_lease(path: str) -> bool:
     if path.startswith("internal/execution/"):
         return "budget" not in _stem(path)
     return path.startswith("internal/store/") and any(
-        token in _stem(path)
-        for token in ("stale_claim", "execution", "attempt_finalize", "queue")
+        token in _stem(path) for token in ("stale_claim", "execution", "attempt_finalize", "queue")
     )
 
 
@@ -898,9 +883,7 @@ SENSITIVE_RULES = (
         TENANT_AUTHORITY_BOOTSTRAP_TESTS,
         package="./internal/bootstrap",
     ),
-    SensitiveRule(
-        "case-intake-authority", _is_case_intake_authority, CASE_INTAKE_AUTHORITY_TESTS
-    ),
+    SensitiveRule("case-intake-authority", _is_case_intake_authority, CASE_INTAKE_AUTHORITY_TESTS),
     SensitiveRule(
         "case-intake-http",
         _is_case_intake_authority,
@@ -912,9 +895,7 @@ SENSITIVE_RULES = (
     SensitiveRule("lease", _is_lease, LEASE_TESTS),
     SensitiveRule("database-core", _is_database_core, DATABASE_CORE_TESTS),
     SensitiveRule("frozen-evidence", _is_frozen_evidence, FROZEN_EVIDENCE_TESTS),
-    SensitiveRule(
-        "review-readmission", _is_review_readmission, REVIEW_READMISSION_TESTS
-    ),
+    SensitiveRule("review-readmission", _is_review_readmission, REVIEW_READMISSION_TESTS),
     SensitiveRule(
         "review-readmission-http",
         _is_review_readmission_http,
@@ -929,9 +910,7 @@ SENSITIVE_RULES = (
         package="./internal/httpapi",
     ),
     SensitiveRule("contract-signing", _is_contract_signing, CONTRACT_SIGNING_TESTS),
-    SensitiveRule(
-        "contract-fulfillment", _is_contract_fulfillment, CONTRACT_FULFILLMENT_TESTS
-    ),
+    SensitiveRule("contract-fulfillment", _is_contract_fulfillment, CONTRACT_FULFILLMENT_TESTS),
     SensitiveRule("contract-payment", _is_contract_payment, CONTRACT_PAYMENT_TESTS),
     SensitiveRule("contract-asset", _is_contract_asset, CONTRACT_ASSET_TESTS),
     SensitiveRule("contract-source", _is_contract_source, CONTRACT_SOURCE_TESTS),
@@ -979,9 +958,7 @@ def parse_name_status_z(payload: bytes) -> tuple[Change, ...]:
 
 def _git(root: Path, *arguments: str, allow_failure: bool = False) -> bytes:
     try:
-        result = subprocess.run(
-            ["git", "-C", str(root), *arguments], capture_output=True
-        )
+        result = subprocess.run(["git", "-C", str(root), *arguments], capture_output=True)
     except OSError as error:
         raise FastError(f"cannot run git: {error}") from error
     if result.returncode != 0 and not allow_failure:
@@ -1001,9 +978,7 @@ def collect_changes(root: Path, base: str) -> tuple[tuple[Change, ...], str]:
         allow_failure=True,
     )
     if not base_sha.strip():
-        raise FastError(
-            f"base ref {base!r} is not a known commit; fetch it or pass --base"
-        )
+        raise FastError(f"base ref {base!r} is not a known commit; fetch it or pass --base")
     merge_base = (
         _git(root, "merge-base", base_sha.decode().strip(), "HEAD", allow_failure=True)
         .decode()
@@ -1011,9 +986,7 @@ def collect_changes(root: Path, base: str) -> tuple[tuple[Change, ...], str]:
     )
     if not merge_base:
         raise FastError(f"base ref {base!r} has no merge-base with HEAD")
-    diff = _git(
-        root, "diff", "--name-status", "-z", "--find-renames", "-M", merge_base, "--"
-    )
+    diff = _git(root, "diff", "--name-status", "-z", "--find-renames", "-M", merge_base, "--")
     changes = list(parse_name_status_z(diff))
     untracked = _git(root, "ls-files", "-z", "--others", "--exclude-standard", "--")
     for raw in untracked.split(b"\0"):
@@ -1258,9 +1231,7 @@ def _database_targets(changes: Iterable[Change]) -> tuple[DatabaseTarget, ...]:
                     )
                     selection["reasons"].add(rule.reason)
                     selection["tests"].update(rule.tests)
-                    selection["needs_model"] = (
-                        selection["needs_model"] or rule.needs_model
-                    )
+                    selection["needs_model"] = selection["needs_model"] or rule.needs_model
     return tuple(
         DatabaseTarget(
             package,
@@ -1279,9 +1250,7 @@ def build_plan(root: Path, changes: Iterable[Change]) -> Plan:
 
     for change in changes:
         for path in change.affected_paths():
-            if path.startswith(".github/workflows/") and path.endswith(
-                (".yml", ".yaml")
-            ):
+            if path.startswith(".github/workflows/") and path.endswith((".yml", ".yaml")):
                 plan.workflow = True
             if path.endswith(".go"):
                 plan.go = True
@@ -1340,8 +1309,7 @@ def build_plan(root: Path, changes: Iterable[Change]) -> Plan:
             import_path = module if package_dir == "." else f"{module}/{package_dir}"
             importers = importer_counts.get(import_path, set()) - {package_dir}
             if len(importers) >= 2 or any(
-                importer == "cmd" or importer.startswith("cmd/")
-                for importer in importers
+                importer == "cmd" or importer.startswith("cmd/") for importer in importers
             ):
                 plan.go_build_all = True
                 plan.reasons.add("shared-package")
@@ -1358,12 +1326,7 @@ def build_plan(root: Path, changes: Iterable[Change]) -> Plan:
     plan.poppler = bool(plan.go_unit_packages & POPPLER_TEST_PACKAGES)
     plan.legal_assets = bool(plan.go_unit_packages & LEGAL_ASSET_TEST_PACKAGES)
     changed_python = sorted(
-        {
-            path
-            for change in changes
-            for path in change.affected_paths()
-            if path.endswith(".py")
-        }
+        {path for change in changes for path in change.affected_paths() if path.endswith(".py")}
     )
     plan.python_tests = python_tests_for(root, changed_python)
     if "scripts/test_generate_openapi_types.py" in plan.python_tests:
@@ -1846,9 +1809,7 @@ def _unittest_evidence(output: str) -> tuple[int, str]:
         return count, "unittest did not report a successful result"
     skipped = re.search(r"\bskipped=(\d+)", summaries[-1])
     if skipped and int(skipped.group(1)):
-        return count - int(
-            skipped.group(1)
-        ), "unittest skipped required tests: " + skipped.group(1)
+        return count - int(skipped.group(1)), "unittest skipped required tests: " + skipped.group(1)
     expected = re.search(r"\bexpected failures=(\d+)", summaries[-1])
     if expected and int(expected.group(1)):
         return count, "unittest contains expected failures: " + expected.group(1)
@@ -1877,18 +1838,14 @@ def _syntax_evidence(root: Path, files: Iterable[str]) -> tuple[list[str], list[
 
 def _write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        text if text.endswith("\n") or not text else text + "\n", encoding="utf-8"
-    )
+    path.write_text(text if text.endswith("\n") or not text else text + "\n", encoding="utf-8")
 
 
 def _safe_log_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "__", name)
 
 
-def _metadata_command(
-    check: FastCheck, logs: Path, root: Path
-) -> tuple[tuple[str, ...], str]:
+def _metadata_command(check: FastCheck, logs: Path, root: Path) -> tuple[tuple[str, ...], str]:
     paths = tuple(
         f"scripts/file_metadata/{name}.py"
         for name in (
@@ -1915,13 +1872,9 @@ def _metadata_command(
     entries = inventory(ref)
     if not entries:
         try:
-            policy = json.loads(
-                _git(root, "show", f"{ref}:scripts/file_metadata/policy.json")
-            )
+            policy = json.loads(_git(root, "show", f"{ref}:scripts/file_metadata/policy.json"))
         except (ValueError, FastError) as error:
-            raise FastError(
-                "metadata BASE has no verifiable foundation policy"
-            ) from error
+            raise FastError("metadata BASE has no verifiable foundation policy") from error
         if policy.get("manifest_status") != "populated-from-issue-115-baseline":
             raise FastError(
                 "metadata BASE without trusted tools is not an approved legacy foundation"
@@ -1963,9 +1916,7 @@ def execute_check(check: FastCheck, logs: Path, root: Path) -> CheckResult:
 
     if check.kind == "not-run":
         _write_text(log_path, check.note)
-        return CheckResult(
-            check.name, "NOT_RUN", 0.0, command_text, str(log_path), check.note
-        )
+        return CheckResult(check.name, "NOT_RUN", 0.0, command_text, str(log_path), check.note)
     if check.kind == "python-syntax":
         checked, errors = _syntax_evidence(root, check.files)
         evidence = {"checked": checked, "errors": errors}
@@ -2013,13 +1964,9 @@ def execute_check(check: FastCheck, logs: Path, root: Path) -> CheckResult:
                 if gate_status == "NOT_RUN" and returncode == 3:
                     status = "NOT_RUN"
                     reason = str(
-                        payload.get(
-                            "reason", "metadata history enforcement is not initialized"
-                        )
+                        payload.get("reason", "metadata history enforcement is not initialized")
                     )
-                elif (
-                    gate_status == "PASS" and metadata_source == "foundation-candidate"
-                ):
+                elif gate_status == "PASS" and metadata_source == "foundation-candidate":
                     status, reason = (
                         "FAIL",
                         "foundation candidate cannot self-attest initialized metadata enforcement",
@@ -2084,11 +2031,7 @@ def execute_check(check: FastCheck, logs: Path, root: Path) -> CheckResult:
                 evidence = {"tests": count}
                 if problem:
                     status, reason = (
-                        (
-                            "NOT_RUN"
-                            if problem.startswith("unittest skipped")
-                            else "FAIL"
-                        ),
+                        ("NOT_RUN" if problem.startswith("unittest skipped") else "FAIL"),
                         problem,
                     )
     return CheckResult(
@@ -2119,22 +2062,17 @@ def _ensure_outside_repo(root: Path, out: Path) -> None:
     out = out.resolve()
     if out == root or root in out.parents:
         raise FastError(
-            f"fast-check output {out} is inside the repository; "
-            "choose a path outside it"
+            f"fast-check output {out} is inside the repository; choose a path outside it"
         )
 
 
 def _write_report(out: Path, report: dict) -> None:
-    _write_text(
-        out / "fast-check.json", json.dumps(report, ensure_ascii=False, indent=2)
-    )
+    _write_text(out / "fast-check.json", json.dumps(report, ensure_ascii=False, indent=2))
 
 
 def _write_github_output(path: str, plan: Plan) -> None:
     destination = Path(path).expanduser()
-    lines = [
-        f"{name}={'true' if getattr(plan, name) else 'false'}" for name in GITHUB_KEYS
-    ]
+    lines = [f"{name}={'true' if getattr(plan, name) else 'false'}" for name in GITHUB_KEYS]
     prefix = ""
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -2146,9 +2084,7 @@ def _write_github_output(path: str, plan: Plan) -> None:
         with destination.open("a", encoding="utf-8") as handle:
             handle.write(prefix + "\n".join(lines) + "\n")
     except OSError as error:
-        raise FastError(
-            f"cannot append GitHub output {destination}: {error}"
-        ) from error
+        raise FastError(f"cannot append GitHub output {destination}: {error}") from error
 
 
 def _deferred_checks() -> list[dict]:
@@ -2200,9 +2136,7 @@ def _new_report(base: str, merge_base: str, plan: Plan) -> dict:
 
 
 def _print_summary(plan: Plan, report: dict, out: Path) -> None:
-    flags = " ".join(
-        f"{name}={'true' if getattr(plan, name) else 'false'}" for name in GITHUB_KEYS
-    )
+    flags = " ".join(f"{name}={'true' if getattr(plan, name) else 'false'}" for name in GITHUB_KEYS)
     status = "PASS" if report["passed"] else "FAIL"
     print(f"FAST: {status} ({flags})")
     for deferred in report["deferred_checks"]:
@@ -2311,9 +2245,7 @@ def run_checks(
             if check.required:
                 tail = ""
                 try:
-                    tail = Path(result.log).read_text(
-                        encoding="utf-8", errors="replace"
-                    )[-4000:]
+                    tail = Path(result.log).read_text(encoding="utf-8", errors="replace")[-4000:]
                 except OSError:
                     pass
                 if tail:
@@ -2360,21 +2292,15 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="append scoped check booleans for GitHub Actions",
     )
-    parser.add_argument(
-        "--out", default=None, help="log/report directory outside the repository"
-    )
+    parser.add_argument("--out", default=None, help="log/report directory outside the repository")
     parser.add_argument("--root", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     root = Path(args.root or REPO_ROOT).resolve()
     base = args.base or os.environ.get("CAW_FAST_BASE") or DEFAULT_BASE
     try:
         changes, merge_base = collect_changes(root, base)
-        metadata_base = (
-            _git(root, "rev-parse", "--verify", f"{base}^{{commit}}").decode().strip()
-        )
-        metadata_subject = (
-            _git(root, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
-        )
+        metadata_base = _git(root, "rev-parse", "--verify", f"{base}^{{commit}}").decode().strip()
+        metadata_subject = _git(root, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
         plan = build_plan(root, changes)
         if args.github_output:
             _write_github_output(args.github_output, plan)

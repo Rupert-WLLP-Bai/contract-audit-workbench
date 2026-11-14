@@ -617,19 +617,26 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
                 plan = self.plan(check_fast.Change("M", path))
                 targets = {target.package: target.tests for target in plan.database_tests}
                 self.assertTrue(plan.database)
-                self.assertTrue({
-                    "TestReportReceiptReplayAfterNewSessionPostgres",
-                    "TestReportReceiptReplayPreservesSessionOriginOrganizationPostgres",
-                }.issubset(targets["./internal/store"]))
+                self.assertTrue(
+                    {
+                        "TestReportReceiptReplayAfterNewSessionPostgres",
+                        "TestReportReceiptReplayPreservesSessionOriginOrganizationPostgres",
+                    }.issubset(targets["./internal/store"])
+                )
                 self.assertFalse(plan.web)
-        for path in ("internal/store/business_reports.go",
-                     "internal/store/migrations/0044_report_receipt_session_recovery.sql",
-                     "internal/httpapi/business.go", "internal/httpapi/server.go",
-                     "internal/httpapi/report_receipt_replay_test.go"):
+        for path in (
+            "internal/store/business_reports.go",
+            "internal/store/migrations/0044_report_receipt_session_recovery.sql",
+            "internal/httpapi/business.go",
+            "internal/httpapi/server.go",
+            "internal/httpapi/report_receipt_replay_test.go",
+        ):
             with self.subTest(http_path=path):
                 plan = self.plan(check_fast.Change("M", path))
                 targets = {target.package: target.tests for target in plan.database_tests}
-                self.assertIn("TestReportReceiptReplayAfterLoginHTTP", targets["./internal/httpapi"])
+                self.assertIn(
+                    "TestReportReceiptReplayAfterLoginHTTP", targets["./internal/httpapi"]
+                )
 
     def test_tenant_authority_session_and_model_paths_select_required_suites(self):
         paths = (
