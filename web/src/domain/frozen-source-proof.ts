@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Validates existing authorized case-document and exact current or historical parse identities into minimal frozen source proofs without copying parsed content or fabricating metadata.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-14
+// Updated: 2026-11-14
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { CaseDetail, MaterialParsedDocumentList, ReviewDocument } from "../api/types";
 
 export interface FrozenSourceProof {
