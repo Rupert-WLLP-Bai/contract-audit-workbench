@@ -462,9 +462,7 @@ export function ContractRemindersPanel({
           ) : null}
         </>
       ) : null}
-      {!loading && error && actor ? (
-        <Button onClick={retryRead}>重试读取提醒</Button>
-      ) : null}
+      {!loading && error && actor ? <Button onClick={retryRead}>重试读取提醒</Button> : null}
     </section>
   );
 }
