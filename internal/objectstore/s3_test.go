@@ -69,8 +69,13 @@ func TestPutGetUsesSDKAndPreservesObjectBytes(t *testing.T) {
 		if r.Method == http.MethodPut && !strings.Contains(";"+signedHeaders+";", ";x-amz-meta-sha256;") {
 			t.Errorf("Put signature did not cover SHA-256 metadata: %q", signedHeaders)
 		}
-		if r.URL.EscapedPath() != "/gateway%20prefix/"+testBucket+"/tenants/tenant-1/cases/case-1/a%20b%2B%E9%9B%AA.txt" {
-			t.Errorf("escaped request path = %q", r.URL.EscapedPath())
+		// A literal '+' is valid in a URL path; unlike a query, it is not a space.
+		// Check the decoded path exactly and permit either legal encoding of '+'.
+		escaped := r.URL.EscapedPath()
+		prefix := "/gateway%20prefix/" + testBucket + "/tenants/tenant-1/cases/case-1/a%20b"
+		if r.URL.Path != "/gateway prefix/"+testBucket+"/"+key ||
+			(escaped != prefix+"+%E9%9B%AA.txt" && escaped != prefix+"%2B%E9%9B%AA.txt") {
+			t.Errorf("request path = %q, escaped = %q, query = %q", r.URL.Path, escaped, r.URL.RawQuery)
 			http.Error(w, "invalid path", http.StatusBadRequest)
 			return
 		}
