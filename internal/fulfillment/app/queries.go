@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-13
-// Updated: 2026-11-13
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -81,10 +81,13 @@ func ListContractAcceptances(ctx context.Context, record clmcontract.Aggregate, 
 		if err != nil {
 			return ContractAcceptanceList{}, err
 		}
-		start, _ := new(big.Rat).SetString(fact.ScopeStart)
-		end, _ := new(big.Rat).SetString(fact.ScopeEnd)
+		start, okStart := new(big.Rat).SetString(fact.ScopeStart)
+		end, okEnd := new(big.Rat).SetString(fact.ScopeEnd)
+		accepted, okAccepted := new(big.Rat).SetString(fact.AcceptedQuantity)
+		if !okStart || !okEnd || !okAccepted {
+			return ContractAcceptanceList{}, fault.Conflict("验收数量范围无法读取")
+		}
 		quantity := new(big.Rat).Sub(end, start)
-		accepted, _ := new(big.Rat).SetString(fact.AcceptedQuantity)
 		item := ContractAcceptance{
 			AcceptanceID: fact.AcceptanceID, ContractID: record.ContractID,
 			ContractRevisionID: fact.ContractRevisionID, DeliveryID: fact.DeliveryID, ItemID: fact.ItemID,
