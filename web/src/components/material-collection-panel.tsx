@@ -3,20 +3,22 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-08
-// Revision: r4
+// Updated: 2026-11-15
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Button, Checkbox, Select, Upload } from "antd";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ApiError, assertCommandContextCurrent, bindIdempotencyCommandContext, captureCommandContext, errorMessage } from "../api/http";
-import { fileSha256, idempotencyFingerprint, newIdempotencyKey } from "../api/idempotency";
 import {
-  useConfirmLegacyMaterialSelection,
-  useReparse,
-  useUploadDocument,
-} from "../api/queries";
+  ApiError,
+  assertCommandContextCurrent,
+  bindIdempotencyCommandContext,
+  captureCommandContext,
+  errorMessage,
+} from "../api/http";
+import { fileSha256, idempotencyFingerprint, newIdempotencyKey } from "../api/idempotency";
+import { useConfirmLegacyMaterialSelection, useReparse, useUploadDocument } from "../api/queries";
 import type { CaseDetail, MaterialProjection, MaterialPurpose } from "../api/types";
 import { formatDateTime, parseLabel, parseTone, roleLabel } from "../domain/review";
 import { ParsedDocumentSummary } from "./parsed-document-summary";
@@ -55,7 +57,10 @@ interface Props {
   actorId: string;
 }
 
-function fixedPurpose(role: MaterialProjection["role"], attachmentPurpose: MaterialPurpose): MaterialPurpose {
+function fixedPurpose(
+  role: MaterialProjection["role"],
+  attachmentPurpose: MaterialPurpose,
+): MaterialPurpose {
   if (role === "procurement") return "procurement";
   if (role === "award") return "award";
   if (role === "draft_contract") return "primary_contract";
@@ -91,9 +96,13 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
 
   useEffect(() => {
     if (!selection || lastSelectionVersion.current === selection.version) return;
-    const initial = selection.status === "pending_confirmation"
-      ? selection.candidate_document_ids ?? (materials ?? []).filter((material) => material.legacy_selected).map((material) => material.current_document_id)
-      : selection.document_ids;
+    const initial =
+      selection.status === "pending_confirmation"
+        ? (selection.candidate_document_ids ??
+          (materials ?? [])
+            .filter((material) => material.legacy_selected)
+            .map((material) => material.current_document_id))
+        : selection.document_ids;
     setLegacyDocumentIds(initial);
     setSelectionNote(null);
     lastSelectionVersion.current = selection.version;
@@ -103,9 +112,7 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
     return (
       <section id="case-materials" aria-labelledby="case-materials-title">
         <h2 id="case-materials-title">材料</h2>
-        <p role="alert">
-          材料信息暂不可用，请刷新重试或联系管理员。
-        </p>
+        <p role="alert">材料信息暂不可用，请刷新重试或联系管理员。</p>
         <ul className="document-list">
           {caseDetail.documents.map((document) => (
             <li key={document.id} data-document-id={document.id}>
@@ -123,12 +130,18 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
   const documentById = new Map(caseDetail.documents.map((document) => [document.id, document]));
   const pendingLegacyPrimaryIds = new Set(
     materialSelection.status === "pending_confirmation"
-      ? materials.filter((material) => material.purpose === "primary_contract" && material.legacy_selected).map((material) => material.material_id)
+      ? materials
+          .filter((material) => material.purpose === "primary_contract" && material.legacy_selected)
+          .map((material) => material.material_id)
       : [],
   );
   const targetMaterials = materials.filter(
-    (material) => material.role === role && material.purpose === fixedPurpose(role, attachmentPurpose) &&
-      (material.purpose !== "primary_contract" || material.material_id === materialSelection.primary_material_id || pendingLegacyPrimaryIds.has(material.material_id)),
+    (material) =>
+      material.role === role &&
+      material.purpose === fixedPurpose(role, attachmentPurpose) &&
+      (material.purpose !== "primary_contract" ||
+        material.material_id === materialSelection.primary_material_id ||
+        pendingLegacyPrimaryIds.has(material.material_id)),
   );
   const targetOptions = targetMaterials.map((material) => {
     const document = documentById.get(material.current_document_id);
@@ -137,14 +150,15 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
       label: `${document?.filename ?? "所选材料"}，v${material.current_version}，${legacyStatusLabel(material)}`,
     };
   });
-  const effectiveTargetMaterialId = targetMaterialId || (
-    intent === "replace" && targetMaterials.length === 1
-      ? targetMaterials[0]?.material_id ?? ""
-      : ""
-  );
+  const effectiveTargetMaterialId =
+    targetMaterialId ||
+    (intent === "replace" && targetMaterials.length === 1
+      ? (targetMaterials[0]?.material_id ?? "")
+      : "");
   const primaryMaterials = materials.filter((material) => material.purpose === "primary_contract");
   const primaryExists = primaryMaterials.length > 0;
-  const canReplace = intent === "replace" && targetMaterials.length > 0 && effectiveTargetMaterialId !== "";
+  const canReplace =
+    intent === "replace" && targetMaterials.length > 0 && effectiveTargetMaterialId !== "";
   const selectedIds = new Set(
     selection.status === "pending_confirmation" ? [] : selection.document_ids,
   );
@@ -160,20 +174,38 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
     setHashingFile(true);
     setUploadPreparationError(null);
     try {
-      const target = targetMaterials.find((material) => material.material_id === effectiveTargetMaterialId);
+      const target = targetMaterials.find(
+        (material) => material.material_id === effectiveTargetMaterialId,
+      );
       const purpose = fixedPurpose(role, attachmentPurpose);
       const contentDigest = await fileSha256(file);
       assertCommandContextCurrent(commandContext);
-      const signature = JSON.stringify({ actorId, sessionIdentity: commandContext.identity, file: { name: file.name, size: file.size, lastModified: file.lastModified, type: file.type, contentDigest }, role, purpose, intent, material_id: target?.material_id, document_id: target?.current_document_id });
+      const signature = JSON.stringify({
+        actorId,
+        sessionIdentity: commandContext.identity,
+        file: {
+          name: file.name,
+          size: file.size,
+          lastModified: file.lastModified,
+          type: file.type,
+          contentDigest,
+        },
+        role,
+        purpose,
+        intent,
+        material_id: target?.material_id,
+        document_id: target?.current_document_id,
+      });
       const fingerprint = await idempotencyFingerprint(signature);
       assertCommandContextCurrent(commandContext);
       const storageKey = `caw:upload-idempotency:${caseDetail.id}:${actorId}:${commandContext.contextVersion}:${fingerprint}`;
       const retry = uploadRetry.current;
-      const idempotencyKey = retry?.file === file && retry.signature === signature
-        ? retry.key
-        : completedUploadKeys.current.has(storageKey)
-          ? newIdempotencyKey()
-          : sessionStorage.getItem(storageKey) ?? newIdempotencyKey();
+      const idempotencyKey =
+        retry?.file === file && retry.signature === signature
+          ? retry.key
+          : completedUploadKeys.current.has(storageKey)
+            ? newIdempotencyKey()
+            : (sessionStorage.getItem(storageKey) ?? newIdempotencyKey());
       uploadRetry.current = { file, signature, key: idempotencyKey };
       sessionStorage.setItem(storageKey, idempotencyKey);
       bindIdempotencyCommandContext(idempotencyKey, commandContext);
@@ -199,7 +231,9 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
               try {
                 sessionStorage.setItem(storageKey, newIdempotencyKey());
               } catch {
-                setUploadPreparationError("材料已登记，但浏览器无法清理安全重试记录。请不要重复提交同一文件；如需继续，请刷新后重试或联系管理员。");
+                setUploadPreparationError(
+                  "材料已登记，但浏览器无法清理安全重试记录。请不要重复提交同一文件；如需继续，请刷新后重试或联系管理员。",
+                );
               }
             }
           },
@@ -232,34 +266,52 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
       {selection.status === "pending_confirmation" ? (
         <div className="callout" aria-labelledby="legacy-material-selection-title">
           <h3 id="legacy-material-selection-title">确认旧材料集合</h3>
-          <p>旧材料不会按角色自动合并或标成同一版本。勾选要用于后续审查的材料，可包含同用途的多份材料；确认只影响后续新审查。</p>
-          {!hasSelectionCandidates ? <p role="alert">材料信息暂不可用，请刷新重试或联系管理员。</p> : null}
+          <p>
+            旧材料不会按角色自动合并或标成同一版本。勾选要用于后续审查的材料，可包含同用途的多份材料；确认只影响后续新审查。
+          </p>
+          {!hasSelectionCandidates ? (
+            <p role="alert">材料信息暂不可用，请刷新重试或联系管理员。</p>
+          ) : null}
           <ul className="material-selection-list">
             {materials.map((material) => {
               const document = documentById.get(material.current_document_id);
               return (
-                <li key={material.material_id} data-material-id={material.material_id} data-document-id={material.current_document_id}>
+                <li
+                  key={material.material_id}
+                  data-material-id={material.material_id}
+                  data-document-id={material.current_document_id}
+                >
                   <Checkbox
                     checked={legacyDocumentIds.includes(material.current_document_id)}
                     disabled={!canWrite || !hasSelectionCandidates || confirmSelection.isPending}
-                    onChange={(event) => setLegacyDocumentIds((current) =>
-                      event.target.checked
-                        ? [...new Set([...current, material.current_document_id])]
-                        : current.filter((id) => id !== material.current_document_id),
-                    )}
+                    onChange={(event) =>
+                      setLegacyDocumentIds((current) =>
+                        event.target.checked
+                          ? [...new Set([...current, material.current_document_id])]
+                          : current.filter((id) => id !== material.current_document_id),
+                      )
+                    }
                   >
-                    {document?.filename ?? "材料文件名暂不可用"}，{purposeLabels[material.purpose]}，{legacyStatusLabel(material)}
+                    {document?.filename ?? "材料文件名暂不可用"}，{purposeLabels[material.purpose]}
+                    ，{legacyStatusLabel(material)}
                   </Checkbox>
                 </li>
               );
             })}
           </ul>
-          {confirmSelection.isError ? <p role="alert">{errorMessage(confirmSelection.error)}</p> : null}
+          {confirmSelection.isError ? (
+            <p role="alert">{errorMessage(confirmSelection.error)}</p>
+          ) : null}
           {selectionNote ? <p role="status">{selectionNote}</p> : null}
           <Button
             type="primary"
             htmlType="button"
-            disabled={!canWrite || !hasSelectionCandidates || legacyDocumentIds.length === 0 || confirmSelection.isPending}
+            disabled={
+              !canWrite ||
+              !hasSelectionCandidates ||
+              legacyDocumentIds.length === 0 ||
+              confirmSelection.isPending
+            }
             onClick={onConfirmSelection}
           >
             {confirmSelection.isPending ? "正在确认集合" : "确认本次材料集合"}
@@ -272,11 +324,21 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
           { key: "history", label: "版本历史" },
           { key: "parsing", label: "解析记录" },
         ].map((view) => (
-          <button key={view.key} type="button" aria-pressed={activeMaterialView === view.key}
-            onClick={() => setActiveMaterialView(view.key)}>{view.label}</button>
+          <button
+            key={view.key}
+            type="button"
+            aria-pressed={activeMaterialView === view.key}
+            onClick={() => setActiveMaterialView(view.key)}
+          >
+            {view.label}
+          </button>
         ))}
       </div>
-      <div className="material-current-set" aria-label="本次材料集合" hidden={activeMaterialView !== "current"}>
+      <div
+        className="material-current-set"
+        aria-label="本次材料集合"
+        hidden={activeMaterialView !== "current"}
+      >
         <h3>本次材料集合</h3>
         {materials.length === 0 ? <p>当前没有材料。</p> : null}
         <ul className="document-list">
@@ -287,16 +349,38 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
                 <div className="document-main">
                   <strong>{document?.filename ?? "材料文件名暂不可用"}</strong>
                   <p className="meta">
-                    {roleLabel(material.role)} · {purposeLabels[material.purpose]} · 当前版本 v{material.current_version}
+                    {roleLabel(material.role)} · {purposeLabels[material.purpose]} · 当前版本 v
+                    {material.current_version}
                   </p>
-                  <p className="meta">{legacyStatusLabel(material)}；{selectedIds.has(material.current_document_id) ? "已选入本次审查" : selection.status === "pending_confirmation" ? "尚未确认选中集合" : "未选入本次审查"}</p>
-                  <TechnicalDetail label="材料状态技术详情" value={JSON.stringify({ role: material.role, parse_status: document?.parse_status ?? null })} />
-                  {document ? <ParsedDocumentSummary document={document} /> : <p className="meta">当前材料元数据尚未返回，请刷新重试或联系管理员。</p>}
-                  {document?.parse_status === "failed" && document.parse_error ? <p>{document.parse_error}</p> : null}
+                  <p className="meta">
+                    {legacyStatusLabel(material)}；
+                    {selectedIds.has(material.current_document_id)
+                      ? "已选入本次审查"
+                      : selection.status === "pending_confirmation"
+                        ? "尚未确认选中集合"
+                        : "未选入本次审查"}
+                  </p>
+                  <TechnicalDetail
+                    label="材料状态技术详情"
+                    value={JSON.stringify({
+                      role: material.role,
+                      parse_status: document?.parse_status ?? null,
+                    })}
+                  />
+                  {document ? (
+                    <ParsedDocumentSummary document={document} />
+                  ) : (
+                    <p className="meta">当前材料元数据尚未返回，请刷新重试或联系管理员。</p>
+                  )}
+                  {document?.parse_status === "failed" && document.parse_error ? (
+                    <p>{document.parse_error}</p>
+                  ) : null}
                 </div>
                 {document ? (
                   <div className="document-actions">
-                    <StatusText tone={parseTone(document.parse_status)}>{parseLabel(document.parse_status)}</StatusText>
+                    <StatusText tone={parseTone(document.parse_status)}>
+                      {parseLabel(document.parse_status)}
+                    </StatusText>
                     <Button
                       type="text"
                       htmlType="button"
@@ -304,7 +388,9 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
                       disabled={!canWrite || reparse.isPending}
                       onClick={() => reparse.mutate(document.id)}
                     >
-                      {reparse.isPending && reparse.variables === document.id ? "正在重新解析" : "重新解析"}
+                      {reparse.isPending && reparse.variables === document.id
+                        ? "正在重新解析"
+                        : "重新解析"}
                     </Button>
                   </div>
                 ) : null}
@@ -313,30 +399,61 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
           })}
         </ul>
       </div>
-      <div className="material-history" aria-label="材料历史版本" hidden={activeMaterialView !== "history"}>
+      <div
+        className="material-history"
+        aria-label="材料历史版本"
+        hidden={activeMaterialView !== "history"}
+      >
         <h3>材料版本历史</h3>
         {materials.map((material) => {
           const history = versions
             .filter((version) => version.material_id === material.material_id)
             .sort((left, right) => left.version - right.version);
           return (
-            <section className="material-history-chain" key={material.material_id} data-material-id={material.material_id} aria-label={`${purposeLabels[material.purpose]}版本历史`}>
-              <h4>{documentById.get(material.current_document_id)?.filename ?? "材料文件名暂不可用"} · {purposeLabels[material.purpose]}版本历史</h4>
+            <section
+              className="material-history-chain"
+              key={material.material_id}
+              data-material-id={material.material_id}
+              aria-label={`${purposeLabels[material.purpose]}版本历史`}
+            >
+              <h4>
+                {documentById.get(material.current_document_id)?.filename ?? "材料文件名暂不可用"} ·{" "}
+                {purposeLabels[material.purpose]}版本历史
+              </h4>
               {history.length === 0 ? <p>服务尚未返回此材料的版本历史。</p> : null}
               <ol>
                 {history.map((version) => {
                   const document = documentById.get(version.document_id);
                   const current = version.document_id === material.current_document_id;
                   return (
-                    <li key={`${version.material_id}:${version.version}`} data-document-id={version.document_id}>
-                      <span>v{version.version} · {document?.filename ?? "文件名未提供"} · {current ? "当前版本" : "同一材料的历史版本"}</span>
-                      {!document ? <TechnicalDetail label="版本文件标识" value={version.document_id} /> : null}
-                      {version.previous_document_id ? (() => {
-                        const previousVersion = history.find((item) => item.document_id === version.previous_document_id);
-                        const previousDocument = documentById.get(version.previous_document_id);
-                        return <span className="meta">，替换自“{previousDocument?.filename ?? "上一版材料"}”第 {previousVersion?.version ?? Math.max(1, version.version - 1)} 版</span>;
-                      })() : null}
-                      <time dateTime={version.created_at}>，{formatDateTime(version.created_at)}</time>
+                    <li
+                      key={`${version.material_id}:${version.version}`}
+                      data-document-id={version.document_id}
+                    >
+                      <span>
+                        v{version.version} · {document?.filename ?? "文件名未提供"} ·{" "}
+                        {current ? "当前版本" : "同一材料的历史版本"}
+                      </span>
+                      {!document ? (
+                        <TechnicalDetail label="版本文件标识" value={version.document_id} />
+                      ) : null}
+                      {version.previous_document_id
+                        ? (() => {
+                            const previousVersion = history.find(
+                              (item) => item.document_id === version.previous_document_id,
+                            );
+                            const previousDocument = documentById.get(version.previous_document_id);
+                            return (
+                              <span className="meta">
+                                ，替换自“{previousDocument?.filename ?? "上一版材料"}”第{" "}
+                                {previousVersion?.version ?? Math.max(1, version.version - 1)} 版
+                              </span>
+                            );
+                          })()
+                        : null}
+                      <time dateTime={version.created_at}>
+                        ，{formatDateTime(version.created_at)}
+                      </time>
                     </li>
                   );
                 })}
@@ -345,27 +462,42 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
           );
         })}
       </div>
-      {activeMaterialView === "parsing" ? <div className="material-parsing">
-        <h3>材料解析状态</h3>
-        <p className="meta">此处展示服务返回的各文件当前解析状态；历史审查使用其冻结的解析结果。</p>
-        {caseDetail.documents.length === 0 ? <p>当前没有材料解析记录。</p> : (
-          <ul className="document-list">
-            {caseDetail.documents.map((document) => (
-              <li key={document.id}>
-                <div className="document-main">
-                  <strong>{document.filename}</strong>
-                  <p className="meta">{roleLabel(document.role)} · {formatDateTime(document.created_at)}</p>
-                  {document.parse_status === "failed" && document.parse_error ? <p>{document.parse_error}</p> : null}
-                </div>
-                <StatusText tone={parseTone(document.parse_status)}>{parseLabel(document.parse_status)}</StatusText>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div> : null}
+      {activeMaterialView === "parsing" ? (
+        <div className="material-parsing">
+          <h3>材料解析状态</h3>
+          <p className="meta">
+            此处展示服务返回的各文件当前解析状态；历史审查使用其冻结的解析结果。
+          </p>
+          {caseDetail.documents.length === 0 ? (
+            <p>当前没有材料解析记录。</p>
+          ) : (
+            <ul className="document-list">
+              {caseDetail.documents.map((document) => (
+                <li key={document.id}>
+                  <div className="document-main">
+                    <strong>{document.filename}</strong>
+                    <p className="meta">
+                      {roleLabel(document.role)} · {formatDateTime(document.created_at)}
+                    </p>
+                    {document.parse_status === "failed" && document.parse_error ? (
+                      <p>{document.parse_error}</p>
+                    ) : null}
+                  </div>
+                  <StatusText tone={parseTone(document.parse_status)}>
+                    {parseLabel(document.parse_status)}
+                  </StatusText>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
       <form className="upload-form" onSubmit={onUpload}>
         <h3>添加或替换材料</h3>
-        <p className="meta">新增为默认操作。替换仅更新所选材料的当前版本；其他同用途材料和历史记录会保留。单文件不超过 32 MiB。</p>
+        <p className="meta">
+          新增为默认操作。替换仅更新所选材料的当前版本；其他同用途材料和历史记录会保留。单文件不超过
+          32 MiB。
+        </p>
         <label className="field">
           材料角色
           <Select
@@ -401,7 +533,9 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
             value={intent}
             onChange={(value: "add" | "replace") => {
               setIntent(value);
-              setTargetMaterialId(value === "replace" ? targetMaterials[0]?.material_id ?? "" : "");
+              setTargetMaterialId(
+                value === "replace" ? (targetMaterials[0]?.material_id ?? "") : "",
+              );
             }}
             disabled={!canWrite || upload.isPending || hashingFile}
             options={[
@@ -411,7 +545,9 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
           />
         </label>
         {intent === "replace" ? (
-          targetOptions.length === 0 ? <p role="alert">当前角色和用途下没有可替换的材料。</p> : (
+          targetOptions.length === 0 ? (
+            <p role="alert">当前角色和用途下没有可替换的材料。</p>
+          ) : (
             <label className="field">
               要替换的材料
               <Select
@@ -422,11 +558,14 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
                 options={targetOptions}
               />
               {(() => {
-                const target = targetMaterials.find((item) => item.material_id === effectiveTargetMaterialId);
+                const target = targetMaterials.find(
+                  (item) => item.material_id === effectiveTargetMaterialId,
+                );
                 const document = target ? documentById.get(target.current_document_id) : undefined;
                 return target ? (
                   <span className="meta">
-                    将替换“{document?.filename ?? "所选材料"}”（{purposeLabels[target.purpose]}）当前第 {target.current_version} 版；若版本已更新，请刷新重试。
+                    将替换“{document?.filename ?? "所选材料"}”（{purposeLabels[target.purpose]}
+                    ）当前第 {target.current_version} 版；若版本已更新，请刷新重试。
                   </span>
                 ) : null;
               })()}
@@ -434,7 +573,9 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
           )
         ) : null}
         {role === "draft_contract" && primaryExists && intent === "add" ? (
-          <p className="callout">此案已有主合同。请先确认要纳入后续审查的主合同材料，再替换该材料；独立主合同请另建案件。</p>
+          <p className="callout">
+            此案已有主合同。请先确认要纳入后续审查的主合同材料，再替换该材料；独立主合同请另建案件。
+          </p>
         ) : null}
         <div className="field">
           <label htmlFor="case-original-file">文件</label>
@@ -470,18 +611,38 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
           </div>
         ) : null}
         {upload.data ? (
-          <p role="status" data-document-id={upload.data.id} data-material-id={upload.data.material_id} data-version={upload.data.version}>
-            {upload.data.replayed ? "此前提交已成功" : "材料已登记"}，当前第 {upload.data.version} 版。
+          <p
+            role="status"
+            data-document-id={upload.data.id}
+            data-material-id={upload.data.material_id}
+            data-version={upload.data.version}
+          >
+            {upload.data.replayed ? "此前提交已成功" : "材料已登记"}，当前第 {upload.data.version}{" "}
+            版。
           </p>
         ) : null}
         {reparse.isError ? <p role="alert">{errorMessage(reparse.error)}</p> : null}
         <Button
-          aria-label={upload.isPending ? "正在提交材料" : intent === "replace" ? "替换材料" : "新增材料"}
+          aria-label={
+            upload.isPending ? "正在提交材料" : intent === "replace" ? "替换材料" : "新增材料"
+          }
           type="primary"
           htmlType="submit"
-          disabled={!canWrite || !file || upload.isPending || hashingFile || (intent === "replace" && !canReplace)}
+          disabled={
+            !canWrite ||
+            !file ||
+            upload.isPending ||
+            hashingFile ||
+            (intent === "replace" && !canReplace)
+          }
         >
-          {hashingFile ? "正在检查文件" : upload.isPending ? "正在提交材料" : intent === "replace" ? "替换材料" : "新增材料"}
+          {hashingFile
+            ? "正在检查文件"
+            : upload.isPending
+              ? "正在提交材料"
+              : intent === "replace"
+                ? "替换材料"
+                : "新增材料"}
         </Button>
       </form>
     </section>

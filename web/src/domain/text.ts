@@ -3,16 +3,12 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
-import type {
-  EvidenceAnchor,
-  ParsedDocumentMetadata,
-  TextOffset,
-} from "../api/types";
+import type { EvidenceAnchor, ParsedDocumentMetadata, TextOffset } from "../api/types";
 
 export type ResolvedAnchor =
   | { kind: "highlight"; start: number; end: number; page: number | null }
@@ -22,8 +18,7 @@ export type ResolvedAnchor =
 const PARSE_MISMATCH = "证据绑定的解析产物与当前正文不一致，未在正文中高亮。";
 const MISMATCH = "定位坐标与当前版本不匹配，未跳转到高亮位置。";
 const MISSING = "找不到对应来源，不能把这条引用当成已验证证据。";
-const NO_TEXT =
-  "正文尚未返回。下面只显示保存下来的引用快照，没有在文档中定位。";
+const NO_TEXT = "正文尚未返回。下面只显示保存下来的引用快照，没有在文档中定位。";
 const QUOTE_MISMATCH = "引用原文与当前正文不一致，未跳转到高亮位置。";
 const BBOX_ONLY = "只记录了版面坐标，当前视图暂无法高亮正文。";
 const NO_LOCATION = "这条证据没有可用的原文位置。";
@@ -62,12 +57,7 @@ export function sliceByCodePoints(
   end: number,
   textIndex?: CodePointTextIndex,
 ): string | null {
-  if (
-    !Number.isInteger(start) ||
-    !Number.isInteger(end) ||
-    start < 0 ||
-    start >= end
-  ) {
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start >= end) {
     return null;
   }
   const index = textIndex?.text === text ? textIndex : null;
@@ -84,11 +74,7 @@ export function offsetAgrees(hit: string, quote: string): boolean {
   return quote !== "" && hit === quote;
 }
 
-function snapshotOrUnavailable(
-  quote: string,
-  reason: string,
-  page: number | null,
-): ResolvedAnchor {
+function snapshotOrUnavailable(quote: string, reason: string, page: number | null): ResolvedAnchor {
   if (quote.trim() === "") return { kind: "unavailable", reason };
   return { kind: "snapshot", quote, reason, page };
 }
@@ -106,18 +92,10 @@ export function resolveAnchor(
 ): ResolvedAnchor {
   const page = anchor.page;
   if (anchor.status === "missing") {
-    return snapshotOrUnavailable(
-      anchor.quote,
-      anchor.mismatch_reason ?? MISSING,
-      null,
-    );
+    return snapshotOrUnavailable(anchor.quote, anchor.mismatch_reason ?? MISSING, null);
   }
   if (anchor.status === "anchor_mismatch" || anchor.status === "unlocatable") {
-    return snapshotOrUnavailable(
-      anchor.quote,
-      anchor.mismatch_reason ?? MISMATCH,
-      null,
-    );
+    return snapshotOrUnavailable(anchor.quote, anchor.mismatch_reason ?? MISMATCH, null);
   }
   const hasParseProvenance =
     anchor.parsed_document_id !== null || anchor.normalized_digest !== null;
@@ -127,12 +105,12 @@ export function resolveAnchor(
     anchor.parsed_document_id === publicParsedDocumentId &&
     anchor.normalized_digest === null;
   if (
-    hasParseProvenance && !publicParseMatches &&
+    hasParseProvenance &&
+    !publicParseMatches &&
     (parsedDocument === null ||
       parsedDocument.status !== "ready" ||
       parsedDocument.document_id !== anchor.document_version_id ||
-      (anchor.parsed_document_id !== null &&
-        parsedDocument.id !== anchor.parsed_document_id) ||
+      (anchor.parsed_document_id !== null && parsedDocument.id !== anchor.parsed_document_id) ||
       (anchor.normalized_digest !== null &&
         parsedDocument.normalized_digest !== anchor.normalized_digest))
   ) {
@@ -174,17 +152,17 @@ export function evidenceSourceMatches(
   publicParsedDocumentId: string | null = null,
 ): boolean {
   if (documentId !== anchor.document_version_id) return false;
-  if (anchor.parsed_document_id === null && anchor.normalized_digest === null)
-    return true;
+  if (anchor.parsed_document_id === null && anchor.normalized_digest === null) return true;
   if (parsedDocument === null) {
-    return publicParsedDocumentId !== null &&
+    return (
+      publicParsedDocumentId !== null &&
       anchor.parsed_document_id === publicParsedDocumentId &&
-      anchor.normalized_digest === null;
+      anchor.normalized_digest === null
+    );
   }
   if (parsedDocument.document_id !== documentId) return false;
   return (
-    (anchor.parsed_document_id === null ||
-      parsedDocument.id === anchor.parsed_document_id) &&
+    (anchor.parsed_document_id === null || parsedDocument.id === anchor.parsed_document_id) &&
     (anchor.normalized_digest === null ||
       parsedDocument.normalized_digest === anchor.normalized_digest)
   );
@@ -206,20 +184,11 @@ export function segmentText(
 ): TextSegment[] {
   const codePointIndex = textIndex?.text === text ? textIndex : null;
   const chars = codePointIndex?.codePoints ?? codePoints(text);
-  const highlights: readonly TextOffset[] = highlight === null
-    ? []
-    : "start" in highlight
-      ? [highlight]
-      : highlight;
+  const highlights: readonly TextOffset[] =
+    highlight === null ? [] : "start" in highlight ? [highlight] : highlight;
   const breaks = new Set<number>([0, chars.length]);
   const addRange = (range: TextOffset | null) => {
-    if (
-      !range ||
-      range.start < 0 ||
-      range.end > chars.length ||
-      range.start >= range.end
-    )
-      return;
+    if (!range || range.start < 0 || range.end > chars.length || range.start >= range.end) return;
     breaks.add(range.start);
     breaks.add(range.end);
   };
@@ -235,18 +204,11 @@ export function segmentText(
     const start = points[index];
     const end = points[index + 1];
     if (start === undefined || end === undefined || start === end) continue;
-    const inEvidence = highlights.some(
-      (range) => start >= range.start && end <= range.end,
-    );
-    const inFind = Boolean(
-      findRange && start >= findRange.start && end <= findRange.end,
-    );
+    const inEvidence = highlights.some((range) => start >= range.start && end <= range.end);
+    const inFind = Boolean(findRange && start >= findRange.start && end <= findRange.end);
     segments.push({
       text: codePointIndex
-        ? text.slice(
-            codePointIndex.utf16Offsets[start],
-            codePointIndex.utf16Offsets[end],
-          )
+        ? text.slice(codePointIndex.utf16Offsets[start], codePointIndex.utf16Offsets[end])
         : chars.slice(start, end).join(""),
       start,
       highlighted: inEvidence ? "evidence" : inFind ? "find" : null,
@@ -264,15 +226,9 @@ export function findTextMatches(
   const needle = Array.from(query.trim().toLowerCase());
   if (needle.length === 0) return [];
   const index = textIndex?.text === text ? textIndex : null;
-  const chars =
-    index?.lowercaseCodePoints ??
-    codePoints(text).map((char) => char.toLowerCase());
+  const chars = index?.lowercaseCodePoints ?? codePoints(text).map((char) => char.toLowerCase());
   const prefix = new Array<number>(needle.length).fill(0);
-  for (
-    let position = 1, matched = 0;
-    position < needle.length;
-    position += 1
-  ) {
+  for (let position = 1, matched = 0; position < needle.length; position += 1) {
     while (matched > 0 && needle[position] !== needle[matched]) {
       matched = prefix[matched - 1] ?? 0;
     }

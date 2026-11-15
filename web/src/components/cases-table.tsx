@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r5
+// Updated: 2026-11-15
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,12 +14,7 @@ import type { ColumnsType, TableProps } from "antd/es/table";
 import { useMemo } from "react";
 import type { CaseSummary } from "../api/types";
 import type { CaseSortField, SortDirection } from "../domain/review";
-import {
-  businessStatusLabel,
-  formatDateTime,
-  runLabel,
-  runTone,
-} from "../domain/review";
+import { businessStatusLabel, formatDateTime, runLabel, runTone } from "../domain/review";
 import { StatusText } from "./status-text";
 import { TechnicalDetail } from "./technical-detail";
 import { InvalidTimeDetail } from "./invalid-time-detail";
@@ -49,9 +44,7 @@ export function sortFieldOf(
   if (!selected) return null;
   const field = selected.columnKey;
   if (typeof field !== "string") return null;
-  return SORT_FIELDS.includes(field as CaseSortField)
-    ? (field as CaseSortField)
-    : null;
+  return SORT_FIELDS.includes(field as CaseSortField) ? (field as CaseSortField) : null;
 }
 
 function CaseTitleCell({
@@ -79,9 +72,18 @@ function CaseTitleCell({
           actorScope,
         }}
         onClick={(event) => {
-          if (event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+          if (
+            event.button !== 0 ||
+            event.metaKey ||
+            event.ctrlKey ||
+            event.altKey ||
+            event.shiftKey
+          )
+            return;
           event.preventDefault();
-          void navigate(href, { state: { returnTo, scrollY: window.scrollY, selectedId: item.id, actorScope } });
+          void navigate(href, {
+            state: { returnTo, scrollY: window.scrollY, selectedId: item.id, actorScope },
+          });
         }}
       >
         {item.title}
@@ -97,9 +99,7 @@ function CaseTitleCell({
         <span>
           业务状态：{item.archived_at ? "已归档" : businessStatusLabel(item.business_status ?? "")}
         </span>
-        <span>
-          最新运行：{item.latest_run ? runLabel(item.latest_run.state) : "尚未审查"}
-        </span>
+        <span>最新运行：{item.latest_run ? runLabel(item.latest_run.state) : "尚未审查"}</span>
       </div>
     </>
   );
@@ -113,17 +113,13 @@ function CaseStatusCell({ item }: { item: CaseSummary }) {
   return item.archived_at ? (
     <StatusText tone="neutral">已归档</StatusText>
   ) : (
-    businessStatusLabel(
-      item.business_status === undefined ? "" : item.business_status,
-    )
+    businessStatusLabel(item.business_status === undefined ? "" : item.business_status)
   );
 }
 
 function LatestRunCell({ item }: { item: CaseSummary }) {
   return item.latest_run ? (
-    <StatusText tone={runTone(item.latest_run.state)}>
-      {runLabel(item.latest_run.state)}
-    </StatusText>
+    <StatusText tone={runTone(item.latest_run.state)}>{runLabel(item.latest_run.state)}</StatusText>
   ) : (
     "尚未审查"
   );
@@ -142,7 +138,9 @@ function caseColumns(
       width: 340,
       sorter: true,
       sortOrder: sortOrderFor("title", sort, direction),
-      render: (_, item) => <CaseTitleCell item={item} location={location} actorScope={actorScope} />,
+      render: (_, item) => (
+        <CaseTitleCell item={item} location={location} actorScope={actorScope} />
+      ),
     },
     {
       title: "材料",
@@ -227,9 +225,7 @@ export function CasesTable({
   };
   return (
     <>
-      <p className="cases-table-scroll-note">
-        表格列较多时可横向滚动查看其余字段。
-      </p>
+      <p className="cases-table-scroll-note">表格列较多时可横向滚动查看其余字段。</p>
       <Table
         scroll={{ x: "max-content" }}
         sortDirections={["ascend", "descend", "ascend"]}
@@ -238,9 +234,7 @@ export function CasesTable({
         columns={columns}
         pagination={false}
         onChange={onChange}
-        rowClassName={(item) =>
-          item.id === selectedId ? "cases-table-row-selected" : ""
-        }
+        rowClassName={(item) => (item.id === selectedId ? "cases-table-row-selected" : "")}
       />
     </>
   );

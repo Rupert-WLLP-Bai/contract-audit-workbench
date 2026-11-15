@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -80,9 +80,10 @@ export function parseFrozenContractCitation(
     throw new Error(`冻结引用响应中的 ${path} 区间与引用原文不一致`);
   }
   const materialId = nullableText(row.material_id, `${path}.material_id`);
-  const materialVersion = row.material_version === null
-    ? null
-    : integer(row.material_version, `${path}.material_version`, 1);
+  const materialVersion =
+    row.material_version === null
+      ? null
+      : integer(row.material_version, `${path}.material_version`, 1);
   if ((materialId === null) !== (materialVersion === null)) {
     throw new Error(`冻结引用响应中的 ${path} 材料身份不完整`);
   }

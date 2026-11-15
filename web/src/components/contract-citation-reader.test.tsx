@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -23,40 +23,46 @@ const projection = {
   status: "completed",
   rulepack: null,
   scope: [{ domain: "commercial", capability_ids: ["amount"], source_ids: ["doc-1"] }],
-  domains: [{
-    domain: "commercial",
-    status: "completed",
-    capabilities: [{
-      capability_id: "amount",
-      mandatory: true,
-      status: "compatible",
-      relation: "compatible",
-      reason_code: "matched_supported_field",
-      evidence_ids: [EVIDENCE_ID],
-      canonical_evaluation_ids: [],
-    }],
-  }],
-  gaps: [],
-  evidence: [{
-    evidence_id: EVIDENCE_ID,
-    semantic_type: "amount",
-    value: "1000000",
-    unit: "元",
-    currency: null,
-    verification: "typed_semantic_and_frozen_quote_verified",
-    anchor: {
-      id: `anchor-${EVIDENCE_ID}`,
-      document_id: "doc-1",
-      parsed_document_id: "parsed-1",
-      quote: "100万元",
-      status: "located",
-      start: 6,
-      end: 11,
-      reason: null,
-      page: null,
-      element_id: null,
+  domains: [
+    {
+      domain: "commercial",
+      status: "completed",
+      capabilities: [
+        {
+          capability_id: "amount",
+          mandatory: true,
+          status: "compatible",
+          relation: "compatible",
+          reason_code: "matched_supported_field",
+          evidence_ids: [EVIDENCE_ID],
+          canonical_evaluation_ids: [],
+        },
+      ],
     },
-  }],
+  ],
+  gaps: [],
+  evidence: [
+    {
+      evidence_id: EVIDENCE_ID,
+      semantic_type: "amount",
+      value: "1000000",
+      unit: "元",
+      currency: null,
+      verification: "typed_semantic_and_frozen_quote_verified",
+      anchor: {
+        id: `anchor-${EVIDENCE_ID}`,
+        document_id: "doc-1",
+        parsed_document_id: "parsed-1",
+        quote: "100万元",
+        status: "located",
+        start: 6,
+        end: 11,
+        reason: null,
+        page: null,
+        element_id: null,
+      },
+    },
+  ],
   unresolved_gap_ids: [],
   observations: null,
 };
@@ -88,10 +94,12 @@ function citationBody(overrides: Record<string, unknown> = {}): Record<string, u
   };
 }
 
-function mount(options: {
-  selectedEvidenceId?: string | null;
-  onSelectEvidence?: (evidenceId: string | null) => void;
-} = {}) {
+function mount(
+  options: {
+    selectedEvidenceId?: string | null;
+    onSelectEvidence?: (evidenceId: string | null) => void;
+  } = {},
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={client}>
@@ -127,13 +135,17 @@ describe("frozen contract citation reader", () => {
     expect(body?.textContent).toBe(TEXT);
     const mark = container.ownerDocument.querySelector("mark.hit-evidence");
     expect(mark?.textContent).toBe("100万元");
-    expect(container.ownerDocument.querySelector(".frozen-citation-reader")?.textContent)
-      .toContain("字符 7–11（Unicode 码点）");
-    expect(container.ownerDocument.querySelector(".frozen-citation-reader")?.textContent)
-      .toContain("材料版本未记录");
-    await waitFor(() => expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
-      `/api/cases/case-1/runs/run-1/attempts/attempt-1/contract-citations/${EVIDENCE_ID}`,
-    ));
+    expect(container.ownerDocument.querySelector(".frozen-citation-reader")?.textContent).toContain(
+      "字符 7–11（Unicode 码点）",
+    );
+    expect(container.ownerDocument.querySelector(".frozen-citation-reader")?.textContent).toContain(
+      "材料版本未记录",
+    );
+    await waitFor(() =>
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+        `/api/cases/case-1/runs/run-1/attempts/attempt-1/contract-citations/${EVIDENCE_ID}`,
+      ),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "收起本次冻结原文" }));
     expect(onSelect).toHaveBeenCalledWith(null);
@@ -150,14 +162,19 @@ describe("frozen contract citation reader", () => {
   });
 
   it("refuses a payload that answers a different frozen document", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(citationBody({ document_id: "doc-2" })), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    ));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(citationBody({ document_id: "doc-2" })), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
     mount({ selectedEvidenceId: EVIDENCE_ID });
-    expect(await screen.findByText("返回的原文身份与当前引用不一致，未显示正文。")).toBeInTheDocument();
+    expect(
+      await screen.findByText("返回的原文身份与当前引用不一致，未显示正文。"),
+    ).toBeInTheDocument();
     expect(document.querySelector("mark.hit-evidence")).toBeNull();
   });
 

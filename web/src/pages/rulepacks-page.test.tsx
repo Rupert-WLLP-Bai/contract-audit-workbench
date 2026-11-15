@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-25
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -56,10 +56,7 @@ function open(listStatus: number) {
         listStatus,
       );
     }
-    return json(
-      { error: { code: "not_found", message: "未找到测试路由" } },
-      404,
-    );
+    return json({ error: { code: "not_found", message: "未找到测试路由" } }, 404);
   });
   vi.stubGlobal("fetch", fetchMock);
   const client = new QueryClient({
@@ -91,12 +88,8 @@ describe("RulePack list authorization feedback", () => {
   it("does not offer a futile retry after the server denies access", async () => {
     open(403);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "当前管理身份无权查看规则包",
-    );
-    expect(
-      screen.queryByRole("button", { name: "重试" }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("当前管理身份无权查看规则包");
+    expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "返回管理首页" })).toHaveAttribute(
       "href",
       "/admin/settings",
@@ -107,14 +100,10 @@ describe("RulePack list authorization feedback", () => {
   it("keeps retry for a transient service failure", async () => {
     const { user } = open(503);
 
-    expect(
-      await screen.findByRole("heading", { name: "规则包列表没有加载" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "规则包列表没有加载" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() =>
-      expect(
-        requests.filter((path) => path === "/api/admin/rulepacks"),
-      ).toHaveLength(2),
+      expect(requests.filter((path) => path === "/api/admin/rulepacks")).toHaveLength(2),
     );
   });
 });

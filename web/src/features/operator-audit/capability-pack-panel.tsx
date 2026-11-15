@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-11-08
-// Revision: r3
+// Updated: 2026-11-15
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -17,10 +17,7 @@ import { StatusText } from "../../components/status-text";
 import { TechnicalDetail } from "../../components/technical-detail";
 import { suppliedBusinessName } from "../../domain/business-labels";
 import { defaultOperatorAuditClient, type OperatorAuditClient } from "./api";
-import {
-  DEFAULT_OPERATOR_AUDIT_FLAGS,
-  type OperatorAuditFlags,
-} from "./feature-flags";
+import { DEFAULT_OPERATOR_AUDIT_FLAGS, type OperatorAuditFlags } from "./feature-flags";
 import {
   dataClassLabel,
   dataClassTone,
@@ -55,9 +52,7 @@ function PackDetails({ pack }: { pack: CapabilityPack }) {
       <div>
         <dt>材料角色</dt>
         <dd>
-          {pack.requiredMaterialRoles.length > 0
-            ? pack.requiredMaterialRoles.join("、")
-            : "未报告"}
+          {pack.requiredMaterialRoles.length > 0 ? pack.requiredMaterialRoles.join("、") : "未报告"}
         </dd>
       </div>
       <div>
@@ -123,24 +118,27 @@ function CapabilityPackPanelContent({
     {
       title: "版本",
       key: "version",
-      render: (_, pack) => (
-        <span className="digest">{pack.version ?? "版本未报告"}</span>
-      ),
+      render: (_, pack) => <span className="digest">{pack.version ?? "版本未报告"}</span>,
     },
     {
       title: "场景",
       key: "scenario",
-      render: (_, pack) => <>{scenarioLabel(pack.scenario)}<TechnicalDetail label="场景技术详情" value={pack.scenario} /></>,
+      render: (_, pack) => (
+        <>
+          {scenarioLabel(pack.scenario)}
+          <TechnicalDetail label="场景技术详情" value={pack.scenario} />
+        </>
+      ),
     },
     {
       title: "状态",
       key: "status",
-      render: (_, pack) => (<>
-        <StatusText tone={packStatusTone(pack.status)}>
-          {packStatusLabel(pack.status)}
-        </StatusText>
-        <TechnicalDetail label="状态技术详情" value={pack.status} />
-      </>),
+      render: (_, pack) => (
+        <>
+          <StatusText tone={packStatusTone(pack.status)}>{packStatusLabel(pack.status)}</StatusText>
+          <TechnicalDetail label="状态技术详情" value={pack.status} />
+        </>
+      ),
     },
     {
       title: "数据分类",
@@ -158,21 +156,13 @@ function CapabilityPackPanelContent({
       <header className="workflow-panel-head">
         <div>
           <h2>能力包目录</h2>
-          <p className="meta">
-            包版本随每次执行固定；后续升级不会改写历史审查。当前目录为空。
-          </p>
+          <p className="meta">包版本随每次执行固定；后续升级不会改写历史审查。当前目录为空。</p>
         </div>
-        <Button
-          htmlType="button"
-          loading={packs.isFetching}
-          onClick={() => void packs.refetch()}
-        >
+        <Button htmlType="button" loading={packs.isFetching} onClick={() => void packs.refetch()}>
           刷新能力包
         </Button>
       </header>
-      {packs.isLoading ? (
-        <PageStatus kind="loading" title="正在读取能力包目录" />
-      ) : null}
+      {packs.isLoading ? <PageStatus kind="loading" title="正在读取能力包目录" /> : null}
       {packs.isError && isForbidden(packs.error) ? (
         <PageStatus
           kind="denied"
@@ -193,11 +183,7 @@ function CapabilityPackPanelContent({
         />
       ) : null}
       {packs.isSuccess && packs.data.length === 0 ? (
-        <PageStatus
-          kind="empty"
-          title="当前范围没有已发布的能力包"
-          detail="当前目录为空。"
-        />
+        <PageStatus kind="empty" title="当前范围没有已发布的能力包" detail="当前目录为空。" />
       ) : null}
       {packs.isSuccess && packs.data.length > 0 ? (
         <Table<CapabilityPack>

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-07
-// Revision: r4
+// Updated: 2026-11-15
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,13 +14,7 @@ export class ApiError extends Error {
   readonly retryable: boolean;
   readonly details: unknown;
 
-  constructor(
-    message: string,
-    status: number,
-    code: string,
-    retryable: boolean,
-    details: unknown,
-  ) {
+  constructor(message: string, status: number, code: string, retryable: boolean, details: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
@@ -40,9 +34,7 @@ export interface CommandContext {
 let activeCommandContext: CommandContext | null = null;
 type IdempotencyBinding = { context: CommandContext } | { invalidated: true };
 type IdempotencyContextLookup =
-  | { status: "bound"; context: CommandContext }
-  | { status: "invalidated" }
-  | { status: "unknown" };
+  { status: "bound"; context: CommandContext } | { status: "invalidated" } | { status: "unknown" };
 const MAX_IDEMPOTENCY_BINDINGS = 2048;
 const idempotencyContexts = new Map<string, IdempotencyBinding>();
 
@@ -103,7 +95,9 @@ export function isCommandContextVersionCurrent(contextVersion: string): boolean 
 }
 
 export function isSessionIdentityCurrent(identity: string): boolean {
-  return identity !== "" && identity === sessionIdentity && activeCommandContext?.identity === identity;
+  return (
+    identity !== "" && identity === sessionIdentity && activeCommandContext?.identity === identity
+  );
 }
 
 export function assertCommandContextCurrent(context: CommandContext): void {
@@ -113,7 +107,8 @@ export function assertCommandContextCurrent(context: CommandContext): void {
     context.csrfToken !== activeCommandContext?.csrfToken ||
     context.identity !== sessionIdentity ||
     context.identity !== activeCommandContext?.identity
-  ) throw new DOMException("Context changed", "AbortError");
+  )
+    throw new DOMException("Context changed", "AbortError");
 }
 
 export function bindIdempotencyCommandContext(key: string, context: CommandContext): void {
@@ -167,32 +162,29 @@ export function setSessionIdentity(
   invalidateIdempotencyBindings();
   sessionIdentity = nextIdentity;
   sessionEpoch += 1;
-  activeCommandContext = actor?.active_context && actor.csrf_token
-    ? { contextVersion: actor.active_context.context_version, csrfToken: actor.csrf_token, identity: nextIdentity ?? "", epoch: sessionEpoch }
-    : null;
+  activeCommandContext =
+    actor?.active_context && actor.csrf_token
+      ? {
+          contextVersion: actor.active_context.context_version,
+          csrfToken: actor.csrf_token,
+          identity: nextIdentity ?? "",
+          epoch: sessionEpoch,
+        }
+      : null;
   return true;
 }
 
 export function isUnauthenticated(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    (error.status === 401 || error.code === "unauthenticated")
-  );
+  return error instanceof ApiError && (error.status === 401 || error.code === "unauthenticated");
 }
 
 export function isConflict(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    (error.status === 409 || error.code === "conflict")
-  );
+  return error instanceof ApiError && (error.status === 409 || error.code === "conflict");
 }
 
 /** A 403 is an authorisation outcome: retrying the same request cannot succeed. */
 export function isForbidden(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    (error.status === 403 || error.code === "forbidden")
-  );
+  return error instanceof ApiError && (error.status === 403 || error.code === "forbidden");
 }
 
 const MAX_QUERY_RETRIES = 2;
@@ -239,24 +231,19 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function errorFieldsFrom(record: Record<string, unknown>): ErrorFields {
   const nested = asRecord(record.error);
   const source = nested ?? record;
-  const directMessage =
-    typeof record.error === "string" ? record.error : null;
-  const message =
-    (typeof source.message === "string" ? source.message : null) ??
-    directMessage;
+  const directMessage = typeof record.error === "string" ? record.error : null;
+  const message = (typeof source.message === "string" ? source.message : null) ?? directMessage;
   return {
     message: message === null ? null : message.slice(0, 300),
     code: typeof source.code === "string" ? source.code : null,
-    retryable:
-      typeof source.retryable === "boolean" ? source.retryable : null,
+    retryable: typeof source.retryable === "boolean" ? source.retryable : null,
     details: source.details ?? null,
   };
 }
 
 export function parseErrorPayload(payload: unknown): ErrorFields {
   const record = asRecord(payload);
-  if (!record)
-    return { message: null, code: null, retryable: null, details: null };
+  if (!record) return { message: null, code: null, retryable: null, details: null };
   return errorFieldsFrom(record);
 }
 
@@ -295,10 +282,7 @@ export async function errorFromResponse(response: Response): Promise<ApiError> {
   );
 }
 
-async function fetchResponse(
-  path: string,
-  init: RequestInit,
-): Promise<Response> {
+async function fetchResponse(path: string, init: RequestInit): Promise<Response> {
   try {
     return await fetch(path, {
       ...init,
@@ -315,10 +299,7 @@ async function fetchResponse(
   }
 }
 
-function assertSessionEpoch(
-  requestEpoch: number,
-  isSessionRequest: boolean,
-): void {
+function assertSessionEpoch(requestEpoch: number, isSessionRequest: boolean): void {
   if (!isSessionRequest && requestEpoch !== sessionEpoch)
     throw new DOMException("Session changed", "AbortError");
 }
@@ -337,18 +318,9 @@ async function readJsonResponse<T>(
     assertSessionEpoch(requestEpoch, isSessionRequest);
     return parse(value);
   } catch (error) {
-    if (
-      error instanceof ApiError ||
-      (error instanceof Error && error.name === "AbortError")
-    )
+    if (error instanceof ApiError || (error instanceof Error && error.name === "AbortError"))
       throw error;
-    throw new ApiError(
-      "服务返回的内容无法识别",
-      response.status,
-      "invalid_response",
-      false,
-      null,
-    );
+    throw new ApiError("服务返回的内容无法识别", response.status, "invalid_response", false, null);
   }
 }
 
@@ -358,8 +330,7 @@ export async function requestJson<T>(
   parse: (value: unknown) => T,
 ): Promise<T> {
   const requestEpoch = sessionEpoch;
-  const isSessionRequest =
-    path === "/api/session" || path.startsWith("/api/session?");
+  const isSessionRequest = path === "/api/session" || path.startsWith("/api/session?");
   const method = (init.method ?? "GET").toUpperCase();
   const isWrite = !["GET", "HEAD", "OPTIONS"].includes(method);
   const isPreSessionProof =
@@ -371,20 +342,26 @@ export async function requestJson<T>(
   const idempotencyBinding = idempotencyCommandContext(idempotencyKey);
   let commandContext: CommandContext | null;
   if (isWrite && !isPreSessionProof && idempotencyKey !== null) {
-    if (idempotencyBinding.status === "invalidated" ||
-      (idempotencyBinding.status === "unknown" && !init.commandContext))
+    if (
+      idempotencyBinding.status === "invalidated" ||
+      (idempotencyBinding.status === "unknown" && !init.commandContext)
+    )
       throw new DOMException("Idempotency command context is unavailable", "AbortError");
     if (
-      idempotencyBinding.status === "bound" && init.commandContext && (
-        init.commandContext.identity !== idempotencyBinding.context.identity ||
+      idempotencyBinding.status === "bound" &&
+      init.commandContext &&
+      (init.commandContext.identity !== idempotencyBinding.context.identity ||
         init.commandContext.epoch !== idempotencyBinding.context.epoch ||
         init.commandContext.contextVersion !== idempotencyBinding.context.contextVersion ||
-        init.commandContext.csrfToken !== idempotencyBinding.context.csrfToken
-      )
-    ) throw new DOMException("Idempotency command context changed", "AbortError");
-    commandContext = init.commandContext ?? (idempotencyBinding.status === "bound" ? idempotencyBinding.context : null);
+        init.commandContext.csrfToken !== idempotencyBinding.context.csrfToken)
+    )
+      throw new DOMException("Idempotency command context changed", "AbortError");
+    commandContext =
+      init.commandContext ??
+      (idempotencyBinding.status === "bound" ? idempotencyBinding.context : null);
   } else {
-    commandContext = init.commandContext ?? (isWrite && !isPreSessionProof ? captureCommandContext() : null);
+    commandContext =
+      init.commandContext ?? (isWrite && !isPreSessionProof ? captureCommandContext() : null);
   }
   if (commandContext) assertCommandContextCurrent(commandContext);
   if (commandContext) {
@@ -408,27 +385,52 @@ export interface DerivedPreview {
 }
 
 /** Read a server-derived PDF and its original identity headers; never trusts a different original. */
-export async function requestDerivedPreview(path: string, signal: AbortSignal, maxBytes = 64 << 20): Promise<DerivedPreview> {
+export async function requestDerivedPreview(
+  path: string,
+  signal: AbortSignal,
+  maxBytes = 64 << 20,
+): Promise<DerivedPreview> {
   const requestEpoch = sessionEpoch;
-  const response = await fetchResponse(path, { method: "GET", signal, headers: { Accept: "application/pdf" } });
+  const response = await fetchResponse(path, {
+    method: "GET",
+    signal,
+    headers: { Accept: "application/pdf" },
+  });
   assertSessionEpoch(requestEpoch, false);
   if (!response.ok) throw await errorFromResponse(response);
   const originalDigest = response.headers.get("X-Derived-From-SHA256") ?? "";
   const conversionRef = response.headers.get("X-Derived-Conversion") ?? "";
-  if (!/^[0-9a-f]{64}$/.test(originalDigest)) throw new ApiError("派生预览缺少原件摘要", 502, "derived_preview_invalid", false, null);
+  if (!/^[0-9a-f]{64}$/.test(originalDigest))
+    throw new ApiError("派生预览缺少原件摘要", 502, "derived_preview_invalid", false, null);
   const bytes = new Uint8Array(await response.arrayBuffer());
   assertSessionEpoch(requestEpoch, false);
-  if (bytes.length === 0 || bytes.length > maxBytes) throw new ApiError("派生预览不可用", 413, "derived_preview_invalid", false, null);
+  if (bytes.length === 0 || bytes.length > maxBytes)
+    throw new ApiError("派生预览不可用", 413, "derived_preview_invalid", false, null);
   return { bytes, originalDigest, conversionRef };
 }
 
 /** Authorized original reads obey the same session invalidation as JSON reads. */
-export async function requestBytes(path: string, signal: AbortSignal, maxBytes = 32 << 20): Promise<Uint8Array<ArrayBuffer>> {
+export async function requestBytes(
+  path: string,
+  signal: AbortSignal,
+  maxBytes = 32 << 20,
+): Promise<Uint8Array<ArrayBuffer>> {
   const requestEpoch = sessionEpoch;
-  const response = await fetchResponse(path, { method: "GET", signal, headers: { Accept: "application/octet-stream" } });
+  const response = await fetchResponse(path, {
+    method: "GET",
+    signal,
+    headers: { Accept: "application/octet-stream" },
+  });
   assertSessionEpoch(requestEpoch, false);
   if (!response.ok) throw await errorFromResponse(response);
-  const tooLarge = () => new ApiError("原件过大，无法在页面中预览，请下载后核对", 413, "original_too_large", false, null);
+  const tooLarge = () =>
+    new ApiError(
+      "原件过大，无法在页面中预览，请下载后核对",
+      413,
+      "original_too_large",
+      false,
+      null,
+    );
   if (Number(response.headers.get("Content-Length")) > maxBytes) {
     await response.body?.cancel();
     throw tooLarge();
@@ -459,7 +461,10 @@ export async function requestBytes(path: string, signal: AbortSignal, maxBytes =
   }
   const bytes = new Uint8Array(size);
   let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
   return bytes;
 }
 

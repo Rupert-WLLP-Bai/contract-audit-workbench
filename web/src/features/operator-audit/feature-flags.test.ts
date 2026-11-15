@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-10-29
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -25,9 +25,7 @@ const sources = import.meta.glob(["./*.ts", "./*.tsx"], {
 function productionSources(): [string, string][] {
   return Object.entries(sources).filter(
     ([path]) =>
-      !path.includes(".test.") &&
-      !path.endsWith("fixture.ts") &&
-      !path.endsWith("test-utils.tsx"),
+      !path.includes(".test.") && !path.endsWith("fixture.ts") && !path.endsWith("test-utils.tsx"),
   );
 }
 
@@ -40,19 +38,13 @@ describe("operator audit feature flags", () => {
       reviewImpactMode: "off",
       incrementalReuseEnabled: false,
     });
-    expect(anyOperatorAuditFeatureEnabled(DEFAULT_OPERATOR_AUDIT_FLAGS)).toBe(
-      false,
-    );
+    expect(anyOperatorAuditFeatureEnabled(DEFAULT_OPERATOR_AUDIT_FLAGS)).toBe(false);
   });
 
   it("keeps the demo profile explicit and reuse disabled", () => {
-    expect(DEMO_OPERATOR_AUDIT_FLAGS).not.toBe(
-      DEFAULT_OPERATOR_AUDIT_FLAGS,
-    );
+    expect(DEMO_OPERATOR_AUDIT_FLAGS).not.toBe(DEFAULT_OPERATOR_AUDIT_FLAGS);
     expect(DEMO_OPERATOR_AUDIT_FLAGS.incrementalReuseEnabled).toBe(false);
-    expect(anyOperatorAuditFeatureEnabled(DEMO_OPERATOR_AUDIT_FLAGS)).toBe(
-      true,
-    );
+    expect(anyOperatorAuditFeatureEnabled(DEMO_OPERATOR_AUDIT_FLAGS)).toBe(true);
   });
 
   it("never imports test fixtures from a production module", () => {
@@ -62,9 +54,7 @@ describe("operator audit feature flags", () => {
   });
 
   it("keeps every fixture explicitly synthetic", () => {
-    expect(capabilityPacks.every((pack) => pack.dataClass === "synthetic")).toBe(
-      true,
-    );
+    expect(capabilityPacks.every((pack) => pack.dataClass === "synthetic")).toBe(true);
     expect(availableObservation.dataClass).toBe("synthetic");
   });
 });

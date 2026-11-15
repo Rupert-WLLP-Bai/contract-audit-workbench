@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -26,10 +26,7 @@ describe("OpenAPI contract parsing", () => {
     const contract = parseOpenApiContract({
       ...minimalContract,
       info: { title: "审查接口", version: "1.2.3", description: "接口说明" },
-      tags: [
-        { name: "cases", description: "案件" },
-        { name: "plain" },
-      ],
+      tags: [{ name: "cases", description: "案件" }, { name: "plain" }],
       paths: {
         "/cases": {
           post: {
@@ -109,7 +106,13 @@ describe("OpenAPI contract parsing", () => {
           ],
           get: {
             parameters: [
-              { name: "shared", in: "query", description: "覆盖", example: 3, schema: { type: "integer" } },
+              {
+                name: "shared",
+                in: "query",
+                description: "覆盖",
+                example: 3,
+                schema: { type: "integer" },
+              },
               { name: "X-Trace", in: "header", schema: { type: "string" } },
               { name: "session", in: "cookie", required: true, schema: { type: "string" } },
             ],
@@ -256,20 +259,28 @@ describe("OpenAPI contract parsing", () => {
 
     expect(
       parseBody({
-        "application/json": { example: "media", examples: { one: { value: "named" } }, schema: { example: "schema" } },
+        "application/json": {
+          example: "media",
+          examples: { one: { value: "named" } },
+          schema: { example: "schema" },
+        },
       })?.example,
     ).toBe("media");
     expect(
       parseBody({
-        "application/json": { examples: { one: { value: "named" }, two: { value: "later" } }, schema: { example: "schema" } },
+        "application/json": {
+          examples: { one: { value: "named" }, two: { value: "later" } },
+          schema: { example: "schema" },
+        },
       })?.example,
     ).toBe("named");
     expect(
-      parseBody({ "application/json": { schema: { example: "schema", default: "default" } } })?.example,
+      parseBody({ "application/json": { schema: { example: "schema", default: "default" } } })
+        ?.example,
     ).toBe("schema");
-    expect(
-      parseBody({ "application/json": { schema: { default: "default" } } })?.example,
-    ).toBe("default");
+    expect(parseBody({ "application/json": { schema: { default: "default" } } })?.example).toBe(
+      "default",
+    );
     expect(parseBody({ "application/json": { schema: {} } })?.example).toBeNull();
     expect(parseBody({})).toMatchObject({
       mediaType: null,
@@ -304,12 +315,8 @@ describe("OpenAPI contract parsing", () => {
     expect(() => parseOpenApiContract(null)).toThrow("OpenAPI 契约 必须是对象");
     expect(() => parseOpenApiContract("x")).toThrow("OpenAPI 契约 必须是对象");
     expect(() => parseOpenApiContract({})).toThrow("openapi 必须是字符串");
-    expect(() => parseOpenApiContract({ openapi: "2.0" })).toThrow(
-      "仅支持 OpenAPI 3.x 契约",
-    );
-    expect(() =>
-      parseOpenApiContract({ openapi: "3.0.0", paths: {} }),
-    ).toThrow("info 必须是对象");
+    expect(() => parseOpenApiContract({ openapi: "2.0" })).toThrow("仅支持 OpenAPI 3.x 契约");
+    expect(() => parseOpenApiContract({ openapi: "3.0.0", paths: {} })).toThrow("info 必须是对象");
     expect(() =>
       parseOpenApiContract({ openapi: "3.0.0", info: { title: "t", version: "1" } }),
     ).toThrow("paths 必须是对象");
@@ -370,36 +377,30 @@ describe("OpenAPI contract parsing", () => {
           "/a": { get: { responses: { "200": {} }, ...patch } },
         },
       });
-    expect(() => withOperation({ parameters: {} })).toThrow(
-      "/a parameters 必须是数组",
+    expect(() => withOperation({ parameters: {} })).toThrow("/a parameters 必须是数组");
+    expect(() => withOperation({ parameters: [null] })).toThrow("参数 必须是对象");
+    expect(() => withOperation({ parameters: [{ name: "p", in: "body" }] })).toThrow(
+      "不支持的参数位置：body",
     );
-    expect(() => withOperation({ parameters: [null] })).toThrow(
-      "参数 必须是对象",
+    expect(() => withOperation({ parameters: [{ name: 7, in: "query" }] })).toThrow(
+      "参数名称 必须是字符串",
     );
-    expect(() =>
-      withOperation({ parameters: [{ name: "p", in: "body" }] }),
-    ).toThrow("不支持的参数位置：body");
-    expect(() =>
-      withOperation({ parameters: [{ name: 7, in: "query" }] }),
-    ).toThrow("参数名称 必须是字符串");
-    expect(() =>
-      withOperation({ parameters: [{ name: "p", in: "query", schema: 7 }] }),
-    ).toThrow("参数 schema 必须是对象");
+    expect(() => withOperation({ parameters: [{ name: "p", in: "query", schema: 7 }] })).toThrow(
+      "参数 schema 必须是对象",
+    );
     expect(() =>
       withOperation({ parameters: [{ name: "p", in: "query", required: "yes" }] }),
     ).toThrow("required 必须是布尔值");
     expect(() =>
       withOperation({ parameters: [{ name: "p", in: "query", description: 7 }] }),
     ).toThrow("description 必须是字符串");
-    expect(() =>
-      withOperation({ requestBody: 7 }),
-    ).toThrow("请求体 必须是对象");
-    expect(() =>
-      withOperation({ requestBody: { content: 7 } }),
-    ).toThrow("请求体 content 必须是对象");
-    expect(() =>
-      withOperation({ requestBody: { content: { "application/json": 7 } } }),
-    ).toThrow("请求体 media type 必须是对象");
+    expect(() => withOperation({ requestBody: 7 })).toThrow("请求体 必须是对象");
+    expect(() => withOperation({ requestBody: { content: 7 } })).toThrow(
+      "请求体 content 必须是对象",
+    );
+    expect(() => withOperation({ requestBody: { content: { "application/json": 7 } } })).toThrow(
+      "请求体 media type 必须是对象",
+    );
     expect(() =>
       withOperation({ requestBody: { content: { "application/json": { schema: 7 } } } }),
     ).toThrow("请求体 schema 必须是对象");
@@ -413,9 +414,7 @@ describe("OpenAPI contract parsing", () => {
         requestBody: { content: { "application/json": { examples: { one: 7 } } } },
       }),
     ).toThrow("请求体 example 必须是对象");
-    expect(() => withOperation({ responses: undefined })).toThrow(
-      "responses 必须是对象",
-    );
+    expect(() => withOperation({ responses: undefined })).toThrow("responses 必须是对象");
     expect(() =>
       parseOpenApiContract({
         ...minimalContract,
@@ -425,12 +424,10 @@ describe("OpenAPI contract parsing", () => {
   });
 
   it("reads tags only when present", () => {
-    expect(() =>
-      parseOpenApiContract({ ...minimalContract, tags: {} }),
-    ).toThrow("tags 必须是数组");
-    expect(() =>
-      parseOpenApiContract({ ...minimalContract, tags: [{}] }),
-    ).toThrow("tag.name 必须是字符串");
+    expect(() => parseOpenApiContract({ ...minimalContract, tags: {} })).toThrow("tags 必须是数组");
+    expect(() => parseOpenApiContract({ ...minimalContract, tags: [{}] })).toThrow(
+      "tag.name 必须是字符串",
+    );
   });
 });
 
@@ -453,34 +450,33 @@ describe("OpenAPI reference resolution", () => {
   it("returns inline values and follows encoded references", () => {
     const inline = { type: "integer" };
     expect(resolveOpenApiReference(inline, root)).toBe(inline);
-    expect(resolveOpenApiReference({ $ref: "#/components/schemas/Payload" }, root)).toEqual(
-      { type: "object", properties: { a: { type: "string" } } },
-    );
+    expect(resolveOpenApiReference({ $ref: "#/components/schemas/Payload" }, root)).toEqual({
+      type: "object",
+      properties: { a: { type: "string" } },
+    });
     expect(resolveOpenApiReference({ $ref: "#/components/schemas/Alias" }, root)).toEqual({
       type: "object",
       properties: { a: { type: "string" } },
     });
-    expect(
-      resolveOpenApiReference({ $ref: "#/components/schemas/a~1b" }, root),
-    ).toEqual({ type: "string" });
-    expect(
-      resolveOpenApiReference({ $ref: "#/components/schemas/c~0d" }, root),
-    ).toEqual({ type: "number" });
-    expect(
-      resolveOpenApiReference({ $ref: "#/components/schemas/Primitive" }, root),
-    ).toBe(7);
+    expect(resolveOpenApiReference({ $ref: "#/components/schemas/a~1b" }, root)).toEqual({
+      type: "string",
+    });
+    expect(resolveOpenApiReference({ $ref: "#/components/schemas/c~0d" }, root)).toEqual({
+      type: "number",
+    });
+    expect(resolveOpenApiReference({ $ref: "#/components/schemas/Primitive" }, root)).toBe(7);
   });
 
   it("rejects external, cyclic and missing references", () => {
-    expect(() =>
-      resolveOpenApiReference({ $ref: "other.yaml#/Thing" }, root),
-    ).toThrow("不支持外部 OpenAPI 引用：other.yaml#/Thing");
-    expect(() =>
-      resolveOpenApiReference({ $ref: "#/components/schemas/Loop" }, root),
-    ).toThrow("OpenAPI 引用存在循环：#/components/schemas/Loop");
-    expect(() =>
-      resolveOpenApiReference({ $ref: "#/components/schemas/Missing" }, root),
-    ).toThrow("无法解析 OpenAPI 引用：#/components/schemas/Missing");
+    expect(() => resolveOpenApiReference({ $ref: "other.yaml#/Thing" }, root)).toThrow(
+      "不支持外部 OpenAPI 引用：other.yaml#/Thing",
+    );
+    expect(() => resolveOpenApiReference({ $ref: "#/components/schemas/Loop" }, root)).toThrow(
+      "OpenAPI 引用存在循环：#/components/schemas/Loop",
+    );
+    expect(() => resolveOpenApiReference({ $ref: "#/components/schemas/Missing" }, root)).toThrow(
+      "无法解析 OpenAPI 引用：#/components/schemas/Missing",
+    );
     expect(() =>
       resolveOpenApiReference({ $ref: "#/components/schemas/Payload/nope" }, root),
     ).toThrow("无法解析 OpenAPI 引用：#/components/schemas/Payload/nope");

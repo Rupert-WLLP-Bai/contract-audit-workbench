@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -98,9 +98,20 @@ function snapshot(overrides: Record<string, unknown> = {}) {
 
 describe("workbench task parsing", () => {
   it("falls back to a read-only legacy snapshot only after 422", async () => {
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       .mockResolvedValueOnce(new Response("{}", { status: 422 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify(snapshot({ cases: [{ ...workbenchCase, can_create_task: true }], tasks: [{ ...task, can_complete: true }] })), { status: 200 }));
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            snapshot({
+              cases: [{ ...workbenchCase, can_create_task: true }],
+              tasks: [{ ...task, can_complete: true }],
+            }),
+          ),
+          { status: 200 },
+        ),
+      );
     vi.stubGlobal("fetch", fetchMock);
     try {
       const result = await getWorkbench("week");
@@ -108,7 +119,9 @@ describe("workbench task parsing", () => {
       expect(result.cases[0]?.can_create_task).toBe(false);
       expect(String(fetchMock.mock.calls[0]?.[0])).toContain("task_capabilities=1");
       expect(String(fetchMock.mock.calls[1]?.[0])).not.toContain("task_capabilities");
-    } finally { vi.unstubAllGlobals(); }
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it.each([401, 403])("does not retry a %s response", async (status) => {
@@ -117,10 +130,13 @@ describe("workbench task parsing", () => {
     try {
       await expect(getWorkbench("week")).rejects.toMatchObject({ status });
       expect(fetchMock).toHaveBeenCalledTimes(1);
-    } finally { vi.unstubAllGlobals(); }
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
   it("defaults missing snapshot task permission to false and rejects non-booleans", () => {
-    const read = (value: unknown) => parseWorkbenchSnapshot(snapshot({ tasks: [value] }), "week").tasks[0];
+    const read = (value: unknown) =>
+      parseWorkbenchSnapshot(snapshot({ tasks: [value] }), "week").tasks[0];
     expect(read(task)).toMatchObject({ can_complete: false });
     expect(read({ ...task, can_complete: true })).toMatchObject({ can_complete: true });
     expect(() => read({ ...task, can_complete: "true" })).toThrow();
@@ -158,9 +174,7 @@ describe("workbench task parsing", () => {
     ["created_at", { created_at: "2026-10-01" }, "created_at不是RFC3339时间"],
     ["updated_at", { updated_at: "not-a-date" }, "updated_at不是RFC3339时间"],
   ])("rejects %s", (_label, patch, message) => {
-    expect(() => parseWorkbenchTask({ ...task, ...patch })).toThrow(
-      `工作台数据无效：${message}`,
-    );
+    expect(() => parseWorkbenchTask({ ...task, ...patch })).toThrow(`工作台数据无效：${message}`);
   });
 
   it("rejects a non-object task", () => {
@@ -170,9 +184,12 @@ describe("workbench task parsing", () => {
 
 describe("workbench case parsing", () => {
   it("defaults missing creation capability to false and rejects non-booleans", () => {
-    const read = (value: unknown) => parseWorkbenchSnapshot(snapshot({ cases: [value] }), "week").cases[0];
+    const read = (value: unknown) =>
+      parseWorkbenchSnapshot(snapshot({ cases: [value] }), "week").cases[0];
     expect(read(workbenchCase)).toMatchObject({ can_create_task: false });
-    expect(read({ ...workbenchCase, can_create_task: true })).toMatchObject({ can_create_task: true });
+    expect(read({ ...workbenchCase, can_create_task: true })).toMatchObject({
+      can_create_task: true,
+    });
     expect(() => read({ ...workbenchCase, can_create_task: "true" })).toThrow();
   });
   it("reads profile, severity and progress when present", () => {
@@ -206,14 +223,11 @@ describe("workbench case parsing", () => {
 
   it("accepts zero progress and a null profile", () => {
     expect(
-      parseWorkbenchSnapshot(
-        snapshot({ cases: [{ ...workbenchCase, progress: 0 }] }),
-        "week",
-      ).cases[0]?.progress,
+      parseWorkbenchSnapshot(snapshot({ cases: [{ ...workbenchCase, progress: 0 }] }), "week")
+        .cases[0]?.progress,
     ).toBe(0);
     expect(
-      parseWorkbenchSnapshot(snapshot({ cases: [workbenchCase] }), "week")
-        .cases[0]?.profile,
+      parseWorkbenchSnapshot(snapshot({ cases: [workbenchCase] }), "week").cases[0]?.profile,
     ).toBeNull();
   });
 
@@ -221,9 +235,7 @@ describe("workbench case parsing", () => {
     for (const key of ["profile", "severity", "progress", "latest_run"]) {
       const copy = { ...workbenchCase } as Record<string, unknown>;
       delete copy[key];
-      expect(() =>
-        parseWorkbenchSnapshot(snapshot({ cases: [copy] }), "week"),
-      ).toThrow(
+      expect(() => parseWorkbenchSnapshot(snapshot({ cases: [copy] }), "week")).toThrow(
         "工作台数据无效：案件缺少profile、severity、progress或latest_run",
       );
     }
@@ -238,17 +250,14 @@ describe("workbench case parsing", () => {
     [{ profile: { case_id: "c" } }, "number不是字符串"],
   ])("rejects case patch %j", (patch, message) => {
     expect(() =>
-      parseWorkbenchSnapshot(
-        snapshot({ cases: [{ ...workbenchCase, ...patch }] }),
-        "week",
-      ),
+      parseWorkbenchSnapshot(snapshot({ cases: [{ ...workbenchCase, ...patch }] }), "week"),
     ).toThrow(`工作台数据无效：${message}`);
   });
 
   it("rejects a non-object case and a missing case summary count", () => {
-    expect(() =>
-      parseWorkbenchSnapshot(snapshot({ cases: [null] }), "week"),
-    ).toThrow("工作台数据无效：案件不是对象");
+    expect(() => parseWorkbenchSnapshot(snapshot({ cases: [null] }), "week")).toThrow(
+      "工作台数据无效：案件不是对象",
+    );
     expect(() =>
       parseWorkbenchSnapshot(
         snapshot({ cases: [{ ...workbenchCase, document_count: "2" }] }),
@@ -328,18 +337,18 @@ describe("workbench snapshot parsing", () => {
     expect(() =>
       parseWorkbenchSnapshot(snapshot({ schema_version: "workbench/v2" }), "week"),
     ).toThrow("工作台数据无效：schema_version 不受支持");
-    expect(() =>
-      parseWorkbenchSnapshot(snapshot({ period: "year" }), "week"),
-    ).toThrow("工作台数据无效：period 无效");
+    expect(() => parseWorkbenchSnapshot(snapshot({ period: "year" }), "week")).toThrow(
+      "工作台数据无效：period 无效",
+    );
     expect(() => parseWorkbenchSnapshot(snapshot(), "day")).toThrow(
       "工作台数据无效：响应 period 与请求不一致",
     );
   });
 
   it("rejects malformed timestamps, model status and tools", () => {
-    expect(() =>
-      parseWorkbenchSnapshot(snapshot({ generated_at: "yesterday" }), "week"),
-    ).toThrow("工作台数据无效：generated_at不是RFC3339时间");
+    expect(() => parseWorkbenchSnapshot(snapshot({ generated_at: "yesterday" }), "week")).toThrow(
+      "工作台数据无效：generated_at不是RFC3339时间",
+    );
     expect(() =>
       parseWorkbenchSnapshot(
         snapshot({ model: { name: "m", ocr_name: "o", status: "unknown", label: "l" } }),
@@ -348,13 +357,35 @@ describe("workbench snapshot parsing", () => {
     ).toThrow("工作台数据无效：model.status 无效");
     expect(
       parseWorkbenchSnapshot(
-        snapshot({ tools: [{ id: "tool", name: "n", description: "d", capabilities: ["read"], calls: 1, last_status: null }] }),
+        snapshot({
+          tools: [
+            {
+              id: "tool",
+              name: "n",
+              description: "d",
+              capabilities: ["read"],
+              calls: 1,
+              last_status: null,
+            },
+          ],
+        }),
         "week",
       ),
     ).toMatchObject({ tools: [{ id: "tool", calls: 1 }] });
     expect(() =>
       parseWorkbenchSnapshot(
-        snapshot({ tools: [{ id: "tool", name: "n", description: "d", capabilities: [1], calls: 1, last_status: null }] }),
+        snapshot({
+          tools: [
+            {
+              id: "tool",
+              name: "n",
+              description: "d",
+              capabilities: [1],
+              calls: 1,
+              last_status: null,
+            },
+          ],
+        }),
         "week",
       ),
     ).toThrow("工作台数据无效：capabilities不是字符串数组");
@@ -423,9 +454,7 @@ describe("workbench boundary values", () => {
       }),
       "week",
     );
-    expect(parsed.dashboard.risks.map((risk) => risk.severity)).toEqual(
-      severities,
-    );
+    expect(parsed.dashboard.risks.map((risk) => risk.severity)).toEqual(severities);
     expect(() =>
       parseWorkbenchSnapshot(
         snapshot({
@@ -452,12 +481,12 @@ describe("workbench boundary values", () => {
       created_at: "2026-10-04T00:00:00Z",
     };
     expect(parseKnowledge(knowledge).source_type).toBe("synthetic_policy");
-    expect(
-      parseKnowledge({ ...knowledge, source_type: "reference" }).source_type,
-    ).toBe("reference");
-    expect(() =>
-      parseKnowledge({ ...knowledge, source_type: "other" }),
-    ).toThrow("工作台数据无效：知识来源类型无效");
+    expect(parseKnowledge({ ...knowledge, source_type: "reference" }).source_type).toBe(
+      "reference",
+    );
+    expect(() => parseKnowledge({ ...knowledge, source_type: "other" })).toThrow(
+      "工作台数据无效：知识来源类型无效",
+    );
     expect(() => parseKnowledge({ ...knowledge, version_id: "" })).toThrow(
       "工作台数据无效：知识版本标识为空",
     );
@@ -480,10 +509,7 @@ describe("workbench boundary values", () => {
   });
 
   it("keeps the superseded flag absent unless the server sends it", () => {
-    const parsed = parseWorkbenchSnapshot(
-      snapshot({ documents: [workbenchDocument] }),
-      "week",
-    );
+    const parsed = parseWorkbenchSnapshot(snapshot({ documents: [workbenchDocument] }), "week");
     expect(parsed.documents[0]).not.toHaveProperty("superseded");
     const flagged = parseWorkbenchSnapshot(
       snapshot({
@@ -550,9 +576,7 @@ describe("workbench boundary values", () => {
             name: "模板",
             version: "1",
             digest: "digest-1",
-            fields: [
-              { key: "title", label: "标题", required: true, type: "text" },
-            ],
+            fields: [{ key: "title", label: "标题", required: true, type: "text" }],
           },
         ],
       }),

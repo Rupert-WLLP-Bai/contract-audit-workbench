@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,10 +13,14 @@ import { jsonInit, requestJson, type CommandContext } from "./http";
 import { enumValue, responseReader } from "./respond";
 
 export type ProvisionKind = "provision" | "deactivate" | "reactivate";
-export type ProvisionStatus = "pending" | "in_progress" | "reconciliation_required" | "provision_failed" | "completed";
-export type ProvisionStepName = "identity" | "tenant_config" | "runtime_ready" | "drain" | "usage_reconcile" | "completed";
-export type ProvisionStepState = "pending" | "complete" | "external_unknown" | "failed" | "reconciled";
-export type ProvisionReconciliation = "confirmed_complete" | "confirmed_not_applied" | "requires_operator";
+export type ProvisionStatus =
+  "pending" | "in_progress" | "reconciliation_required" | "provision_failed" | "completed";
+export type ProvisionStepName =
+  "identity" | "tenant_config" | "runtime_ready" | "drain" | "usage_reconcile" | "completed";
+export type ProvisionStepState =
+  "pending" | "complete" | "external_unknown" | "failed" | "reconciled";
+export type ProvisionReconciliation =
+  "confirmed_complete" | "confirmed_not_applied" | "requires_operator";
 export interface TenantProvisionStep {
   name: ProvisionStepName;
   state: ProvisionStepState;
@@ -63,10 +67,25 @@ export interface TenantProvisionStepInput {
   reconciliation: ProvisionReconciliation | "";
 }
 
-const { object, text, bool, array, nullableText, invalid } = responseReader((path) => `租户生命周期响应中的 ${path} 无法识别`);
+const { object, text, bool, array, nullableText, invalid } = responseReader(
+  (path) => `租户生命周期响应中的 ${path} 无法识别`,
+);
 const KINDS = ["provision", "deactivate", "reactivate"] as const;
-const STATUSES = ["pending", "in_progress", "reconciliation_required", "provision_failed", "completed"] as const;
-const STEP_NAMES = ["identity", "tenant_config", "runtime_ready", "drain", "usage_reconcile", "completed"] as const;
+const STATUSES = [
+  "pending",
+  "in_progress",
+  "reconciliation_required",
+  "provision_failed",
+  "completed",
+] as const;
+const STEP_NAMES = [
+  "identity",
+  "tenant_config",
+  "runtime_ready",
+  "drain",
+  "usage_reconcile",
+  "completed",
+] as const;
 const STEP_STATES = ["pending", "complete", "external_unknown", "failed", "reconciled"] as const;
 function canonicalRevision(value: unknown, path: string): string {
   const result = text(value, path);
@@ -85,7 +104,8 @@ function parseProvisionStep(value: unknown, path: string): TenantProvisionStep {
   const receipt = nullableText(item.receipt_sha256, `${path}.receipt_sha256`);
   const updated = nullableText(item.updated_at, `${path}.updated_at`);
   return {
-    name, state,
+    name,
+    state,
     receipt_sha256: receipt === null ? null : digest(receipt, `${path}.receipt_sha256`),
     updated_at: updated === null ? null : timestamp(updated, `${path}.updated_at`),
   };
@@ -98,10 +118,18 @@ export function parseTenantProvisionOperation(value: unknown): TenantProvisionOp
   const result: TenantProvisionOperation = {
     operation_id: text(item.operation_id, "operation.operation_id"),
     tenant_id: text(item.tenant_id, "operation.tenant_id"),
-    kind, status, current_step: currentStep,
-    payload_sha256: digest(text(item.payload_sha256, "operation.payload_sha256"), "operation.payload_sha256"),
+    kind,
+    status,
+    current_step: currentStep,
+    payload_sha256: digest(
+      text(item.payload_sha256, "operation.payload_sha256"),
+      "operation.payload_sha256",
+    ),
     revision: canonicalRevision(item.revision, "operation.revision"),
-    reconciliation_required: bool(item.reconciliation_required, "operation.reconciliation_required"),
+    reconciliation_required: bool(
+      item.reconciliation_required,
+      "operation.reconciliation_required",
+    ),
     steps: array(item.steps, "operation.steps", parseProvisionStep),
     created_at: timestamp(text(item.created_at, "operation.created_at"), "operation.created_at"),
     updated_at: timestamp(text(item.updated_at, "operation.updated_at"), "operation.updated_at"),
@@ -115,7 +143,9 @@ function parseOperationsView(value: unknown): TenantProvisionOperationsView {
   if (schemaVersion !== "tenant-provision-operations/v1") return invalid("schema_version");
   return {
     schema_version: schemaVersion,
-    operations: array(item.operations, "operations", (entry) => parseTenantProvisionOperation(entry)),
+    operations: array(item.operations, "operations", (entry) =>
+      parseTenantProvisionOperation(entry),
+    ),
     next_cursor: nullableText(item.next_cursor, "next_cursor"),
   };
 }
@@ -123,7 +153,10 @@ function parseOperationResult(value: unknown): TenantProvisionOperationResult {
   const item = object(value, "operation_result");
   const schemaVersion = text(item.schema_version, "schema_version");
   if (schemaVersion !== "tenant-provision-operation/v1") return invalid("schema_version");
-  return { schema_version: schemaVersion, operation: parseTenantProvisionOperation(item.operation) };
+  return {
+    schema_version: schemaVersion,
+    operation: parseTenantProvisionOperation(item.operation),
+  };
 }
 const BASE = "/api/admin/platform/tenant-provision-operations";
 export function listTenantProvisionOperations(cursor?: string | null, signal?: AbortSignal) {
@@ -131,18 +164,38 @@ export function listTenantProvisionOperations(cursor?: string | null, signal?: A
   return requestJson(`${BASE}${query}`, { method: "GET", signal }, parseOperationsView);
 }
 export function getTenantProvisionOperation(operationId: string, signal?: AbortSignal) {
-  return requestJson(`${BASE}/${encodeURIComponent(operationId)}`, { method: "GET", signal }, (value) => parseOperationResult(value).operation);
+  return requestJson(
+    `${BASE}/${encodeURIComponent(operationId)}`,
+    { method: "GET", signal },
+    (value) => parseOperationResult(value).operation,
+  );
 }
-export function createTenantProvisionOperation(input: TenantProvisionInput, commandContext: CommandContext) {
-  return requestJson(BASE, {
-    ...jsonInit("POST", input, { "Idempotency-Key": input.idempotency_key }),
-    commandContext,
-  }, parseOperationResult);
+export function createTenantProvisionOperation(
+  input: TenantProvisionInput,
+  commandContext: CommandContext,
+) {
+  return requestJson(
+    BASE,
+    {
+      ...jsonInit("POST", input, { "Idempotency-Key": input.idempotency_key }),
+      commandContext,
+    },
+    parseOperationResult,
+  );
 }
-export function recordTenantProvisionStep(operationId: string, input: TenantProvisionStepInput, commandContext: CommandContext) {
-  return requestJson(`${BASE}/${encodeURIComponent(operationId)}/step`, {
-    ...jsonInit("POST", input), commandContext,
-  }, parseOperationResult);
+export function recordTenantProvisionStep(
+  operationId: string,
+  input: TenantProvisionStepInput,
+  commandContext: CommandContext,
+) {
+  return requestJson(
+    `${BASE}/${encodeURIComponent(operationId)}/step`,
+    {
+      ...jsonInit("POST", input),
+      commandContext,
+    },
+    parseOperationResult,
+  );
 }
 export function useTenantProvisionOperations(cursor: string | null, enabled: boolean) {
   return useQuery({

@@ -3,18 +3,12 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r9
+// Updated: 2026-11-15
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
-import {
-  cleanup,
-  fireEvent,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -43,7 +37,9 @@ function json(value: unknown, status = 200) {
   });
 }
 
-function task(overrides: Partial<WorkbenchTask> & { can_complete?: boolean } = {}): WorkbenchTask & { can_complete?: boolean } {
+function task(
+  overrides: Partial<WorkbenchTask> & { can_complete?: boolean } = {},
+): WorkbenchTask & { can_complete?: boolean } {
   return {
     id: "task-mine",
     case_id: "case-1",
@@ -242,9 +238,7 @@ const session = {
 class HomeService {
   data = snapshot();
   requests: { method: string; path: string; body: unknown }[] = [];
-  periodDashboards: Partial<
-    Record<WorkbenchPeriod, Partial<WorkbenchDashboard>>
-  > = {};
+  periodDashboards: Partial<Record<WorkbenchPeriod, Partial<WorkbenchDashboard>>> = {};
   snapshotFailures: number[] = [];
   capabilityUnsupported = false;
   completionFailures: number[] = [];
@@ -261,31 +255,23 @@ class HomeService {
   snapshotGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
   completionGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
 
-  fetch = async (
-    input: RequestInfo | URL,
-    init?: RequestInit,
-  ): Promise<Response> => {
+  fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(String(input), "http://home.test");
     const method = init?.method ?? "GET";
-    const body: unknown =
-      typeof init?.body === "string" ? JSON.parse(init.body) : null;
+    const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : null;
     this.requests.push({ method, path: `${url.pathname}${url.search}`, body });
     if (url.pathname === "/api/session") {
       if (this.sessionGate) await this.sessionGate.promise;
       return json(session);
     }
-    if (url.pathname === "/api/intakes/pending")
-      return json({ items: [], next_cursor: null });
+    if (url.pathname === "/api/intakes/pending") return json({ items: [], next_cursor: null });
     if (url.pathname === "/api/workbench") {
       if (this.snapshotGate) await this.snapshotGate.promise;
       if (url.searchParams.has("task_capabilities") && this.capabilityUnsupported)
         return json({ error: { message: "旧服务不支持任务能力字段" } }, 422);
       const failure = this.snapshotFailures.shift();
       if (failure)
-        return json(
-          { error: { code: "unavailable", message: "快照服务暂不可用" } },
-          failure,
-        );
+        return json({ error: { code: "unavailable", message: "快照服务暂不可用" } }, failure);
       const period = url.searchParams.get("period") as WorkbenchPeriod;
       return json({
         ...this.data,
@@ -296,11 +282,14 @@ class HomeService {
     const parts = url.pathname.split("/");
     if (parts[2] === "cases" && parts.length === 4 && method === "GET") {
       if (this.caseDetailGate) await this.caseDetailGate.promise;
-      return this.caseDetail ? json(this.caseDetail) : json({ error: { message: "未匹配的请求" } }, 404);
+      return this.caseDetail
+        ? json(this.caseDetail)
+        : json({ error: { message: "未匹配的请求" } }, 404);
     }
     if (parts[2] === "cases" && parts[4] === "review-readiness" && method === "GET") {
       if (this.readinessGate) await this.readinessGate.promise;
-      if (this.readinessFailure) return json({ error: { message: "准备状态不可用" } }, this.readinessFailure);
+      if (this.readinessFailure)
+        return json({ error: { message: "准备状态不可用" } }, this.readinessFailure);
       return json(this.readinessResponse);
     }
     if (parts[2] === "cases" && parts[4] === "reviews" && method === "GET") {
@@ -341,13 +330,13 @@ class HomeService {
       if (this.completionGate) await this.completionGate.promise;
       const failure = this.completionFailures.shift();
       if (failure) {
-        const taskToRevoke = this.data.tasks.find((item) => item.id === decodeURIComponent(parts[5]!));
+        const taskToRevoke = this.data.tasks.find(
+          (item) => item.id === decodeURIComponent(parts[5]!),
+        );
         if (taskToRevoke) taskToRevoke.can_complete = false;
         return json({ error: { message: "任务完成权限已变化" } }, failure);
       }
-      const index = this.data.tasks.findIndex(
-        (item) => item.id === decodeURIComponent(parts[5]!),
-      );
+      const index = this.data.tasks.findIndex((item) => item.id === decodeURIComponent(parts[5]!));
       const previous = this.data.tasks[index];
       const submitted = body as WorkbenchTaskUpdateInput;
       if (!previous || submitted.expected_version !== previous.version) {
@@ -370,10 +359,7 @@ class HomeService {
       if (saved.assignee_id === "me") this.data.dashboard.my_pending_tasks -= 1;
       return json(saved);
     }
-    return json(
-      { error: { message: `未匹配的请求 ${method} ${url.pathname}` } },
-      404,
-    );
+    return json({ error: { message: `未匹配的请求 ${method} ${url.pathname}` } }, 404);
   };
 }
 
@@ -416,7 +402,13 @@ function caseDetail(caseId = "case-1", updatedAt = at): CaseDetail {
     documents: [],
     materials: [],
     material_versions: [],
-    material_selection: { version: 1, status: "not_applicable", document_ids: [], candidate_document_ids: [], primary_material_id: null },
+    material_selection: {
+      version: 1,
+      status: "not_applicable",
+      document_ids: [],
+      candidate_document_ids: [],
+      primary_material_id: null,
+    },
     latest_run: null,
     finding_counts: null,
     activity: [],
@@ -443,15 +435,25 @@ function readiness(blocker = "required_materials_missing", message = "缺少主�
     can_start: false,
     material_selection_version: 1,
     materials: [],
-    scopes: [{
-      id: "full_review",
-      status: "blocked",
-      can_start: false,
-      rule_pack: null,
-      rule_set: null,
-      checks: [],
-      blockers: [{ code: blocker, status: "blocked", message, missing_dependencies: [], next_action: "补齐后重试" }],
-    }],
+    scopes: [
+      {
+        id: "full_review",
+        status: "blocked",
+        can_start: false,
+        rule_pack: null,
+        rule_set: null,
+        checks: [],
+        blockers: [
+          {
+            code: blocker,
+            status: "blocked",
+            message,
+            missing_dependencies: [],
+            next_action: "补齐后重试",
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -490,7 +492,9 @@ describe("HomePage snapshot consumers", () => {
       "href",
       "/cases/case-1",
     );
-    expect(within(caseWork).getByText(/实际下一步及可执行动作以案件页服务端信息为准/)).toBeInTheDocument();
+    expect(
+      within(caseWork).getByText(/实际下一步及可执行动作以案件页服务端信息为准/),
+    ).toBeInTheDocument();
 
     expect(
       within(screen.getByLabelText("工作台摘要"))
@@ -502,12 +506,8 @@ describe("HomePage snapshot consumers", () => {
         name: "打开案件中心；未归档 4 项，已归档 1 项，待确认 2 项，未报告 0 项",
       }),
     ).toHaveAttribute("href", "/cases");
-    expect(
-      screen.getByText("状态统计 7 项；可见案件 17 项。"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/已完成审查 9 项；平均运行时长 1.2 秒/),
-    ).toBeInTheDocument();
+    expect(screen.getByText("状态统计 7 项；可见案件 17 项。")).toBeInTheDocument();
+    expect(screen.getByText(/已完成审查 9 项；平均运行时长 1.2 秒/)).toBeInTheDocument();
     for (const label of [
       "高风险 4，占 40%",
       "中风险 2，占 20%",
@@ -518,26 +518,24 @@ describe("HomePage snapshot consumers", () => {
       expect(screen.getByLabelText(label)).toBeInTheDocument();
     }
     const rows = within(screen.getByRole("table")).getAllByRole("row").slice(1);
-    expect(
-      within(rows[0]!).getByRole("link", { name: "设备维保合同" }),
-    ).toHaveAttribute("href", "/cases/case%2Fold/reviews/run%20old");
+    expect(within(rows[0]!).getByRole("link", { name: "设备维保合同" })).toHaveAttribute(
+      "href",
+      "/cases/case%2Fold/reviews/run%20old",
+    );
     expect(within(rows[0]!).getByText("业务范围未设置")).toBeInTheDocument();
     expect(within(rows[1]!).getByText("尚未审查")).toBeInTheDocument();
-    expect(
-      within(rows[1]!).getByText("政企业务 / 政企专线"),
-    ).toBeInTheDocument();
+    expect(within(rows[1]!).getByText("政企业务 / 政企专线")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /补充验收标准.*责任人 missing-member/ }),
     ).toHaveAttribute("href", "/cases/case%2Fold/reviews/run%20old");
-    const audit = within(
-      screen.getByRole("region", { name: "最近业务记录" }),
-    ).getAllByRole("listitem");
-    expect(audit[0]).toHaveTextContent(
-      "平台级事件更新了平台规则陈复核，更新策略",
+    const audit = within(screen.getByRole("region", { name: "最近业务记录" })).getAllByRole(
+      "listitem",
     );
-    expect(
-      within(audit[1]!).getByRole("link", { name: "未命名案件" }),
-    ).toHaveAttribute("href", "/cases/case%2Fold");
+    expect(audit[0]).toHaveTextContent("平台级事件更新了平台规则陈复核，更新策略");
+    expect(within(audit[1]!).getByRole("link", { name: "未命名案件" })).toHaveAttribute(
+      "href",
+      "/cases/case%2Fold",
+    );
     const technical = within(audit[1]!).getByText("案件标识");
     expect(technical.closest("details")).toHaveTextContent("case/old");
   });
@@ -566,9 +564,7 @@ describe("HomePage snapshot consumers", () => {
     open(service);
 
     const caseWork = await screen.findByRole("region", { name: "按案件处理" });
-    const dueOnlyCase = within(caseWork)
-      .getByRole("link", { name: "仅有案件期限" })
-      .closest("li");
+    const dueOnlyCase = within(caseWork).getByRole("link", { name: "仅有案件期限" }).closest("li");
     expect(dueOnlyCase).toHaveTextContent("案件期限");
     expect(dueOnlyCase).not.toHaveTextContent("高风险");
   });
@@ -595,14 +591,20 @@ describe("HomePage snapshot consumers", () => {
     const { user } = open(service);
     const caseWork = await screen.findByRole("region", { name: "按案件处理" });
 
-    expect(service.requests.filter((request) => request.path.includes("/review-readiness"))).toHaveLength(0);
+    expect(
+      service.requests.filter((request) => request.path.includes("/review-readiness")),
+    ).toHaveLength(0);
     const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
     expect(targetCase).not.toBeNull();
     await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
 
     await screen.findByRole("heading", { name: "案件下一步不可用" });
-    expect(service.requests.filter((request) => request.path === "/api/cases/case-1")).toHaveLength(1);
-    expect(service.requests.filter((request) => request.path.includes("/review-readiness"))).toHaveLength(0);
+    expect(service.requests.filter((request) => request.path === "/api/cases/case-1")).toHaveLength(
+      1,
+    );
+    expect(
+      service.requests.filter((request) => request.path.includes("/review-readiness")),
+    ).toHaveLength(0);
     expect(screen.queryByRole("button", { name: "开始审查" })).not.toBeInTheDocument();
   });
 
@@ -618,8 +620,14 @@ describe("HomePage snapshot consumers", () => {
 
     const continueLink = await screen.findByRole("link", { name: "转到材料集合" });
     expect(continueLink).toHaveAttribute("href", "/cases/case-1#case-materials");
-    expect(service.requests.filter((request) => request.path === "/api/cases/case-1")).toHaveLength(1);
-    expect(service.requests.filter((request) => request.path.startsWith("/api/cases/case-1/review-readiness"))).toHaveLength(1);
+    expect(service.requests.filter((request) => request.path === "/api/cases/case-1")).toHaveLength(
+      1,
+    );
+    expect(
+      service.requests.filter((request) =>
+        request.path.startsWith("/api/cases/case-1/review-readiness"),
+      ),
+    ).toHaveLength(1);
   });
 
   it("shows the same limited-precheck outcome and material next step on the home entry", async () => {
@@ -627,13 +635,50 @@ describe("HomePage snapshot consumers", () => {
     service.caseDetail = caseDetail();
     service.caseDetail.latest_run = { id: "run-1", state: "partial", updated_at: at };
     service.readinessResponse = readiness("required_materials_missing", "缺少采购材料");
-    const scope = { id: "single_contract_precheck", rule_set_id: "single-contract-precheck", rule_set_version: "1", rule_set_hash: "51676a95611b6e1bf4c30fc50be82e1d493528f34b89f3ece9dbb5aa6c291596" };
-    const attempt = { id: "attempt-1", run_id: "run-1", ordinal: 1, state: "partial", history_kind: "frozen", parsed_document_ids: ["parse-1"], review_scope: scope,
-      outcome: { reason: "scope_limited", agent_stage: "failed", retry_cause: "none" } };
-    service.reviewResponse = { run: { id: "run-1", case_id: "case-1", state: "partial" },
-      review_attempts: { attempt, attempts: [attempt] }, snapshot: { document_ids: ["doc-1"], review_scope: scope },
-      documents: [{ id: "doc-1", role: "draft_contract", filename: "合同.txt", parse_status: "ready", parsed_document_id: "parse-1" }],
-      findings: [{ id: "finding-1", decisions: [], evidence: [] }], evaluations: [{ id: "eval-1", domain: "payment_sum", relation: "insufficient", rule_id: "single-payment-sum-v1", rule_version: "single-payment-sum-v1", capability_id: "single_contract.payment_sum", reason: "需人工核对" }], execution: null, audit_events: [] };
+    const scope = {
+      id: "single_contract_precheck",
+      rule_set_id: "single-contract-precheck",
+      rule_set_version: "1",
+      rule_set_hash: "51676a95611b6e1bf4c30fc50be82e1d493528f34b89f3ece9dbb5aa6c291596",
+    };
+    const attempt = {
+      id: "attempt-1",
+      run_id: "run-1",
+      ordinal: 1,
+      state: "partial",
+      history_kind: "frozen",
+      parsed_document_ids: ["parse-1"],
+      review_scope: scope,
+      outcome: { reason: "scope_limited", agent_stage: "failed", retry_cause: "none" },
+    };
+    service.reviewResponse = {
+      run: { id: "run-1", case_id: "case-1", state: "partial" },
+      review_attempts: { attempt, attempts: [attempt] },
+      snapshot: { document_ids: ["doc-1"], review_scope: scope },
+      documents: [
+        {
+          id: "doc-1",
+          role: "draft_contract",
+          filename: "合同.txt",
+          parse_status: "ready",
+          parsed_document_id: "parse-1",
+        },
+      ],
+      findings: [{ id: "finding-1", decisions: [], evidence: [] }],
+      evaluations: [
+        {
+          id: "eval-1",
+          domain: "payment_sum",
+          relation: "insufficient",
+          rule_id: "single-payment-sum-v1",
+          rule_version: "single-payment-sum-v1",
+          capability_id: "single_contract.payment_sum",
+          reason: "需人工核对",
+        },
+      ],
+      execution: null,
+      audit_events: [],
+    };
     const { user } = open(service);
     const caseWork = await screen.findByRole("region", { name: "按案件处理" });
     const target = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li")!;
@@ -642,7 +687,10 @@ describe("HomePage snapshot consumers", () => {
     expect(summary).toHaveTextContent("单合同预审已结束");
     expect(summary).toHaveTextContent("智能审查执行失败");
     expect(summary).toHaveTextContent("1 项尚无人工判断");
-    expect(within(target).getByRole("link", { name: "转到材料集合" })).toHaveAttribute("href", "/cases/case-1#case-materials");
+    expect(within(target).getByRole("link", { name: "转到材料集合" })).toHaveAttribute(
+      "href",
+      "/cases/case-1#case-materials",
+    );
     expect(within(target).queryByRole("button", { name: "开始完整审查" })).not.toBeInTheDocument();
   });
 
@@ -658,25 +706,33 @@ describe("HomePage snapshot consumers", () => {
     await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
 
     expect(await screen.findByRole("heading", { name: "案件身份不匹配" })).toBeInTheDocument();
-    expect(service.requests.filter((request) => request.path.startsWith("/api/cases/case-1/review-readiness"))).toHaveLength(0);
-    expect(service.requests.filter((request) => request.path === "/api/cases/case-1/reviews/wrong-run")).toHaveLength(0);
+    expect(
+      service.requests.filter((request) =>
+        request.path.startsWith("/api/cases/case-1/review-readiness"),
+      ),
+    ).toHaveLength(0);
+    expect(
+      service.requests.filter((request) => request.path === "/api/cases/case-1/reviews/wrong-run"),
+    ).toHaveLength(0);
   });
 
   it("refreshes readiness when case material identity changes and does not keep the previous projection while loading", async () => {
     const service = new HomeService();
     const originalCase = caseDetail();
-    originalCase.documents = [{
-      id: "doc-1",
-      role: "primary_contract",
-      filename: "contract.pdf",
-      media_type: "application/pdf",
-      digest: "b".repeat(64),
-      size: 1,
-      parse_status: "pending",
-      parse_error: null,
-      created_at: at,
-      parsed_document: null,
-    }];
+    originalCase.documents = [
+      {
+        id: "doc-1",
+        role: "primary_contract",
+        filename: "contract.pdf",
+        media_type: "application/pdf",
+        digest: "b".repeat(64),
+        size: 1,
+        parse_status: "pending",
+        parse_error: null,
+        created_at: at,
+        parsed_document: null,
+      },
+    ];
     service.caseDetail = originalCase;
     service.readinessResponse = readiness("required_materials_missing", "旧材料缺项");
     const { user, client } = open(service);
@@ -688,7 +744,10 @@ describe("HomePage snapshot consumers", () => {
     service.caseDetail = {
       ...originalCase,
       material_selection: { ...originalCase.material_selection!, version: 2 },
-      documents: originalCase.documents.map((document) => ({ ...document, parse_status: "completed" })),
+      documents: originalCase.documents.map((document) => ({
+        ...document,
+        parse_status: "completed",
+      })),
     };
     service.readinessResponse = readiness("required_materials_missing", "新材料缺项");
     service.caseDetailGate = Promise.withResolvers<void>();
@@ -702,7 +761,11 @@ describe("HomePage snapshot consumers", () => {
 
     await screen.findByRole("heading", { name: "等待服务端返回最新准备清单" });
     expect(screen.queryByText("旧材料缺项")).not.toBeInTheDocument();
-    expect(service.requests.filter((request) => request.path.startsWith("/api/cases/case-1/review-readiness"))).toHaveLength(2);
+    expect(
+      service.requests.filter((request) =>
+        request.path.startsWith("/api/cases/case-1/review-readiness"),
+      ),
+    ).toHaveLength(2);
     service.readinessGate.resolve();
     service.readinessGate = null;
     expect(await screen.findByText("新材料缺项")).toBeInTheDocument();
@@ -729,7 +792,9 @@ describe("HomePage snapshot consumers", () => {
     service.readinessFailure = 403;
     await client.invalidateQueries({ queryKey: ["cases", "case-1", "review-readiness"] });
 
-    expect(await screen.findByRole("heading", { name: "无法确认是否可以开始审查" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "无法确认是否可以开始审查" }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "可以开始首次审查" })).not.toBeInTheDocument();
   });
 
@@ -769,34 +834,41 @@ describe("HomePage snapshot consumers", () => {
     const detail = caseDetail();
     detail.latest_run = { id: "run-1", state: "completed", updated_at: at };
     detail.finding_counts = { conflict: 0, insufficient: 0, total: 1, undecided: 0 };
-    detail.remediations = [{
-      id: "remediation-1",
-      case_id: "case-1",
-      run_id: "run-1",
-      attempt_id: "attempt-1",
-      finding_ids: ["finding-1"],
-      assignee_id: "me",
-      due_at: at,
-      measure: "补充整改材料",
-      status: "submitted",
-      version: 1,
-      document_ids: [],
-      reason: "",
-      verification_run_id: null,
-      verification_attempt_id: null,
-      created_at: at,
-      updated_at: at,
-    }];
+    detail.remediations = [
+      {
+        id: "remediation-1",
+        case_id: "case-1",
+        run_id: "run-1",
+        attempt_id: "attempt-1",
+        finding_ids: ["finding-1"],
+        assignee_id: "me",
+        due_at: at,
+        measure: "补充整改材料",
+        status: "submitted",
+        version: 1,
+        document_ids: [],
+        reason: "",
+        verification_run_id: null,
+        verification_attempt_id: null,
+        created_at: at,
+        updated_at: at,
+      },
+    ];
     service.caseDetail = detail;
     service.reviewGate = Promise.withResolvers<void>();
     const { user, client } = open(service);
-    client.setQueryData(["cases", "case-1", "review-history", "run-1"], { pages: [], pageParams: [] });
+    client.setQueryData(["cases", "case-1", "review-history", "run-1"], {
+      pages: [],
+      pageParams: [],
+    });
     const caseWork = await screen.findByRole("region", { name: "按案件处理" });
     const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
     await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
 
     expect(await screen.findByRole("heading", { name: "等待审查与执行历史" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "经办已提交修改稿，等待复核" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "经办已提交修改稿，等待复核" }),
+    ).not.toBeInTheDocument();
     service.reviewGate.resolve();
     expect(await screen.findByRole("heading", { name: "审查历史没有加载" })).toBeInTheDocument();
   });
@@ -832,36 +904,18 @@ describe("HomePage snapshot consumers", () => {
     };
     const { user } = open(service);
     await screen.findByRole("heading", { name: "你好，周审查" });
-    await chooseOption(
-      user,
-      screen.getByRole("combobox", { name: "统计周期" }),
-      "今日",
-    );
-    expect(
-      await screen.findByText(/已完成审查 1 项；平均运行时长 未知/),
-    ).toBeInTheDocument();
+    await chooseOption(user, screen.getByRole("combobox", { name: "统计周期" }), "今日");
+    expect(await screen.findByText(/已完成审查 1 项；平均运行时长 未知/)).toBeInTheDocument();
     expect(
       within(screen.getByLabelText("工作台摘要")).getAllByRole("definition")[2],
     ).toHaveTextContent("0");
-    await chooseOption(
-      user,
-      screen.getByRole("combobox", { name: "统计周期" }),
-      "本月",
-    );
-    expect(
-      await screen.findByText(/已完成审查 23 项；平均运行时长 5.0 秒/),
-    ).toBeInTheDocument();
+    await chooseOption(user, screen.getByRole("combobox", { name: "统计周期" }), "本月");
+    expect(await screen.findByText(/已完成审查 23 项；平均运行时长 5.0 秒/)).toBeInTheDocument();
     expect(
       within(screen.getByLabelText("工作台摘要")).getAllByRole("definition")[2],
     ).toHaveTextContent("11");
-    await chooseOption(
-      user,
-      screen.getByRole("combobox", { name: "统计周期" }),
-      "本周",
-    );
-    expect(
-      await screen.findByText(/已完成审查 9 项；平均运行时长 1.2 秒/),
-    ).toBeInTheDocument();
+    await chooseOption(user, screen.getByRole("combobox", { name: "统计周期" }), "本周");
+    expect(await screen.findByText(/已完成审查 9 项；平均运行时长 1.2 秒/)).toBeInTheDocument();
     expect(
       service.requests
         .filter((request) => request.path.startsWith("/api/workbench"))
@@ -913,8 +967,7 @@ describe("HomePage snapshot consumers", () => {
       );
       expect(screen.getByText("没有获取到整改记录。")).toBeInTheDocument();
       expect(screen.getByText("没有获取到审计记录。")).toBeInTheDocument();
-      if (visible === 0)
-        expect(screen.queryByRole("table")).not.toBeInTheDocument();
+      if (visible === 0) expect(screen.queryByRole("table")).not.toBeInTheDocument();
       else expect(screen.getByRole("table")).toBeInTheDocument();
     },
   );
@@ -925,9 +978,9 @@ describe("HomePage snapshot consumers", () => {
     service.data.dashboard.risks = [{ severity: "high", count: 0 }];
     open(service);
     expect(await screen.findByLabelText("高风险 0，占 0%")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "打开案件中心；未归档 0 项" }),
-    ).toHaveTextContent("—状态未报");
+    expect(screen.getByRole("link", { name: "打开案件中心；未归档 0 项" })).toHaveTextContent(
+      "—状态未报",
+    );
   });
 
   it("shows loading, reports snapshot failures and retries the actual query", async () => {
@@ -937,13 +990,9 @@ describe("HomePage snapshot consumers", () => {
     const { user } = open(service);
     expect(screen.getByRole("status")).toHaveTextContent("正在加载工作台");
     service.snapshotGate.resolve();
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "快照服务暂不可用",
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("快照服务暂不可用");
     await user.click(screen.getByRole("button", { name: "重试" }));
-    expect(
-      await screen.findByRole("heading", { name: "你好，周审查" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "你好，周审查" })).toBeInTheDocument();
     expect(
       service.requests.filter(
         (request) => request.path === "/api/workbench?period=week&task_capabilities=1",
@@ -957,7 +1006,9 @@ describe("HomePage snapshot consumers", () => {
     await screen.findByRole("heading", { name: "你好，周审查" });
     expect(screen.getByRole("region", { name: "按案件处理" })).toBeInTheDocument();
     expect(within(taskPanel()).getByRole("button", { name: "新建任务" })).toBeInTheDocument();
-    expect(within(taskPanel()).getAllByRole("button", { name: "标记完成" }).length).toBeGreaterThan(0);
+    expect(within(taskPanel()).getAllByRole("button", { name: "标记完成" }).length).toBeGreaterThan(
+      0,
+    );
 
     service.sessionGate = Promise.withResolvers<void>();
     const revalidation = client.invalidateQueries({ queryKey: ["session", "client"], exact: true });
@@ -979,7 +1030,9 @@ describe("HomePage snapshot consumers", () => {
     const { client } = open(service);
     await screen.findByRole("heading", { name: "你好，周审查" });
     expect(screen.getByRole("region", { name: "按案件处理" })).toBeInTheDocument();
-    expect(within(taskPanel()).getAllByRole("button", { name: "标记完成" }).length).toBeGreaterThan(0);
+    expect(within(taskPanel()).getAllByRole("button", { name: "标记完成" }).length).toBeGreaterThan(
+      0,
+    );
 
     service.snapshotGate = Promise.withResolvers<void>();
     const refresh = client.invalidateQueries({ queryKey: ["workbench"] });
@@ -1002,30 +1055,35 @@ describe("HomePage persistent task workflow", () => {
     ["denied case", false, false, false],
     ["missing field", undefined, false, false],
     ["legacy service", undefined, true, false],
-  ])("offers task creation only for authorized cases (%s)", async (_label, canCreate, unsupported, visible) => {
-    const service = new HomeService();
-    service.capabilityUnsupported = unsupported;
-    if (canCreate === undefined) {
-      for (const item of service.data.cases) delete item.can_create_task;
-    } else if (!canCreate) {
-      for (const item of service.data.cases) item.can_create_task = false;
-    } else {
-      service.data.cases[0]!.can_create_task = true;
-    }
-    const { user } = open(service);
-    await screen.findByRole("heading", { name: "你好，周审查" });
+  ])(
+    "offers task creation only for authorized cases (%s)",
+    async (_label, canCreate, unsupported, visible) => {
+      const service = new HomeService();
+      service.capabilityUnsupported = unsupported;
+      if (canCreate === undefined) {
+        for (const item of service.data.cases) delete item.can_create_task;
+      } else if (!canCreate) {
+        for (const item of service.data.cases) item.can_create_task = false;
+      } else {
+        service.data.cases[0]!.can_create_task = true;
+      }
+      const { user } = open(service);
+      await screen.findByRole("heading", { name: "你好，周审查" });
 
-    if (!visible) {
-      expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument();
-      expect(screen.queryByRole("combobox", { name: "关联案件" })).not.toBeInTheDocument();
-      return;
-    }
+      if (!visible) {
+        expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("combobox", { name: "关联案件" })).not.toBeInTheDocument();
+        return;
+      }
 
-    await user.click(screen.getByRole("button", { name: "新建任务" }));
-    await user.click(screen.getByRole("combobox", { name: "关联案件" }));
-    expect(screen.getByRole("option", { name: /专线采购合同.*案件标识/ })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: /设备维保合同.*案件标识/ })).not.toBeInTheDocument();
-  });
+      await user.click(screen.getByRole("button", { name: "新建任务" }));
+      await user.click(screen.getByRole("combobox", { name: "关联案件" }));
+      expect(screen.getByRole("option", { name: /专线采购合同.*案件标识/ })).toBeInTheDocument();
+      expect(
+        screen.queryByRole("option", { name: /设备维保合同.*案件标识/ }),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it("refreshes task creation capability after a refusal and closes the revoked form", async () => {
     const service = new HomeService();
@@ -1034,15 +1092,23 @@ describe("HomePage persistent task workflow", () => {
     const { user } = open(service);
     await screen.findByRole("heading", { name: "你好，周审查" });
     await user.click(screen.getByRole("button", { name: "新建任务" }));
-    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), /专线采购合同.*案件标识/);
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "关联案件" }),
+      /专线采购合同.*案件标识/,
+    );
     await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), "周审查，reviewer");
     await user.type(screen.getByRole("textbox", { name: "任务名称" }), "受限任务");
     await user.click(screen.getByRole("button", { name: "创建并保存任务" }));
 
     expect(await screen.findByText("无法保存任务，请检查分派权限")).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument(),
+    );
     expect(screen.queryByRole("combobox", { name: "关联案件" })).not.toBeInTheDocument();
-    expect(service.requests.filter((request) => request.path.startsWith("/api/workbench"))).toHaveLength(2);
+    expect(
+      service.requests.filter((request) => request.path.startsWith("/api/workbench")),
+    ).toHaveLength(2);
     expect(service.requests.filter((request) => request.path === "/api/session")).toHaveLength(2);
   });
 
@@ -1051,7 +1117,11 @@ describe("HomePage persistent task workflow", () => {
     const { user, client } = open(service);
     await screen.findByRole("heading", { name: "你好，周审查" });
     await user.click(screen.getByRole("button", { name: "新建任务" }));
-    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), /专线采购合同.*案件标识/);
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "关联案件" }),
+      /专线采购合同.*案件标识/,
+    );
     await user.type(screen.getByRole("textbox", { name: "任务名称" }), "旧上下文任务");
 
     service.snapshotGate = Promise.withResolvers<void>();
@@ -1079,25 +1149,30 @@ describe("HomePage persistent task workflow", () => {
     ["denied", false, false, false],
     ["missing capability", undefined, false, false],
     ["legacy server", undefined, true, false],
-  ])("offers task creation only for an affirmative case capability (%s)", async (_label, canCreate, unsupported, visible) => {
-    const service = new HomeService();
-    service.capabilityUnsupported = unsupported;
-    if (canCreate === undefined) delete service.data.cases[0]!.can_create_task;
-    else service.data.cases[0]!.can_create_task = canCreate;
-    const { user } = open(service);
-    await screen.findByRole("heading", { name: "你好，周审查" });
-    if (visible) {
-      expect(screen.getByRole("button", { name: "新建任务" })).toBeInTheDocument();
-      await user.click(screen.getByRole("button", { name: "新建任务" }));
-      const caseSelect = screen.getByRole("combobox", { name: "关联案件" });
-      await user.click(caseSelect);
-      expect(screen.getByRole("option", { name: /专线采购合同.*案件标识/ })).toBeInTheDocument();
-      expect(screen.queryByRole("option", { name: /设备维保合同.*案件标识/ })).not.toBeInTheDocument();
-    } else {
-      expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument();
-      expect(screen.queryByRole("combobox", { name: "关联案件" })).not.toBeInTheDocument();
-    }
-  });
+  ])(
+    "offers task creation only for an affirmative case capability (%s)",
+    async (_label, canCreate, unsupported, visible) => {
+      const service = new HomeService();
+      service.capabilityUnsupported = unsupported;
+      if (canCreate === undefined) delete service.data.cases[0]!.can_create_task;
+      else service.data.cases[0]!.can_create_task = canCreate;
+      const { user } = open(service);
+      await screen.findByRole("heading", { name: "你好，周审查" });
+      if (visible) {
+        expect(screen.getByRole("button", { name: "新建任务" })).toBeInTheDocument();
+        await user.click(screen.getByRole("button", { name: "新建任务" }));
+        const caseSelect = screen.getByRole("combobox", { name: "关联案件" });
+        await user.click(caseSelect);
+        expect(screen.getByRole("option", { name: /专线采购合同.*案件标识/ })).toBeInTheDocument();
+        expect(
+          screen.queryByRole("option", { name: /设备维保合同.*案件标识/ }),
+        ).not.toBeInTheDocument();
+      } else {
+        expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("combobox", { name: "关联案件" })).not.toBeInTheDocument();
+      }
+    },
+  );
 
   it("refreshes capabilities and clears task creation after the selected case is revoked", async () => {
     const service = new HomeService();
@@ -1106,15 +1181,23 @@ describe("HomePage persistent task workflow", () => {
     const { user } = open(service);
     await screen.findByRole("heading", { name: "你好，周审查" });
     await user.click(screen.getByRole("button", { name: "新建任务" }));
-    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), /专线采购合同.*案件标识/);
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "关联案件" }),
+      /专线采购合同.*案件标识/,
+    );
     await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), "周审查，reviewer");
     await user.type(screen.getByRole("textbox", { name: "任务名称" }), "受限任务");
     await user.click(screen.getByRole("button", { name: "创建并保存任务" }));
 
     expect(await screen.findByText("无法保存任务，请检查分派权限")).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument(),
+    );
     expect(screen.queryByRole("combobox", { name: "关联案件" })).not.toBeInTheDocument();
-    expect(service.requests.filter((request) => request.path.startsWith("/api/workbench"))).toHaveLength(2);
+    expect(
+      service.requests.filter((request) => request.path.startsWith("/api/workbench")),
+    ).toHaveLength(2);
     expect(service.requests.filter((request) => request.path === "/api/session")).toHaveLength(2);
   });
 
@@ -1123,25 +1206,31 @@ describe("HomePage persistent task workflow", () => {
     ["denied", false, false, false],
     ["missing", undefined, false, false],
     ["unsupported server", undefined, true, false],
-  ])("shows completion only when the server snapshot grants it (%s)", async (_label, canComplete, unsupported, visible) => {
-    const service = new HomeService();
-    service.capabilityUnsupported = unsupported;
-    const targetTask = task();
-    if (canComplete === undefined) delete targetTask.can_complete;
-    else targetTask.can_complete = canComplete;
-    service.data.tasks = [targetTask];
-    service.data.cases = [caseRecord()];
-    service.data.members = [];
-    open(service);
-    await screen.findByRole("heading", { name: "你好，周审查" });
-    const panel = within(taskPanel());
-    expect(panel.getByRole("link", { name: "确认质保条款" })).toHaveAttribute("href", "/cases/case-1");
-    if (visible) {
-      expect(panel.getByRole("button", { name: "标记完成" })).toBeInTheDocument();
-    } else {
-      expect(panel.queryByRole("button", { name: "标记完成" })).not.toBeInTheDocument();
-    }
-  });
+  ])(
+    "shows completion only when the server snapshot grants it (%s)",
+    async (_label, canComplete, unsupported, visible) => {
+      const service = new HomeService();
+      service.capabilityUnsupported = unsupported;
+      const targetTask = task();
+      if (canComplete === undefined) delete targetTask.can_complete;
+      else targetTask.can_complete = canComplete;
+      service.data.tasks = [targetTask];
+      service.data.cases = [caseRecord()];
+      service.data.members = [];
+      open(service);
+      await screen.findByRole("heading", { name: "你好，周审查" });
+      const panel = within(taskPanel());
+      expect(panel.getByRole("link", { name: "确认质保条款" })).toHaveAttribute(
+        "href",
+        "/cases/case-1",
+      );
+      if (visible) {
+        expect(panel.getByRole("button", { name: "标记完成" })).toBeInTheDocument();
+      } else {
+        expect(panel.queryByRole("button", { name: "标记完成" })).not.toBeInTheDocument();
+      }
+    },
+  );
 
   it("refreshes authorization after a completion refusal and hides the revoked action", async () => {
     const service = new HomeService();
@@ -1150,12 +1239,20 @@ describe("HomePage persistent task workflow", () => {
     service.data.cases = [caseRecord()];
     const { user } = open(service);
     await screen.findByRole("heading", { name: "你好，周审查" });
-    const workbenchReadsBeforeCompletion = service.requests.filter((request) => request.path.startsWith("/api/workbench")).length;
+    const workbenchReadsBeforeCompletion = service.requests.filter((request) =>
+      request.path.startsWith("/api/workbench"),
+    ).length;
     await user.click(within(taskPanel()).getByRole("button", { name: "标记完成" }));
 
     expect(await screen.findByText("任务完成权限已变化")).toBeInTheDocument();
-    await waitFor(() => expect(within(taskPanel()).queryByRole("button", { name: "标记完成" })).not.toBeInTheDocument());
-    expect(service.requests.filter((request) => request.path.startsWith("/api/workbench"))).toHaveLength(workbenchReadsBeforeCompletion + 1);
+    await waitFor(() =>
+      expect(
+        within(taskPanel()).queryByRole("button", { name: "标记完成" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      service.requests.filter((request) => request.path.startsWith("/api/workbench")),
+    ).toHaveLength(workbenchReadsBeforeCompletion + 1);
     expect(service.requests.filter((request) => request.path === "/api/session")).toHaveLength(2);
   });
 
@@ -1206,38 +1303,23 @@ describe("HomePage persistent task workflow", () => {
     await screen.findByRole("heading", { name: "你好，周审查" });
     const panel = within(taskPanel());
     expect(
-      panel
-        .getAllByRole("listitem")
-        .map((item) => within(item).getByRole("link").textContent),
+      panel.getAllByRole("listitem").map((item) => within(item).getByRole("link").textContent),
     ).toEqual(["确认质保条款", "补充附件"]);
     expect(panel.getByText("高优先级")).toBeInTheDocument();
     expect(panel.getByText("低优先级")).toBeInTheDocument();
     expect(panel.getByText("未设期限")).toBeInTheDocument();
     await user.click(panel.getByRole("tab", { name: /全部未完成/ }));
     expect(
-      panel
-        .getAllByRole("listitem")
-        .map((item) => within(item).getByRole("link").textContent),
+      panel.getAllByRole("listitem").map((item) => within(item).getByRole("link").textContent),
     ).toEqual(["其他人的审查", "确认质保条款", "补充附件"]);
-    expect(
-      panel.getByText("专线采购合同，陈复核，审查判断"),
-    ).toBeInTheDocument();
+    expect(panel.getByText("专线采购合同，陈复核，审查判断")).toBeInTheDocument();
     expect(panel.getByText("中优先级")).toBeInTheDocument();
     await user.click(panel.getByRole("tab", { name: /^已完成/ }));
-    expect(
-      panel.getByRole("link", { name: "已保存的完成事项" }),
-    ).toBeInTheDocument();
-    expect(
-      panel.queryByRole("button", { name: "标记完成" }),
-    ).not.toBeInTheDocument();
-    expect(
-      panel.queryByRole("link", { name: "确认质保条款" }),
-    ).not.toBeInTheDocument();
+    expect(panel.getByRole("link", { name: "已保存的完成事项" })).toBeInTheDocument();
+    expect(panel.queryByRole("button", { name: "标记完成" })).not.toBeInTheDocument();
+    expect(panel.queryByRole("link", { name: "确认质保条款" })).not.toBeInTheDocument();
     await user.click(panel.getByRole("tab", { name: /我的待办/ }));
-    expect(panel.getByRole("tab", { name: /我的待办/ })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(panel.getByRole("tab", { name: /我的待办/ })).toHaveAttribute("aria-selected", "true");
     expect(panel.getByRole("link", { name: "确认质保条款" })).toHaveAttribute(
       "href",
       "/cases/case-1",
@@ -1250,18 +1332,13 @@ describe("HomePage persistent task workflow", () => {
       const { user, service } = open();
       await screen.findByRole("heading", { name: "你好，周审查" });
       await user.click(screen.getByRole("button", { name: "新建任务" }));
-      expect(
-        screen.getByRole("button", { name: "创建并保存任务" }),
-      ).toBeDisabled();
+      expect(screen.getByRole("button", { name: "创建并保存任务" })).toBeDisabled();
       await chooseOption(
         user,
         screen.getByRole("combobox", { name: "关联案件" }),
         /专线采购合同.*案件标识/,
       );
-      await user.type(
-        screen.getByRole("textbox", { name: "任务名称" }),
-        "  核实发票附件  ",
-      );
+      await user.type(screen.getByRole("textbox", { name: "任务名称" }), "  核实发票附件  ");
       await chooseOption(
         user,
         screen.getByRole("combobox", { name: "责任人" }),
@@ -1272,17 +1349,14 @@ describe("HomePage persistent task workflow", () => {
           target: { value: due },
         });
       await user.click(screen.getByRole("button", { name: "创建并保存任务" }));
-      expect(
-        await screen.findByRole("link", { name: "核实发票附件" }),
-      ).toHaveAttribute("href", "/cases/case-1");
-      await waitFor(() =>
-        expect(
-          screen.queryByRole("textbox", { name: "任务名称" }),
-        ).not.toBeInTheDocument(),
+      expect(await screen.findByRole("link", { name: "核实发票附件" })).toHaveAttribute(
+        "href",
+        "/cases/case-1",
       );
-      expect(
-        service.requests.find((request) => request.method === "POST"),
-      ).toEqual({
+      await waitFor(() =>
+        expect(screen.queryByRole("textbox", { name: "任务名称" })).not.toBeInTheDocument(),
+      );
+      expect(service.requests.find((request) => request.method === "POST")).toEqual({
         method: "POST",
         path: "/api/cases/case-1/tasks",
         body: {
@@ -1304,9 +1378,7 @@ describe("HomePage persistent task workflow", () => {
       expect(screen.getByRole("textbox", { name: "任务名称" })).toHaveValue("");
       expect(screen.getByLabelText("截止日期")).toHaveValue("");
       await user.click(screen.getByRole("button", { name: "收起" }));
-      expect(
-        screen.queryByRole("textbox", { name: "任务名称" }),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByRole("textbox", { name: "任务名称" })).not.toBeInTheDocument();
     },
   );
 
@@ -1321,32 +1393,15 @@ describe("HomePage persistent task workflow", () => {
       screen.getByRole("combobox", { name: "关联案件" }),
       /专线采购合同.*案件标识/,
     );
-    await chooseOption(
-      user,
-      screen.getByRole("combobox", { name: "责任人" }),
-      "周审查，reviewer",
-    );
-    await user.type(
-      screen.getByRole("textbox", { name: "任务名称" }),
-      "重新核对权限",
-    );
+    await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), "周审查，reviewer");
+    await user.type(screen.getByRole("textbox", { name: "任务名称" }), "重新核对权限");
     await user.click(screen.getByRole("button", { name: "创建并保存任务" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "无法保存任务，请检查分派权限",
-    );
-    expect(screen.getByRole("textbox", { name: "任务名称" })).toHaveValue(
-      "重新核对权限",
-    );
-    expect(
-      screen.queryByRole("link", { name: "重新核对权限" }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("无法保存任务，请检查分派权限");
+    expect(screen.getByRole("textbox", { name: "任务名称" })).toHaveValue("重新核对权限");
+    expect(screen.queryByRole("link", { name: "重新核对权限" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "创建并保存任务" }));
-    expect(
-      await screen.findByRole("link", { name: "重新核对权限" }),
-    ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
-    );
+    expect(await screen.findByRole("link", { name: "重新核对权限" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
   });
 
   it("completes the chosen task with its version and refreshes both task filters", async () => {
@@ -1354,22 +1409,14 @@ describe("HomePage persistent task workflow", () => {
     service.completionGate = Promise.withResolvers<void>();
     const { user } = open(service);
     const link = await screen.findByRole("link", { name: "确认质保条款" });
-    await user.click(
-      within(link.closest("li")!).getByRole("button", { name: "标记完成" }),
-    );
-    expect(
-      await screen.findByRole("button", { name: "正在保存" }),
-    ).toBeDisabled();
+    await user.click(within(link.closest("li")!).getByRole("button", { name: "标记完成" }));
+    expect(await screen.findByRole("button", { name: "正在保存" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "标记完成" })).toBeEnabled();
     service.completionGate.resolve();
     await waitFor(() =>
-      expect(
-        screen.queryByRole("link", { name: "确认质保条款" }),
-      ).not.toBeInTheDocument(),
+      expect(screen.queryByRole("link", { name: "确认质保条款" })).not.toBeInTheDocument(),
     );
-    expect(
-      service.requests.find((request) => request.method === "PUT"),
-    ).toEqual({
+    expect(service.requests.find((request) => request.method === "PUT")).toEqual({
       method: "PUT",
       path: "/api/cases/case-1/tasks/task-mine",
       body: {
@@ -1384,9 +1431,7 @@ describe("HomePage persistent task workflow", () => {
       },
     });
     await user.click(within(taskPanel()).getByRole("tab", { name: /^已完成/ }));
-    const completed = screen
-      .getByRole("link", { name: "确认质保条款" })
-      .closest("li")!;
+    const completed = screen.getByRole("link", { name: "确认质保条款" }).closest("li")!;
     expect(within(completed).getByText("已完成")).toBeInTheDocument();
     expect(within(completed).queryByRole("button")).not.toBeInTheDocument();
   });
@@ -1395,23 +1440,13 @@ describe("HomePage persistent task workflow", () => {
     const { user, service } = open();
     const link = await screen.findByRole("link", { name: "确认质保条款" });
     service.data.tasks.find((item) => item.id === "task-mine")!.version = 8;
-    await user.click(
-      within(link.closest("li")!).getByRole("button", { name: "标记完成" }),
-    );
+    await user.click(within(link.closest("li")!).getByRole("button", { name: "标记完成" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "任务已被其他人更新，请读取最新版本",
     );
-    expect(
-      screen.getByRole("link", { name: "确认质保条款" }),
-    ).toBeInTheDocument();
-    expect(
-      service.requests.filter((request) => request.method === "PUT"),
-    ).toHaveLength(1);
-    await chooseOption(
-      user,
-      screen.getByRole("combobox", { name: "统计周期" }),
-      "今日",
-    );
+    expect(screen.getByRole("link", { name: "确认质保条款" })).toBeInTheDocument();
+    expect(service.requests.filter((request) => request.method === "PUT")).toHaveLength(1);
+    await chooseOption(user, screen.getByRole("combobox", { name: "统计周期" }), "今日");
     const refreshed = await screen.findByRole("link", { name: "确认质保条款" });
     await user.click(
       within(refreshed.closest("li")!).getByRole("button", {
@@ -1419,17 +1454,12 @@ describe("HomePage persistent task workflow", () => {
       }),
     );
     await waitFor(() =>
-      expect(
-        screen.queryByRole("link", { name: "确认质保条款" }),
-      ).not.toBeInTheDocument(),
+      expect(screen.queryByRole("link", { name: "确认质保条款" })).not.toBeInTheDocument(),
     );
     expect(
       service.requests
         .filter((request) => request.method === "PUT")
-        .map(
-          (request) =>
-            (request.body as WorkbenchTaskUpdateInput).expected_version,
-        ),
+        .map((request) => (request.body as WorkbenchTaskUpdateInput).expected_version),
     ).toEqual([7, 8]);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -1447,26 +1477,19 @@ describe("HomePage persistent task workflow", () => {
     );
     const { user } = open(service);
     await screen.findByRole("heading", { name: "你好，周审查" });
-    await user.click(
-      within(taskPanel()).getByRole("tab", { name: /全部未完成/ }),
-    );
+    await user.click(within(taskPanel()).getByRole("tab", { name: /全部未完成/ }));
     expect(within(taskPanel()).getAllByRole("listitem")).toHaveLength(8);
     expect(screen.getByRole("link", { name: "协作事项 0" })).toHaveAttribute(
       "href",
       "/cases/unlisted-case",
     );
-    expect(
-      screen.getAllByText("unlisted-case，unlisted-member，审查判断"),
-    ).toHaveLength(8);
-    expect(
-      screen.queryByRole("link", { name: "协作事项 8" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "查看全部任务" }),
-    ).toHaveAttribute("href", "/workbench/tasks");
-    await user.click(within(taskPanel()).getByRole("tab", { name: /^已完成/ }));
-    expect(within(taskPanel()).getByRole("status")).toHaveTextContent(
-      "没有符合条件的任务记录。",
+    expect(screen.getAllByText("unlisted-case，unlisted-member，审查判断")).toHaveLength(8);
+    expect(screen.queryByRole("link", { name: "协作事项 8" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看全部任务" })).toHaveAttribute(
+      "href",
+      "/workbench/tasks",
     );
+    await user.click(within(taskPanel()).getByRole("tab", { name: /^已完成/ }));
+    expect(within(taskPanel()).getByRole("status")).toHaveTextContent("没有符合条件的任务记录。");
   });
 });

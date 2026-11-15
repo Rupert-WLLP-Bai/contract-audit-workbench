@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -17,16 +17,11 @@ import {
   parseFulfillmentEvaluation,
   parseImpactPlan,
 } from "./api";
-import type {
-  CreateObjectBindingInput,
-  FulfillmentEvaluationInput,
-} from "./types";
+import type { CreateObjectBindingInput, FulfillmentEvaluationInput } from "./types";
 
 type Call = { path: string; init: RequestInit };
 
-function install(
-  respond: (call: Call) => Response | Promise<Response>,
-): Call[] {
+function install(respond: (call: Call) => Response | Promise<Response>): Call[] {
   const calls: Call[] = [];
   vi.stubGlobal(
     "fetch",
@@ -136,16 +131,10 @@ describe("operator audit API client", () => {
       ),
     );
     const client = createHttpOperatorAuditClient();
-    const binding = await client.createObjectBinding(
-      "case/1",
-      bindingInput,
-      "binding-key-1",
-    );
+    const binding = await client.createObjectBinding("case/1", bindingInput, "binding-key-1");
     expect(calls[0]?.path).toBe("/api/cases/case%2F1/object-bindings");
     expect(calls[0]?.init.method).toBe("POST");
-    expect(new Headers(calls[0]?.init.headers).get("Idempotency-Key")).toBe(
-      "binding-key-1",
-    );
+    expect(new Headers(calls[0]?.init.headers).get("Idempotency-Key")).toBe("binding-key-1");
     expect(JSON.parse(String(calls[0]?.init.body))).toMatchObject({
       confirmed: true,
       contract_object: { object_type: "contract_line" },
@@ -195,9 +184,7 @@ describe("operator audit API client", () => {
           mode: "explain",
           dependency_complete: true,
           fallback: "none",
-          checks: [
-            { check_id: "check-1", action: "recompute", reasons: [] },
-          ],
+          checks: [{ check_id: "check-1", action: "recompute", reasons: [] }],
           business_result_source: "full",
         });
       return Response.json({
@@ -222,10 +209,7 @@ describe("operator audit API client", () => {
       evaluationInput,
       "evaluation-key",
     );
-    const evaluation = await client.getFulfillmentEvaluation(
-      "case-1",
-      "eval-1",
-    );
+    const evaluation = await client.getFulfillmentEvaluation("case-1", "eval-1");
     const impact = await client.getImpactPlan("case-1", "eval-1");
 
     expect(job.jobId).toBe("job-1");
@@ -317,15 +301,10 @@ describe("operator audit API client", () => {
 
   it("surfaces a forbidden response as an ApiError", async () => {
     install(() =>
-      Response.json(
-        { error: { code: "forbidden", message: "没有权限" } },
-        { status: 403 },
-      ),
+      Response.json({ error: { code: "forbidden", message: "没有权限" } }, { status: 403 }),
     );
     const client = createHttpOperatorAuditClient();
-    const failure = await client
-      .listExternalSnapshots("case-1")
-      .catch((error: unknown) => error);
+    const failure = await client.listExternalSnapshots("case-1").catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(ApiError);
     expect((failure as ApiError).status).toBe(403);
     expect((failure as ApiError).code).toBe("forbidden");

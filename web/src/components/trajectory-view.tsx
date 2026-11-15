@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-05
-// Revision: r3
+// Updated: 2026-11-15
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -118,9 +118,7 @@ function Entry({
             {entry.meta.length > 0 ? ` · ${entry.meta.join(" · ")}` : ""}
           </span>
         </span>
-        <StatusText tone={statusTone(entry.status)}>
-          {statusLabel(entry.status)}
-        </StatusText>
+        <StatusText tone={statusTone(entry.status)}>{statusLabel(entry.status)}</StatusText>
         <span className="trajectory-disclosure" aria-hidden="true">
           {open ? "收起" : "展开"}
         </span>
@@ -138,9 +136,10 @@ export function TrajectoryView({ execution }: { execution: Execution }) {
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const needle = query.trim().toLocaleLowerCase("zh-CN");
-  const entries = needle === ""
-    ? trajectory.entries
-    : trajectory.entries.filter((entry) => entry.search.includes(needle));
+  const entries =
+    needle === ""
+      ? trajectory.entries
+      : trajectory.entries.filter((entry) => entry.search.includes(needle));
   const changeQuery = (value: string) => {
     setQuery(value);
     // 搜索只筛选列表；在泳道图输入关键词时直接切到列表，避免输入后没有任何可见反馈。
@@ -170,9 +169,7 @@ export function TrajectoryView({ execution }: { execution: Execution }) {
             模型输出和工具返回都是待核验的记录，不会成为已确认结论。
           </p>
         </div>
-        <StatusText tone="neutral">
-          {trajectory.entries.length} 条记录
-        </StatusText>
+        <StatusText tone="neutral">{trajectory.entries.length} 条记录</StatusText>
       </header>
 
       <dl className="trajectory-summary" aria-label="轨迹汇总">
@@ -231,9 +228,7 @@ export function TrajectoryView({ execution }: { execution: Execution }) {
       {view === "swimlane" ? (
         <p className="trajectory-filter" id="trajectory-search-hint">
           泳道图始终展示全部步骤；搜索只筛选列表，输入搜索词会自动切换到列表。
-          {needle !== ""
-            ? ` 当前搜索“${query.trim()}”仍保留，切回列表可查看匹配记录。`
-            : ""}
+          {needle !== "" ? ` 当前搜索“${query.trim()}”仍保留，切回列表可查看匹配记录。` : ""}
         </p>
       ) : null}
 
@@ -245,25 +240,27 @@ export function TrajectoryView({ execution }: { execution: Execution }) {
         </p>
       ) : null}
 
-      {view === "list" ? (entries.length === 0 ? (
-        <p className="trajectory-empty">
-          {trajectory.entries.length === 0
-            ? "本次执行没有保存可展示的轨迹记录。"
-            : "没有匹配的轨迹记录。"}
-        </p>
-      ) : (
-        <ol className="trajectory-list">
-          {entries.map((entry, index) => (
-            <Entry
-              key={entry.id}
-              entry={entry}
-              index={index}
-              open={expanded.has(entry.id)}
-              onToggle={() => toggle(entry.id)}
-            />
-          ))}
-        </ol>
-      )) : null}
+      {view === "list" ? (
+        entries.length === 0 ? (
+          <p className="trajectory-empty">
+            {trajectory.entries.length === 0
+              ? "本次执行没有保存可展示的轨迹记录。"
+              : "没有匹配的轨迹记录。"}
+          </p>
+        ) : (
+          <ol className="trajectory-list">
+            {entries.map((entry, index) => (
+              <Entry
+                key={entry.id}
+                entry={entry}
+                index={index}
+                open={expanded.has(entry.id)}
+                onToggle={() => toggle(entry.id)}
+              />
+            ))}
+          </ol>
+        )
+      ) : null}
     </section>
   );
 }

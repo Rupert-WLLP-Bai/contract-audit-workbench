@@ -3,14 +3,20 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
 import { isRecord } from "../../api/guards";
 import { idempotencyFingerprint } from "../../api/idempotency";
-import { INTAKE_MAX_FILE_BYTES, type IntakeRequestIdentity, type IntakeResult, type IntakeState, type ServerIntakeContinuation } from "../../api/intakes";
+import {
+  INTAKE_MAX_FILE_BYTES,
+  type IntakeRequestIdentity,
+  type IntakeResult,
+  type IntakeState,
+  type ServerIntakeContinuation,
+} from "../../api/intakes";
 import type { Actor } from "../../api/types";
 
 /**
@@ -26,7 +32,6 @@ export interface IntakeContinuationScope {
   org_id: string;
   context_version: string;
 }
-
 
 export interface IntakeReceipt {
   operation_id: string | null;
@@ -94,23 +99,18 @@ export function scopeOf(actor: Actor): IntakeContinuationScope {
   };
 }
 
-export function scopeMatches(
-  scope: IntakeContinuationScope,
-  actor: Actor,
-): boolean {
+export function scopeMatches(scope: IntakeContinuationScope, actor: Actor): boolean {
   const current = scopeOf(actor);
   return (
     scope.audience === current.audience &&
     scope.actor_id === current.actor_id &&
     scope.tenant_id === current.tenant_id &&
-    scope.org_id === current.org_id
-    && scope.context_version === current.context_version
+    scope.org_id === current.org_id &&
+    scope.context_version === current.context_version
   );
 }
 
-async function storageKey(
-  scope: IntakeContinuationScope,
-): Promise<string> {
+async function storageKey(scope: IntakeContinuationScope): Promise<string> {
   const fingerprint = await idempotencyFingerprint(
     [scope.audience, scope.tenant_id, scope.org_id, scope.actor_id, scope.context_version].join(
       "\u0000",
@@ -158,11 +158,7 @@ function parseReceipt(value: unknown): IntakeReceipt | null {
   const rawVersion = value.material_version;
   let version: number | null;
   if (rawVersion === null) version = null;
-  else if (
-    typeof rawVersion === "number" &&
-    Number.isSafeInteger(rawVersion) &&
-    rawVersion >= 1
-  )
+  else if (typeof rawVersion === "number" && Number.isSafeInteger(rawVersion) && rawVersion >= 1)
     version = rawVersion;
   else return null;
   const retryable = value.retryable;
@@ -172,7 +168,10 @@ function parseReceipt(value: unknown): IntakeReceipt | null {
   if ((state === null) !== (caseId === null)) return null;
   if (state === "completed" && (materialId === null || documentId === null || version === null))
     return null;
-  if (state === "upload_pending" && (materialId !== null || documentId !== null || version !== null))
+  if (
+    state === "upload_pending" &&
+    (materialId !== null || documentId !== null || version !== null)
+  )
     return null;
   return {
     operation_id: operationId,
@@ -226,10 +225,7 @@ function parseRequest(value: unknown): IntakeRequestIdentity | null {
   };
 }
 
-export function parseIntakeContinuation(
-  raw: string,
-  actor: Actor,
-): IntakeContinuation | null {
+export function parseIntakeContinuation(raw: string, actor: Actor): IntakeContinuation | null {
   let value: unknown;
   try {
     value = JSON.parse(raw) as unknown;
@@ -248,7 +244,8 @@ export function parseIntakeContinuation(
     audience === null ||
     actorId === null ||
     tenantId === null ||
-    orgId === null || contextVersion === null
+    orgId === null ||
+    contextVersion === null
   )
     return null;
   const parsedScope: IntakeContinuationScope = {
@@ -260,8 +257,7 @@ export function parseIntakeContinuation(
   };
   if (!scopeMatches(parsedScope, actor)) return null;
   const idempotencyKey = textField(value.idempotency_key);
-  if (idempotencyKey === null || !KEY_PATTERN.test(idempotencyKey))
-    return null;
+  if (idempotencyKey === null || !KEY_PATTERN.test(idempotencyKey)) return null;
   const request = parseRequest(value.request);
   const receipt = parseReceipt(value.receipt);
   const updatedAt = textField(value.updated_at);
@@ -282,9 +278,7 @@ export function parseIntakeContinuation(
   };
 }
 
-export async function readIntakeContinuation(
-  actor: Actor,
-): Promise<IntakeContinuation | null> {
+export async function readIntakeContinuation(actor: Actor): Promise<IntakeContinuation | null> {
   const key = await storageKey(scopeOf(actor));
   let raw: string | null = null;
   try {
@@ -304,16 +298,12 @@ export async function readIntakeContinuation(
   return parsed;
 }
 
-export async function writeIntakeContinuation(
-  continuation: IntakeContinuation,
-): Promise<void> {
+export async function writeIntakeContinuation(continuation: IntakeContinuation): Promise<void> {
   const key = await storageKey(continuation.scope);
   try {
     localStorage.setItem(key, JSON.stringify(continuation));
   } catch {
-    throw new Error(
-      "浏览器无法保存续办记录，请允许本站使用本地存储后重试",
-    );
+    throw new Error("浏览器无法保存续办记录，请允许本站使用本地存储后重试");
   }
 }
 
@@ -350,8 +340,7 @@ export function continuationFileProblem(
     return "所选文件的内容与最初提交的主合同不一致。请选择同一个文件。";
   if (file.name !== expected.file_name)
     return "所选文件的文件名与最初提交不一致。请选择同一个文件。";
-  if (file.size !== expected.file_size)
-    return "所选文件的大小与最初提交不一致。请选择同一个文件。";
+  if (file.size !== expected.file_size) return "所选文件的大小与最初提交不一致。请选择同一个文件。";
   return null;
 }
 

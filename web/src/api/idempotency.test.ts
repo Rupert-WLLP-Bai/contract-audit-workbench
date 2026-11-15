@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -26,33 +26,58 @@ describe("pending mutation idempotency", () => {
     expect(sessionStorage.length).toBe(1);
     expect(sessionStorage.getItem(first.storageKey)).toBe(first.key);
     expect(first.storageKey).not.toContain(payload.identifiers[0]!.value);
-    expect([...Array(sessionStorage.length)].map((_, index) => sessionStorage.key(index))).toEqual([first.storageKey]);
+    expect([...Array(sessionStorage.length)].map((_, index) => sessionStorage.key(index))).toEqual([
+      first.storageKey,
+    ]);
 
-    const changedActor = await pendingMutationKey("subject.create", { ...actor, actorId: "user-2" }, "new", payload);
-    const changedPayload = await pendingMutationKey("subject.create", actor, "new", { identifiers: [] });
+    const changedActor = await pendingMutationKey(
+      "subject.create",
+      { ...actor, actorId: "user-2" },
+      "new",
+      payload,
+    );
+    const changedPayload = await pendingMutationKey("subject.create", actor, "new", {
+      identifiers: [],
+    });
     expect(changedActor.key).not.toBe(first.key);
     expect(changedPayload.key).not.toBe(first.key);
 
     clearPendingMutationKey(first.storageKey);
-    expect((await pendingMutationKey("subject.create", actor, "new", payload)).key).not.toBe(first.key);
+    expect((await pendingMutationKey("subject.create", actor, "new", payload)).key).not.toBe(
+      first.key,
+    );
   });
 
   it("does not send a hash-delayed command after a new session reuses context version 1", async () => {
     const actorA = {
-      id: "actor-a", role: "clerk", audience: "client", tenant_id: "tenant-a", org_id: "org-a",
-      principal_id: "principal-a", active_context: { context_version: "1" }, csrf_token: "csrf-a",
+      id: "actor-a",
+      role: "clerk",
+      audience: "client",
+      tenant_id: "tenant-a",
+      org_id: "org-a",
+      principal_id: "principal-a",
+      active_context: { context_version: "1" },
+      csrf_token: "csrf-a",
     };
     const actorB = {
-      ...actorA, id: "actor-b", tenant_id: "tenant-b", org_id: "org-b", principal_id: "principal-b", csrf_token: "csrf-b",
+      ...actorA,
+      id: "actor-b",
+      tenant_id: "tenant-b",
+      org_id: "org-b",
+      principal_id: "principal-b",
+      csrf_token: "csrf-b",
     };
     setSessionIdentity(actorA);
     const snapshot = captureCommandContext(actorA);
     const digest = crypto.subtle.digest.bind(crypto.subtle);
     let releaseDigest!: () => void;
-    const digestSpy = vi.spyOn(crypto.subtle, "digest").mockImplementation((algorithm, data) =>
-      new Promise<ArrayBuffer>((resolve, reject) => {
-        releaseDigest = () => { void digest(algorithm, data).then(resolve, reject); };
-      }),
+    const digestSpy = vi.spyOn(crypto.subtle, "digest").mockImplementation(
+      (algorithm, data) =>
+        new Promise<ArrayBuffer>((resolve, reject) => {
+          releaseDigest = () => {
+            void digest(algorithm, data).then(resolve, reject);
+          };
+        }),
     );
     const send = vi.fn();
     const command = pendingMutationKey(

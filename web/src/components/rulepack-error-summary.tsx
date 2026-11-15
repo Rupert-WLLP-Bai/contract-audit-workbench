@@ -3,19 +3,15 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-25
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 import { useEffect, useRef } from "react";
 import type { RulePackFormIssue } from "../domain/rulepack-form";
 
-export function RulePackErrorSummary({
-  issues,
-}: {
-  issues: RulePackFormIssue[];
-}) {
+export function RulePackErrorSummary({ issues }: { issues: RulePackFormIssue[] }) {
   const summary = useRef<HTMLElement>(null);
   useEffect(() => {
     if (issues.length > 0) summary.current?.focus();

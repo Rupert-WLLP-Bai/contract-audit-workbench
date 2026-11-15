@@ -3,19 +3,14 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 import { describe, expect, it } from "vitest";
 import { parseAgentReview } from "../api/agent-review";
-import type {
-  Execution,
-  ExecutionAttempt,
-  ExecutionEvent,
-  ModelCallTrace,
-} from "../api/types";
+import type { Execution, ExecutionAttempt, ExecutionEvent, ModelCallTrace } from "../api/types";
 import { agentEventLabel, buildTrajectory } from "./trajectory";
 
 const attempt: ExecutionAttempt = {
@@ -370,10 +365,7 @@ describe("buildTrajectory", () => {
     const [entry] = trajectory.entries;
     expect(entry?.kind).toBe("event");
     expect(entry?.title).toBe("证据工具 · 证据工具结果");
-    expect(entry?.meta).toEqual([
-      "tool_call",
-      "dedicated_line.minimum_bandwidth",
-    ]);
+    expect(entry?.meta).toEqual(["tool_call", "dedicated_line.minimum_bandwidth"]);
     expect(entry?.fields).toContainEqual({
       label: "错误码",
       value: "tool_evidence_no_statement",

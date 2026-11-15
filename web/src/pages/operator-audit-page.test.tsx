@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-11-08
-// Revision: r3
+// Updated: 2026-11-15
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -51,7 +51,8 @@ vi.mock("../api/endpoints", async (importOriginal) => {
   return { ...actual, getReview: mocks.getReview };
 });
 vi.mock("../features/operator-audit/service-objects-api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../features/operator-audit/service-objects-api")>();
+  const actual =
+    await importOriginal<typeof import("../features/operator-audit/service-objects-api")>();
   return {
     ...actual,
     listServiceObjects: mocks.listServiceObjects,
@@ -77,9 +78,7 @@ const pack = {
 const caseDetail = {
   id: "case-1",
   title: "专线跨系统核验",
-  documents: [
-    { id: "doc-1", role: "draft_contract", filename: "draft.txt" },
-  ],
+  documents: [{ id: "doc-1", role: "draft_contract", filename: "draft.txt" }],
   latest_run: { id: "run-1", state: "completed", updated_at: "2026-10-28T00:00:00Z" },
 };
 const workspace = {
@@ -202,10 +201,7 @@ function renderPage(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
-          <Route
-            path="/cases/:caseId/operator-audit"
-            element={<OperatorAuditPage />}
-          />
+          <Route path="/cases/:caseId/operator-audit" element={<OperatorAuditPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -251,9 +247,7 @@ describe("OperatorAuditPage", () => {
     });
     renderPage();
     expect(await screen.findByText("跨系统核验")).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 1, name: "运营商专项核验" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "运营商专项核验" })).toBeInTheDocument();
     expect(screen.getByText("政企专线·履约要素核验")).toBeInTheDocument();
     const facts = screen.getByLabelText("核验关键事实");
     for (const label of ["服务对象", "业务期间", "核验范围", "依据状态"]) {
@@ -266,34 +260,28 @@ describe("OperatorAuditPage", () => {
     expect(await screen.findByText("未受理核验")).toBeInTheDocument();
     expect(mocks.listCapabilityPacks).toHaveBeenCalled();
     expect(mocks.listServiceObjects).toHaveBeenCalledWith("case-1", null, expect.any(AbortSignal));
-    expect(mocks.listExternalSnapshots).toHaveBeenCalledWith(
-      "case-1",
-      expect.anything(),
-    );
+    expect(mocks.listExternalSnapshots).toHaveBeenCalledWith("case-1", expect.anything());
 
     await user.click(screen.getByRole("tab", { name: "服务对象" }));
-    expect(
-      await screen.findByRole("heading", { name: "服务对象与冻结事实" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "合同对象与外部对象映射" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "服务对象与冻结事实" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "合同对象与外部对象映射" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "依据与差异" }));
     expect(await screen.findByText(/专线配置核验/)).toBeInTheDocument();
     expect(screen.getByText("采集外部证据")).toBeInTheDocument();
     expect(screen.getByText("受理核验")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "采集一次外部证据" }),
-    ).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "受理确定性核验" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "采集一次外部证据" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "受理确定性核验" })).toBeDisabled();
   });
 
   it("searches packs by their exact ID while preserving provided names and submission identity", async () => {
     const user = userEvent.setup();
-    mocks.useSettings.mockReturnValue({ data: { operator_audit: { enabled: true, connectors: [] } }, isLoading: false, isError: false, error: null });
+    mocks.useSettings.mockReturnValue({
+      data: { operator_audit: { enabled: true, connectors: [] } },
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
     mocks.listCapabilityPacks.mockResolvedValue([
       { ...pack, packId: "pack-unnamed", displayName: null },
       { ...pack, packId: "pack-named", displayName: "ENT（测试）股份有限公司" },
@@ -305,9 +293,15 @@ describe("OperatorAuditPage", () => {
     const select = screen.getByRole("combobox", { name: "选择能力包" });
     await user.click(select);
     await user.type(select, "pack-unnamed");
-    await user.click(await screen.findByRole("option", { name: /能力包名称未提供.*能力包标识 pack-unnamed/ }));
+    await user.click(
+      await screen.findByRole("option", { name: /能力包名称未提供.*能力包标识 pack-unnamed/ }),
+    );
     await user.click(screen.getByRole("button", { name: "受理确定性核验" }));
-    expect(mocks.createFulfillmentEvaluation).toHaveBeenCalledWith("case-1", expect.objectContaining({ pack_id: "pack-unnamed", pack_version: "1.0.0" }), expect.any(String));
+    expect(mocks.createFulfillmentEvaluation).toHaveBeenCalledWith(
+      "case-1",
+      expect.objectContaining({ pack_id: "pack-unnamed", pack_version: "1.0.0" }),
+      expect.any(String),
+    );
   });
 
   it("does not expose a write surface when disabled", async () => {
@@ -324,7 +318,12 @@ describe("OperatorAuditPage", () => {
   });
 
   it("keeps missing facts as 未报告 and shows a truthful unaccepted overview", async () => {
-    mocks.useSettings.mockReturnValue({ data: { operator_audit: { enabled: true, connectors: [] } }, isLoading: false, isError: false, error: null });
+    mocks.useSettings.mockReturnValue({
+      data: { operator_audit: { enabled: true, connectors: [] } },
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
     renderPage();
     const facts = screen.getByLabelText("核验关键事实");
     expect(within(facts).getAllByText("未报告")).toHaveLength(4);
@@ -334,13 +333,26 @@ describe("OperatorAuditPage", () => {
   });
 
   it("renders read-only check rows and real facts from a persisted evaluation", async () => {
-    mocks.useSettings.mockReturnValue({ data: { operator_audit: { enabled: true, connectors: [] } }, isLoading: false, isError: false, error: null });
-    mocks.listServiceObjects.mockResolvedValue({ items: [serviceObject], next_cursor: null, can_manage: false });
+    mocks.useSettings.mockReturnValue({
+      data: { operator_audit: { enabled: true, connectors: [] } },
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    mocks.listServiceObjects.mockResolvedValue({
+      items: [serviceObject],
+      next_cursor: null,
+      can_manage: false,
+    });
     mocks.getFulfillmentEvaluation.mockResolvedValue(evaluation);
-    renderPage("/cases/case-1/operator-audit?run_id=run-1&attempt_id=attempt-1&evaluation_id=evaluation-1");
+    renderPage(
+      "/cases/case-1/operator-audit?run_id=run-1&attempt_id=attempt-1&evaluation_id=evaluation-1",
+    );
     const overviewCard = (await screen.findByText("检查项目")).closest(".ant-card");
     expect(overviewCard).not.toBeNull();
-    expect(await within(overviewCard as HTMLElement).findByText("line.configured_bandwidth")).toBeInTheDocument();
+    expect(
+      await within(overviewCard as HTMLElement).findByText("line.configured_bandwidth"),
+    ).toBeInTheDocument();
     const facts = screen.getByLabelText("核验关键事实");
     expect(within(facts).getByText("园区专线 A")).toBeInTheDocument();
     expect(within(facts).getByText("2026 年 11 月")).toBeInTheDocument();
@@ -348,10 +360,9 @@ describe("OperatorAuditPage", () => {
     expect(within(facts).getByText("部分缺失")).toBeInTheDocument();
     expect(within(overviewCard as HTMLElement).getByText("执行完成")).toBeInTheDocument();
     expect(within(overviewCard as HTMLElement).getByText("信息不足")).toBeInTheDocument();
-    expect(within(overviewCard as HTMLElement).getByRole("link", { name: "核对依据" })).toHaveAttribute(
-      "href",
-      "/cases/case-1/reviews/run-1?attempt_id=attempt-1",
-    );
+    expect(
+      within(overviewCard as HTMLElement).getByRole("link", { name: "核对依据" }),
+    ).toHaveAttribute("href", "/cases/case-1/reviews/run-1?attempt_id=attempt-1");
     expect(mocks.getFulfillmentEvaluation).toHaveBeenCalledWith(
       "case-1",
       "evaluation-1",
@@ -360,28 +371,48 @@ describe("OperatorAuditPage", () => {
   });
 
   it("falls back to aggregate evaluation checks when objects have no checks", async () => {
-    mocks.useSettings.mockReturnValue({ data: { operator_audit: { enabled: true, connectors: [] } }, isLoading: false, isError: false, error: null });
+    mocks.useSettings.mockReturnValue({
+      data: { operator_audit: { enabled: true, connectors: [] } },
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
     mocks.getFulfillmentEvaluation.mockResolvedValue({
       ...evaluation,
       objects: [],
       checks: [check],
     });
-    renderPage("/cases/case-1/operator-audit?run_id=run-1&attempt_id=attempt-1&evaluation_id=evaluation-1");
+    renderPage(
+      "/cases/case-1/operator-audit?run_id=run-1&attempt_id=attempt-1&evaluation_id=evaluation-1",
+    );
     const overviewCard = (await screen.findByText("检查项目")).closest(".ant-card");
     expect(overviewCard).not.toBeNull();
-    expect(await within(overviewCard as HTMLElement).findByText("line.configured_bandwidth")).toBeInTheDocument();
+    expect(
+      await within(overviewCard as HTMLElement).findByText("line.configured_bandwidth"),
+    ).toBeInTheDocument();
     expect(within(overviewCard as HTMLElement).getByText("执行完成")).toBeInTheDocument();
   });
 
   it("shows object-level outcomes when evaluation objects have no checks", async () => {
-    mocks.useSettings.mockReturnValue({ data: { operator_audit: { enabled: true, connectors: [] } }, isLoading: false, isError: false, error: null });
-    mocks.listServiceObjects.mockResolvedValue({ items: [serviceObject], next_cursor: null, can_manage: false });
+    mocks.useSettings.mockReturnValue({
+      data: { operator_audit: { enabled: true, connectors: [] } },
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    mocks.listServiceObjects.mockResolvedValue({
+      items: [serviceObject],
+      next_cursor: null,
+      can_manage: false,
+    });
     mocks.getFulfillmentEvaluation.mockResolvedValue({
       ...evaluation,
       objects: [{ ...evaluation.objects[0], checks: [] }],
       checks: [],
     });
-    renderPage("/cases/case-1/operator-audit?run_id=run-1&attempt_id=attempt-1&evaluation_id=evaluation-1");
+    renderPage(
+      "/cases/case-1/operator-audit?run_id=run-1&attempt_id=attempt-1&evaluation_id=evaluation-1",
+    );
     const overviewCard = (await screen.findByText("检查项目")).closest(".ant-card");
     expect(overviewCard).not.toBeNull();
     expect(await within(overviewCard as HTMLElement).findByText("园区专线 A")).toBeInTheDocument();
@@ -391,12 +422,15 @@ describe("OperatorAuditPage", () => {
 
   it("keeps the processing-record tab truthful when nothing has been accepted", async () => {
     const user = userEvent.setup();
-    mocks.useSettings.mockReturnValue({ data: { operator_audit: { enabled: true, connectors: [] } }, isLoading: false, isError: false, error: null });
+    mocks.useSettings.mockReturnValue({
+      data: { operator_audit: { enabled: true, connectors: [] } },
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
     renderPage();
     await user.click(screen.getByRole("tab", { name: "处理记录" }));
     expect(await screen.findByText("暂无处理记录")).toBeInTheDocument();
-    expect(
-      screen.getByText(/处理记录只展示当前页面已读取的数据/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/处理记录只展示当前页面已读取的数据/)).toBeInTheDocument();
   });
 });

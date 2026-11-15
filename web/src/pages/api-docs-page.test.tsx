@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -95,12 +95,7 @@ const contract = {
                 properties: {
                   role: {
                     type: "string",
-                    enum: [
-                      "procurement",
-                      "award",
-                      "draft_contract",
-                      "attachment",
-                    ],
+                    enum: ["procurement", "award", "draft_contract", "attachment"],
                   },
                   file: { type: "string", format: "binary" },
                 },
@@ -151,16 +146,13 @@ test("loads the local OpenAPI contract and displays real route metadata", async 
   const fetcher = vi.fn().mockResolvedValue(response(contract));
   vi.stubGlobal("fetch", fetcher);
   renderApiDocsPage();
-  expect(screen.getByRole("status")).toHaveTextContent(
-    "正在读取服务端 OpenAPI 契约",
-  );
-  expect(
-    await screen.findByRole("heading", { name: "读取案件" }),
-  ).toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("正在读取服务端 OpenAPI 契约");
+  expect(await screen.findByRole("heading", { name: "读取案件" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "文档" }));
-  expect(
-    screen.getByRole("link", { name: "下载服务端 OpenAPI JSON" }),
-  ).toHaveAttribute("href", "/openapi.json");
+  expect(screen.getByRole("link", { name: "下载服务端 OpenAPI JSON" })).toHaveAttribute(
+    "href",
+    "/openapi.json",
+  );
   expect(fetcher).toHaveBeenCalledOnce();
   expect(fetcher).toHaveBeenCalledWith(
     "/openapi.json",
@@ -176,9 +168,7 @@ test("states when the operation filter has no matches", async () => {
     target: { value: "不存在的接口" },
   });
   expect(screen.getByText("没有匹配的接口")).toBeInTheDocument();
-  expect(
-    screen.queryByRole("menuitem", { name: /读取案件/ }),
-  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: /读取案件/ })).not.toBeInTheDocument();
 });
 
 test("sends a filled same-origin request and shows the unmodified response", async () => {
@@ -199,9 +189,7 @@ test("sends a filled same-origin request and shows the unmodified response", asy
     target: { value: "c-17" },
   });
   fireEvent.click(screen.getByRole("button", { name: "发送真实请求" }));
-  expect(
-    await screen.findByText('{"id":"c-17","title":"真实返回"}'),
-  ).toBeInTheDocument();
+  expect(await screen.findByText('{"id":"c-17","title":"真实返回"}')).toBeInTheDocument();
   expect(fetcher).toHaveBeenNthCalledWith(
     2,
     "/api/cases/c-17",
@@ -236,8 +224,7 @@ test("uploads the selected original file as a real multipart request", async () 
   );
   const requestInit = fetcher.mock.calls[1]?.[1] as RequestInit | undefined;
   expect(requestInit?.body).toBeInstanceOf(FormData);
-  if (!(requestInit?.body instanceof FormData))
-    throw new Error("请求体不是 multipart FormData");
+  if (!(requestInit?.body instanceof FormData)) throw new Error("请求体不是 multipart FormData");
   expect(requestInit.body.get("role")).toBe("draft_contract");
   const sentFile = requestInit.body.get("file");
   if (!(sentFile instanceof File)) throw new Error("上传请求未保留文件原件");
@@ -259,9 +246,7 @@ test("validates the required JSON body before sending an operation", async () =>
   fireEvent.change(screen.getByRole("textbox", { name: "真实请求体" }), {
     target: { value: "{}" },
   });
-  expect(screen.getByRole("alert")).toHaveTextContent(
-    "请求体.title 是必填字段",
-  );
+  expect(screen.getByRole("alert")).toHaveTextContent("请求体.title 是必填字段");
   fireEvent.change(screen.getByRole("textbox", { name: "真实请求体" }), {
     target: { value: JSON.stringify({ title: "真实案件" }) },
   });
@@ -286,13 +271,9 @@ test("HTTP error remains visible and explicit contract reload recovers", async (
     .mockResolvedValueOnce(response(contract));
   vi.stubGlobal("fetch", fetcher);
   renderApiDocsPage();
-  expect(
-    await screen.findByText("接口契约加载失败（HTTP 503）"),
-  ).toBeInTheDocument();
+  expect(await screen.findByText("接口契约加载失败（HTTP 503）")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "重新加载" }));
-  expect(
-    await screen.findByRole("heading", { name: "读取案件" }),
-  ).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "读取案件" })).toBeInTheDocument();
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
 
@@ -306,14 +287,11 @@ test.each([
     ...contract,
     paths: { "/api/cases": { get: { operationId: "missingResponses" } } },
   },
-])(
-  "rejects invalid contract data instead of rendering misleading routes (%j)",
-  async (value) => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(value)));
-    renderApiDocsPage();
-    expect(await screen.findByRole("alert")).toHaveTextContent("格式不正确");
-  },
-);
+])("rejects invalid contract data instead of rendering misleading routes (%j)", async (value) => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(value)));
+  renderApiDocsPage();
+  expect(await screen.findByRole("alert")).toHaveTextContent("格式不正确");
+});
 
 test.each([new Error("网络连接失败"), "network failure"])(
   "reports network failure (%s)",
@@ -338,32 +316,28 @@ test("aborts a pending contract read when leaving the page", async () => {
     pending.resolve(response(contract));
     await pending.promise;
   });
-  expect(
-    screen.queryByRole("heading", { name: "读取案件" }),
-  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "读取案件" })).not.toBeInTheDocument();
 });
 
 test("API docs route stays session protected and loads the service contract", async () => {
-  const fetcher = vi
-    .fn()
-    .mockImplementation((path: string) =>
-      Promise.resolve(
-        response(
-          path === "/api/session"
-            ? {
-                actor: {
-                  id: "u1",
-                  display_name: "只读用户",
-                  role: "viewer",
-                  tenant_id: "tenant-test",
-                  org_id: "org-test",
-                },
-                audience: "client",
-              }
-            : contract,
-        ),
+  const fetcher = vi.fn().mockImplementation((path: string) =>
+    Promise.resolve(
+      response(
+        path === "/api/session"
+          ? {
+              actor: {
+                id: "u1",
+                display_name: "只读用户",
+                role: "viewer",
+                tenant_id: "tenant-test",
+                org_id: "org-test",
+              },
+              audience: "client",
+            }
+          : contract,
       ),
-    );
+    ),
+  );
   vi.stubGlobal("fetch", fetcher);
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -376,13 +350,8 @@ test("API docs route stays session protected and loads the service contract", as
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  expect(
-    await screen.findByRole("heading", { name: "读取案件" }),
-  ).toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: "API 参考" })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  expect(await screen.findByRole("heading", { name: "读取案件" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "API 参考" })).toHaveAttribute("aria-selected", "true");
   expect(fetcher).toHaveBeenCalledWith(
     "/openapi.json",
     expect.objectContaining({ credentials: "same-origin" }),

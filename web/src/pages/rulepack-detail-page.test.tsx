@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -72,9 +72,7 @@ const detail: RulePackDetail = {
           unit_family: "bandwidth",
           exclusions: [],
         },
-        authority_sources: [
-          { id: "internal-policy", version: "3", kind: "policy" },
-        ],
+        authority_sources: [{ id: "internal-policy", version: "3", kind: "policy" }],
       },
     ],
     lifecycle: { state: "published" },
@@ -116,46 +114,39 @@ afterEach(() => {
 describe("RulePack inactive published version rollback", () => {
   it("offers and posts the routed version when it is the only disabled publication", async () => {
     const requests: { path: string; init?: RequestInit }[] = [];
-    const fetchMock = vi.fn(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        const path = String(input);
-        requests.push({ path, init });
-        if (path === "/api/session?audience=admin") {
-          return json({
-            audience: "admin",
-            actor: {
-              id: "admin-test",
-              display_name: "测试管理员",
-              role: "admin",
-              tenant_id: "tenant-test",
-              org_id: "org-test",
-            },
-          });
-        }
-        if (path === "/api/admin/rulepacks/telecom-core/versions/1")
-          return json(detail);
-        if (path === "/api/admin/rulepacks/telecom-core/history")
-          return json(history);
-        if (
-          path === "/api/admin/rulepacks/telecom-core/rollback" &&
-          init?.method === "POST"
-        ) {
-          return json({
-            pack: { ...summary, is_active: true, active_pointer_revision: 8 },
-          });
-        }
-        return json(
-          {
-            error: {
-              code: "not_found",
-              message: "未找到测试路由",
-              retryable: false,
-            },
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      requests.push({ path, init });
+      if (path === "/api/session?audience=admin") {
+        return json({
+          audience: "admin",
+          actor: {
+            id: "admin-test",
+            display_name: "测试管理员",
+            role: "admin",
+            tenant_id: "tenant-test",
+            org_id: "org-test",
           },
-          404,
-        );
-      },
-    );
+        });
+      }
+      if (path === "/api/admin/rulepacks/telecom-core/versions/1") return json(detail);
+      if (path === "/api/admin/rulepacks/telecom-core/history") return json(history);
+      if (path === "/api/admin/rulepacks/telecom-core/rollback" && init?.method === "POST") {
+        return json({
+          pack: { ...summary, is_active: true, active_pointer_revision: 8 },
+        });
+      }
+      return json(
+        {
+          error: {
+            code: "not_found",
+            message: "未找到测试路由",
+            retryable: false,
+          },
+        },
+        404,
+      );
+    });
     vi.stubGlobal("fetch", fetchMock);
     const client = new QueryClient({
       defaultOptions: {
@@ -183,24 +174,20 @@ describe("RulePack inactive published version rollback", () => {
       expect(
         requests.some(
           ({ path, init }) =>
-            path === "/api/admin/rulepacks/telecom-core/rollback" &&
-            init?.method === "POST",
+            path === "/api/admin/rulepacks/telecom-core/rollback" && init?.method === "POST",
         ),
       ).toBe(true),
     );
     const rollbackRequest = requests.find(
       ({ path, init }) =>
-        path === "/api/admin/rulepacks/telecom-core/rollback" &&
-        init?.method === "POST",
+        path === "/api/admin/rulepacks/telecom-core/rollback" && init?.method === "POST",
     );
     expect(JSON.parse(String(rollbackRequest?.init?.body))).toEqual({
       version: "1",
       expected_pointer_revision: 7,
     });
     expect(
-      (rollbackRequest?.init?.headers as Record<string, string>)?.[
-        "Idempotency-Key"
-      ],
+      (rollbackRequest?.init?.headers as Record<string, string>)?.["Idempotency-Key"],
     ).toBeTruthy();
   });
 });
@@ -300,14 +287,12 @@ function renderDetail(
             org_id: "org-test",
           },
         });
-      if (path === "/api/admin/rulepacks/telecom-core/history")
-        return json({ items: entries });
+      if (path === "/api/admin/rulepacks/telecom-core/history") return json({ items: entries });
       if (init?.method === "POST" || init?.method === "PUT")
         return mutation(path, init, (next) => {
           current = next;
         });
-      if (path === "/api/admin/rulepacks/telecom-core/versions/1")
-        return json(current);
+      if (path === "/api/admin/rulepacks/telecom-core/versions/1") return json(current);
       return json(
         {
           error: {
@@ -346,25 +331,18 @@ function renderDetail(
 }
 
 function mutations(requests: { path: string; init?: RequestInit }[]) {
-  return requests.filter(
-    ({ init }) => init?.method === "POST" || init?.method === "PUT",
-  );
+  return requests.filter(({ init }) => init?.method === "POST" || init?.method === "PUT");
 }
 
 function requestBody(request: { init?: RequestInit } | undefined) {
   return JSON.parse(String(request?.init?.body));
 }
 
-function idempotencyKey(
-  request: { init?: RequestInit } | undefined,
-): string | null {
+function idempotencyKey(request: { init?: RequestInit } | undefined): string | null {
   return new Headers(request?.init?.headers).get("Idempotency-Key");
 }
 
-async function clickAction(
-  user: ReturnType<typeof userEvent.setup>,
-  name: string,
-) {
+async function clickAction(user: ReturnType<typeof userEvent.setup>, name: string) {
   const button = await screen.findByRole("button", { name });
   await waitFor(() => expect(button).toBeEnabled());
   await user.click(button);
@@ -376,10 +354,7 @@ function firstThreshold(value: string) {
   });
 }
 
-async function chooseHistoryVersion(
-  user: ReturnType<typeof userEvent.setup>,
-  name: string,
-) {
+async function chooseHistoryVersion(user: ReturnType<typeof userEvent.setup>, name: string) {
   await user.click(screen.getByRole("combobox", { name: "目标历史版本" }));
   const normalized = name.replace(/\s*，\s*/, "\\s*，\\s*");
   const options = await screen.findAllByRole("option", {
@@ -398,13 +373,9 @@ describe("RulePackDetailPage draft concurrency", () => {
       return json(saved);
     });
     const user = userEvent.setup();
-    expect(
-      await screen.findByRole("button", { name: "保存草稿" }),
-    ).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "保存草稿" })).toBeDisabled();
     expect(screen.getByLabelText("规则包 ID")).toHaveAttribute("readonly");
-    expect(screen.getByLabelText("版本", { exact: true })).toHaveAttribute(
-      "readonly",
-    );
+    expect(screen.getByLabelText("版本", { exact: true })).toHaveAttribute("readonly");
     firstThreshold(" ");
     expect(screen.getByRole("button", { name: "验证草稿" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "保存草稿" }));
@@ -412,9 +383,7 @@ describe("RulePackDetailPage draft concurrency", () => {
     expect(mutations(requests)).toHaveLength(0);
     firstThreshold("00125.00");
     await user.click(screen.getByRole("button", { name: "保存草稿" }));
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled(),
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled());
     expect(screen.getByRole("button", { name: "验证草稿" })).toBeEnabled();
     expect(mutations(requests)).toHaveLength(1);
     const request = mutations(requests)[0]!;
@@ -427,9 +396,11 @@ describe("RulePackDetailPage draft concurrency", () => {
       value: "00125.00",
       unit: "Mbit/s",
     });
-    expect(
-      body.manifest.rules.map((rule: { tenant_id: string }) => rule.tenant_id),
-    ).toEqual(["tenant-test", "tenant-test", "tenant-test"]);
+    expect(body.manifest.rules.map((rule: { tenant_id: string }) => rule.tenant_id)).toEqual([
+      "tenant-test",
+      "tenant-test",
+      "tenant-test",
+    ]);
     expect(screen.getAllByLabelText("比较阈值")[0]).toHaveValue("00125.00");
   });
 
@@ -461,32 +432,24 @@ describe("RulePackDetailPage draft concurrency", () => {
     await screen.findByRole("button", { name: "保存草稿" });
     firstThreshold("175.00");
     await user.click(screen.getByRole("button", { name: "保存草稿" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Row revision changed",
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("Row revision changed");
     const adopt = await screen.findByRole("button", {
       name: "下一次保存使用服务器修订 6",
     });
     expect(screen.getAllByLabelText("比较阈值")[0]).toHaveValue("175.00");
     expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
-    await user.click(
-      screen.getByRole("button", { name: "重读服务器版本（保留本地修改）" }),
-    );
+    await user.click(screen.getByRole("button", { name: "重读服务器版本（保留本地修改）" }));
     expect(screen.getAllByLabelText("比较阈值")[0]).toHaveValue("175.00");
     await user.click(adopt);
     expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "保存草稿" }));
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled(),
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled());
     expect(
       mutations(requests)
         .map(requestBody)
         .map((body) => body.expected_revision),
     ).toEqual([4, 6]);
-    expect(
-      requestBody(mutations(requests)[1]).manifest.rules[0].threshold.value,
-    ).toBe("175.00");
+    expect(requestBody(mutations(requests)[1]).manifest.rules[0].threshold.value).toBe("175.00");
     expect(
       screen.queryByRole("button", { name: /下一次保存使用服务器修订/ }),
     ).not.toBeInTheDocument();
@@ -503,46 +466,41 @@ describe("RulePackDetailPage lifecycle transitions", () => {
     disabled.pack.revision = 8;
     disabled.pack.active_pointer_revision = 9;
     disabled.pack.is_active = false;
-    const requests = renderDetail(
-      versionDetail("draft"),
-      (path, _init, setDetail) => {
-        if (path.endsWith("/validate")) {
-          setDetail(validated);
-          return json(validated);
-        }
-        if (path.endsWith("/approve")) {
-          setDetail(approved);
-          return json(approved);
-        }
-        if (path.endsWith("/publish")) {
-          setDetail(published);
-          return json({ pack: published.pack });
-        }
-        if (path.endsWith("/disable")) {
-          setDetail(disabled);
-          return json({ pack: disabled.pack });
-        }
-        return json(
-          {
-            error: {
-              code: "unexpected_action",
-              message: "Unexpected action",
-              retryable: false,
-            },
+    const requests = renderDetail(versionDetail("draft"), (path, _init, setDetail) => {
+      if (path.endsWith("/validate")) {
+        setDetail(validated);
+        return json(validated);
+      }
+      if (path.endsWith("/approve")) {
+        setDetail(approved);
+        return json(approved);
+      }
+      if (path.endsWith("/publish")) {
+        setDetail(published);
+        return json({ pack: published.pack });
+      }
+      if (path.endsWith("/disable")) {
+        setDetail(disabled);
+        return json({ pack: disabled.pack });
+      }
+      return json(
+        {
+          error: {
+            code: "unexpected_action",
+            message: "Unexpected action",
+            retryable: false,
           },
-          400,
-        );
-      },
-    );
+        },
+        400,
+      );
+    });
     const user = userEvent.setup();
     await clickAction(user, "验证草稿");
     await clickAction(user, "批准此内容摘要");
     await clickAction(user, "发布此版本");
     await clickAction(user, "停用活动指针");
     await waitFor(() =>
-      expect(
-        screen.queryByRole("button", { name: "停用活动指针" }),
-      ).not.toBeInTheDocument(),
+      expect(screen.queryByRole("button", { name: "停用活动指针" })).not.toBeInTheDocument(),
     );
     const actions = mutations(requests);
     expect(actions.map(({ path }) => path.split("/").at(-1))).toEqual([
@@ -558,12 +516,8 @@ describe("RulePackDetailPage lifecycle transitions", () => {
       { expected_revision: 7, expected_pointer_revision: 8 },
     ]);
     expect(idempotencyKey(actions[2])).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: "保存草稿" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "规则内容（只读）" }),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存草稿" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "规则内容（只读）" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "版本与来源信息" }));
     expect(screen.getByText(/verifier-3/)).toBeInTheDocument();
     expect(screen.getByText(/approver-test/)).toBeInTheDocument();
@@ -592,17 +546,9 @@ describe("RulePackDetailPage lifecycle transitions", () => {
     });
     const user = userEvent.setup();
     await clickAction(user, "发布此版本");
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Publish outcome unknown",
-    );
-    await user.click(
-      screen.getByRole("button", { name: "重试上一次请求" }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "停用活动指针" }),
-      ).toBeEnabled(),
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("Publish outcome unknown");
+    await user.click(screen.getByRole("button", { name: "重试上一次请求" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "停用活动指针" })).toBeEnabled());
     const actions = mutations(requests);
     expect(actions).toHaveLength(2);
     expect(requestBody(actions[0])).toEqual({
@@ -615,9 +561,7 @@ describe("RulePackDetailPage lifecycle transitions", () => {
     });
     expect(idempotencyKey(actions[0])).toBeTruthy();
     expect(idempotencyKey(actions[1])).toBe(idempotencyKey(actions[0]));
-    expect(
-      screen.queryByRole("button", { name: "重试上一次请求" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试上一次请求" })).not.toBeInTheDocument();
   });
 
   it("refreshes a pointer conflict and uses a new operation identity for the revised publish", async () => {
@@ -626,35 +570,28 @@ describe("RulePackDetailPage lifecycle transitions", () => {
     const published = versionDetail("published", 7);
     published.pack.active_pointer_revision = 10;
     let attempts = 0;
-    const requests = renderDetail(
-      versionDetail("approved", 6),
-      (_path, _init, setDetail) => {
-        if (++attempts === 1) {
-          setDetail(refreshed);
-          return json(
-            {
-              error: {
-                code: "conflict",
-                message: "Pointer revision changed",
-                retryable: false,
-              },
+    const requests = renderDetail(versionDetail("approved", 6), (_path, _init, setDetail) => {
+      if (++attempts === 1) {
+        setDetail(refreshed);
+        return json(
+          {
+            error: {
+              code: "conflict",
+              message: "Pointer revision changed",
+              retryable: false,
             },
-            409,
-          );
-        }
-        setDetail(published);
-        return json(published);
-      },
-    );
+          },
+          409,
+        );
+      }
+      setDetail(published);
+      return json(published);
+    });
     const user = userEvent.setup();
     await clickAction(user, "发布此版本");
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Pointer revision changed",
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("Pointer revision changed");
     await screen.findByText(/指针修订 9/);
-    expect(
-      screen.queryByRole("button", { name: "重试上一次请求" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试上一次请求" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "发布此版本" }));
     await screen.findByRole("button", { name: "停用活动指针" });
     const actions = mutations(requests);
@@ -669,32 +606,23 @@ describe("RulePackDetailPage lifecycle transitions", () => {
     const inactive = versionDetail("published", 5);
     inactive.pack.is_active = false;
     inactive.pack.active_pointer_revision = 8;
-    const requests = renderDetail(
-      versionDetail("published"),
-      (_path, _init, setDetail) => {
-        setDetail(inactive);
-        return json(
-          {
-            error: {
-              code: "conflict",
-              message: "Already disabled",
-              retryable: false,
-            },
+    const requests = renderDetail(versionDetail("published"), (_path, _init, setDetail) => {
+      setDetail(inactive);
+      return json(
+        {
+          error: {
+            code: "conflict",
+            message: "Already disabled",
+            retryable: false,
           },
-          409,
-        );
-      },
-    );
-    await userEvent
-      .setup()
-      .click(await screen.findByRole("button", { name: "停用活动指针" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Already disabled",
-    );
+        },
+        409,
+      );
+    });
+    await userEvent.setup().click(await screen.findByRole("button", { name: "停用活动指针" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Already disabled");
     await waitFor(() =>
-      expect(
-        screen.queryByRole("button", { name: "停用活动指针" }),
-      ).not.toBeInTheDocument(),
+      expect(screen.queryByRole("button", { name: "停用活动指针" })).not.toBeInTheDocument(),
     );
     expect(requestBody(mutations(requests)[0])).toEqual({
       expected_revision: 4,
@@ -708,17 +636,11 @@ describe("RulePackDetailPage lifecycle transitions", () => {
     anotherTenant.pack.tenant_id = "tenant-other";
     anotherTenant.manifest.tenant_id = "tenant-other";
     const requests = renderDetail(anotherTenant, () => json({}));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      /可信租户与规则包不一致/,
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(/可信租户与规则包不一致/);
     expect(screen.getByRole("button", { name: "发布此版本" })).toBeDisabled();
     expect(screen.getByLabelText("目标历史版本")).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "回滚到所选版本" }),
-    ).toBeDisabled();
-    expect(
-      screen.queryByRole("button", { name: "保存草稿" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "回滚到所选版本" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "保存草稿" })).not.toBeInTheDocument();
     expect(mutations(requests)).toHaveLength(0);
   });
 });
@@ -795,33 +717,21 @@ describe("RulePackDetailPage history and rollback", () => {
     );
     const user = userEvent.setup();
     const target = await screen.findByLabelText("目标历史版本");
-    expect(
-      screen.getByRole("button", { name: "回滚到所选版本" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "回滚到所选版本" })).toBeDisabled();
     expect(screen.getByText(/v2 生效 → v2 未生效/)).toBeInTheDocument();
     await user.click(target);
     expect(await screen.findAllByRole("option")).toHaveLength(3);
     expect(
       screen.getAllByRole("option", { name: /telecom-core\s*，\s*v2/ }).at(-1),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "telecom-core， v9" }),
-    ).not.toBeInTheDocument();
-    await user.click(
-      screen.getAllByRole("option", { name: /telecom-core\s*，\s*v2/ }).at(-1)!,
-    );
+    expect(screen.queryByRole("option", { name: "telecom-core， v9" })).not.toBeInTheDocument();
+    await user.click(screen.getAllByRole("option", { name: /telecom-core\s*，\s*v2/ }).at(-1)!);
     await user.click(screen.getByRole("button", { name: "回滚到所选版本" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Rollback outcome unknown",
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("Rollback outcome unknown");
     await chooseHistoryVersion(user, "telecom-core， v1");
-    await user.click(
-      screen.getByRole("button", { name: "重试上一次请求" }),
-    );
+    await user.click(screen.getByRole("button", { name: "重试上一次请求" }));
     await waitFor(() =>
-      expect(
-        screen.queryByRole("button", { name: "重试上一次请求" }),
-      ).not.toBeInTheDocument(),
+      expect(screen.queryByRole("button", { name: "重试上一次请求" })).not.toBeInTheDocument(),
     );
     const actions = mutations(requests);
     expect(actions).toHaveLength(2);
@@ -894,11 +804,7 @@ describe("RulePackDetailPage in-flight actions", () => {
           resulting_active: false,
         },
       ];
-      const requests = renderDetail(
-        versionDetail(state),
-        () => response,
-        entries,
-      );
+      const requests = renderDetail(versionDetail(state), () => response, entries);
       const user = userEvent.setup();
       await screen.findByRole("button", { name: action });
       if (rollback) {
@@ -925,12 +831,8 @@ describe("RulePackDetailPage in-flight actions", () => {
       const error = await screen.findByRole("alert");
       expect(error).toHaveTextContent("Action no longer permitted");
       expect(error).toHaveFocus();
-      await waitFor(() =>
-        expect(screen.getByRole("button", { name: action })).toBeEnabled(),
-      );
-      expect(
-        screen.queryByRole("button", { name: "重试上一次请求" }),
-      ).not.toBeInTheDocument();
+      await waitFor(() => expect(screen.getByRole("button", { name: action })).toBeEnabled());
+      expect(screen.queryByRole("button", { name: "重试上一次请求" })).not.toBeInTheDocument();
     },
   );
 });
@@ -963,13 +865,9 @@ describe("RulePackDetailPage pending save", () => {
         503,
       ),
     );
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Draft could not be persisted",
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("Draft could not be persisted");
     expect(screen.getAllByLabelText("比较阈值")[0]).toHaveValue("150.000");
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled(),
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled());
     expect(screen.getByRole("button", { name: "验证草稿" })).toBeDisabled();
   });
 });

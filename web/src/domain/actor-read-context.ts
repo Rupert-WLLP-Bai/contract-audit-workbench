@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-03
-// Updated: 2026-11-03
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,9 +14,15 @@ import type { Actor } from "../api/types";
 export function actorReadContextKey(actor: Actor | null): string {
   if (actor === null) return "";
   return JSON.stringify([
-    actor.audience, actor.tenant_id, actor.org_id, actor.id, actor.role,
-    actor.principal_id, actor.active_context?.membership_id,
+    actor.audience,
+    actor.tenant_id,
+    actor.org_id,
+    actor.id,
+    actor.role,
+    actor.principal_id,
+    actor.active_context?.membership_id,
     actor.active_context?.context_version,
-    actor.active_context?.tenant_id, actor.active_context?.org_id,
+    actor.active_context?.tenant_id,
+    actor.active_context?.org_id,
   ]);
 }

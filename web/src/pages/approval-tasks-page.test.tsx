@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-01
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -255,12 +255,7 @@ class ApprovalService {
     if (url.pathname === "/api/approval-tasks" && method === "GET") {
       const view = url.searchParams.get("view");
       return json({
-        items:
-          view === "done"
-            ? [doneItem]
-            : view === "initiated"
-              ? [initiatedItem]
-              : [todoItem],
+        items: view === "done" ? [doneItem] : view === "initiated" ? [initiatedItem] : [todoItem],
         next_cursor: null,
         has_more: false,
       });
@@ -268,10 +263,7 @@ class ApprovalService {
     if (url.pathname === "/api/approval-tasks/task-1" && method === "GET") {
       return json({ selected_task_id: "task-1", round_detail: taskRoundDetail() });
     }
-    if (
-      url.pathname === "/api/contracts/contract-1/approval-rounds" &&
-      method === "GET"
-    ) {
+    if (url.pathname === "/api/contracts/contract-1/approval-rounds" && method === "GET") {
       return json({
         items: [
           {
@@ -291,16 +283,10 @@ class ApprovalService {
         has_more: false,
       });
     }
-    if (
-      url.pathname === "/api/contracts/contract-1/approval-rounds/round-2" &&
-      method === "GET"
-    ) {
+    if (url.pathname === "/api/contracts/contract-1/approval-rounds/round-2" && method === "GET") {
       return json(initiatedRoundDetail());
     }
-    if (
-      url.pathname === "/api/contracts/contract-1/approval-rounds/round-1" &&
-      method === "GET"
-    ) {
+    if (url.pathname === "/api/contracts/contract-1/approval-rounds/round-1" && method === "GET") {
       return json({
         ...initiatedRoundDetail(),
         round: roundOne,
@@ -309,16 +295,10 @@ class ApprovalService {
         revision_diff: null,
       });
     }
-    if (
-      url.pathname === "/api/approval-tasks/task-1/decisions" &&
-      method === "POST"
-    ) {
+    if (url.pathname === "/api/approval-tasks/task-1/decisions" && method === "POST") {
       if (this.conflictsRemaining > 0) {
         this.conflictsRemaining -= 1;
-        return json(
-          { error: { code: "conflict", message: "任务已被他人处理" } },
-          409,
-        );
+        return json({ error: { code: "conflict", message: "任务已被他人处理" } }, 409);
       }
       return json({
         decision_id: "decision-3",
@@ -391,29 +371,27 @@ describe("approval tasks page", () => {
     expect(within(todo).getByText("部门负责人")).toBeInTheDocument();
     expect(screen.getByText(/已加载/)).toHaveTextContent("已加载 1 项");
     expect(
-      service.calls.some(
-        (call) => call.path === "/api/approval-tasks" && call.view === "todo",
-      ),
+      service.calls.some((call) => call.path === "/api/approval-tasks" && call.view === "todo"),
     ).toBe(true);
 
     await user.click(screen.getByRole("tab", { name: "我已审批" }));
     const done = await screen.findByRole("region", { name: "我已审批" });
     expect(await within(done).findByText("框架服务合同")).toBeInTheDocument();
     expect(within(done).getByText("通过")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "我已审批" })).toHaveAttribute("aria-selected", "true");
     expect(
-      screen.getByRole("tab", { name: "我已审批" }),
-    ).toHaveAttribute("aria-selected", "true");
-    expect(service.calls.some((call) =>
-      call.path === "/api/approval-tasks" && call.view === "done",
-    )).toBe(true);
+      service.calls.some((call) => call.path === "/api/approval-tasks" && call.view === "done"),
+    ).toBe(true);
 
     await user.click(screen.getByRole("tab", { name: "我发起的" }));
     const initiated = await screen.findByRole("region", { name: "我发起的" });
     expect(await within(initiated).findByText("已退回合同")).toBeInTheDocument();
     expect(within(initiated).getByText("已退回")).toBeInTheDocument();
-    expect(service.calls.some((call) =>
-      call.path === "/api/approval-tasks" && call.view === "initiated",
-    )).toBe(true);
+    expect(
+      service.calls.some(
+        (call) => call.path === "/api/approval-tasks" && call.view === "initiated",
+      ),
+    ).toBe(true);
   });
 
   it("keeps a failed decision unapproved and retries with the same idempotency key", async () => {
@@ -424,7 +402,9 @@ describe("approval tasks page", () => {
 
     const panel = await screen.findByRole("complementary", { name: "会签详情" });
     expect((await within(panel).findAllByText(/部门负责人/)).length).toBeGreaterThan(0);
-    expect(within(panel).getByText(/风险处置未配置|未配置，不能视为已接受风险/)).toBeInTheDocument();
+    expect(
+      within(panel).getByText(/风险处置未配置|未配置，不能视为已接受风险/),
+    ).toBeInTheDocument();
 
     await user.click(within(panel).getByRole("button", { name: "通过" }));
     expect(await within(panel).findByText("请填写审批意见或退回理由。")).toBeInTheDocument();
@@ -436,9 +416,7 @@ describe("approval tasks page", () => {
     );
     await user.click(within(panel).getByRole("button", { name: "通过" }));
 
-    expect(
-      await within(panel).findByText(/当前任务或轮次已经变化/),
-    ).toBeInTheDocument();
+    expect(await within(panel).findByText(/当前任务或轮次已经变化/)).toBeInTheDocument();
     expect(within(panel).queryByText(/服务端已确认/)).not.toBeInTheDocument();
     const posts = service.calls.filter((call) => call.method === "POST");
     expect(posts).toHaveLength(1);
@@ -451,20 +429,14 @@ describe("approval tasks page", () => {
     });
 
     await waitFor(() =>
-      expect(
-        within(panel).getByText(/当前任务或轮次已经变化/),
-      ).toBeInTheDocument(),
+      expect(within(panel).getByText(/当前任务或轮次已经变化/)).toBeInTheDocument(),
     );
     await user.click(buttonWithText(panel, "通过"));
-    expect(
-      await within(panel).findByText(/服务端已确认/),
-    ).toBeInTheDocument();
+    expect(await within(panel).findByText(/服务端已确认/)).toBeInTheDocument();
     const retried = service.calls.filter((call) => call.method === "POST");
     expect(retried).toHaveLength(2);
     expect(retried[1]?.idempotencyKey).toBe(retried[0]?.idempotencyKey);
-    expect(
-      within(panel).getByText(/第 2 轮 会签中，当前节点 1 为已通过/),
-    ).toBeInTheDocument();
+    expect(within(panel).getByText(/第 2 轮 会签中，当前节点 1 为已通过/)).toBeInTheDocument();
   });
 
   it("shows historical rounds read-only and never offers a decision on them", async () => {
@@ -477,23 +449,18 @@ describe("approval tasks page", () => {
     expect(await within(panel).findByText("请补充付款节点。")).toBeInTheDocument();
     expect(within(panel).getByText(/未配置，不能视为已接受风险/)).toBeInTheDocument();
     expect(within(panel).queryByRole("button", { name: "通过" })).not.toBeInTheDocument();
-    expect(
-      within(panel).queryByRole("button", { name: "退回修改" }),
-    ).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "退回修改" })).not.toBeInTheDocument();
 
     const history = within(await screen.findByRole("region", { name: "轮次历史" }));
     expect(await history.findByRole("button", { name: /第 2 轮/ })).toBeInTheDocument();
     expect(history.getByRole("button", { name: /第 1 轮/ })).toBeInTheDocument();
-    expect(
-      history.getAllByText(/1\/1 个节点已决定/).length,
-    ).toBeGreaterThan(0);
+    expect(history.getAllByText(/1\/1 个节点已决定/).length).toBeGreaterThan(0);
 
     await user.click(history.getByRole("button", { name: /第 1 轮/ }));
     await waitFor(() =>
       expect(
         service.calls.some(
-          (call) =>
-            call.path === "/api/contracts/contract-1/approval-rounds/round-1",
+          (call) => call.path === "/api/contracts/contract-1/approval-rounds/round-1",
         ),
       ).toBe(true),
     );
@@ -501,9 +468,7 @@ describe("approval tasks page", () => {
       name: "会签详情",
     });
     await waitFor(() =>
-      expect(
-        within(updatedPanel).queryByRole("button", { name: "通过" }),
-      ).not.toBeInTheDocument(),
+      expect(within(updatedPanel).queryByRole("button", { name: "通过" })).not.toBeInTheDocument(),
     );
     expect(within(updatedPanel).getByText("首轮会签，没有上一轮可比较。")).toBeInTheDocument();
   });

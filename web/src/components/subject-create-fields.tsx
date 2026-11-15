@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-08
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -35,21 +35,19 @@ export function SubjectCreateFields() {
       <Form.Item
         label="统一社会信用代码（可选）"
         name="identifier_value"
-        rules={[{
-          validator: async (_rule, value: unknown) => {
-            if (typeof value !== "string" || value.trim() === "") return;
-            if (!usccPattern.test(value.trim().toUpperCase()))
-              throw new Error("请输入18位统一社会信用代码");
+        rules={[
+          {
+            validator: async (_rule, value: unknown) => {
+              if (typeof value !== "string" || value.trim() === "") return;
+              if (!usccPattern.test(value.trim().toUpperCase()))
+                throw new Error("请输入18位统一社会信用代码");
+            },
           },
-        }]}
+        ]}
       >
         <Input autoComplete="off" maxLength={18} />
       </Form.Item>
-      <Alert
-        type="info"
-        showIcon
-        title="新主体默认为待核验，由经办人录入名称和标识。"
-      />
+      <Alert type="info" showIcon title="新主体默认为待核验，由经办人录入名称和标识。" />
     </>
   );
 }
@@ -67,11 +65,13 @@ export function subjectCreateInput(values: SubjectCreateFormValues): SubjectCrea
     ...(identifierValue === ""
       ? {}
       : {
-          identifiers: [{
-            namespace: "cn.gov.samr.uscc",
-            identifier_type: "unified_social_credit_code",
-            value: identifierValue,
-          }],
+          identifiers: [
+            {
+              namespace: "cn.gov.samr.uscc",
+              identifier_type: "unified_social_credit_code",
+              value: identifierValue,
+            },
+          ],
         }),
   };
 }

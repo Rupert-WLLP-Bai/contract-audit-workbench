@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-04
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,8 +15,9 @@ import type { ReactNode } from "react";
 export const caseSelectPresentation = {
   virtual: false,
   styles: { popup: { listItem: { whiteSpace: "normal" as const } } },
-  optionRender: (option: { label?: ReactNode }) =>
-    <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{option.label}</div>,
+  optionRender: (option: { label?: ReactNode }) => (
+    <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{option.label}</div>
+  ),
   labelRender: ({ label }: { label: ReactNode }) =>
     typeof label === "string" ? label.split(" · ").slice(0, 2).join(" · ") : label,
 };

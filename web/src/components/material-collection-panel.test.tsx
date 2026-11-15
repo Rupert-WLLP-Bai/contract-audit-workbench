@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-08
-// Revision: r3
+// Updated: 2026-11-15
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,7 +12,12 @@ import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setSessionIdentity } from "../api/http";
-import type { CaseDetail, DocumentVersion, MaterialProjection, MaterialVersionProjection } from "../api/types";
+import type {
+  CaseDetail,
+  DocumentVersion,
+  MaterialProjection,
+  MaterialVersionProjection,
+} from "../api/types";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { MaterialCollectionPanel } from "./material-collection-panel";
 
@@ -30,12 +35,13 @@ vi.mock("../api/queries", () => ({
 }));
 
 vi.mock("../api/idempotency", () => ({
-  fileSha256: (file: File) => new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(`content:${String(reader.result)}`);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsText(file);
-  }),
+  fileSha256: (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(`content:${String(reader.result)}`);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(file);
+    }),
   idempotencyFingerprint: async (value: string) => {
     let hash = 2166136261;
     for (const char of value) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
@@ -86,12 +92,15 @@ const emptyDetail: CaseDetail = {
     version: 3,
     status: "not_applicable",
     document_ids: [],
-      candidate_document_ids: [],
+    candidate_document_ids: [],
     primary_material_id: null,
   },
 };
 
-function material(overrides: Partial<MaterialProjection> & Pick<MaterialProjection, "material_id" | "role" | "purpose" | "current_document_id">): MaterialProjection {
+function material(
+  overrides: Partial<MaterialProjection> &
+    Pick<MaterialProjection, "material_id" | "role" | "purpose" | "current_document_id">,
+): MaterialProjection {
   return {
     legacy_status: "native",
     legacy_selected: false,
@@ -102,7 +111,14 @@ function material(overrides: Partial<MaterialProjection> & Pick<MaterialProjecti
 }
 
 function state(overrides: Record<string, unknown> = {}) {
-  return { mutate: vi.fn(), isPending: false, isError: false, error: null, data: undefined, ...overrides };
+  return {
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: undefined,
+    ...overrides,
+  };
 }
 
 function renderPanel(caseDetail = emptyDetail) {
@@ -110,18 +126,30 @@ function renderPanel(caseDetail = emptyDetail) {
 }
 
 beforeEach(() => {
-  setSessionIdentity({ id: "actor-1", role: "clerk", audience: "client", tenant_id: "tenant", org_id: "org", active_context: { context_version: "1" }, csrf_token: "c".repeat(32) });
+  setSessionIdentity({
+    id: "actor-1",
+    role: "clerk",
+    audience: "client",
+    tenant_id: "tenant",
+    org_id: "org",
+    active_context: { context_version: "1" },
+    csrf_token: "c".repeat(32),
+  });
   sessionStorage.clear();
   mocks.idempotencyCounter = 0;
   mocks.useUploadDocument.mockReturnValue(state());
   mocks.useReparse.mockReturnValue(state());
   mocks.useConfirmLegacyMaterialSelection.mockReturnValue(state());
 });
-afterEach(() => { setSessionIdentity(null); });
+afterEach(() => {
+  setSessionIdentity(null);
+});
 
 describe("material collection behavior", () => {
   it("keeps upload success copy usable without exposing random identities", () => {
-    mocks.useUploadDocument.mockReturnValue(state({ data: { id: "doc-random", material_id: "mat-random", version: 2, replayed: true } }));
+    mocks.useUploadDocument.mockReturnValue(
+      state({ data: { id: "doc-random", material_id: "mat-random", version: 2, replayed: true } }),
+    );
     renderPanel();
     const status = screen.getByText("此前提交已成功，当前第 2 版。");
     expect(status).toHaveAttribute("data-document-id", "doc-random");
@@ -137,7 +165,10 @@ describe("material collection behavior", () => {
     const user = userEvent.setup();
     renderPanel();
     await chooseOption(user, screen.getByRole("combobox", { name: "材料角色" }), "附件");
-    await user.upload(screen.getByLabelText("文件"), new File(["正文"], "技术附件.txt", { type: "text/plain" }));
+    await user.upload(
+      screen.getByLabelText("文件"),
+      new File(["正文"], "技术附件.txt", { type: "text/plain" }),
+    );
     await user.click(screen.getByRole("button", { name: "新增材料" }));
     expect(mutate).toHaveBeenCalledTimes(1);
     const input = mutate.mock.calls[0]![0];
@@ -148,7 +179,10 @@ describe("material collection behavior", () => {
     const options = mutate.mock.calls[0]![1] as { onSuccess: () => void };
     await act(async () => options.onSuccess());
     await waitFor(() => expect(screen.getByLabelText("文件")).not.toBeDisabled());
-    await user.upload(screen.getByLabelText("文件"), new File(["正文"], "技术附件.txt", { type: "text/plain" }));
+    await user.upload(
+      screen.getByLabelText("文件"),
+      new File(["正文"], "技术附件.txt", { type: "text/plain" }),
+    );
     await user.click(screen.getByRole("button", { name: "新增材料" }));
     expect(mutate.mock.calls[1]![0].idempotency_key).not.toBe(input.idempotency_key);
   });
@@ -156,26 +190,57 @@ describe("material collection behavior", () => {
   it("shows a primary-contract route and sends the selected current document for explicit replacement", async () => {
     const mutate = vi.fn();
     mocks.useUploadDocument.mockReturnValue(state({ mutate }));
-    const primary = material({ material_id: "mat-primary", role: "draft_contract", purpose: "primary_contract", current_document_id: "doc-primary", current_version: 4 });
+    const primary = material({
+      material_id: "mat-primary",
+      role: "draft_contract",
+      purpose: "primary_contract",
+      current_document_id: "doc-primary",
+      current_version: 4,
+    });
     const detail: CaseDetail = {
       ...emptyDetail,
-      documents: [doc("doc-primary", "当前合同.txt", "draft_contract"), doc("doc-v3", "初始合同.txt", "draft_contract")],
+      documents: [
+        doc("doc-primary", "当前合同.txt", "draft_contract"),
+        doc("doc-v3", "初始合同.txt", "draft_contract"),
+      ],
       materials: [primary],
       material_versions: [
-        { material_id: "mat-primary", version: 3, document_id: "doc-v3", previous_document_id: null, created_at: at },
-        { material_id: "mat-primary", version: 4, document_id: "doc-primary", previous_document_id: "doc-v3", created_at: at },
+        {
+          material_id: "mat-primary",
+          version: 3,
+          document_id: "doc-v3",
+          previous_document_id: null,
+          created_at: at,
+        },
+        {
+          material_id: "mat-primary",
+          version: 4,
+          document_id: "doc-primary",
+          previous_document_id: "doc-v3",
+          created_at: at,
+        },
       ],
-      material_selection: { version: 4, status: "confirmed", document_ids: ["doc-primary"], primary_material_id: "mat-primary" },
+      material_selection: {
+        version: 4,
+        status: "confirmed",
+        document_ids: ["doc-primary"],
+        primary_material_id: "mat-primary",
+      },
     };
     const user = userEvent.setup();
     renderPanel(detail);
     await chooseOption(user, screen.getByRole("combobox", { name: "材料角色" }), "拟签合同");
     expect(screen.getByText(/已有主合同/)).toBeInTheDocument();
     await chooseOption(user, screen.getByRole("combobox", { name: "材料操作" }), "替换选中的材料");
-    expect(screen.getByText(/将替换“当前合同.txt”（主合同）当前第 4 版；若版本已更新，请刷新重试/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/将替换“当前合同.txt”（主合同）当前第 4 版；若版本已更新，请刷新重试/),
+    ).toBeInTheDocument();
     expect(screen.getByText(/替换自“初始合同.txt”第 3 版/)).toBeInTheDocument();
     expect(screen.queryByText("doc-v3")).not.toBeInTheDocument();
-    await user.upload(screen.getByLabelText("文件"), new File(["新正文"], "修订合同.txt", { type: "text/plain" }));
+    await user.upload(
+      screen.getByLabelText("文件"),
+      new File(["新正文"], "修订合同.txt", { type: "text/plain" }),
+    );
     await user.click(screen.getByRole("button", { name: "替换材料" }));
     expect(mutate.mock.calls[0]![0]).toMatchObject({
       intent: "replace",
@@ -185,24 +250,62 @@ describe("material collection behavior", () => {
   });
 
   it("only offers the server-designated primary chain for replacement", async () => {
-    const chain = material({ material_id: "mat-chain", role: "draft_contract", purpose: "primary_contract", current_document_id: "doc-chain", current_version: 2 });
-    const unrelated = material({ material_id: "mat-unrelated", role: "draft_contract", purpose: "primary_contract", current_document_id: "doc-unrelated", current_version: 7, legacy_status: "confirmed", legacy_selected: true, selected: false });
+    const chain = material({
+      material_id: "mat-chain",
+      role: "draft_contract",
+      purpose: "primary_contract",
+      current_document_id: "doc-chain",
+      current_version: 2,
+    });
+    const unrelated = material({
+      material_id: "mat-unrelated",
+      role: "draft_contract",
+      purpose: "primary_contract",
+      current_document_id: "doc-unrelated",
+      current_version: 7,
+      legacy_status: "confirmed",
+      legacy_selected: true,
+      selected: false,
+    });
     const detail: CaseDetail = {
       ...emptyDetail,
-      documents: [doc("doc-chain", "主链合同.txt", "draft_contract"), doc("doc-unrelated", "其他旧合同.txt", "draft_contract")],
+      documents: [
+        doc("doc-chain", "主链合同.txt", "draft_contract"),
+        doc("doc-unrelated", "其他旧合同.txt", "draft_contract"),
+      ],
       materials: [chain, unrelated],
       material_versions: [
-        { material_id: "mat-chain", version: 2, document_id: "doc-chain", previous_document_id: null, created_at: at },
-        { material_id: "mat-unrelated", version: 7, document_id: "doc-unrelated", previous_document_id: null, created_at: at },
+        {
+          material_id: "mat-chain",
+          version: 2,
+          document_id: "doc-chain",
+          previous_document_id: null,
+          created_at: at,
+        },
+        {
+          material_id: "mat-unrelated",
+          version: 7,
+          document_id: "doc-unrelated",
+          previous_document_id: null,
+          created_at: at,
+        },
       ],
-      material_selection: { version: 7, status: "confirmed", document_ids: ["doc-chain"], primary_material_id: "mat-chain" },
+      material_selection: {
+        version: 7,
+        status: "confirmed",
+        document_ids: ["doc-chain"],
+        primary_material_id: "mat-chain",
+      },
     };
     const user = userEvent.setup();
     renderPanel(detail);
     await chooseOption(user, screen.getByRole("combobox", { name: "材料角色" }), "拟签合同");
     await chooseOption(user, screen.getByRole("combobox", { name: "材料操作" }), "替换选中的材料");
     const target = screen.getByRole("combobox", { name: "要替换的材料" });
-    const selectedLabel = target.closest(".ant-select")?.querySelector(".ant-select-content")?.textContent?.trim();
+    const selectedLabel = target
+      .closest(".ant-select")
+      ?.querySelector(".ant-select-content")
+      ?.textContent?.trim();
     expect(selectedLabel).toContain("主链合同.txt，v2，本系统材料");
     await user.click(target);
     const options = screen.getAllByRole("option").map((item) => item.textContent?.trim());
@@ -216,15 +319,43 @@ describe("material collection behavior", () => {
     const mutate = vi.fn();
     mocks.useConfirmLegacyMaterialSelection.mockReturnValue(state({ mutate }));
     const materials = [
-      material({ material_id: "mat-a", role: "attachment", purpose: "supplement", current_document_id: "doc-a", legacy_status: "pending_confirmation", legacy_selected: true, selected: false }),
-      material({ material_id: "mat-b", role: "attachment", purpose: "supplement", current_document_id: "doc-b", legacy_status: "native", legacy_selected: false, selected: false }),
+      material({
+        material_id: "mat-a",
+        role: "attachment",
+        purpose: "supplement",
+        current_document_id: "doc-a",
+        legacy_status: "pending_confirmation",
+        legacy_selected: true,
+        selected: false,
+      }),
+      material({
+        material_id: "mat-b",
+        role: "attachment",
+        purpose: "supplement",
+        current_document_id: "doc-b",
+        legacy_status: "native",
+        legacy_selected: false,
+        selected: false,
+      }),
     ];
     const detail: CaseDetail = {
       ...emptyDetail,
       documents: [doc("doc-a", "补充A.txt", "attachment"), doc("doc-b", "补充B.txt", "attachment")],
       materials,
-      material_versions: materials.map((item): MaterialVersionProjection => ({ material_id: item.material_id, version: 1, document_id: item.current_document_id, previous_document_id: null, created_at: at })),
-      material_selection: { version: 9, status: "pending_confirmation", document_ids: [], candidate_document_ids: ["doc-a", "doc-b"], primary_material_id: null },
+      material_versions: materials.map((item): MaterialVersionProjection => ({
+        material_id: item.material_id,
+        version: 1,
+        document_id: item.current_document_id,
+        previous_document_id: null,
+        created_at: at,
+      })),
+      material_selection: {
+        version: 9,
+        status: "pending_confirmation",
+        document_ids: [],
+        candidate_document_ids: ["doc-a", "doc-b"],
+        primary_material_id: null,
+      },
     };
     const user = userEvent.setup();
     renderPanel(detail);
@@ -241,13 +372,36 @@ describe("material collection behavior", () => {
   it("does not mark unrelated legacy materials as superseded by a role-level latest document", () => {
     const detail: CaseDetail = {
       ...emptyDetail,
-      documents: [doc("doc-a", "同用途A.txt", "attachment"), doc("doc-b", "同用途B.txt", "attachment")],
+      documents: [
+        doc("doc-a", "同用途A.txt", "attachment"),
+        doc("doc-b", "同用途B.txt", "attachment"),
+      ],
       materials: [
-        material({ material_id: "mat-a", role: "attachment", purpose: "supplement", current_document_id: "doc-a", legacy_status: "pending_confirmation", selected: false }),
-        material({ material_id: "mat-b", role: "attachment", purpose: "supplement", current_document_id: "doc-b", legacy_status: "pending_confirmation", selected: false }),
+        material({
+          material_id: "mat-a",
+          role: "attachment",
+          purpose: "supplement",
+          current_document_id: "doc-a",
+          legacy_status: "pending_confirmation",
+          selected: false,
+        }),
+        material({
+          material_id: "mat-b",
+          role: "attachment",
+          purpose: "supplement",
+          current_document_id: "doc-b",
+          legacy_status: "pending_confirmation",
+          selected: false,
+        }),
       ],
       material_versions: [],
-      material_selection: { version: 1, status: "pending_confirmation", document_ids: [], candidate_document_ids: [], primary_material_id: null },
+      material_selection: {
+        version: 1,
+        status: "pending_confirmation",
+        document_ids: [],
+        candidate_document_ids: [],
+        primary_material_id: null,
+      },
     };
     renderPanel(detail);
     expect(screen.getByText("同用途A.txt")).toBeInTheDocument();
@@ -283,22 +437,67 @@ describe("material collection behavior", () => {
     const firstDetail: CaseDetail = {
       ...emptyDetail,
       documents: [doc("doc-a", "案件A材料.txt", "attachment")],
-      materials: [material({ material_id: "mat-a", role: "attachment", purpose: "supplement", current_document_id: "doc-a", legacy_status: "pending_confirmation", selected: false })],
+      materials: [
+        material({
+          material_id: "mat-a",
+          role: "attachment",
+          purpose: "supplement",
+          current_document_id: "doc-a",
+          legacy_status: "pending_confirmation",
+          selected: false,
+        }),
+      ],
       material_versions: [],
-      material_selection: { version: 5, status: "pending_confirmation", document_ids: [], candidate_document_ids: ["doc-a"], primary_material_id: null },
+      material_selection: {
+        version: 5,
+        status: "pending_confirmation",
+        document_ids: [],
+        candidate_document_ids: ["doc-a"],
+        primary_material_id: null,
+      },
     };
     const secondDetail: CaseDetail = {
       ...emptyDetail,
       id: "case-2",
       documents: [doc("doc-b", "案件B材料.txt", "attachment")],
-      materials: [material({ material_id: "mat-b", role: "attachment", purpose: "supplement", current_document_id: "doc-b", legacy_status: "native", legacy_selected: false, selected: false })],
+      materials: [
+        material({
+          material_id: "mat-b",
+          role: "attachment",
+          purpose: "supplement",
+          current_document_id: "doc-b",
+          legacy_status: "native",
+          legacy_selected: false,
+          selected: false,
+        }),
+      ],
       material_versions: [],
-      material_selection: { version: 5, status: "pending_confirmation", document_ids: [], candidate_document_ids: ["doc-b"], primary_material_id: null },
+      material_selection: {
+        version: 5,
+        status: "pending_confirmation",
+        document_ids: [],
+        candidate_document_ids: ["doc-b"],
+        primary_material_id: null,
+      },
     };
-    const view = render(<MaterialCollectionPanel key="case-1:actor-1" caseDetail={firstDetail} canWrite actorId="actor-1" />);
+    const view = render(
+      <MaterialCollectionPanel
+        key="case-1:actor-1"
+        caseDetail={firstDetail}
+        canWrite
+        actorId="actor-1"
+      />,
+    );
     expect(screen.getByRole("checkbox", { name: /案件A材料/ })).toBeChecked();
     await userEvent.setup().click(screen.getByRole("checkbox", { name: /案件A材料/ }));
-    view.rerender(<MaterialCollectionPanel key="case-2:actor-1" caseDetail={secondDetail} canWrite actorId="actor-1" />);
+    view.rerender(
+      <MaterialCollectionPanel
+        key="case-2:actor-1"
+        caseDetail={secondDetail}
+        canWrite
+        actorId="actor-1"
+      />,
+    );
     expect(screen.getByRole("checkbox", { name: /案件B材料/ })).toBeChecked();
     expect(screen.queryByText("案件A材料.txt")).not.toBeInTheDocument();
   });
@@ -307,12 +506,37 @@ describe("material collection behavior", () => {
     const detail: CaseDetail = {
       ...emptyDetail,
       documents: [doc("current", "现有合同.txt", "draft_contract")],
-      materials: [material({ material_id: "mat-1", role: "draft_contract", purpose: "primary_contract", current_document_id: "current", current_version: 2 })],
-      material_versions: [
-        { material_id: "mat-1", version: 1, document_id: "missing-document-id", previous_document_id: null, created_at: at },
-        { material_id: "mat-1", version: 2, document_id: "current", previous_document_id: "missing-document-id", created_at: at },
+      materials: [
+        material({
+          material_id: "mat-1",
+          role: "draft_contract",
+          purpose: "primary_contract",
+          current_document_id: "current",
+          current_version: 2,
+        }),
       ],
-      material_selection: { version: 1, status: "confirmed", document_ids: ["current"], primary_material_id: "mat-1" },
+      material_versions: [
+        {
+          material_id: "mat-1",
+          version: 1,
+          document_id: "missing-document-id",
+          previous_document_id: null,
+          created_at: at,
+        },
+        {
+          material_id: "mat-1",
+          version: 2,
+          document_id: "current",
+          previous_document_id: "missing-document-id",
+          created_at: at,
+        },
+      ],
+      material_selection: {
+        version: 1,
+        status: "confirmed",
+        document_ids: ["current"],
+        primary_material_id: "mat-1",
+      },
     };
     const user = userEvent.setup();
     renderPanel(detail);
@@ -327,15 +551,41 @@ describe("material collection behavior", () => {
     const detail: CaseDetail = {
       ...emptyDetail,
       documents: [doc("doc-1", "合同.txt", "draft_contract")],
-      materials: [material({ material_id: "mat-1", role: "draft_contract", purpose: "primary_contract", current_document_id: "doc-1" })],
-      material_versions: [{ material_id: "mat-1", version: 1, document_id: "doc-1", previous_document_id: null, created_at: at }],
-      material_selection: { version: 1, status: "confirmed", document_ids: ["doc-1"], primary_material_id: "mat-1" },
+      materials: [
+        material({
+          material_id: "mat-1",
+          role: "draft_contract",
+          purpose: "primary_contract",
+          current_document_id: "doc-1",
+        }),
+      ],
+      material_versions: [
+        {
+          material_id: "mat-1",
+          version: 1,
+          document_id: "doc-1",
+          previous_document_id: null,
+          created_at: at,
+        },
+      ],
+      material_selection: {
+        version: 1,
+        status: "confirmed",
+        document_ids: ["doc-1"],
+        primary_material_id: "mat-1",
+      },
     };
     const user = userEvent.setup();
     renderPanel(detail);
-    await user.upload(screen.getByLabelText("文件"), new File(["正文"], "草稿.txt", { type: "text/plain" }));
+    await user.upload(
+      screen.getByLabelText("文件"),
+      new File(["正文"], "草稿.txt", { type: "text/plain" }),
+    );
     await user.click(screen.getByRole("button", { name: "版本历史" }));
-    expect(screen.getByRole("button", { name: "版本历史" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "版本历史" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(screen.getByText("合同.txt · 主合同版本历史")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "解析记录" }));
     expect(screen.getByRole("heading", { name: "材料解析状态" })).toBeVisible();
@@ -348,9 +598,24 @@ describe("material collection behavior", () => {
     const detail: CaseDetail = {
       ...emptyDetail,
       documents: [doc("doc-legacy", "旧材料.txt", "attachment")],
-      materials: [material({ material_id: "mat-legacy", role: "attachment", purpose: "supplement", current_document_id: "doc-legacy", legacy_status: "pending_confirmation", legacy_selected: true, selected: false })],
+      materials: [
+        material({
+          material_id: "mat-legacy",
+          role: "attachment",
+          purpose: "supplement",
+          current_document_id: "doc-legacy",
+          legacy_status: "pending_confirmation",
+          legacy_selected: true,
+          selected: false,
+        }),
+      ],
       material_versions: [],
-      material_selection: { version: 2, status: "pending_confirmation", document_ids: [], primary_material_id: null },
+      material_selection: {
+        version: 2,
+        status: "pending_confirmation",
+        document_ids: [],
+        primary_material_id: null,
+      },
     };
     renderPanel(detail);
     expect(screen.getByText("材料信息暂不可用，请刷新重试或联系管理员。")).toBeInTheDocument();

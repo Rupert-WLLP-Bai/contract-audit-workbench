@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-05
-// Revision: r3
+// Updated: 2026-11-15
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -91,18 +91,26 @@ export const evidenceRequestsKey = (caseId: string) => ["evidence-requests", cas
 
 // Identity comes from the URL and the idempotency key from the header.
 export type CreateEvidenceRequestInput = Omit<
-  WireSchemas["EvidenceRequestCreate"], "case_id" | "idempotency_key"
+  WireSchemas["EvidenceRequestCreate"],
+  "case_id" | "idempotency_key"
 >;
 export type CreateEvidenceReceiptInput = Omit<
-  WireSchemas["EvidenceReceiptCreate"], "case_id" | "request_id" | "idempotency_key"
+  WireSchemas["EvidenceReceiptCreate"],
+  "case_id" | "request_id" | "idempotency_key"
 >;
 export type VerifyEvidenceRequestInput = Omit<
   WireSchemas["EvidenceRequestVerify"],
   "case_id" | "request_id" | "receipt_id" | "idempotency_key"
 >;
 
-const { invalid, object, text, optionalText, array, integer: safeInteger } =
-  responseReader((field) => `补充材料响应中的 ${field} 无法识别`);
+const {
+  invalid,
+  object,
+  text,
+  optionalText,
+  array,
+  integer: safeInteger,
+} = responseReader((field) => `补充材料响应中的 ${field} 无法识别`);
 const integer = (value: unknown, field: string, minimum = 1): number =>
   safeInteger(value, field, minimum);
 
@@ -135,32 +143,29 @@ function parseVerification(value: unknown): EvidenceVerification | null {
   };
 }
 
-function optionalSourceObject(
-  value: unknown,
-  label: string,
-): Record<string, unknown> | null {
+function optionalSourceObject(value: unknown, label: string): Record<string, unknown> | null {
   return value === undefined || value === null ? null : object(value, label);
 }
 
-function parseSourceEvaluation(
-  evaluation: Record<string, unknown>,
-): EvidenceSourceEvaluation {
+function parseSourceEvaluation(evaluation: Record<string, unknown>): EvidenceSourceEvaluation {
   return {
     id: text(evaluation.id, "source_evaluation.id"),
     domain: text(evaluation.domain, "source_evaluation.domain"),
     rule_version: text(evaluation.rule_version, "source_evaluation.rule_version"),
     rule_id: optionalText(evaluation.rule_id, "source_evaluation.rule_id") ?? "",
     capability_id: optionalText(evaluation.capability_id, "source_evaluation.capability_id") ?? "",
-    object_refs: evaluation.object_refs === undefined || evaluation.object_refs === null ? [] :
-      array(evaluation.object_refs, "source_evaluation.object_refs", (entry) => text(entry, "object_ref")),
+    object_refs:
+      evaluation.object_refs === undefined || evaluation.object_refs === null
+        ? []
+        : array(evaluation.object_refs, "source_evaluation.object_refs", (entry) =>
+            text(entry, "object_ref"),
+          ),
     relation: text(evaluation.relation, "source_evaluation.relation"),
     reason: text(evaluation.reason, "source_evaluation.reason"),
   };
 }
 
-function parseSourceGap(
-  gap: Record<string, unknown>,
-): EvidenceSourceGap {
+function parseSourceGap(gap: Record<string, unknown>): EvidenceSourceGap {
   return {
     gap_id: text(gap.gap_id, "source_gap.gap_id"),
     domain: text(gap.domain, "source_gap.domain"),
@@ -218,7 +223,7 @@ function parseReceipt(value: unknown): EvidenceReceipt {
   const item = object(value, "receipt");
   const documentId = optionalText(item.document_id, "receipt.document_id");
   const answer = optionalText(item.answer, "receipt.answer");
-  if ((!documentId) === (!answer)) return invalid("receipt 内容");
+  if (!documentId === !answer) return invalid("receipt 内容");
   return {
     id: text(item.id, "receipt.id"),
     request_id: text(item.request_id, "receipt.request_id"),
@@ -237,44 +242,93 @@ function parseEvent(value: unknown): EvidenceRequestEvent {
     actor_id: text(item.actor_id, "event.actor_id"),
     occurred_at: text(item.occurred_at, "event.occurred_at"),
     request: parseEvidenceRequest(item.request),
-    receipt: item.receipt === undefined || item.receipt === null ? null : parseReceipt(item.receipt),
+    receipt:
+      item.receipt === undefined || item.receipt === null ? null : parseReceipt(item.receipt),
   };
 }
 
-
 const base = (caseId: string) => `/api/cases/${encodeURIComponent(caseId)}/evidence-requests`;
-const requestPath = (caseId: string, requestId: string) => `${base(caseId)}/${encodeURIComponent(requestId)}`;
+const requestPath = (caseId: string, requestId: string) =>
+  `${base(caseId)}/${encodeURIComponent(requestId)}`;
 
 export function listEvidenceRequests(caseId: string, signal?: AbortSignal) {
-  return requestJson(base(caseId), { method: "GET", signal }, (value) => array(object(value, "list").items, "items", parseEvidenceRequest));
+  return requestJson(base(caseId), { method: "GET", signal }, (value) =>
+    array(object(value, "list").items, "items", parseEvidenceRequest),
+  );
 }
 
 export function listEvidenceHistory(caseId: string, requestId: string, signal?: AbortSignal) {
-  return requestJson(`${requestPath(caseId, requestId)}/history`, { method: "GET", signal }, (value) => array(object(value, "history").items, "items", parseEvent));
+  return requestJson(
+    `${requestPath(caseId, requestId)}/history`,
+    { method: "GET", signal },
+    (value) => array(object(value, "history").items, "items", parseEvent),
+  );
 }
 
-export function createEvidenceRequest(caseId: string, input: CreateEvidenceRequestInput, key: string) {
-  return requestJson(base(caseId), jsonInit("POST", input, { "Idempotency-Key": key }), parseEvidenceRequest);
+export function createEvidenceRequest(
+  caseId: string,
+  input: CreateEvidenceRequestInput,
+  key: string,
+) {
+  return requestJson(
+    base(caseId),
+    jsonInit("POST", input, { "Idempotency-Key": key }),
+    parseEvidenceRequest,
+  );
 }
 
-export function createEvidenceReceipt(caseId: string, requestId: string, input: CreateEvidenceReceiptInput, key: string) {
-  return requestJson(`${requestPath(caseId, requestId)}/receipts`, jsonInit("POST", input, { "Idempotency-Key": key }), (value) => {
-    const item = object(value, "receipt result");
-    return { request: parseEvidenceRequest(item.request), receipt: parseReceipt(item.receipt) };
-  });
+export function createEvidenceReceipt(
+  caseId: string,
+  requestId: string,
+  input: CreateEvidenceReceiptInput,
+  key: string,
+) {
+  return requestJson(
+    `${requestPath(caseId, requestId)}/receipts`,
+    jsonInit("POST", input, { "Idempotency-Key": key }),
+    (value) => {
+      const item = object(value, "receipt result");
+      return { request: parseEvidenceRequest(item.request), receipt: parseReceipt(item.receipt) };
+    },
+  );
 }
 
-export function verifyEvidenceRequest(caseId: string, requestId: string, receiptId: string, input: VerifyEvidenceRequestInput, key: string) {
-  return requestJson(`${requestPath(caseId, requestId)}/receipts/${encodeURIComponent(receiptId)}/verify`, jsonInit("POST", input, { "Idempotency-Key": key }), parseEvidenceRequest);
+export function verifyEvidenceRequest(
+  caseId: string,
+  requestId: string,
+  receiptId: string,
+  input: VerifyEvidenceRequestInput,
+  key: string,
+) {
+  return requestJson(
+    `${requestPath(caseId, requestId)}/receipts/${encodeURIComponent(receiptId)}/verify`,
+    jsonInit("POST", input, { "Idempotency-Key": key }),
+    parseEvidenceRequest,
+  );
 }
 
-export function uploadEvidenceDocument(caseId: string, file: File, role: string, idempotencyKey?: string, commandContext?: CommandContext) {
+export function uploadEvidenceDocument(
+  caseId: string,
+  file: File,
+  role: string,
+  idempotencyKey?: string,
+  commandContext?: CommandContext,
+) {
   const body = new FormData();
   body.set("file", file);
   body.set("role", role);
-  return requestJson(`/api/cases/${encodeURIComponent(caseId)}/documents`, { method: "POST", body, headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined, ...(commandContext ? { commandContext } : {}) }, (value) => {
-    const id = text(object(value, "uploaded document").id, "uploaded document.id");
-    if (!id) return invalid("uploaded document.id");
-    return { id };
-  });
+  return requestJson(
+    `/api/cases/${encodeURIComponent(caseId)}/documents`,
+    {
+      method: "POST",
+      body,
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+      ...(commandContext ? { commandContext } : {}),
+    },
+    (value) => {
+      const id = text(object(value, "uploaded document").id, "uploaded document.id");
+      if (!id) return invalid("uploaded document.id");
+      return { id };
+    },
+  );
 }

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -34,9 +34,7 @@ function anchor(overrides: Partial<EvidenceAnchor>): EvidenceAnchor {
   };
 }
 
-function parsedDocument(
-  overrides: Partial<ParsedDocumentMetadata> = {},
-): ParsedDocumentMetadata {
+function parsedDocument(overrides: Partial<ParsedDocumentMetadata> = {}): ParsedDocumentMetadata {
   return {
     id: "pd1",
     document_id: "d1",
@@ -62,9 +60,7 @@ describe("text offsets", () => {
 
   it("highlights only when the quote is the coordinate slice", () => {
     expect(offsetAgrees("abcdefghijklmnopqrstuvwxyz", "abc")).toBe(false);
-    expect(offsetAgrees("三十六个月", "采购文件约定质保期为三十六个月")).toBe(
-      false,
-    );
+    expect(offsetAgrees("三十六个月", "采购文件约定质保期为三十六个月")).toBe(false);
     expect(offsetAgrees("三十六个月", "三十六个月")).toBe(true);
   });
 
@@ -100,8 +96,7 @@ describe("text offsets", () => {
       }),
     );
     expect(resolved.kind).toBe("snapshot");
-    if (resolved.kind === "snapshot")
-      expect(resolved.reason).toBe("坐标已失效");
+    if (resolved.kind === "snapshot") expect(resolved.reason).toBe("坐标已失效");
   });
 
   it("refuses to highlight when the quote disagrees with the offset", () => {
@@ -143,8 +138,7 @@ describe("text offsets", () => {
       parsedDocument({ id: "pd-new", normalized_digest: "text-new" }),
     );
     expect(resolved.kind).toBe("snapshot");
-    if (resolved.kind === "snapshot")
-      expect(resolved.reason).toContain("解析产物与当前正文不一致");
+    if (resolved.kind === "snapshot") expect(resolved.reason).toContain("解析产物与当前正文不一致");
   });
 
   it("requires a ready parse and a matching supplied text digest", () => {
@@ -155,15 +149,12 @@ describe("text offsets", () => {
       normalized_digest: "text-hash",
     });
     const text = "质保期为三十六个月。";
+    expect(resolveAnchor(text, oldSource, parsedDocument({ status: "failed" })).kind).toBe(
+      "snapshot",
+    );
     expect(
-      resolveAnchor(text, oldSource, parsedDocument({ status: "failed" })).kind,
-    ).toBe("snapshot");
-    expect(
-      resolveAnchor(
-        text,
-        oldSource,
-        parsedDocument({ normalized_digest: "another-text-hash" }),
-      ).kind,
+      resolveAnchor(text, oldSource, parsedDocument({ normalized_digest: "another-text-hash" }))
+        .kind,
     ).toBe("snapshot");
   });
 
@@ -200,23 +191,20 @@ describe("text offsets", () => {
     expect(evidenceSourceMatches(frozen, "d2", null, "pd1")).toBe(false);
     expect(resolveAnchor(text, frozen, null, "pd1").kind).toBe("highlight");
     expect(resolveAnchor(text, frozen, null, "pd2").kind).toBe("snapshot");
-    expect(resolveAnchor(text, { ...frozen, normalized_digest: "withheld" }, null, "pd1").kind).toBe("snapshot");
+    expect(
+      resolveAnchor(text, { ...frozen, normalized_digest: "withheld" }, null, "pd1").kind,
+    ).toBe("snapshot");
   });
 
   it("treats a missing status as unavailable evidence", () => {
-    const resolved = resolveAnchor(
-      "正文",
-      anchor({ status: "missing", quote: "" }),
-    );
+    const resolved = resolveAnchor("正文", anchor({ status: "missing", quote: "" }));
     expect(resolved.kind).toBe("unavailable");
   });
 });
 
 describe("segmentText and search", () => {
   it("marks the evidence span and keeps a clause boundary", () => {
-    const segments = segmentText("质保期为三十六个月。", { start: 4, end: 9 }, [
-      4,
-    ]);
+    const segments = segmentText("质保期为三十六个月。", { start: 4, end: 9 }, [4]);
     const hit = segments.find((segment) => segment.highlighted === "evidence");
     expect(hit?.text).toBe("三十六个月");
     expect(hit?.anchor).toBe(true);

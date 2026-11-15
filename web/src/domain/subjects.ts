@@ -3,28 +3,41 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
-import type { SubjectBindingState, SubjectRole, SubjectVerificationScope, SubjectVerificationState } from "../api/types";
+import type {
+  SubjectBindingState,
+  SubjectRole,
+  SubjectVerificationScope,
+  SubjectVerificationState,
+} from "../api/types";
 
 export function subjectRoleLabel(role: SubjectRole): string {
   switch (role) {
-    case "customer": return "客户";
-    case "supplier": return "供应商";
-    case "contractor": return "承包方";
-    case "service_provider": return "服务提供方";
-    case "other": return "其他角色";
+    case "customer":
+      return "客户";
+    case "supplier":
+      return "供应商";
+    case "contractor":
+      return "承包方";
+    case "service_provider":
+      return "服务提供方";
+    case "other":
+      return "其他角色";
   }
 }
 
 export function subjectBindingStateLabel(state: SubjectBindingState): string {
   switch (state) {
-    case "active": return "在办绑定";
-    case "inactive": return "已停用";
-    case "pending_confirmation": return "待确认绑定";
+    case "active":
+      return "在办绑定";
+    case "inactive":
+      return "已停用";
+    case "pending_confirmation":
+      return "待确认绑定";
   }
 }
 

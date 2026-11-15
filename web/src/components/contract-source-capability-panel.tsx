@@ -3,18 +3,15 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-08
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Alert, Button, Card, Descriptions, Tag } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef } from "react";
-import {
-  getContractSourceCapability,
-  type ContractDetail,
-} from "../api/contracts";
+import { getContractSourceCapability, type ContractDetail } from "../api/contracts";
 import { ApiError, errorMessage } from "../api/http";
 import type { Actor } from "../api/types";
 import { formatDateTime } from "../domain/review";
@@ -108,8 +105,7 @@ export function ContractSourceCapabilityPanel({
   });
   const accessInvalidated =
     actor === null ||
-    (capability.error instanceof ApiError &&
-      [401, 403, 404].includes(capability.error.status));
+    (capability.error instanceof ApiError && [401, 403, 404].includes(capability.error.status));
 
   useEffect(() => {
     if (!accessInvalidated) {
@@ -174,9 +170,7 @@ export function ContractSourceCapabilityPanel({
         />
       ) : capability.data ? (
         <Descriptions bordered size="small" column={1}>
-          <Descriptions.Item label="来源标识">
-            {capability.data.source_id}
-          </Descriptions.Item>
+          <Descriptions.Item label="来源标识">{capability.data.source_id}</Descriptions.Item>
           <Descriptions.Item label="来源通道">
             {sourceKindLabel(capability.data.source_kind)}
           </Descriptions.Item>
@@ -194,43 +188,33 @@ export function ContractSourceCapabilityPanel({
       ) : null}
 
       {!accessInvalidated ? (
-      <Descriptions bordered size="small" column={1} title="本地来源观察">
-        <Descriptions.Item label="合同名称">
-          {detail.summary.name || "未知"}
-        </Descriptions.Item>
-        <Descriptions.Item label="合同编号">
-          {detail.summary.number || "未知"}
-        </Descriptions.Item>
-        <Descriptions.Item label="金额">
-          {detail.summary.amount !== null && detail.summary.currency !== null
-            ? `${detail.summary.currency} ${detail.summary.amount}`
-            : "金额未知"}
-        </Descriptions.Item>
-        <Descriptions.Item label="合同状态">外部来源已观测</Descriptions.Item>
-        <Descriptions.Item label="工作流状态">外部来源已观测</Descriptions.Item>
-        <Descriptions.Item label="来源通道标识">
-          {detail.source_id || "未知"}
-        </Descriptions.Item>
-        <Descriptions.Item label="来源系统与合同标识">
-          {detail.source_ref
-            ? `${detail.source_ref.system} · ${detail.source_ref.id}`
-            : "未知"}
-        </Descriptions.Item>
-        <Descriptions.Item label="来源版本">
-          {detail.source_ref?.source_version || "未知"}
-        </Descriptions.Item>
-        <Descriptions.Item label="外部观察状态">
-          {detail.source_observed_state || "未知"}
-        </Descriptions.Item>
-        <Descriptions.Item label="观察处理结果">
-          {observationDispositionLabel(detail.source_observation_disposition)}
-        </Descriptions.Item>
-        <Descriptions.Item label="观察时间">
-          {detail.source_observed_at
-            ? formatDateTime(detail.source_observed_at)
-            : "未知"}
-        </Descriptions.Item>
-      </Descriptions>
+        <Descriptions bordered size="small" column={1} title="本地来源观察">
+          <Descriptions.Item label="合同名称">{detail.summary.name || "未知"}</Descriptions.Item>
+          <Descriptions.Item label="合同编号">{detail.summary.number || "未知"}</Descriptions.Item>
+          <Descriptions.Item label="金额">
+            {detail.summary.amount !== null && detail.summary.currency !== null
+              ? `${detail.summary.currency} ${detail.summary.amount}`
+              : "金额未知"}
+          </Descriptions.Item>
+          <Descriptions.Item label="合同状态">外部来源已观测</Descriptions.Item>
+          <Descriptions.Item label="工作流状态">外部来源已观测</Descriptions.Item>
+          <Descriptions.Item label="来源通道标识">{detail.source_id || "未知"}</Descriptions.Item>
+          <Descriptions.Item label="来源系统与合同标识">
+            {detail.source_ref ? `${detail.source_ref.system} · ${detail.source_ref.id}` : "未知"}
+          </Descriptions.Item>
+          <Descriptions.Item label="来源版本">
+            {detail.source_ref?.source_version || "未知"}
+          </Descriptions.Item>
+          <Descriptions.Item label="外部观察状态">
+            {detail.source_observed_state || "未知"}
+          </Descriptions.Item>
+          <Descriptions.Item label="观察处理结果">
+            {observationDispositionLabel(detail.source_observation_disposition)}
+          </Descriptions.Item>
+          <Descriptions.Item label="观察时间">
+            {detail.source_observed_at ? formatDateTime(detail.source_observed_at) : "未知"}
+          </Descriptions.Item>
+        </Descriptions>
       ) : null}
     </Card>
   );

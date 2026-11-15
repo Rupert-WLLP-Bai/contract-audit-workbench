@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r4
+// Updated: 2026-11-15
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -21,12 +21,7 @@ import type { WorkTarget } from "../features/review/work-items";
 const procurementText = "质保期为三十六个月，自验收合格之日起算。";
 const contractText = "质保期为二十四个月。";
 
-function documentOf(
-  id: string,
-  role: string,
-  filename: string,
-  text: string,
-): ReviewDocument {
+function documentOf(id: string, role: string, filename: string, text: string): ReviewDocument {
   return {
     id,
     role,
@@ -179,9 +174,7 @@ function WorkspaceHarness({
       pending={false}
       retrying={false}
       conflictMessage={
-        selectedId === "f1"
-          ? "该事项已被他人更新，已载入最新内容，请重新确认。"
-          : null
+        selectedId === "f1" ? "该事项已被他人更新，已载入最新内容，请重新确认。" : null
       }
       saveError={null}
       onSelect={setSelectedId}
@@ -217,11 +210,20 @@ describe("review workspace", () => {
     const user = userEvent.setup();
     const value = workspace();
     const decide = vi.fn().mockResolvedValue(true);
-    const view = render(<WorkspaceHarness layout="split" onDecide={decide} workspaceValue={value} />);
+    const view = render(
+      <WorkspaceHarness layout="split" onDecide={decide} workspaceValue={value} />,
+    );
     await user.click(screen.getByRole("tab", { name: "合同信息" }));
     expect(screen.getByRole("tab", { name: "合同信息" })).toHaveAttribute("aria-selected", "true");
-    view.rerender(<WorkspaceHarness layout="split" onDecide={decide} workspaceValue={value}
-      workTarget={{ kind: "finding", id: "f1", runId: "r1", attemptId: "a1" }} navigationSerial={1} />);
+    view.rerender(
+      <WorkspaceHarness
+        layout="split"
+        onDecide={decide}
+        workspaceValue={value}
+        workTarget={{ kind: "finding", id: "f1", runId: "r1", attemptId: "a1" }}
+        navigationSerial={1}
+      />,
+    );
     expect(screen.getByRole("tab", { name: "风险审查" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("button", { name: "保存决定" })).toBeVisible();
   });
@@ -254,29 +256,28 @@ describe("review workspace", () => {
       label: "全部定位",
       state: "filled",
     },
-  ])(
-    "reports $scenario without implying verification",
-    ({ located, total, label, state }) => {
-      const result = workspace();
-      let index = 0;
-      for (const finding of result.findings) {
-        finding.evidence = finding.evidence.filter(() => index++ < total);
+  ])("reports $scenario without implying verification", ({ located, total, label, state }) => {
+    const result = workspace();
+    let index = 0;
+    for (const finding of result.findings) {
+      finding.evidence = finding.evidence.filter(() => index++ < total);
+    }
+    index = 0;
+    for (const finding of result.findings) {
+      for (const anchor of finding.evidence) {
+        anchor.status = index++ < located ? "located" : "anchor_mismatch";
       }
-      index = 0;
-      for (const finding of result.findings) {
-        for (const anchor of finding.evidence) {
-          anchor.status = index++ < located ? "located" : "anchor_mismatch";
-        }
-      }
-      renderWorkspace("split", result);
-      const circuit = screen.getByRole("list", { name: "审查链路" });
-      const citation = within(circuit).getByText(/可在原文中找到的引用/).closest("li");
-      expect(citation).toHaveAttribute("data-state", state);
-      expect(citation).toHaveTextContent(`${located}/${total}`);
-      expect(citation).toHaveTextContent(label);
-      expect(screen.getByText("尚未核验：引用尚未复核")).toBeInTheDocument();
-    },
-  );
+    }
+    renderWorkspace("split", result);
+    const circuit = screen.getByRole("list", { name: "审查链路" });
+    const citation = within(circuit)
+      .getByText(/可在原文中找到的引用/)
+      .closest("li");
+    expect(citation).toHaveAttribute("data-state", state);
+    expect(citation).toHaveTextContent(`${located}/${total}`);
+    expect(citation).toHaveTextContent(label);
+    expect(screen.getByText("尚未核验：引用尚未复核")).toBeInTheDocument();
+  });
 
   it("reports absent execution without inventing stages or proof", () => {
     const result = workspace();
@@ -286,14 +287,13 @@ describe("review workspace", () => {
     result.execution = null;
     renderWorkspace("split", result);
     const circuit = screen.getByRole("list", { name: "审查链路" });
-    expect(within(circuit).getByText(/可在原文中找到的引用/).closest("li")).toHaveAttribute(
-      "data-state",
-      "open",
-    );
-    expect(screen.getByText(/没有获取到本次审查的执行记录/)).toBeInTheDocument();
     expect(
-      screen.queryByText(/legacy_unfrozen|历史记录未冻结/),
-    ).not.toBeInTheDocument();
+      within(circuit)
+        .getByText(/可在原文中找到的引用/)
+        .closest("li"),
+    ).toHaveAttribute("data-state", "open");
+    expect(screen.getByText(/没有获取到本次审查的执行记录/)).toBeInTheDocument();
+    expect(screen.queryByText(/legacy_unfrozen|历史记录未冻结/)).not.toBeInTheDocument();
   });
 
   it("shows both sources on request and does not treat the model claim as verified", async () => {
@@ -305,10 +305,7 @@ describe("review workspace", () => {
       "true",
     );
     const marks = container.querySelectorAll("mark.hit-evidence");
-    expect([...marks].map((mark) => mark.textContent)).toEqual([
-      "三十六个月",
-      "二十四个月",
-    ]);
+    expect([...marks].map((mark) => mark.textContent)).toEqual(["三十六个月", "二十四个月"]);
     expect(screen.getByText("尚未核验：引用尚未复核")).toBeInTheDocument();
     expect(
       screen.getByText("该事项已被他人更新，已载入最新内容，请重新确认。"),
@@ -323,15 +320,10 @@ describe("review workspace", () => {
     expect(
       provenance.every((item) => {
         const text = item.textContent ?? "";
-        return (
-          text.includes("解析来源 未记录（历史记录）") &&
-          text.includes("正文摘要 未记录")
-        );
+        return text.includes("解析来源 未记录（历史记录）") && text.includes("正文摘要 未记录");
       }),
     ).toBe(true);
-    expect(
-      screen.getAllByText("历史来源未记录解析身份或正文摘要"),
-    ).toHaveLength(2);
+    expect(screen.getAllByText("历史来源未记录解析身份或正文摘要")).toHaveLength(2);
   });
 
   it("keeps citation identities hidden and does not claim the finding was verified", () => {
@@ -354,12 +346,7 @@ describe("review workspace", () => {
     if (!anchor) throw new Error("test evidence is missing");
     anchor.parsed_document_id = "pd-old";
     anchor.normalized_digest = "text-old";
-    const source = documentOf(
-      "d1",
-      "procurement",
-      "采购文件.txt",
-      procurementText,
-    );
+    const source = documentOf("d1", "procurement", "采购文件.txt", procurementText);
     source.parsed_document = {
       id: "pd-current",
       document_id: "d1",
@@ -391,12 +378,7 @@ describe("review workspace", () => {
   });
 
   it("keeps the attempt input primary when an older parse finishes later", () => {
-    const selected = documentOf(
-      "d1",
-      "procurement",
-      "采购文件.txt",
-      "当前审查采用的原文",
-    );
+    const selected = documentOf("d1", "procurement", "采购文件.txt", "当前审查采用的原文");
     selected.parsed_document = {
       id: "pd-selected",
       document_id: "d1",
@@ -411,12 +393,7 @@ describe("review workspace", () => {
       created_at: "2026-10-21T03:00:00Z",
       status: "ready",
     };
-    const historical = documentOf(
-      "d1",
-      "procurement",
-      "采购文件.txt",
-      "晚完成的旧任务原文",
-    );
+    const historical = documentOf("d1", "procurement", "采购文件.txt", "晚完成的旧任务原文");
     historical.parsed_document = {
       ...selected.parsed_document,
       id: "pd-historical",
@@ -434,11 +411,9 @@ describe("review workspace", () => {
       />,
     );
 
-    expect(
-      container
-        .querySelector(".doc-pane")
-        ?.getAttribute("data-parsed-document-id"),
-    ).toBe("pd-selected");
+    expect(container.querySelector(".doc-pane")?.getAttribute("data-parsed-document-id")).toBe(
+      "pd-selected",
+    );
     expect(screen.getByText("当前审查采用的原文")).toBeInTheDocument();
     expect(screen.queryByText("晚完成的旧任务原文")).not.toBeInTheDocument();
   });
@@ -446,41 +421,27 @@ describe("review workspace", () => {
   it("navigates from a material reference back to the linked finding", async () => {
     const user = userEvent.setup();
     const { container } = renderWorkspace("switch");
-    await user.click(
-      screen.getByRole("button", { name: "查看线索：付款节点缺少可定位原文" }),
-    );
+    await user.click(screen.getByRole("button", { name: "查看线索：付款节点缺少可定位原文" }));
 
-    expect(
-      screen.getByRole("heading", { name: "付款节点缺少可定位原文" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "付款节点缺少可定位原文" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "查看线索：付款节点缺少可定位原文" }),
     ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      container
-        .querySelector(".doc-pane")
-        ?.getAttribute("data-document-version-id"),
-    ).toBe("d1");
+    expect(container.querySelector(".doc-pane")?.getAttribute("data-document-version-id")).toBe(
+      "d1",
+    );
   });
 
   it("switches evidence sources without dropping the finding, and refuses a bad anchor highlight", async () => {
     const user = userEvent.setup();
     const { container } = renderWorkspace("switch");
-    expect(container.querySelector("mark.hit-evidence")?.textContent).toBe(
-      "三十六个月",
-    );
+    expect(container.querySelector("mark.hit-evidence")?.textContent).toBe("三十六个月");
     await user.click(screen.getByRole("button", { name: "拟签合同" }));
-    expect(container.querySelector("mark.hit-evidence")?.textContent).toBe(
-      "二十四个月",
-    );
+    expect(container.querySelector("mark.hit-evidence")?.textContent).toBe("二十四个月");
 
-    await user.click(
-      screen.getByRole("button", { name: "选择线索：付款节点缺少可定位原文" }),
-    );
+    await user.click(screen.getByRole("button", { name: "选择线索：付款节点缺少可定位原文" }));
     expect(container.querySelector("mark.hit-evidence")).toBeNull();
-    expect(
-      screen.getAllByText("定位坐标与当前版本不匹配").length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("定位坐标与当前版本不匹配").length).toBeGreaterThan(0);
     expect(screen.getAllByText("付款按进度").length).toBeGreaterThan(0);
   });
 
@@ -490,10 +451,7 @@ describe("review workspace", () => {
     const save = screen.getByRole("button", { name: "保存决定" });
     expect(save).toBeDisabled();
     await user.click(screen.getByRole("radio", { name: "误报" }));
-    await user.type(
-      screen.getByRole("textbox", { name: "理由" }),
-      "两处期限实际指向同一附件",
-    );
+    await user.type(screen.getByRole("textbox", { name: "理由" }), "两处期限实际指向同一附件");
     expect(save).toBeEnabled();
     await user.click(save);
     expect(onDecide).toHaveBeenCalledWith({
@@ -503,13 +461,9 @@ describe("review workspace", () => {
       expectedVersion: 3,
     });
 
-    await user.click(
-      screen.getByRole("button", { name: "选择线索：付款节点缺少可定位原文" }),
-    );
+    await user.click(screen.getByRole("button", { name: "选择线索：付款节点缺少可定位原文" }));
     expect(
-      screen.getByText(
-        "服务没有返回这条线索的版本号，暂不能保存，以免覆盖其他人的决定。",
-      ),
+      screen.getByText("服务没有返回这条线索的版本号，暂不能保存，以免覆盖其他人的决定。"),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存决定" })).toBeDisabled();
     expect(screen.getByText(/周审查/)).toBeInTheDocument();
@@ -569,9 +523,10 @@ describe("review workspace", () => {
     );
 
     await user.click(screen.getByRole("tab", { name: /相关案件/ }));
-    expect(
-      screen.getByRole("link", { name: "云平台服务协议" }),
-    ).toHaveAttribute("href", "/cases/c3/reviews/r3");
+    expect(screen.getByRole("link", { name: "云平台服务协议" })).toHaveAttribute(
+      "href",
+      "/cases/c3/reviews/r3",
+    );
     await user.click(screen.getByRole("button", { name: "解除关联" }));
     expect(onDeleteRelation).toHaveBeenCalledWith("relation-3");
     await chooseOption(
@@ -588,9 +543,7 @@ describe("review workspace", () => {
   });
 });
 
-function renderView(
-  overrides: Partial<ComponentProps<typeof ReviewWorkspaceView>> = {},
-) {
+function renderView(overrides: Partial<ComponentProps<typeof ReviewWorkspaceView>> = {}) {
   const onRetry = vi.fn();
   const onCancel = vi.fn();
   const onSelectAttempt = vi.fn();
@@ -610,7 +563,11 @@ function renderView(
     onCancel,
     ...overrides,
   };
-  const view = render(<MemoryRouter><ReviewWorkspaceView {...props} /></MemoryRouter>);
+  const view = render(
+    <MemoryRouter>
+      <ReviewWorkspaceView {...props} />
+    </MemoryRouter>,
+  );
   return { ...view, onRetry, onCancel, onSelectAttempt };
 }
 
@@ -633,8 +590,18 @@ const attempt = (id: string, ordinal: number, state: string) => ({
 function withTimeout(result: ReviewWorkspace, state: string) {
   result.run.state = state;
   result.documents[0]!.parsed_document_id = "parse-1";
-  result.snapshot = { document_ids: [result.documents[0]!.id], rule_set_hash: "", playbook_hash: "", model_ref: null, comparator_ref: null };
-  const selected = { ...attempt("attempt-1", 1, state), parsed_document_ids: ["parse-1"], outcome: { reason: "transient_failure", agent_stage: "unknown", retry_cause: "model_timeout" } };
+  result.snapshot = {
+    document_ids: [result.documents[0]!.id],
+    rule_set_hash: "",
+    playbook_hash: "",
+    model_ref: null,
+    comparator_ref: null,
+  };
+  const selected = {
+    ...attempt("attempt-1", 1, state),
+    parsed_document_ids: ["parse-1"],
+    outcome: { reason: "transient_failure", agent_stage: "unknown", retry_cause: "model_timeout" },
+  };
   result.review_attempts = { attempt: selected, attempts: [selected] };
 }
 
@@ -669,40 +636,35 @@ describe("review workspace lifecycle", () => {
       const result = workspace();
       withTimeout(result, state);
       const { onRetry } = renderView({ workspace: result });
-      expect(
-        screen.getByRole("button", { name: "重新执行未完成的审查" }),
-      ).toBeEnabled();
-      await user.click(
-        screen.getByRole("button", { name: "重新执行未完成的审查" }),
-      );
+      expect(screen.getByRole("button", { name: "重新执行未完成的审查" })).toBeEnabled();
+      await user.click(screen.getByRole("button", { name: "重新执行未完成的审查" }));
       expect(onRetry).toHaveBeenCalledTimes(1);
     },
   );
 
-  it.each(["completed", "awaiting_human", "running", "partial", "failed", "interrupted", "cancelled"])(
-    "does not infer a retry from a %s state alone",
-    (state) => {
-      const result = workspace();
-      result.run.state = state;
-      renderView({ workspace: result });
-      expect(
-        screen.queryByRole("button", { name: "重新执行未完成的审查" }),
-      ).not.toBeInTheDocument();
-    },
-  );
+  it.each([
+    "completed",
+    "awaiting_human",
+    "running",
+    "partial",
+    "failed",
+    "interrupted",
+    "cancelled",
+  ])("does not infer a retry from a %s state alone", (state) => {
+    const result = workspace();
+    result.run.state = state;
+    renderView({ workspace: result });
+    expect(screen.queryByRole("button", { name: "重新执行未完成的审查" })).not.toBeInTheDocument();
+  });
 
   it("marks a retry as pending and respects the retry permission", () => {
     const result = workspace();
     withTimeout(result, "failed");
     const view = renderView({ workspace: result, retrying: true });
-    expect(
-      screen.getByRole("button", { name: "正在受理重试" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "正在受理重试" })).toBeDisabled();
     view.unmount();
     renderView({ workspace: result, canRetry: false });
-    expect(
-      screen.getByRole("button", { name: "重新执行未完成的审查" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新执行未完成的审查" })).toBeDisabled();
   });
 
   it("explains partial, failed and cancelled runs", () => {
@@ -710,9 +672,7 @@ describe("review workspace lifecycle", () => {
     partial.run.state = "partial";
     partial.run.partial_reason = "模型输出超时";
     const view = renderView({ workspace: partial });
-    expect(
-      screen.getByText("模型输出超时"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("模型输出超时")).toBeInTheDocument();
     view.unmount();
     const failed = workspace();
     failed.run.state = "failed";
@@ -737,9 +697,7 @@ describe("review workspace lifecycle", () => {
     const failed = workspace();
     failed.run.state = "failed";
     renderView({ workspace: failed });
-    expect(
-      screen.getByText("本次审查执行失败，已保留失败前的记录。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("本次审查执行失败，已保留失败前的记录。")).toBeInTheDocument();
   });
 
   it("selects a saved attempt when no detailed execution is available", async () => {
@@ -771,9 +729,7 @@ describe("review workspace lifecycle", () => {
       attempts: [attempt("attempt-1", 1, "failed")],
     };
     renderView({ workspace: result });
-    await userEvent.setup().click(
-      screen.getByRole("combobox", { name: "查看执行记录" }),
-    );
+    await userEvent.setup().click(screen.getByRole("combobox", { name: "查看执行记录" }));
     const options = await screen.findAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
       "第 9 次，审查中，最新",

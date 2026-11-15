@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-25
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -71,9 +71,7 @@ function validDraft(): RulePackManifestInput {
 }
 
 function issueFields(draft: RulePackManifestInput): string[] {
-  return validateRulePackDraft(draft, "tenant-test").map(
-    (issue) => issue.fieldId,
-  );
+  return validateRulePackDraft(draft, "tenant-test").map((issue) => issue.fieldId);
 }
 
 describe("validateRulePackDraft", () => {
@@ -84,14 +82,11 @@ describe("validateRulePackDraft", () => {
     expect(draft).toEqual(original);
   });
 
-  it.each(["id", "version"] as const)(
-    "rejects whitespace-only pack %s",
-    (key) => {
-      const draft = validDraft();
-      draft[key] = " \t ";
-      expect(issueFields(draft)).toEqual([`rulepack-${key}`]);
-    },
-  );
+  it.each(["id", "version"] as const)("rejects whitespace-only pack %s", (key) => {
+    const draft = validDraft();
+    draft[key] = " \t ";
+    expect(issueFields(draft)).toEqual([`rulepack-${key}`]);
+  });
 
   it("reports pack and individual rule tenant mismatches independently", () => {
     const draft = validDraft();
@@ -103,34 +98,20 @@ describe("validateRulePackDraft", () => {
   it.each([
     ["invalid", "2027-01-01T00:00:00Z", "rulepack-effective-from"],
     ["2026-10-01T00:00:00Z", "", "rulepack-effective-until"],
-    [
-      "2026-10-01T00:00:00Z",
-      "2026-10-01T00:00:00Z",
-      "rulepack-effective-until",
-    ],
-    [
-      "2027-01-01T00:00:00Z",
-      "2026-10-01T00:00:00Z",
-      "rulepack-effective-until",
-    ],
-  ])(
-    "rejects invalid or non-increasing validity bounds %s / %s",
-    (start, end, field) => {
-      const draft = validDraft();
-      draft.effective_from = start;
-      draft.effective_until = end;
-      expect(issueFields(draft)).toEqual([field]);
-    },
-  );
+    ["2026-10-01T00:00:00Z", "2026-10-01T00:00:00Z", "rulepack-effective-until"],
+    ["2027-01-01T00:00:00Z", "2026-10-01T00:00:00Z", "rulepack-effective-until"],
+  ])("rejects invalid or non-increasing validity bounds %s / %s", (start, end, field) => {
+    const draft = validDraft();
+    draft.effective_from = start;
+    draft.effective_until = end;
+    expect(issueFields(draft)).toEqual([field]);
+  });
 
   it("reports both invalid dates without treating them as a valid range", () => {
     const draft = validDraft();
     draft.effective_from = "";
     draft.effective_until = "not-a-date";
-    expect(issueFields(draft)).toEqual([
-      "rulepack-effective-from",
-      "rulepack-effective-until",
-    ]);
+    expect(issueFields(draft)).toEqual(["rulepack-effective-from", "rulepack-effective-until"]);
   });
 
   it("requires rules and identifies every missing core capability", () => {
@@ -138,17 +119,13 @@ describe("validateRulePackDraft", () => {
     draft.rules = [];
     const issues = validateRulePackDraft(draft, "tenant-test");
     expect(issues).toHaveLength(4);
-    expect(
-      issues.every((issue) => issue.fieldId === "rulepack-rules-heading"),
-    ).toBe(true);
+    expect(issues.every((issue) => issue.fieldId === "rulepack-rules-heading")).toBe(true);
     for (const capability of [
       "dedicated_line.minimum_bandwidth",
       "dedicated_line.monthly_availability",
       "payment.advance_ratio.ceiling",
     ]) {
-      expect(issues.some((issue) => issue.message.includes(capability))).toBe(
-        true,
-      );
+      expect(issues.some((issue) => issue.message.includes(capability))).toBe(true);
     }
   });
 

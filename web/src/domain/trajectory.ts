@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -17,12 +17,7 @@ import type {
   ExecutionEvent,
   ModelCallTrace,
 } from "../api/types";
-import {
-  eventStatusLabel,
-  eventTypeLabel,
-  phaseLabel,
-  tokenCount,
-} from "./execution-labels";
+import { eventStatusLabel, eventTypeLabel, phaseLabel, tokenCount } from "./execution-labels";
 
 export type TrajectoryKind = "stage" | "model" | "tool" | "knowledge" | "event";
 
@@ -121,9 +116,7 @@ export function buildTrajectory(execution: Execution): TrajectorySummary {
 /** One tool call emits start, observed and completed records; count calls, not records. */
 function distinctCalls(entries: TrajectoryEntry[], kind: TrajectoryKind): number {
   return new Set(
-    entries
-      .filter((entry) => entry.kind === kind)
-      .map((entry) => entry.callID ?? entry.id),
+    entries.filter((entry) => entry.kind === kind).map((entry) => entry.callID ?? entry.id),
   ).size;
 }
 
@@ -184,7 +177,8 @@ function looseEntry(event: ExecutionEvent, index: number): TrajectoryEntry {
   ];
   if (event.error_code) fields.push({ label: "错误码", value: event.error_code });
   if (event.model_ref) fields.push({ label: "对象", value: event.model_ref });
-  if (event.duration_ms !== null) fields.push({ label: "耗时", value: `${event.duration_ms} 毫秒` });
+  if (event.duration_ms !== null)
+    fields.push({ label: "耗时", value: `${event.duration_ms} 毫秒` });
   return makeEntry({
     id: `event:${event.seq}`,
     kind: "event",
@@ -263,7 +257,8 @@ function modelEntry(
 ): TrajectoryEntry {
   const trace = last.trace ?? first.trace ?? null;
   const usage = last.usage ?? first.usage;
-  const model = trace?.reported_model || trace?.requested_model || last.model_ref || first.model_ref || "模型";
+  const model =
+    trace?.reported_model || trace?.requested_model || last.model_ref || first.model_ref || "模型";
   const fields = modelFields(trace, last, usage);
   const sections = traceSections(trace);
   return makeEntry({
@@ -276,7 +271,9 @@ function modelEntry(
     title: `模型调用 · ${model}`,
     meta: [
       model,
-      usage ? `输入 ${tokenCount(usage.input_tokens)} / 输出 ${tokenCount(usage.output_tokens)} Token` : "Token 未报告",
+      usage
+        ? `输入 ${tokenCount(usage.input_tokens)} / 输出 ${tokenCount(usage.output_tokens)} Token`
+        : "Token 未报告",
     ],
     fields,
     sections,
@@ -385,8 +382,10 @@ function agentEntry(
     { label: "轮次", value: String(event.round) },
     { label: "事件", value: event.kind },
   ];
-  if (event.tool_id ?? call?.tool_id) fields.push({ label: "工具", value: event.tool_id ?? call?.tool_id ?? "" });
-  if (event.gap_id ?? call?.gap_id) fields.push({ label: "能力缺口", value: event.gap_id ?? call?.gap_id ?? "" });
+  if (event.tool_id ?? call?.tool_id)
+    fields.push({ label: "工具", value: event.tool_id ?? call?.tool_id ?? "" });
+  if (event.gap_id ?? call?.gap_id)
+    fields.push({ label: "能力缺口", value: event.gap_id ?? call?.gap_id ?? "" });
   if (event.call_id) fields.push({ label: "调用", value: event.call_id });
   if (event.domain) fields.push({ label: "域", value: event.domain });
   fields.push({ label: "代码", value: event.code });
@@ -405,7 +404,8 @@ function agentEntry(
       { label: "声明状态", value: observation.claim_status },
     );
     if (observation.reason_code) fields.push({ label: "观察原因", value: observation.reason_code });
-    if (observation.fact_ids.length > 0) fields.push({ label: "Fact ID", value: observation.fact_ids.join("、") });
+    if (observation.fact_ids.length > 0)
+      fields.push({ label: "Fact ID", value: observation.fact_ids.join("、") });
     if (observation.located_evidence_ids.length > 0) {
       fields.push({ label: "证据 ID", value: observation.located_evidence_ids.join("、") });
     }

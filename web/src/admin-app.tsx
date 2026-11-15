@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r3
+// Updated: 2026-11-15
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -74,47 +74,34 @@ const PendingMembershipPage = lazy(() =>
 
 export function AdminApp() {
   return (
-    <Suspense
-      fallback={<PageStatus kind="loading" title="正在加载管理工作台" />}
-    >
+    <Suspense fallback={<PageStatus kind="loading" title="正在加载管理工作台" />}>
       <Routes>
-        <Route path="/admin/login/membership" element={<PendingMembershipPage audience="admin" />} />
-        <Route path="/admin/login" element={<LoginPage audience="admin" />} />
         <Route
-          element={<SessionGate audience="admin" loginPath="/admin/login" />}
-        >
+          path="/admin/login/membership"
+          element={<PendingMembershipPage audience="admin" />}
+        />
+        <Route path="/admin/login" element={<LoginPage audience="admin" />} />
+        <Route element={<SessionGate audience="admin" loginPath="/admin/login" />}>
           <Route element={<AdminShell />}>
             <Route index element={<Navigate to="/admin/settings" replace />} />
-            <Route
-              path="/admin"
-              element={<Navigate to="/admin/settings" replace />}
-            />
-            <Route
-              path="/admin/infrastructure"
-              element={<SystemHealthPage audience="admin" />}
-            />
-            <Route
-              path="/admin/settings"
-              element={<SettingsPage audience="admin" />}
-            />
+            <Route path="/admin" element={<Navigate to="/admin/settings" replace />} />
+            <Route path="/admin/infrastructure" element={<SystemHealthPage audience="admin" />} />
+            <Route path="/admin/settings" element={<SettingsPage audience="admin" />} />
             <Route path="/admin/tenant-lifecycle" element={<TenantLifecyclePage />} />
             <Route path="/admin/jurisdiction-operations" element={<JurisdictionOperationsPage />} />
             <Route path="/admin/rulepacks" element={<RulePacksPage />} />
-            <Route
-              path="/admin/rulepacks/new"
-              element={<RulePackCreatePage />}
-            />
+            <Route path="/admin/rulepacks/new" element={<RulePackCreatePage />} />
             <Route
               path="/admin/rulepacks/:packId/versions/:version"
               element={<RulePackDetailPage />}
             />
             <Route path="/admin/governed-knowledge" element={<GovernedKnowledgeListPage />} />
             <Route path="/admin/governed-knowledge/new" element={<GovernedKnowledgeCreatePage />} />
-            <Route path="/admin/governed-knowledge/:knowledgeId/versions/:versionId" element={<GovernedKnowledgeDetailPage />} />
             <Route
-              path="*"
-              element={<AdminNotFoundPage />}
+              path="/admin/governed-knowledge/:knowledgeId/versions/:versionId"
+              element={<GovernedKnowledgeDetailPage />}
             />
+            <Route path="*" element={<AdminNotFoundPage />} />
           </Route>
         </Route>
       </Routes>

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -169,9 +169,9 @@ describe("parseEvidenceRequest", () => {
   });
 
   it("requires exactly one source reference", () => {
-    expect(() =>
-      parseEvidenceRequest({ ...baseRequest, source_evaluation: null }),
-    ).toThrow("补充材料响应中的 来源检查 无法识别");
+    expect(() => parseEvidenceRequest({ ...baseRequest, source_evaluation: null })).toThrow(
+      "补充材料响应中的 来源检查 无法识别",
+    );
     expect(() =>
       parseEvidenceRequest({
         ...baseRequest,
@@ -187,18 +187,17 @@ describe("parseEvidenceRequest", () => {
   });
 
   it("requires and forbids verification according to the request status", () => {
-    expect(() =>
-      parseEvidenceRequest({ ...baseRequest, status: "verified" }),
-    ).toThrow("补充材料响应中的 verification 无法识别");
+    expect(() => parseEvidenceRequest({ ...baseRequest, status: "verified" })).toThrow(
+      "补充材料响应中的 verification 无法识别",
+    );
     for (const status of ["open", "received"]) {
-      expect(() =>
-        parseEvidenceRequest({ ...baseRequest, status, verification }),
-      ).toThrow("补充材料响应中的 verification 无法识别");
+      expect(() => parseEvidenceRequest({ ...baseRequest, status, verification })).toThrow(
+        "补充材料响应中的 verification 无法识别",
+      );
     }
-    expect(
-      parseEvidenceRequest({ ...baseRequest, status: "cancelled", verification })
-        .status,
-    ).toBe("cancelled");
+    expect(parseEvidenceRequest({ ...baseRequest, status: "cancelled", verification }).status).toBe(
+      "cancelled",
+    );
   });
 
   it.each([
@@ -210,13 +209,23 @@ describe("parseEvidenceRequest", () => {
     ["task version fraction", { ...baseRequest, task_version: 1.5 }, "task_version"],
     ["version", { ...baseRequest, version: 0 }, "version"],
     ["status", { ...baseRequest, status: null }, "status"],
-    ["evaluation id", { ...baseRequest, source_evaluation: { ...baseRequest.source_evaluation, id: 1 } }, "source_evaluation.id"],
-    ["evaluation object refs", { ...baseRequest, source_evaluation: { ...baseRequest.source_evaluation, object_refs: [1] } }, "object_ref"],
-    ["gap id", { ...baseRequest, source_evaluation: null, source_gap: { gap_id: 1 } }, "source_gap.gap_id"],
+    [
+      "evaluation id",
+      { ...baseRequest, source_evaluation: { ...baseRequest.source_evaluation, id: 1 } },
+      "source_evaluation.id",
+    ],
+    [
+      "evaluation object refs",
+      { ...baseRequest, source_evaluation: { ...baseRequest.source_evaluation, object_refs: [1] } },
+      "object_ref",
+    ],
+    [
+      "gap id",
+      { ...baseRequest, source_evaluation: null, source_gap: { gap_id: 1 } },
+      "source_gap.gap_id",
+    ],
   ])("rejects a malformed %s", (_label, value, field) => {
-    expect(() => parseEvidenceRequest(value)).toThrow(
-      `补充材料响应中的 ${field} 无法识别`,
-    );
+    expect(() => parseEvidenceRequest(value)).toThrow(`补充材料响应中的 ${field} 无法识别`);
   });
 
   it("rejects malformed verification fields and quote spans", () => {
@@ -283,10 +292,15 @@ describe("evidence workflow responses", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       jsonResponse({ request: baseRequest, receipt }),
     );
-    const result = await createEvidenceReceipt("case-1", "request-1", {
-      document_id: "document-1",
-      expected_version: 3,
-    }, "key-1");
+    const result = await createEvidenceReceipt(
+      "case-1",
+      "request-1",
+      {
+        document_id: "document-1",
+        expected_version: 3,
+      },
+      "key-1",
+    );
     expect(result.receipt).toMatchObject({
       id: "receipt-1",
       document_id: "document-1",
@@ -339,9 +353,7 @@ describe("evidence workflow responses", () => {
   });
 
   it("rejects an uploaded document without an id", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(jsonResponse({ id: "" }));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ id: "" }));
     await expect(
       uploadEvidenceDocument("case-1", new File(["x"], "a.pdf"), "procurement"),
     ).rejects.toThrow("补充材料响应中的 uploaded document.id 无法识别");

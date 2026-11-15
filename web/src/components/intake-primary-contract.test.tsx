@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -33,7 +33,14 @@ const clerk: Actor = {
   org_id: "org-a",
   audience: "client",
   principal_id: "principal-user-clerk",
-  active_context: { membership_id: "membership-a", tenant_id: "tenant-a", tenant_name: "租户A", org_id: "org-a", org_name: "组织A", context_version: "1" },
+  active_context: {
+    membership_id: "membership-a",
+    tenant_id: "tenant-a",
+    tenant_name: "租户A",
+    org_id: "org-a",
+    org_name: "组织A",
+    context_version: "1",
+  },
   csrf_token: "test-csrf",
   context_switch_enabled: false,
 };
@@ -42,7 +49,14 @@ const otherTenant: Actor = {
   ...clerk,
   tenant_id: "tenant-b",
   org_id: "org-b",
-  active_context: { membership_id: "membership-b", tenant_id: "tenant-b", tenant_name: "租户B", org_id: "org-b", org_name: "组织B", context_version: "2" },
+  active_context: {
+    membership_id: "membership-b",
+    tenant_id: "tenant-b",
+    tenant_name: "租户B",
+    org_id: "org-b",
+    org_name: "组织B",
+    context_version: "2",
+  },
 };
 
 const reviewer: Actor = {
@@ -61,10 +75,7 @@ function json(value: unknown, status = 200): Response {
   });
 }
 
-function completedResult(
-  caseId = "case_new",
-  overrides: Record<string, unknown> = {},
-) {
+function completedResult(caseId = "case_new", overrides: Record<string, unknown> = {}) {
   return {
     operation_id: "intake_new",
     case_id: caseId,
@@ -135,17 +146,11 @@ function storageSnapshot(): Record<string, string> {
 class IntakeService {
   calls: Call[] = [];
   post: () => Response | Promise<Response> = () => json(completedResult(), 201);
-  getByKey: (key: string) => Response | Promise<Response> = () =>
-    json(pendingResult(), 200);
-  getById: (operationId: string) => Response | Promise<Response> = () =>
-    json(pendingResult(), 200);
-  getContinuation: (operationId: string) => Response | Promise<Response> = async (
-    operationId,
-  ) => json(await serverPendingContinuation(operationId), 200);
-  fetch = async (
-    input: RequestInfo | URL,
-    init?: RequestInit,
-  ): Promise<Response> => {
+  getByKey: (key: string) => Response | Promise<Response> = () => json(pendingResult(), 200);
+  getById: (operationId: string) => Response | Promise<Response> = () => json(pendingResult(), 200);
+  getContinuation: (operationId: string) => Response | Promise<Response> = async (operationId) =>
+    json(await serverPendingContinuation(operationId), 200);
+  fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(String(input), "http://intake.test");
     const method = init?.method ?? "GET";
     const key = new Headers(init?.headers).get("Idempotency-Key");
@@ -160,17 +165,12 @@ class IntakeService {
     if (method === "GET" && url.pathname === "/api/intakes")
       return this.getByKey(url.searchParams.get("key") ?? "");
     if (method === "GET" && url.pathname.startsWith("/api/intakes/")) {
-      const path = decodeURIComponent(
-        url.pathname.slice("/api/intakes/".length),
-      );
+      const path = decodeURIComponent(url.pathname.slice("/api/intakes/".length));
       if (path.endsWith("/continuation"))
         return this.getContinuation(path.slice(0, -"/continuation".length));
       return this.getById(path);
     }
-    return json(
-      { error: { message: `unexpected ${method} ${url.pathname}` } },
-      404,
-    );
+    return json({ error: { message: `unexpected ${method} ${url.pathname}` } }, 404);
   };
 }
 
@@ -194,10 +194,7 @@ function renderIntake(
         <Route
           path="/"
           element={
-            <IntakePrimaryContract
-              actor={actor}
-              selectedContinuation={selectedContinuation}
-            />
+            <IntakePrimaryContract actor={actor} selectedContinuation={selectedContinuation} />
           }
         />
         <Route path="/cases/:caseId" element={<RouteProbe />} />
@@ -220,9 +217,7 @@ async function seedContinuation(
     sha?: string;
   },
 ): Promise<{ file: File; sha: string }> {
-  const chosen =
-    file ??
-    new File([SOURCE_BYTES], "专线采购合同.txt", { type: "text/plain" });
+  const chosen = file ?? new File([SOURCE_BYTES], "专线采购合同.txt", { type: "text/plain" });
   const digest = sha ?? (await fileSha256(chosen));
   const continuation: IntakeContinuation = {
     version: 1,
@@ -280,21 +275,14 @@ describe("homepage primary-contract intake", () => {
     const service = new IntakeService();
     const { user } = openWithService(service);
     renderIntake(clerk);
-    await user.type(
-      await screen.findByRole("textbox", { name: "案件标题" }),
-      "专线采购合同",
-    );
+    await user.type(await screen.findByRole("textbox", { name: "案件标题" }), "专线采购合同");
     const file = new File([SOURCE_BYTES], "专线采购合同.txt", {
       type: "text/plain",
     });
     await user.upload(screen.getByLabelText("主合同文件"), file);
-    await user.click(
-      screen.getByRole("button", { name: "上传主合同并建立案件" }),
-    );
+    await user.click(screen.getByRole("button", { name: "上传主合同并建立案件" }));
 
-    expect(await screen.findByTestId("route")).toHaveTextContent(
-      "/cases/case_new",
-    );
+    expect(await screen.findByTestId("route")).toHaveTextContent("/cases/case_new");
     const post = service.calls.find((call) => call.method === "POST");
     expect(post?.url).toBe("/api/intakes");
     expect(post?.key).toMatch(/^[0-9a-zA-Z-]{8,200}$/);
@@ -308,16 +296,12 @@ describe("homepage primary-contract intake", () => {
     expect(form?.has("role")).toBe(false);
     expect(form?.has("purpose")).toBe(false);
 
-    expect(service.calls.filter((call) => call.method === "POST")).toHaveLength(
-      1,
-    );
+    expect(service.calls.filter((call) => call.method === "POST")).toHaveLength(1);
     const storedKey = Object.keys(post?.storageAtPost ?? {}).find((key) =>
       key.startsWith("caw:intake-continuation:"),
     );
     expect(storedKey).toBeDefined();
-    const duringPost = JSON.parse(
-      post?.storageAtPost?.[storedKey!] ?? "{}",
-    ) as IntakeContinuation;
+    const duringPost = JSON.parse(post?.storageAtPost?.[storedKey!] ?? "{}") as IntakeContinuation;
     expect(duringPost.idempotency_key).toBe(post?.key);
     expect(duringPost.request.file_sha256).toBe(await fileSha256(file));
     expect(duringPost.receipt.state).toBeNull();
@@ -350,40 +334,27 @@ describe("homepage primary-contract intake", () => {
     };
     const { user } = openWithService(service);
     renderIntake(clerk);
-    await user.type(
-      await screen.findByRole("textbox", { name: "案件标题" }),
-      "专线采购合同",
-    );
+    await user.type(await screen.findByRole("textbox", { name: "案件标题" }), "专线采购合同");
     const file = new File([SOURCE_BYTES], "专线采购合同.txt", {
       type: "text/plain",
     });
     await user.upload(screen.getByLabelText("主合同文件"), file);
-    await user.click(
-      screen.getByRole("button", { name: "上传主合同并建立案件" }),
-    );
+    await user.click(screen.getByRole("button", { name: "上传主合同并建立案件" }));
 
-    expect(
-      await screen.findByText("案件已建立，主合同上传尚未完成"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("案件已建立，主合同上传尚未完成")).toBeInTheDocument();
     await screen.findByRole("button", { name: "继续上传同一文件" });
     await user.upload(screen.getByLabelText("重新选择主合同文件"), file);
-    expect(
-      screen.getByRole("button", { name: "继续上传同一文件" }),
-    ).toBeEnabled();
+    expect(screen.getByRole("button", { name: "继续上传同一文件" })).toBeEnabled();
     const post = service.calls.find((call) => call.method === "POST");
     const recovery = service.calls.find((call) => call.method === "GET");
-    expect(recovery?.url).toBe(
-      `/api/intakes?key=${encodeURIComponent(post?.key ?? "")}`,
-    );
+    expect(recovery?.url).toBe(`/api/intakes?key=${encodeURIComponent(post?.key ?? "")}`);
     expect(service.calls).toContainEqual(
       expect.objectContaining({
         method: "GET",
         url: "/api/intakes/intake_pending/continuation",
       }),
     );
-    expect(service.calls.filter((call) => call.method === "POST")).toHaveLength(
-      1,
-    );
+    expect(service.calls.filter((call) => call.method === "POST")).toHaveLength(1);
     expect(screen.getByRole("link", { name: "case_lost" })).toHaveAttribute(
       "href",
       "/cases/case_lost",
@@ -409,20 +380,14 @@ describe("homepage primary-contract intake", () => {
     service.post = () => json(completedResult("case_pending"), 201);
     const { user } = openWithService(service);
     renderIntake(clerk);
-    expect(
-      await screen.findByText("案件已建立，主合同上传尚未完成"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("案件已建立，主合同上传尚未完成")).toBeInTheDocument();
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "继续上传同一文件" }),
-      ).toBeEnabled(),
+      expect(screen.getByRole("button", { name: "继续上传同一文件" })).toBeEnabled(),
     );
     await user.upload(screen.getByLabelText("重新选择主合同文件"), file);
     await user.click(screen.getByRole("button", { name: "继续上传同一文件" }));
 
-    expect(await screen.findByTestId("route")).toHaveTextContent(
-      "/cases/case_pending",
-    );
+    expect(await screen.findByTestId("route")).toHaveTextContent("/cases/case_pending");
     expect(service.calls[0]?.url).toBe("/api/intakes/intake_pending");
     const post = service.calls.find((call) => call.method === "POST");
     expect(post?.key).toBe("key-pending-1");
@@ -436,9 +401,7 @@ describe("homepage primary-contract intake", () => {
     const { user } = openWithService(service);
     renderIntake(clerk);
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "继续上传同一文件" }),
-      ).toBeEnabled(),
+      expect(screen.getByRole("button", { name: "继续上传同一文件" })).toBeEnabled(),
     );
     const different = new File(["different contract"], "专线采购合同.txt", {
       type: "text/plain",
@@ -446,58 +409,37 @@ describe("homepage primary-contract intake", () => {
     await user.upload(screen.getByLabelText("重新选择主合同文件"), different);
     await user.click(screen.getByRole("button", { name: "继续上传同一文件" }));
 
-    expect(
-      await screen.findByText("所选文件与最初提交的主合同不一致"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("所选文件与最初提交的主合同不一致")).toBeInTheDocument();
     expect(service.calls.some((call) => call.method === "POST")).toBe(false);
     await user.click(screen.getByRole("button", { name: "另建一份主合同" }));
-    expect(
-      screen.getByText("另建一份主合同会清除本机续办记录"),
-    ).toBeInTheDocument();
-    await user.click(
-      screen.getByRole("button", { name: "确认另建主合同" }),
-    );
+    expect(screen.getByText("另建一份主合同会清除本机续办记录")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认另建主合同" }));
 
-    expect(
-      await screen.findByRole("textbox", { name: "案件标题" }),
-    ).toHaveValue("");
+    expect(await screen.findByRole("textbox", { name: "案件标题" })).toHaveValue("");
     expect(await readIntakeContinuation(clerk)).toBeNull();
   });
 
   it("shows the server's existing operation on a key conflict and never creates a second case", async () => {
     const service = new IntakeService();
     service.post = () =>
-      json(
-        { error: { code: "conflict", message: "同一幂等键已经绑定其他文件" } },
-        409,
-      );
+      json({ error: { code: "conflict", message: "同一幂等键已经绑定其他文件" } }, 409);
     service.getByKey = () => json(pendingResult("case_existing"), 200);
     const { user } = openWithService(service);
     renderIntake(clerk);
-    await user.type(
-      await screen.findByRole("textbox", { name: "案件标题" }),
-      "专线采购合同",
-    );
+    await user.type(await screen.findByRole("textbox", { name: "案件标题" }), "专线采购合同");
     await user.upload(
       screen.getByLabelText("主合同文件"),
       new File([SOURCE_BYTES], "专线采购合同.txt", { type: "text/plain" }),
     );
-    await user.click(
-      screen.getByRole("button", { name: "上传主合同并建立案件" }),
-    );
+    await user.click(screen.getByRole("button", { name: "上传主合同并建立案件" }));
 
-    expect(
-      await screen.findByText("服务器按幂等键拒绝了这次提交"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/服务器已有该幂等键对应的操作/),
-    ).toHaveTextContent("case_existing");
-    expect(
-      screen.getByRole("link", { name: "打开已有案件" }),
-    ).toHaveAttribute("href", "/cases/case_existing");
-    expect(service.calls.filter((call) => call.method === "POST")).toHaveLength(
-      1,
+    expect(await screen.findByText("服务器按幂等键拒绝了这次提交")).toBeInTheDocument();
+    expect(screen.getByText(/服务器已有该幂等键对应的操作/)).toHaveTextContent("case_existing");
+    expect(screen.getByRole("link", { name: "打开已有案件" })).toHaveAttribute(
+      "href",
+      "/cases/case_existing",
     );
+    expect(service.calls.filter((call) => call.method === "POST")).toHaveLength(1);
     expect(await readIntakeContinuation(clerk)).not.toBeNull();
   });
 
@@ -518,18 +460,15 @@ describe("homepage primary-contract intake", () => {
     openWithService(service);
     renderIntake(clerk);
 
-    expect(
-      await screen.findByText("主合同已上传，案件已建立"),
-    ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(service.calls[0]?.url).toBe("/api/intakes/intake_done"),
-    );
+    expect(await screen.findByText("主合同已上传，案件已建立")).toBeInTheDocument();
+    await waitFor(() => expect(service.calls[0]?.url).toBe("/api/intakes/intake_done"));
     const receipt = within(screen.getByLabelText("主合同上传回执"));
     expect(receipt.getByText("intake_done")).toBeInTheDocument();
     expect(receipt.getByText("doc_done")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "打开案件与准备清单" }),
-    ).toHaveAttribute("href", "/cases/case_done");
+    expect(screen.getByRole("link", { name: "打开案件与准备清单" })).toHaveAttribute(
+      "href",
+      "/cases/case_done",
+    );
   });
 
   it("never reads another actor's continuation record", async () => {
@@ -538,9 +477,7 @@ describe("homepage primary-contract intake", () => {
     openWithService(service);
     renderIntake(otherTenant);
 
-    expect(
-      await screen.findByRole("textbox", { name: "案件标题" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("textbox", { name: "案件标题" })).toBeInTheDocument();
     expect(service.calls).toHaveLength(0);
     expect(await readIntakeContinuation(clerk)).not.toBeNull();
   });
@@ -549,19 +486,12 @@ describe("homepage primary-contract intake", () => {
     await seedContinuation(clerk, { receipt: completedReceipt });
     const service = new IntakeService();
     service.getById = () =>
-      json(
-        { error: { code: "forbidden", message: "没有访问该内容的权限" } },
-        403,
-      );
+      json({ error: { code: "forbidden", message: "没有访问该内容的权限" } }, 403);
     openWithService(service);
     renderIntake(clerk);
 
-    expect(
-      await screen.findByText("当前身份没有权限继续该操作"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("主合同已上传，案件已建立"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("当前身份没有权限继续该操作")).toBeInTheDocument();
+    expect(screen.getByText("主合同已上传，案件已建立")).toBeInTheDocument();
     expect(await readIntakeContinuation(clerk)).not.toBeNull();
   });
 
@@ -571,13 +501,9 @@ describe("homepage primary-contract intake", () => {
     renderIntake(reviewer);
 
     expect(
-      await screen.findByText(
-        "当前身份可以查看案件，不能新建案件或上传主合同",
-      ),
+      await screen.findByText("当前身份可以查看案件，不能新建案件或上传主合同"),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("textbox", { name: "案件标题" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "案件标题" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("主合同文件")).not.toBeInTheDocument();
     expect(service.calls).toHaveLength(0);
   });
@@ -596,25 +522,16 @@ describe("homepage primary-contract intake", () => {
     const { user } = openWithService(service);
     renderIntake(clerk, selection);
 
-    expect(
-      await screen.findByText("案件已建立，主合同上传尚未完成"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("案件已建立，主合同上传尚未完成")).toBeInTheDocument();
     expect(service.calls.some((call) => call.method === "POST")).toBe(false);
 
     const selectedFile = new File([SOURCE_BYTES], detail.request!.file_name, {
       type: "application/x-cross-browser",
     });
-    await user.upload(
-      screen.getByLabelText("重新选择主合同文件"),
-      selectedFile,
-    );
-    await user.click(
-      screen.getByRole("button", { name: "继续上传同一文件" }),
-    );
+    await user.upload(screen.getByLabelText("重新选择主合同文件"), selectedFile);
+    await user.click(screen.getByRole("button", { name: "继续上传同一文件" }));
 
-    expect(await screen.findByTestId("route")).toHaveTextContent(
-      "/cases/case_pending",
-    );
+    expect(await screen.findByTestId("route")).toHaveTextContent("/cases/case_pending");
     const post = service.calls.find((call) => call.method === "POST");
     expect(post?.key).toBe("server-key-17");
     const replayedFile = post?.form?.get("file") as File;
@@ -634,25 +551,14 @@ describe("homepage primary-contract intake", () => {
     const { user } = openWithService(service);
     renderIntake(clerk, selection);
 
-    expect(
-      await screen.findByText("案件已建立，主合同上传尚未完成"),
-    ).toBeInTheDocument();
-    const different = new File(
-      ["x".repeat(detail.request!.file_size)],
-      detail.request!.file_name,
-      { type: "application/x-other" },
-    );
-    await user.upload(
-      screen.getByLabelText("重新选择主合同文件"),
-      different,
-    );
-    await user.click(
-      screen.getByRole("button", { name: "继续上传同一文件" }),
-    );
+    expect(await screen.findByText("案件已建立，主合同上传尚未完成")).toBeInTheDocument();
+    const different = new File(["x".repeat(detail.request!.file_size)], detail.request!.file_name, {
+      type: "application/x-other",
+    });
+    await user.upload(screen.getByLabelText("重新选择主合同文件"), different);
+    await user.click(screen.getByRole("button", { name: "继续上传同一文件" }));
 
-    expect(
-      await screen.findByText("所选文件与最初提交的主合同不一致"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("所选文件与最初提交的主合同不一致")).toBeInTheDocument();
     expect(service.calls.some((call) => call.method === "POST")).toBe(false);
   });
 
@@ -673,12 +579,11 @@ describe("homepage primary-contract intake", () => {
         "该办理已归档。归档只从未完成列表中隐藏办理，不会删除原案件；已开始的上传仍可能完成。",
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "打开原案件" }),
-    ).toHaveAttribute("href", "/cases/case_pending");
-    expect(
-      screen.queryByLabelText("重新选择主合同文件"),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "打开原案件" })).toHaveAttribute(
+      "href",
+      "/cases/case_pending",
+    );
+    expect(screen.queryByLabelText("重新选择主合同文件")).not.toBeInTheDocument();
     expect(service.calls).toHaveLength(0);
   });
 
@@ -691,11 +596,7 @@ describe("homepage primary-contract intake", () => {
       archived: false,
     };
     const service = new IntakeService();
-    service.post = () =>
-      json(
-        { error: { code: "read_only", message: "工作区已切换为只读" } },
-        403,
-      );
+    service.post = () => json({ error: { code: "read_only", message: "工作区已切换为只读" } }, 403);
     service.getContinuation = async (operationId) =>
       json({
         ...(await serverPendingContinuation(operationId)),
@@ -709,22 +610,11 @@ describe("homepage primary-contract intake", () => {
     const file = new File([SOURCE_BYTES], detail.request!.file_name, {
       type: detail.request!.media_type,
     });
-    await user.upload(
-      await screen.findByLabelText("重新选择主合同文件"),
-      file,
-    );
-    await user.click(
-      screen.getByRole("button", { name: "继续上传同一文件" }),
-    );
+    await user.upload(await screen.findByLabelText("重新选择主合同文件"), file);
+    await user.click(screen.getByRole("button", { name: "继续上传同一文件" }));
 
-    expect(
-      await screen.findByText("当前工作区处于只读状态，不能继续上传。"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("重新选择主合同文件"),
-    ).not.toBeInTheDocument();
-    expect(service.calls.filter((call) => call.method === "POST")).toHaveLength(
-      1,
-    );
+    expect(await screen.findByText("当前工作区处于只读状态，不能继续上传。")).toBeInTheDocument();
+    expect(screen.queryByLabelText("重新选择主合同文件")).not.toBeInTheDocument();
+    expect(service.calls.filter((call) => call.method === "POST")).toHaveLength(1);
   });
 });

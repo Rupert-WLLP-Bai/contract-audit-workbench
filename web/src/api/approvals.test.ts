@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-01
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -29,17 +29,11 @@ function jsonResponse(value: unknown, status = 200): Response {
   });
 }
 
-function errorResponse(
-  status: number,
-  code: string,
-  message: string,
-): Response {
+function errorResponse(status: number, code: string, message: string): Response {
   return jsonResponse({ error: { code, message, retryable: false } }, status);
 }
 
-export function inboxItem(
-  overrides: Partial<ApprovalInboxItem> = {},
-): ApprovalInboxItem {
+export function inboxItem(overrides: Partial<ApprovalInboxItem> = {}): ApprovalInboxItem {
   return {
     view: "todo",
     contract_id: "contract-1",
@@ -73,9 +67,7 @@ export function inboxItem(
   };
 }
 
-function roundDetail(
-  overrides: Partial<ApprovalRoundReadDetail> = {},
-): ApprovalRoundReadDetail {
+function roundDetail(overrides: Partial<ApprovalRoundReadDetail> = {}): ApprovalRoundReadDetail {
   return {
     contract_id: "contract-1",
     contract_name: "专线采购合同",
@@ -123,9 +115,7 @@ function roundDetail(
   };
 }
 
-function taskDetail(
-  overrides: Partial<ApprovalTaskReadDetail> = {},
-): ApprovalTaskReadDetail {
+function taskDetail(overrides: Partial<ApprovalTaskReadDetail> = {}): ApprovalTaskReadDetail {
   return {
     selected_task_id: "task-1",
     round_detail: roundDetail(),
@@ -186,9 +176,7 @@ describe("approval response parsers", () => {
             after: 120,
           },
         ],
-        restricted_fields: [
-          { path: "supplier.bank_account", changed: null, reason: "restricted" },
-        ],
+        restricted_fields: [{ path: "supplier.bank_account", changed: null, reason: "restricted" }],
         amount_terms: [],
       },
     });
@@ -198,9 +186,7 @@ describe("approval response parsers", () => {
       changed: null,
       reason: "restricted",
     });
-    expect(
-      Object.hasOwn(detail.revision_diff?.restricted_fields[0] ?? {}, "value"),
-    ).toBe(false);
+    expect(Object.hasOwn(detail.revision_diff?.restricted_fields[0] ?? {}, "value")).toBe(false);
   });
 
   it("requires the selected task and active task to come from the response", () => {
@@ -218,9 +204,7 @@ describe("approval response parsers", () => {
   it("encodes the view, cursor and limit in the inbox request", async () => {
     const fetch = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValue(
-        jsonResponse({ items: [], next_cursor: null, has_more: false }),
-      );
+      .mockResolvedValue(jsonResponse({ items: [], next_cursor: null, has_more: false }));
     await listApprovalInbox("done", "cursor-with/slash", 10);
     const url = String(fetch.mock.calls[0]?.[0]);
     expect(url).toContain("/api/approval-tasks?");
@@ -264,9 +248,7 @@ describe("approval response parsers", () => {
     expect(result.task.state).toBe("approved");
     const [url, init] = fetch.mock.calls[0]!;
     expect(String(url)).toBe("/api/approval-tasks/task-1/decisions");
-    expect(new Headers(init?.headers).get("Idempotency-Key")).toBe(
-      "idem-key-1",
-    );
+    expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("idem-key-1");
     expect(JSON.parse(String(init?.body))).toEqual({
       decision: "approve",
       comment: "同意",
@@ -277,9 +259,7 @@ describe("approval response parsers", () => {
   it("requests a short-lived credential after a credential-required refusal and retries once", async () => {
     const fetch = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        errorResponse(403, "forbidden", "审批决定必须携带内部身份凭证"),
-      )
+      .mockResolvedValueOnce(errorResponse(403, "forbidden", "审批决定必须携带内部身份凭证"))
       .mockResolvedValueOnce(jsonResponse({ credential: "caw-approval-token" }))
       .mockResolvedValueOnce(
         jsonResponse({
@@ -313,13 +293,9 @@ describe("approval response parsers", () => {
       "idem-key-2",
     );
     expect(fetch).toHaveBeenCalledTimes(3);
-    expect(String(fetch.mock.calls[1]?.[0])).toBe(
-      "/api/approval-tasks/task-1/credentials",
-    );
+    expect(String(fetch.mock.calls[1]?.[0])).toBe("/api/approval-tasks/task-1/credentials");
     const retried = fetch.mock.calls[2]!;
-    expect(new Headers(retried[1]?.headers).get("Idempotency-Key")).toBe(
-      "idem-key-2",
-    );
+    expect(new Headers(retried[1]?.headers).get("Idempotency-Key")).toBe("idem-key-2");
     expect(JSON.parse(String(retried[1]?.body))).toEqual({
       decision: "approve",
       comment: "同意",

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -81,7 +81,9 @@ export interface TenantConfigLiveControlResult {
   enabled: boolean;
 }
 
-const { object, text, nullableText, bool, array, invalid } = responseReader((path) => `租户配置响应中的 ${path} 无法识别`);
+const { object, text, nullableText, bool, array, invalid } = responseReader(
+  (path) => `租户配置响应中的 ${path} 无法识别`,
+);
 
 function timestamp(value: unknown, path: string): string {
   const result = text(value, path);
@@ -105,13 +107,19 @@ function parseConfigRef(value: unknown, path: string): TenantConfigRef {
     version: text(item.version, `${path}.version`),
     digest: digest(item.digest, `${path}.digest`),
     title: text(item.title, `${path}.title`),
-    kind: enumValue(item.kind, ["public_template", "private_policy"] as const) ?? invalid(`${path}.kind`),
+    kind:
+      enumValue(item.kind, ["public_template", "private_policy"] as const) ??
+      invalid(`${path}.kind`),
   };
 }
 
 function parseAdoptedConfig(value: unknown, path: string): TenantConfigAdopted {
   const item = object(value, path);
-  const privatePolicyRefs = array(item.private_policy_refs, `${path}.private_policy_refs`, parseConfigRef);
+  const privatePolicyRefs = array(
+    item.private_policy_refs,
+    `${path}.private_policy_refs`,
+    parseConfigRef,
+  );
   const result: TenantConfigAdopted = {
     config_version: decimalRevision(item.config_version, `${path}.config_version`, false),
     version_id: /^tcv_[a-zA-Z0-9_-]{8,120}$/.test(text(item.version_id, `${path}.version_id`))
@@ -122,7 +130,8 @@ function parseAdoptedConfig(value: unknown, path: string): TenantConfigAdopted {
     private_policy_refs: privatePolicyRefs,
     model_catalog_ref: digest(item.model_catalog_ref, `${path}.model_catalog_ref`),
     credential_ref: nullableText(item.credential_ref, `${path}.credential_ref`),
-    egress_mode: enumValue(item.egress_mode, ["approved_only"] as const) ?? invalid(`${path}.egress_mode`),
+    egress_mode:
+      enumValue(item.egress_mode, ["approved_only"] as const) ?? invalid(`${path}.egress_mode`),
     adopted_at: timestamp(item.adopted_at, `${path}.adopted_at`),
     adopted_by: text(item.adopted_by, `${path}.adopted_by`),
   };
@@ -135,11 +144,23 @@ export function parseTenantConfigView(value: unknown): TenantConfigView {
   const item = object(value, "tenant_config");
   if (item.schema_version !== "tenant-config/v1") return invalid("tenant_config.schema_version");
   const current = item.current === null ? null : parseAdoptedConfig(item.current, "current");
-  const publicTemplates = array(item.public_template_catalog, "public_template_catalog", parseConfigRef);
-  const privatePolicies = array(item.private_policy_catalog, "private_policy_catalog", parseConfigRef);
-  if (publicTemplates.some((ref) => ref.kind !== "public_template") ||
-      privatePolicies.some((ref) => ref.kind !== "private_policy") ||
-      (current && (current.public_template.kind !== "public_template" || current.private_policy_refs.some((ref) => ref.kind !== "private_policy")))) {
+  const publicTemplates = array(
+    item.public_template_catalog,
+    "public_template_catalog",
+    parseConfigRef,
+  );
+  const privatePolicies = array(
+    item.private_policy_catalog,
+    "private_policy_catalog",
+    parseConfigRef,
+  );
+  if (
+    publicTemplates.some((ref) => ref.kind !== "public_template") ||
+    privatePolicies.some((ref) => ref.kind !== "private_policy") ||
+    (current &&
+      (current.public_template.kind !== "public_template" ||
+        current.private_policy_refs.some((ref) => ref.kind !== "private_policy")))
+  ) {
     return invalid("tenant_config.catalog_kinds");
   }
   const modelCatalog = array(item.model_catalog, "model_catalog", (entry, path) => {
@@ -156,7 +177,10 @@ export function parseTenantConfigView(value: unknown): TenantConfigView {
     const credential = object(entry, path);
     const id = text(credential.id, `${path}.id`);
     if (id !== "platform/llm-endpoint/active") return invalid(`${path}.id`);
-    return { id: "platform/llm-endpoint/active" as const, label: text(credential.label, `${path}.label`) };
+    return {
+      id: "platform/llm-endpoint/active" as const,
+      label: text(credential.label, `${path}.label`),
+    };
   });
   const liveControl = object(item.live_control, "live_control");
   const result: TenantConfigView = {
@@ -174,8 +198,7 @@ export function parseTenantConfigView(value: unknown): TenantConfigView {
       updated_at: timestamp(liveControl.updated_at, "live_control.updated_at"),
     },
   };
-  if (!result.tenant_id)
-    return invalid("tenant_config.references");
+  if (!result.tenant_id) return invalid("tenant_config.references");
   return result;
 }
 
@@ -187,7 +210,9 @@ export function parseTenantConfigPreview(value: unknown): TenantConfigPreview {
       const change = object(entry, path);
       return {
         path: text(change.path, `${path}.path`),
-        change: enumValue(change.change, ["added", "removed", "changed"] as const) ?? invalid(`${path}.change`),
+        change:
+          enumValue(change.change, ["added", "removed", "changed"] as const) ??
+          invalid(`${path}.change`),
         before: nullableText(change.before, `${path}.before`),
         after: nullableText(change.after, `${path}.after`),
       };
@@ -209,32 +234,59 @@ export function parseTenantConfigCommandResult(value: unknown): TenantConfigComm
 
 export function parseTenantConfigLiveControlResult(value: unknown): TenantConfigLiveControlResult {
   const item = object(value, "tenant_config_live_control");
-  return { revision: decimalRevision(item.revision, "revision", false), enabled: bool(item.enabled, "enabled") };
+  return {
+    revision: decimalRevision(item.revision, "revision", false),
+    enabled: bool(item.enabled, "enabled"),
+  };
 }
 
 export function getTenantConfig(signal?: AbortSignal): Promise<TenantConfigView> {
   return requestJson(paths.tenantConfig, { method: "GET", signal }, parseTenantConfigView);
 }
 
-export function previewTenantConfig(expectedRevision: string, selection: TenantConfigSelection, commandContext: CommandContext): Promise<TenantConfigPreview> {
-  return requestJson(paths.tenantConfigPreview, {
-    ...jsonInit("POST", { expected_revision: expectedRevision, selection }),
-    commandContext,
-  }, parseTenantConfigPreview);
+export function previewTenantConfig(
+  expectedRevision: string,
+  selection: TenantConfigSelection,
+  commandContext: CommandContext,
+): Promise<TenantConfigPreview> {
+  return requestJson(
+    paths.tenantConfigPreview,
+    {
+      ...jsonInit("POST", { expected_revision: expectedRevision, selection }),
+      commandContext,
+    },
+    parseTenantConfigPreview,
+  );
 }
 
-export function adoptTenantConfig(expectedRevision: string, selection: TenantConfigSelection, commandContext: CommandContext): Promise<TenantConfigCommandResult> {
-  return requestJson(paths.tenantConfigAdoption, {
-    ...jsonInit("PUT", { expected_revision: expectedRevision, selection }),
-    commandContext,
-  }, parseTenantConfigCommandResult);
+export function adoptTenantConfig(
+  expectedRevision: string,
+  selection: TenantConfigSelection,
+  commandContext: CommandContext,
+): Promise<TenantConfigCommandResult> {
+  return requestJson(
+    paths.tenantConfigAdoption,
+    {
+      ...jsonInit("PUT", { expected_revision: expectedRevision, selection }),
+      commandContext,
+    },
+    parseTenantConfigCommandResult,
+  );
 }
 
-export function setTenantConfigLiveControl(expectedRevision: string, enabled: boolean, commandContext: CommandContext): Promise<TenantConfigLiveControlResult> {
-  return requestJson(paths.tenantConfigLiveControl, {
-    ...jsonInit("PUT", { expected_revision: expectedRevision, enabled }),
-    commandContext,
-  }, parseTenantConfigLiveControlResult);
+export function setTenantConfigLiveControl(
+  expectedRevision: string,
+  enabled: boolean,
+  commandContext: CommandContext,
+): Promise<TenantConfigLiveControlResult> {
+  return requestJson(
+    paths.tenantConfigLiveControl,
+    {
+      ...jsonInit("PUT", { expected_revision: expectedRevision, enabled }),
+      commandContext,
+    },
+    parseTenantConfigLiveControlResult,
+  );
 }
 
 export function useTenantConfig(tenantId: string | undefined, enabled: boolean) {

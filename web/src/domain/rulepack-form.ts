@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -27,8 +27,7 @@ function addRequiredIssue(
   value: string,
   label: string,
 ) {
-  if (value.trim() === "")
-    issues.push({ fieldId, message: `${label}不能为空。` });
+  if (value.trim() === "") issues.push({ fieldId, message: `${label}不能为空。` });
 }
 
 export function validateRulePackDraft(
@@ -75,33 +74,15 @@ export function validateRulePackDraft(
   });
   manifest.rules.forEach((rule, ruleIndex) => {
     const prefix = `rule-${ruleIndex}`;
-    if (
-      Object.hasOwn(REQUIRED_RULE_CAPABILITIES, rule.capability_id) &&
-      !rule.mandatory
-    ) {
+    if (Object.hasOwn(REQUIRED_RULE_CAPABILITIES, rule.capability_id) && !rule.mandatory) {
       issues.push({
         fieldId: `${prefix}-mandatory`,
         message: `规则 ${ruleIndex + 1} 是专线核心能力，必须保持必检。`,
       });
     }
-    addRequiredIssue(
-      issues,
-      `${prefix}-id`,
-      rule.rule_id,
-      `规则 ${ruleIndex + 1} ID`,
-    );
-    addRequiredIssue(
-      issues,
-      `${prefix}-version`,
-      rule.version,
-      `规则 ${ruleIndex + 1} 版本`,
-    );
-    addRequiredIssue(
-      issues,
-      `${prefix}-domain`,
-      rule.domain,
-      `规则 ${ruleIndex + 1} 检查域`,
-    );
+    addRequiredIssue(issues, `${prefix}-id`, rule.rule_id, `规则 ${ruleIndex + 1} ID`);
+    addRequiredIssue(issues, `${prefix}-version`, rule.version, `规则 ${ruleIndex + 1} 版本`);
+    addRequiredIssue(issues, `${prefix}-domain`, rule.domain, `规则 ${ruleIndex + 1} 检查域`);
     addRequiredIssue(
       issues,
       `${prefix}-capability`,

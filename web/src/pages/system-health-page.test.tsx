@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-08
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -241,13 +241,9 @@ function snapshot(observedAt: string) {
   };
 }
 
-function open(
-  value: unknown,
-  status = 200,
-  audience: "client" | "admin" = "client",
-) {
-  const fetchMock = vi.fn(
-    async (_input: RequestInfo | URL, _init?: RequestInit) => json(value, status),
+function open(value: unknown, status = 200, audience: "client" | "admin" = "client") {
+  const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+    json(value, status),
   );
   vi.stubGlobal("fetch", fetchMock);
   const client = new QueryClient({
@@ -282,12 +278,8 @@ describe("system health page", () => {
     const facts = screen.getByRole("list", { name: "健康概览关键事实" });
     expect(within(facts).getByRole("listitem", { name: "Core" })).toBeInTheDocument();
     expect(within(facts).getByRole("listitem", { name: "Worker" })).toBeInTheDocument();
-    expect(
-      within(facts).getByRole("listitem", { name: "对象存储" }),
-    ).toBeInTheDocument();
-    expect(
-      within(facts).getByRole("listitem", { name: "事件连接" }),
-    ).toBeInTheDocument();
+    expect(within(facts).getByRole("listitem", { name: "对象存储" })).toBeInTheDocument();
+    expect(within(facts).getByRole("listitem", { name: "事件连接" })).toBeInTheDocument();
     expect(within(facts).queryByText("数据库")).not.toBeInTheDocument();
 
     const core = within(facts).getByRole("listitem", { name: "Core" });
@@ -322,22 +314,15 @@ describe("system health page", () => {
     const fetchMock = open(snapshot(now));
     await screen.findByText("服务概览");
     await user.click(screen.getByRole("button", { name: "查看诊断" }));
-    expect(screen.getByRole("tab", { name: "近期异常" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(screen.getByRole("tab", { name: "近期异常" })).toHaveAttribute("aria-selected", "true");
     expect((await screen.findAllByText("对象存储未报告")).length).toBeGreaterThan(0);
-    expect(fetchMock.mock.calls.every((call) => call[1]?.method === "GET")).toBe(
-      true,
-    );
+    expect(fetchMock.mock.calls.every((call) => call[1]?.method === "GET")).toBe(true);
   });
 
   it("uses the admin information architecture and admin endpoint without leaking client tabs", async () => {
     const now = new Date().toISOString();
     const fetchMock = open(snapshot(now), 200, "admin");
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "基础设施" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "基础设施" })).toBeInTheDocument();
     expect(tabNames()).toEqual(["服务健康", "存储与网络", "容量与事件"]);
     expect(screen.queryByRole("tab", { name: "服务概览" })).not.toBeInTheDocument();
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/system-health");
@@ -360,9 +345,7 @@ describe("system health page", () => {
       },
       403,
     );
-    expect(
-      await screen.findByText("没有访问系统健康的权限"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("没有访问系统健康的权限")).toBeInTheDocument();
     expect(screen.queryByText("服务概览")).not.toBeInTheDocument();
     expect(screen.queryByText("服务组与副本")).not.toBeInTheDocument();
   });

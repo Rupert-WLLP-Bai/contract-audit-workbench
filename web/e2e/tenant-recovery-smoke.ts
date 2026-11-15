@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -58,21 +58,35 @@ try {
   // Capture the form's original authority once. The stale command below keeps
   // these exact values; it must not refresh or recapture after switching.
   const originalContext = await readSession();
-  if (originalContext.tenant !== "smoke-tenant-a" || !originalContext.version || !originalContext.csrf) {
+  if (
+    originalContext.tenant !== "smoke-tenant-a" ||
+    !originalContext.version ||
+    !originalContext.csrf
+  ) {
     throw new Error("OIDC did not establish tenant A with a command context");
   }
 
   await page.getByLabel("切换工作上下文").click();
-  await page.getByText(/合成租户 B/).last().click();
-  await pollUntil("tenant B session", async () => page.evaluate(async () => {
-    const response = await fetch("/api/session");
-    if (!response.ok) return false;
-    const session = await response.json();
-    return session.active_context.tenant_id === "smoke-tenant-b";
-  }));
+  await page
+    .getByText(/合成租户 B/)
+    .last()
+    .click();
+  await pollUntil("tenant B session", async () =>
+    page.evaluate(async () => {
+      const response = await fetch("/api/session");
+      if (!response.ok) return false;
+      const session = await response.json();
+      return session.active_context.tenant_id === "smoke-tenant-b";
+    }),
+  );
   const currentContext = await readSession();
-  if (currentContext.tenant !== "smoke-tenant-b" || currentContext.version === originalContext.version) {
-    throw new Error(`context switch did not advance authority: before=${JSON.stringify(originalContext)} after=${JSON.stringify(currentContext)}`);
+  if (
+    currentContext.tenant !== "smoke-tenant-b" ||
+    currentContext.version === originalContext.version
+  ) {
+    throw new Error(
+      `context switch did not advance authority: before=${JSON.stringify(originalContext)} after=${JSON.stringify(currentContext)}`,
+    );
   }
 
   const stale = await page.evaluate(async (captured) => {
@@ -88,13 +102,13 @@ try {
     return { status: response.status, body: await response.text() };
   }, originalContext);
   if (stale.status !== 409) {
-    throw new Error(`old context command returned ${stale.status}: ${stale.body}; before=${JSON.stringify(originalContext)} after=${JSON.stringify(currentContext)}`);
+    throw new Error(
+      `old context command returned ${stale.status}: ${stale.body}; before=${JSON.stringify(originalContext)} after=${JSON.stringify(currentContext)}`,
+    );
   }
 
   // New UI commands capture the revalidated session and its current tokens.
-  if (
-    !currentContext.csrf
-  ) {
+  if (!currentContext.csrf) {
     throw new Error("fresh session did not revalidate to tenant B");
   }
   await page.getByLabel("案件标题").fill("合成租户 B 的嵌入式审查");
@@ -109,7 +123,11 @@ try {
   if (!homeCaseID) throw new Error("embedded intake did not navigate to its case");
   await page.locator(".material-current-set").getByText("draft.txt", { exact: true }).waitFor();
   const postIntakeContext = await readSession();
-  if (postIntakeContext.tenant !== "smoke-tenant-b" || !postIntakeContext.version || !postIntakeContext.csrf) {
+  if (
+    postIntakeContext.tenant !== "smoke-tenant-b" ||
+    !postIntakeContext.version ||
+    !postIntakeContext.csrf
+  ) {
     throw new Error("embedded intake did not retain the validated tenant B session");
   }
 
@@ -141,7 +159,8 @@ try {
   }
   const legacyCaseID = (JSON.parse(legacyCase.body) as { id?: string }).id;
   if (!legacyCaseID) throw new Error("legacy case creation response has no id");
-  if (legacyCaseID === homeCaseID) throw new Error("ENT intake and legacy procurement case unexpectedly share an id");
+  if (legacyCaseID === homeCaseID)
+    throw new Error("ENT intake and legacy procurement case unexpectedly share an id");
   await page.goto(`${web}/cases/${legacyCaseID}`);
   await page.getByLabel("材料角色").waitFor();
   await addMaterial("采购文件", "purchase.txt", "采购文件要求质保36个月。合同总价100万元。");
@@ -156,24 +175,32 @@ try {
   if (!routeMatch) throw new Error(`review route missing: ${route.pathname}`);
   const caseID = routeMatch[1]!;
   const runID = routeMatch[2]!;
-  if (caseID !== legacyCaseID) throw new Error(`legacy review opened case ${caseID}, expected ${legacyCaseID}`);
+  if (caseID !== legacyCaseID)
+    throw new Error(`legacy review opened case ${caseID}, expected ${legacyCaseID}`);
   const readWorkspace = (attempt?: string) =>
-    page.evaluate(async ({ caseID, runID, attempt }) => {
-      const query = attempt ? `?attempt_id=${encodeURIComponent(attempt)}` : "";
-      const response = await fetch(`/api/cases/${caseID}/reviews/${runID}${query}`);
-      if (!response.ok) throw new Error(`workspace ${response.status}`);
-      return (await response.json()) as ReviewWorkspace;
-    }, { caseID, runID, attempt });
-
-  await pollUntil("initial attempt terminal and frozen", async () => {
-    const workspace = await readWorkspace();
-    const attempt = workspace.review_attempts?.attempt;
-    return Boolean(
-      attempt?.history_kind === "frozen" &&
-      attempt.frozen_result_available === true &&
-      isTerminal(attempt.state),
+    page.evaluate(
+      async ({ caseID, runID, attempt }) => {
+        const query = attempt ? `?attempt_id=${encodeURIComponent(attempt)}` : "";
+        const response = await fetch(`/api/cases/${caseID}/reviews/${runID}${query}`);
+        if (!response.ok) throw new Error(`workspace ${response.status}`);
+        return (await response.json()) as ReviewWorkspace;
+      },
+      { caseID, runID, attempt },
     );
-  }, 60_000);
+
+  await pollUntil(
+    "initial attempt terminal and frozen",
+    async () => {
+      const workspace = await readWorkspace();
+      const attempt = workspace.review_attempts?.attempt;
+      return Boolean(
+        attempt?.history_kind === "frozen" &&
+        attempt.frozen_result_available === true &&
+        isTerminal(attempt.state),
+      );
+    },
+    60_000,
+  );
 
   const firstWorkspace = await readWorkspace();
   const firstAttempt = firstWorkspace.review_attempts?.attempt;
@@ -182,24 +209,30 @@ try {
     firstAttempt.frozen_result_available !== true ||
     !firstAttempt.parsed_document_ids?.length
   ) {
-    throw new Error(`initial attempt did not freeze source identity before terminal state: ${JSON.stringify(firstAttempt)}`);
+    throw new Error(
+      `initial attempt did not freeze source identity before terminal state: ${JSON.stringify(firstAttempt)}`,
+    );
   }
   if (!(await retryButton.isEnabled())) throw new Error("real retry action is unavailable");
   await retryButton.click();
 
-  await pollUntil("retry attempt terminal and frozen", async () => {
-    const workspace = await readWorkspace();
-    const attempt = workspace.review_attempts?.attempt;
-    return Boolean(
-      workspace.review_attempts?.attempts?.length === 2 &&
-      attempt?.id !== firstAttempt.id &&
-      attempt?.ordinal === 2 &&
-      attempt.retry_of_attempt_id === firstAttempt.id &&
-      attempt.history_kind === "frozen" &&
-      attempt.frozen_result_available === true &&
-      isTerminal(attempt.state),
-    );
-  }, 90_000);
+  await pollUntil(
+    "retry attempt terminal and frozen",
+    async () => {
+      const workspace = await readWorkspace();
+      const attempt = workspace.review_attempts?.attempt;
+      return Boolean(
+        workspace.review_attempts?.attempts?.length === 2 &&
+        attempt?.id !== firstAttempt.id &&
+        attempt?.ordinal === 2 &&
+        attempt.retry_of_attempt_id === firstAttempt.id &&
+        attempt.history_kind === "frozen" &&
+        attempt.frozen_result_available === true &&
+        isTerminal(attempt.state),
+      );
+    },
+    90_000,
+  );
 
   const latest = await readWorkspace();
   const oldAttempt = await readWorkspace(firstAttempt.id);
@@ -209,22 +242,31 @@ try {
     retryAttempt.frozen_result_available !== true ||
     retryAttempt?.parsed_document_ids?.join("|") !== firstAttempt.parsed_document_ids.join("|")
   ) {
-    throw new Error(`retry attempt differs from the frozen source: first=${JSON.stringify(firstAttempt)} retry=${JSON.stringify(retryAttempt)} attempts=${JSON.stringify(latest.review_attempts?.attempts)}`);
+    throw new Error(
+      `retry attempt differs from the frozen source: first=${JSON.stringify(firstAttempt)} retry=${JSON.stringify(retryAttempt)} attempts=${JSON.stringify(latest.review_attempts?.attempts)}`,
+    );
   }
   if (
     oldAttempt.review_attempts?.attempt?.history_kind !== "frozen" ||
     oldAttempt.review_attempts?.attempt?.frozen_result_available !== true ||
-    oldAttempt.review_attempts?.attempt?.parsed_document_ids?.join("|") !== firstAttempt.parsed_document_ids.join("|") ||
+    oldAttempt.review_attempts?.attempt?.parsed_document_ids?.join("|") !==
+      firstAttempt.parsed_document_ids.join("|") ||
     oldAttempt.review_attempts?.attempt?.id !== firstAttempt.id
   ) {
     throw new Error("old frozen attempt identity changed");
   }
 
-  const locatedCitations = latest.findings
-    ?.flatMap((finding) => finding.evidence ?? [])
-    .filter((citation) => citation.status === "located") ?? [];
+  const locatedCitations =
+    latest.findings
+      ?.flatMap((finding) => finding.evidence ?? [])
+      .filter((citation) => citation.status === "located") ?? [];
   if (!locatedCitations.length) throw new Error("retry produced no located frozen citation");
-  if (locatedCitations.some((citation) => !firstAttempt.parsed_document_ids!.includes(String(citation.parsed_document_id)))) {
+  if (
+    locatedCitations.some(
+      (citation) =>
+        !firstAttempt.parsed_document_ids!.includes(String(citation.parsed_document_id)),
+    )
+  ) {
     throw new Error("citation parse identity drifted after retry");
   }
 
@@ -268,12 +310,20 @@ try {
   evidence.status = "FAIL";
   evidence.error = String(error);
   evidence.failure_url = page.url();
-  evidence.failure_text = await page.locator("body").innerText().catch(() => "");
+  evidence.failure_text = await page
+    .locator("body")
+    .innerText()
+    .catch(() => "");
   await mkdir(screenshots, { recursive: true });
-  await page.screenshot({ path: join(screenshots, "tenant-recovery-failure.png"), fullPage: true }).catch(() => undefined);
+  await page
+    .screenshot({ path: join(screenshots, "tenant-recovery-failure.png"), fullPage: true })
+    .catch(() => undefined);
   throw error;
 } finally {
-  await writeFile(resolve(out, "tenant-recovery-evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
+  await writeFile(
+    resolve(out, "tenant-recovery-evidence.json"),
+    `${JSON.stringify(evidence, null, 2)}\n`,
+  );
   await context.tracing.stop({ path: resolve(out, "tenant-recovery-trace.zip") });
   await browser.close();
 }
@@ -319,8 +369,12 @@ async function addMaterial(role: string, name: string, text: string): Promise<vo
     buffer: Buffer.from(text),
   });
   await page.getByRole("button", { name: "新增材料" }).click();
-  await page.locator('p[role="status"][data-document-id]').filter({ hasText: "材料已登记" }).waitFor();
-  await page.locator(".document-list li")
+  await page
+    .locator('p[role="status"][data-document-id]')
+    .filter({ hasText: "材料已登记" })
+    .waitFor();
+  await page
+    .locator(".document-list li")
     .filter({ hasText: name })
     .locator('[data-status="ready"]')
     .waitFor({ timeout: 30_000 });

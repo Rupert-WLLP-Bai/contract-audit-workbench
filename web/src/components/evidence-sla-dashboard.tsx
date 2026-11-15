@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-08
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -86,9 +86,7 @@ function responseCell(row: EvidenceSLARow) {
   return (
     <div className="evidence-sla-response">
       <strong>
-        {row.firstResponseMs === null
-          ? "时长无法计算"
-          : formatElapsedDuration(row.firstResponseMs)}
+        {row.firstResponseMs === null ? "时长无法计算" : formatElapsedDuration(row.firstResponseMs)}
       </strong>
       <time className="meta" dateTime={row.firstReceipt.created_at}>
         首次登记 {formatDateTime(row.firstReceipt.created_at)}
@@ -127,9 +125,8 @@ export function EvidenceSLADashboard({
       request,
     })),
   );
-  const historyItems = mode === "dashboard"
-    ? requestItems.filter((item) => item.request.status !== "open")
-    : [];
+  const historyItems =
+    mode === "dashboard" ? requestItems.filter((item) => item.request.status !== "open") : [];
   const historyQueries = useQueries({
     queries: historyItems.map((item) => ({
       queryKey: ["evidence-requests", item.caseId, item.request.id, "history"] as const,
@@ -138,9 +135,7 @@ export function EvidenceSLADashboard({
       retry: false,
     })),
   });
-  const historyIndex = new Map(
-    historyItems.map((item, index) => [item.key, index] as const),
-  );
+  const historyIndex = new Map(historyItems.map((item, index) => [item.key, index] as const));
   const rows: EvidenceSLARow[] = requestItems.map((item) => {
     const queryIndex = historyIndex.get(item.key);
     const historyQuery = queryIndex === undefined ? undefined : historyQueries[queryIndex];
@@ -155,13 +150,13 @@ export function EvidenceSLADashboard({
       historyUnavailable: historyQuery?.isError ?? false,
     };
   });
-  const selectedRow = selection && rows.find((row) =>
-    row.caseId === selection.caseId && row.request.id === selection.requestId,
-  );
+  const selectedRow =
+    selection &&
+    rows.find((row) => row.caseId === selection.caseId && row.request.id === selection.requestId);
   const selectedHistory = useQuery({
     queryKey: ["evidence-requests", selection?.caseId, selection?.requestId, "history"],
-    queryFn: ({ signal }) => withSLASlot(() =>
-      listEvidenceHistory(selection!.caseId, selection!.requestId, signal)),
+    queryFn: ({ signal }) =>
+      withSLASlot(() => listEvidenceHistory(selection!.caseId, selection!.requestId, signal)),
     enabled: mode === "dashboard" && !!selectedRow,
     retry: false,
   });
@@ -173,8 +168,12 @@ export function EvidenceSLADashboard({
   const historyLoading = historyQueries.some((query) => query.isLoading);
   const historyUnavailable = historyQueries.some((query) => query.isError);
   const outstanding = rows.filter((row) => isOutstandingEvidenceRequest(row.request.status));
-  const overdueCount = outstanding.filter((row) => isEvidenceRequestOverdue(row.request, now)).length;
-  const noDeadlineCount = outstanding.filter((row) => !hasEvidenceDeadline(row.request.due_at)).length;
+  const overdueCount = outstanding.filter((row) =>
+    isEvidenceRequestOverdue(row.request, now),
+  ).length;
+  const noDeadlineCount = outstanding.filter(
+    (row) => !hasEvidenceDeadline(row.request.due_at),
+  ).length;
   const averageResponseMs = averageResponseDurationMs(rows.map((row) => row.firstResponseMs));
   const sortedRows = [...rows].sort((left, right) => {
     const overdueOrder =
@@ -188,8 +187,11 @@ export function EvidenceSLADashboard({
     const rightDeadline = hasEvidenceDeadline(rightDueAt)
       ? Date.parse(rightDueAt)
       : Number.POSITIVE_INFINITY;
-    return overdueOrder || leftDeadline - rightDeadline ||
-      right.request.created_at.localeCompare(left.request.created_at);
+    return (
+      overdueOrder ||
+      leftDeadline - rightDeadline ||
+      right.request.created_at.localeCompare(left.request.created_at)
+    );
   });
 
   const retryReads = () => {
@@ -211,7 +213,9 @@ export function EvidenceSLADashboard({
   }
   if (requestLoading)
     return mode === "reminder" ? (
-      <p className="evidence-sla-pre-review" role="status">正在检查补充材料请求，完成后会显示复审提醒。</p>
+      <p className="evidence-sla-pre-review" role="status">
+        正在检查补充材料请求，完成后会显示复审提醒。
+      </p>
     ) : (
       <p role="status">正在读取当前授权案件的补充材料请求…</p>
     );
@@ -261,13 +265,7 @@ export function EvidenceSLADashboard({
       width: 180,
       render: (_, row) => (
         <div className="evidence-sla-case">
-          <Link
-            to={caseHref(
-              row.caseId,
-              row.request.source_run_id,
-              row.request.source_attempt_id,
-            )}
-          >
+          <Link to={caseHref(row.caseId, row.request.source_run_id, row.request.source_attempt_id)}>
             {row.caseTitle}
           </Link>
           <span className="meta">案件 {row.caseId}</span>
@@ -305,9 +303,7 @@ export function EvidenceSLADashboard({
       key: "created",
       width: 160,
       render: (_, row) => (
-        <time dateTime={row.request.created_at}>
-          {formatDateTime(row.request.created_at)}
-        </time>
+        <time dateTime={row.request.created_at}>{formatDateTime(row.request.created_at)}</time>
       ),
     },
     {
@@ -390,7 +386,9 @@ export function EvidenceSLADashboard({
                   : formatElapsedDuration(averageResponseMs)}
           </dd>
           {!historyLoading && !historyUnavailable && averageResponseMs !== null ? (
-            <small>基于 {rows.filter((row) => row.firstResponseMs !== null).length} 项有效时长样本</small>
+            <small>
+              基于 {rows.filter((row) => row.firstResponseMs !== null).length} 项有效时长样本
+            </small>
           ) : null}
         </div>
       </dl>
@@ -402,49 +400,102 @@ export function EvidenceSLADashboard({
         <Empty description="当前授权案件范围内没有补充材料请求。" />
       ) : (
         <div className="evidence-sla-workspace">
-        <Table
-          className="evidence-sla-table"
-          rowKey="key"
-          columns={columns}
-          dataSource={sortedRows}
-          pagination={{ pageSize: 10, showSizeChanger: true, hideOnSinglePage: true }}
-          scroll={{ x: 1_260 }}
-          size="small"
-        />
-        <aside className="evidence-sla-detail" aria-labelledby="evidence-sla-detail-title">
-          <h3 id="evidence-sla-detail-title">请求详情</h3>
-          {!selectedRow ? <p>请选择一项请求查看详情。</p> : selectedHistory.isError ? (
-            <p role="alert">请求历史不可用。<button type="button" onClick={() => void selectedHistory.refetch()}>重试</button></p>
-          ) : (
-            <>
-              <h4>{selectedRow.request.question || "未填写请求说明"}</h4>
-              <dl>
-                <div><dt>案件</dt><dd>{selectedRow.caseTitle} · {selectedRow.caseId}</dd></div>
-                <div><dt>请求 ID</dt><dd>{selectedRow.request.id}</dd></div>
-                <div><dt>指派人 ID</dt><dd>{selectedRow.request.assignee_id || "未报告"}</dd></div>
-                <div><dt>状态</dt><dd>{evidenceRequestStatusLabel(selectedRow.request.status)}</dd></div>
-                <div><dt>创建时间</dt><dd>{formatDateTime(selectedRow.request.created_at)}</dd></div>
-                <div><dt>截止时间</dt><dd>{hasEvidenceDeadline(selectedRow.request.due_at) ? formatDateTime(selectedRow.request.due_at) : "未设置期限"}</dd></div>
-                <div><dt>材料用途</dt><dd>{selectedRow.request.material_role || "未报告"}</dd></div>
-                <div><dt>核验条件</dt><dd>{selectedRow.request.verification_condition || "未报告"}</dd></div>
-              </dl>
-              <Link to={caseHref(selectedRow.caseId, selectedRow.request.source_run_id, selectedRow.request.source_attempt_id)}>查看原始审查</Link>
-              <h4>时间记录与关联材料</h4>
-              {selectedHistory.isLoading ? <p role="status">正在读取请求历史…</p> : !selectedHistory.data?.length ? <p>暂无历史记录。</p> : (
-                <ol className="evidence-sla-history">
-                  {selectedHistory.data.map((event, index) => (
-                    <li key={`${event.type}-${event.occurred_at}-${index}`}>
-                      <div>{event.type} · {formatDateTime(event.occurred_at)}</div>
-                      <div>操作人 ID：{event.actor_id || "未报告"}</div>
-                      {event.receipt?.document_id ? <div>材料 ID：{event.receipt.document_id}</div> : null}
-                      {event.receipt?.answer ? <div>回执内容：{event.receipt.answer}</div> : null}
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </>
-          )}
-        </aside>
+          <Table
+            className="evidence-sla-table"
+            rowKey="key"
+            columns={columns}
+            dataSource={sortedRows}
+            pagination={{ pageSize: 10, showSizeChanger: true, hideOnSinglePage: true }}
+            scroll={{ x: 1_260 }}
+            size="small"
+          />
+          <aside className="evidence-sla-detail" aria-labelledby="evidence-sla-detail-title">
+            <h3 id="evidence-sla-detail-title">请求详情</h3>
+            {!selectedRow ? (
+              <p>请选择一项请求查看详情。</p>
+            ) : selectedHistory.isError ? (
+              <p role="alert">
+                请求历史不可用。
+                <button type="button" onClick={() => void selectedHistory.refetch()}>
+                  重试
+                </button>
+              </p>
+            ) : (
+              <>
+                <h4>{selectedRow.request.question || "未填写请求说明"}</h4>
+                <dl>
+                  <div>
+                    <dt>案件</dt>
+                    <dd>
+                      {selectedRow.caseTitle} · {selectedRow.caseId}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>请求 ID</dt>
+                    <dd>{selectedRow.request.id}</dd>
+                  </div>
+                  <div>
+                    <dt>指派人 ID</dt>
+                    <dd>{selectedRow.request.assignee_id || "未报告"}</dd>
+                  </div>
+                  <div>
+                    <dt>状态</dt>
+                    <dd>{evidenceRequestStatusLabel(selectedRow.request.status)}</dd>
+                  </div>
+                  <div>
+                    <dt>创建时间</dt>
+                    <dd>{formatDateTime(selectedRow.request.created_at)}</dd>
+                  </div>
+                  <div>
+                    <dt>截止时间</dt>
+                    <dd>
+                      {hasEvidenceDeadline(selectedRow.request.due_at)
+                        ? formatDateTime(selectedRow.request.due_at)
+                        : "未设置期限"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>材料用途</dt>
+                    <dd>{selectedRow.request.material_role || "未报告"}</dd>
+                  </div>
+                  <div>
+                    <dt>核验条件</dt>
+                    <dd>{selectedRow.request.verification_condition || "未报告"}</dd>
+                  </div>
+                </dl>
+                <Link
+                  to={caseHref(
+                    selectedRow.caseId,
+                    selectedRow.request.source_run_id,
+                    selectedRow.request.source_attempt_id,
+                  )}
+                >
+                  查看原始审查
+                </Link>
+                <h4>时间记录与关联材料</h4>
+                {selectedHistory.isLoading ? (
+                  <p role="status">正在读取请求历史…</p>
+                ) : !selectedHistory.data?.length ? (
+                  <p>暂无历史记录。</p>
+                ) : (
+                  <ol className="evidence-sla-history">
+                    {selectedHistory.data.map((event, index) => (
+                      <li key={`${event.type}-${event.occurred_at}-${index}`}>
+                        <div>
+                          {event.type} · {formatDateTime(event.occurred_at)}
+                        </div>
+                        <div>操作人 ID：{event.actor_id || "未报告"}</div>
+                        {event.receipt?.document_id ? (
+                          <div>材料 ID：{event.receipt.document_id}</div>
+                        ) : null}
+                        {event.receipt?.answer ? <div>回执内容：{event.receipt.answer}</div> : null}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </>
+            )}
+          </aside>
         </div>
       )}
     </section>

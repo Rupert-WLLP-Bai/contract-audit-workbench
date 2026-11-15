@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-25
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,13 +12,7 @@ import type { ReactNode } from "react";
 import type { StatusTone } from "../domain/review";
 import { Tag } from "antd";
 
-export function StatusText({
-  tone,
-  children,
-}: {
-  tone: StatusTone;
-  children: ReactNode;
-}) {
+export function StatusText({ tone, children }: { tone: StatusTone; children: ReactNode }) {
   const color =
     tone === "good"
       ? "success"

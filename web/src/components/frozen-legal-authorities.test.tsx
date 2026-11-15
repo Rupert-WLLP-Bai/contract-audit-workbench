@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -18,7 +18,12 @@ import { renderWithAntd as render } from "../test/antd";
 import { FrozenLegalAuthorities } from "./frozen-legal-authorities";
 
 function fixture(): unknown {
-  return JSON.parse(readFileSync(resolve(process.cwd(), "../testdata/contracts/legal/frozen-legal-authorities.json"), "utf8")) as unknown;
+  return JSON.parse(
+    readFileSync(
+      resolve(process.cwd(), "../testdata/contracts/legal/frozen-legal-authorities.json"),
+      "utf8",
+    ),
+  ) as unknown;
 }
 
 function rawAuthority(): Record<string, unknown> {
@@ -27,9 +32,16 @@ function rawAuthority(): Record<string, unknown> {
 
 function mount(projection: ReturnType<typeof parseFrozenLegalReviewProjection> | undefined) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  return render(<QueryClientProvider client={client}>
-    <FrozenLegalAuthorities caseId="case-wire" runId="run_wire_fixture" attemptId="attempt_wire_fixture" projection={projection} />
-  </QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={client}>
+      <FrozenLegalAuthorities
+        caseId="case-wire"
+        runId="run_wire_fixture"
+        attemptId="attempt_wire_fixture"
+        projection={projection}
+      />
+    </QueryClientProvider>,
+  );
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -39,7 +51,12 @@ describe("frozen legal authorities review panel", () => {
     const projection = parseFrozenLegalReviewProjection(fixture());
     const authority = projection.authorities[0];
     expect(authority).toBeDefined();
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(rawAuthority()), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(rawAuthority()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
     mount(projection);
 
@@ -47,23 +64,34 @@ describe("frozen legal authorities review panel", () => {
     expect(screen.getByText("法务审核：未运行")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "读取本次冻结条文" }));
     expect(await screen.findByText("fixture-only body; not a legal quotation")).toBeInTheDocument();
-    await waitFor(() => expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
-      `/api/cases/case-wire/runs/run_wire_fixture/attempts/attempt_wire_fixture/legal-citations/${authority!.citation_id}`,
-    ));
+    await waitFor(() =>
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+        `/api/cases/case-wire/runs/run_wire_fixture/attempts/attempt_wire_fixture/legal-citations/${authority!.citation_id}`,
+      ),
+    );
   });
 
   it("does not backfill legacy workspaces without a frozen projection", () => {
     mount(undefined);
-    expect(screen.getByText("本次审查未返回独立法律依据快照；不会用当前规则或案件资料补填。")).toBeInTheDocument();
+    expect(
+      screen.getByText("本次审查未返回独立法律依据快照；不会用当前规则或案件资料补填。"),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "读取本次冻结条文" })).not.toBeInTheDocument();
   });
 
   it("does not expose a citation action when the selected attempt differs", () => {
     const projection = parseFrozenLegalReviewProjection(fixture());
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-    render(<QueryClientProvider client={client}>
-      <FrozenLegalAuthorities caseId="case-wire" runId="another-run" attemptId="another-attempt" projection={projection} />
-    </QueryClientProvider>);
+    render(
+      <QueryClientProvider client={client}>
+        <FrozenLegalAuthorities
+          caseId="case-wire"
+          runId="another-run"
+          attemptId="another-attempt"
+          projection={projection}
+        />
+      </QueryClientProvider>,
+    );
     expect(screen.getByRole("alert")).toHaveTextContent("与当前选择的审查或执行记录不匹配");
     expect(screen.queryByRole("button", { name: "读取本次冻结条文" })).not.toBeInTheDocument();
   });

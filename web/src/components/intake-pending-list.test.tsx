@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -28,7 +28,14 @@ const actor: Actor = {
   org_id: "org-a",
   audience: "client",
   principal_id: "principal-clerk-1",
-  active_context: { membership_id: "membership-1", tenant_id: "tenant-a", tenant_name: "租户A", org_id: "org-a", org_name: "组织A", context_version: "1" },
+  active_context: {
+    membership_id: "membership-1",
+    tenant_id: "tenant-a",
+    tenant_name: "租户A",
+    org_id: "org-a",
+    org_name: "组织A",
+    context_version: "1",
+  },
   csrf_token: "test-csrf",
   context_switch_enabled: false,
 };
@@ -108,34 +115,22 @@ class PendingService {
       }
       const cursor = url.searchParams.get("cursor");
       return json({
-        items: this.archived
-          ? []
-          : cursor === "cursor-page-2"
-            ? this.nextPageItems
-            : this.items,
-        next_cursor: this.archived
-          ? null
-          : cursor === "cursor-page-2"
-            ? null
-            : this.nextCursor,
+        items: this.archived ? [] : cursor === "cursor-page-2" ? this.nextPageItems : this.items,
+        next_cursor: this.archived ? null : cursor === "cursor-page-2" ? null : this.nextCursor,
       });
     }
-    const continuationMatch = url.pathname.match(
-      /^\/api\/intakes\/([^/]+)\/continuation$/,
-    );
+    const continuationMatch = url.pathname.match(/^\/api\/intakes\/([^/]+)\/continuation$/);
     if (method === "GET" && continuationMatch !== null) {
       const operationId = decodeURIComponent(continuationMatch[1] ?? "");
       const item = this.items.find((entry) => entry.operation_id === operationId);
-      if (item === undefined)
-        return json({ error: { message: "operation not found" } }, 404);
+      if (item === undefined) return json({ error: { message: "operation not found" } }, 404);
       return json(continuation(operationId, item.case_id));
     }
     const archiveMatch = url.pathname.match(/^\/api\/intakes\/([^/]+)\/archive$/);
     if (method === "POST" && archiveMatch !== null) {
       const operationId = decodeURIComponent(archiveMatch[1] ?? "");
       const item = this.items.find((entry) => entry.operation_id === operationId);
-      if (item === undefined)
-        return json({ error: { message: "operation not found" } }, 404);
+      if (item === undefined) return json({ error: { message: "operation not found" } }, 404);
       this.archived = true;
       return json({
         operation_id: operationId,
@@ -195,16 +190,12 @@ describe("server-backed pending intake list", () => {
     const { onSelectContinuation } = renderList(service);
     const user = userEvent.setup();
 
-    expect(
-      await screen.findByRole("heading", { name: "我的未完成办理" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "我的未完成办理" })).toBeInTheDocument();
     expect(await screen.findByText("第一份采购合同")).toBeInTheDocument();
     expect(screen.getByText("第二份采购合同")).toBeInTheDocument();
     expect(localStorage.length).toBe(0);
 
-    const secondRow = screen
-      .getByRole("heading", { name: "第二份采购合同" })
-      .closest("li");
+    const secondRow = screen.getByRole("heading", { name: "第二份采购合同" }).closest("li");
     expect(secondRow).not.toBeNull();
     await user.click(
       within(secondRow as HTMLElement).getByRole("button", {
@@ -230,9 +221,7 @@ describe("server-backed pending intake list", () => {
       path: "/api/intakes/op-2/continuation",
     });
     expect(service.calls.some((call) => call.method === "POST")).toBe(false);
-    const firstRow = screen
-      .getByRole("heading", { name: "第一份采购合同" })
-      .closest("li");
+    const firstRow = screen.getByRole("heading", { name: "第一份采购合同" }).closest("li");
     expect(firstRow).not.toBeNull();
     await user.click(
       within(firstRow as HTMLElement).getByRole("button", {
@@ -259,16 +248,12 @@ describe("server-backed pending intake list", () => {
   });
 
   it("shows a server list error and retries on request", async () => {
-    const service = new PendingService([
-      pendingItem("op-retry", "case-retry", "重新读取合同"),
-    ]);
+    const service = new PendingService([pendingItem("op-retry", "case-retry", "重新读取合同")]);
     service.pendingFailures = 1;
     renderList(service);
     const user = userEvent.setup();
 
-    expect(
-      await screen.findByText("未完成办理列表暂不可用"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("未完成办理列表暂不可用")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试" }));
     expect(await screen.findByText("重新读取合同")).toBeInTheDocument();
     expect(
@@ -306,58 +291,39 @@ describe("server-backed pending intake list", () => {
         "这是旧办理，服务器没有可验证的原始请求信息，无法安全续传。原案件仍可打开。",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText("当前工作区处于只读状态，不能继续上传。"))
-      .toBeInTheDocument();
+    expect(screen.getByText("当前工作区处于只读状态，不能继续上传。")).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "当前身份无权继续该办理。请使用原经办身份登录，或在有权查看时打开原案件。",
-      ),
+      screen.getByText("当前身份无权继续该办理。请使用原经办身份登录，或在有权查看时打开原案件。"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("服务器已确认该办理完成；请打开原案件查看。"),
-    ).toBeInTheDocument();
-    const oldRow = screen
-      .getByRole("heading", { name: "旧办理" })
-      .closest("li");
+    expect(screen.getByText("服务器已确认该办理完成；请打开原案件查看。")).toBeInTheDocument();
+    const oldRow = screen.getByRole("heading", { name: "旧办理" }).closest("li");
     expect(oldRow).not.toBeNull();
-    expect(
-      within(oldRow as HTMLElement).getByRole("link", { name: "打开原案件" }),
-    ).toHaveAttribute("href", "/cases/case-legacy");
+    expect(within(oldRow as HTMLElement).getByRole("link", { name: "打开原案件" })).toHaveAttribute(
+      "href",
+      "/cases/case-legacy",
+    );
     expect(screen.queryByRole("button", { name: "继续办理" })).not.toBeInTheDocument();
   });
 
-
   it("moves through server cursor pages and returns to the previous page", async () => {
-    const service = new PendingService([
-      pendingItem("page-1", "case-page-1", "第一页办理"),
-    ]);
+    const service = new PendingService([pendingItem("page-1", "case-page-1", "第一页办理")]);
     service.nextCursor = "cursor-page-2";
-    service.nextPageItems = [
-      pendingItem("page-2", "case-page-2", "第二页办理"),
-    ];
+    service.nextPageItems = [pendingItem("page-2", "case-page-2", "第二页办理")];
     const user = userEvent.setup();
     renderList(service);
 
     expect(await screen.findByText("第一页办理")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "下一页" }));
     expect(await screen.findByText("第二页办理")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "第一页办理" }),
-    ).not.toBeInTheDocument();
-    expect(
-      service.calls.some((call) =>
-        call.path.includes("cursor=cursor-page-2"),
-      ),
-    ).toBe(true);
+    expect(screen.queryByRole("heading", { name: "第一页办理" })).not.toBeInTheDocument();
+    expect(service.calls.some((call) => call.path.includes("cursor=cursor-page-2"))).toBe(true);
 
     await user.click(screen.getByRole("button", { name: "上一页" }));
     expect(await screen.findByText("第一页办理")).toBeInTheDocument();
   });
 
   it("archives only after an explicit confirmation and refreshes the server list", async () => {
-    const service = new PendingService([
-      pendingItem("op-archive", "case-archive", "归档采购合同"),
-    ]);
+    const service = new PendingService([pendingItem("op-archive", "case-archive", "归档采购合同")]);
     const { onArchived } = renderList(service);
     const user = userEvent.setup();
 
@@ -366,28 +332,19 @@ describe("server-backed pending intake list", () => {
     });
     const row = rowTitle.closest("li");
     expect(row).not.toBeNull();
-    await user.click(
-      within(row as HTMLElement).getByRole("button", { name: "归档办理" }),
-    );
+    await user.click(within(row as HTMLElement).getByRole("button", { name: "归档办理" }));
     const confirmation = screen.getByRole("group", {
       name: "确认归档 归档采购合同",
     });
-    await user.click(
-      within(confirmation).getByRole("button", { name: "确认归档" }),
-    );
+    await user.click(within(confirmation).getByRole("button", { name: "确认归档" }));
 
     await waitFor(() => expect(onArchived).toHaveBeenCalledWith("op-archive"));
-    expect(
-      await screen.findByText("当前没有未完成办理。"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("当前没有未完成办理。")).toBeInTheDocument();
     expect(
       service.calls.some(
-        (call) =>
-          call.method === "POST" &&
-          call.path === "/api/intakes/op-archive/archive",
+        (call) => call.method === "POST" && call.path === "/api/intakes/op-archive/archive",
       ),
     ).toBe(true);
-    expect(service.calls.some((call) => call.path.startsWith("/api/cases/")))
-      .toBe(false);
+    expect(service.calls.some((call) => call.path.startsWith("/api/cases/"))).toBe(false);
   });
 });

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -44,12 +44,7 @@ function Probe({
   enabled?: boolean;
   onEvent: (batch: ReviewEventBatch) => void | Promise<void>;
 }) {
-  const status = useReviewEvents(
-    "/api/cases/c1/reviews/r1/events",
-    enabled,
-    onEvent,
-    scope,
-  );
+  const status = useReviewEvents("/api/cases/c1/reviews/r1/events", enabled, onEvent, scope);
   return <p>{status}</p>;
 }
 
@@ -101,9 +96,7 @@ describe("review event stream", () => {
   it("closes the superseded stream and subscribes again when the session scope changes", () => {
     globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
     const onEvent = vi.fn();
-    const { rerender } = render(
-      <Probe scope={"tenant-a\u0000u1"} onEvent={onEvent} />,
-    );
+    const { rerender } = render(<Probe scope={"tenant-a\u0000u1"} onEvent={onEvent} />);
     const first = FakeEventSource.latest!;
     act(() => first.onopen?.());
     expect(screen.getByText("live")).toBeInTheDocument();
@@ -170,9 +163,7 @@ describe("review event stream", () => {
       const onEvent = vi.fn((batch: ReviewEventBatch) =>
         batch.latest.seq === 2 ? completion.promise : undefined,
       );
-      const { rerender, unmount } = render(
-        <Probe scope="identity-a" onEvent={onEvent} />,
-      );
+      const { rerender, unmount } = render(<Probe scope="identity-a" onEvent={onEvent} />);
       const first = FakeEventSource.latest!;
       act(() => {
         first.onmessage?.({

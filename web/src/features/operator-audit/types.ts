@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -20,28 +20,13 @@
  */
 
 /** Deterministic business relation. Unknown values never become a conclusion. */
-export type Relation =
-  | "compatible"
-  | "conflict"
-  | "insufficient"
-  | "not_applicable"
-  | "unknown";
+export type Relation = "compatible" | "conflict" | "insufficient" | "not_applicable" | "unknown";
 
 /** Execution status, kept separate from the business relation. */
-export type MachineStatus =
-  | "completed"
-  | "partial"
-  | "failed"
-  | "cancelled"
-  | "unknown";
+export type MachineStatus = "completed" | "partial" | "failed" | "cancelled" | "unknown";
 
 /** Whether an external observation can be used as evidence. */
-export type Availability =
-  | "available"
-  | "unavailable"
-  | "stale"
-  | "rejected"
-  | "unknown";
+export type Availability = "available" | "unavailable" | "stale" | "rejected" | "unknown";
 
 /** Human-confirmed mapping state. Missing and ambiguous stay evidence-insufficient. */
 export type BindingStatus = "confirmed" | "missing" | "ambiguous" | "unknown";
@@ -201,10 +186,7 @@ export interface UnknownEvidence {
  * Evidence is a closed union: a document citation and an API snapshot citation
  * are rendered in separate sections and never converted into each other.
  */
-export type EvidenceRef =
-  | DocumentEvidence
-  | ExternalSnapshotEvidence
-  | UnknownEvidence;
+export type EvidenceRef = DocumentEvidence | ExternalSnapshotEvidence | UnknownEvidence;
 
 export interface CheckResult {
   checkId: string;

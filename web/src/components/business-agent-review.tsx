@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-08
-// Revision: r6
+// Updated: 2026-11-15
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -18,7 +18,10 @@ import type {
   BusinessAgentReview,
   BusinessAgentScope,
 } from "../api/business-agent-review";
-import { businessCapabilityLabel as capabilityLabel, businessDomainLabel as domainLabel } from "../domain/business-labels";
+import {
+  businessCapabilityLabel as capabilityLabel,
+  businessDomainLabel as domainLabel,
+} from "../domain/business-labels";
 import { FrozenContractCitationReader } from "./contract-citation-reader";
 import { StatusText } from "./status-text";
 import { CollapsibleSection, SectionAnchorNav, type SectionAnchor } from "./collapsible-section";
@@ -92,7 +95,8 @@ const REASON_NEXT_STEPS: Record<string, string> = {
   required_authority_source_missing: "补充授权依据或审批文件。",
   authorized_counterparty_source_missing: "补充经授权的相对方登记材料。",
   approval_validity_interval_missing: "补充审批生效与失效日期。",
-  source_expression_not_supported: "当前规则包与工具无法解析该表述；改用匹配业务的规则包，或由审查人员核对原文后记录判断。",
+  source_expression_not_supported:
+    "当前规则包与工具无法解析该表述；改用匹配业务的规则包，或由审查人员核对原文后记录判断。",
   multiple_source_values_require_review: "人工比对多个来源值并记录采用哪一个值。",
   max_calls_reached: "规划调用预算已用尽；提高预算或缩小审查范围后重新执行。",
   capability_not_registered: "当前版本没有注册这项能力，不能把“未检查”当作“已通过”。",
@@ -129,9 +133,10 @@ function gapGuidance(gaps: BusinessAgentGap[]): string {
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
     .slice(0, 3)
     .map(([code, count]) => `${label(REASON_LABELS, code, "原因待核对")} ${count} 项`);
-  const lead = ranked.length > 0
-    ? `本次 ${gaps.length} 项缺口中，${ranked.join("、")}。`
-    : `本次共 ${gaps.length} 项缺口。`;
+  const lead =
+    ranked.length > 0
+      ? `本次 ${gaps.length} 项缺口中，${ranked.join("、")}。`
+      : `本次共 ${gaps.length} 项缺口。`;
   return `${lead}未解决或证据不足表示尚未确认，请按每条缺口的下一步处理。`;
 }
 
@@ -210,26 +215,37 @@ function Citation({ item }: { item: BusinessAgentEvidence | undefined }) {
   );
 }
 
-function Citations({ ids, evidence }: { ids: string[] | null; evidence: BusinessAgentEvidence[] | null }) {
+function Citations({
+  ids,
+  evidence,
+}: {
+  ids: string[] | null;
+  evidence: BusinessAgentEvidence[] | null;
+}) {
   if (!ids || ids.length === 0) return null;
   return (
     <ul className="agent-review-capability-citations" aria-label="来源引用">
       {ids.map((id, index) => (
-        <li key={`${id}-${index}`}><Citation item={evidence === null ? undefined : evidence.find((item) => item.evidence_id === id)} /></li>
+        <li key={`${id}-${index}`}>
+          <Citation
+            item={evidence === null ? undefined : evidence.find((item) => item.evidence_id === id)}
+          />
+        </li>
       ))}
     </ul>
   );
 }
 
-function missingCapabilityIds(
-  review: BusinessAgentReview,
-  domain: BusinessAgentDomain,
-): string[] {
+function missingCapabilityIds(review: BusinessAgentReview, domain: BusinessAgentDomain): string[] {
   const capabilities = arrayOr(domain.capabilities);
-  return [...new Set(arrayOr(review.scope)
-    .filter((scope) => scope.domain === domain.domain)
-    .flatMap((scope) => arrayOr(scope.capability_ids))
-    .filter((id) => !capabilities.some((capability) => capability.capability_id === id)))];
+  return [
+    ...new Set(
+      arrayOr(review.scope)
+        .filter((scope) => scope.domain === domain.domain)
+        .flatMap((scope) => arrayOr(scope.capability_ids))
+        .filter((id) => !capabilities.some((capability) => capability.capability_id === id)),
+    ),
+  ];
 }
 
 function CapabilityRow({
@@ -243,10 +259,20 @@ function CapabilityRow({
     <>
       <header>
         <strong>{capabilityLabel(capability.capability_id)}</strong>
-        <StatusText tone={statusTone(capability.status)}>{statusLabel(capability.status)}</StatusText>
+        <StatusText tone={statusTone(capability.status)}>
+          {statusLabel(capability.status)}
+        </StatusText>
       </header>
-      <p>{capability.mandatory ? "必查项目" : "非必查项目"}；{capability.relation === null ? "比较结果未知" : label(RELATION_LABELS, capability.relation, "比较结果未知")}。</p>
-      {capability.reason_code ? <p>{label(REASON_LABELS, capability.reason_code, "原因待进一步核对")}。</p> : null}
+      <p>
+        {capability.mandatory ? "必查项目" : "非必查项目"}；
+        {capability.relation === null
+          ? "比较结果未知"
+          : label(RELATION_LABELS, capability.relation, "比较结果未知")}
+        。
+      </p>
+      {capability.reason_code ? (
+        <p>{label(REASON_LABELS, capability.reason_code, "原因待进一步核对")}。</p>
+      ) : null}
       <Citations ids={capability.evidence_ids} evidence={evidence} />
     </>
   );
@@ -255,7 +281,10 @@ function CapabilityRow({
 function MissingCapabilityRow({ id }: { id: string }) {
   return (
     <li>
-      <header><strong>{capabilityLabel(id)}</strong><StatusText tone="attention">结果未知</StatusText></header>
+      <header>
+        <strong>{capabilityLabel(id)}</strong>
+        <StatusText tone="attention">结果未知</StatusText>
+      </header>
       <p>是否必查：未知。</p>
     </li>
   );
@@ -298,7 +327,10 @@ function DomainCard({
 function ScopeOnlyCard({ scope }: { scope: BusinessAgentScope }) {
   return (
     <li className="agent-review-card">
-      <header><strong>{domainLabel(scope.domain)}</strong><StatusText tone="attention">结果未知</StatusText></header>
+      <header>
+        <strong>{domainLabel(scope.domain)}</strong>
+        <StatusText tone="attention">结果未知</StatusText>
+      </header>
       <p>该领域已列入范围，检查结果和必查状态未知。</p>
       {scope.capability_ids && scope.capability_ids.length > 0 ? (
         <p>范围中的项目：{scope.capability_ids.map(capabilityLabel).join("、")}。</p>
@@ -318,9 +350,7 @@ function gapTone(
   gap: BusinessAgentGap,
   reportedUnresolved: boolean,
 ): "neutral" | "attention" | "bad" | "progress" {
-  return reportedUnresolved || gap.status === "completed"
-    ? "attention"
-    : statusTone(gap.status);
+  return reportedUnresolved || gap.status === "completed" ? "attention" : statusTone(gap.status);
 }
 
 function GapRow({
@@ -344,7 +374,12 @@ function GapRow({
     let frame = requestAnimationFrame(() => {
       frame = requestAnimationFrame(() => {
         const target = targetRef.current;
-        if (!target || document.activeElement !== previousFocus || target.closest("details:not([open])")) return;
+        if (
+          !target ||
+          document.activeElement !== previousFocus ||
+          target.closest("details:not([open])")
+        )
+          return;
         target.focus();
         target.scrollIntoView?.({ block: "nearest" });
       });
@@ -354,10 +389,17 @@ function GapRow({
   return (
     <li ref={targetRef} tabIndex={selected ? -1 : undefined}>
       <header>
-        <strong>{domainLabel(gap.domain)}：{capabilityLabel(gap.capability_id)}</strong>
-        <StatusText tone={gapTone(gap, reportedUnresolved)}>{gapLabel(gap, reportedUnresolved)}</StatusText>
+        <strong>
+          {domainLabel(gap.domain)}：{capabilityLabel(gap.capability_id)}
+        </strong>
+        <StatusText tone={gapTone(gap, reportedUnresolved)}>
+          {gapLabel(gap, reportedUnresolved)}
+        </StatusText>
       </header>
-      <p>{gap.mandatory ? "必查项目" : "非必查项目"}{gap.reason_code ? `；${label(REASON_LABELS, gap.reason_code, "原因待进一步核对")}` : ""}。</p>
+      <p>
+        {gap.mandatory ? "必查项目" : "非必查项目"}
+        {gap.reason_code ? `；${label(REASON_LABELS, gap.reason_code, "原因待进一步核对")}` : ""}。
+      </p>
       {gap.reason_code && REASON_NEXT_STEPS[gap.reason_code] ? (
         <p className="meta">下一步：{REASON_NEXT_STEPS[gap.reason_code]}</p>
       ) : null}
@@ -366,24 +408,40 @@ function GapRow({
   );
 }
 
-function ObservationsSection({ observations }: { observations: BusinessAgentReview["observations"] }) {
+function ObservationsSection({
+  observations,
+}: {
+  observations: BusinessAgentReview["observations"];
+}) {
   if (!observations || observations.length === 0) return null;
   return (
     <section className="agent-review-section" aria-label="工具返回记录">
       <h4>工具返回记录</h4>
-      <p className="meta">工具返回是待核验的记录，不是已确认结论；只有引用能对上冻结原文时才可能进入核验。</p>
+      <p className="meta">
+        工具返回是待核验的记录，不是已确认结论；只有引用能对上冻结原文时才可能进入核验。
+      </p>
       <ul className="agent-review-list">
         {observations.map((observation, index) => (
           <li key={`${observation.call_id}-${index}`}>
             <header>
-              <strong>{observation.tool_id} · 缺口 {observation.gap_id}</strong>
+              <strong>
+                {observation.tool_id} · 缺口 {observation.gap_id}
+              </strong>
               <StatusText tone="attention">
-                {label(CLAIM_STATUS_LABELS, observation.claim_status, "工具报告的记录，尚未独立核验")}
+                {label(
+                  CLAIM_STATUS_LABELS,
+                  observation.claim_status,
+                  "工具报告的记录，尚未独立核验",
+                )}
               </StatusText>
             </header>
             <p>
-              第 {observation.round} 轮；报告关系 {label(OBSERVED_RELATION_LABELS, observation.reported_relation, "未识别")}
-              {observation.reason_code ? `；${label(REASON_LABELS, observation.reason_code, "原因待进一步核对")}` : ""}。
+              第 {observation.round} 轮；报告关系{" "}
+              {label(OBSERVED_RELATION_LABELS, observation.reported_relation, "未识别")}
+              {observation.reason_code
+                ? `；${label(REASON_LABELS, observation.reason_code, "原因待进一步核对")}`
+                : ""}
+              。
             </p>
             <p>{observation.summary}</p>
             {observation.located_evidence_ids && observation.located_evidence_ids.length > 0 ? (
@@ -413,8 +471,14 @@ function GapList({
   return (
     <ul className="agent-review-list">
       {gaps.map((gap, index) => (
-        <GapRow key={`${gap.gap_id}-${index}`} gap={gap} unresolved={unresolved} evidence={evidence}
-          selected={gap.gap_id === selectedGapId} navigationSerial={navigationSerial} />
+        <GapRow
+          key={`${gap.gap_id}-${index}`}
+          gap={gap}
+          unresolved={unresolved}
+          evidence={evidence}
+          selected={gap.gap_id === selectedGapId}
+          navigationSerial={navigationSerial}
+        />
       ))}
     </ul>
   );
@@ -425,7 +489,11 @@ function OtherEvidenceSection({ items }: { items: BusinessAgentEvidence[] }) {
     <section className="agent-review-section" aria-label="其他来源引用">
       <h4>其他来源引用</h4>
       <ul className="agent-review-list">
-        {items.map((item, index) => <li key={`${item.evidence_id}-${index}`}><Citation item={item} /></li>)}
+        {items.map((item, index) => (
+          <li key={`${item.evidence_id}-${index}`}>
+            <Citation item={item} />
+          </li>
+        ))}
       </ul>
     </section>
   );
@@ -436,7 +504,9 @@ function referencedEvidenceOf(
   gaps: BusinessAgentGap[] | null,
 ): Set<string> {
   return new Set([
-    ...domains.flatMap((domain) => arrayOr(domain.capabilities).flatMap((capability) => arrayOr(capability.evidence_ids))),
+    ...domains.flatMap((domain) =>
+      arrayOr(domain.capabilities).flatMap((capability) => arrayOr(capability.evidence_ids)),
+    ),
     ...arrayOr(gaps).flatMap((gap) => arrayOr(gap.evidence_ids)),
   ]);
 }
@@ -445,8 +515,11 @@ function hasMissingCitations(
   domains: BusinessAgentDomain[],
   gaps: BusinessAgentGap[] | null,
 ): boolean {
-  return domains.some((domain) => arrayOr(domain.capabilities).some((capability) => !arrayOr(capability.evidence_ids).length)) ||
-    arrayOr(gaps).some((gap) => !arrayOr(gap.evidence_ids).length);
+  return (
+    domains.some((domain) =>
+      arrayOr(domain.capabilities).some((capability) => !arrayOr(capability.evidence_ids).length),
+    ) || arrayOr(gaps).some((gap) => !arrayOr(gap.evidence_ids).length)
+  );
 }
 
 function scopesWithoutResultsOf(
@@ -564,10 +637,20 @@ function GapsSection({
       {gaps.length === 0 ? (
         <p>暂无缺口资料；如需确认风险，请继续核对材料与审查结果。</p>
       ) : (
-        <GapList gaps={gaps} unresolved={unresolved} evidence={review.evidence} selectedGapId={selectedGapId} navigationSerial={navigationSerial} />
+        <GapList
+          gaps={gaps}
+          unresolved={unresolved}
+          evidence={review.evidence}
+          selectedGapId={selectedGapId}
+          navigationSerial={navigationSerial}
+        />
       )}
-      {review.unresolved_gap_ids === null && gaps.length ? <p>缺口的解决清单不可用，请核对。</p> : null}
-      {missingGaps.length > 0 ? <p>有 {missingGaps.length} 项未解决缺口缺少详情，请进一步核对。</p> : null}
+      {review.unresolved_gap_ids === null && gaps.length ? (
+        <p>缺口的解决清单不可用，请核对。</p>
+      ) : null}
+      {missingGaps.length > 0 ? (
+        <p>有 {missingGaps.length} 项未解决缺口缺少详情，请进一步核对。</p>
+      ) : null}
     </section>
   );
 }
@@ -595,10 +678,18 @@ function ReviewSections({
     },
   ];
   if (observations.length > 0)
-    anchors.push({ id: "agent-review-observations", label: "工具记录", count: observations.length });
+    anchors.push({
+      id: "agent-review-observations",
+      label: "工具记录",
+      count: observations.length,
+    });
   anchors.push({ id: "agent-review-gaps", label: "缺口清单", count: facts.gaps.length });
   if (facts.otherEvidence.length > 0)
-    anchors.push({ id: "agent-review-other-evidence", label: "其他引用", count: facts.otherEvidence.length });
+    anchors.push({
+      id: "agent-review-other-evidence",
+      label: "其他引用",
+      count: facts.otherEvidence.length,
+    });
   return (
     <section className="agent-review-panel" aria-label="五个方面的审查结果">
       <header className="agent-review-head">
@@ -606,10 +697,10 @@ function ReviewSections({
         <StatusText tone={statusTone(review.status)}>{statusLabel(review.status)}</StatusText>
       </header>
       <p className="meta">请审查人员核对原文后再下判断。</p>
-      {facts.missingCitations ? <p className="meta">部分项目没有原文依据，不能确认这些项目已经核验。</p> : null}
-      {facts.gaps.length > 0 ? (
-        <p className="meta">{gapGuidance(facts.gaps)}</p>
+      {facts.missingCitations ? (
+        <p className="meta">部分项目没有原文依据，不能确认这些项目已经核验。</p>
       ) : null}
+      {facts.gaps.length > 0 ? <p className="meta">{gapGuidance(facts.gaps)}</p> : null}
       <SectionAnchorNav items={anchors} />
       <CollapsibleSection id="agent-review-domains" title="领域与检查项目" defaultOpen>
         <DomainsSection
@@ -619,11 +710,23 @@ function ReviewSections({
         />
       </CollapsibleSection>
       {observations.length > 0 ? (
-        <CollapsibleSection id="agent-review-observations" title="工具返回记录" summaryLabel="展开工具返回记录" count={observations.length}>
+        <CollapsibleSection
+          id="agent-review-observations"
+          title="工具返回记录"
+          summaryLabel="展开工具返回记录"
+          count={observations.length}
+        >
           <ObservationsSection observations={review.observations} />
         </CollapsibleSection>
       ) : null}
-      <CollapsibleSection id="agent-review-gaps" title="审查缺口" summaryLabel="展开审查缺口" count={facts.gaps.length} defaultOpen={selectedGapId !== null} openRequest={selectedGapId === null ? undefined : `${selectedGapId}:${navigationSerial}`}>
+      <CollapsibleSection
+        id="agent-review-gaps"
+        title="审查缺口"
+        summaryLabel="展开审查缺口"
+        count={facts.gaps.length}
+        defaultOpen={selectedGapId !== null}
+        openRequest={selectedGapId === null ? undefined : `${selectedGapId}:${navigationSerial}`}
+      >
         <GapsSection
           review={review}
           unresolved={facts.unresolved}
@@ -634,7 +737,12 @@ function ReviewSections({
         />
       </CollapsibleSection>
       {facts.otherEvidence.length > 0 ? (
-        <CollapsibleSection id="agent-review-other-evidence" title="其他来源引用" summaryLabel="展开其他来源引用" count={facts.otherEvidence.length}>
+        <CollapsibleSection
+          id="agent-review-other-evidence"
+          title="其他来源引用"
+          summaryLabel="展开其他来源引用"
+          count={facts.otherEvidence.length}
+        >
           <OtherEvidenceSection items={facts.otherEvidence} />
         </CollapsibleSection>
       ) : null}
@@ -642,7 +750,15 @@ function ReviewSections({
   );
 }
 
-function BusinessAgentReviewBody({ review, selectedGapId, navigationSerial }: { review: BusinessAgentReview | null; selectedGapId: string | null; navigationSerial: number }) {
+function BusinessAgentReviewBody({
+  review,
+  selectedGapId,
+  navigationSerial,
+}: {
+  review: BusinessAgentReview | null;
+  selectedGapId: string | null;
+  navigationSerial: number;
+}) {
   if (!review) return <EmptyReview />;
   const domains = arrayOr(review.domains);
   const scopesWithoutResults = scopesWithoutResultsOf(review.scope, domains);
@@ -688,10 +804,17 @@ export function BusinessAgentReviewView({
     caseId && runId && attemptId && onSelectEvidence
       ? { caseId, runId, attemptId, selectedEvidenceId, onSelectEvidence }
       : null;
-  const citationUnknown = target !== null && selectedEvidenceId !== null && review !== null &&
+  const citationUnknown =
+    target !== null &&
+    selectedEvidenceId !== null &&
+    review !== null &&
     !arrayOr(review.evidence).some((item) => item.evidence_id === selectedEvidenceId);
-  const selectedGapValid = Boolean(selectedGapId && attemptId && review?.attempt_id === attemptId &&
-    arrayOr(review.gaps).filter((gap) => gap.gap_id === selectedGapId).length === 1);
+  const selectedGapValid = Boolean(
+    selectedGapId &&
+    attemptId &&
+    review?.attempt_id === attemptId &&
+    arrayOr(review.gaps).filter((gap) => gap.gap_id === selectedGapId).length === 1,
+  );
   return (
     <CitationTargetContext.Provider value={target}>
       {citationUnknown ? (
@@ -702,8 +825,14 @@ export function BusinessAgentReviewView({
           description="未显示其他执行记录的原文；请从当前执行记录的引用重新打开。"
         />
       ) : null}
-      {selectedGapId && !selectedGapValid ? <p role="alert">所选缺口不属于当前执行或身份不唯一，请返回办理列表核对。</p> : null}
-      <BusinessAgentReviewBody review={review} selectedGapId={selectedGapValid ? selectedGapId : null} navigationSerial={navigationSerial} />
+      {selectedGapId && !selectedGapValid ? (
+        <p role="alert">所选缺口不属于当前执行或身份不唯一，请返回办理列表核对。</p>
+      ) : null}
+      <BusinessAgentReviewBody
+        review={review}
+        selectedGapId={selectedGapValid ? selectedGapId : null}
+        navigationSerial={navigationSerial}
+      />
     </CitationTargetContext.Provider>
   );
 }

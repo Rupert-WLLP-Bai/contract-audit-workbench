@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -45,25 +45,18 @@ function installFetch(impl: typeof fetch) {
 }
 
 function mockMutationFetch() {
-  const fetchMock = vi.fn(
-    async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      jsonResponse({ pack: summary }),
+  const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+    jsonResponse({ pack: summary }),
   );
   installFetch(fetchMock as typeof fetch);
   return fetchMock;
 }
 
-function initOf(
-  fetchMock: ReturnType<typeof mockMutationFetch>,
-  index: number,
-): RequestInit {
+function initOf(fetchMock: ReturnType<typeof mockMutationFetch>, index: number): RequestInit {
   return fetchMock.mock.calls[index]?.[1] as RequestInit;
 }
 
-function requestPath(
-  fetchMock: ReturnType<typeof mockMutationFetch>,
-  index: number,
-): string {
+function requestPath(fetchMock: ReturnType<typeof mockMutationFetch>, index: number): string {
   return String(fetchMock.mock.calls[index]?.[0]);
 }
 
@@ -114,9 +107,7 @@ const manifest = {
         unit_family: "bandwidth",
         exclusions: [],
       },
-      authority_sources: [
-        { id: "internal-policy", version: "3", kind: "policy" },
-      ],
+      authority_sources: [{ id: "internal-policy", version: "3", kind: "policy" }],
     },
   ],
 };
@@ -126,10 +117,7 @@ const detail = { pack: summary, manifest: manifestSnapshot };
 
 describe("RulePack API parsers", () => {
   it("preserves non-SLA null exclusions and rejects missing SLA arrays or invalid elements", () => {
-    const withExclusions = (
-      exclusions: unknown,
-      comparator = "minimum_bandwidth",
-    ) => ({
+    const withExclusions = (exclusions: unknown, comparator = "minimum_bandwidth") => ({
       ...detail,
       manifest: {
         ...manifestSnapshot,
@@ -143,19 +131,14 @@ describe("RulePack API parsers", () => {
       },
     });
     expect(
-      parseRulePackDetail(withExclusions(null)).manifest.rules[0]?.required_fact
-        .exclusions,
+      parseRulePackDetail(withExclusions(null)).manifest.rules[0]?.required_fact.exclusions,
     ).toBeNull();
     expect(
-      parseRulePackDetail(withExclusions([], "monthly_sla")).manifest.rules[0]
-        ?.required_fact.exclusions,
+      parseRulePackDetail(withExclusions([], "monthly_sla")).manifest.rules[0]?.required_fact
+        .exclusions,
     ).toEqual([]);
-    expect(() =>
-      parseRulePackDetail(withExclusions(null, "monthly_sla")),
-    ).toThrow(/exclusions/);
-    expect(() => parseRulePackDetail(withExclusions([7]))).toThrow(
-      /exclusions/,
-    );
+    expect(() => parseRulePackDetail(withExclusions(null, "monthly_sla"))).toThrow(/exclusions/);
+    expect(() => parseRulePackDetail(withExclusions([7]))).toThrow(/exclusions/);
   });
 
   it("keeps every optional required-fact field when present and omits them otherwise", () => {
@@ -175,9 +158,7 @@ describe("RulePack API parsers", () => {
         },
       ],
     };
-    expect(
-      parseRulePackManifest(manifestValue).rules[0]?.required_fact,
-    ).toEqual({
+    expect(parseRulePackManifest(manifestValue).rules[0]?.required_fact).toEqual({
       dimension: "bandwidth",
       source_roles: ["procurement"],
       object_required: true,
@@ -189,9 +170,7 @@ describe("RulePack API parsers", () => {
       outage_definition: "不可用",
       basis: "合同",
     });
-    expect(
-      parseRulePackManifest(manifestSnapshot).rules[0]?.required_fact,
-    ).toEqual({
+    expect(parseRulePackManifest(manifestSnapshot).rules[0]?.required_fact).toEqual({
       dimension: "bandwidth",
       source_roles: ["procurement"],
       object_required: true,
@@ -226,14 +205,35 @@ describe("RulePack API parsers", () => {
       rules: [{ ...manifest.rules[0], legal_authorities: [legalAuthority] }],
     });
     expect(parsed.rules[0]?.legal_authorities).toEqual([legalAuthority]);
-    expect(() => parseRulePackManifest({
-      ...manifestSnapshot,
-      rules: [{ ...manifest.rules[0], legal_authorities: [{ ...legalAuthority, quote_span: { start: 0, end: 3, quote: "民法典第一" } }] }],
-    })).toThrow(/legal_authorities/);
-    expect(() => parseRulePackManifest({
-      ...manifestSnapshot,
-      rules: [{ ...manifest.rules[0], legal_authorities: [{ ...legalAuthority, applicability: { all_of: [{ field: "funding_kind", one_of: ["unknown"] }] } }] }],
-    })).toThrow(/legal_authorities/);
+    expect(() =>
+      parseRulePackManifest({
+        ...manifestSnapshot,
+        rules: [
+          {
+            ...manifest.rules[0],
+            legal_authorities: [
+              { ...legalAuthority, quote_span: { start: 0, end: 3, quote: "民法典第一" } },
+            ],
+          },
+        ],
+      }),
+    ).toThrow(/legal_authorities/);
+    expect(() =>
+      parseRulePackManifest({
+        ...manifestSnapshot,
+        rules: [
+          {
+            ...manifest.rules[0],
+            legal_authorities: [
+              {
+                ...legalAuthority,
+                applicability: { all_of: [{ field: "funding_kind", one_of: ["unknown"] }] },
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow(/legal_authorities/);
   });
 
   it("rejects malformed required-fact fields", () => {
@@ -259,30 +259,30 @@ describe("RulePack API parsers", () => {
     expect(() => parseRulePackManifest(withRequiredFact({ dimension: 7 }))).toThrow(
       /required_fact\.dimension/,
     );
-    expect(() =>
-      parseRulePackManifest(withRequiredFact({ source_roles: [1] })),
-    ).toThrow(/required_fact\.source_roles/);
-    expect(() =>
-      parseRulePackManifest(withRequiredFact({ object_required: "yes" })),
-    ).toThrow(/required_fact\.object_required/);
-    expect(() =>
-      parseRulePackManifest(withRequiredFact({ exclusions: 7 })),
-    ).toThrow(/required_fact\.exclusions/);
-    expect(() =>
-      parseRulePackManifest(withRequiredFact({ measurement_window: 7 })),
-    ).toThrow(/required_fact\.measurement_window/);
-    expect(() =>
-      parseRulePackManifest(withRequiredFact({ time_zone: 7 })),
-    ).toThrow(/required_fact\.time_zone/);
-    expect(() =>
-      parseRulePackManifest(withRequiredFact({ calendar: 7 })),
-    ).toThrow(/required_fact\.calendar/);
-    expect(() =>
-      parseRulePackManifest(withRequiredFact({ outage_definition: 7 })),
-    ).toThrow(/required_fact\.outage_definition/);
-    expect(() =>
-      parseRulePackManifest(withRequiredFact({ basis: 7 })),
-    ).toThrow(/required_fact\.basis/);
+    expect(() => parseRulePackManifest(withRequiredFact({ source_roles: [1] }))).toThrow(
+      /required_fact\.source_roles/,
+    );
+    expect(() => parseRulePackManifest(withRequiredFact({ object_required: "yes" }))).toThrow(
+      /required_fact\.object_required/,
+    );
+    expect(() => parseRulePackManifest(withRequiredFact({ exclusions: 7 }))).toThrow(
+      /required_fact\.exclusions/,
+    );
+    expect(() => parseRulePackManifest(withRequiredFact({ measurement_window: 7 }))).toThrow(
+      /required_fact\.measurement_window/,
+    );
+    expect(() => parseRulePackManifest(withRequiredFact({ time_zone: 7 }))).toThrow(
+      /required_fact\.time_zone/,
+    );
+    expect(() => parseRulePackManifest(withRequiredFact({ calendar: 7 }))).toThrow(
+      /required_fact\.calendar/,
+    );
+    expect(() => parseRulePackManifest(withRequiredFact({ outage_definition: 7 }))).toThrow(
+      /required_fact\.outage_definition/,
+    );
+    expect(() => parseRulePackManifest(withRequiredFact({ basis: 7 }))).toThrow(
+      /required_fact\.basis/,
+    );
     for (const key of [
       "dimension",
       "source_roles",
@@ -290,16 +290,12 @@ describe("RulePack API parsers", () => {
       "unit_family",
       "exclusions",
     ]) {
-      expect(() => parseRulePackManifest(missing(key))).toThrow(
-        /required_fact/,
-      );
+      expect(() => parseRulePackManifest(missing(key))).toThrow(/required_fact/);
     }
     expect(() =>
       parseRulePackManifest({ ...manifestSnapshot, schema_version: "rulepack/v2" }),
     ).toThrow(/schema_version/);
-    expect(() => parseRulePackManifest(null)).toThrow(
-      /RulePack 响应中的 manifest 无法识别/,
-    );
+    expect(() => parseRulePackManifest(null)).toThrow(/RulePack 响应中的 manifest 无法识别/);
   });
 
   it("accepts the documented list and detail envelopes", () => {
@@ -335,9 +331,7 @@ describe("RulePack API parsers", () => {
       resulting_active: true,
     });
     const { resulting_active: _resultingActive, ...dropped } = entry;
-    expect(() => parseRulePackHistory({ items: [dropped] })).toThrow(
-      /history\.items\[0\]/,
-    );
+    expect(() => parseRulePackHistory({ items: [dropped] })).toThrow(/history\.items\[0\]/);
   });
 
   it("accepts the documented summary response for pointer mutations", () => {
@@ -345,15 +339,11 @@ describe("RulePack API parsers", () => {
   });
 
   it("rejects unknown fields and lifecycle states", () => {
-    expect(() =>
-      parseRulePackList({ items: [{ ...summary, server_only: true }] }),
-    ).toThrow(/list.items\[0\]/);
-    expect(() => parseRulePackDetail({ ...detail, unexpected: true })).toThrow(
-      /detail/,
+    expect(() => parseRulePackList({ items: [{ ...summary, server_only: true }] })).toThrow(
+      /list.items\[0\]/,
     );
-    expect(() =>
-      parseRulePackList({ items: [{ ...summary, revision: 0 }] }),
-    ).toThrow(/revision/);
+    expect(() => parseRulePackDetail({ ...detail, unexpected: true })).toThrow(/detail/);
+    expect(() => parseRulePackList({ items: [{ ...summary, revision: 0 }] })).toThrow(/revision/);
     expect(() =>
       parseRulePackList({
         items: [{ ...summary, content_hash: "not-a-sha256" }],
@@ -384,32 +374,24 @@ describe("RulePack API parsers", () => {
     await publishRulePack("telecom-core", "2", 3, 4, "publish-operation");
     await rollbackRulePack("telecom-core", "1", 5, "rollback-operation");
 
-    expect(requestPath(fetchMock, 0)).toBe(
-      "/api/admin/rulepacks/telecom-core/versions/2/publish",
-    );
+    expect(requestPath(fetchMock, 0)).toBe("/api/admin/rulepacks/telecom-core/versions/2/publish");
     expect(initOf(fetchMock, 0).method).toBe("POST");
     expect(JSON.parse(String(initOf(fetchMock, 0).body))).toEqual({
       expected_revision: 3,
       expected_pointer_revision: 4,
     });
-    expect(
-      (initOf(fetchMock, 0).headers as Record<string, string>)[
-        "Idempotency-Key"
-      ],
-    ).toBe("publish-operation");
-
-    expect(requestPath(fetchMock, 1)).toBe(
-      "/api/admin/rulepacks/telecom-core/rollback",
+    expect((initOf(fetchMock, 0).headers as Record<string, string>)["Idempotency-Key"]).toBe(
+      "publish-operation",
     );
+
+    expect(requestPath(fetchMock, 1)).toBe("/api/admin/rulepacks/telecom-core/rollback");
     expect(JSON.parse(String(initOf(fetchMock, 1).body))).toEqual({
       version: "1",
       expected_pointer_revision: 5,
     });
-    expect(
-      (initOf(fetchMock, 1).headers as Record<string, string>)[
-        "Idempotency-Key"
-      ],
-    ).toBe("rollback-operation");
+    expect((initOf(fetchMock, 1).headers as Record<string, string>)["Idempotency-Key"]).toBe(
+      "rollback-operation",
+    );
   });
 
   it("sends five-field sample citations and parses fully source-bound report citations", async () => {
@@ -446,9 +428,8 @@ describe("RulePack API parsers", () => {
         ],
       },
     };
-    const fetchMock = vi.fn(
-      async (_input: RequestInfo | URL, _init?: RequestInit) =>
-        jsonResponse(response),
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse(response),
     );
     installFetch(fetchMock as typeof fetch);
     const requestCitation = {
@@ -490,18 +471,14 @@ describe("RulePack API parsers", () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
       "/api/admin/rulepacks/telecom-core/versions/2/test",
     );
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(
-      sample,
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(sample);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).facts[0].citations[0]).toEqual(
+      requestCitation,
     );
-    expect(
-      JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).facts[0]
-        .citations[0],
-    ).toEqual(requestCitation);
   });
   it("sends tenant-scoped drafts and row-CAS lifecycle actions", async () => {
-    const fetchMock = vi.fn(
-      async (_input: RequestInfo | URL, _init?: RequestInit) =>
-        jsonResponse(detail),
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse(detail),
     );
     installFetch(fetchMock as typeof fetch);
     const input = manifest as RulePackManifestInput;
@@ -517,30 +494,22 @@ describe("RulePack API parsers", () => {
     expect(JSON.parse(String(initOf(fetchMock, 0).body))).toEqual({
       manifest: input,
     });
-    expect(requestPath(fetchMock, 1)).toBe(
-      "/api/admin/rulepacks/telecom-core/versions/2",
-    );
+    expect(requestPath(fetchMock, 1)).toBe("/api/admin/rulepacks/telecom-core/versions/2");
     expect(initOf(fetchMock, 1).method).toBe("PUT");
     expect(JSON.parse(String(initOf(fetchMock, 1).body))).toEqual({
       expected_revision: 3,
       manifest: input,
     });
-    expect(requestPath(fetchMock, 2)).toBe(
-      "/api/admin/rulepacks/telecom-core/versions/2/validate",
-    );
+    expect(requestPath(fetchMock, 2)).toBe("/api/admin/rulepacks/telecom-core/versions/2/validate");
     expect(JSON.parse(String(initOf(fetchMock, 2).body))).toEqual({
       expected_revision: 4,
     });
-    expect(requestPath(fetchMock, 3)).toBe(
-      "/api/admin/rulepacks/telecom-core/versions/2/approve",
-    );
+    expect(requestPath(fetchMock, 3)).toBe("/api/admin/rulepacks/telecom-core/versions/2/approve");
     expect(JSON.parse(String(initOf(fetchMock, 3).body))).toEqual({
       expected_revision: 5,
       expected_content_hash: contentHash,
     });
-    expect(requestPath(fetchMock, 4)).toBe(
-      "/api/admin/rulepacks/telecom-core/versions/2/disable",
-    );
+    expect(requestPath(fetchMock, 4)).toBe("/api/admin/rulepacks/telecom-core/versions/2/disable");
     expect(JSON.parse(String(initOf(fetchMock, 4).body))).toEqual({
       expected_revision: 6,
       expected_pointer_revision: 7,

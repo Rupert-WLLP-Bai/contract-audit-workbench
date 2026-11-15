@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -18,9 +18,12 @@ import {
 } from "./http";
 
 export function newIdempotencyKey(): string {
-  const key = typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const key =
+    typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+          byte.toString(16).padStart(2, "0"),
+        ).join("");
   const context = captureCommandContextIfAvailable();
   if (context) bindIdempotencyCommandContext(key, context);
   return key;
@@ -28,7 +31,14 @@ export function newIdempotencyKey(): string {
 
 export async function pendingMutationKey(
   operation: string,
-  actorScope: { actorId: string; tenantId: string; orgId: string; audience: string; contextVersion?: string; sessionIdentity?: string },
+  actorScope: {
+    actorId: string;
+    tenantId: string;
+    orgId: string;
+    audience: string;
+    contextVersion?: string;
+    sessionIdentity?: string;
+  },
   target: string,
   payload: unknown,
   commandSnapshot?: CommandContext,
@@ -37,11 +47,13 @@ export async function pendingMutationKey(
   if (!commandContext && actorScope.sessionIdentity !== undefined)
     throw new DOMException("Session changed", "AbortError");
   if (
-    commandContext && (
-      (actorScope.contextVersion !== undefined && commandContext.contextVersion !== actorScope.contextVersion) ||
-      (actorScope.sessionIdentity !== undefined && commandContext.identity !== actorScope.sessionIdentity)
-    )
-  ) throw new DOMException("Context changed", "AbortError");
+    commandContext &&
+    ((actorScope.contextVersion !== undefined &&
+      commandContext.contextVersion !== actorScope.contextVersion) ||
+      (actorScope.sessionIdentity !== undefined &&
+        commandContext.identity !== actorScope.sessionIdentity))
+  )
+    throw new DOMException("Context changed", "AbortError");
   const fingerprint = await idempotencyFingerprint(
     JSON.stringify({
       operation,

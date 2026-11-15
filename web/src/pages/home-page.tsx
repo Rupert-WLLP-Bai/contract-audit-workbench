@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r7
+// Updated: 2026-11-15
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -32,25 +32,21 @@ import { IntakePrimaryContract } from "../components/intake-primary-contract";
 import { IntakePendingList } from "../components/intake-pending-list";
 import type { IntakeContinuationSelection } from "../features/intake/intake-continuation";
 import { StatusText } from "../components/status-text";
-import { businessActionLabel, businessScopeLabel, remediationStatusLabel } from "../domain/business-labels";
+import {
+  businessActionLabel,
+  businessScopeLabel,
+  remediationStatusLabel,
+} from "../domain/business-labels";
 import { TechnicalDetail } from "../components/technical-detail";
 import { caseSelectPresentation } from "../components/case-select-presentation";
 import { CollapsibleSection } from "../components/collapsible-section";
 import { WorkbenchCaseNextStep } from "../components/workbench-case-next-step";
 import { caseOptionLabel } from "../domain/case-identity";
-import {
-  caseHref,
-  formatDateTime,
-  runLabel,
-  runTone,
-  taskKindLabel,
-} from "../domain/review";
+import { caseHref, formatDateTime, runLabel, runTone, taskKindLabel } from "../domain/review";
 import "./home-page.css";
 
 function barWidth(count: number, total: number): number {
-  return total === 0
-    ? 0
-    : Math.max(0, Math.min(100, Math.round((count / total) * 100)));
+  return total === 0 ? 0 : Math.max(0, Math.min(100, Math.round((count / total) * 100)));
 }
 const BUSINESS_STATUS_LABELS: Record<string, string> = {
   active: "未归档",
@@ -84,8 +80,7 @@ function ProgressDonut({
       offset += row.count;
       return `${progressColor(row.status)} ${(start / total) * 100}% ${(offset / total) * 100}%`;
     });
-  const background =
-    total === 0 ? "var(--surface-subtle)" : `conic-gradient(${slices.join(", ")})`;
+  const background = total === 0 ? "var(--surface-subtle)" : `conic-gradient(${slices.join(", ")})`;
   const center = total === 0 && visibleCases > 0 ? "—" : String(total);
   const centerLabel = total === 0 && visibleCases > 0 ? "状态未报" : "案件";
   const accessibleLabel =
@@ -108,11 +103,7 @@ function ProgressDonut({
       </Link>
       <div className="home-progress-legend" aria-label="按案件业务状态统计">
         {rows.length === 0 ? (
-          <p>
-            {visibleCases === 0
-              ? "当前身份没有可见案件。"
-              : "案件状态统计未报告。"}
-          </p>
+          <p>{visibleCases === 0 ? "当前身份没有可见案件。" : "案件状态统计未报告。"}</p>
         ) : (
           rows.map((row) => (
             <div key={row.status}>
@@ -143,8 +134,7 @@ function ProgressList({
   total: number;
   kind: "risk";
 }) {
-  if (rows.length === 0)
-    return <p className="home-empty">没有获取到这项统计数据。</p>;
+  if (rows.length === 0) return <p className="home-empty">没有获取到这项统计数据。</p>;
   return (
     <ul className={`home-data-bars home-data-bars-${kind}`}>
       {rows.map((row) => (
@@ -185,9 +175,7 @@ function CircuitStrip({
           >
             <span className="circuit-mark" aria-hidden="true" />
             <span className="circuit-label">{node.label}</span>
-            <strong
-              className={`circuit-count${node.count === 0 ? " circuit-count-empty" : ""}`}
-            >
+            <strong className={`circuit-count${node.count === 0 ? " circuit-count-empty" : ""}`}>
               {node.count}
             </strong>
           </li>
@@ -225,11 +213,7 @@ function TaskRow({
       <div className="home-task-state">
         <StatusText
           tone={
-            task.priority === "high"
-              ? "bad"
-              : task.priority === "medium"
-                ? "attention"
-                : "neutral"
+            task.priority === "high" ? "bad" : task.priority === "medium" ? "attention" : "neutral"
           }
         >
           {task.priority === "high"
@@ -266,9 +250,7 @@ export function HomePage() {
   const [taskAssignee, setTaskAssignee] = useState("");
   const [taskDue, setTaskDue] = useState("");
   const [showTaskForm, setShowTaskForm] = useState(false);
-  const [taskFilter, setTaskFilter] = useState<"mine" | "all" | "completed">(
-    "mine",
-  );
+  const [taskFilter, setTaskFilter] = useState<"mine" | "all" | "completed">("mine");
   const [selectedIntake, setSelectedIntake] = useState<{
     actorScope: string;
     selection: IntakeContinuationSelection;
@@ -280,7 +262,14 @@ export function HomePage() {
   const session = useSession();
   const actor = session.data ?? null;
   const nextStepActorScope = actor
-    ? [actor.audience, actor.tenant_id, actor.org_id, actor.id, actor.role, actor.active_context?.context_version ?? ""].join("\u0000")
+    ? [
+        actor.audience,
+        actor.tenant_id,
+        actor.org_id,
+        actor.id,
+        actor.role,
+        actor.active_context?.context_version ?? "",
+      ].join("\u0000")
     : "";
   const snapshot = useWorkbench(period, nextStepActorScope);
   const creatableCases = (snapshot.data?.cases ?? []).filter(
@@ -305,13 +294,9 @@ export function HomePage() {
     ? [actor.audience, actor.tenant_id, actor.org_id, actor.id].join("\u0000")
     : "";
   const activeIntakeSelection =
-    selectedIntake?.actorScope === intakeActorScope
-      ? selectedIntake.selection
-      : null;
+    selectedIntake?.actorScope === intakeActorScope ? selectedIntake.selection : null;
   const activeNextStepCaseId =
-    selectedNextStep?.actorScope === nextStepActorScope
-      ? selectedNextStep.caseId
-      : null;
+    selectedNextStep?.actorScope === nextStepActorScope ? selectedNextStep.caseId : null;
   const nextStepActorScopeRef = useRef(nextStepActorScope);
   useEffect(() => {
     if (nextStepActorScopeRef.current === nextStepActorScope) return;
@@ -340,8 +325,7 @@ export function HomePage() {
   const updateTask = useUpdateWorkbenchTask();
   useEffect(() => {
     if (!taskCapabilitySnapshotFresh) return;
-    if (taskCaseId && !creatableCases.some((item) => item.id === taskCaseId))
-      setTaskCaseId("");
+    if (taskCaseId && !creatableCases.some((item) => item.id === taskCaseId)) setTaskCaseId("");
     if (showTaskForm && creatableCases.length === 0) {
       setShowTaskForm(false);
       setTaskCaseId("");
@@ -351,20 +335,11 @@ export function HomePage() {
     }
   }, [taskCapabilitySnapshotFresh, creatableCases, taskCaseId, showTaskForm]);
   const caseTitles = useMemo(
-    () =>
-      new Map(
-        (snapshot.data?.cases ?? []).map((item) => [item.id, item.title]),
-      ),
+    () => new Map((snapshot.data?.cases ?? []).map((item) => [item.id, item.title])),
     [snapshot.data?.cases],
   );
   const members = useMemo(
-    () =>
-      new Map(
-        (snapshot.data?.members ?? []).map((member) => [
-          member.id,
-          member.display_name,
-        ]),
-      ),
+    () => new Map((snapshot.data?.members ?? []).map((member) => [member.id, member.display_name])),
     [snapshot.data?.members],
   );
 
@@ -428,9 +403,7 @@ export function HomePage() {
         ? task.assignee_id === session.data?.id && task.status !== "completed"
         : task.status !== "completed",
   );
-  const activeTaskCount = allTasks.filter(
-    (task) => task.status !== "completed",
-  ).length;
+  const activeTaskCount = allTasks.filter((task) => task.status !== "completed").length;
   const cases = [...data.cases].sort((left, right) =>
     right.updated_at.localeCompare(left.updated_at),
   );
@@ -442,83 +415,67 @@ export function HomePage() {
     { label: "完成", count: dashboard.completed_reviews, tone: "success" },
   ] as const;
   const recentCases = cases.slice(0, 8);
-  const recentCaseColumns: TableProps<(typeof recentCases)[number]>["columns"] =
-    [
-      {
-        title: "案件",
-        key: "case",
-        render: (_, item) => (
-          <>
-            <Link to={caseHref(item.id, item.latest_run?.id ?? null)}>
-              {item.title}
-            </Link>
-            <TechnicalDetail value={item.id} label="案件标识" />
-          </>
+  const recentCaseColumns: TableProps<(typeof recentCases)[number]>["columns"] = [
+    {
+      title: "案件",
+      key: "case",
+      render: (_, item) => (
+        <>
+          <Link to={caseHref(item.id, item.latest_run?.id ?? null)}>{item.title}</Link>
+          <TechnicalDetail value={item.id} label="案件标识" />
+        </>
+      ),
+    },
+    {
+      title: "审查状态",
+      key: "review-status",
+      render: (_, item) =>
+        item.latest_run ? (
+          <StatusText tone={runTone(item.latest_run.state)}>
+            {runLabel(item.latest_run.state)}
+          </StatusText>
+        ) : (
+          <span className="home-no-run">尚未审查</span>
         ),
-      },
-      {
-        title: "审查状态",
-        key: "review-status",
-        render: (_, item) =>
-          item.latest_run ? (
-            <StatusText tone={runTone(item.latest_run.state)}>
-              {runLabel(item.latest_run.state)}
-            </StatusText>
-          ) : (
-            <span className="home-no-run">尚未审查</span>
-          ),
-      },
-      {
-        title: "待决定",
-        dataIndex: "pending_decisions",
-        key: "pending_decisions",
-      },
-      {
-        title: "业务线 / 场景",
-        key: "business",
-        render: (_, item) =>
-          businessScopeLabel(item.business_line, item.scenario),
-      },
-      {
-        title: "更新时间",
-        key: "updated_at",
-        render: (_, item) => (
-          <time dateTime={item.updated_at}>
-            {formatDateTime(item.updated_at)}
-          </time>
-        ),
-      },
-      {
-        title: "操作",
-        key: "actions",
-        render: (_, item) => (
-          <Link
-            className="home-recent-open"
-            to={caseHref(item.id, item.latest_run?.id ?? null)}
-          >
-            打开
-          </Link>
-        ),
-      },
-    ];
-  const audit = [...data.audit]
-    .sort((left, right) => right.at.localeCompare(left.at))
-    .slice(0, 6);
+    },
+    {
+      title: "待决定",
+      dataIndex: "pending_decisions",
+      key: "pending_decisions",
+    },
+    {
+      title: "业务线 / 场景",
+      key: "business",
+      render: (_, item) => businessScopeLabel(item.business_line, item.scenario),
+    },
+    {
+      title: "更新时间",
+      key: "updated_at",
+      render: (_, item) => (
+        <time dateTime={item.updated_at}>{formatDateTime(item.updated_at)}</time>
+      ),
+    },
+    {
+      title: "操作",
+      key: "actions",
+      render: (_, item) => (
+        <Link className="home-recent-open" to={caseHref(item.id, item.latest_run?.id ?? null)}>
+          打开
+        </Link>
+      ),
+    },
+  ];
+  const audit = [...data.audit].sort((left, right) => right.at.localeCompare(left.at)).slice(0, 6);
   const remediations = [...data.remediations]
     .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
     .slice(0, 5);
-  const caseWork = cases
-    .slice(0, 8)
-    .map((item) => ({
-      item,
-      tasks: data.tasks.filter(
-        (task) => task.case_id === item.id && task.status !== "completed",
-      ),
-      remediations: data.remediations.filter(
-        (remediation) =>
-          remediation.case_id === item.id && remediation.status !== "closed",
-      ),
-    }));
+  const caseWork = cases.slice(0, 8).map((item) => ({
+    item,
+    tasks: data.tasks.filter((task) => task.case_id === item.id && task.status !== "completed"),
+    remediations: data.remediations.filter(
+      (remediation) => remediation.case_id === item.id && remediation.status !== "closed",
+    ),
+  }));
 
   function completeTask(task: WorkbenchSnapshot["tasks"][number]) {
     if (!canCompleteTasks || task.can_complete !== true || task.status === "completed") return;
@@ -611,9 +568,7 @@ export function HomePage() {
               value={String(period)}
               onChange={(selectedValue) => {
                 const value = selectedValue;
-                setPeriod(
-                  value === "day" || value === "month" ? value : "week",
-                );
+                setPeriod(value === "day" || value === "month" ? value : "week");
               }}
               options={[
                 { value: "day", label: "今日" },
@@ -622,12 +577,10 @@ export function HomePage() {
               ]}
             />
           </label>
-          <Link className="home-review-link" to="/review">进入合同审查</Link>
-          <Button
-            aria-label={"打开案件中心"}
-            className="home-case-link"
-            href="/cases"
-          >
+          <Link className="home-review-link" to="/review">
+            进入合同审查
+          </Link>
+          <Button aria-label={"打开案件中心"} className="home-case-link" href="/cases">
             打开案件中心
           </Button>
         </div>
@@ -635,10 +588,7 @@ export function HomePage() {
 
       <dl className="home-metrics" aria-label="工作台摘要">
         {metrics.map((metric) => (
-          <div
-            className={`home-metric home-metric-${metric.tone}`}
-            key={metric.key}
-          >
+          <div className={`home-metric home-metric-${metric.tone}`} key={metric.key}>
             <span className="home-metric-icon" aria-hidden="true">
               {metric.icon}
             </span>
@@ -651,153 +601,142 @@ export function HomePage() {
         ))}
       </dl>
 
-      <section
-          className="home-panel home-tasks"
-          aria-labelledby="home-tasks-title"
-        >
-          <header className="home-panel-head">
-            <div className="home-section-title">
-              <span aria-hidden="true" />
-              <h2 id="home-tasks-title">任务与待办</h2>
-              <strong className="home-figure-badge">{activeTaskCount}</strong>
-            </div>
-            {canCreateTasks ? (
-              <Button
-                aria-label={String(showTaskForm ? "收起" : "新建任务")}
-                type="text"
-                htmlType="button"
-                onClick={() => setShowTaskForm((current) => !current)}
-              >
-                {showTaskForm ? "收起" : "新建任务"}
-              </Button>
-            ) : null}
-          </header>
-          <Tabs
-            activeKey={taskFilter}
-            onChange={(key) => {
-              if (key === "mine" || key === "all" || key === "completed")
-                setTaskFilter(key);
-            }}
-            items={[
-              { key: "mine", label: `我的待办 ${dashboard.my_pending_tasks}` },
-              { key: "all", label: `全部未完成 ${activeTaskCount}` },
-              {
-                key: "completed",
-                label: `已完成 ${allTasks.length - activeTaskCount}`,
-              },
-            ]}
-          />
-          {showTaskForm && canCreateTasks ? (
-            <form className="home-task-form" onSubmit={submitTask}>
-              <label>
-                关联案件
-                <Select<string>
-                  {...caseSelectPresentation}
-                  showSearch={{ optionFilterProp: "label" }}
-                  aria-label={"关联案件"}
-                  value={String(taskCaseId)}
-                  onChange={(selectedValue) => setTaskCaseId(selectedValue)}
-                  options={[
-                    { value: "", label: "请选择" },
-                    ...creatableCases.map((item) => ({
-                      value: String(item.id),
-                      label: caseOptionLabel(item, snapshot.data?.members ?? []),
-                    })),
-                  ]}
-                />
-              </label>
-              <label>
-                任务名称
-                <Input
-                  required
-                  maxLength={240}
-                  value={taskTitle}
-                  onChange={(event) => setTaskTitle(event.target.value)}
-                />
-              </label>
-              <label>
-                责任人
-                <Select<string>
-                  aria-label={"责任人"}
-                  value={String(taskAssignee)}
-                  onChange={(selectedValue) => setTaskAssignee(selectedValue)}
-                  options={[
-                    { value: "", label: "请选择" },
-                    ...data.members.map((member) => ({
-                      value: String(member.id),
-                      label: (
-                        <>
-                          {member.display_name}，{member.role}
-                        </>
-                      ),
-                    })),
-                  ]}
-                />
-              </label>
-              <label>
-                截止日期
-                <Input
-                  type="date"
-                  value={taskDue}
-                  onChange={(event) => setTaskDue(event.target.value)}
-                />
-              </label>
-              <Button
-                aria-label={String(
-                  createTask.isPending ? "正在保存" : "创建并保存任务",
-                )}
-                type="primary"
-                htmlType="submit"
-                disabled={
-                  createTask.isPending ||
-                  !creatableCases.some((item) => item.id === taskCaseId) ||
-                  taskAssignee === ""
-                }
-              >
-                {createTask.isPending ? "正在保存" : "创建并保存任务"}
-              </Button>
-            </form>
+      <section className="home-panel home-tasks" aria-labelledby="home-tasks-title">
+        <header className="home-panel-head">
+          <div className="home-section-title">
+            <span aria-hidden="true" />
+            <h2 id="home-tasks-title">任务与待办</h2>
+            <strong className="home-figure-badge">{activeTaskCount}</strong>
+          </div>
+          {canCreateTasks ? (
+            <Button
+              aria-label={String(showTaskForm ? "收起" : "新建任务")}
+              type="text"
+              htmlType="button"
+              onClick={() => setShowTaskForm((current) => !current)}
+            >
+              {showTaskForm ? "收起" : "新建任务"}
+            </Button>
           ) : null}
-          {createTask.isError ? (
-            <p className="home-inline-error" role="alert">
-              {errorMessage(createTask.error)}
-            </p>
-          ) : null}
-          {tasks.length === 0 ? (
-            <p className="home-empty" role="status">
-              {taskFilter === "mine"
-                ? "当前身份没有未完成的分派任务。"
-                : "没有符合条件的任务记录。"}
-            </p>
-          ) : (
-            <ul className="home-task-list">
-              {tasks.slice(0, 8).map((task) => (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  caseTitle={caseTitles.get(task.case_id) ?? task.case_id}
-                  assignee={members.get(task.assignee_id) ?? task.assignee_id}
-                  canComplete={canCompleteTasks}
-                  onComplete={() => completeTask(task)}
-                  pending={
-                    updateTask.isPending &&
-                    updateTask.variables?.taskId === task.id
-                  }
-                />
-              ))}
-            </ul>
-          )}
-          {updateTask.isError ? (
-            <p className="home-inline-error" role="alert">
-              {errorMessage(updateTask.error)}
-            </p>
-          ) : null}
-          {tasks.length > 8 ? (
-            <Link className="home-view-all" to="/workbench/tasks">
-              查看全部任务
-            </Link>
-          ) : null}
-        </section>
+        </header>
+        <Tabs
+          activeKey={taskFilter}
+          onChange={(key) => {
+            if (key === "mine" || key === "all" || key === "completed") setTaskFilter(key);
+          }}
+          items={[
+            { key: "mine", label: `我的待办 ${dashboard.my_pending_tasks}` },
+            { key: "all", label: `全部未完成 ${activeTaskCount}` },
+            {
+              key: "completed",
+              label: `已完成 ${allTasks.length - activeTaskCount}`,
+            },
+          ]}
+        />
+        {showTaskForm && canCreateTasks ? (
+          <form className="home-task-form" onSubmit={submitTask}>
+            <label>
+              关联案件
+              <Select<string>
+                {...caseSelectPresentation}
+                showSearch={{ optionFilterProp: "label" }}
+                aria-label={"关联案件"}
+                value={String(taskCaseId)}
+                onChange={(selectedValue) => setTaskCaseId(selectedValue)}
+                options={[
+                  { value: "", label: "请选择" },
+                  ...creatableCases.map((item) => ({
+                    value: String(item.id),
+                    label: caseOptionLabel(item, snapshot.data?.members ?? []),
+                  })),
+                ]}
+              />
+            </label>
+            <label>
+              任务名称
+              <Input
+                required
+                maxLength={240}
+                value={taskTitle}
+                onChange={(event) => setTaskTitle(event.target.value)}
+              />
+            </label>
+            <label>
+              责任人
+              <Select<string>
+                aria-label={"责任人"}
+                value={String(taskAssignee)}
+                onChange={(selectedValue) => setTaskAssignee(selectedValue)}
+                options={[
+                  { value: "", label: "请选择" },
+                  ...data.members.map((member) => ({
+                    value: String(member.id),
+                    label: (
+                      <>
+                        {member.display_name}，{member.role}
+                      </>
+                    ),
+                  })),
+                ]}
+              />
+            </label>
+            <label>
+              截止日期
+              <Input
+                type="date"
+                value={taskDue}
+                onChange={(event) => setTaskDue(event.target.value)}
+              />
+            </label>
+            <Button
+              aria-label={String(createTask.isPending ? "正在保存" : "创建并保存任务")}
+              type="primary"
+              htmlType="submit"
+              disabled={
+                createTask.isPending ||
+                !creatableCases.some((item) => item.id === taskCaseId) ||
+                taskAssignee === ""
+              }
+            >
+              {createTask.isPending ? "正在保存" : "创建并保存任务"}
+            </Button>
+          </form>
+        ) : null}
+        {createTask.isError ? (
+          <p className="home-inline-error" role="alert">
+            {errorMessage(createTask.error)}
+          </p>
+        ) : null}
+        {tasks.length === 0 ? (
+          <p className="home-empty" role="status">
+            {taskFilter === "mine" ? "当前身份没有未完成的分派任务。" : "没有符合条件的任务记录。"}
+          </p>
+        ) : (
+          <ul className="home-task-list">
+            {tasks.slice(0, 8).map((task) => (
+              <TaskRow
+                key={task.id}
+                task={task}
+                caseTitle={caseTitles.get(task.case_id) ?? task.case_id}
+                assignee={members.get(task.assignee_id) ?? task.assignee_id}
+                canComplete={canCompleteTasks}
+                onComplete={() => completeTask(task)}
+                pending={updateTask.isPending && updateTask.variables?.taskId === task.id}
+              />
+            ))}
+          </ul>
+        )}
+        {updateTask.isError ? (
+          <p className="home-inline-error" role="alert">
+            {errorMessage(updateTask.error)}
+          </p>
+        ) : null}
+        {tasks.length > 8 ? (
+          <Link className="home-view-all" to="/workbench/tasks">
+            查看全部任务
+          </Link>
+        ) : null}
+      </section>
 
       <section className="home-panel home-case-work" aria-labelledby="home-case-work-title">
         <header className="home-panel-head">
@@ -819,11 +758,31 @@ export function HomePage() {
                 </div>
                 <div className="home-case-work-details">
                   {item.severity ? (
-                    <StatusText tone={item.severity === "high" || item.severity === "critical" ? "bad" : item.severity === "medium" ? "attention" : "neutral"}>
-                      {item.severity === "high" || item.severity === "critical" ? "高风险" : item.severity === "medium" ? "中风险" : item.severity === "low" ? "低风险" : item.severity === "info" ? "提示" : item.severity === "unrated" ? "未分级" : "风险级别未知"}
+                    <StatusText
+                      tone={
+                        item.severity === "high" || item.severity === "critical"
+                          ? "bad"
+                          : item.severity === "medium"
+                            ? "attention"
+                            : "neutral"
+                      }
+                    >
+                      {item.severity === "high" || item.severity === "critical"
+                        ? "高风险"
+                        : item.severity === "medium"
+                          ? "中风险"
+                          : item.severity === "low"
+                            ? "低风险"
+                            : item.severity === "info"
+                              ? "提示"
+                              : item.severity === "unrated"
+                                ? "未分级"
+                                : "风险级别未知"}
                     </StatusText>
                   ) : null}
-                  {item.profile?.due_at ? <span>案件期限 · {formatDateTime(item.profile.due_at)}</span> : null}
+                  {item.profile?.due_at ? (
+                    <span>案件期限 · {formatDateTime(item.profile.due_at)}</span>
+                  ) : null}
                   {caseTasks.map((task) => (
                     <Link key={task.id} to={caseHref(item.id, null)}>
                       {task.title} · {taskStatusLabel(task.status)}
@@ -832,32 +791,46 @@ export function HomePage() {
                   ))}
                   {caseRemediations.map((remediation) => (
                     <Link key={remediation.id} to={caseHref(item.id, remediation.run_id)}>
-                      整改：{remediation.measure} · {remediationStatusLabel(remediation.status)} · 截止 {formatDateTime(remediation.due_at)}
+                      整改：{remediation.measure} · {remediationStatusLabel(remediation.status)} ·
+                      截止 {formatDateTime(remediation.due_at)}
                     </Link>
                   ))}
-                  {caseTasks.length === 0 && caseRemediations.length === 0 && (item.severity === "high" || item.severity === "critical") ? <span>打开案件查看风险详情</span> : null}
+                  {caseTasks.length === 0 &&
+                  caseRemediations.length === 0 &&
+                  (item.severity === "high" || item.severity === "critical") ? (
+                    <span>打开案件查看风险详情</span>
+                  ) : null}
                 </div>
                 <Button
                   className="home-case-work-next-step"
                   htmlType="button"
                   aria-expanded={activeNextStepCaseId === item.id}
-                  onClick={() => setSelectedNextStep((current) =>
-                    current?.actorScope === nextStepActorScope && current.caseId === item.id
-                      ? null
-                      : { actorScope: nextStepActorScope, caseId: item.id },
-                  )}
+                  onClick={() =>
+                    setSelectedNextStep((current) =>
+                      current?.actorScope === nextStepActorScope && current.caseId === item.id
+                        ? null
+                        : { actorScope: nextStepActorScope, caseId: item.id },
+                    )
+                  }
                 >
                   {activeNextStepCaseId === item.id ? "收起实际下一步" : "查看实际下一步"}
                 </Button>
                 {activeNextStepCaseId === item.id ? (
-                  <WorkbenchCaseNextStep key={`${nextStepActorScope}:${item.id}`} caseId={item.id} />
+                  <WorkbenchCaseNextStep
+                    key={`${nextStepActorScope}:${item.id}`}
+                    caseId={item.id}
+                  />
                 ) : null}
-                <Link className="home-case-work-open" to={caseHref(item.id, null)}>打开案件</Link>
+                <Link className="home-case-work-open" to={caseHref(item.id, null)}>
+                  打开案件
+                </Link>
               </li>
             ))}
           </ul>
         )}
-        <p className="home-case-work-note">此处展示工作台快照中的任务、整改和风险级别；案件实际下一步及可执行动作以案件页服务端信息为准。</p>
+        <p className="home-case-work-note">
+          此处展示工作台快照中的任务、整改和风险级别；案件实际下一步及可执行动作以案件页服务端信息为准。
+        </p>
       </section>
 
       <CircuitStrip nodes={circuitNodes} />
@@ -889,11 +862,7 @@ export function HomePage() {
           selectedContinuation={activeIntakeSelection}
         />
 
-
-        <aside
-          className="home-summary-stack"
-          aria-label="真实审查进展与风险分布"
-        >
+        <aside className="home-summary-stack" aria-label="真实审查进展与风险分布">
           <section className="home-panel" aria-labelledby="home-progress-title">
             <header className="home-panel-head">
               <div className="home-section-title">
@@ -901,20 +870,13 @@ export function HomePage() {
                 <h2 id="home-progress-title">审查进展</h2>
               </div>
               <span className="home-panel-meta">
-                {period === "day"
-                  ? "今日"
-                  : period === "week"
-                    ? "本周"
-                    : "本月"}
+                {period === "day" ? "今日" : period === "week" ? "本周" : "本月"}
               </span>
             </header>
-            <ProgressDonut
-              rows={dashboard.progress}
-              visibleCases={dashboard.visible_cases}
-            />
+            <ProgressDonut rows={dashboard.progress} visibleCases={dashboard.visible_cases} />
             <p className="home-summary-note">
-              环图按可见案件的互斥业务状态统计；已完成审查{" "}
-              {dashboard.completed_reviews} 项；平均运行时长{" "}
+              环图按可见案件的互斥业务状态统计；已完成审查 {dashboard.completed_reviews}{" "}
+              项；平均运行时长{" "}
               {dashboard.average_duration_ms === null
                 ? "未知"
                 : `${(dashboard.average_duration_ms / 1000).toFixed(1)} 秒`}
@@ -931,10 +893,7 @@ export function HomePage() {
             </header>
             <ProgressList
               kind="risk"
-              total={dashboard.risks.reduce(
-                (total, row) => total + row.count,
-                0,
-              )}
+              total={dashboard.risks.reduce((total, row) => total + row.count, 0)}
               rows={dashboard.risks.map((row) => ({
                 key: row.severity,
                 label:
@@ -956,10 +915,7 @@ export function HomePage() {
           </section>
         </aside>
 
-        <section
-          className="home-panel home-recent"
-          aria-labelledby="home-recent-title"
-        >
+        <section className="home-panel home-recent" aria-labelledby="home-recent-title">
           <header className="home-panel-head">
             <div className="home-section-title">
               <span aria-hidden="true" />
@@ -991,10 +947,7 @@ export function HomePage() {
           )}
         </section>
 
-        <section
-          className="home-panel home-recent"
-          aria-labelledby="home-remediation-title"
-        >
+        <section className="home-panel home-recent" aria-labelledby="home-remediation-title">
           <header className="home-panel-head">
             <div className="home-section-title">
               <span aria-hidden="true" />
@@ -1023,11 +976,11 @@ export function HomePage() {
                         {members.get(item.assignee_id) ?? item.assignee_id}
                       </span>
                     </Link>
-                    <span className="home-record-status">{remediationStatusLabel(item.status)}</span>
+                    <span className="home-record-status">
+                      {remediationStatusLabel(item.status)}
+                    </span>
                     <TechnicalDetail label="整改状态技术详情" value={item.status} />
-                    <time dateTime={item.due_at}>
-                      {formatDateTime(item.due_at)}
-                    </time>
+                    <time dateTime={item.due_at}>{formatDateTime(item.due_at)}</time>
                   </li>
                 ))}
               </ul>
@@ -1035,18 +988,13 @@ export function HomePage() {
           )}
         </section>
 
-        <section
-          className="home-panel home-recent"
-          aria-labelledby="home-audit-title"
-        >
+        <section className="home-panel home-recent" aria-labelledby="home-audit-title">
           <header className="home-panel-head">
             <div className="home-section-title">
               <span aria-hidden="true" />
               <h2 id="home-audit-title">最近业务记录</h2>
             </div>
-            <span className="home-panel-meta">
-              {data.audit.length} 条可见事件
-            </span>
+            <span className="home-panel-meta">{data.audit.length} 条可见事件</span>
           </header>
           {audit.length === 0 ? (
             <p className="home-empty">没有获取到审计记录。</p>
@@ -1086,10 +1034,7 @@ export function HomePage() {
         </section>
       </div>
       <p className="home-snapshot-time">
-        数据生成于{" "}
-        <time dateTime={data.generated_at}>
-          {formatDateTime(data.generated_at)}
-        </time>
+        数据生成于 <time dateTime={data.generated_at}>{formatDateTime(data.generated_at)}</time>
       </p>
     </section>
   );

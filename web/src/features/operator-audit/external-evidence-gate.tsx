@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -27,7 +27,6 @@ export function ExternalEvidenceGate({
   flags?: OperatorAuditFlags;
   children: ReactNode;
 }) {
-  if (!externalEvidenceEnabled(flags ?? DEFAULT_OPERATOR_AUDIT_FLAGS))
-    return null;
+  if (!externalEvidenceEnabled(flags ?? DEFAULT_OPERATOR_AUDIT_FLAGS)) return null;
   return <>{children}</>;
 }

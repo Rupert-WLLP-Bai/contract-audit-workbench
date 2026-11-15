@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-10-29
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -26,9 +26,7 @@ export function OperatorAuditEntry(props: {
   if (props.attemptId) params.set("attempt_id", props.attemptId);
   return (
     <p className="meta">
-      <Link to={`/cases/${props.caseId}/operator-audit?${params.toString()}`}>
-        进入跨系统核验
-      </Link>{" "}
+      <Link to={`/cases/${props.caseId}/operator-audit?${params.toString()}`}>进入跨系统核验</Link>{" "}
       · 合同约定与授权业务记录的只读对照
     </p>
   );

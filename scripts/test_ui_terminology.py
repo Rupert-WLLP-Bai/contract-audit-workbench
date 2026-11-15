@@ -4,7 +4,7 @@
 # Contact: +86 13617696321
 # Created: 2026-11-01
 # Updated: 2026-11-15
-# Revision: r2
+# Revision: r3
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -97,6 +97,16 @@ class UITerminologyTest(unittest.TestCase):
             )
         with self.assertRaises(SystemExit):
             check_ui_terminology.main(["--unknown-option"])
+
+    def test_nested_callback_jsx_return_does_not_break_component_boundary(self):
+        source = (
+            "export function ManualFindingsPanel() {\n"
+            "  return (<ul>{items.map((item) => { return (<li>{item}</li>); })}</ul>);\n"
+            "}\n"
+        )
+        component, jsx = check_ui_terminology._component_and_render(source)
+        self.assertIn("items.map", component)
+        self.assertTrue(jsx.strip().startswith("<ul>"))
 
     def test_comments_outside_pilot_copy_and_admin_copy_are_not_scanned(self):
         source = (

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-08
-// Revision: r3
+// Updated: 2026-11-15
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -18,7 +18,11 @@ import { AdminApp } from "../admin-app";
 import type { KnowledgeVersion, PolicyPreview } from "../api/governed-knowledge";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { validateKnowledgeDraft } from "../components/governed-knowledge-editor";
-import { GovernedKnowledgeCreatePage, GovernedKnowledgeDetailPage, GovernedKnowledgeListPage } from "./governed-knowledge-page";
+import {
+  GovernedKnowledgeCreatePage,
+  GovernedKnowledgeDetailPage,
+  GovernedKnowledgeListPage,
+} from "./governed-knowledge-page";
 
 const clients: QueryClient[] = [];
 const root = "/api/admin/governed-knowledge";
@@ -26,50 +30,160 @@ const id = "operator-policy";
 const versionId = "a".repeat(64);
 const digest = "b".repeat(64);
 const versionPath = `${root}/${id}/versions/${versionId}`;
-const adminActor = { id: "admin", role: "admin", audience: "admin", tenant_id: "tenant", org_id: "org", principal_id: "principal-admin", active_context: { context_version: "1" }, csrf_token: "a".repeat(32) };
+const adminActor = {
+  id: "admin",
+  role: "admin",
+  audience: "admin",
+  tenant_id: "tenant",
+  org_id: "org",
+  principal_id: "principal-admin",
+  active_context: { context_version: "1" },
+  csrf_token: "a".repeat(32),
+};
 function adminSession(role: string) {
-  return { audience: "admin", actor: { id: role === "admin" ? "admin" : "reviewer", display_name: role === "admin" ? "管理员" : "审查员", role, tenant_id: "tenant", org_id: "org" }, principal_id: "principal-admin", active_context: { membership_id: "membership", tenant_id: "tenant", tenant_name: "租户", org_id: "org", org_name: "组织", context_version: "1" }, csrf_token: adminActor.csrf_token, context_switch_enabled: false };
+  return {
+    audience: "admin",
+    actor: {
+      id: role === "admin" ? "admin" : "reviewer",
+      display_name: role === "admin" ? "管理员" : "审查员",
+      role,
+      tenant_id: "tenant",
+      org_id: "org",
+    },
+    principal_id: "principal-admin",
+    active_context: {
+      membership_id: "membership",
+      tenant_id: "tenant",
+      tenant_name: "租户",
+      org_id: "org",
+      org_name: "组织",
+      context_version: "1",
+    },
+    csrf_token: adminActor.csrf_token,
+    context_switch_enabled: false,
+  };
 }
 const initial: KnowledgeVersion = {
   ref: { knowledge_id: id, version_id: versionId, content_sha256: digest },
   content: {
-    knowledge_id: id, version: "1", kind: "policy", title: "专线制度", summary: "核对带宽", body: "带宽不低于100 Mbit/s。", source_type: "reference", source_reference: "制度文件",
-    scope: { business_line: "ENT", scenario: "line", contract_type: "service" }, valid_from: "2026-01-01T00:00:00Z", valid_until: "2027-01-01T00:00:00Z", applicability: [], exclusions: [],
-    binding: { pack_id: "pack", pack_version: "1", pack_content_hash: "c".repeat(64), pack_snapshot_digest: "d".repeat(64), compiler_ref: "governed-rulepack/v1", rule_ids: ["BW"], source_spans: [{ rule_id: "BW", start: 0, end: 15, quote: "带宽不低于100 Mbit/s" }], candidate_diff: "差异已审阅", validation_evidence: "校验记录" },
-  }, status: "submitted", revision: 2, cross_case_reviewed: false, active: false, pointer_revision: 7, created_by: "admin", created_at: "2026-01-01T00:00:00Z",
+    knowledge_id: id,
+    version: "1",
+    kind: "policy",
+    title: "专线制度",
+    summary: "核对带宽",
+    body: "带宽不低于100 Mbit/s。",
+    source_type: "reference",
+    source_reference: "制度文件",
+    scope: { business_line: "ENT", scenario: "line", contract_type: "service" },
+    valid_from: "2026-01-01T00:00:00Z",
+    valid_until: "2027-01-01T00:00:00Z",
+    applicability: [],
+    exclusions: [],
+    binding: {
+      pack_id: "pack",
+      pack_version: "1",
+      pack_content_hash: "c".repeat(64),
+      pack_snapshot_digest: "d".repeat(64),
+      compiler_ref: "governed-rulepack/v1",
+      rule_ids: ["BW"],
+      source_spans: [{ rule_id: "BW", start: 0, end: 15, quote: "带宽不低于100 Mbit/s" }],
+      candidate_diff: "差异已审阅",
+      validation_evidence: "校验记录",
+    },
+  },
+  status: "submitted",
+  revision: 2,
+  cross_case_reviewed: false,
+  active: false,
+  pointer_revision: 7,
+  created_by: "admin",
+  created_at: "2026-01-01T00:00:00Z",
 };
 const preview: PolicyPreview = {
-  ref: initial.ref, extractor_ref: "governed-policy-threshold/v1", approvable: false,
-  comparisons: [{ rule_id: "BW", comparator: "minimum_bandwidth", status: "different", reason: "threshold_or_unit_mismatch", candidate: { comparator: "minimum_bandwidth", value: "100", unit: "Mbit/s", start: 0, end: 15, quote: "带宽不低于100 Mbit/s" }, rule_threshold: { value: "200", unit: "Mbit/s" } }],
-  issues: [], semantic_only: [{ start: 16, end: 20, quote: "特殊情况下", reason: "semantic_review_required" }],
+  ref: initial.ref,
+  extractor_ref: "governed-policy-threshold/v1",
+  approvable: false,
+  comparisons: [
+    {
+      rule_id: "BW",
+      comparator: "minimum_bandwidth",
+      status: "different",
+      reason: "threshold_or_unit_mismatch",
+      candidate: {
+        comparator: "minimum_bandwidth",
+        value: "100",
+        unit: "Mbit/s",
+        start: 0,
+        end: 15,
+        quote: "带宽不低于100 Mbit/s",
+      },
+      rule_threshold: { value: "200", unit: "Mbit/s" },
+    },
+  ],
+  issues: [],
+  semantic_only: [{ start: 16, end: 20, quote: "特殊情况下", reason: "semantic_review_required" }],
 };
 function json(value: unknown, status = 200): Response {
-  return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
-function Destination() { return <output aria-label="目标路径">{useLocation().pathname}</output>; }
-function show(path: string, client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } })) {
+function Destination() {
+  return <output aria-label="目标路径">{useLocation().pathname}</output>;
+}
+function show(
+  path: string,
+  client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+  }),
+) {
   clients.push(client);
   setSessionIdentity(adminActor);
-  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><Routes>
-    <Route path="/admin/governed-knowledge" element={<GovernedKnowledgeListPage />} />
-    <Route path="/admin/governed-knowledge/new" element={<GovernedKnowledgeCreatePage />} />
-    <Route path="/admin/governed-knowledge/:knowledgeId/versions/:versionId" element={<GovernedKnowledgeDetailPage />} />
-    <Route path="/destination/:knowledgeId/versions/:versionId" element={<Destination />} />
-  </Routes></MemoryRouter></QueryClientProvider>);
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/admin/governed-knowledge" element={<GovernedKnowledgeListPage />} />
+          <Route path="/admin/governed-knowledge/new" element={<GovernedKnowledgeCreatePage />} />
+          <Route
+            path="/admin/governed-knowledge/:knowledgeId/versions/:versionId"
+            element={<GovernedKnowledgeDetailPage />}
+          />
+          <Route path="/destination/:knowledgeId/versions/:versionId" element={<Destination />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
-afterEach(() => { cleanup(); for (const client of clients.splice(0)) client.clear(); setSessionIdentity(null); vi.unstubAllGlobals(); vi.useRealTimers(); onlineManager.setOnline(true); });
+afterEach(() => {
+  cleanup();
+  for (const client of clients.splice(0)) client.clear();
+  setSessionIdentity(null);
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+  onlineManager.setOnline(true);
+});
 
 describe("knowledge governance administration", () => {
   it("keeps unknown comparison codes in technical details while preserving the policy quote", async () => {
     const user = userEvent.setup();
-    const unknown = { ...preview, comparisons: [{ ...preview.comparisons[0]!, comparator: "minimum_bandwidth（旧）", status: "different·" }] };
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === versionPath) return json(initial);
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      if (path === `${versionPath}/preview`) return json(unknown);
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    const unknown = {
+      ...preview,
+      comparisons: [
+        { ...preview.comparisons[0]!, comparator: "minimum_bandwidth（旧）", status: "different·" },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === versionPath) return json(initial);
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        if (path === `${versionPath}/preview`) return json(unknown);
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     await user.click(await screen.findByRole("tab", { name: "验证与发布" }));
     expect(await screen.findByText("比较类型待核对 · 比较状态待核对")).toBeVisible();
@@ -77,57 +191,112 @@ describe("knowledge governance administration", () => {
     expect(screen.getByText(/minimum_bandwidth（旧）/)).not.toBeVisible();
   });
   it("validates source offsets as Unicode characters", () => {
-    const content = { ...initial.content, body: "\u{20000}带宽不低于100 Mbit/s。", binding: { ...initial.content.binding, source_spans: [{ rule_id: "BW", start: 1, end: 16, quote: "带宽不低于100 Mbit/s" }] } };
+    const content = {
+      ...initial.content,
+      body: "\u{20000}带宽不低于100 Mbit/s。",
+      binding: {
+        ...initial.content.binding,
+        source_spans: [{ rule_id: "BW", start: 1, end: 16, quote: "带宽不低于100 Mbit/s" }],
+      },
+    };
     expect(validateKnowledgeDraft(content)).toEqual([]);
-    const wrong = { ...content, binding: { ...content.binding, source_spans: [{ ...content.binding.source_spans[0]!, start: 2, end: 17 }] } };
-    expect(validateKnowledgeDraft(wrong)).toContainEqual({ id: "span-quote-0", message: "引用文字和起始位置必须与正文一致" });
+    const wrong = {
+      ...content,
+      binding: {
+        ...content.binding,
+        source_spans: [{ ...content.binding.source_spans[0]!, start: 2, end: 17 }],
+      },
+    };
+    expect(validateKnowledgeDraft(wrong)).toContainEqual({
+      id: "span-quote-0",
+      message: "引用文字和起始位置必须与正文一致",
+    });
   });
   it("exposes the governance route through the admin shell", async () => {
     const paths: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      paths.push(path);
-      if (path === "/api/session?audience=admin") return json(adminSession("admin"));
-      if (path === root) return json({ items: [] });
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        paths.push(path);
+        if (path === "/api/session?audience=admin") return json(adminSession("admin"));
+        if (path === root) return json({ items: [] });
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+    });
     clients.push(client);
-    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/admin/governed-knowledge"]}><AdminApp /></MemoryRouter></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/admin/governed-knowledge"]}>
+          <AdminApp />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
     expect(await screen.findByRole("heading", { name: "受控知识" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "知识治理" })).toHaveAttribute("href", "/admin/governed-knowledge");
+    expect(screen.getByRole("link", { name: "知识治理" })).toHaveAttribute(
+      "href",
+      "/admin/governed-knowledge",
+    );
     await waitFor(() => expect(paths).toContain(root));
   });
   it("does not open governance for a non-admin session", async () => {
     const paths: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      paths.push(path);
-      if (path === "/api/session?audience=admin") return json(adminSession("reviewer"));
-      return json({ error: { code: "forbidden", message: "无权访问", retryable: false } }, 403);
-    }));
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        paths.push(path);
+        if (path === "/api/session?audience=admin") return json(adminSession("reviewer"));
+        return json({ error: { code: "forbidden", message: "无权访问", retryable: false } }, 403);
+      }),
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+    });
     clients.push(client);
-    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/admin/governed-knowledge"]}><AdminApp /></MemoryRouter></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/admin/governed-knowledge"]}>
+          <AdminApp />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
     expect(await screen.findByText("需要管理权限")).toBeInTheDocument();
     expect(paths).not.toContain(root);
   });
   it("shows actual policy differences and retries an uncertain command with the same revision and key", async () => {
     const requests: RequestInit[] = [];
     let current = initial;
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === versionPath && init?.method === "GET") return json(current);
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      if (path === `${versionPath}/preview`) return json(preview);
-      if (path === `${versionPath}/commands` && init?.method === "POST") {
-        requests.push(init);
-        if (requests.length === 1) return json({ error: { code: "case_busy", message: "关联案件正在修改", retryable: true, details: { reason: "locked" } } }, 503);
-        current = { ...initial, status: "validated", revision: 3 };
-        return json(current);
-      }
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === versionPath && init?.method === "GET") return json(current);
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        if (path === `${versionPath}/preview`) return json(preview);
+        if (path === `${versionPath}/commands` && init?.method === "POST") {
+          requests.push(init);
+          if (requests.length === 1)
+            return json(
+              {
+                error: {
+                  code: "case_busy",
+                  message: "关联案件正在修改",
+                  retryable: true,
+                  details: { reason: "locked" },
+                },
+              },
+              503,
+            );
+          current = { ...initial, status: "validated", revision: 3 };
+          return json(current);
+        }
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByText("最低保障带宽对照 · 存在差异")).toBeInTheDocument();
@@ -142,52 +311,152 @@ describe("knowledge governance administration", () => {
     expect(screen.getByText(/locked/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试校验" }));
     await waitFor(() => expect(requests).toHaveLength(2));
-    expect(JSON.parse(String(requests[0]?.body))).toEqual({ action: "validate", expected_revision: 2, expected_content_sha256: digest, expected_pointer_revision: 7, reason: "已核对规则与制度", cross_case_reviewed: false });
+    expect(JSON.parse(String(requests[0]?.body))).toEqual({
+      action: "validate",
+      expected_revision: 2,
+      expected_content_sha256: digest,
+      expected_pointer_revision: 7,
+      reason: "已核对规则与制度",
+      cross_case_reviewed: false,
+    });
     expect(requests[1]?.body).toBe(requests[0]?.body);
-    expect(new Headers(requests[1]?.headers).get("Idempotency-Key")).toBe(new Headers(requests[0]?.headers).get("Idempotency-Key"));
+    expect(new Headers(requests[1]?.headers).get("Idempotency-Key")).toBe(
+      new Headers(requests[0]?.headers).get("Idempotency-Key"),
+    );
     expect(new Headers(requests[0]?.headers).get("X-Context-Version")).toBe("1");
     expect(new Headers(requests[0]?.headers).get("X-CSRF-Token")).toBe(adminActor.csrf_token);
     expect(await screen.findByRole("button", { name: "批准" })).toBeInTheDocument();
   });
   it.each([
-    { state: "draft", active: false, label: "提交", action: "submit", next: "submitted", nextActive: false },
-    { state: "approved", active: false, label: "发布", action: "publish", next: "published", nextActive: true },
-    { state: "published", active: true, label: "撤回", action: "withdraw", next: "withdrawn", nextActive: false },
-    { state: "published", active: false, label: "回滚", action: "rollback", next: "published", nextActive: true },
-    { state: "withdrawn", active: false, label: "回滚", action: "rollback", next: "published", nextActive: true },
-  ])("uses the server revision and reason for $action", async ({ state, active, label, action, next, nextActive }) => {
-    let current: KnowledgeVersion = { ...initial, status: state, active, revision: 8, pointer_revision: 12 };
-    const requests: RequestInit[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === versionPath && init?.method === "GET") return json(current);
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      if (path === `${versionPath}/preview`) return json(preview);
-      if (path === `${versionPath}/commands` && init?.method === "POST") {
-        requests.push(init);
-        current = { ...current, status: next, active: nextActive, revision: 9, pointer_revision: action === "submit" ? 12 : 13 };
-        return json(current);
-      }
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
-    const user = userEvent.setup();
-    show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
-    const reason = await screen.findByLabelText(`${label}依据`);
-    await user.type(reason, "人工审阅依据");
-    await user.click(screen.getByRole("button", { name: label }));
-    await waitFor(() => expect(requests).toHaveLength(1));
-    expect(JSON.parse(String(requests[0]?.body))).toEqual({ action, expected_revision: 8, expected_content_sha256: digest, expected_pointer_revision: 12, reason: "人工审阅依据", cross_case_reviewed: false });
-  });
+    {
+      state: "draft",
+      active: false,
+      label: "提交",
+      action: "submit",
+      next: "submitted",
+      nextActive: false,
+    },
+    {
+      state: "approved",
+      active: false,
+      label: "发布",
+      action: "publish",
+      next: "published",
+      nextActive: true,
+    },
+    {
+      state: "published",
+      active: true,
+      label: "撤回",
+      action: "withdraw",
+      next: "withdrawn",
+      nextActive: false,
+    },
+    {
+      state: "published",
+      active: false,
+      label: "回滚",
+      action: "rollback",
+      next: "published",
+      nextActive: true,
+    },
+    {
+      state: "withdrawn",
+      active: false,
+      label: "回滚",
+      action: "rollback",
+      next: "published",
+      nextActive: true,
+    },
+  ])(
+    "uses the server revision and reason for $action",
+    async ({ state, active, label, action, next, nextActive }) => {
+      let current: KnowledgeVersion = {
+        ...initial,
+        status: state,
+        active,
+        revision: 8,
+        pointer_revision: 12,
+      };
+      const requests: RequestInit[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const path = String(input);
+          if (path === versionPath && init?.method === "GET") return json(current);
+          if (path === `${root}/${id}/history`) return json({ items: [] });
+          if (path === `${versionPath}/preview`) return json(preview);
+          if (path === `${versionPath}/commands` && init?.method === "POST") {
+            requests.push(init);
+            current = {
+              ...current,
+              status: next,
+              active: nextActive,
+              revision: 9,
+              pointer_revision: action === "submit" ? 12 : 13,
+            };
+            return json(current);
+          }
+          return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+        }),
+      );
+      const user = userEvent.setup();
+      show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
+      const reason = await screen.findByLabelText(`${label}依据`);
+      await user.type(reason, "人工审阅依据");
+      await user.click(screen.getByRole("button", { name: label }));
+      await waitFor(() => expect(requests).toHaveLength(1));
+      expect(JSON.parse(String(requests[0]?.body))).toEqual({
+        action,
+        expected_revision: 8,
+        expected_content_sha256: digest,
+        expected_pointer_revision: 12,
+        reason: "人工审阅依据",
+        cross_case_reviewed: false,
+      });
+    },
+  );
   it("requires a real cross-case review confirmation before experience approval", async () => {
-    const experience: KnowledgeVersion = { ...initial, status: "validated", revision: 3, content: { ...initial.content, kind: "experience", source_type: "human_feedback", source_case_id: "case-1", candidate_id: "candidate-1", candidate_version_id: "e".repeat(64), candidate_content_sha256: "f".repeat(64), candidate_review_diff: "已删除敏感信息", reviewed_applicability: ["适用"], reviewed_exclusions: ["排除"], check_action: "核对", minimum_evidence: "合同", counterexamples: ["反例"], policy_refs: [initial.ref] } };
+    const experience: KnowledgeVersion = {
+      ...initial,
+      status: "validated",
+      revision: 3,
+      content: {
+        ...initial.content,
+        kind: "experience",
+        source_type: "human_feedback",
+        source_case_id: "case-1",
+        candidate_id: "candidate-1",
+        candidate_version_id: "e".repeat(64),
+        candidate_content_sha256: "f".repeat(64),
+        candidate_review_diff: "已删除敏感信息",
+        reviewed_applicability: ["适用"],
+        reviewed_exclusions: ["排除"],
+        check_action: "核对",
+        minimum_evidence: "合同",
+        counterexamples: ["反例"],
+        policy_refs: [initial.ref],
+      },
+    };
     const requests: RequestInit[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === versionPath && init?.method === "GET") return json(experience);
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      if (path === `${versionPath}/commands` && init?.method === "POST") { requests.push(init); return json({ ...experience, status: "approved", revision: 4, cross_case_reviewed: true }); }
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === versionPath && init?.method === "GET") return json(experience);
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        if (path === `${versionPath}/commands` && init?.method === "POST") {
+          requests.push(init);
+          return json({
+            ...experience,
+            status: "approved",
+            revision: 4,
+            cross_case_reviewed: true,
+          });
+        }
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     await screen.findByRole("heading", { name: "专线制度" });
@@ -201,16 +470,28 @@ describe("knowledge governance administration", () => {
     await user.click(screen.getByRole("button", { name: "批准" }));
     await waitFor(() => expect(requests).toHaveLength(1));
     const body = JSON.parse(String(requests[0]?.body)) as Record<string, unknown>;
-    expect(body).toMatchObject({ action: "approve", expected_revision: 3, expected_content_sha256: digest, expected_pointer_revision: 7, reason: "已审阅候选", cross_case_reviewed: true });
+    expect(body).toMatchObject({
+      action: "approve",
+      expected_revision: 3,
+      expected_content_sha256: digest,
+      expected_pointer_revision: 7,
+      reason: "已审阅候选",
+      cross_case_reviewed: true,
+    });
     expect(body).not.toHaveProperty("approval_actor_id");
   });
   it("prefills an experience candidate link without inventing its review or approval", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === root || path === "/api/admin/rulepacks") return json({ items: [] });
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
-    show(`/admin/governed-knowledge/new?source_case=case-1&candidate_id=candidate-1&candidate_version_id=${"e".repeat(64)}&candidate_content_sha256=${"f".repeat(64)}`);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === root || path === "/api/admin/rulepacks") return json({ items: [] });
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
+    show(
+      `/admin/governed-knowledge/new?source_case=case-1&candidate_id=candidate-1&candidate_version_id=${"e".repeat(64)}&candidate_content_sha256=${"f".repeat(64)}`,
+    );
     expect(await screen.findByLabelText("候选 ID")).toHaveValue("candidate-1");
     expect(screen.getByLabelText("来源案件 ID（如有）")).toHaveValue("case-1");
     expect(screen.getByLabelText("候选版本 ID")).toHaveValue("e".repeat(64));
@@ -219,17 +500,33 @@ describe("knowledge governance administration", () => {
   });
   it("copies a version into an editable new draft instead of mutating it", async () => {
     const requests: RequestInit[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === versionPath) return json(initial);
-      if (path === "/api/admin/rulepacks" || (path === root && init?.method === "GET")) return json({ items: [] });
-      if (path === root && init?.method === "POST") {
-        requests.push(init);
-        const payload = JSON.parse(String(init.body)) as { content: KnowledgeVersion["content"] };
-        return json({ ...initial, ref: { ...initial.ref, version_id: "9".repeat(64) }, content: payload.content, status: "draft", revision: 1 }, 201);
-      }
-      return json({ error: { code: "not_found", message: "没有找到规则包", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === versionPath) return json(initial);
+        if (path === "/api/admin/rulepacks" || (path === root && init?.method === "GET"))
+          return json({ items: [] });
+        if (path === root && init?.method === "POST") {
+          requests.push(init);
+          const payload = JSON.parse(String(init.body)) as { content: KnowledgeVersion["content"] };
+          return json(
+            {
+              ...initial,
+              ref: { ...initial.ref, version_id: "9".repeat(64) },
+              content: payload.content,
+              status: "draft",
+              revision: 1,
+            },
+            201,
+          );
+        }
+        return json(
+          { error: { code: "not_found", message: "没有找到规则包", retryable: false } },
+          404,
+        );
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/new?from_knowledge=${id}&from_version=${versionId}`);
     const title = await screen.findByLabelText("标题");
@@ -238,13 +535,30 @@ describe("knowledge governance administration", () => {
     await user.type(screen.getByLabelText("版本号"), "2");
     await user.click(screen.getByRole("button", { name: "创建草稿" }));
     await waitFor(() => expect(requests).toHaveLength(1));
-    const payload = JSON.parse(String(requests[0]?.body)) as { content: KnowledgeVersion["content"] };
-    expect(payload.content).toMatchObject({ knowledge_id: id, version: "2", title: "更新的专线制度", body: initial.content.body });
+    const payload = JSON.parse(String(requests[0]?.body)) as {
+      content: KnowledgeVersion["content"];
+    };
+    expect(payload.content).toMatchObject({
+      knowledge_id: id,
+      version: "2",
+      title: "更新的专线制度",
+      body: initial.content.body,
+    });
     expect(payload.content).not.toHaveProperty("source_org_id");
     expect(new Headers(requests[0]?.headers).get("Idempotency-Key")).toBeTruthy();
   });
   it("shows a denied or missing source without displaying stale content", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ error: { code: "not_found", message: "没有找到对应记录", retryable: false } }, 404)));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          json(
+            { error: { code: "not_found", message: "没有找到对应记录", retryable: false } },
+            404,
+          ),
+        ),
+    );
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByText("没有找到对应记录")).toBeInTheDocument();
     expect(screen.getByText(/错误代码：not_found/)).toBeInTheDocument();
@@ -252,16 +566,21 @@ describe("knowledge governance administration", () => {
   });
 
   it("hides cached detail content after a failed refresh", async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+    });
     const detailKey = ["admin", "governed-knowledge", "detail", id, versionId];
     client.setQueryData(detailKey, initial);
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === versionPath) throw new TypeError("connection reset");
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      if (path === `${versionPath}/preview`) return json(preview);
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === versionPath) throw new TypeError("connection reset");
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        if (path === `${versionPath}/preview`) return json(preview);
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`, client);
     expect(await screen.findByText("知识版本没有加载")).toBeInTheDocument();
     expect(screen.queryByText(initial.content.body)).not.toBeInTheDocument();
@@ -284,15 +603,55 @@ describe("knowledge governance administration", () => {
   });
 
   it("lists knowledge versions with their scope, status and revision", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === root) return json({ items: [
-        summary(),
-        summary({ ref: { knowledge_id: "kb-2", version_id: "e".repeat(64), content_sha256: "f".repeat(64) }, title: "操作手册", kind: "guidance", status: "draft", active: false, revision: 1, pointer_revision: 0, scope: { business_line: "EB", scenario: "cloud", contract_type: "purchase", org_id: "org-1", case_id: "case-1" } }),
-        summary({ ref: { knowledge_id: "kb-3", version_id: "a".repeat(64), content_sha256: "b".repeat(64) }, title: "工程制度", status: "approved", active: false, scope: { business_line: "EB", scenario: "build", contract_type: "works", org_id: "org-2" } }),
-      ] });
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === root)
+          return json({
+            items: [
+              summary(),
+              summary({
+                ref: {
+                  knowledge_id: "kb-2",
+                  version_id: "e".repeat(64),
+                  content_sha256: "f".repeat(64),
+                },
+                title: "操作手册",
+                kind: "guidance",
+                status: "draft",
+                active: false,
+                revision: 1,
+                pointer_revision: 0,
+                scope: {
+                  business_line: "EB",
+                  scenario: "cloud",
+                  contract_type: "purchase",
+                  org_id: "org-1",
+                  case_id: "case-1",
+                },
+              }),
+              summary({
+                ref: {
+                  knowledge_id: "kb-3",
+                  version_id: "a".repeat(64),
+                  content_sha256: "b".repeat(64),
+                },
+                title: "工程制度",
+                status: "approved",
+                active: false,
+                scope: {
+                  business_line: "EB",
+                  scenario: "build",
+                  contract_type: "works",
+                  org_id: "org-2",
+                },
+              }),
+            ],
+          });
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show("/admin/governed-knowledge");
     expect(await screen.findByRole("link", { name: "专线制度" })).toHaveAttribute(
@@ -325,20 +684,37 @@ describe("knowledge governance administration", () => {
   });
 
   it("shows loading, forbidden and retryable list failures", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
     show("/admin/governed-knowledge");
     expect(await screen.findByText("正在读取知识版本")).toBeInTheDocument();
     cleanup();
 
     let attempt = 0;
     const calls: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      calls.push(path);
-      attempt += 1;
-      if (attempt === 1) return json({ error: { code: "unavailable", message: "列表不可用", retryable: true, details: { scope: "admin" } } }, 503);
-      return json({ items: [] });
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        calls.push(path);
+        attempt += 1;
+        if (attempt === 1)
+          return json(
+            {
+              error: {
+                code: "unavailable",
+                message: "列表不可用",
+                retryable: true,
+                details: { scope: "admin" },
+              },
+            },
+            503,
+          );
+        return json({ items: [] });
+      }),
+    );
     const user = userEvent.setup();
     show("/admin/governed-knowledge");
     expect(await screen.findByText("知识版本列表没有加载")).toBeInTheDocument();
@@ -349,7 +725,14 @@ describe("knowledge governance administration", () => {
     await waitFor(() => expect(calls.filter((path) => path === root)).toHaveLength(2));
     cleanup();
 
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ error: { code: "forbidden", message: "无权访问", retryable: false } }, 403)));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          json({ error: { code: "forbidden", message: "无权访问", retryable: false } }, 403),
+        ),
+    );
     show("/admin/governed-knowledge");
     expect(await screen.findByText("知识版本列表没有加载")).toBeInTheDocument();
     expect(screen.getByText("无权访问")).toBeInTheDocument();
@@ -358,18 +741,34 @@ describe("knowledge governance administration", () => {
   it("shows a validation summary and replayable create failure", async () => {
     const posts: RequestInit[] = [];
     let postAttempt = 0;
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === versionPath) return json(initial);
-      if (path === "/api/admin/rulepacks" || (path === root && init?.method === "GET")) return json({ items: [] });
-      if (path === root && init?.method === "POST") {
-        posts.push(init);
-        postAttempt += 1;
-        if (postAttempt === 1) return json({ error: { code: "case_busy", message: "请稍后重试", retryable: true } }, 503);
-        return json({ ...initial, ref: { ...initial.ref, version_id: "9".repeat(64) }, status: "draft", revision: 1 }, 201);
-      }
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === versionPath) return json(initial);
+        if (path === "/api/admin/rulepacks" || (path === root && init?.method === "GET"))
+          return json({ items: [] });
+        if (path === root && init?.method === "POST") {
+          posts.push(init);
+          postAttempt += 1;
+          if (postAttempt === 1)
+            return json(
+              { error: { code: "case_busy", message: "请稍后重试", retryable: true } },
+              503,
+            );
+          return json(
+            {
+              ...initial,
+              ref: { ...initial.ref, version_id: "9".repeat(64) },
+              status: "draft",
+              revision: 1,
+            },
+            201,
+          );
+        }
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/new?from_knowledge=${id}&from_version=${versionId}`);
     const version = await screen.findByLabelText("版本号");
@@ -388,13 +787,16 @@ describe("knowledge governance administration", () => {
 
   it("summarises client validation without sending a create request", async () => {
     const posts: RequestInit[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === "/api/admin/rulepacks") return json({ items: [] });
-      if (path === root && init?.method === "GET") return json({ items: [] });
-      if (init?.method === "POST") posts.push(init);
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === "/api/admin/rulepacks") return json({ items: [] });
+        if (path === root && init?.method === "GET") return json({ items: [] });
+        if (init?.method === "POST") posts.push(init);
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show("/admin/governed-knowledge/new");
     await user.click(screen.getByRole("button", { name: "创建草稿" }));
@@ -412,16 +814,21 @@ describe("knowledge governance administration", () => {
 
   it("rejects an incomplete or failed source version", async () => {
     const requests: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      requests.push(path);
-      if (path === "/api/admin/rulepacks") return json({ items: [] });
-      if (path === root) return json({ items: [] });
-      return json({ error: { code: "not_found", message: "来源不存在", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        requests.push(path);
+        if (path === "/api/admin/rulepacks") return json({ items: [] });
+        if (path === root) return json({ items: [] });
+        return json({ error: { code: "not_found", message: "来源不存在", retryable: false } }, 404);
+      }),
+    );
     show(`/admin/governed-knowledge/new?from_knowledge=${id}`);
     expect(await screen.findByText("来源版本信息不完整")).toBeInTheDocument();
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     expect(requests).not.toContain(`${root}/${id}/versions/`);
     cleanup();
     show(`/admin/governed-knowledge/new?from_knowledge=${id}&from_version=${versionId}`);
@@ -432,17 +839,22 @@ describe("knowledge governance administration", () => {
     requests.length = 0;
     show(`/admin/governed-knowledge/new?from_version=${versionId}`);
     expect(await screen.findByText("来源版本信息不完整")).toBeInTheDocument();
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     expect(requests).not.toContain(`${root}//versions/${versionId}`);
   });
 
   it("does not expose a source copy form while its detail query is paused offline", async () => {
     const requests: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      requests.push(path);
-      return json({ error: { code: "not_found", message: "来源不存在", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        requests.push(path);
+        return json({ error: { code: "not_found", message: "来源不存在", retryable: false } }, 404);
+      }),
+    );
     onlineManager.setOnline(false);
     show(`/admin/governed-knowledge/new?from_knowledge=${id}&from_version=${versionId}`);
     expect(await screen.findByText("正在准备新版本")).toBeInTheDocument();
@@ -471,17 +883,30 @@ describe("knowledge governance administration", () => {
       },
     };
     const posts: RequestInit[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === versionPath) return json(source);
-      if (path === "/api/admin/rulepacks" || (path === root && init?.method === "GET")) return json({ items: [] });
-      if (path === root && init?.method === "POST") {
-        posts.push(init);
-        const payload = JSON.parse(String(init.body)) as { content: KnowledgeVersion["content"] };
-        return json({ ...source, ref: { ...source.ref, version_id: "9".repeat(64) }, content: payload.content, status: "draft", revision: 1 }, 201);
-      }
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === versionPath) return json(source);
+        if (path === "/api/admin/rulepacks" || (path === root && init?.method === "GET"))
+          return json({ items: [] });
+        if (path === root && init?.method === "POST") {
+          posts.push(init);
+          const payload = JSON.parse(String(init.body)) as { content: KnowledgeVersion["content"] };
+          return json(
+            {
+              ...source,
+              ref: { ...source.ref, version_id: "9".repeat(64) },
+              content: payload.content,
+              status: "draft",
+              revision: 1,
+            },
+            201,
+          );
+        }
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/new?from_knowledge=${id}&from_version=${versionId}`);
     const version = await screen.findByLabelText("版本号");
@@ -499,20 +924,32 @@ describe("knowledge governance administration", () => {
     const previewVariant: PolicyPreview = {
       ...preview,
       approvable: true,
-      comparisons: [{ rule_id: "BW", comparator: "monthly_sla", status: "ambiguous", rule_threshold: { value: "99.9", unit: "%", basis: "月" } }],
+      comparisons: [
+        {
+          rule_id: "BW",
+          comparator: "monthly_sla",
+          status: "ambiguous",
+          rule_threshold: { value: "99.9", unit: "%", basis: "月" },
+        },
+      ],
       issues: [{ start: 0, end: 4, quote: "带宽", reason: "missing_value" }],
       semantic_only: [],
     };
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === versionPath) return json(initial);
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      if (path === `${versionPath}/preview`) return json(previewVariant);
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === versionPath) return json(initial);
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        if (path === `${versionPath}/preview`) return json(previewVariant);
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     await user.click(await screen.findByRole("tab", { name: "验证与发布" }));
-    expect(await screen.findByText(/预览：规则关联和可以提取的数值已通过检查。/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/预览：规则关联和可以提取的数值已通过检查。/),
+    ).toBeInTheDocument();
     expect(screen.getByText(/规则关联和可以提取的数值已通过检查/)).toBeInTheDocument();
     expect(screen.getByText(/自然月服务可用率对照 · 无法唯一确认/)).toBeInTheDocument();
     expect(screen.getByText(/未提取到候选/)).toBeInTheDocument();
@@ -525,13 +962,16 @@ describe("knowledge governance administration", () => {
   });
 
   it("shows an empty preview comparison list", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === versionPath) return json(initial);
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      if (path === `${versionPath}/preview`) return json({ ...preview, comparisons: [] });
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === versionPath) return json(initial);
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        if (path === `${versionPath}/preview`) return json({ ...preview, comparisons: [] });
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByText("没有返回规则比较项。")).toBeInTheDocument();
   });
@@ -539,18 +979,22 @@ describe("knowledge governance administration", () => {
   it("rejects a stale preview digest and retries it", async () => {
     let attempts = 0;
     const calls: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      calls.push(path);
-      if (path === versionPath) return json(initial);
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      if (path === `${versionPath}/preview`) {
-        attempts += 1;
-        if (attempts === 1) return json({ ...preview, ref: { ...preview.ref, content_sha256: "z".repeat(64) } });
-        return json(preview);
-      }
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        calls.push(path);
+        if (path === versionPath) return json(initial);
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        if (path === `${versionPath}/preview`) {
+          attempts += 1;
+          if (attempts === 1)
+            return json({ ...preview, ref: { ...preview.ref, content_sha256: "z".repeat(64) } });
+          return json(preview);
+        }
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     await user.click(await screen.findByRole("tab", { name: "验证与发布" }));
@@ -565,24 +1009,30 @@ describe("knowledge governance administration", () => {
   });
 
   it("requires an action reason and keeps terminal versions read-only", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === versionPath) return json({ ...initial, status: "draft" });
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === versionPath) return json({ ...initial, status: "draft" });
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     await user.click(await screen.findByRole("button", { name: "提交" }));
     expect(await screen.findByText("请填写操作依据")).toBeInTheDocument();
     cleanup();
 
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === versionPath) return json({ ...initial, status: "archived" });
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === versionPath) return json({ ...initial, status: "archived" });
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByText("当前状态没有可执行的治理操作。")).toBeInTheDocument();
   });
@@ -591,21 +1041,35 @@ describe("knowledge governance administration", () => {
     let gets = 0;
     const posts: RequestInit[] = [];
     let postAttempt = 0;
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === versionPath && init?.method === "GET") {
-        gets += 1;
-        return json({ ...initial, status: "submitted" });
-      }
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      if (path === `${versionPath}/commands` && init?.method === "POST") {
-        posts.push(init);
-        postAttempt += 1;
-        if (postAttempt === 1) return json({ error: { code: "policy_missing", message: "政策缺失", retryable: false, details: { policy: "required" } } }, 400);
-        return json({ error: { code: "conflict", message: "版本冲突", retryable: false } }, 409);
-      }
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === versionPath && init?.method === "GET") {
+          gets += 1;
+          return json({ ...initial, status: "submitted" });
+        }
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        if (path === `${versionPath}/commands` && init?.method === "POST") {
+          posts.push(init);
+          postAttempt += 1;
+          if (postAttempt === 1)
+            return json(
+              {
+                error: {
+                  code: "policy_missing",
+                  message: "政策缺失",
+                  retryable: false,
+                  details: { policy: "required" },
+                },
+              },
+              400,
+            );
+          return json({ error: { code: "conflict", message: "版本冲突", retryable: false } }, 409);
+        }
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     const reason = await screen.findByLabelText("校验依据");
@@ -613,10 +1077,7 @@ describe("knowledge governance administration", () => {
     await user.click(screen.getByRole("button", { name: "校验" }));
     expect(await screen.findByText("政策缺失")).toBeInTheDocument();
     expect(screen.getByText(/错误代码：policy_missing/)).toBeInTheDocument();
-    expect(screen.getByText("政策缺失").closest("div[tabindex]")).toHaveAttribute(
-      "tabindex",
-      "-1",
-    );
+    expect(screen.getByText("政策缺失").closest("div[tabindex]")).toHaveAttribute("tabindex", "-1");
     expect(screen.queryAllByRole("status").some((item) => item.textContent === "")).toBe(false);
     expect(gets).toBe(1);
     expect(screen.queryByRole("button", { name: "重试校验" })).not.toBeInTheDocument();
@@ -624,22 +1085,34 @@ describe("knowledge governance administration", () => {
     await user.click(await screen.findByRole("button", { name: /校验/ }));
     expect(await screen.findByText("版本冲突")).toBeInTheDocument();
     await waitFor(() => expect(gets).toBeGreaterThan(getsBeforeConflict));
-    expect(screen.getByText("服务端记录已变化，请检查重新读取的版本后再操作。")).toBeInTheDocument();
+    expect(
+      screen.getByText("服务端记录已变化，请检查重新读取的版本后再操作。"),
+    ).toBeInTheDocument();
     expect(posts).toHaveLength(2);
   });
 
   it("reports success and renders approval metadata", async () => {
     let current: KnowledgeVersion = { ...initial, status: "submitted" };
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === versionPath && init?.method === "GET") return json(current);
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      if (path === `${versionPath}/commands` && init?.method === "POST") {
-        current = { ...initial, status: "validated", revision: 3, approval_actor_id: "admin", approved_digest: digest, approval_reason: "内容完整" };
-        return json(current);
-      }
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === versionPath && init?.method === "GET") return json(current);
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        if (path === `${versionPath}/commands` && init?.method === "POST") {
+          current = {
+            ...initial,
+            status: "validated",
+            revision: 3,
+            approval_actor_id: "admin",
+            approved_digest: digest,
+            approval_reason: "内容完整",
+          };
+          return json(current);
+        }
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     await user.type(await screen.findByLabelText("校验依据"), "核对规则");
@@ -672,37 +1145,46 @@ describe("knowledge governance administration", () => {
         exception_basis: "例外依据",
       },
     };
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === versionPath) return json(experience);
-      if (path === `${root}/${id}/history`) return json({ items: [{
-        sequence: 2,
-        ref: initial.ref,
-        action: "publish",
-        revision: 4,
-        pointer_revision: 9,
-        actor_id: "admin",
-        reason: "人工批准",
-        previous_version_id: "v-old",
-        previous_active: true,
-        resulting_version_id: "v-new",
-        resulting_active: false,
-        occurred_at: "2026-01-02T00:00:00Z",
-      }, {
-        sequence: 1,
-        ref: initial.ref,
-        action: "create",
-        revision: 1,
-        pointer_revision: 0,
-        actor_id: "admin",
-        reason: "",
-        previous_version_id: "v-only",
-        previous_active: false,
-        resulting_active: false,
-        occurred_at: "2026-01-01T00:00:00Z",
-      }] });
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === versionPath) return json(experience);
+        if (path === `${root}/${id}/history`)
+          return json({
+            items: [
+              {
+                sequence: 2,
+                ref: initial.ref,
+                action: "publish",
+                revision: 4,
+                pointer_revision: 9,
+                actor_id: "admin",
+                reason: "人工批准",
+                previous_version_id: "v-old",
+                previous_active: true,
+                resulting_version_id: "v-new",
+                resulting_active: false,
+                occurred_at: "2026-01-02T00:00:00Z",
+              },
+              {
+                sequence: 1,
+                ref: initial.ref,
+                action: "create",
+                revision: 1,
+                pointer_revision: 0,
+                actor_id: "admin",
+                reason: "",
+                previous_version_id: "v-only",
+                previous_active: false,
+                resulting_active: false,
+                occurred_at: "2026-01-01T00:00:00Z",
+              },
+            ],
+          });
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByText("经验审阅")).toBeInTheDocument();
@@ -723,16 +1205,23 @@ describe("knowledge governance administration", () => {
 
   it("reports an empty or failed history", async () => {
     let attempts = 0;
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === versionPath) return json({ ...initial, status: "archived" });
-      if (path === `${root}/${id}/history`) {
-        attempts += 1;
-        if (attempts === 1) return json({ error: { code: "unavailable", message: "历史不可用", retryable: true } }, 503);
-        return json({ items: [] });
-      }
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === versionPath) return json({ ...initial, status: "archived" });
+        if (path === `${root}/${id}/history`) {
+          attempts += 1;
+          if (attempts === 1)
+            return json(
+              { error: { code: "unavailable", message: "历史不可用", retryable: true } },
+              503,
+            );
+          return json({ items: [] });
+        }
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByText("历史不可用")).toBeInTheDocument();
@@ -752,17 +1241,30 @@ describe("knowledge governance administration", () => {
       },
     };
     const posts: RequestInit[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === versionPath) return json(source);
-      if (path === "/api/admin/rulepacks" || (path === root && init?.method === "GET")) return json({ items: [] });
-      if (path === root && init?.method === "POST") {
-        posts.push(init);
-        const payload = JSON.parse(String(init.body)) as { content: KnowledgeVersion["content"] };
-        return json({ ...source, ref: { ...source.ref, version_id: "9".repeat(64) }, content: payload.content, status: "draft", revision: 1 }, 201);
-      }
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === versionPath) return json(source);
+        if (path === "/api/admin/rulepacks" || (path === root && init?.method === "GET"))
+          return json({ items: [] });
+        if (path === root && init?.method === "POST") {
+          posts.push(init);
+          const payload = JSON.parse(String(init.body)) as { content: KnowledgeVersion["content"] };
+          return json(
+            {
+              ...source,
+              ref: { ...source.ref, version_id: "9".repeat(64) },
+              content: payload.content,
+              status: "draft",
+              revision: 1,
+            },
+            201,
+          );
+        }
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/new?from_knowledge=${id}&from_version=${versionId}`);
     await user.type(await screen.findByLabelText("版本号"), "2");
@@ -777,13 +1279,17 @@ describe("knowledge governance administration", () => {
 
   it("shows a single validation issue, focuses the summary and sends nothing", async () => {
     const posts: RequestInit[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === versionPath) return json(initial);
-      if (path === "/api/admin/rulepacks" || (path === root && init?.method === "GET")) return json({ items: [] });
-      if (init?.method === "POST") posts.push(init);
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === versionPath) return json(initial);
+        if (path === "/api/admin/rulepacks" || (path === root && init?.method === "GET"))
+          return json({ items: [] });
+        if (init?.method === "POST") posts.push(init);
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/new?from_knowledge=${id}&from_version=${versionId}`);
     expect(screen.queryByText("请检查以下内容")).not.toBeInTheDocument();
@@ -802,13 +1308,16 @@ describe("knowledge governance administration", () => {
 
   it("renders null applicability and exclusions as empty", async () => {
     const content = { ...initial.content, applicability: null, exclusions: null };
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === versionPath) return json({ ...initial, content });
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      if (path === `${versionPath}/preview`) return json(preview);
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === versionPath) return json({ ...initial, content });
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        if (path === `${versionPath}/preview`) return json(preview);
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByText("适用条件：无")).toBeInTheDocument();
     expect(screen.getByText("排除条件：无")).toBeInTheDocument();
@@ -824,12 +1333,15 @@ describe("knowledge governance administration", () => {
         extraction_compiler_ref: undefined,
       },
     };
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === versionPath) return json({ ...initial, content });
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === versionPath) return json({ ...initial, content });
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByText("来源：参考资料 · 制度文件")).toBeInTheDocument();
     expect(screen.getByText("范围：政企业务 / 业务场景待核对 / 服务合同")).toBeInTheDocument();
@@ -852,12 +1364,15 @@ describe("knowledge governance administration", () => {
       reviewed_exclusions: undefined,
       counterexamples: undefined,
     };
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === versionPath) return json({ ...initial, content });
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === versionPath) return json({ ...initial, content });
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByText("经验审阅")).toBeInTheDocument();
     expect(screen.getByText("审阅适用条件：")).toBeInTheDocument();
@@ -872,16 +1387,29 @@ describe("knowledge governance administration", () => {
     ];
     for (const failure of failures) {
       const posts: RequestInit[] = [];
-      vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const path = String(input);
-        if (path === versionPath && init?.method === "GET") return json({ ...initial, status: "submitted" });
-        if (path === `${root}/${id}/history`) return json({ items: [] });
-        if (path === `${versionPath}/commands` && init?.method === "POST") {
-          posts.push(init);
-          return json({ error: { code: failure.code, message: failure.message, retryable: failure.retryable } }, failure.status);
-        }
-        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-      }));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const path = String(input);
+          if (path === versionPath && init?.method === "GET")
+            return json({ ...initial, status: "submitted" });
+          if (path === `${root}/${id}/history`) return json({ items: [] });
+          if (path === `${versionPath}/commands` && init?.method === "POST") {
+            posts.push(init);
+            return json(
+              {
+                error: {
+                  code: failure.code,
+                  message: failure.message,
+                  retryable: failure.retryable,
+                },
+              },
+              failure.status,
+            );
+          }
+          return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+        }),
+      );
       const user = userEvent.setup();
       show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
       await user.type(await screen.findByLabelText("校验依据"), "核对规则");
@@ -896,18 +1424,21 @@ describe("knowledge governance administration", () => {
   it("replays a network-failed command with the original key and body", async () => {
     let current: KnowledgeVersion = { ...initial, status: "submitted" };
     const requests: RequestInit[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === versionPath && init?.method === "GET") return json(current);
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      if (path === `${versionPath}/commands` && init?.method === "POST") {
-        requests.push(init);
-        if (requests.length === 1) throw new TypeError("connection reset");
-        current = { ...current, status: "validated", revision: 3 };
-        return json(current);
-      }
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === versionPath && init?.method === "GET") return json(current);
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        if (path === `${versionPath}/commands` && init?.method === "POST") {
+          requests.push(init);
+          if (requests.length === 1) throw new TypeError("connection reset");
+          current = { ...current, status: "validated", revision: 3 };
+          return json(current);
+        }
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     await user.type(await screen.findByLabelText("校验依据"), "确认策略来源");
@@ -932,13 +1463,16 @@ describe("knowledge governance administration", () => {
         scope: { ...initial.content.scope, case_id: "case-2" },
       },
     };
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === versionPath) return json(policy);
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      if (path === `${versionPath}/preview`) return json(preview);
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === versionPath) return json(policy);
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        if (path === `${versionPath}/preview`) return json(preview);
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByLabelText("批准依据")).toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
@@ -954,12 +1488,15 @@ describe("knowledge governance administration", () => {
         source_case_id: "case-1",
       },
     };
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === versionPath) return json(experience);
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === versionPath) return json(experience);
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByLabelText("校验依据")).toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
@@ -978,17 +1515,20 @@ describe("knowledge governance administration", () => {
       },
     };
     const requests: RequestInit[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === versionPath && init?.method === "GET") return json(current);
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      if (path === `${versionPath}/commands` && init?.method === "POST") {
-        requests.push(init);
-        current = { ...current, status: "validated", revision: current.revision + 1 };
-        return json(current);
-      }
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === versionPath && init?.method === "GET") return json(current);
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        if (path === `${versionPath}/commands` && init?.method === "POST") {
+          requests.push(init);
+          current = { ...current, status: "validated", revision: current.revision + 1 };
+          return json(current);
+        }
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     await user.type(await screen.findByLabelText("校验依据"), "先完成规则校验");
@@ -1008,25 +1548,34 @@ describe("knowledge governance administration", () => {
   });
 
   it("keeps the source error page stable when a pending create fails after it unmounts the form", async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+    });
     let detailReads = 0;
     let failSource: ((reason: unknown) => void) | undefined;
     let failCreate: ((reason: unknown) => void) | undefined;
     const posts: RequestInit[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === versionPath && init?.method === "GET") {
-        detailReads += 1;
-        if (detailReads === 1) return json(initial);
-        return await new Promise<Response>((_resolve, reject) => { failSource = reject; });
-      }
-      if (path === root && init?.method === "POST") {
-        posts.push(init);
-        return await new Promise<Response>((_resolve, reject) => { failCreate = reject; });
-      }
-      if (path === root || path === "/api/admin/rulepacks") return json({ items: [] });
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === versionPath && init?.method === "GET") {
+          detailReads += 1;
+          if (detailReads === 1) return json(initial);
+          return await new Promise<Response>((_resolve, reject) => {
+            failSource = reject;
+          });
+        }
+        if (path === root && init?.method === "POST") {
+          posts.push(init);
+          return await new Promise<Response>((_resolve, reject) => {
+            failCreate = reject;
+          });
+        }
+        if (path === root || path === "/api/admin/rulepacks") return json({ items: [] });
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/new?from_knowledge=${id}&from_version=${versionId}`, client);
     await user.type(await screen.findByLabelText("版本号"), "2");
@@ -1060,16 +1609,49 @@ describe("knowledge governance administration", () => {
   });
 
   it("groups versions under the published, pending and inactive status tabs", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === root) return json({ items: [
-        summary({ title: "已发布制度" }),
-        summary({ ref: { knowledge_id: "kb-draft", version_id: "d".repeat(64), content_sha256: "1".repeat(64) }, title: "草稿制度", status: "draft", active: false }),
-        summary({ ref: { knowledge_id: "kb-submitted", version_id: "e".repeat(64), content_sha256: "2".repeat(64) }, title: "待核验制度", status: "submitted", active: false }),
-        summary({ ref: { knowledge_id: "kb-withdrawn", version_id: "f".repeat(64), content_sha256: "3".repeat(64) }, title: "已撤回制度", status: "withdrawn", active: false }),
-      ] });
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === root)
+          return json({
+            items: [
+              summary({ title: "已发布制度" }),
+              summary({
+                ref: {
+                  knowledge_id: "kb-draft",
+                  version_id: "d".repeat(64),
+                  content_sha256: "1".repeat(64),
+                },
+                title: "草稿制度",
+                status: "draft",
+                active: false,
+              }),
+              summary({
+                ref: {
+                  knowledge_id: "kb-submitted",
+                  version_id: "e".repeat(64),
+                  content_sha256: "2".repeat(64),
+                },
+                title: "待核验制度",
+                status: "submitted",
+                active: false,
+              }),
+              summary({
+                ref: {
+                  knowledge_id: "kb-withdrawn",
+                  version_id: "f".repeat(64),
+                  content_sha256: "3".repeat(64),
+                },
+                title: "已撤回制度",
+                status: "withdrawn",
+                active: false,
+              }),
+            ],
+          });
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show("/admin/governed-knowledge");
     expect(await screen.findByRole("tab", { name: "已发布" })).toBeInTheDocument();
@@ -1093,18 +1675,33 @@ describe("knowledge governance administration", () => {
   it("keeps registration in three steps with a live summary and a draft-only save", async () => {
     const calls: string[] = [];
     const posts: RequestInit[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      calls.push(path);
-      if (path === versionPath) return json(initial);
-      if (path === "/api/admin/rulepacks" || (path === root && init?.method === "GET")) return json({ items: [] });
-      if (path === root && init?.method === "POST") {
-        posts.push(init);
-        const payload = JSON.parse(String(init.body)) as { content: KnowledgeVersion["content"] };
-        return json({ ...initial, ref: { ...initial.ref, version_id: "9".repeat(64) }, content: payload.content, status: "draft", revision: 1, active: false, pointer_revision: 0 }, 201);
-      }
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        calls.push(path);
+        if (path === versionPath) return json(initial);
+        if (path === "/api/admin/rulepacks" || (path === root && init?.method === "GET"))
+          return json({ items: [] });
+        if (path === root && init?.method === "POST") {
+          posts.push(init);
+          const payload = JSON.parse(String(init.body)) as { content: KnowledgeVersion["content"] };
+          return json(
+            {
+              ...initial,
+              ref: { ...initial.ref, version_id: "9".repeat(64) },
+              content: payload.content,
+              status: "draft",
+              revision: 1,
+              active: false,
+              pointer_revision: 0,
+            },
+            201,
+          );
+        }
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/new?from_knowledge=${id}&from_version=${versionId}`);
     expect(await screen.findByRole("button", { name: "来源信息" })).toBeInTheDocument();
@@ -1117,7 +1714,9 @@ describe("knowledge governance administration", () => {
     expect(within(registrationSummary).getByText("更新的专线制度")).toBeInTheDocument();
     await user.type(screen.getByLabelText("版本号"), "2");
     await user.click(screen.getByRole("button", { name: "内容与效力" }));
-    expect((await screen.findAllByRole("heading", { name: "内容与效力" })).length).toBeGreaterThan(0);
+    expect((await screen.findAllByRole("heading", { name: "内容与效力" })).length).toBeGreaterThan(
+      0,
+    );
     await user.click(screen.getByRole("button", { name: "提交核验" }));
     expect(screen.getAllByText(/保存后仅创建待核验草稿/).length).toBeGreaterThan(0);
     expect(screen.getByText(/保存待核验版本/)).toBeInTheDocument();
@@ -1129,14 +1728,23 @@ describe("knowledge governance administration", () => {
   });
 
   it("shows version facts, detail section tabs, lifecycle and grouped technical identifiers", async () => {
-    const published: KnowledgeVersion = { ...initial, status: "published", active: false, revision: 5, pointer_revision: 9 };
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === versionPath) return json(published);
-      if (path === `${root}/${id}/history`) return json({ items: [] });
-      if (path === `${versionPath}/preview`) return json(preview);
-      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
-    }));
+    const published: KnowledgeVersion = {
+      ...initial,
+      status: "published",
+      active: false,
+      revision: 5,
+      pointer_revision: 9,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === versionPath) return json(published);
+        if (path === `${root}/${id}/history`) return json({ items: [] });
+        if (path === `${versionPath}/preview`) return json(preview);
+        return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+      }),
+    );
     const user = userEvent.setup();
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByText("来源类型")).toBeInTheDocument();
@@ -1146,7 +1754,10 @@ describe("knowledge governance administration", () => {
     expect(screen.getByText("已发布")).toBeInTheDocument();
     expect(screen.getByText("未生效")).toBeInTheDocument();
     expect(screen.getByText("状态与生效指针分别判定")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "查看核验流程" })).toHaveAttribute("href", "#knowledge-action-heading");
+    expect(screen.getByRole("link", { name: "查看核验流程" })).toHaveAttribute(
+      "href",
+      "#knowledge-action-heading",
+    );
     for (const label of ["依据正文", "来源与效力", "验证与发布", "引用关系", "版本历史"]) {
       expect(screen.getByRole("tab", { name: label })).toBeInTheDocument();
     }

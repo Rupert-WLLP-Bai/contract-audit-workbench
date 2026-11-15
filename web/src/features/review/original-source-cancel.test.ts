@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-04
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,7 +13,10 @@ import { waitFor } from "@testing-library/react";
 import { recognizePageWords } from "./original-source";
 
 const create = vi.hoisted(() => vi.fn());
-vi.mock("tesseract.js", async (original) => ({ ...await original<typeof import("tesseract.js")>(), createWorker: create }));
+vi.mock("tesseract.js", async (original) => ({
+  ...(await original<typeof import("tesseract.js")>()),
+  createWorker: create,
+}));
 beforeEach(() => vi.clearAllMocks());
 
 describe("current-page recognition cancellation", () => {
@@ -21,9 +24,18 @@ describe("current-page recognition cancellation", () => {
     const terminate = vi.fn(async () => undefined);
     const recognize = vi.fn();
     let ready!: (worker: { terminate: typeof terminate; recognize: typeof recognize }) => void;
-    create.mockImplementation(() => new Promise((resolve) => { ready = resolve; }));
+    create.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          ready = resolve;
+        }),
+    );
     const controller = new AbortController();
-    const pending = recognizePageWords(document.createElement("canvas"), controller.signal, () => undefined);
+    const pending = recognizePageWords(
+      document.createElement("canvas"),
+      controller.signal,
+      () => undefined,
+    );
     await waitFor(() => expect(create).toHaveBeenCalled());
     controller.abort();
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
@@ -37,7 +49,11 @@ describe("current-page recognition cancellation", () => {
     const recognize = vi.fn(() => new Promise(() => undefined));
     create.mockResolvedValue({ terminate, recognize, setParameters: vi.fn(async () => undefined) });
     const controller = new AbortController();
-    const pending = recognizePageWords(document.createElement("canvas"), controller.signal, () => undefined);
+    const pending = recognizePageWords(
+      document.createElement("canvas"),
+      controller.signal,
+      () => undefined,
+    );
     await waitFor(() => expect(recognize).toHaveBeenCalled());
     controller.abort(new Error("当前页识别超时"));
     await expect(pending).rejects.toThrow("当前页识别超时");

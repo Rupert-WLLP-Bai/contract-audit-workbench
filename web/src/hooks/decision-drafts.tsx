@@ -3,18 +3,12 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
-import {
-  createContext,
-  useContext,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { DecisionAction } from "../api/types";
 
 export type DecisionDraft = {
@@ -70,10 +64,7 @@ function notifyDraftListeners(): void {
   for (const listener of draftListeners) listener();
 }
 
-export function decisionDraftKey(
-  scope: DecisionDraftScope,
-  findingId: string,
-): string {
+export function decisionDraftKey(scope: DecisionDraftScope, findingId: string): string {
   return [
     scope.userId,
     scope.contextVersion ?? "",
@@ -119,7 +110,11 @@ function hasDecisionDrafts(prefix: string): boolean {
     if (key.startsWith(prefix)) return true;
   }
   for (const [key, draft] of batchDraftStore) {
-    if (key.startsWith(prefix) && (draft.action !== null || draft.reason !== "" || draft.selectedIds.length > 0)) return true;
+    if (
+      key.startsWith(prefix) &&
+      (draft.action !== null || draft.reason !== "" || draft.selectedIds.length > 0)
+    )
+      return true;
   }
   return false;
 }
@@ -131,9 +126,7 @@ function subscribeDecisionDrafts(listener: () => void): () => void {
   };
 }
 
-const DecisionDraftScopeContext = createContext<DecisionDraftScope | null>(
-  null,
-);
+const DecisionDraftScopeContext = createContext<DecisionDraftScope | null>(null);
 
 export function DecisionDraftScopeProvider({
   scope,
@@ -167,12 +160,8 @@ export function useDecisionDraft(findingId: string): {
   const scope = useContext(DecisionDraftScopeContext);
   const key = scope === null ? null : decisionDraftKey(scope, findingId);
   const [unscoped, setUnscoped] = useState<DecisionDraft>(EMPTY_DECISION_DRAFT);
-  const stored = useSyncExternalStore(
-    subscribeDecisionDrafts,
-    () =>
-      key === null
-        ? EMPTY_DECISION_DRAFT
-        : (draftStore.get(key) ?? EMPTY_DECISION_DRAFT),
+  const stored = useSyncExternalStore(subscribeDecisionDrafts, () =>
+    key === null ? EMPTY_DECISION_DRAFT : (draftStore.get(key) ?? EMPTY_DECISION_DRAFT),
   );
   if (key === null) {
     // Without a scope (tests, callers outside the review workspace) the form
@@ -196,9 +185,8 @@ export function useBatchDecisionDraft(): BatchDecisionDraftHandle {
   const scope = useContext(DecisionDraftScopeContext);
   const key = scope === null ? null : decisionDraftKey(scope, "\u0000batch");
   const [unscoped, setUnscoped] = useState<BatchDecisionDraft>(EMPTY_BATCH_DRAFT);
-  const stored = useSyncExternalStore(
-    subscribeDecisionDrafts,
-    () => key === null ? EMPTY_BATCH_DRAFT : (batchDraftStore.get(key) ?? EMPTY_BATCH_DRAFT),
+  const stored = useSyncExternalStore(subscribeDecisionDrafts, () =>
+    key === null ? EMPTY_BATCH_DRAFT : (batchDraftStore.get(key) ?? EMPTY_BATCH_DRAFT),
   );
   return {
     ...(key === null ? unscoped : stored),
@@ -209,7 +197,12 @@ export function useBatchDecisionDraft(): BatchDecisionDraftHandle {
         return;
       }
       const next = update(batchDraftStore.get(key) ?? EMPTY_BATCH_DRAFT);
-      if (next.action === null && next.reason === "" && next.selectedIds.length === 0 && next.results.length === 0) {
+      if (
+        next.action === null &&
+        next.reason === "" &&
+        next.selectedIds.length === 0 &&
+        next.results.length === 0
+      ) {
         batchDraftStore.delete(key);
       } else {
         batchDraftStore.set(key, next);

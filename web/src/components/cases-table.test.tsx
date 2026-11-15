@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r4
+// Updated: 2026-11-15
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -43,7 +43,11 @@ function LocationState() {
 
 describe("cases table", () => {
   it("reports malformed update times and preserves the precise raw value for diagnostics", async () => {
-    render(<MemoryRouter><CasesTable items={[{ ...item, updated_at: "bad-case-time" }]} {...tableProps} /></MemoryRouter>);
+    render(
+      <MemoryRouter>
+        <CasesTable items={[{ ...item, updated_at: "bad-case-time" }]} {...tableProps} />
+      </MemoryRouter>,
+    );
     expect(screen.getAllByText(/时间格式异常/).length).toBeGreaterThan(0);
     await userEvent.setup().click(screen.getByText("案件更新时间原始值"));
     expect(screen.getByText("bad-case-time")).toBeVisible();
@@ -54,10 +58,7 @@ describe("cases table", () => {
         <CasesTable items={[item]} {...tableProps} />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("link", { name: "基站质保" })).toHaveAttribute(
-      "href",
-      "/cases/c1",
-    );
+    expect(screen.getByRole("link", { name: "基站质保" })).toHaveAttribute("href", "/cases/c1");
     expect(screen.getByRole("cell", { name: "待人工" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "2" })).toBeInTheDocument();
     expect(screen.getByText("材料 3")).toBeInTheDocument();
@@ -68,10 +69,7 @@ describe("cases table", () => {
   it("says when a case has not been reviewed instead of calling it clean", () => {
     render(
       <MemoryRouter>
-        <CasesTable
-          items={[{ ...item, latest_run: null, pending_decisions: 0 }]}
-          {...tableProps}
-        />
+        <CasesTable items={[{ ...item, latest_run: null, pending_decisions: 0 }]} {...tableProps} />
       </MemoryRouter>,
     );
     expect(screen.getByText("尚未审查")).toBeInTheDocument();
@@ -101,10 +99,7 @@ describe("cases table", () => {
     render(
       <MemoryRouter initialEntries={["/cases?q=network&run=needs_human"]}>
         <Routes>
-          <Route
-            path="/cases"
-            element={<CasesTable items={[item]} {...tableProps} />}
-          />
+          <Route path="/cases" element={<CasesTable items={[item]} {...tableProps} />} />
           <Route path="/cases/:caseId" element={<LocationState />} />
         </Routes>
       </MemoryRouter>,
@@ -187,38 +182,27 @@ describe("cases table", () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter>
-        <CasesTable
-          items={[item]}
-          {...tableProps}
-          sort="title"
-          direction="asc"
-          onSort={onSort}
-        />
+        <CasesTable items={[item]} {...tableProps} sort="title" direction="asc" onSort={onSort} />
       </MemoryRouter>,
     );
-    expect(
-      screen.getByRole("columnheader", { name: /案件/ }),
-    ).toHaveAttribute("aria-sort", "ascending");
-    await user.click(
-      screen.getByRole("columnheader", { name: "业务线 / 场景" }),
+    expect(screen.getByRole("columnheader", { name: /案件/ })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
     );
+    await user.click(screen.getByRole("columnheader", { name: "业务线 / 场景" }));
     expect(onSort).not.toHaveBeenCalled();
   });
 
   it("shows a descending marker for the active column", () => {
     render(
       <MemoryRouter>
-        <CasesTable
-          items={[item]}
-          {...tableProps}
-          sort="document_count"
-          direction="desc"
-        />
+        <CasesTable items={[item]} {...tableProps} sort="document_count" direction="desc" />
       </MemoryRouter>,
     );
-    expect(
-      screen.getByRole("columnheader", { name: /材料/ }),
-    ).toHaveAttribute("aria-sort", "descending");
+    expect(screen.getByRole("columnheader", { name: /材料/ })).toHaveAttribute(
+      "aria-sort",
+      "descending",
+    );
   });
 });
 
@@ -226,12 +210,9 @@ describe("cases table sorting helper and scroll", () => {
   it("reads a single sorter, the first of an array, and rejects missing or unknown columns", () => {
     expect(sortFieldOf(undefined as never)).toBeNull();
     expect(sortFieldOf({ columnKey: "title" })).toBe("title");
-    expect(
-      sortFieldOf([
-        { columnKey: "document_count" },
-        { columnKey: "updated_at" },
-      ]),
-    ).toBe("document_count");
+    expect(sortFieldOf([{ columnKey: "document_count" }, { columnKey: "updated_at" }])).toBe(
+      "document_count",
+    );
     expect(sortFieldOf({ columnKey: "business" })).toBeNull();
     expect(sortFieldOf({ columnKey: undefined })).toBeNull();
   });
@@ -270,10 +251,7 @@ describe("cases table sorting helper and scroll", () => {
   it("labels a missing business status without inventing a value", () => {
     render(
       <MemoryRouter>
-        <CasesTable
-          items={[{ ...item, business_status: undefined }]}
-          {...tableProps}
-        />
+        <CasesTable items={[{ ...item, business_status: undefined }]} {...tableProps} />
       </MemoryRouter>,
     );
     expect(screen.getByRole("cell", { name: "业务状态未提供" })).toBeInTheDocument();

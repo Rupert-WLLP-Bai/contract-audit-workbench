@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -23,9 +23,7 @@ function titleOf(value: string | null): string | undefined {
   return value === null ? undefined : value;
 }
 
-function parsedSummaryAttributes(
-  parsed: ParsedDocumentMetadata,
-): Record<string, string> {
+function parsedSummaryAttributes(parsed: ParsedDocumentMetadata): Record<string, string> {
   return {
     "data-parsed-original-digest": attribute(parsed.original_digest),
     "data-parsed-document-id": attribute(parsed.id),
@@ -60,21 +58,16 @@ function ParsedMetadata({ parsed }: { parsed: ParsedDocumentMetadata }) {
     <>
       {"，"}解析 <span title={parsed.id}>{shortDigest(parsed.id)}</span>
       {"，"}解析器 {parsed.parser_id}@{parsed.parser_version}
-      {"，"}配置 SHA-256{" "}
-      <span title={parsed.config_hash}>{shortDigest(parsed.config_hash)}</span>
+      {"，"}配置 SHA-256 <span title={parsed.config_hash}>{shortDigest(parsed.config_hash)}</span>
       {"，"}规范化 {parsed.normalization_version}
       {"，"}正文 SHA-256{" "}
       <span title={titleOf(parsed.normalized_digest)}>
         {hash(parsed.normalized_digest, "不可用")}
       </span>
       {"，"}IR SHA-256{" "}
-      <span title={titleOf(parsed.ir_digest)}>
-        {hash(parsed.ir_digest, "不可用")}
-      </span>
+      <span title={titleOf(parsed.ir_digest)}>{hash(parsed.ir_digest, "不可用")}</span>
       {"，"}产物 SHA-256{" "}
-      <span title={parsed.artifact_digest}>
-        {shortDigest(parsed.artifact_digest)}
-      </span>
+      <span title={parsed.artifact_digest}>{shortDigest(parsed.artifact_digest)}</span>
       {"，"}
       {parsed.status === "ready" ? "解析就绪" : "解析失败"}
       {parsed.created_at ? `，${formatDateTime(parsed.created_at)}` : ""}
@@ -92,11 +85,7 @@ function LegacyMetadata({ parseStatus }: { parseStatus: string }) {
   );
 }
 
-export function ParsedDocumentSummary({
-  document,
-}: {
-  document: DocumentVersion;
-}) {
+export function ParsedDocumentSummary({ document }: { document: DocumentVersion }) {
   const parsed = document.parsed_document;
   return (
     <div
@@ -104,9 +93,7 @@ export function ParsedDocumentSummary({
       aria-label="解析来源与摘要"
       data-document-version-id={document.id}
       data-original-digest={document.digest}
-      {...(parsed
-        ? parsedSummaryAttributes(parsed)
-        : EMPTY_PARSED_ATTRIBUTES)}
+      {...(parsed ? parsedSummaryAttributes(parsed) : EMPTY_PARSED_ATTRIBUTES)}
     >
       <p className="meta">
         原件 SHA-256{" "}

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -35,9 +35,7 @@ const hashEvent: AuditEvent = {
 };
 
 async function openPanel(user: UserEvent, count: number) {
-  await user.click(
-    screen.getByRole("button", { name: `查看审计记录（${count}）` }),
-  );
+  await user.click(screen.getByRole("button", { name: `查看审计记录（${count}）` }));
 }
 
 async function openEvent(user: UserEvent, seq: number, eventType: string) {
@@ -63,10 +61,7 @@ describe("audit projection", () => {
   it("does not treat prototype keys as known audit labels", async () => {
     const user = userEvent.setup();
     render(
-      <AuditProjection
-        runId="run-1"
-        events={[{ ...businessEvent, event_type: "constructor" }]}
-      />,
+      <AuditProjection runId="run-1" events={[{ ...businessEvent, event_type: "constructor" }]} />,
     );
     await openPanel(user, 1);
     expect(screen.getByText("记录 1，其他审查记录")).toBeInTheDocument();
@@ -93,10 +88,7 @@ describe("audit projection", () => {
   ])("maps %s to %s", async (eventType, label) => {
     const user = userEvent.setup();
     render(
-      <AuditProjection
-        runId="run-1"
-        events={[{ ...businessEvent, event_type: eventType }]}
-      />,
+      <AuditProjection runId="run-1" events={[{ ...businessEvent, event_type: eventType }]} />,
     );
     await openPanel(user, 1);
     expect(screen.getByText(`记录 1，${label}`)).toBeInTheDocument();
@@ -115,9 +107,7 @@ describe("audit projection", () => {
 
   it("shows diagnostic identities, hashes and correlation ids when expanded", async () => {
     const user = userEvent.setup();
-    render(
-      <AuditProjection runId="run-1" events={[hashEvent]} showDiagnostics />,
-    );
+    render(<AuditProjection runId="run-1" events={[hashEvent]} showDiagnostics />);
     await openPanel(user, 1);
     expect(screen.getByText("运行：run-1")).toBeInTheDocument();
     await openEvent(user, 2, "human_decision");
@@ -146,9 +136,7 @@ describe("audit projection", () => {
 
   it("keeps a business event free of hash rows even with diagnostics", async () => {
     const user = userEvent.setup();
-    render(
-      <AuditProjection runId="run-1" events={[businessEvent]} showDiagnostics />,
-    );
+    render(<AuditProjection runId="run-1" events={[businessEvent]} showDiagnostics />);
     await openPanel(user, 1);
     await openEvent(user, 1, "review_started");
     expect(screen.queryByText("记录摘要")).not.toBeInTheDocument();

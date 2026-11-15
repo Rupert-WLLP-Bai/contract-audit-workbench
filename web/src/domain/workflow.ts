@@ -3,16 +3,12 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
-import type {
-  ExecutionAttempt,
-  ReviewHistoryEntry,
-  ReviewWorkspace,
-} from "../api/types";
+import type { ExecutionAttempt, ReviewHistoryEntry, ReviewWorkspace } from "../api/types";
 import { runLabel } from "./review";
 import { preciseTime } from "./time";
 
@@ -43,9 +39,7 @@ export function reviewChoices(history: ReviewHistoryEntry[]): ReviewChoice[] {
     .flatMap((entry, runOrder) => {
       const reviewAttempts = entry.workspace.review_attempts;
       if (!reviewAttempts) return [];
-      const attempts = new Map(
-        reviewAttempts.attempts.map((attempt) => [attempt.id, attempt]),
-      );
+      const attempts = new Map(reviewAttempts.attempts.map((attempt) => [attempt.id, attempt]));
       attempts.set(reviewAttempts.attempt.id, reviewAttempts.attempt);
       return Array.from(attempts.values(), (attempt) => ({
         key: reviewChoiceKey(entry.runId, attempt.id),
@@ -57,15 +51,11 @@ export function reviewChoices(history: ReviewHistoryEntry[]): ReviewChoice[] {
     })
     .sort(
       (left, right) =>
-        left.runOrder - right.runOrder ||
-        right.attempt.ordinal - left.attempt.ordinal,
+        left.runOrder - right.runOrder || right.attempt.ordinal - left.attempt.ordinal,
     )
     .map(({ runOrder: _runOrder, ...choice }) => choice);
 }
 
-export function reviewChoiceForKey(
-  choices: ReviewChoice[],
-  key: string,
-): ReviewChoice | null {
+export function reviewChoiceForKey(choices: ReviewChoice[], key: string): ReviewChoice | null {
   return choices.find((choice) => choice.key === key) ?? null;
 }

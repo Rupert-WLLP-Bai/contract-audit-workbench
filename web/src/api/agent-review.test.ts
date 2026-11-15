@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -108,15 +108,9 @@ describe("AgentReview API parser", () => {
       },
       events: [{ ...validReview.events[0]!, kind: "plan_accepted" }],
     };
-    expect(
-      parseAgentReview(review).plan.rounds[0]?.new_evidence_ids,
-    ).toBeNull();
-    expect(parseAgentReview(review).domains[0]?.capabilities[0]?.status).toBe(
-      "insufficient",
-    );
-    expect(parseAgentReview(review).domains[0]?.capabilities[0]?.mandatory).toBe(
-      true,
-    );
+    expect(parseAgentReview(review).plan.rounds[0]?.new_evidence_ids).toBeNull();
+    expect(parseAgentReview(review).domains[0]?.capabilities[0]?.status).toBe("insufficient");
+    expect(parseAgentReview(review).domains[0]?.capabilities[0]?.mandatory).toBe(true);
     expect(() =>
       parseAgentReview({
         ...review,
@@ -254,9 +248,7 @@ describe("AgentReview API parser", () => {
   it("rejects an out-of-range planner limit and undocumented event fields", () => {
     const review = structuredClone(validReview);
     review.planner.limits.max_rounds = 4;
-    expect(() => parseAgentReview(review)).toThrow(
-      /planner\.limits\.max_rounds/,
-    );
+    expect(() => parseAgentReview(review)).toThrow(/planner\.limits\.max_rounds/);
 
     const withUnknownField = structuredClone(validReview);
     (
@@ -387,9 +379,7 @@ describe("AgentReview API parser", () => {
         },
       },
     });
-    expect(
-      parseAgentReview(advisory()).knowledge_selection?.advisory,
-    ).toMatchObject({
+    expect(parseAgentReview(advisory()).knowledge_selection?.advisory).toMatchObject({
       mode: "fixture",
       provider: "local-fixture",
       model_requested: "jev-1",
@@ -409,8 +399,7 @@ describe("AgentReview API parser", () => {
       ],
     });
     expect(
-      parseAgentReview(advisory({ truncated: undefined })).knowledge_selection
-        ?.advisory?.truncated,
+      parseAgentReview(advisory({ truncated: undefined })).knowledge_selection?.advisory?.truncated,
     ).toBe(false);
     expect(
       parseAgentReview(
@@ -557,13 +546,12 @@ describe("AgentReview API parser", () => {
     expect(() => parseAgentReview(review)).not.toThrow();
     const withUnknown = structuredClone(review);
     (
-      withUnknown.knowledge_selection.advisory as typeof withUnknown.knowledge_selection.advisory & {
+      withUnknown.knowledge_selection
+        .advisory as typeof withUnknown.knowledge_selection.advisory & {
         provider_note?: string;
       }
     ).provider_note = "unreviewed";
-    expect(() => parseAgentReview(withUnknown)).toThrow(
-      /knowledge_selection\.advisory/,
-    );
+    expect(() => parseAgentReview(withUnknown)).toThrow(/knowledge_selection\.advisory/);
     const withProbability = structuredClone(review);
     withProbability.knowledge_selection.advisory.candidates = [
       {
@@ -577,9 +565,7 @@ describe("AgentReview API parser", () => {
         rank_after: 1,
       },
     ];
-    expect(() => parseAgentReview(withProbability)).toThrow(
-      /candidates\[0\]\.probability/,
-    );
+    expect(() => parseAgentReview(withProbability)).toThrow(/candidates\[0\]\.probability/);
   });
 });
 
@@ -688,28 +674,26 @@ describe("AgentReview boundary values", () => {
     (key) => {
       const review = structuredClone(validReview);
       (review.planner.limits as unknown as Record<string, number>)[key] = 0;
-      expect(() => parseAgentReview(review)).toThrow(
-        new RegExp(`planner\\.limits\\.${key}`),
-      );
+      expect(() => parseAgentReview(review)).toThrow(new RegExp(`planner\\.limits\\.${key}`));
     },
   );
 
   it("accepts a probability of one and rejects NaN and negative values", () => {
     expect(
-      parseAgentReview(reviewWithAdvisoryCandidate({ probability: 1 }))
-        .knowledge_selection?.advisory?.candidates[0]?.probability,
+      parseAgentReview(reviewWithAdvisoryCandidate({ probability: 1 })).knowledge_selection
+        ?.advisory?.candidates[0]?.probability,
     ).toBe(1);
     for (const probability of [Number.NaN, -0.5]) {
-      expect(() =>
-        parseAgentReview(reviewWithAdvisoryCandidate({ probability })),
-      ).toThrow(/candidates\[0\]\.probability/);
+      expect(() => parseAgentReview(reviewWithAdvisoryCandidate({ probability }))).toThrow(
+        /candidates\[0\]\.probability/,
+      );
     }
   });
 
   it("rejects a candidate rank after below one", () => {
-    expect(() =>
-      parseAgentReview(reviewWithAdvisoryCandidate({ rank_after: 0 })),
-    ).toThrow(/candidates\[0\]\.rank_after/);
+    expect(() => parseAgentReview(reviewWithAdvisoryCandidate({ rank_after: 0 }))).toThrow(
+      /candidates\[0\]\.rank_after/,
+    );
   });
 
   it("rejects a planning round below one", () => {
@@ -720,12 +704,12 @@ describe("AgentReview boundary values", () => {
 
   it("keeps resolved gap ids null or parses the list", () => {
     expect(
-      parseAgentReview(reviewWithRound({ resolved_gap_ids: ["g1"] })).plan
-        .rounds[0]?.resolved_gap_ids,
+      parseAgentReview(reviewWithRound({ resolved_gap_ids: ["g1"] })).plan.rounds[0]
+        ?.resolved_gap_ids,
     ).toEqual(["g1"]);
     expect(
-      parseAgentReview(reviewWithRound({ resolved_gap_ids: null })).plan
-        .rounds[0]?.resolved_gap_ids,
+      parseAgentReview(reviewWithRound({ resolved_gap_ids: null })).plan.rounds[0]
+        ?.resolved_gap_ids,
     ).toBeNull();
   });
 
@@ -739,12 +723,9 @@ describe("AgentReview boundary values", () => {
 
   it("accepts a zero-based anchor span and rejects an empty one", () => {
     expect(
-      parseAgentReview(reviewWithAnchor({ start: 0, end: 1 })).evidence[0]
-        ?.anchor,
+      parseAgentReview(reviewWithAnchor({ start: 0, end: 1 })).evidence[0]?.anchor,
     ).toMatchObject({ start: 0, end: 1 });
-    expect(() =>
-      parseAgentReview(reviewWithAnchor({ start: 0, end: 0 })),
-    ).toThrow(/anchor\.end/);
+    expect(() => parseAgentReview(reviewWithAnchor({ start: 0, end: 0 }))).toThrow(/anchor\.end/);
   });
 
   it("enforces event sequence and accepts a zero duration", () => {
@@ -753,15 +734,11 @@ describe("AgentReview boundary values", () => {
     expect(parseAgentReview(zero).events[0]?.duration_ms).toBe(0);
     const badSequence = structuredClone(validReview);
     badSequence.events[0]!.sequence = 0;
-    expect(() => parseAgentReview(badSequence)).toThrow(
-      /events\[0\]\.sequence/,
-    );
+    expect(() => parseAgentReview(badSequence)).toThrow(/events\[0\]\.sequence/);
   });
 
   it("keeps a nullable event domain", () => {
-    expect(
-      parseAgentReview(structuredClone(validReview)).events[0]?.domain,
-    ).toBe("technical");
+    expect(parseAgentReview(structuredClone(validReview)).events[0]?.domain).toBe("technical");
     const withNull = structuredClone(validReview);
     (withNull.events[0] as unknown as Record<string, unknown>).domain = null;
     expect(parseAgentReview(withNull).events[0]?.domain).toBeNull();

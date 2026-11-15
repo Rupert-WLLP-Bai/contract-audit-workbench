@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -32,55 +32,116 @@ vi.mock("../api/queries", () => ({
 }));
 
 vi.mock("../api/idempotency", () => ({
-  idempotencyActorScope: () => ({ actorId: "reviewer-2", tenantId: "tenant-1", orgId: "org-1", audience: "client" }),
+  idempotencyActorScope: () => ({
+    actorId: "reviewer-2",
+    tenantId: "tenant-1",
+    orgId: "org-1",
+    audience: "client",
+  }),
   pendingMutationKey: mocks.pendingMutationKey,
   clearPendingMutationKey: mocks.clearPendingMutationKey,
 }));
 
 const before = {
-  subject_id: "subject-1", version: 1, display_name: "示例网络公司", legal_name: null,
-  verification_state: "pending_verification", source_kind: "user_asserted",
-  basis_summary: "录入待核验", payload_hash: "a".repeat(64), identity_claims: [], aliases: [],
-  created_by: { user_id: "requester-1", issuer: "issuer", subject: "principal-1" }, created_at: "2026-10-30T00:00:00Z",
+  subject_id: "subject-1",
+  version: 1,
+  display_name: "示例网络公司",
+  legal_name: null,
+  verification_state: "pending_verification",
+  source_kind: "user_asserted",
+  basis_summary: "录入待核验",
+  payload_hash: "a".repeat(64),
+  identity_claims: [],
+  aliases: [],
+  created_by: { user_id: "requester-1", issuer: "issuer", subject: "principal-1" },
+  created_at: "2026-10-30T00:00:00Z",
 };
-const after = { ...before, version: 2, display_name: "示例网络有限公司", payload_hash: "b".repeat(64) };
+const after = {
+  ...before,
+  version: 2,
+  display_name: "示例网络有限公司",
+  payload_hash: "b".repeat(64),
+};
 const request = {
   summary: {
-    request_id: "change-1", target_kind: "subject", state: "pending_decision",
-    target_subject_id: "subject-1", target_binding_id: null, expected_subject_version: 1,
-    expected_binding_version: null, payload_hash: "c".repeat(64),
+    request_id: "change-1",
+    target_kind: "subject",
+    state: "pending_decision",
+    target_subject_id: "subject-1",
+    target_binding_id: null,
+    expected_subject_version: 1,
+    expected_binding_version: null,
+    payload_hash: "c".repeat(64),
     proposed_by: { user_id: "requester-1", issuer: "issuer", subject: "principal-1" },
-    proposed_by_display_name: "提案经办人", can_decide: true, decision_blocked_reason: null,
+    proposed_by_display_name: "提案经办人",
+    can_decide: true,
+    decision_blocked_reason: null,
     created_at: "2026-10-30T00:00:00Z",
   },
-  proposed_by_display_name: "提案经办人", can_decide: true, decision_blocked_reason: null,
+  proposed_by_display_name: "提案经办人",
+  can_decide: true,
+  decision_blocked_reason: null,
   before,
   after,
   basis_note: "依据材料更正名称",
-  basis_refs: [{
-    kind: "material_anchor", material_id: "material-1", material_version: 3,
-    document_id: "document-1", parsed_document_id: "parse-1", start: 0, end: 15,
-    quote_digest: "d".repeat(64), filename: "专线合同.pdf", quote: "供应商名称为示例网络有限公司。",
-  }],
+  basis_refs: [
+    {
+      kind: "material_anchor",
+      material_id: "material-1",
+      material_version: 3,
+      document_id: "document-1",
+      parsed_document_id: "parse-1",
+      start: 0,
+      end: 15,
+      quote_digest: "d".repeat(64),
+      filename: "专线合同.pdf",
+      quote: "供应商名称为示例网络有限公司。",
+    },
+  ],
 };
 
 function renderPage() {
-  return render(<MemoryRouter initialEntries={["/cases/case-1/subject-changes/change-1"]}>
-    <Link to="/cases/case-2/subject-changes/change-2">切换案件</Link>
-    <Routes><Route path="/cases/:caseId/subject-changes/:requestId" element={<SubjectChangeReviewPage />} /></Routes>
-  </MemoryRouter>);
+  return render(
+    <MemoryRouter initialEntries={["/cases/case-1/subject-changes/change-1"]}>
+      <Link to="/cases/case-2/subject-changes/change-2">切换案件</Link>
+      <Routes>
+        <Route
+          path="/cases/:caseId/subject-changes/:requestId"
+          element={<SubjectChangeReviewPage />}
+        />
+      </Routes>
+    </MemoryRouter>,
+  );
 }
 
 beforeEach(() => {
-  mocks.useSession.mockReturnValue({ data: { id: "reviewer-2", tenant_id: "tenant-1", org_id: "org-1", audience: "client" } });
+  mocks.useSession.mockReturnValue({
+    data: { id: "reviewer-2", tenant_id: "tenant-1", org_id: "org-1", audience: "client" },
+  });
   mocks.useCaseSubjectChange.mockReturnValue({ data: request, isLoading: false, isError: false });
-  mocks.useCaseSubjectChangeImpact.mockReturnValue({ data: {
-    visible_affected_count: 1, authorized_impact_cases: [{ case_id: "case-1", case_title: "政企专线采购", business_status: "active" }],
-    impact_etag: "impact-secret-etag",
-    proposed_by_display_name: "提案经办人", can_decide: true, decision_blocked_reason: null,
-  }, isLoading: false, isError: false, refetch: vi.fn() });
-  mocks.useDecideSubjectChange.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue({ decision: "approved" }) });
-  mocks.pendingMutationKey.mockResolvedValue({ storageKey: "review-key-slot", key: "decision-key" });
+  mocks.useCaseSubjectChangeImpact.mockReturnValue({
+    data: {
+      visible_affected_count: 1,
+      authorized_impact_cases: [
+        { case_id: "case-1", case_title: "政企专线采购", business_status: "active" },
+      ],
+      impact_etag: "impact-secret-etag",
+      proposed_by_display_name: "提案经办人",
+      can_decide: true,
+      decision_blocked_reason: null,
+    },
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  });
+  mocks.useDecideSubjectChange.mockReturnValue({
+    isPending: false,
+    mutateAsync: vi.fn().mockResolvedValue({ decision: "approved" }),
+  });
+  mocks.pendingMutationKey.mockResolvedValue({
+    storageKey: "review-key-slot",
+    key: "decision-key",
+  });
   mocks.clearPendingMutationKey.mockReset();
 });
 
@@ -104,8 +165,11 @@ describe("subject change review", () => {
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
     expect(mutateAsync.mock.calls[0]![0]).toMatchObject({
       value: {
-        decision: "approve", expected_subject_version: 1, expected_binding_version: null,
-        expected_payload_hash: "c".repeat(64), expected_impact_etag: "impact-secret-etag",
+        decision: "approve",
+        expected_subject_version: 1,
+        expected_binding_version: null,
+        expected_payload_hash: "c".repeat(64),
+        expected_impact_etag: "impact-secret-etag",
         reason: "材料足以支持本次名称更正",
       },
       idempotencyKey: "decision-key",
@@ -114,11 +178,23 @@ describe("subject change review", () => {
   });
 
   it("prevents the proposing account from reviewing its own request", () => {
-    mocks.useSession.mockReturnValue({ data: { id: "requester-1", tenant_id: "tenant-1", org_id: "org-1", audience: "client" } });
-    mocks.useCaseSubjectChange.mockReturnValue({ data: {
-      ...request, summary: { ...request.summary, can_decide: false, decision_blocked_reason: "申请人不能复核自己的更正。" },
-      can_decide: false, decision_blocked_reason: "申请人不能复核自己的更正。",
-    }, isLoading: false, isError: false });
+    mocks.useSession.mockReturnValue({
+      data: { id: "requester-1", tenant_id: "tenant-1", org_id: "org-1", audience: "client" },
+    });
+    mocks.useCaseSubjectChange.mockReturnValue({
+      data: {
+        ...request,
+        summary: {
+          ...request.summary,
+          can_decide: false,
+          decision_blocked_reason: "申请人不能复核自己的更正。",
+        },
+        can_decide: false,
+        decision_blocked_reason: "申请人不能复核自己的更正。",
+      },
+      isLoading: false,
+      isError: false,
+    });
     renderPage();
     expect(screen.getByText("申请人不能复核自己的更正。")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "批准并生效" })).not.toBeInTheDocument();

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-05
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -51,7 +51,9 @@ export function CollapsibleSection({
   const sectionRef = useRef<HTMLDetailsElement>(null);
   const openSection = useCallback(() => setOpen(true), []);
   useNavigableSection(sectionRef, openSection);
-  useEffect(() => { if (openRequest !== undefined) setOpen(true); }, [openRequest]);
+  useEffect(() => {
+    if (openRequest !== undefined) setOpen(true);
+  }, [openRequest]);
   return (
     <details
       ref={sectionRef}
@@ -61,9 +63,7 @@ export function CollapsibleSection({
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary className="caw-section-summary">
-        <span className="caw-section-title">
-          {open ? title : (summaryLabel ?? title)}
-        </span>
+        <span className="caw-section-title">{open ? title : (summaryLabel ?? title)}</span>
         <span className="caw-section-summary-meta">
           {meta === undefined ? null : <span className="caw-section-meta">{meta}</span>}
           {count === undefined ? null : (

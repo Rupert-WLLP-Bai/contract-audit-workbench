@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -35,7 +35,9 @@ function labelMap<T extends string>(
 ) {
   return (value: T | null): string => {
     if (value === null) return fallback;
-    const label = Object.hasOwn(vocabulary, value) ? (vocabulary as Record<string, string | undefined>)[value] : undefined;
+    const label = Object.hasOwn(vocabulary, value)
+      ? (vocabulary as Record<string, string | undefined>)[value]
+      : undefined;
     return label ?? (keepUnknown ? value : fallback);
   };
 }
@@ -44,7 +46,9 @@ function toneMap<T extends string>(vocabulary: Partial<Record<T, StatusTone>>) {
   return (value: T | null): StatusTone => {
     if (value === null) return "neutral";
     return (
-      (Object.hasOwn(vocabulary, value) ? (vocabulary as Record<string, StatusTone | undefined>)[value] : undefined) ?? "neutral"
+      (Object.hasOwn(vocabulary, value)
+        ? (vocabulary as Record<string, StatusTone | undefined>)[value]
+        : undefined) ?? "neutral"
     );
   };
 }

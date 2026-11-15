@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-08
-// Updated: 2026-11-08
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -20,13 +20,13 @@ export interface QccMcpServer {
 
 export const qccMcpServers: QccMcpServer[] = [
   {
-    "server": "company",
-    "title": "QCC MCP",
-    "version": "1.0.0",
-    "status": "RECOGNIZED",
-    "skillCount": 16,
-    "error": "",
-    "skills": [
+    server: "company",
+    title: "QCC MCP",
+    version: "1.0.0",
+    status: "RECOGNIZED",
+    skillCount: 16,
+    error: "",
+    skills: [
       "get_actual_controller",
       "get_annual_reports",
       "get_beneficial_owners",
@@ -42,17 +42,17 @@ export const qccMcpServers: QccMcpServer[] = [
       "get_listing_info",
       "get_shareholder_info",
       "get_tax_invoice_info",
-      "verify_company_accuracy"
-    ]
+      "verify_company_accuracy",
+    ],
   },
   {
-    "server": "risk",
-    "title": "QCC MCP",
-    "version": "1.0.0",
-    "status": "RECOGNIZED",
-    "skillCount": 38,
-    "error": "",
-    "skills": [
+    server: "risk",
+    title: "QCC MCP",
+    version: "1.0.0",
+    status: "RECOGNIZED",
+    skillCount: 38,
+    error: "",
+    skills: [
       "get_administrative_penalty",
       "get_bankruptcy_reorganization",
       "get_business_exception",
@@ -90,17 +90,17 @@ export const qccMcpServers: QccMcpServer[] = [
       "get_tax_arrears_notice",
       "get_tax_violation",
       "get_terminated_cases",
-      "get_valuation_inquiry"
-    ]
+      "get_valuation_inquiry",
+    ],
   },
   {
-    "server": "ipr",
-    "title": "QCC MCP",
-    "version": "1.0.0",
-    "status": "RECOGNIZED",
-    "skillCount": 18,
-    "error": "",
-    "skills": [
+    server: "ipr",
+    title: "QCC MCP",
+    version: "1.0.0",
+    status: "RECOGNIZED",
+    skillCount: 18,
+    error: "",
+    skills: [
       "get_app_info",
       "get_commercial_franchise",
       "get_copyright_work_info",
@@ -118,17 +118,17 @@ export const qccMcpServers: QccMcpServer[] = [
       "get_trademark_document",
       "get_trademark_info",
       "get_wechat_official_account",
-      "get_weibo_account"
-    ]
+      "get_weibo_account",
+    ],
   },
   {
-    "server": "operation",
-    "title": "QCC MCP",
-    "version": "1.0.0",
-    "status": "RECOGNIZED",
-    "skillCount": 36,
-    "error": "",
-    "skills": [
+    server: "operation",
+    title: "QCC MCP",
+    version: "1.0.0",
+    status: "RECOGNIZED",
+    skillCount: 36,
+    error: "",
+    skills: [
       "get_administrative_license",
       "get_advertising_review",
       "get_asset_auction",
@@ -164,26 +164,26 @@ export const qccMcpServers: QccMcpServer[] = [
       "get_spot_check_info",
       "get_taxpayer_qualification",
       "get_tech_achievement",
-      "get_telecom_license"
-    ]
+      "get_telecom_license",
+    ],
   },
   {
-    "server": "history",
-    "title": "history",
-    "version": "",
-    "status": "ERROR",
-    "skillCount": 0,
-    "error": "mcp error 300012: 当前用户未授权使用历史信息服务",
-    "skills": []
+    server: "history",
+    title: "history",
+    version: "",
+    status: "ERROR",
+    skillCount: 0,
+    error: "mcp error 300012: 当前用户未授权使用历史信息服务",
+    skills: [],
   },
   {
-    "server": "executive",
-    "title": "QCC MCP",
-    "version": "1.0.0",
-    "status": "RECOGNIZED",
-    "skillCount": 44,
-    "error": "",
-    "skills": [
+    server: "executive",
+    title: "QCC MCP",
+    version: "1.0.0",
+    status: "RECOGNIZED",
+    skillCount: 44,
+    error: "",
+    skills: [
       "get_executive_admin_penalty",
       "get_executive_beneficial_owner",
       "get_executive_case_filing",
@@ -227,65 +227,62 @@ export const qccMcpServers: QccMcpServer[] = [
       "get_executive_stock_pledge",
       "get_executive_tax_violation",
       "get_executive_terminated_cases",
-      "get_executive_valuation_inquiry"
-    ]
+      "get_executive_valuation_inquiry",
+    ],
   },
   {
-    "server": "regulation",
-    "title": "QCC MCP",
-    "version": "1.0.0",
-    "status": "RECOGNIZED",
-    "skillCount": 6,
-    "error": "",
-    "skills": [
+    server: "regulation",
+    title: "QCC MCP",
+    version: "1.0.0",
+    status: "RECOGNIZED",
+    skillCount: 6,
+    error: "",
+    skills: [
       "get_legal_article_detail",
       "get_legal_article_search",
       "get_legal_article_semantic_search",
       "get_legal_citation_verify",
       "get_legal_regulation_detail",
-      "get_legal_regulation_search"
-    ]
+      "get_legal_regulation_search",
+    ],
   },
   {
-    "server": "case",
-    "title": "QCC MCP",
-    "version": "1.0.0",
-    "status": "RECOGNIZED",
-    "skillCount": 4,
-    "error": "",
-    "skills": [
+    server: "case",
+    title: "QCC MCP",
+    version: "1.0.0",
+    status: "RECOGNIZED",
+    skillCount: 4,
+    error: "",
+    skills: [
       "get_judicial_authoritative_case_search",
       "get_judicial_case_detail",
       "get_judicial_case_search",
-      "get_judicial_citation_verify"
-    ]
+      "get_judicial_citation_verify",
+    ],
   },
   {
-    "server": "tender",
-    "title": "QCC MCP",
-    "version": "1.0.0",
-    "status": "RECOGNIZED",
-    "skillCount": 6,
-    "error": "",
-    "skills": [
+    server: "tender",
+    title: "QCC MCP",
+    version: "1.0.0",
+    status: "RECOGNIZED",
+    skillCount: 6,
+    error: "",
+    skills: [
       "get_proposed_project_detail",
       "get_tender_detail",
       "search_companies",
       "search_company_tenders",
       "search_proposed_projects",
-      "search_tenders"
-    ]
+      "search_tenders",
+    ],
   },
   {
-    "server": "document",
-    "title": "QCC MCP",
-    "version": "1.0.0",
-    "status": "RECOGNIZED",
-    "skillCount": 2,
-    "error": "",
-    "skills": [
-      "get_parse_result",
-      "parse_document"
-    ]
-  }
+    server: "document",
+    title: "QCC MCP",
+    version: "1.0.0",
+    status: "RECOGNIZED",
+    skillCount: 2,
+    error: "",
+    skills: ["get_parse_result", "parse_document"],
+  },
 ];

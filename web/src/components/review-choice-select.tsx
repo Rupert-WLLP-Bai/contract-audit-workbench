@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -40,8 +40,10 @@ export function ReviewChoiceSelect({
           disabled={disabled}
           placeholder="选择已保存的审查和执行记录"
           virtual={false}
-          labelRender={() => selected ? reviewChoiceShortLabel(selected) : "请选择"}
-          optionRender={(option) => <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{option.label}</div>}
+          labelRender={() => (selected ? reviewChoiceShortLabel(selected) : "请选择")}
+          optionRender={(option) => (
+            <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{option.label}</div>
+          )}
           styles={{ popup: { listItem: { whiteSpace: "normal" } } }}
           options={choices.map((choice) => ({
             value: choice.key,
@@ -49,15 +51,19 @@ export function ReviewChoiceSelect({
           }))}
         />
       </label>
-      {selected ? <div className="meta caw-wrap">
-        执行开始 {preciseTime(selected.attempt.started_at)} · 完成时间 {preciseTime(selected.attempt.finished_at)} · 审查更新时间 {preciseTime(selected.workspace.run.updated_at)}
-        <InvalidTimeDetail value={selected.attempt.accepted_at} label="受理时间" />
-        <InvalidTimeDetail value={selected.attempt.started_at} label="执行开始时间" />
-        <InvalidTimeDetail value={selected.attempt.finished_at} label="完成时间" />
-        <InvalidTimeDetail value={selected.workspace.run.updated_at} label="审查更新时间" />
-        <TechnicalDetail value={selected.runId} label="审查标识" />
-        <TechnicalDetail value={selected.attempt.id} label="执行标识" />
-      </div> : null}
+      {selected ? (
+        <div className="meta caw-wrap">
+          执行开始 {preciseTime(selected.attempt.started_at)} · 完成时间{" "}
+          {preciseTime(selected.attempt.finished_at)} · 审查更新时间{" "}
+          {preciseTime(selected.workspace.run.updated_at)}
+          <InvalidTimeDetail value={selected.attempt.accepted_at} label="受理时间" />
+          <InvalidTimeDetail value={selected.attempt.started_at} label="执行开始时间" />
+          <InvalidTimeDetail value={selected.attempt.finished_at} label="完成时间" />
+          <InvalidTimeDetail value={selected.workspace.run.updated_at} label="审查更新时间" />
+          <TechnicalDetail value={selected.runId} label="审查标识" />
+          <TechnicalDetail value={selected.attempt.id} label="执行标识" />
+        </div>
+      ) : null}
     </div>
   );
 }

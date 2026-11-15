@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-03
-// Updated: 2026-11-04
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -28,7 +28,7 @@ export function WorkbenchCaseNextStep({ caseId }: { caseId: string }) {
   ].join(":");
   const history = useCaseReviewHistory(
     caseId,
-    detail.data?.id === caseId ? detail.data.latest_run?.id ?? null : null,
+    detail.data?.id === caseId ? (detail.data.latest_run?.id ?? null) : null,
   );
   const readinessDependencies = [
     detail.data?.updated_at,
@@ -43,20 +43,48 @@ export function WorkbenchCaseNextStep({ caseId }: { caseId: string }) {
   });
   const readinessLoading = detail.isFetching || session.isFetching || readiness.isFetching;
   const readinessError = readiness.isError ? readiness.error : null;
-  const currentReadiness = !readinessLoading && detail.data?.id === caseId && !detail.isError && !session.isError && !readiness.isError
-    ? readiness.data
-    : undefined;
+  const currentReadiness =
+    !readinessLoading &&
+    detail.data?.id === caseId &&
+    !detail.isError &&
+    !session.isError &&
+    !readiness.isError
+      ? readiness.data
+      : undefined;
 
   if (detail.isLoading || detail.isFetching || session.isLoading || session.isFetching)
     return <PageStatus kind="loading" title="正在读取案件下一步" />;
   if (detail.isError || !detail.data) {
     const denied = isForbidden(detail.error);
-    return <PageStatus kind={denied ? "denied" : "error"} title={denied ? "已无权查看此案件" : "案件下一步不可用"} detail={errorMessage(detail.error)} />;
+    return (
+      <PageStatus
+        kind={denied ? "denied" : "error"}
+        title={denied ? "已无权查看此案件" : "案件下一步不可用"}
+        detail={errorMessage(detail.error)}
+      />
+    );
   }
   if (detail.data.id !== caseId)
-    return <PageStatus kind="error" title="案件身份不匹配" detail="案件服务返回的身份与当前所选案件不一致，已停止读取准备状态。" />;
+    return (
+      <PageStatus
+        kind="error"
+        title="案件身份不匹配"
+        detail="案件服务返回的身份与当前所选案件不一致，已停止读取准备状态。"
+      />
+    );
   if (session.isError)
-    return <PageStatus kind={"error"} title="身份状态不可用" detail={errorMessage(session.error)} action={<button type="button" onClick={() => void session.refetch()}>重新读取身份</button>} />;
+    return (
+      <PageStatus
+        kind={"error"}
+        title="身份状态不可用"
+        detail={errorMessage(session.error)}
+        action={
+          <button type="button" onClick={() => void session.refetch()}>
+            重新读取身份
+          </button>
+        }
+      />
+    );
 
   return (
     <CaseNextStep
@@ -73,7 +101,11 @@ export function WorkbenchCaseNextStep({ caseId }: { caseId: string }) {
       validBusinessAt={false}
       historyLoading={history.isFetching}
       historyError={history.isError ? history.error : null}
-      latestWorkspace={!history.isFetching && !history.isError ? history.data?.find((entry) => entry.runId === detail.data?.latest_run?.id)?.workspace : undefined}
+      latestWorkspace={
+        !history.isFetching && !history.isError
+          ? history.data?.find((entry) => entry.runId === detail.data?.latest_run?.id)?.workspace
+          : undefined
+      }
       startPending={false}
       startError={null}
       onRetrySession={() => void session.refetch()}

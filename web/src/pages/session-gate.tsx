@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-05
-// Revision: r3
+// Updated: 2026-11-15
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,12 +12,7 @@ import { useLayoutEffect, useRef } from "react";
 import { Button } from "antd";
 import { useQueryClient } from "@tanstack/react-query";
 import { Navigate, Outlet, useLocation } from "react-router";
-import {
-  errorMessage,
-  isUnauthenticated,
-  isForbidden,
-  setSessionIdentity,
-} from "../api/http";
+import { errorMessage, isUnauthenticated, isForbidden, setSessionIdentity } from "../api/http";
 import { clearIdentityQueries, queryKeys, useSession } from "../api/queries";
 import type { SessionAudience } from "../api/types";
 import { PageStatus } from "../components/page-status";
@@ -41,7 +36,8 @@ export function SessionGate({
   useLayoutEffect(() => {
     if (!actor) return;
     const readScope = actorReadContextKey(actor);
-    if (previousReadScope.current && previousReadScope.current !== readScope) clearAllEvidenceDrafts();
+    if (previousReadScope.current && previousReadScope.current !== readScope)
+      clearAllEvidenceDrafts();
     previousReadScope.current = readScope;
     if (setSessionIdentity(actor)) {
       clearAllDecisionDrafts();
@@ -52,8 +48,11 @@ export function SessionGate({
   }, [actor, audience, queryClient]);
 
   useLayoutEffect(() => {
-    if ((session.isError && (isUnauthenticated(session.error) || isForbidden(session.error))) ||
-        (actor && actor.audience !== audience)) clearAllEvidenceDrafts();
+    if (
+      (session.isError && (isUnauthenticated(session.error) || isForbidden(session.error))) ||
+      (actor && actor.audience !== audience)
+    )
+      clearAllEvidenceDrafts();
   }, [session.isError, session.error, actor, audience]);
 
   if (session.isLoading) {
@@ -67,11 +66,7 @@ export function SessionGate({
         title="无法连接审查服务"
         detail={errorMessage(session.error)}
         action={
-          <Button
-            aria-label={"重试"}
-            type="primary"
-            onClick={() => void session.refetch()}
-          >
+          <Button aria-label={"重试"} type="primary" onClick={() => void session.refetch()}>
             重试
           </Button>
         }
@@ -90,7 +85,11 @@ export function SessionGate({
   }
   if (!session.isSuccess) {
     return (
-      <Navigate to={loginPath} replace state={{ from: location.pathname + location.search + location.hash }} />
+      <Navigate
+        to={loginPath}
+        replace
+        state={{ from: location.pathname + location.search + location.hash }}
+      />
     );
   }
   return (

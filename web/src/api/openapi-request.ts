@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -40,20 +40,11 @@ export interface ApiRequestBodyField {
   multiple: boolean;
 }
 
-export type ApiRequestBodyMode =
-  | "none"
-  | "json"
-  | "multipart"
-  | "urlencoded"
-  | "binary"
-  | "text";
+export type ApiRequestBodyMode = "none" | "json" | "multipart" | "urlencoded" | "binary" | "text";
 
 type ParameterValue = string | number | boolean | string[] | OpenApiRecord;
 
-function inputKey(
-  operation: OpenApiOperation,
-  parameter: OpenApiParameter,
-): string {
+function inputKey(operation: OpenApiOperation, parameter: OpenApiParameter): string {
   return `${operation.key}:${parameter.location}:${parameter.name}`;
 }
 
@@ -65,10 +56,7 @@ function failureMessage(failure: unknown, fallback: string): string {
   return failure instanceof Error ? failure.message : fallback;
 }
 
-function parameterSchema(
-  parameter: OpenApiParameter,
-  root: OpenApiRecord,
-): OpenApiRecord | null {
+function parameterSchema(parameter: OpenApiParameter, root: OpenApiRecord): OpenApiRecord | null {
   if (!parameter.schema) return null;
   const resolved = resolveOpenApiReference(parameter.schema, root);
   if (!isRecord(resolved)) throw new Error(`${parameter.name} schema 必须是对象`);
@@ -76,9 +64,7 @@ function parameterSchema(
 }
 
 function parameterType(schema: OpenApiRecord | null): string {
-  return schema !== null && typeof schema.type === "string"
-    ? schema.type
-    : "string";
+  return schema !== null && typeof schema.type === "string" ? schema.type : "string";
 }
 
 function numericText(rawValue: string, type: string, label: string): number {
@@ -120,8 +106,7 @@ function typedParameter(
 ): ParameterValue {
   const schema = parameterSchema(parameter, root);
   const type = parameterType(schema);
-  if (type === "integer" || type === "number")
-    return numericText(rawValue, type, parameter.name);
+  if (type === "integer" || type === "number") return numericText(rawValue, type, parameter.name);
   if (type === "boolean") return booleanText(rawValue, parameter.name);
   if (type === "array") return arrayParameter(rawValue);
   if (type === "object") return objectParameter(rawValue, parameter.name);
@@ -151,9 +136,7 @@ function isBinaryMediaType(mediaType: string): boolean {
   );
 }
 
-export function apiRequestBodyMode(
-  requestBody: OpenApiRequestBody | null,
-): ApiRequestBodyMode {
+export function apiRequestBodyMode(requestBody: OpenApiRequestBody | null): ApiRequestBodyMode {
   if (requestBody === null) return "none";
   const mediaType = normalizedMediaType(requestBody);
   if (mediaType.includes("json")) return "json";
@@ -167,24 +150,17 @@ function isFormMode(mode: ApiRequestBodyMode): boolean {
   return mode === "json" || mode === "multipart" || mode === "urlencoded";
 }
 
-function formSchemaValue(
-  schema: OpenApiRecord,
-  root: OpenApiRecord,
-): OpenApiRecord {
+function formSchemaValue(schema: OpenApiRecord, root: OpenApiRecord): OpenApiRecord {
   const schemaValue = resolveOpenApiReference(schema, root);
   if (!isRecord(schemaValue)) throw new Error("请求体 schema 必须是对象");
   return schemaValue;
 }
 
-function formRequiredNames(
-  schemaValue: OpenApiRecord,
-  properties: OpenApiRecord,
-): Set<string> {
+function formRequiredNames(schemaValue: OpenApiRecord, properties: OpenApiRecord): Set<string> {
   const requiredValue = schemaValue.required;
   if (
     requiredValue !== undefined &&
-    (!Array.isArray(requiredValue) ||
-      !requiredValue.every((item) => typeof item === "string"))
+    (!Array.isArray(requiredValue) || !requiredValue.every((item) => typeof item === "string"))
   )
     throw new Error("表单 schema required 必须是字符串数组");
   const required = new Set(
@@ -205,8 +181,7 @@ function formFieldItems(
 ): OpenApiRecord | null {
   if (fieldSchema.items === undefined) return null;
   const items = resolveOpenApiReference(fieldSchema.items, root);
-  if (!isRecord(items))
-    throw new Error(`表单字段 ${name} 的 items schema 必须是对象`);
+  if (!isRecord(items)) throw new Error(`表单字段 ${name} 的 items schema 必须是对象`);
   return items;
 }
 
@@ -229,8 +204,7 @@ function formField(
   mode: ApiRequestBodyMode,
 ): ApiRequestBodyField {
   const fieldSchema = resolveOpenApiReference(fieldValue, root);
-  if (!isRecord(fieldSchema))
-    throw new Error(`表单字段 ${name} 的 schema 必须是对象`);
+  if (!isRecord(fieldSchema)) throw new Error(`表单字段 ${name} 的 schema 必须是对象`);
   const type = typeof fieldSchema.type === "string" ? fieldSchema.type : "";
   const items = formFieldItems(fieldSchema, root, name);
   const binary = isBinaryField(fieldSchema, type, items);
@@ -238,10 +212,7 @@ function formField(
     throw new Error(`表单字段 ${name} 是文件，但媒体类型不支持文件上传`);
   return {
     name,
-    description:
-      typeof fieldSchema.description === "string"
-        ? fieldSchema.description
-        : "",
+    description: typeof fieldSchema.description === "string" ? fieldSchema.description : "",
     required: required.has(name),
     schema: fieldSchema,
     file: binary,
@@ -259,8 +230,7 @@ export function apiRequestBodyFields(
   const schemaValue = formSchemaValue(requestBody.schema, root);
   const properties = schemaValue.properties;
   if (properties === undefined) return [];
-  if (!isRecord(properties))
-    throw new Error("表单 schema properties 必须是对象");
+  if (!isRecord(properties)) throw new Error("表单 schema properties 必须是对象");
   const required = formRequiredNames(schemaValue, properties);
   return Object.entries(properties).map(([name, fieldValue]) =>
     formField(name, fieldValue, root, required, mode),
@@ -291,46 +261,27 @@ function schemaTypes(schema: OpenApiRecord): string[] {
   return [];
 }
 
-function validateSchemaType(
-  value: unknown,
-  types: string[],
-  path: string,
-): string | null {
+function validateSchemaType(value: unknown, types: string[], path: string): string | null {
   if (types.length > 0 && !types.some((type) => matchesSchemaType(value, type)))
     return `${path} 类型不符合 OpenAPI schema`;
   return null;
 }
 
-function validateConstAndEnum(
-  value: unknown,
-  schema: OpenApiRecord,
-  path: string,
-): string | null {
-  if (
-    Object.hasOwn(schema, "const") &&
-    JSON.stringify(value) !== JSON.stringify(schema.const)
-  )
+function validateConstAndEnum(value: unknown, schema: OpenApiRecord, path: string): string | null {
+  if (Object.hasOwn(schema, "const") && JSON.stringify(value) !== JSON.stringify(schema.const))
     return `${path} 不符合 schema const`;
   if (
     Array.isArray(schema.enum) &&
-    !schema.enum.some(
-      (entry) => JSON.stringify(entry) === JSON.stringify(value),
-    )
+    !schema.enum.some((entry) => JSON.stringify(entry) === JSON.stringify(value))
   )
     return `${path} 不在 schema enum 允许值中`;
   return null;
 }
 
-function isObjectSchemaTarget(
-  value: unknown,
-  types: string[],
-  schema: OpenApiRecord,
-): boolean {
+function isObjectSchemaTarget(value: unknown, types: string[], schema: OpenApiRecord): boolean {
   return (
     isRecord(value) &&
-    (types.includes("object") ||
-      isRecord(schema.properties) ||
-      Array.isArray(schema.required))
+    (types.includes("object") || isRecord(schema.properties) || Array.isArray(schema.required))
   );
 }
 
@@ -340,8 +291,7 @@ function validateRequiredKeyword(
   path: string,
 ): string | null {
   if (!Array.isArray(schema.required)) {
-    if (Object.hasOwn(schema, "required"))
-      return `${path} 的 schema required 无效`;
+    if (Object.hasOwn(schema, "required")) return `${path} 的 schema required 无效`;
     return null;
   }
   for (const key of schema.required) {
@@ -358,9 +308,7 @@ function validateAdditionalProperties(
   path: string,
 ): string | null {
   if (schema.additionalProperties !== false) return null;
-  const unknownKey = Object.keys(value).find(
-    (key) => !Object.hasOwn(properties, key),
-  );
+  const unknownKey = Object.keys(value).find((key) => !Object.hasOwn(properties, key));
   return unknownKey ? `${path}.${unknownKey} 未在 schema 中声明` : null;
 }
 
@@ -372,19 +320,12 @@ function validatePropertyEntries(
   depth: number,
 ): string | null {
   const properties = schema.properties;
-  if (properties !== undefined && !isRecord(properties))
-    return `${path} 的 schema properties 无效`;
+  if (properties !== undefined && !isRecord(properties)) return `${path} 的 schema properties 无效`;
   if (!isRecord(properties)) return null;
   for (const [key, childSchema] of Object.entries(properties)) {
     if (!Object.hasOwn(value, key)) continue;
     if (!isRecord(childSchema)) return `${path}.${key} 的 schema 无效`;
-    const error = validateJsonSchema(
-      value[key],
-      childSchema,
-      `${path}.${key}`,
-      root,
-      depth + 1,
-    );
+    const error = validateJsonSchema(value[key], childSchema, `${path}.${key}`, root, depth + 1);
     if (error) return error;
   }
   return validateAdditionalProperties(value, properties, schema, path);
@@ -405,15 +346,8 @@ function validateObjectKeywords(
   return validatePropertyEntries(record, schema, path, root, depth);
 }
 
-function isArraySchemaTarget(
-  value: unknown,
-  types: string[],
-  schema: OpenApiRecord,
-): boolean {
-  return (
-    Array.isArray(value) &&
-    (types.includes("array") || schema.items !== undefined)
-  );
+function isArraySchemaTarget(value: unknown, types: string[], schema: OpenApiRecord): boolean {
+  return Array.isArray(value) && (types.includes("array") || schema.items !== undefined);
 }
 
 function validateArrayItems(
@@ -423,8 +357,7 @@ function validateArrayItems(
   root: OpenApiRecord,
   depth: number,
 ): string | null {
-  if (schema.items !== undefined && !isRecord(schema.items))
-    return `${path} 的 schema items 无效`;
+  if (schema.items !== undefined && !isRecord(schema.items)) return `${path} 的 schema items 无效`;
   if (!isRecord(schema.items)) return null;
   for (let index = 0; index < value.length; index += 1) {
     const error = validateJsonSchema(
@@ -477,9 +410,7 @@ function validateAnyOf(
   if (!Array.isArray(schema.anyOf)) return null;
   if (
     !schema.anyOf.some(
-      (part) =>
-        isRecord(part) &&
-        validateJsonSchema(value, part, path, root, depth + 1) === null,
+      (part) => isRecord(part) && validateJsonSchema(value, part, path, root, depth + 1) === null,
     )
   )
     return `${path} 不符合 schema anyOf`;
@@ -495,9 +426,7 @@ function validateOneOf(
 ): string | null {
   if (!Array.isArray(schema.oneOf)) return null;
   const matches = schema.oneOf.filter(
-    (part) =>
-      isRecord(part) &&
-      validateJsonSchema(value, part, path, root, depth + 1) === null,
+    (part) => isRecord(part) && validateJsonSchema(value, part, path, root, depth + 1) === null,
   ).length;
   if (matches !== 1) return `${path} 不符合 schema oneOf`;
   return null;
@@ -514,9 +443,7 @@ function validateSchemaReference(
   try {
     resolved = resolveOpenApiReference(schema, root);
   } catch (failure) {
-    return failure instanceof Error
-      ? failure.message
-      : `${path} 的 schema 引用无效`;
+    return failure instanceof Error ? failure.message : `${path} 的 schema 引用无效`;
   }
   if (!isRecord(resolved)) return `${path} 的 schema 引用没有指向对象`;
   return validateJsonSchema(value, resolved, path, root, depth + 1);
@@ -541,23 +468,9 @@ function validateNestedKeywords(
   depth: number,
   types: string[],
 ): string | null {
-  const objectError = validateObjectKeywords(
-    value,
-    schema,
-    path,
-    root,
-    depth,
-    types,
-  );
+  const objectError = validateObjectKeywords(value, schema, path, root, depth, types);
   if (objectError) return objectError;
-  const arrayError = validateArrayKeywords(
-    value,
-    schema,
-    path,
-    root,
-    depth,
-    types,
-  );
+  const arrayError = validateArrayKeywords(value, schema, path, root, depth, types);
   if (arrayError) return arrayError;
   const allOfError = validateAllOf(value, schema, path, root, depth);
   if (allOfError) return allOfError;
@@ -577,8 +490,7 @@ function validateJsonSchema(
   if (typeof schema.$ref === "string")
     return validateSchemaReference(value, schema, path, root, depth);
   const types = schemaTypes(schema);
-  if (value === null && (schema.nullable === true || types.includes("null")))
-    return null;
+  if (value === null && (schema.nullable === true || types.includes("null"))) return null;
   const valueError = validateValueKeywords(value, schema, path, types);
   if (valueError) return valueError;
   return validateNestedKeywords(value, schema, path, root, depth, types);
@@ -592,13 +504,8 @@ function objectFormValue(rawValue: string, path: string): unknown {
   }
 }
 
-function formScalarValue(
-  rawValue: string,
-  type: string,
-  path: string,
-): unknown {
-  if (type === "integer" || type === "number")
-    return numericText(rawValue, type, path);
+function formScalarValue(rawValue: string, type: string, path: string): unknown {
+  if (type === "integer" || type === "number") return numericText(rawValue, type, path);
   if (type === "boolean") return booleanText(rawValue, path);
   if (type === "object") return objectFormValue(rawValue, path);
   if (type === "array") throw new Error(`${path} 的数组 items schema 缺失`);
@@ -618,11 +525,7 @@ function serializeFormValue(
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-function replaceHeader(
-  headers: Record<string, string>,
-  name: string,
-  value: string | null,
-): void {
+function replaceHeader(headers: Record<string, string>, name: string, value: string | null): void {
   for (const current of Object.keys(headers))
     if (current.toLowerCase() === name.toLowerCase()) delete headers[current];
   if (value !== null) headers[name] = value;
@@ -682,12 +585,8 @@ function applyParameter(
 ): string | null {
   if (parameter.location === "path") {
     const placeholder = `{${parameter.name}}`;
-    if (!state.path.includes(placeholder))
-      return `契约路径缺少参数占位符 ${placeholder}`;
-    state.path = state.path.replaceAll(
-      placeholder,
-      encodeURIComponent(asParameterString(value)),
-    );
+    if (!state.path.includes(placeholder)) return `契约路径缺少参数占位符 ${placeholder}`;
+    state.path = state.path.replaceAll(placeholder, encodeURIComponent(asParameterString(value)));
   } else if (parameter.location === "query") {
     state.queryValues.push({ name: parameter.name, value });
   } else {
@@ -733,8 +632,7 @@ function requestUrl(
   if (url.origin !== origin) return { error: "请求只能发送到当前服务源" };
   for (const entry of queryValues) {
     if (Array.isArray(entry.value)) {
-      for (const item of entry.value)
-        url.searchParams.append(entry.name, item);
+      for (const item of entry.value) url.searchParams.append(entry.name, item);
     } else url.searchParams.append(entry.name, asParameterString(entry.value));
   }
   return { url };
@@ -766,14 +664,9 @@ function createForm(mode: ApiRequestBodyMode): FormData | URLSearchParams {
   return mode === "multipart" ? new FormData() : new URLSearchParams();
 }
 
-function fileFieldError(
-  field: ApiRequestBodyField,
-  files: File[],
-): string | null {
-  if (field.required && files.length === 0)
-    return `请选择必填文件：${field.name}`;
-  if (!field.multiple && files.length > 1)
-    return `${field.name} 只接受一个文件`;
+function fileFieldError(field: ApiRequestBodyField, files: File[]): string | null {
+  if (field.required && files.length === 0) return `请选择必填文件：${field.name}`;
+  if (!field.multiple && files.length > 1) return `${field.name} 只接受一个文件`;
   return null;
 }
 
@@ -793,9 +686,7 @@ function appendFileField(
 }
 
 type ScalarRead =
-  | { action: "use"; value: string }
-  | { action: "skip" }
-  | { action: "error"; error: string };
+  { action: "use"; value: string } | { action: "skip" } | { action: "error"; error: string };
 
 function readFormFieldValue(
   field: ApiRequestBodyField,
@@ -822,8 +713,7 @@ function formFieldItemSchema(
   fieldType: string,
   schemaRoot: OpenApiRecord,
 ): { schema: OpenApiRecord } | { error: string } {
-  const itemValue =
-    fieldType === "array" ? field.schema.items : field.schema;
+  const itemValue = fieldType === "array" ? field.schema.items : field.schema;
   let itemSchema: OpenApiRecord = { type: "string" };
   if (itemValue !== undefined) {
     let resolved: unknown;
@@ -834,8 +724,7 @@ function formFieldItemSchema(
         error: failureMessage(failure, `表单字段 ${field.name} schema 无效`),
       };
     }
-    if (!isRecord(resolved))
-      return { error: `表单字段 ${field.name} schema 无效` };
+    if (!isRecord(resolved)) return { error: `表单字段 ${field.name} schema 无效` };
     itemSchema = resolved;
   }
   return { schema: itemSchema };
@@ -859,12 +748,7 @@ function appendSerializedValues(
   for (const value of values) {
     let serialized: string;
     try {
-      serialized = serializeFormValue(
-        value,
-        itemSchema,
-        `请求体.${field.name}`,
-        schemaRoot,
-      );
+      serialized = serializeFormValue(value, itemSchema, `请求体.${field.name}`, schemaRoot);
     } catch (failure) {
       return failureMessage(failure, `请求体.${field.name} 无效`);
     }
@@ -882,13 +766,11 @@ function appendScalarField(
   const read = readFormFieldValue(field, bodyValues);
   if (read.action === "skip") return null;
   if (read.action === "error") return read.error;
-  const fieldType =
-    typeof field.schema.type === "string" ? field.schema.type : "string";
+  const fieldType = typeof field.schema.type === "string" ? field.schema.type : "string";
   const values = formFieldValues(read.value, fieldType);
   const item = formFieldItemSchema(field, fieldType, schemaRoot);
   if ("error" in item) return item.error;
-  if (emptyRequiredArray(field, fieldType, values))
-    return `请求体.${field.name} 至少需要一个值`;
+  if (emptyRequiredArray(field, fieldType, values)) return `请求体.${field.name} 至少需要一个值`;
   return appendSerializedValues(field, form, values, item.schema, schemaRoot);
 }
 
@@ -898,8 +780,7 @@ function appendFormField(
   input: ApiRequestInput,
   mode: ApiRequestBodyMode,
 ): string | null {
-  if (field.file)
-    return appendFileField(field, form, input.bodyFiles, mode);
+  if (field.file) return appendFileField(field, form, input.bodyFiles, mode);
   return appendScalarField(field, form, input.bodyValues, input.schemaRoot);
 }
 
@@ -920,9 +801,7 @@ function formBodyValue(
   requestBody: OpenApiRequestBody,
   form: FormData | URLSearchParams,
 ): FormData | URLSearchParams | undefined {
-  return requestBody.required || [...form.keys()].length > 0
-    ? form
-    : undefined;
+  return requestBody.required || [...form.keys()].length > 0 ? form : undefined;
 }
 
 function formContentType(
@@ -952,8 +831,7 @@ function buildBinaryBody(
   bodyFiles: Record<string, File[]>,
 ): BodyBuildResult {
   const files = bodyFiles.__request_body__ ?? [];
-  if (requestBody.required && files.length === 0)
-    return { error: "请选择请求原件。" };
+  if (requestBody.required && files.length === 0) return { error: "请选择请求原件。" };
   if (files.length > 1) return { error: "此操作只接受一个请求原件。" };
   if (files[0]) return { body: files[0], contentType: requestBody.mediaType };
   return { contentType: null };
@@ -982,12 +860,7 @@ function jsonBodyValue(
     return { error: "请求体不是有效 JSON。" };
   }
   if (requestBody.schema) {
-    const schemaError = validateJsonSchema(
-      parsed,
-      requestBody.schema,
-      "请求体",
-      schemaRoot,
-    );
+    const schemaError = validateJsonSchema(parsed, requestBody.schema, "请求体", schemaRoot);
     if (schemaError) return { error: schemaError };
   }
   return { body: JSON.stringify(parsed) };
@@ -1001,8 +874,7 @@ function buildTextBody(
   const requiredError = requiredBodyError(requestBody, mode, input.bodyText);
   if (requiredError) return { error: requiredError };
   if (input.bodyText.trim() === "") return { contentType: undefined };
-  if (mode !== "json")
-    return { body: input.bodyText, contentType: requestBody.mediaType };
+  if (mode !== "json") return { body: input.bodyText, contentType: requestBody.mediaType };
   const parsed = jsonBodyValue(requestBody, input.bodyText, input.schemaRoot);
   if ("error" in parsed) return parsed;
   return { body: parsed.body, contentType: requestBody.mediaType };
@@ -1015,8 +887,7 @@ function buildRequestBody(
   const requestBody = operation.requestBody;
   if (requestBody === null) return null;
   const mode = apiRequestBodyMode(requestBody);
-  if (mode === "multipart" || mode === "urlencoded")
-    return buildFormBody(requestBody, mode, input);
+  if (mode === "multipart" || mode === "urlencoded") return buildFormBody(requestBody, mode, input);
   if (mode === "binary") return buildBinaryBody(requestBody, input.bodyFiles);
   return buildTextBody(requestBody, mode, input);
 }
@@ -1025,15 +896,10 @@ export function buildApiRequest(input: ApiRequestInput): ApiRequestBuild {
   const { operation, origin } = input;
   const collected = collectParameters(operation, input);
   if ("error" in collected) return { request: null, error: collected.error };
-  const target = requestUrl(
-    collected.state.path,
-    origin,
-    collected.state.queryValues,
-  );
+  const target = requestUrl(collected.state.path, origin, collected.state.queryValues);
   if ("error" in target) return { request: null, error: target.error };
   const built = buildRequestBody(operation, input);
-  if (built !== null && "error" in built)
-    return { request: null, error: built.error };
+  if (built !== null && "error" in built) return { request: null, error: built.error };
   const headers = collected.state.headers;
   if (built !== null && built.contentType !== undefined)
     replaceHeader(headers, "Content-Type", built.contentType);
@@ -1045,9 +911,7 @@ export function buildApiRequest(input: ApiRequestInput): ApiRequestBuild {
         credentials: "same-origin",
         cache: "no-store",
         headers,
-        ...(built === null || built.body === undefined
-          ? {}
-          : { body: built.body }),
+        ...(built === null || built.body === undefined ? {} : { body: built.body }),
       },
     },
     error: null,
@@ -1074,9 +938,7 @@ function appendFileCode(
   }
   const file = `file${inputIndex + 1}`;
   setup.push(`const ${file} = ${input}?.files?.[0];`);
-  setup.push(
-    `if (!${file}) throw new Error(${JSON.stringify(`请选择文件：${name}`)});`,
-  );
+  setup.push(`if (!${file}) throw new Error(${JSON.stringify(`请选择文件：${name}`)});`);
   setup.push(`body.append(${JSON.stringify(name)}, ${file});`);
   return inputIndex + 1;
 }
@@ -1097,9 +959,7 @@ function formDataSetup(
   }
   for (const [name, value] of body.entries()) {
     if (typeof value === "string") {
-      setup.push(
-        `body.append(${JSON.stringify(name)}, ${JSON.stringify(value)});`,
-      );
+      setup.push(`body.append(${JSON.stringify(name)}, ${JSON.stringify(value)});`);
       continue;
     }
     if (seenFiles.has(name)) continue;
@@ -1113,9 +973,7 @@ function formDataSetup(
 function urlSearchParamsSetup(body: URLSearchParams): string[] {
   const setup: string[] = ["const body = new URLSearchParams();"];
   for (const [name, value] of body.entries())
-    setup.push(
-      `body.append(${JSON.stringify(name)}, ${JSON.stringify(value)});`,
-    );
+    setup.push(`body.append(${JSON.stringify(name)}, ${JSON.stringify(value)});`);
   return setup;
 }
 
@@ -1158,19 +1016,15 @@ export function apiRequestCode(
   if (!request) return null;
   const prelude = requestCodePrelude(operation, request, schemaRoot);
   if (prelude === null) return null;
-  const headers = Object.fromEntries(
-    new Headers(request.init.headers).entries(),
-  );
+  const headers = Object.fromEntries(new Headers(request.init.headers).entries());
   const headersCode = JSON.stringify(headers, null, 2).replaceAll("\n", "\n  ");
   const initLines = [
     `  method: ${JSON.stringify(operation.method)},`,
     `  credentials: "same-origin",`,
     `  headers: ${headersCode},`,
   ];
-  if (prelude.bodyExpression !== null)
-    initLines.push(`  body: ${prelude.bodyExpression},`);
+  if (prelude.bodyExpression !== null) initLines.push(`  body: ${prelude.bodyExpression},`);
   const initCode = ` {\n${initLines.join("\n")}\n}`;
-  const preludeCode =
-    prelude.setup.length > 0 ? `${prelude.setup.join("\n")}\n` : "";
+  const preludeCode = prelude.setup.length > 0 ? `${prelude.setup.join("\n")}\n` : "";
   return `${preludeCode}const response = await fetch(${JSON.stringify(request.url)},${initCode});\nconst rawResponse = await response.text();\nconsole.log(response.status, rawResponse);`;
 }

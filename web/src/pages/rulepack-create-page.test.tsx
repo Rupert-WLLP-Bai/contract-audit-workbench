@@ -3,18 +3,12 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
-import {
-  cleanup,
-  fireEvent,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -64,9 +58,7 @@ const manifest: RulePackManifestInput = {
         unit_family: "bandwidth",
         exclusions: null,
       },
-      authority_sources: [
-        { id: "policy-bandwidth", version: "7", kind: "policy" },
-      ],
+      authority_sources: [{ id: "policy-bandwidth", version: "7", kind: "policy" }],
     },
     {
       rule_id: "SLA",
@@ -112,9 +104,7 @@ const manifest: RulePackManifestInput = {
         unit_family: "ratio",
         exclusions: null,
       },
-      authority_sources: [
-        { id: "policy-advance", version: "7", kind: "policy" },
-      ],
+      authority_sources: [{ id: "policy-advance", version: "7", kind: "policy" }],
     },
   ],
 };
@@ -165,8 +155,7 @@ function renderCreate(
           `/api/admin/rulepacks/${encodeURIComponent(source.pack.id)}/versions/${encodeURIComponent(source.pack.version)}`
       )
         return json(source);
-      if (path === "/api/admin/rulepacks" && init?.method === "POST")
-        return createResponse();
+      if (path === "/api/admin/rulepacks" && init?.method === "POST") return createResponse();
       return json(
         {
           error: {
@@ -197,10 +186,7 @@ function renderCreate(
       >
         <Routes>
           <Route path="/admin/rulepacks/new" element={<RulePackCreatePage />} />
-          <Route
-            path="/admin/rulepacks/:packId/versions/:version"
-            element={<Destination />}
-          />
+          <Route path="/admin/rulepacks/:packId/versions/:version" element={<Destination />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -238,17 +224,12 @@ async function fillDraft(user: ReturnType<typeof userEvent.setup>) {
   const localStart = new Date(2026, 9, 1);
   const localEnd = new Date(2027, 0, 1);
   const dateInput = (date: Date) =>
-    new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-      .toISOString()
-      .slice(0, 16);
+    new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
   change("生效时间（本地时区）", dateInput(localStart));
   change("失效时间（本地时区，结束时刻不含）", dateInput(localEnd));
   for (const [index, rule] of manifest.rules.entries()) {
-    if (index > 0)
-      await user.click(screen.getByRole("button", { name: "添加规则" }));
-    const fields = within(
-      screen.getByRole("group", { name: new RegExp(`^规则 ${index + 1}`) }),
-    );
+    if (index > 0) await user.click(screen.getByRole("button", { name: "添加规则" }));
+    const fields = within(screen.getByRole("group", { name: new RegExp(`^规则 ${index + 1}`) }));
     const values = [
       ["规则 ID", rule.rule_id],
       ["规则版本", rule.version],
@@ -298,18 +279,14 @@ describe("RulePackCreatePage", () => {
     const requests = renderCreate(undefined, undefined, source);
     const user = userEvent.setup();
     await screen.findByText(/已复制/);
-    expect(screen.getByLabelText("规则包 ID", { exact: true })).toHaveAttribute(
-      "readonly",
-    );
+    expect(screen.getByLabelText("规则包 ID", { exact: true })).toHaveAttribute("readonly");
     change("版本", "2");
     const firstRule = within(screen.getByRole("group", { name: /^规则 1/ }));
     fireEvent.change(firstRule.getByLabelText("比较阈值", { exact: true }), {
       target: { value: "120" },
     });
     await user.click(screen.getByRole("button", { name: "创建草稿" }));
-    await waitFor(() =>
-      expect(requests.some((item) => item.init?.method === "POST")).toBe(true),
-    );
+    await waitFor(() => expect(requests.some((item) => item.init?.method === "POST")).toBe(true));
     const body = JSON.parse(
       String(requests.find((item) => item.init?.method === "POST")?.init?.body),
     );
@@ -326,16 +303,10 @@ describe("RulePackCreatePage", () => {
       resolve = complete;
     });
     renderCreate(undefined, () => pending);
-    expect(
-      screen.getByRole("heading", { name: "正在确认管理身份" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "创建草稿" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "正在确认管理身份" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "创建草稿" })).not.toBeInTheDocument();
     resolve(json(session));
-    expect(await screen.findByLabelText("可信会话租户")).toHaveValue(
-      "tenant-test",
-    );
+    expect(await screen.findByLabelText("可信会话租户")).toHaveValue("tenant-test");
     expect(screen.getByLabelText("规则租户")).toHaveAttribute("readonly");
   });
 
@@ -347,18 +318,10 @@ describe("RulePackCreatePage", () => {
     "blocks creation when session lookup returns %i",
     async (status, code, link, href) => {
       const requests = renderCreate(undefined, () =>
-        json(
-          { error: { code, message: "Session unavailable", retryable: false } },
-          status,
-        ),
+        json({ error: { code, message: "Session unavailable", retryable: false } }, status),
       );
-      expect(await screen.findByRole("link", { name: link })).toHaveAttribute(
-        "href",
-        href,
-      );
-      expect(
-        screen.queryByRole("button", { name: "创建草稿" }),
-      ).not.toBeInTheDocument();
+      expect(await screen.findByRole("link", { name: link })).toHaveAttribute("href", href);
+      expect(screen.queryByRole("button", { name: "创建草稿" })).not.toBeInTheDocument();
       expect(requests.some(({ init }) => init?.method === "POST")).toBe(false);
     },
   );
@@ -384,13 +347,10 @@ describe("RulePackCreatePage", () => {
     await fillDraft(user);
     await user.click(screen.getByRole("button", { name: "创建草稿" }));
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "正在创建草稿" }),
-      ).toBeDisabled(),
+      expect(screen.getByRole("button", { name: "正在创建草稿" })).toBeDisabled(),
     );
     expect(screen.getByLabelText("生效时间（本地时区）")).toBeDisabled();
-    for (const input of screen.getAllByLabelText("规则 ID"))
-      expect(input).toBeDisabled();
+    for (const input of screen.getAllByLabelText("规则 ID")) expect(input).toBeDisabled();
     const request = requests.find(({ init }) => init?.method === "POST");
     const body = JSON.parse(String(request?.init?.body));
     expect(body.manifest).toEqual({
@@ -431,20 +391,13 @@ describe("RulePackCreatePage", () => {
     expect(screen.getAllByLabelText("比较阈值")[0]).toHaveValue("000100.000");
     change("版本", "release/3");
     await user.click(screen.getByRole("button", { name: "创建草稿" }));
-    expect(await screen.findByLabelText("目标路径")).toHaveTextContent(
-      "/versions/release%2F3",
-    );
+    expect(await screen.findByLabelText("目标路径")).toHaveTextContent("/versions/release%2F3");
     const posts = requests.filter(({ init }) => init?.method === "POST");
     expect(posts).toHaveLength(2);
-    expect(JSON.parse(String(posts[1]?.init?.body)).manifest.version).toBe(
-      "release/3",
-    );
+    expect(JSON.parse(String(posts[1]?.init?.body)).manifest.version).toBe("release/3");
   });
 
-  it.each([
-    "{invalid JSON",
-    JSON.stringify({ pack: { status: "draft" }, manifest: null }),
-  ])(
+  it.each(["{invalid JSON", JSON.stringify({ pack: { status: "draft" }, manifest: null })])(
     "keeps form values when a successful HTTP response is malformed: %s",
     async (response) => {
       renderCreate(
@@ -460,9 +413,7 @@ describe("RulePackCreatePage", () => {
       const error = await screen.findByRole("alert");
       expect(error).toHaveFocus();
       expect(screen.queryByLabelText("目标路径")).not.toBeInTheDocument();
-      expect(screen.getByLabelText("版本", { exact: true })).toHaveValue(
-        "release/2",
-      );
+      expect(screen.getByLabelText("版本", { exact: true })).toHaveValue("release/2");
       expect(screen.getByRole("button", { name: "创建草稿" })).toBeEnabled();
     },
   );

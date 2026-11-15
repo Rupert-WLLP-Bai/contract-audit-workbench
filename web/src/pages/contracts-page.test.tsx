@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-08
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,7 +12,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { CONTRACT_LEDGER_COLUMNS, contractLedgerExportColumns, parseContractExport } from "../api/contracts";
+import {
+  CONTRACT_LEDGER_COLUMNS,
+  contractLedgerExportColumns,
+  parseContractExport,
+} from "../api/contracts";
 import { setSessionIdentity } from "../api/http";
 import { idempotencyActorScope, pendingMutationKey } from "../api/idempotency";
 import { renderWithAntd as render } from "../test/antd";
@@ -24,13 +28,18 @@ const source = vi.hoisted(() => ({
   drafts: [] as Array<Record<string, unknown>>,
   realSavedViews: false,
   actor: {
-    id: "synthetic-admin", role: "admin", audience: "client", tenant_id: "tenant-1", org_id: "org-1",
-    active_context: { context_version: "1" }, csrf_token: "synthetic-csrf-token",
+    id: "synthetic-admin",
+    role: "admin",
+    audience: "client",
+    tenant_id: "tenant-1",
+    org_id: "org-1",
+    active_context: { context_version: "1" },
+    csrf_token: "synthetic-csrf-token",
   },
 }));
 
 vi.mock("../api/contracts", async (importOriginal) => ({
-  ...await importOriginal<typeof import("../api/contracts")>(),
+  ...(await importOriginal<typeof import("../api/contracts")>()),
   listMyContractDrafts: vi.fn(async () => source.drafts),
 }));
 
@@ -44,16 +53,32 @@ vi.mock("../api/queries", async (importOriginal) => {
   return {
     ...actual,
     useSession: () => ({ data: source.actor }),
-    useContractLedger: () => ({ data: { pages: [{ items: source.rows }] }, isLoading: false, isError: false, hasNextPage: false }),
-    useContractSavedViews: (scope: string, enabled: boolean) => source.realSavedViews
-      ? actual.useContractSavedViews(scope, enabled)
-      : { data: [{
-          view_id: "state-view", name: "状态对照", filter: {}, row_version: 1,
-          columns: ["contract_name", "authority_mode", "contract_state", "workflow_state"],
-        }] },
-    useCreateContractSavedView: () => source.realSavedViews ? actual.useCreateContractSavedView() : { mutateAsync: vi.fn() },
-    useReplaceContractSavedView: () => source.realSavedViews ? actual.useReplaceContractSavedView() : { mutateAsync: vi.fn() },
-    useDeleteContractSavedView: () => source.realSavedViews ? actual.useDeleteContractSavedView() : { mutateAsync: vi.fn() },
+    useContractLedger: () => ({
+      data: { pages: [{ items: source.rows }] },
+      isLoading: false,
+      isError: false,
+      hasNextPage: false,
+    }),
+    useContractSavedViews: (scope: string, enabled: boolean) =>
+      source.realSavedViews
+        ? actual.useContractSavedViews(scope, enabled)
+        : {
+            data: [
+              {
+                view_id: "state-view",
+                name: "状态对照",
+                filter: {},
+                row_version: 1,
+                columns: ["contract_name", "authority_mode", "contract_state", "workflow_state"],
+              },
+            ],
+          },
+    useCreateContractSavedView: () =>
+      source.realSavedViews ? actual.useCreateContractSavedView() : { mutateAsync: vi.fn() },
+    useReplaceContractSavedView: () =>
+      source.realSavedViews ? actual.useReplaceContractSavedView() : { mutateAsync: vi.fn() },
+    useDeleteContractSavedView: () =>
+      source.realSavedViews ? actual.useDeleteContractSavedView() : { mutateAsync: vi.fn() },
     useCases: () => ({ data: [], isSuccess: true, isError: false }),
     useCaseDetail: () => ({ data: undefined, isError: false }),
   };
@@ -61,16 +86,29 @@ vi.mock("../api/queries", async (importOriginal) => {
 
 function row(overrides: Record<string, string>) {
   return {
-    contract_id: "11111111-1111-4111-8111-111111111111", name: "示例合同", number: null,
-    authority_mode: "native", contract_state: "draft", workflow_state: "not_started",
-    amount: null, currency: null, owner_org_id: "org-1", row_version: 1,
-    created_at: "2026-11-05T00:00:00Z", updated_at: "2026-11-05T00:00:00Z", ...overrides,
+    contract_id: "11111111-1111-4111-8111-111111111111",
+    name: "示例合同",
+    number: null,
+    authority_mode: "native",
+    contract_state: "draft",
+    workflow_state: "not_started",
+    amount: null,
+    currency: null,
+    owner_org_id: "org-1",
+    row_version: 1,
+    created_at: "2026-11-05T00:00:00Z",
+    updated_at: "2026-11-05T00:00:00Z",
+    ...overrides,
   };
 }
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}><ContractsPage /></QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={client}>
+      <ContractsPage />
+    </QueryClientProvider>,
+  );
 }
 
 beforeEach(() => {
@@ -79,7 +117,10 @@ beforeEach(() => {
   source.realSavedViews = false;
   sessionStorage.clear();
   setSessionIdentity(source.actor);
-  Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:synthetic") });
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: vi.fn(() => "blob:synthetic"),
+  });
   Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
   vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
 });
@@ -91,19 +132,42 @@ afterEach(() => {
 
 it("uses the submitted readable columns and obtains the CSV from the ledger routes", async () => {
   const exportID = "11111111-1111-4111-8111-111111111111";
-  const csv = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode("合同名称,合同状态名称,合同状态代码\n示例合同,草稿,draft\n")]);
+  const csv = new Uint8Array([
+    0xef,
+    0xbb,
+    0xbf,
+    ...new TextEncoder().encode("合同名称,合同状态名称,合同状态代码\n示例合同,草稿,draft\n"),
+  ]);
   const fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     if (String(url) === "/api/contracts/ledger/exports" && init?.method === "POST") {
       const payload = JSON.parse(String(init.body));
-      return new Response(JSON.stringify({
-        export_id: exportID, state: "ready", format: "csv",
-        columns: payload.columns, row_count: 1, created_at: "2026-11-05T00:00:00Z",
-        expires_at: "2026-11-06T00:00:00Z", download_available: true, replayed: false,
-      }), { status: 201, headers: { "Content-Type": "application/json" } });
+      return new Response(
+        JSON.stringify({
+          export_id: exportID,
+          state: "ready",
+          format: "csv",
+          columns: payload.columns,
+          row_count: 1,
+          created_at: "2026-11-05T00:00:00Z",
+          expires_at: "2026-11-06T00:00:00Z",
+          download_available: true,
+          replayed: false,
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      );
     }
-    if (String(url) === `/api/contracts/ledger/exports/${exportID}/download` && init?.method === "GET")
-      return new Response(csv, { status: 200, headers: { "Content-Type": "text/csv; charset=utf-8" } });
-    return new Response(JSON.stringify({ error: "not found" }), { status: 404, headers: { "Content-Type": "application/json" } });
+    if (
+      String(url) === `/api/contracts/ledger/exports/${exportID}/download` &&
+      init?.method === "GET"
+    )
+      return new Response(csv, {
+        status: 200,
+        headers: { "Content-Type": "text/csv; charset=utf-8" },
+      });
+    return new Response(JSON.stringify({ error: "not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
   });
   vi.stubGlobal("fetch", fetch);
   renderPage();
@@ -112,14 +176,27 @@ it("uses the submitted readable columns and obtains the CSV from the ledger rout
   expect(String(fetch.mock.calls[0]?.[0])).toBe("/api/contracts/ledger/exports");
   await within(screen.getByRole("region", { name: "合同台账" })).findByText("已导出 1 行");
   expect(fetch).toHaveBeenCalledTimes(2);
-  expect(String(fetch.mock.calls[1]?.[0])).toBe(`/api/contracts/ledger/exports/${exportID}/download`);
+  expect(String(fetch.mock.calls[1]?.[0])).toBe(
+    `/api/contracts/ledger/exports/${exportID}/download`,
+  );
   const request = fetch.mock.calls.find(([, init]) => init?.method === "POST")?.[1];
   expect(request).toBeDefined();
   const payload = JSON.parse(String(request!.body));
   expect(payload).toEqual({
     filter: {},
-    columns: ["contract_number", "contract_name", "supplier_name", "amount", "currency", "department_id",
-      "contract_state_label", "contract_state_code", "workflow_state_label", "workflow_state_code", "updated_at"],
+    columns: [
+      "contract_number",
+      "contract_name",
+      "supplier_name",
+      "amount",
+      "currency",
+      "department_id",
+      "contract_state_label",
+      "contract_state_code",
+      "workflow_state_label",
+      "workflow_state_code",
+      "updated_at",
+    ],
     format: "csv",
   });
   expect(vi.mocked(pendingMutationKey).mock.calls[0]?.[3]).toEqual(payload);
@@ -138,12 +215,28 @@ it("saves, reapplies, updates and deletes a view through the ledger API", async 
   const viewID = "22222222-2222-4222-8222-222222222222";
   const path = "/api/contracts/ledger/views";
   const at = "2026-11-05T00:00:00Z";
-  let saved: { view_id: string; name: string; filter: unknown; columns: unknown; row_version: number; created_at: string; updated_at: string } | null = null;
-  const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
+  let saved: {
+    view_id: string;
+    name: string;
+    filter: unknown;
+    columns: unknown;
+    row_version: number;
+    created_at: string;
+    updated_at: string;
+  } | null = null;
+  const json = (value: unknown, status = 200) =>
+    new Response(JSON.stringify(value), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
   const fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     const route = String(url);
     const headers = new Headers(init?.headers);
-    if (init?.method !== "GET" && (headers.get("X-Context-Version") !== "1" || headers.get("X-CSRF-Token") !== source.actor.csrf_token))
+    if (
+      init?.method !== "GET" &&
+      (headers.get("X-Context-Version") !== "1" ||
+        headers.get("X-CSRF-Token") !== source.actor.csrf_token)
+    )
       return json({ error: "missing context" }, 403);
     if (route === path && init?.method === "GET") return json({ items: saved ? [saved] : [] });
     if (route === path && init?.method === "POST" && saved === null) {
@@ -154,10 +247,20 @@ it("saves, reapplies, updates and deletes a view through the ledger API", async 
     if (route === `${path}/${viewID}` && init?.method === "POST" && saved !== null) {
       const body = JSON.parse(String(init.body));
       if (body.expected_row_version !== saved.row_version) return json({ error: "stale" }, 409);
-      saved = { ...saved, name: body.name, filter: body.filter, columns: body.columns, row_version: 2 };
+      saved = {
+        ...saved,
+        name: body.name,
+        filter: body.filter,
+        columns: body.columns,
+        row_version: 2,
+      };
       return json(saved);
     }
-    if (route === `${path}/${viewID}?expected_row_version=2` && init?.method === "DELETE" && saved?.row_version === 2) {
+    if (
+      route === `${path}/${viewID}?expected_row_version=2` &&
+      init?.method === "DELETE" &&
+      saved?.row_version === 2
+    ) {
       saved = null;
       return json({ deleted: true });
     }
@@ -188,25 +291,55 @@ it("saves, reapplies, updates and deletes a view through the ledger API", async 
   expect(await screen.findByText("视图已删除")).toBeInTheDocument();
   const writes = fetch.mock.calls.filter(([, init]) => init?.method !== "GET");
   expect(writes.map(([url, init]) => [String(url), init?.method])).toEqual([
-    [path, "POST"], [`${path}/${viewID}`, "POST"], [`${path}/${viewID}?expected_row_version=2`, "DELETE"],
+    [path, "POST"],
+    [`${path}/${viewID}`, "POST"],
+    [`${path}/${viewID}?expected_row_version=2`, "DELETE"],
   ]);
-  expect(JSON.parse(String(writes[0]![1]?.body))).toMatchObject({ name: "设备视图", filter: { text: "设备" } });
-  expect(JSON.parse(String(writes[1]![1]?.body))).toMatchObject({ name: "更新视图", filter: { text: "设备" }, expected_row_version: 1 });
+  expect(JSON.parse(String(writes[0]![1]?.body))).toMatchObject({
+    name: "设备视图",
+    filter: { text: "设备" },
+  });
+  expect(JSON.parse(String(writes[1]![1]?.body))).toMatchObject({
+    name: "更新视图",
+    filter: { text: "设备" },
+    expected_row_version: 1,
+  });
   expect(saved).toBeNull();
 });
 
 it("expands all selected display fields in place within the twenty-column request limit", () => {
   const columns = contractLedgerExportColumns(CONTRACT_LEDGER_COLUMNS.map((column) => column.key));
   expect(columns).toEqual([
-    "contract_number", "contract_name", "authority_mode_label", "authority_mode_code", "supplier_name", "amount", "currency",
-    "department_id", "project_type", "procurement_method", "contract_state_label", "contract_state_code",
-    "workflow_state_label", "workflow_state_code", "signing_date", "source_system", "created_at", "updated_at",
+    "contract_number",
+    "contract_name",
+    "authority_mode_label",
+    "authority_mode_code",
+    "supplier_name",
+    "amount",
+    "currency",
+    "department_id",
+    "project_type",
+    "procurement_method",
+    "contract_state_label",
+    "contract_state_code",
+    "workflow_state_label",
+    "workflow_state_code",
+    "signing_date",
+    "source_system",
+    "created_at",
+    "updated_at",
   ]);
   expect(columns).toHaveLength(18);
   const response = {
-    export_id: "11111111-1111-4111-8111-111111111111", state: "ready", format: "csv", columns,
-    row_count: 1, created_at: "2026-11-05T00:00:00Z", expires_at: "2026-11-06T00:00:00Z",
-    download_available: true, replayed: false,
+    export_id: "11111111-1111-4111-8111-111111111111",
+    state: "ready",
+    format: "csv",
+    columns,
+    row_count: 1,
+    created_at: "2026-11-05T00:00:00Z",
+    expires_at: "2026-11-06T00:00:00Z",
+    download_available: true,
+    replayed: false,
   };
   expect(parseContractExport(response).columns).toEqual(columns);
   expect(() => parseContractExport({ ...response, columns: ["unknown_column"] })).toThrow();
@@ -225,10 +358,15 @@ it("keeps an old pending request distinct from the complete new payload and reus
 
 it("shows ledger labels and discloses unknown codes only in copyable technical details", async () => {
   // Inject directly at the display boundary; the OpenAPI enum contract stays strict.
-  source.rows = labelCases.map((item, index) => row({
-    contract_id: String(index), name: item.name,
-    authority_mode: item.authority, contract_state: item.state, workflow_state: item.workflow,
-  }));
+  source.rows = labelCases.map((item, index) =>
+    row({
+      contract_id: String(index),
+      name: item.name,
+      authority_mode: item.authority,
+      contract_state: item.state,
+      workflow_state: item.workflow,
+    }),
+  );
   renderPage();
   const user = userEvent.setup();
   const writeText = vi.spyOn(navigator.clipboard, "writeText");
@@ -309,7 +447,10 @@ it("keeps one draft while switching among the four contract form sections", asyn
   const name = await screen.findByLabelText("合同名称");
   await user.type(name, "四分区共享草稿");
   await user.click(screen.getByRole("button", { name: "相关方与标的" }));
-  expect(screen.getByRole("button", { name: "相关方与标的" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "相关方与标的" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   expect(name).not.toBeVisible();
   await user.click(screen.getByRole("button", { name: "资金与付款" }));
   expect(name).not.toBeVisible();

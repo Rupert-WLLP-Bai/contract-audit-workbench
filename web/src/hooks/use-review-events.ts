@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -17,12 +17,7 @@ import {
 } from "../domain/review";
 
 export type StreamStatus =
-  | "connecting"
-  | "live"
-  | "reconnecting"
-  | "exhausted"
-  | "closed"
-  | "inactive";
+  "connecting" | "live" | "reconnecting" | "exhausted" | "closed" | "inactive";
 
 /** The latest delivered event and any terminal transition in its batch. */
 export interface ReviewEventBatch {
@@ -108,13 +103,7 @@ export function useReviewEvents(
     };
 
     function scheduleRefresh() {
-      if (
-        !active ||
-        refreshing ||
-        pendingEvent === null ||
-        refreshTimer !== null
-      )
-        return;
+      if (!active || refreshing || pendingEvent === null || refreshTimer !== null) return;
       refreshTimer = window.setTimeout(() => {
         refreshTimer = null;
         flushRefresh();
@@ -124,8 +113,7 @@ export function useReviewEvents(
     function finishRefresh() {
       refreshing = false;
       if (!active || pendingEvent === null) return;
-      if (pendingTerminalState !== null || !isProgressEvent(pendingEvent))
-        flushRefresh();
+      if (pendingTerminalState !== null || !isProgressEvent(pendingEvent)) flushRefresh();
       else scheduleRefresh();
     }
 
@@ -184,8 +172,7 @@ export function useReviewEvents(
       if (!event) return;
       pendingEvent = event;
       if (isTerminalStateEvent(event)) pendingTerminalState = event.state;
-      if (pendingTerminalState !== null || !isProgressEvent(event))
-        flushRefresh();
+      if (pendingTerminalState !== null || !isProgressEvent(event)) flushRefresh();
       else scheduleRefresh();
     };
     return () => {

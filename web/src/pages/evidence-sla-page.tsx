@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,8 +16,7 @@ import { PageStatus } from "../components/page-status";
 
 export function EvidenceSLAPage() {
   const cases = useCases();
-  if (cases.isLoading)
-    return <PageStatus kind="loading" title="正在读取授权案件" />;
+  if (cases.isLoading) return <PageStatus kind="loading" title="正在读取授权案件" />;
   if (cases.isError)
     return (
       <PageStatus
@@ -36,9 +35,7 @@ export function EvidenceSLAPage() {
       <header className="page-head">
         <div>
           <h1>补充材料时效</h1>
-          <p>
-            只读取当前账号可访问的案件，并逐案读取补充材料请求及其回执历史。
-          </p>
+          <p>只读取当前账号可访问的案件，并逐案读取补充材料请求及其回执历史。</p>
         </div>
       </header>
       <EvidenceSLADashboard cases={cases.data ?? []} />

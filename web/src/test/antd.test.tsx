@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-04
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -19,7 +19,11 @@ import { renderWithAntd } from "./antd";
 it("retains the same stateful child through prop changes", async () => {
   function Counter({ label }: { label: string }) {
     const [count, setCount] = useState(0);
-    return <button onClick={() => setCount((value) => value + 1)}>{label}: {count}</button>;
+    return (
+      <button onClick={() => setCount((value) => value + 1)}>
+        {label}: {count}
+      </button>
+    );
   }
 
   const view = renderWithAntd(<Counter label="A" />);

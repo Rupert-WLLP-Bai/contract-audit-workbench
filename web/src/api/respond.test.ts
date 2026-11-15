@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -29,9 +29,7 @@ describe("invalidResponse", () => {
       retryable: false,
       details: null,
     });
-    expect(() => invalidResponse("默认状态")).toThrow(
-      expect.objectContaining({ status: 200 }),
-    );
+    expect(() => invalidResponse("默认状态")).toThrow(expect.objectContaining({ status: 200 }));
   });
 });
 
@@ -77,15 +75,9 @@ describe("responseReader", () => {
       b: 2,
     });
     expect(reader.record({ a: 1 }, "x", ["a", "b"], ["a"])).toEqual({ a: 1 });
-    expect(() => reader.record({ a: 1, c: 2 }, "x", ["a", "b"])).toThrow(
-      message("x"),
-    );
-    expect(() => reader.record({ a: 1 }, "x", ["a", "b"])).toThrow(
-      message("x"),
-    );
-    expect(() => reader.record({}, "x", ["a"], ["a", "b"])).toThrow(
-      message("x"),
-    );
+    expect(() => reader.record({ a: 1, c: 2 }, "x", ["a", "b"])).toThrow(message("x"));
+    expect(() => reader.record({ a: 1 }, "x", ["a", "b"])).toThrow(message("x"));
+    expect(() => reader.record({}, "x", ["a"], ["a", "b"])).toThrow(message("x"));
     expect(() => reader.record(null, "x", ["a"])).toThrow(message("x"));
   });
 
@@ -112,9 +104,7 @@ describe("responseReader", () => {
     expect(reader.integer(3, "x", 3)).toBe(3);
     expect(() => reader.integer(2, "x", 3)).toThrow(message("x"));
     expect(() => reader.integer(1.5, "x")).toThrow(message("x"));
-    expect(() => reader.integer(Number.MAX_SAFE_INTEGER + 1, "x")).toThrow(
-      message("x"),
-    );
+    expect(() => reader.integer(Number.MAX_SAFE_INTEGER + 1, "x")).toThrow(message("x"));
     expect(() => reader.integer("1", "x")).toThrow(message("x"));
     expect(() => reader.integer(Number.NaN, "x")).toThrow(message("x"));
   });
@@ -129,30 +119,28 @@ describe("responseReader", () => {
   });
 
   it("array maps entries with indexed error paths", () => {
-    expect(reader.array([1, 2], "x", (entry, path) => {
-      if (typeof entry !== "number") return reader.invalid(path);
-      return entry * 2;
-    })).toEqual([2, 4]);
-    expect(() => reader.array([1, "b"], "x", (entry, path) => {
-      if (typeof entry !== "number") return reader.invalid(path);
-      return entry;
-    })).toThrow(message("x[1]"));
-    expect(() => reader.array(null, "x", (entry) => entry)).toThrow(
-      message("x"),
-    );
+    expect(
+      reader.array([1, 2], "x", (entry, path) => {
+        if (typeof entry !== "number") return reader.invalid(path);
+        return entry * 2;
+      }),
+    ).toEqual([2, 4]);
+    expect(() =>
+      reader.array([1, "b"], "x", (entry, path) => {
+        if (typeof entry !== "number") return reader.invalid(path);
+        return entry;
+      }),
+    ).toThrow(message("x[1]"));
+    expect(() => reader.array(null, "x", (entry) => entry)).toThrow(message("x"));
   });
 
   it("nullableArray and optionalArray keep null and undefined distinct", () => {
     const identity = (entry: unknown) => entry;
     expect(reader.nullableArray(null, "x", identity)).toBeNull();
     expect(reader.nullableArray([1], "x", identity)).toEqual([1]);
-    expect(() => reader.nullableArray(undefined, "x", identity)).toThrow(
-      message("x"),
-    );
+    expect(() => reader.nullableArray(undefined, "x", identity)).toThrow(message("x"));
     expect(reader.optionalArray(undefined, "x", identity)).toBeUndefined();
     expect(reader.optionalArray([1], "x", identity)).toEqual([1]);
-    expect(() => reader.optionalArray(null, "x", identity)).toThrow(
-      message("x"),
-    );
+    expect(() => reader.optionalArray(null, "x", identity)).toThrow(message("x"));
   });
 });

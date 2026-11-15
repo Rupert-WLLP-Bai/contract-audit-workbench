@@ -3,20 +3,14 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Card } from "antd";
 import { Button, Input, Select } from "antd";
-import {
-  useState,
-  useEffect,
-  useRef,
-  type FormEvent,
-  type RefObject,
-} from "react";
+import { useState, useEffect, useRef, type FormEvent, type RefObject } from "react";
 import { errorMessage, isConflict } from "../api/http";
 import { useTestRulePack } from "../api/queries";
 import type {
@@ -52,9 +46,7 @@ const RELATION_TONES: Record<RulePackRelation, StatusTone> = {
   not_applicable: "neutral",
 };
 
-function selectionKey(
-  source: Pick<RulePackTestSource, "id" | "version">,
-): string {
+function selectionKey(source: Pick<RulePackTestSource, "id" | "version">): string {
   return JSON.stringify([source.id, source.version]);
 }
 
@@ -79,11 +71,7 @@ function newSampleFact(rule: RulePackRule, index: number): RulePackTestFact {
   };
 }
 
-function readSelection(
-  text: string,
-  start: number,
-  end: number,
-): Selection | null {
+function readSelection(text: string, start: number, end: number): Selection | null {
   if (start >= end) return null;
   return {
     start: toCodePointOffset(text, start),
@@ -122,9 +110,7 @@ function SourceEditor({
             id={`sample-source-${index}-id`}
             required
             value={source.id}
-            onChange={(event) =>
-              onChange({ ...source, id: event.target.value })
-            }
+            onChange={(event) => onChange({ ...source, id: event.target.value })}
           />
         </label>
         <label className="field" htmlFor={`sample-source-${index}-version`}>
@@ -134,9 +120,7 @@ function SourceEditor({
             id={`sample-source-${index}-version`}
             required
             value={source.version}
-            onChange={(event) =>
-              onChange({ ...source, version: event.target.value })
-            }
+            onChange={(event) => onChange({ ...source, version: event.target.value })}
           />
         </label>
         <label className="field" htmlFor={`sample-source-${index}-role`}>
@@ -146,9 +130,7 @@ function SourceEditor({
             id={`sample-source-${index}-role`}
             required
             value={source.role}
-            onChange={(event) =>
-              onChange({ ...source, role: event.target.value })
-            }
+            onChange={(event) => onChange({ ...source, role: event.target.value })}
           />
         </label>
         <label
@@ -171,15 +153,12 @@ function SourceEditor({
                 ),
               )
             }
-            onChange={(event) =>
-              onChange({ ...source, text: event.target.value })
-            }
+            onChange={(event) => onChange({ ...source, text: event.target.value })}
           />
         </label>
       </div>
       <p className="meta">
-        选中文字后可作为引用。界面会把浏览器 UTF-16 选区换算为服务端使用的
-        Unicode 码点半区间。
+        选中文字后可作为引用。界面会把浏览器 UTF-16 选区换算为服务端使用的 Unicode 码点半区间。
       </p>
       <Button
         aria-label={"移除材料 " + String(index + 1)}
@@ -253,9 +232,7 @@ function FactIdentityFields({
           id={`sample-fact-${index}-dimension`}
           required
           value={fact.dimension}
-          onChange={(event) =>
-            onChange({ ...fact, dimension: event.target.value })
-          }
+          onChange={(event) => onChange({ ...fact, dimension: event.target.value })}
         />
       </label>
       <label className="field" htmlFor={`sample-fact-${index}-object`}>
@@ -264,9 +241,7 @@ function FactIdentityFields({
           disabled={disabled}
           id={`sample-fact-${index}-object`}
           value={fact.object_ref}
-          onChange={(event) =>
-            onChange({ ...fact, object_ref: event.target.value })
-          }
+          onChange={(event) => onChange({ ...fact, object_ref: event.target.value })}
         />
       </label>
       <label className="field" htmlFor={`sample-fact-${index}-value`}>
@@ -332,10 +307,7 @@ function FactRoleField({
         aria-label="材料角色"
         value={fact.source_role || undefined}
         onChange={(value) => onChange({ ...fact, source_role: value })}
-        options={[
-          { label: "选择样本材料角色", value: "" },
-          ...roleOptions(sources, selectedRule),
-        ]}
+        options={[{ label: "选择样本材料角色", value: "" }, ...roleOptions(sources, selectedRule)]}
       />
     </label>
   );
@@ -449,9 +421,7 @@ function FactApplicabilityField({
         id={`sample-fact-${index}-applicable`}
         aria-label="适用性"
         value={applicabilityValue(fact.applicable)}
-        onChange={(value) =>
-          onChange({ ...fact, applicable: applicabilityPatch(value) })
-        }
+        onChange={(value) => onChange({ ...fact, applicable: applicabilityPatch(value) })}
         options={[
           { label: "未指定", value: "unset" },
           { label: "适用", value: "yes" },
@@ -478,8 +448,7 @@ function CitationRows({
       {fact.citations.map((citation, citationIndex) => (
         <li key={`${citation.source_id}:${citation.start}:${citationIndex}`}>
           <strong>
-            {citation.source_id} v{citation.source_version}，码点 [
-            {citation.start},{citation.end})
+            {citation.source_id} v{citation.source_version}，码点 [{citation.start},{citation.end})
           </strong>
           <blockquote>{citation.quote}</blockquote>
           <Button
@@ -490,9 +459,7 @@ function CitationRows({
             onClick={() =>
               onChange({
                 ...fact,
-                citations: fact.citations.filter(
-                  (_, itemIndex) => itemIndex !== citationIndex,
-                ),
+                citations: fact.citations.filter((_, itemIndex) => itemIndex !== citationIndex),
               })
             }
           >
@@ -509,9 +476,8 @@ function citationSourceOf(
   citationSourceKey: string,
 ): RulePackTestSource | undefined {
   return (
-    eligibleSources.find(
-      (source) => selectionKey(source) === citationSourceKey,
-    ) ?? eligibleSources[0]
+    eligibleSources.find((source) => selectionKey(source) === citationSourceKey) ??
+    eligibleSources[0]
   );
 }
 
@@ -525,18 +491,12 @@ function CitationSourceSummary({
   sourceRole: string;
 }) {
   if (!selectedSource) {
-    return (
-      <p className="meta">
-        先添加角色为“{sourceRole || "所选事实角色"}”的样本材料。
-      </p>
-    );
+    return <p className="meta">先添加角色为“{sourceRole || "所选事实角色"}”的样本材料。</p>;
   }
   return (
     <p className="meta">
       当前来源 {selectedSource.id} v{selectedSource.version} 的选区：
-      {selection
-        ? `码点 [${selection.start},${selection.end})`
-        : "未选择文本"}
+      {selection ? `码点 [${selection.start},${selection.end})` : "未选择文本"}
     </p>
   );
 }
@@ -558,9 +518,7 @@ function AddCitationButton({
     <Button
       aria-label={"添加当前选区引用"}
       htmlType="button"
-      disabled={
-        disabled || !selectedSource || !selection || citationCount >= 8
-      }
+      disabled={disabled || !selectedSource || !selection || citationCount >= 8}
       onClick={onUse}
     >
       添加当前选区引用
@@ -590,29 +548,20 @@ function FactCitationSection({
     (source) => source.role === fact.source_role && source.id !== "",
   );
   const selectedSource = citationSourceOf(eligibleSources, citationSourceKey);
-  const selection = selectedSource
-    ? selections[selectionKey(selectedSource)]
-    : undefined;
+  const selection = selectedSource ? selections[selectionKey(selectedSource)] : undefined;
   return (
     <section
       className="rulepack-citations"
       aria-labelledby={`sample-fact-${index}-citations-title`}
     >
       <h4 id={`sample-fact-${index}-citations-title`}>来源引用</h4>
-      <label
-        className="field"
-        htmlFor={`sample-fact-${index}-citation-source`}
-      >
+      <label className="field" htmlFor={`sample-fact-${index}-citation-source`}>
         引用材料
         <Select
           disabled={disabled}
           id={`sample-fact-${index}-citation-source`}
           aria-label="引用材料"
-          value={
-            selectedSource
-              ? selectionKey(selectedSource) || undefined
-              : undefined
-          }
+          value={selectedSource ? selectionKey(selectedSource) || undefined : undefined}
           onChange={setCitationSourceKey}
           options={[
             { label: "选择材料角色匹配的样本", value: "" },
@@ -626,12 +575,7 @@ function FactCitationSection({
       {fact.citations.length === 0 ? (
         <p>至少添加一条与样本原文完全相同的引用，事实才会参与比较。</p>
       ) : (
-        <CitationRows
-          fact={fact}
-          index={index}
-          disabled={disabled}
-          onChange={onChange}
-        />
+        <CitationRows fact={fact} index={index} disabled={disabled} onChange={onChange} />
       )}
       <CitationSourceSummary
         selectedSource={selectedSource}
@@ -695,18 +639,8 @@ function FactEditor({
           disabled={disabled}
           onChange={onChange}
         />
-        <FactOptionalFields
-          fact={fact}
-          index={index}
-          disabled={disabled}
-          onChange={onChange}
-        />
-        <FactApplicabilityField
-          fact={fact}
-          index={index}
-          disabled={disabled}
-          onChange={onChange}
-        />
+        <FactOptionalFields fact={fact} index={index} disabled={disabled} onChange={onChange} />
+        <FactApplicabilityField fact={fact} index={index} disabled={disabled} onChange={onChange} />
       </div>
       <FactCitationSection
         fact={fact}
@@ -836,9 +770,7 @@ function SourcesSection({
           disabled={disabled}
         />
       ))}
-      {sources.length === 0 ? (
-        <p>添加用于本次测试的样本文本；不要引用真实案件材料。</p>
-      ) : null}
+      {sources.length === 0 ? <p>添加用于本次测试的样本文本；不要引用真实案件材料。</p> : null}
     </section>
   );
 }
@@ -898,30 +830,23 @@ function FactsSection({
           disabled={disabled}
         />
       ))}
-      {facts.length === 0 ? (
-        <p>可先不提供事实，运行一次明确的缺证样本测试。</p>
-      ) : null}
+      {facts.length === 0 ? <p>可先不提供事实，运行一次明确的缺证样本测试。</p> : null}
     </section>
   );
 }
 
 function TestResult({ data }: { data: RulePackTestResponse }) {
   return (
-    <section
-      className="rulepack-test-result"
-      aria-labelledby="rulepack-test-result-title"
-    >
+    <section className="rulepack-test-result" aria-labelledby="rulepack-test-result-title">
       <h3 id="rulepack-test-result-title">测试结果</h3>
       <p role="status">
-        规则包 {data.report.pack_id} v{data.report.pack_version}，
-        测试修订 {data.revision}，内容摘要{" "}
-        <code className="digest">{data.content_hash}</code>
+        规则包 {data.report.pack_id} v{data.report.pack_version}， 测试修订 {data.revision}
+        ，内容摘要 <code className="digest">{data.content_hash}</code>
       </p>
       <p>
         总关系：
-        {data.report.relations
-          .map((relation) => RELATION_LABELS[relation])
-          .join("、") || "没有适用规则"}
+        {data.report.relations.map((relation) => RELATION_LABELS[relation]).join("、") ||
+          "没有适用规则"}
       </p>
       {data.report.results.length === 0 ? (
         <p>当前业务范围没有匹配规则。</p>
@@ -938,9 +863,8 @@ function TestResult({ data }: { data: RulePackTestResponse }) {
                 </StatusText>
               </div>
               <p>
-                规则 {result.rule_id} v{result.rule_version}，
-                {result.mandatory ? "必检" : "非必检"}，原因代码{" "}
-                <code>{result.reason_code}</code>
+                规则 {result.rule_id} v{result.rule_version}，{result.mandatory ? "必检" : "非必检"}
+                ，原因代码 <code>{result.reason_code}</code>
               </p>
               {result.fact_ids?.length ? (
                 <p>采用事实：{result.fact_ids.join("、")}</p>
@@ -952,12 +876,12 @@ function TestResult({ data }: { data: RulePackTestResponse }) {
                   key={`${citation.source_id}:${citation.source_digest}:${citation.start}:${citation.end}:${citationIndex}`}
                 >
                   <blockquote>
-                    {citation.source_id} v{citation.source_version}，码点 [
-                    {citation.start},{citation.end})，{citation.quote}
+                    {citation.source_id} v{citation.source_version}，码点 [{citation.start},
+                    {citation.end})，{citation.quote}
                   </blockquote>
                   <figcaption>
-                    租户 {citation.tenant_id}，案件 {citation.case_id}，
-                    来源 SHA-256 <code>{citation.source_digest}</code>
+                    租户 {citation.tenant_id}，案件 {citation.case_id}， 来源 SHA-256{" "}
+                    <code>{citation.source_digest}</code>
                   </figcaption>
                 </figure>
               ))}
@@ -1001,18 +925,11 @@ function scopeTimeMessage(at: string, manifest: RulePackManifest): string | null
 }
 
 function sourceIncomplete(source: RulePackTestSource): boolean {
-  return (
-    !source.id.trim() ||
-    !source.version.trim() ||
-    !source.role.trim() ||
-    !source.text.trim()
-  );
+  return !source.id.trim() || !source.version.trim() || !source.role.trim() || !source.text.trim();
 }
 
 function sourceIdentityMessage(sources: RulePackTestSource[]): string | null {
-  const identities = sources.map((source) =>
-    JSON.stringify([source.id, source.version]),
-  );
+  const identities = sources.map((source) => JSON.stringify([source.id, source.version]));
   if (sources.length > 16) return SOURCE_MESSAGE;
   if (new Set(identities).size !== identities.length) return SOURCE_MESSAGE;
   if (sources.some(sourceIncomplete)) return SOURCE_MESSAGE;
@@ -1039,22 +956,16 @@ function factIncomplete(fact: RulePackTestFact): boolean {
 }
 
 function factSetMessage(facts: RulePackTestFact[]): string | null {
-  const totalCitations = facts.reduce(
-    (total, fact) => total + fact.citations.length,
-    0,
-  );
+  const totalCitations = facts.reduce((total, fact) => total + fact.citations.length, 0);
   if (facts.length > 128) return FACT_MESSAGE;
-  if (new Set(facts.map((fact) => fact.id)).size !== facts.length)
-    return FACT_MESSAGE;
+  if (new Set(facts.map((fact) => fact.id)).size !== facts.length) return FACT_MESSAGE;
   if (totalCitations > 256) return FACT_MESSAGE;
   if (facts.some(factIncomplete)) return FACT_MESSAGE;
   return null;
 }
 
 function sourceBytesMessage(sources: RulePackTestSource[]): string | null {
-  const bytes = sources.map(
-    (source) => new TextEncoder().encode(source.text).byteLength,
-  );
+  const bytes = sources.map((source) => new TextEncoder().encode(source.text).byteLength);
   if (bytes.some((size) => size > 32 * 1024)) {
     return "样本文本超过测试接口上限：单份 32 KiB，总计 256 KiB。";
   }
@@ -1069,23 +980,17 @@ function citationMatches(
   sources: RulePackTestSource[],
 ): boolean {
   const source = sources.find(
-    (item) =>
-      item.id === citation.source_id &&
-      item.version === citation.source_version,
+    (item) => item.id === citation.source_id && item.version === citation.source_version,
   );
   return (
     source !== undefined &&
     citation.start >= 0 &&
     citation.end > citation.start &&
-    Array.from(source.text).slice(citation.start, citation.end).join("") ===
-      citation.quote
+    Array.from(source.text).slice(citation.start, citation.end).join("") === citation.quote
   );
 }
 
-function citationsMatch(
-  facts: RulePackTestFact[],
-  sources: RulePackTestSource[],
-): boolean {
+function citationsMatch(facts: RulePackTestFact[], sources: RulePackTestSource[]): boolean {
   return facts.every((fact) =>
     fact.citations.every((citation) => citationMatches(citation, sources)),
   );
@@ -1109,10 +1014,7 @@ function scopeFieldsMessage(
 }
 
 function requestSizeMessage(input: RulePackTestInput): string | null {
-  if (
-    new TextEncoder().encode(JSON.stringify(input)).byteLength >
-    1024 * 1024
-  ) {
+  if (new TextEncoder().encode(JSON.stringify(input)).byteLength > 1024 * 1024) {
     return "测试请求超过服务器 1 MiB 请求上限；请缩短文本或减少事实与引用。";
   }
   return null;
@@ -1195,9 +1097,7 @@ function useErrorFocus(
   }, [formMessage, error, errorRef]);
 }
 
-function selectionOrUndefined(
-  selection: Selection | null,
-): Selection | undefined {
+function selectionOrUndefined(selection: Selection | null): Selection | undefined {
   return selection ?? undefined;
 }
 
@@ -1228,9 +1128,7 @@ function FormAlerts({
       {error ? (
         <p className="workflow-error" role="alert" tabIndex={-1} ref={errorRef}>
           {errorMessage(error)}
-          {isConflict(error)
-            ? " 规则包修订已变化；请刷新详情后重新测试。"
-            : ""}
+          {isConflict(error) ? " 规则包修订已变化；请刷新详情后重新测试。" : ""}
         </p>
       ) : null}
     </>
@@ -1270,9 +1168,7 @@ export function RulePackTestPanel({
   const [at, setAt] = useState(manifest.effective_from);
   const [sources, setSources] = useState<RulePackTestSource[]>([]);
   const [facts, setFacts] = useState<RulePackTestFact[]>([]);
-  const [selections, setSelections] = useState<
-    Record<string, Selection | undefined>
-  >({});
+  const [selections, setSelections] = useState<Record<string, Selection | undefined>>({});
   const rowKeySequence = useRef(0);
   const nextRowKey = (kind: string) => `${kind}-${rowKeySequence.current++}`;
   const [sourceKeys, setSourceKeys] = useState<string[]>([]);
@@ -1314,25 +1210,17 @@ export function RulePackTestPanel({
     }));
   }
 
-  function captureSourceSelection(
-    source: RulePackTestSource,
-    selection: Selection | null,
-  ) {
+  function captureSourceSelection(source: RulePackTestSource, selection: Selection | null) {
     setSelections((current) => ({
       ...current,
       [selectionKey(source)]: selectionOrUndefined(selection),
     }));
   }
 
-  function appendSelectedCitation(
-    factIndex: number,
-    source: RulePackTestSource,
-  ) {
+  function appendSelectedCitation(factIndex: number, source: RulePackTestSource) {
     const selected = selections[selectionKey(source)];
     if (!selected) return;
-    setFacts((current) =>
-      appendCitation(current, factIndex, source, selected),
-    );
+    setFacts((current) => appendCitation(current, factIndex, source, selected));
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -1366,11 +1254,7 @@ export function RulePackTestPanel({
           </p>
         </div>
       </header>
-      <form
-        className="workflow-form rulepack-test-form"
-        noValidate
-        onSubmit={submit}
-      >
+      <form className="workflow-form rulepack-test-form" noValidate onSubmit={submit}>
         <TestScopeFields
           businessLine={businessLine}
           scenario={scenario}
@@ -1397,18 +1281,12 @@ export function RulePackTestPanel({
           sources={sources}
           selections={selections}
           onAdd={addFact}
-          onChange={(index, next) =>
-            setFacts((current) => replaceAt(current, index, next))
-          }
+          onChange={(index, next) => setFacts((current) => replaceAt(current, index, next))}
           onUseSelection={appendSelectedCitation}
           onRemove={removeFact}
           disabled={test.isPending}
         />
-        <FormAlerts
-          formMessage={formMessage}
-          error={test.error}
-          errorRef={errorRef}
-        />
+        <FormAlerts formMessage={formMessage} error={test.error} errorRef={errorRef} />
         <TestSubmitButton pending={test.isPending} />
       </form>
       {test.data ? <TestResult data={test.data} /> : null}
