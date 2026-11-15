@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: 实现 `ProvisionOfflineMigrator`, `auditAndTransferOfflineObjects`, `object`, `verifyOfflineMigratorMemberships` 等 Store 数据结构与事务操作，按租户和组织范围读写或校验持久状态。
+// Purpose: Validates and provisions a non-superuser offline migrator for isolated schemas, including the reviewed relation, trigger, policy, function and role allowlists.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
