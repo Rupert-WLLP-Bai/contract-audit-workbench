@@ -66019,7 +66019,7 @@
         "value": "2026-11-15",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "b9c0ea632473147cce11beec5359f1b27a1d286f",
+          "commit": "52d9d6b871d84862bbc05992675be93881a87ef9",
           "path": "scripts/repository_policy.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
