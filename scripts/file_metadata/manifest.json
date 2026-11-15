@@ -370,6 +370,7 @@
       "internal/qccmcp/tool.go",
       "internal/reviewstatus/outcome.go",
       "internal/reviewstatus/outcome_test.go",
+      "internal/rulepack/fixture_suite_test.go",
       "internal/store/admission_session_context.go",
       "internal/store/agent_step_checkpoints_test.go",
       "internal/store/agent_steps.go",
@@ -41032,6 +41033,54 @@
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
     },
+    "internal/rulepack/fixture_suite_test.go": {
+      "purpose": "Exercises the rulepack fixture-suite validator, runner and version comparison with synthetic demo inputs, including malformed-suite rejection and lifecycle handling.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "7be7aed63da415696cb308b028d44c4fc1c63f50",
+          "path": "internal/rulepack/fixture_suite_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "7be7aed63da415696cb308b028d44c4fc1c63f50",
+          "path": "internal/rulepack/fixture_suite_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
     "internal/rulepack/semantic.go": {
       "purpose": "EvidenceSupportsValue accepts only a bounded explicit syntax for measured facts. The quoted object, dimension and numeric unit must occur together. Related `rulepack` operations include EvidenceSupportsValue, EvidenceSupportsAuthority, authorityRole, authorityUnit.",
       "authors": [
@@ -65163,7 +65212,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r73",
+      "revision": "r74",
       "copyright": [
         {
           "holder": "Bai Junhao",
