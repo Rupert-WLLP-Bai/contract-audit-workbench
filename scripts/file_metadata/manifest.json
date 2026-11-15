@@ -58,6 +58,7 @@
       "internal/agentflow/contract_facts_test.go",
       "internal/agentflow/eino_tool.go",
       "internal/agentflow/eino_tool_test.go",
+      "internal/agentflow/single_contract_test.go",
       "internal/agentflow/step_recovery_test.go",
       "internal/apidocs/clause_proposal_routes.go",
       "internal/apidocs/contracts/clause_proposal.go",
@@ -174,6 +175,7 @@
       "internal/documentparse/ocr_source_test.go",
       "internal/documentservice/intake_authority_client.go",
       "internal/documentservice/intake_authority_client_test.go",
+      "internal/evidencebundle/bundle_test.go",
       "internal/evidencebundle/tenant.go",
       "internal/evidencebundle/tenant_test.go",
       "internal/execution/app/citation.go",
@@ -227,8 +229,10 @@
       "internal/httpapi/report_receipt_replay_test.go",
       "internal/httpapi/session_authority.go",
       "internal/httpapi/session_authority_test.go",
+      "internal/httpapi/signed_evidence_internal_test.go",
       "internal/httpapi/template_authority_test.go",
       "internal/httpapi/tenant_config.go",
+      "internal/httpapi/tenant_config_test.go",
       "internal/httpapi/tenant_lifecycle.go",
       "internal/knowledge/app/command.go",
       "internal/knowledge/app/command_test.go",
@@ -292,6 +296,7 @@
       "internal/localocr/client.go",
       "internal/localocr/client_test.go",
       "internal/localocr/config.go",
+      "internal/localocr/config_test.go",
       "internal/model/contract_facts.go",
       "internal/model/contract_facts_test.go",
       "internal/model/preparation_boundary_test.go",
@@ -458,6 +463,7 @@
       "internal/store/legal_import_atomicity_test.go",
       "internal/store/legal_review_application.go",
       "internal/store/local_ocr_test.go",
+      "internal/store/manual_findings_test.go",
       "internal/store/migrations/0027_contract_signing.sql",
       "internal/store/migrations/0028_contract_fulfillment.sql",
       "internal/store/migrations/0029_contract_payments.sql",
@@ -497,6 +503,9 @@
       "internal/store/review_readmission_pg_test.go",
       "internal/store/revoked_finalize_http_external_test.go",
       "internal/store/revoked_finalize_test.go",
+      "internal/store/rulepack_shadow_pg_test.go",
+      "internal/store/rulepack_shadow_pure_test.go",
+      "internal/store/signed_evidence_test.go",
       "internal/store/single_contract_facts.go",
       "internal/store/subject_application.go",
       "internal/store/subject_decision_atomicity_test.go",
@@ -507,6 +516,7 @@
       "internal/store/telecom_model_selection_test.go",
       "internal/store/tenant_config.go",
       "internal/store/tenant_config_hash_test.go",
+      "internal/store/tenant_config_pure_test.go",
       "internal/store/tenant_identity.go",
       "internal/store/tenant_identity_pg_test.go",
       "internal/store/tenant_identity_role_provision.go",
@@ -534,6 +544,7 @@
       "internal/subject/postgres/facts.go",
       "internal/subject/postgres/persist.go",
       "internal/subject/postgres/state.go",
+      "internal/telecom/declared_test.go",
       "internal/telemetry/otlp_external_test_helpers_test.go",
       "internal/telemetry/otlp_internal_test_helpers_test.go",
       "internal/telemetry/otlphttp.go",
@@ -12160,6 +12171,54 @@
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
     },
+    "internal/agentflow/single_contract_test.go": {
+      "purpose": "Exercises the single-contract planner tool boundary: only the published payment-sum capability is exposed, and its execution requires one draft contract.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/agentflow/single_contract_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/agentflow/single_contract_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
     "internal/agentflow/source_facts.go": {
       "purpose": "SourceFactTools compares a finite set of explicit fields across the frozen procurement/award, draft-contract, and (when supplied) acceptance sources. It never queries an external… Related `agentflow` operations include SourceFactTools, Spec, Execute, validateSourceFactInput.",
       "authors": [
@@ -23433,6 +23492,54 @@
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
     },
+    "internal/evidencebundle/bundle_test.go": {
+      "purpose": "Exercises evidence signing-key loading, container path rules, identity validation and signed write/verify round trips including rejection paths.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/evidencebundle/bundle_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/evidencebundle/bundle_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
     "internal/evidencebundle/tenant.go": {
       "purpose": "实现 `validTenant`, `validTenantSchema`, `VerifyForTenant` 等具体接口与边界逻辑，供 internal/evidencebundle 的调用方使用。",
       "authors": [
@@ -29911,6 +30018,54 @@
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
     },
+    "internal/httpapi/signed_evidence_internal_test.go": {
+      "purpose": "Exercises signed-evidence identity normalization and the readable PDF section/decision projection without a database.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/httpapi/signed_evidence_internal_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/httpapi/signed_evidence_internal_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
     "internal/httpapi/stream_and_original_test.go": {
       "purpose": "Exercises the `httpapi_test` package behavior through TestEventStreamReceivesLaterDecisionsAndResumesWithoutReplay, TestLogoutRevokesExistingEventStream, TestOriginalHTMLIsDownloadedAsPassiveBytes, TestHTTP503RetainsDeterministicFinding; these checks pin observable state, error handling, or wire/database compatibility for this module.",
       "authors": [
@@ -30142,6 +30297,54 @@
           "holder": "Bai Junhao",
           "notice": "See LICENSE",
           "source": "LICENSE identifies Bai Junhao as rights holder for project-owned materials; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/httpapi/tenant_config_test.go": {
+      "purpose": "Exercises the tenant configuration and money-policy admin routes over HTTP: catalog reads, preview/adoption revision guards, live control and rejected platform-operator actions.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/httpapi/tenant_config_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/httpapi/tenant_config_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
           "verbatim": false
         }
       ],
@@ -34193,6 +34396,54 @@
           "kind": "git-last-content-change",
           "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
           "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/localocr/config_test.go": {
+      "purpose": "Exercises local OCR deployment configuration, complete model-asset verification and engine binding, including rejected manifests and incomplete profiles.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/localocr/config_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/localocr/config_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -50702,6 +50953,54 @@
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
     },
+    "internal/store/manual_findings_test.go": {
+      "purpose": "Exercises manual finding input validation, frozen-evidence append, idempotent replay, conflict detection, exact-attempt listing and role denial.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/store/manual_findings_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/store/manual_findings_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
     "internal/store/material_parse_read.go": {
       "purpose": "Reads parses pinned to an immutable material version and authorizes tenant/case scope in the PostgreSQL transaction; returns paged summaries and exact parsed-text chunks without changing the frozen source.",
       "authors": [
@@ -56213,6 +56512,102 @@
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
     },
+    "internal/store/rulepack_shadow_pg_test.go": {
+      "purpose": "Exercises the PostgreSQL-backed rule shadow workflow over a governed acceptance review: sample discovery, candidate replay, append-only report persistence and scoped reads.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/store/rulepack_shadow_pg_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/store/rulepack_shadow_pg_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/store/rulepack_shadow_pure_test.go": {
+      "purpose": "Exercises rule-shadow scope, sample and baseline validation, rule comparability, change classification and frozen request capture without a database.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/store/rulepack_shadow_pure_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/store/rulepack_shadow_pure_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
     "internal/store/runrecord.go": {
       "purpose": "currentSignature binds idempotence and retry to the same inputs that are sealed in the immutable audit snapshot. Changing providers needs a new run. Related `store` operations include documentIDs, currentSignature, currentSignatureWithRulePack, applyActiveRulePackIdentity.",
       "authors": [
@@ -57442,6 +57837,54 @@
         }
       },
       "revision": "r2",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/store/signed_evidence_test.go": {
+      "purpose": "Exercises frozen-evidence reference and anchor matching plus report/input identity comparison used before an export bundle is signed.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/store/signed_evidence_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/store/signed_evidence_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -59077,6 +59520,54 @@
           "holder": "Bai Junhao",
           "notice": "See LICENSE",
           "source": "LICENSE identifies Bai Junhao as rights holder for project-owned materials; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/store/tenant_config_pure_test.go": {
+      "purpose": "Exercises tenant-config canonicalization and catalog matching, experience-usage identity and hashing, decision-outcome classification and environment allowlist parsing without a database.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/store/tenant_config_pure_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/store/tenant_config_pure_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
           "verbatim": false
         }
       ],
@@ -61836,6 +62327,54 @@
           "kind": "git-last-content-change",
           "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
           "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/telecom/declared_test.go": {
+      "purpose": "Exercises the declared-compiler pack validation, host-vocabulary fact binding and frozen-pack execution over the existing typed telecom extractor.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/telecom/declared_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "a059574c74108357e963512e1a0df5a95ecb37eb",
+          "path": "internal/telecom/declared_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
