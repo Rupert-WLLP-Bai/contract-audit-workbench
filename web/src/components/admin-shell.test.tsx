@@ -31,7 +31,10 @@ vi.mock("../api/queries", () => ({
   useSwitchContext: () => ({ mutateAsync: vi.fn(), isPending: false }),
   clearIdentityQueries: vi.fn(),
   revalidateSessionContext: vi.fn(),
-  queryKeys: { session: ["session", "client"], sessionFor: (audience: string) => ["session", audience] },
+  queryKeys: {
+    session: ["session", "client"],
+    sessionFor: (audience: string) => ["session", audience],
+  },
 }));
 
 const admin: Actor = {

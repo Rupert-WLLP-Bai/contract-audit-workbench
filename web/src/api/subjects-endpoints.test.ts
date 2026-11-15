@@ -76,7 +76,15 @@ function setResponse(body: unknown, status = 200) {
 
 beforeEach(() => {
   installTestSession();
-  bindTestIdempotency("create-key-1", "bind-key-1", "role-key-1", "change-key-1", "decision-key-1", "snapshot-key-1", "verify-key-1");
+  bindTestIdempotency(
+    "create-key-1",
+    "bind-key-1",
+    "role-key-1",
+    "change-key-1",
+    "decision-key-1",
+    "snapshot-key-1",
+    "verify-key-1",
+  );
 });
 afterEach(() => {
   clearTestSession();
