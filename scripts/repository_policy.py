@@ -1,10 +1,10 @@
 # File metadata (manifest mirror):
-# Purpose: Source-repository boundary: runtime code stays, delivery material stays out. This module’s command-line arguments and return artifacts define its operational boundary.
+# Purpose: Defines the source-repository boundary, including exact-path exceptions for curated handbook data such as the UI2 coverage registry and its markdown handbook page.
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-25
-# Updated: 2026-11-02
-# Revision: r2
+# Updated: 2026-11-15
+# Revision: r3
 # Copyright: See LICENSE
 # End file metadata.
 

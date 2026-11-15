@@ -63536,7 +63536,7 @@
       }
     },
     "requirements-dev.txt": {
-      "purpose": "Pins the Ruff development-tool version installed by local tooling and CI; it adds no Python application runtime dependency.",
+      "purpose": "Pins PyYAML with the existing Ruff pin so every local and CI Python gate installs the YAML dependency used by deployment manifest, observe-profile and release-k8s tests.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -63554,24 +63554,24 @@
         }
       ],
       "created": {
-        "value": "2026-11-12",
+        "value": "2026-11-14",
         "source": {
           "kind": "git-first-introduction",
-          "commit": "e7f53f6d91f3b1b016637ec7ebc1f61225d69db1",
+          "commit": "5dbf4d63e0a72010ef4989c4a361b2aa653b6d71",
           "path": "requirements-dev.txt",
           "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-15",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e7f53f6d91f3b1b016637ec7ebc1f61225d69db1",
+          "commit": "b9c0ea632473147cce11beec5359f1b27a1d286f",
           "path": "requirements-dev.txt",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -65129,7 +65129,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r66",
+      "revision": "r67",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -65989,7 +65989,7 @@
       "header_state": "pending-header-application"
     },
     "scripts/repository_policy.py": {
-      "purpose": "Source-repository boundary: runtime code stays, delivery material stays out. This module’s command-line arguments and return artifacts define its operational boundary.",
+      "purpose": "Defines the source-repository boundary, including exact-path exceptions for curated handbook data such as the UI2 coverage registry and its markdown handbook page.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -66016,15 +66016,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-15",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "d5a7749e716c35cc86722e597e72fc8dc76b4000",
+          "commit": "b9c0ea632473147cce11beec5359f1b27a1d286f",
           "path": "scripts/repository_policy.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
