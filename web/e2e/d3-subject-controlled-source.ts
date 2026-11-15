@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-15
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -96,9 +96,50 @@ async function logout(page: Page): Promise<void> {
     .waitFor({ state: "visible" });
 }
 
+async function openSection(page: Page, navigation: string, section: string): Promise<void> {
+  const button = page
+    .getByRole("navigation", { name: navigation })
+    .getByRole("button", { name: section, exact: true });
+  await button.waitFor({ state: "visible" });
+  // A click can land before the router finishes the preceding navigation; the
+  // page then restores its default section. Re-select until the choice
+  // survives a render instead of trusting the first aria-pressed update.
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    if ((await button.getAttribute("aria-pressed")) !== "true")
+      await button.click().catch(() => {});
+    await page.waitForTimeout(200);
+    if ((await button.getAttribute("aria-pressed")) === "true") {
+      await page.waitForTimeout(400);
+      if ((await button.getAttribute("aria-pressed")) === "true") return;
+    }
+  }
+  assert.equal(
+    await button.getAttribute("aria-pressed"),
+    "true",
+    `${navigation} ${section} did not open`,
+  );
+}
+
+async function openCaseSection(page: Page, section: string, disclosureID?: string): Promise<void> {
+  await openSection(page, "案件详情分区", section);
+  if (disclosureID) {
+    const details = page.locator(`details#${disclosureID}`);
+    await details.waitFor({ state: "visible" });
+    if ((await details.getAttribute("open")) === null)
+      await details.locator(":scope > summary").click();
+    assert.notEqual(
+      await details.getAttribute("open"),
+      null,
+      `case section ${disclosureID} did not expand`,
+    );
+  }
+}
+
 async function navigateCase(page: Page, caseId: string, title: string): Promise<void> {
   await page.goto(`${web}/cases/${encodeURIComponent(caseId)}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor({ state: "visible" });
+  await openCaseSection(page, "主体与对象", "case-subject-roles");
   await page
     .locator(".case-subject-roles-panel")
     .getByText("案件主体与角色", { exact: true })
@@ -123,6 +164,7 @@ async function assertPinnedSnapshot(
   snapshotId: string,
   currentSourceVersion = 1,
 ): Promise<void> {
+  await openCaseSection(page, "主体与对象", "case-subject-roles");
   const url = new URL(page.url());
   assert.equal(url.searchParams.get("source_case"), caseA);
   assert.equal(url.searchParams.get("source_snapshot"), snapshotId);
@@ -223,7 +265,7 @@ async function run(): Promise<void> {
     step("subject registered through the case form and remains pending verification");
 
     const sourcePanel = admin.locator(".subject-source-verification-panel");
-    await sourcePanel.getByText(/不代表真实工商或主体身份核验/).waitFor({ state: "visible" });
+    await sourcePanel.getByText(/当前对照的是演示数据/).waitFor({ state: "visible" });
     await sourcePanel.getByRole("button", { name: "固定新的合成来源版本", exact: true }).click();
     await admin.waitForURL(
       (url) =>
@@ -265,6 +307,7 @@ async function run(): Promise<void> {
       snapshotV2 && snapshotV2 !== snapshotId,
       "new source version did not create a distinct snapshot",
     );
+    await openCaseSection(admin, "主体与对象", "case-subject-roles");
     await sourcePanel
       .getByText(/D3受控合成主体目录 · 来源 v2 · 快照时间/)
       .waitFor({ state: "visible" });
@@ -309,6 +352,7 @@ async function run(): Promise<void> {
     await assertBinding(admin, 1, "待核验");
     const foreignSnapshotURL = `${web}/cases/${encodeURIComponent(caseB)}?source_case=${encodeURIComponent(caseB)}&source_snapshot=${encodeURIComponent(snapshotId)}`;
     await admin.goto(foreignSnapshotURL);
+    await openCaseSection(admin, "主体与对象", "case-subject-roles");
     await admin
       .locator(".subject-source-verification-panel")
       .getByText("所选合成来源快照暂不可用", { exact: true })
@@ -420,6 +464,7 @@ async function run(): Promise<void> {
     await assertBinding(admin, 2, "已对照核验（受控来源，合成演示）");
     step("independent reviewer with both case grants approved the source proposal");
 
+    await openCaseSection(admin, "主体与对象", "case-subject-corrections-section");
     await chooseAntOption(
       admin,
       admin.getByLabel("更正目标类型", { exact: true }),
@@ -512,6 +557,7 @@ async function run(): Promise<void> {
       .getByRole("heading", { name: subjectName, exact: true })
       .waitFor({ state: "visible" });
     const subjectURL = admin.url();
+    await openSection(admin, "主体详情分区", "更正历史");
     const history = admin.locator(".subject-history-card");
     const v1 = history
       .locator(".subject-history-row")
@@ -534,11 +580,13 @@ async function run(): Promise<void> {
       await event.waitFor({ state: "visible" });
     }
     await admin.reload();
+    await openSection(admin, "主体详情分区", "更正历史");
     await v2.getByText(/已对照核验（受控来源，合成演示）/).waitFor({ state: "visible" });
     await v3.getByText(/待核验/).waitFor({ state: "visible" });
     await logout(reviewer);
     await signIn(reviewer, "demo-reviewer", "reviewer-demo");
     await reviewer.goto(subjectURL);
+    await openSection(reviewer, "主体详情分区", "更正历史");
     await reviewer
       .locator(".subject-history-card")
       .getByText("身份 v3", { exact: true })
