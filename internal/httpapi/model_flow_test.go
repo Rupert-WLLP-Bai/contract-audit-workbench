@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-15
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -42,6 +42,8 @@ func TestMalformedModelOutputRetainsRulesAsPartialRun(t *testing.T) {
 		BaseURL:   upstream.URL + "/v1",
 		ChatModel: model.DefaultChatModel,
 		OCRModel:  model.DefaultOCRModel,
+		Gateway:   true,
+		APIKey:    "test-gateway-credential",
 	})
 	api := newAPIWith(t, client, nil)
 	api.login(t, "demo-admin", "admin-demo")
@@ -154,6 +156,7 @@ func TestImageOCRFeedsReview(t *testing.T) {
 
 	client := model.New(model.Config{
 		BaseURL: upstream.URL + "/v1", ChatModel: model.DefaultChatModel, OCRModel: model.DefaultOCRModel,
+		Gateway: true, APIKey: "test-gateway-credential",
 	})
 	api := newAPIWith(t, client, nil)
 	api.login(t, "demo-admin", "admin-demo")

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -506,7 +506,7 @@ func (f *serviceFixture) publishGovernance(t *testing.T) {
 
 func (f *serviceFixture) startWorker(t *testing.T, caseID string) (*observingPreparer, <-chan error, context.CancelFunc) {
 	t.Helper()
-	if _, err := f.core.StartReviewAsyncAt(context.Background(), f.admin, caseID, testBusinessTime); err != nil {
+	if _, err := f.core.StartReviewAsyncAt(store.WithAdmissionSessionToken(context.Background(), f.token), f.admin, caseID, testBusinessTime); err != nil {
 		t.Fatalf("accept durable review: %v", err)
 	}
 	claim, err := f.worker.ClaimNextJob(context.Background(), "capacity-regression-worker", time.Minute)
@@ -593,6 +593,8 @@ func TestPublicAndDelegatedDocumentWorkShareQueueAndLeaveReadsAvailable(t *testi
 	defer cancelWorker()
 	select {
 	case <-preparer.started:
+	case err := <-workerDone:
+		t.Fatalf("worker exited before delegated document preparation: %v", err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("worker did not request delegated document preparation")
 	}

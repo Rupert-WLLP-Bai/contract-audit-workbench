@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-15
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -30,6 +30,7 @@ import {
 } from "./helpers";
 import { parseTemplateList, parseGenerationRecord } from "../../src/api/parse";
 import { reviewChoiceKey } from "../../src/domain/workflow";
+import { templateOptionLabel } from "../c1b-select";
 
 async function scenario(id: string) {
   const dataset = record(
@@ -147,7 +148,16 @@ test(
     await page.goto(`${webURL}/cases/${caseID}`);
     const templates = parseTemplateList(await body(await api.get(`${apiURL}/api/templates`)));
     const template = templates.find((item) => item.id === gold.templateID)!;
-    await page.getByLabel("模板", { exact: true }).selectOption(gold.templateID);
+    const templateLabel = templateOptionLabel(template);
+    const templateSelect = page.getByLabel("选择模板", { exact: true });
+    await templateSelect.click();
+    const controls = ((await templateSelect.getAttribute("aria-controls")) ?? "").trim();
+    if (!controls) throw new Error("template selector omitted its controlled popup ID");
+    await page
+      .locator(
+        `[id="${controls}"][role="listbox"] .ant-select-item-option[title="${templateLabel}"]`,
+      )
+      .click();
     for (const field of template.fields) {
       const control = page.getByLabel(field.required ? `${field.label}（必填）` : field.label, {
         exact: true,

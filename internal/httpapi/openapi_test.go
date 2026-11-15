@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r4
+// Updated: 2026-11-15
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -22,6 +22,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
@@ -115,7 +116,7 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 	// These public registrations and support handler factory are maintained in
 	// separate files. Internal receipt handlers are not mounted on the portal mux.
 	var extraRoutes []*ast.File
-	for _, name := range []string{"contract_fulfillment.go", "contract_payments.go", "contract_assets.go", "contract_signing.go", "contract_sources.go", "context_support.go"} {
+	for _, name := range []string{"contract_fulfillment.go", "contract_payments.go", "contract_assets.go", "contract_signing.go", "contract_sources.go", "context_support.go", "clause_proposal.go"} {
 		parsed, parseErr := parser.ParseFile(token.NewFileSet(), name, nil, 0)
 		if parseErr != nil {
 			t.Fatal(parseErr)
@@ -364,6 +365,11 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 	schemas := spec["components"].(map[string]any)["schemas"].(map[string]any)
 	jsonFields := map[string][]string{}
 	types := map[string]*ast.StructType{}
+	type storeAlias struct {
+		expr ast.Expr
+		file *ast.File
+	}
+	storeAliases := map[string]storeAlias{}
 	for _, storeFile := range storePackages["store"].Files {
 		for _, decl := range storeFile.Decls {
 			gen, ok := decl.(*ast.GenDecl)
@@ -377,6 +383,10 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 				}
 				if body, ok := typ.Type.(*ast.StructType); ok {
 					types[typ.Name.Name] = body
+					continue
+				}
+				if typ.Assign.IsValid() {
+					storeAliases[typ.Name.Name] = storeAlias{expr: typ.Type, file: storeFile}
 				}
 			}
 		}
@@ -404,14 +414,96 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 			}
 		}
 	}
-	requestStruct := func(expr ast.Expr) *ast.StructType {
+	// Store request DTOs may be aliases into domain model packages. Resolve each
+	// alias against the imports of the file that declares it, because different
+	// store files reuse the same local package name for different domains.
+	modulePath := ""
+	if raw, readErr := os.ReadFile("../../go.mod"); readErr == nil {
+		for _, line := range strings.Split(string(raw), "\n") {
+			if rest, ok := strings.CutPrefix(line, "module "); ok {
+				modulePath = strings.TrimSpace(rest)
+				break
+			}
+		}
+	}
+	externalTypes := map[string]*ast.StructType{}
+	for _, alias := range storeAliases {
+		selector, ok := alias.expr.(*ast.SelectorExpr)
+		if !ok {
+			continue
+		}
+		pkg, ok := selector.X.(*ast.Ident)
+		if !ok {
+			continue
+		}
+		importPath := ""
+		for _, imp := range alias.file.Imports {
+			path, unquoteErr := strconv.Unquote(imp.Path.Value)
+			if unquoteErr != nil {
+				continue
+			}
+			name := path
+			if slash := strings.LastIndex(name, "/"); slash >= 0 {
+				name = name[slash+1:]
+			}
+			if imp.Name != nil {
+				name = imp.Name.Name
+			}
+			if name == pkg.Name {
+				importPath = path
+				break
+			}
+		}
+		if importPath == "" || modulePath == "" || !strings.HasPrefix(importPath, modulePath+"/") {
+			continue
+		}
+		dir := filepath.Join("..", "..", filepath.FromSlash(strings.TrimPrefix(importPath, modulePath+"/")))
+		targetPackages, parseErr := parser.ParseDir(token.NewFileSet(), dir, func(info os.FileInfo) bool {
+			return !strings.HasSuffix(info.Name(), "_test.go")
+		}, 0)
+		if parseErr != nil {
+			continue
+		}
+		for _, parsedPackage := range targetPackages {
+			for _, source := range parsedPackage.Files {
+				for _, decl := range source.Decls {
+					gen, ok := decl.(*ast.GenDecl)
+					if !ok {
+						continue
+					}
+					for _, spec := range gen.Specs {
+						typ, ok := spec.(*ast.TypeSpec)
+						if !ok {
+							continue
+						}
+						if body, ok := typ.Type.(*ast.StructType); ok {
+							externalTypes[pkg.Name+"."+typ.Name.Name] = body
+						}
+					}
+				}
+			}
+		}
+	}
+	var requestStruct func(ast.Expr) *ast.StructType
+	requestStruct = func(expr ast.Expr) *ast.StructType {
 		switch typ := expr.(type) {
 		case *ast.Ident:
 			return localTypes[typ.Name]
 		case *ast.SelectorExpr:
-			if pkg, ok := typ.X.(*ast.Ident); ok && pkg.Name == "store" {
-				return types[typ.Sel.Name]
+			pkg, ok := typ.X.(*ast.Ident)
+			if !ok {
+				return nil
 			}
+			if pkg.Name == "store" {
+				if body := types[typ.Sel.Name]; body != nil {
+					return body
+				}
+				if alias, ok := storeAliases[typ.Sel.Name]; ok {
+					return requestStruct(alias.expr)
+				}
+				return nil
+			}
+			return externalTypes[pkg.Name+"."+typ.Sel.Name]
 		}
 		return nil
 	}
@@ -472,7 +564,7 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 						}
 						body := requestStruct(requestType)
 						if body == nil {
-							t.Fatal("command request type must be an explicit known local or store struct")
+							t.Fatalf("command request type must be an explicit known local or store struct: %s", fn.Name.Name)
 						}
 						jsonFields[fn.Name.Name] = fieldsFor(body)
 					}
@@ -485,7 +577,7 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 				if !ok {
 					body = requestStruct(value.Type)
 					if body == nil {
-						t.Fatal("body declaration must use an inline or known local or store struct")
+						t.Fatalf("body declaration must use an inline or known local or store struct: %s %T", fn.Name.Name, value.Type)
 					}
 				}
 				jsonFields[fn.Name.Name] = fieldsFor(body)
@@ -711,6 +803,9 @@ func wireShape(schema map[string]any, value any, schemas map[string]any, path st
 	if raw, ok := schema["$ref"].(string); ok {
 		name := strings.TrimPrefix(raw, "#/components/schemas/")
 		return wireShape(schemas[name].(map[string]any), value, schemas, path)
+	}
+	if nullable, _ := schema["nullable"].(bool); nullable && value == nil {
+		return nil
 	}
 	if options, ok := schema["anyOf"].([]any); ok {
 		matched := false

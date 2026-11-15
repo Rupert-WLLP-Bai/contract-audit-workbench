@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-15
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -24,7 +24,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, type Locator, type Page } from "playwright";
 import { replaceMaterial, replacePrimaryMaterial, uploadNewMaterial } from "./materials-ui";
-import { chooseAntOption, selectReportOption, selectReviewAttempt } from "./c1b-select";
+import {
+  chooseAntOption,
+  selectReportOption,
+  selectReviewAttempt,
+  templateOptionLabel,
+} from "./c1b-select";
 
 type Material = { role: string; filename: string; text: string };
 type RulePackIdentity = { id: string; version: string; content_sha256: string };
@@ -184,6 +189,7 @@ try {
       id: string;
       name: string;
       version: string;
+      source?: "builtin" | "tenant";
       fields: Array<{ key: string; label: string; required: boolean }>;
     }>;
   };
@@ -200,8 +206,8 @@ try {
   );
 
   await openCaseSection(page, "材料与版本", "case-template-generation");
-  const templateSelect = page.getByLabel("模板", { exact: true });
-  await chooseAntSelect(page, templateSelect, `${template.name}，${template.version}`);
+  const templateSelect = page.getByLabel("选择模板", { exact: true });
+  await chooseAntSelect(page, templateSelect, templateOptionLabel(template));
   for (const field of template.fields) {
     const value: string | undefined = scenario.fields[field.key];
     if (value === undefined) throw new Error(`fixture field ${field.key} is missing`);

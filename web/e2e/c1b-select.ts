@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-14
-// Revision: r4
+// Updated: 2026-11-15
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,6 +16,15 @@ import { type Locator, type Page } from "playwright";
 import { parseReviewWorkspace } from "../src/api/parse";
 import { formatDateTime } from "../src/domain/review";
 import { reviewChoiceKey, reviewChoiceLabel, reviewChoiceShortLabel } from "../src/domain/workflow";
+
+// The template selector labels each template by name and origin; the exact
+// version is pinned by the option value and shown in the form metadata.
+export function templateOptionLabel(template: {
+  name: string;
+  source?: "builtin" | "tenant";
+}): string {
+  return `${template.name}（${template.source === "tenant" ? "租户" : "平台内置"}）`;
+}
 
 function antSelectRoot(select: Locator): Locator {
   return select.locator(
