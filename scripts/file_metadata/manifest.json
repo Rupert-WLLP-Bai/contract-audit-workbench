@@ -65163,7 +65163,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r72",
+      "revision": "r73",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -71333,12 +71333,12 @@
         "value": "2026-11-15",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4caab75e5909d5266127e3d009959b989af2fdb7",
+          "commit": "7e6d549fe714949c144b5f3056701bd77b97087d",
           "path": "web/e2e/object-history.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
