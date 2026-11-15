@@ -65809,7 +65809,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r79",
+      "revision": "r78",
       "copyright": [
         {
           "holder": "Bai Junhao",
