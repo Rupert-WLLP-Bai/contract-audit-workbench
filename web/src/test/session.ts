@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Provides the shared authenticated test actor and command-context installation helpers so unit tests exercise the same session identity, context version and CSRF fields the web client expects; it does not grant authorization.
+// Purpose: Provides shared web test helpers that install a deterministic server session and bind idempotency command context for API and component tests.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-15
