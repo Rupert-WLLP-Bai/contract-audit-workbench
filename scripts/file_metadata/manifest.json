@@ -644,6 +644,7 @@
       "web/src/components/contract-fulfillment-panel.tsx",
       "web/src/components/contract-lifecycle-overview-panel.test.tsx",
       "web/src/components/contract-lifecycle-overview-panel.tsx",
+      "web/src/components/contract-payments-panel.test.tsx",
       "web/src/components/contract-payments-panel.tsx",
       "web/src/components/contract-references-panel.test.tsx",
       "web/src/components/contract-reminder-inbox.tsx",
@@ -734,6 +735,7 @@
       "web/src/pages/legal-knowledge-page.css",
       "web/src/pages/not-found-page.css",
       "web/src/pages/operator-audit-page.css",
+      "web/src/pages/pending-membership-page.test.tsx",
       "web/src/pages/pending-membership-page.tsx",
       "web/src/pages/review-page.css",
       "web/src/pages/subjects-page.css",
@@ -65807,7 +65809,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r77",
+      "revision": "r78",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -94502,6 +94504,102 @@
           "kind": "git-last-content-change",
           "commit": "f49f8372e2d18ca5dd543b63f4f90a0904023d3c",
           "path": "internal/fulfillment/app/commands_flow_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/components/contract-payments-panel.test.tsx": {
+      "purpose": "Checks frozen payment plan rendering, trusted receipt states, read and identity boundaries, and that payment eligibility checks use idempotent server-verified results without initiating payment.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "6a420f6226ba82892b725db6442c08ef45724141",
+          "path": "web/src/components/contract-payments-panel.test.tsx",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "6a420f6226ba82892b725db6442c08ef45724141",
+          "path": "web/src/components/contract-payments-panel.test.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/pages/pending-membership-page.test.tsx": {
+      "purpose": "Checks pending organization membership selection: server-provided choices, submit success and expiry, load failure retry and audience-specific login links.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "6a420f6226ba82892b725db6442c08ef45724141",
+          "path": "web/src/pages/pending-membership-page.test.tsx",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "6a420f6226ba82892b725db6442c08ef45724141",
+          "path": "web/src/pages/pending-membership-page.test.tsx",
           "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
