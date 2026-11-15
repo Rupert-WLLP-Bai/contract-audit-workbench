@@ -74753,7 +74753,7 @@
         "value": "2026-11-15",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "84902a10cf146694d2e967211e0da2f49d402c88",
+          "commit": "107603312bbdebaca9951938e804d4f2cee6b2b4",
           "path": "web/src/api/subjects-endpoints.test.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -75388,7 +75388,7 @@
         "value": "2026-11-15",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "84902a10cf146694d2e967211e0da2f49d402c88",
+          "commit": "107603312bbdebaca9951938e804d4f2cee6b2b4",
           "path": "web/src/app.integration.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -75580,7 +75580,7 @@
         "value": "2026-11-15",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "84902a10cf146694d2e967211e0da2f49d402c88",
+          "commit": "107603312bbdebaca9951938e804d4f2cee6b2b4",
           "path": "web/src/components/admin-shell.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
