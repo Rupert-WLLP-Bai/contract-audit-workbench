@@ -65809,7 +65809,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r78",
+      "revision": "r79",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -94550,12 +94550,12 @@
         "value": "2026-11-15",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6a420f6226ba82892b725db6442c08ef45724141",
+          "commit": "626248b787abf8e6b2e00329947178e7eb727ec0",
           "path": "web/src/components/contract-payments-panel.test.tsx",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -94598,12 +94598,12 @@
         "value": "2026-11-15",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6a420f6226ba82892b725db6442c08ef45724141",
+          "commit": "626248b787abf8e6b2e00329947178e7eb727ec0",
           "path": "web/src/pages/pending-membership-page.test.tsx",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
