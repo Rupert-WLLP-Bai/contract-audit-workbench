@@ -34,7 +34,11 @@ export function technicalLabel(value: string | null | undefined): string {
 
 /** Copy a full identifier to the clipboard; failures stay visible, never silent. */
 export function useCopyTechnicalValue(value: string | null | undefined) {
-  const [result, setResult] = useState<{ value: string; sequence: number; status: "success" | "failure" } | null>(null);
+  const [result, setResult] = useState<{
+    value: string;
+    sequence: number;
+    status: "success" | "failure";
+  } | null>(null);
   const current = useRef(value);
   const request = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -72,11 +76,18 @@ export function useCopyTechnicalValue(value: string | null | undefined) {
     setResult({ value, sequence, status });
     if (status === "success") {
       timer.current = setTimeout(() => {
-        if (mounted.current && sequence === request.current && current.current === value) setResult(null);
+        if (mounted.current && sequence === request.current && current.current === value)
+          setResult(null);
       }, 2000);
     }
   }, [value]);
-  return { status: result && result.value === value && result.sequence === request.current ? result.status : "idle", copy };
+  return {
+    status:
+      result && result.value === value && result.sequence === request.current
+        ? result.status
+        : "idle",
+    copy,
+  };
 }
 
 function TechnicalValue({ value }: { value: string }) {
@@ -96,9 +107,7 @@ function TechnicalValue({ value }: { value: string }) {
       </button>
       {status !== "idle" ? (
         <span role="status" aria-live="polite" className="caw-technical-value-status">
-          {status === "success"
-            ? "已复制完整值"
-            : "复制失败，请选中完整值手动复制。"}
+          {status === "success" ? "已复制完整值" : "复制失败，请选中完整值手动复制。"}
         </span>
       ) : null}
     </span>

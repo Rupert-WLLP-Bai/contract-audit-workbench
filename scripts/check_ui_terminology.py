@@ -132,6 +132,36 @@ def _matching_delimiter(source: str, start: int, opening: str, closing: str) -> 
     raise GuardError(f"unbalanced {opening}{closing} in pilot component")
 
 
+def _top_level_return_offsets(component: str) -> list[int]:
+    """Return offsets of returns in the component body, ignoring nested callbacks."""
+    offsets: list[int] = []
+    depth = 0
+    quote: str | None = None
+    i = 0
+    while i < len(component):
+        char = component[i]
+        if quote:
+            if char == "\\":
+                i += 2
+                continue
+            if char == quote:
+                quote = None
+        elif char in ("'", '"', chr(96)):
+            quote = char
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+        elif depth == 1:
+            preceding = component[i - 1] if i else ""
+            if not (preceding.isalnum() or preceding in "_$") and re.match(
+                r"return\s*\(", component[i:]
+            ):
+                offsets.append(i)
+        i += 1
+    return offsets
+
+
 def _component_and_render(source: str) -> tuple[str, str]:
     clean = _code_without_comments(source)
     signatures = list(re.finditer(r"\bexport\s+function\s+ManualFindingsPanel\s*\(", clean))
@@ -145,10 +175,10 @@ def _component_and_render(source: str) -> tuple[str, str]:
         raise GuardError("ManualFindingsPanel function body is missing")
     body_close = _matching_delimiter(clean, body_open, "{", "}")
     component = clean[signature.start() : body_close + 1]
-    returns = list(re.finditer(r"\breturn\s*\(", component))
+    returns = _top_level_return_offsets(component)
     if len(returns) != 1:
         raise GuardError("expected exactly one JSX return in ManualFindingsPanel")
-    jsx_open = component.find("(", returns[0].start())
+    jsx_open = component.find("(", returns[0])
     jsx_close = _matching_delimiter(component, jsx_open, "(", ")")
     return component, component[jsx_open + 1 : jsx_close]
 
@@ -326,7 +356,7 @@ def inspect_component(
     heading = re.findall(r'<h2\s+id=["\']manual-findings-heading["\']\s*>([^<]*)</h2>', jsx)
     if heading != [terms["manual_finding"]]:
         raise GuardError("ManualFindingsPanel heading must use the T37 canonical term")
-    empty_attempt = re.findall(r"!attemptId\s*\?\s*<p>([^<]*)</p>", jsx)
+    empty_attempt = re.findall(r"!attemptId\s*\?\s*(?:\(\s*)?<p>([^<]*)</p>", jsx)
     if len(empty_attempt) != 1 or terms["attempt"] not in empty_attempt[0]:
         raise GuardError("missing-attempt UI slot must name the T08 execution attempt")
     if terms["approval_round"] in empty_attempt[0]:

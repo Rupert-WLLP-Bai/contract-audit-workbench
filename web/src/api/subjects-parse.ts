@@ -49,7 +49,12 @@ const bindingStates = ["active", "inactive", "pending_confirmation"] as const;
 const verificationStates = ["pending_verification", "verified"] as const;
 const aliasKinds = ["legal", "trade", "former", "other"] as const;
 const subjectSources = ["user_asserted", "official_identifier", "authorized_correction"] as const;
-const claimSources = ["user_asserted", "official_identifier", "authorized_correction", "synthetic_controlled_snapshot"] as const;
+const claimSources = [
+  "user_asserted",
+  "official_identifier",
+  "authorized_correction",
+  "synthetic_controlled_snapshot",
+] as const;
 const verificationScopes = ["synthetic_controlled", "official_controlled", "ordinary"] as const;
 const changeTargets = ["subject", "case_subject_role"] as const;
 const changeStates = ["pending_decision", "approved", "rejected", "applied"] as const;
@@ -75,7 +80,12 @@ function textAllowEmpty(record: Record<string, unknown>, key: string, path: stri
   return value;
 }
 
-function literal<T extends string>(record: Record<string, unknown>, key: string, expected: T, path: string): T {
+function literal<T extends string>(
+  record: Record<string, unknown>,
+  key: string,
+  expected: T,
+  path: string,
+): T {
   if (record[key] !== expected) return fail(`${path}.${key}`);
   return expected;
 }
@@ -88,13 +98,15 @@ function nullableText(record: Record<string, unknown>, key: string, path: string
 
 function positiveInteger(record: Record<string, unknown>, key: string, path: string): number {
   const value = record[key];
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) return fail(`${path}.${key}`);
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1)
+    return fail(`${path}.${key}`);
   return value;
 }
 
 function nonNegativeInteger(record: Record<string, unknown>, key: string, path: string): number {
   const value = record[key];
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) return fail(`${path}.${key}`);
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
+    return fail(`${path}.${key}`);
   return value;
 }
 
@@ -105,15 +117,28 @@ function isoTime(record: Record<string, unknown>, key: string, path: string): st
   return value;
 }
 
-function nullableIsoTime(record: Record<string, unknown>, key: string, path: string): string | null {
+function nullableIsoTime(
+  record: Record<string, unknown>,
+  key: string,
+  path: string,
+): string | null {
   const value = record[key];
   if (value === null) return null;
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) || Number.isNaN(Date.parse(value)))
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) ||
+    Number.isNaN(Date.parse(value))
+  )
     return fail(`${path}.${key}`);
   return value;
 }
 
-function enumField<T extends string>(record: Record<string, unknown>, key: string, allowed: readonly T[], path: string): T {
+function enumField<T extends string>(
+  record: Record<string, unknown>,
+  key: string,
+  allowed: readonly T[],
+  path: string,
+): T {
   const value = enumValue(record[key], allowed);
   if (value === null) return fail(`${path}.${key}`);
   return value;
@@ -125,7 +150,12 @@ function booleanField(record: Record<string, unknown>, key: string, path: string
   return value;
 }
 
-function array<T>(record: Record<string, unknown>, key: string, path: string, parse: (value: unknown, path: string) => T): T[] {
+function array<T>(
+  record: Record<string, unknown>,
+  key: string,
+  path: string,
+  parse: (value: unknown, path: string) => T,
+): T[] {
   const value = record[key];
   if (!Array.isArray(value)) return fail(`${path}.${key}`);
   return value.map((item, index) => parse(item, `${path}.${key}[${index}]`));
@@ -153,26 +183,45 @@ function alias(value: unknown, path: string): SubjectAlias {
 }
 
 function identifier(value: unknown, path: string, requireMasked: true): MaskedSubjectIdentifier;
-function identifier(value: unknown, path: string, requireMasked: false, allowFullValue?: boolean): SubjectIdentityClaim;
-function identifier(value: unknown, path: string, requireMasked: boolean, allowFullValue = false): MaskedSubjectIdentifier | SubjectIdentityClaim {
+function identifier(
+  value: unknown,
+  path: string,
+  requireMasked: false,
+  allowFullValue?: boolean,
+): SubjectIdentityClaim;
+function identifier(
+  value: unknown,
+  path: string,
+  requireMasked: boolean,
+  allowFullValue = false,
+): MaskedSubjectIdentifier | SubjectIdentityClaim {
   const record = object(value, path);
-  if (record.namespace !== "cn.gov.samr.uscc" || record.identifier_type !== "unified_social_credit_code")
+  if (
+    record.namespace !== "cn.gov.samr.uscc" ||
+    record.identifier_type !== "unified_social_credit_code"
+  )
     return fail(`${path}.namespace/identifier_type`);
   const masked = record.masked_value;
   const raw = record.value;
-  if (masked !== undefined && (typeof masked !== "string" || !/^[0-9A-Z]{4}•{10}[0-9A-Z]{4}$/.test(masked)))
+  if (
+    masked !== undefined &&
+    (typeof masked !== "string" || !/^[0-9A-Z]{4}•{10}[0-9A-Z]{4}$/.test(masked))
+  )
     return fail(`${path}.masked_value`);
   if (raw !== undefined && (typeof raw !== "string" || !/^[0-9A-Z]{18}$/.test(raw)))
     return fail(`${path}.value`);
   if (requireMasked && typeof masked !== "string") return fail(`${path}.masked_value`);
   if ((requireMasked || !allowFullValue) && raw !== undefined) return fail(`${path}.value`);
-  if (!requireMasked && typeof masked !== "string" && typeof raw !== "string") return fail(`${path}.value/masked_value`);
+  if (!requireMasked && typeof masked !== "string" && typeof raw !== "string")
+    return fail(`${path}.value/masked_value`);
   return {
     namespace: "cn.gov.samr.uscc",
     identifier_type: "unified_social_credit_code",
     ...(typeof raw === "string" ? { value: raw } : {}),
     ...(typeof masked === "string" ? { masked_value: masked } : {}),
-    ...(record.verification_scope === undefined ? {} : { verification_scope: enumField(record, "verification_scope", verificationScopes, path) }),
+    ...(record.verification_scope === undefined
+      ? {}
+      : { verification_scope: enumField(record, "verification_scope", verificationScopes, path) }),
     verification_state: enumField(record, "verification_state", verificationStates, path),
     source_kind: enumField(record, "source_kind", claimSources, path),
     source_time: nullableIsoTime(record, "source_time", path),
@@ -193,24 +242,32 @@ function principalAliases(record: Record<string, unknown>, path: string): Subjec
 export function parseSubjectSummary(value: unknown): SubjectSummary {
   const path = "subject";
   const record = object(value, path);
-  const verification = record.verification_state === "inactive"
-    ? "inactive"
-    : enumField(record, "verification_state", verificationStates, path);
+  const verification =
+    record.verification_state === "inactive"
+      ? "inactive"
+      : enumField(record, "verification_state", verificationStates, path);
   return {
     subject_id: text(record, "subject_id", path),
     current_version: positiveInteger(record, "current_version", path),
     display_name: text(record, "display_name", path),
     legal_name: nullableText(record, "legal_name", path),
     verification_state: verification,
-    ...(record.verification_scope === undefined ? {} : { verification_scope: enumField(record, "verification_scope", verificationScopes, path) }),
+    ...(record.verification_scope === undefined
+      ? {}
+      : { verification_scope: enumField(record, "verification_scope", verificationScopes, path) }),
     aliases: principalAliases(record, path),
     created_at: isoTime(record, "created_at", path),
     created_by: principal(record.created_by, `${path}.created_by`),
-    identifiers: array(record, "identifiers", path, (item, itemPath) => identifier(item, itemPath, true)),
+    identifiers: array(record, "identifiers", path, (item, itemPath) =>
+      identifier(item, itemPath, true),
+    ),
   };
 }
 
-export function parseSubjectVersionProjection(value: unknown, allowFullIdentifiers = false): SubjectVersionProjection {
+export function parseSubjectVersionProjection(
+  value: unknown,
+  allowFullIdentifiers = false,
+): SubjectVersionProjection {
   const path = "subject version";
   const record = object(value, path);
   return {
@@ -219,18 +276,25 @@ export function parseSubjectVersionProjection(value: unknown, allowFullIdentifie
     display_name: text(record, "display_name", path),
     legal_name: nullableText(record, "legal_name", path),
     verification_state: enumField(record, "verification_state", verificationStates, path),
-    ...(record.verification_scope === undefined ? {} : { verification_scope: enumField(record, "verification_scope", verificationScopes, path) }),
+    ...(record.verification_scope === undefined
+      ? {}
+      : { verification_scope: enumField(record, "verification_scope", verificationScopes, path) }),
     source_kind: enumField(record, "source_kind", subjectSources, path),
     basis_summary: text(record, "basis_summary", path),
     payload_hash: hash(record, "payload_hash", path),
-    identity_claims: array(record, "identity_claims", path, (item, itemPath) => identifier(item, itemPath, false, allowFullIdentifiers)),
+    identity_claims: array(record, "identity_claims", path, (item, itemPath) =>
+      identifier(item, itemPath, false, allowFullIdentifiers),
+    ),
     aliases: principalAliases(record, path),
     created_by: principal(record.created_by, `${path}.created_by`),
     created_at: isoTime(record, "created_at", path),
   };
 }
 
-export function parseSubjectList(value: unknown): { items: SubjectSummary[]; next_cursor: string | null } {
+export function parseSubjectList(value: unknown): {
+  items: SubjectSummary[];
+  next_cursor: string | null;
+} {
   const record = object(value, "subject list");
   return {
     items: array(record, "items", "subject list", (item) => parseSubjectSummary(item)),
@@ -245,11 +309,16 @@ export function parseSubjectDetail(value: unknown): SubjectDetail {
     subject_id: text(record, "subject_id", path),
     current_version: positiveInteger(record, "current_version", path),
     current: parseSubjectVersionProjection(record.current),
-    identifiers: array(record, "identifiers", path, (item, itemPath) => identifier(item, itemPath, true)),
+    identifiers: array(record, "identifiers", path, (item, itemPath) =>
+      identifier(item, itemPath, true),
+    ),
   };
 }
 
-export function parseCaseRoleBinding(value: unknown, allowFullIdentifiers = false): CaseRoleBindingProjection {
+export function parseCaseRoleBinding(
+  value: unknown,
+  allowFullIdentifiers = false,
+): CaseRoleBindingProjection {
   const path = "case role binding";
   const record = object(value, path);
   return {
@@ -258,7 +327,12 @@ export function parseCaseRoleBinding(value: unknown, allowFullIdentifiers = fals
     case_id: text(record, "case_id", path),
     role: enumField(record, "role", roles, path),
     binding_state: enumField(record, "binding_state", bindingStates, path),
-    source_kind: enumField(record, "source_kind", ["user_asserted", "legacy_label", "authorized_correction"] as const, path),
+    source_kind: enumField(
+      record,
+      "source_kind",
+      ["user_asserted", "legacy_label", "authorized_correction"] as const,
+      path,
+    ),
     legacy_label: nullableText(record, "legacy_label", path),
     created_by: principal(record.created_by, `${path}.created_by`),
     subject: parseSubjectVersionProjection(record.subject, allowFullIdentifiers),
@@ -281,23 +355,33 @@ export function parseCaseSubjects(value: unknown): CaseSubjectsProjection {
   return {
     items: array(record, "items", "case subjects", (item) => parseCaseRoleBinding(item)),
     legacy_profile: legacyProfile,
-    can_manage: record.can_manage === undefined ? false : booleanField(record, "can_manage", "case subjects"),
+    can_manage:
+      record.can_manage === undefined ? false : booleanField(record, "can_manage", "case subjects"),
   };
 }
 
 export function parseSubjectCaseLinks(value: unknown): SubjectCaseLinksProjection {
   const record = object(value, "subject case links");
-  const items = array(record, "items", "subject case links", (item, path): SubjectCaseLinkProjection => {
-    const link = object(item, path);
-    return {
-      ...parseCaseRoleBinding(link),
-      case_title: text(link, "case_title", path),
-      business_status: text(link, "business_status", path),
-    };
-  });
+  const items = array(
+    record,
+    "items",
+    "subject case links",
+    (item, path): SubjectCaseLinkProjection => {
+      const link = object(item, path);
+      return {
+        ...parseCaseRoleBinding(link),
+        case_title: text(link, "case_title", path),
+        business_status: text(link, "business_status", path),
+      };
+    },
+  );
   const visibleCount = nonNegativeInteger(record, "visible_count", "subject case links");
   if (visibleCount !== items.length) return fail("subject case links.visible_count");
-  return { items, visible_count: visibleCount, next_cursor: nullableText(record, "next_cursor", "subject case links") };
+  return {
+    items,
+    visible_count: visibleCount,
+    next_cursor: nullableText(record, "next_cursor", "subject case links"),
+  };
 }
 
 export function parseSubjectHistory(value: unknown): SubjectHistoryProjection {
@@ -306,7 +390,17 @@ export function parseSubjectHistory(value: unknown): SubjectHistoryProjection {
     const event = object(value, path);
     return {
       event_id: text(event, "event_id", path),
-      kind: enumField(event, "kind", ["proposal_created", "decision_approved", "decision_rejected", "correction_applied"] as const, path),
+      kind: enumField(
+        event,
+        "kind",
+        [
+          "proposal_created",
+          "decision_approved",
+          "decision_rejected",
+          "correction_applied",
+        ] as const,
+        path,
+      ),
       request_id: text(event, "request_id", path),
       case_id: text(event, "case_id", path),
       actor: principal(event.actor, `${path}.actor`),
@@ -314,7 +408,9 @@ export function parseSubjectHistory(value: unknown): SubjectHistoryProjection {
     };
   });
   return {
-    versions: array(record, "versions", "subject history", (item) => parseSubjectVersionProjection(item)),
+    versions: array(record, "versions", "subject history", (item) =>
+      parseSubjectVersionProjection(item),
+    ),
     events,
   };
 }
@@ -332,14 +428,20 @@ export function parseCaseRoleCreateResult(value: unknown): CaseRoleCreateResult 
     verification_state: enumField(record, "verification_state", verificationStates, path),
     source_kind: enumField(record, "source_kind", ["user_asserted", "legacy_label"] as const, path),
     legacy_label: nullableText(record, "legacy_label", path),
-    binding_state: enumField(record, "binding_state", ["active", "pending_confirmation"] as const, path),
+    binding_state: enumField(
+      record,
+      "binding_state",
+      ["active", "pending_confirmation"] as const,
+      path,
+    ),
   };
 }
 
 export function parseBindExistingSubjectResult(value: unknown): BindExistingSubjectResult {
   const path = "bind existing subject";
   const record = object(value, path);
-  if (record.binding_state !== "active" || record.source_kind !== "user_asserted") return fail(path);
+  if (record.binding_state !== "active" || record.source_kind !== "user_asserted")
+    return fail(path);
   return {
     binding_id: text(record, "binding_id", path),
     binding_version: positiveInteger(record, "binding_version", path),
@@ -370,7 +472,9 @@ export function parseSubjectCreateResult(value: unknown): SubjectSummary {
     aliases: current.aliases,
     created_at: isoTime(record, "created_at", path),
     created_by: current.created_by,
-    identifiers: current.identity_claims.filter((claim): claim is MaskedSubjectIdentifier => typeof claim.masked_value === "string"),
+    identifiers: current.identity_claims.filter(
+      (claim): claim is MaskedSubjectIdentifier => typeof claim.masked_value === "string",
+    ),
   };
 }
 
@@ -384,7 +488,10 @@ function summary(value: unknown): SubjectChangeSummary {
     target_subject_id: text(record, "target_subject_id", path),
     target_binding_id: nullableText(record, "target_binding_id", path),
     expected_subject_version: positiveInteger(record, "expected_subject_version", path),
-    expected_binding_version: record.expected_binding_version === null ? null : positiveInteger(record, "expected_binding_version", path),
+    expected_binding_version:
+      record.expected_binding_version === null
+        ? null
+        : positiveInteger(record, "expected_binding_version", path),
     payload_hash: hash(record, "payload_hash", path),
     proposed_by: principal(record.proposed_by, `${path}.proposed_by`),
     proposed_by_display_name: text(record, "proposed_by_display_name", path),
@@ -414,7 +521,10 @@ function basisRef(value: unknown, path: string): SubjectChangeBasisRef {
     };
   }
   if (record.kind === "controlled_source") {
-    if (record.source_catalog_id !== "synthetic.uscc.demo" || record.source_scope !== "synthetic_controlled")
+    if (
+      record.source_catalog_id !== "synthetic.uscc.demo" ||
+      record.source_scope !== "synthetic_controlled"
+    )
       return fail(`${path}.source_catalog_id/source_scope`);
     return {
       kind: "controlled_source",
@@ -435,7 +545,10 @@ function basisRef(value: unknown, path: string): SubjectChangeBasisRef {
 export function parseSubjectSourceSnapshot(value: unknown): SubjectSourceSnapshot {
   const path = "subject source snapshot";
   const record = object(value, path);
-  if (record.source_catalog_id !== "synthetic.uscc.demo" || record.source_scope !== "synthetic_controlled")
+  if (
+    record.source_catalog_id !== "synthetic.uscc.demo" ||
+    record.source_scope !== "synthetic_controlled"
+  )
     return fail(path);
   return {
     snapshot_id: text(record, "snapshot_id", path),
@@ -473,7 +586,9 @@ export function parseSubjectSourceSnapshotDetail(value: unknown): SubjectSourceS
 export function parseSubjectSourceSnapshotList(value: unknown): SubjectSourceSnapshotList {
   const record = object(value, "subject source snapshot list");
   return {
-    items: array(record, "items", "subject source snapshot list", (item) => parseSubjectSourceSnapshotRecord(item)),
+    items: array(record, "items", "subject source snapshot list", (item) =>
+      parseSubjectSourceSnapshotRecord(item),
+    ),
     next_cursor: nullableText(record, "next_cursor", "subject source snapshot list"),
   };
 }
@@ -492,20 +607,27 @@ function parseSubjectSourceDirectoryItem(value: unknown): SubjectSourceDirectory
 export function parseSubjectSourceDirectory(value: unknown): SubjectSourceDirectory {
   const record = object(value, "subject source directory");
   return {
-    items: array(record, "items", "subject source directory", (item) => parseSubjectSourceDirectoryItem(item)),
+    items: array(record, "items", "subject source directory", (item) =>
+      parseSubjectSourceDirectoryItem(item),
+    ),
   };
 }
 
 export function parseMaterialParsedTextPage(value: unknown): MaterialParsedTextPage {
   const path = "material parsed text page";
   const record = object(value, path);
-  const nextOffset = record.next_offset === null ? null : nonNegativeInteger(record, "next_offset", path);
+  const nextOffset =
+    record.next_offset === null ? null : nonNegativeInteger(record, "next_offset", path);
   const offset = nonNegativeInteger(record, "offset", path);
   const totalRunes = nonNegativeInteger(record, "total_runes", path);
   if (nextOffset !== null && nextOffset <= offset) return fail(`${path}.next_offset`);
   const pageText = textAllowEmpty(record, "text", path);
   const pageEnd = offset + [...pageText].length;
-  if (pageEnd > totalRunes || (nextOffset !== null && nextOffset !== pageEnd) || (nextOffset === null && pageEnd !== totalRunes))
+  if (
+    pageEnd > totalRunes ||
+    (nextOffset !== null && nextOffset !== pageEnd) ||
+    (nextOffset === null && pageEnd !== totalRunes)
+  )
     return fail(`${path}.text_range`);
   return {
     material_id: text(record, "material_id", path),
@@ -532,7 +654,8 @@ function parseMaterialParsedDocumentSummary(value: unknown): MaterialParsedDocum
     parser_version: text(record, "parser_version", path),
     created_at: isoTime(record, "created_at", path),
     original_digest: hash(record, "original_digest", path),
-    normalized_digest: record.normalized_digest === null ? null : hash(record, "normalized_digest", path),
+    normalized_digest:
+      record.normalized_digest === null ? null : hash(record, "normalized_digest", path),
   };
 }
 
@@ -547,12 +670,22 @@ export function parseMaterialParsedDocumentList(value: unknown): MaterialParsedD
   };
 }
 
-export function parseSubjectSourceVerificationResult(value: unknown): SubjectSourceVerificationResult {
+export function parseSubjectSourceVerificationResult(
+  value: unknown,
+): SubjectSourceVerificationResult {
   const path = "subject source verification";
   const record = object(value, path);
-  if (record.source_catalog_id !== "synthetic.uscc.demo" || record.source_scope !== "synthetic_controlled")
+  if (
+    record.source_catalog_id !== "synthetic.uscc.demo" ||
+    record.source_scope !== "synthetic_controlled"
+  )
     return fail(path);
-  const match = enumField(record, "match_outcome", ["exact_match", "no_match", "ambiguous"] as const, path);
+  const match = enumField(
+    record,
+    "match_outcome",
+    ["exact_match", "no_match", "ambiguous"] as const,
+    path,
+  );
   const state = match === "exact_match" ? "pending_decision" : "not_proposed";
   if (record.state !== state) return fail(`${path}.state`);
   const requestId = nullableText(record, "request_id", path);
@@ -564,7 +697,8 @@ export function parseSubjectSourceVerificationResult(value: unknown): SubjectSou
       display_name: text(matched, "display_name", `${path}.matched_record`),
       masked_identifier: text(matched, "masked_identifier", `${path}.matched_record`),
     };
-    if (!/^[0-9A-Z]{4}•{10}[0-9A-Z]{4}$/.test(matchedRecord.masked_identifier)) return fail(`${path}.matched_record.masked_identifier`);
+    if (!/^[0-9A-Z]{4}•{10}[0-9A-Z]{4}$/.test(matchedRecord.masked_identifier))
+      return fail(`${path}.matched_record.masked_identifier`);
   } else if (record.matched_record !== null) {
     return fail(`${path}.matched_record`);
   }
@@ -601,7 +735,10 @@ function targetProjection(value: unknown, targetKind: SubjectChangeSummary["targ
     : parseCaseRoleBinding(value, true);
 }
 
-export function parseSubjectChangeList(value: unknown): { items: SubjectChangeSummary[]; next_cursor: string | null } {
+export function parseSubjectChangeList(value: unknown): {
+  items: SubjectChangeSummary[];
+  next_cursor: string | null;
+} {
   const record = object(value, "subject changes");
   return {
     items: array(record, "items", "subject changes", summary),
@@ -616,7 +753,10 @@ export function parseSubjectChangeProposalResult(value: unknown): SubjectChangeP
     request_id: text(record, "request_id", path),
     target_kind: enumField(record, "target_kind", changeTargets, path),
     expected_subject_version: positiveInteger(record, "expected_subject_version", path),
-    expected_binding_version: record.expected_binding_version === null ? null : positiveInteger(record, "expected_binding_version", path),
+    expected_binding_version:
+      record.expected_binding_version === null
+        ? null
+        : positiveInteger(record, "expected_binding_version", path),
     payload_hash: hash(record, "payload_hash", path),
     state: record.state === "pending_decision" ? "pending_decision" : fail(`${path}.state`),
     proposed_by_display_name: text(record, "proposed_by_display_name", path),
@@ -632,7 +772,11 @@ export function parseSubjectChangeDetail(value: unknown): SubjectChangeDetail {
   const proposedBy = text(record, "proposed_by_display_name", path);
   const canDecide = booleanField(record, "can_decide", path);
   const blockedReason = nullableText(record, "decision_blocked_reason", path);
-  if (subjectSummary.proposed_by_display_name !== proposedBy || subjectSummary.can_decide !== canDecide || subjectSummary.decision_blocked_reason !== blockedReason)
+  if (
+    subjectSummary.proposed_by_display_name !== proposedBy ||
+    subjectSummary.can_decide !== canDecide ||
+    subjectSummary.decision_blocked_reason !== blockedReason
+  )
     return fail(`${path}.decision_capability`);
   return {
     summary: subjectSummary,
@@ -664,7 +808,10 @@ export function parseSubjectChangeImpact(
     basis_refs: array(record, "basis_refs", path, basisRef),
     impact_etag: text(record, "impact_etag", path),
     visible_affected_count: nonNegativeInteger(record, "visible_affected_count", path),
-    authorized_impact_cases: impactCases(record.authorized_impact_cases, `${path}.authorized_impact_cases`),
+    authorized_impact_cases: impactCases(
+      record.authorized_impact_cases,
+      `${path}.authorized_impact_cases`,
+    ),
   };
 }
 
@@ -672,9 +819,10 @@ export function parseSubjectChangeDecisionResult(value: unknown): SubjectChangeD
   const path = "subject change decision";
   const record = object(value, path);
   const decision = enumField(record, "decision", ["approved", "rejected"] as const, path);
-  const applied = record.applied_subject_version === null
-    ? null
-    : positiveInteger(record, "applied_subject_version", path);
+  const applied =
+    record.applied_subject_version === null
+      ? null
+      : positiveInteger(record, "applied_subject_version", path);
   return {
     request_id: text(record, "request_id", path),
     decision,

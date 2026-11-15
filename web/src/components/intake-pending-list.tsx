@@ -26,13 +26,15 @@ import type { IntakeContinuationSelection } from "../features/intake/intake-cont
 import "./intake-pending-list.css";
 
 const REASON_MESSAGES: Record<string, string> = {
-  legacy_request_unavailable: "这是旧办理，服务器没有可验证的原始请求信息，无法安全续传。原案件仍可打开。",
+  legacy_request_unavailable:
+    "这是旧办理，服务器没有可验证的原始请求信息，无法安全续传。原案件仍可打开。",
   request_identity_invalid: "服务器无法验证原始文件身份，已停止续办以避免改写案件。",
   forbidden: "当前身份无权继续该办理。请使用原经办身份登录，或在有权查看时打开原案件。",
   read_only: "当前工作区处于只读状态，不能继续上传。",
   case_not_writable: "原案件当前不可写，不能继续上传。",
   completed: "服务器已确认该办理完成；请打开原案件查看。",
-  archived: "该办理已归档。归档只从未完成办理列表中隐藏办理，不会删除原案件；已开始的上传仍可能完成。",
+  archived:
+    "该办理已归档。归档只从未完成办理列表中隐藏办理，不会删除原案件；已开始的上传仍可能完成。",
 };
 
 function actorScopeKey(actor: Actor | null): string {
@@ -43,14 +45,12 @@ function actorScopeKey(actor: Actor | null): string {
 
 function reasonMessage(code: string): string {
   return (
-    REASON_MESSAGES[code] ??
-    "服务器当前没有开放继续办理。可以打开原案件，或刷新列表查看最新状态。"
+    REASON_MESSAGES[code] ?? "服务器当前没有开放继续办理。可以打开原案件，或刷新列表查看最新状态。"
   );
 }
 
 function pendingStatus(errorCode: string | null): string {
-  if (errorCode === "document_upload_unavailable")
-    return "主合同尚未上传完成";
+  if (errorCode === "document_upload_unavailable") return "主合同尚未上传完成";
   return errorCode === null ? "等待主合同上传" : "续办状态需要刷新";
 }
 
@@ -73,8 +73,7 @@ export function IntakePendingList({
     actorScope: string;
     cursors: (string | null)[];
   }>({ actorScope: "", cursors: [null] });
-  const cursors =
-    pageState.actorScope === actorScope ? pageState.cursors : [null];
+  const cursors = pageState.actorScope === actorScope ? pageState.cursors : [null];
   const cursor = cursors[cursors.length - 1] ?? null;
   const pageNumber = cursors.length;
   const [detailOperationId, setDetailOperationId] = useState<string | null>(null);
@@ -82,12 +81,8 @@ export function IntakePendingList({
     operationId: string;
     message: string;
   } | null>(null);
-  const [archiveOperationId, setArchiveOperationId] = useState<string | null>(
-    null,
-  );
-  const [archivingOperationId, setArchivingOperationId] = useState<
-    string | null
-  >(null);
+  const [archiveOperationId, setArchiveOperationId] = useState<string | null>(null);
+  const [archivingOperationId, setArchivingOperationId] = useState<string | null>(null);
   const [archiveError, setArchiveError] = useState<{
     operationId: string;
     message: string;
@@ -151,10 +146,7 @@ export function IntakePendingList({
     setDetailMessage(null);
     setNotice(null);
     try {
-      const detail = await getIntakeContinuation(
-        item.operation_id,
-        controller.signal,
-      );
+      const detail = await getIntakeContinuation(item.operation_id, controller.signal);
       if (
         controller.signal.aborted ||
         actorScopeRef.current !== requestScope ||
@@ -189,10 +181,7 @@ export function IntakePendingList({
         message: errorMessage(error),
       });
     } finally {
-      if (
-        actorScopeRef.current === requestScope &&
-        sequence === detailSequence.current
-      ) {
+      if (actorScopeRef.current === requestScope && sequence === detailSequence.current) {
         setDetailOperationId(null);
         detailController.current = null;
       }
@@ -215,9 +204,7 @@ export function IntakePendingList({
       await archiveIntake(item.operation_id);
       if (actorScopeRef.current !== requestScope) return;
       setArchiveOperationId(null);
-      setNotice(
-        `已归档“${item.title}”。原案件仍保留；已经开始的上传仍可能完成。`,
-      );
+      setNotice(`已归档“${item.title}”。原案件仍保留；已经开始的上传仍可能完成。`);
       onArchived(item.operation_id);
       await queryClient.invalidateQueries({
         queryKey: queryKeys.pendingIntakesPrefix,
@@ -232,8 +219,7 @@ export function IntakePendingList({
         queryKey: queryKeys.pendingIntakesPrefix,
       });
     } finally {
-      if (actorScopeRef.current === requestScope)
-        setArchivingOperationId(null);
+      if (actorScopeRef.current === requestScope) setArchivingOperationId(null);
     }
   }
 
@@ -253,16 +239,10 @@ export function IntakePendingList({
         <div className="home-section-title">
           <span aria-hidden="true" />
           <h2 id="intake-pending-title">我的未完成办理</h2>
-          {pending.data ? (
-            <strong className="home-figure-badge">{items.length}</strong>
-          ) : null}
+          {pending.data ? <strong className="home-figure-badge">{items.length}</strong> : null}
         </div>
         {actor !== null ? (
-          <Button
-            htmlType="button"
-            disabled={pending.isFetching}
-            onClick={retryList}
-          >
+          <Button htmlType="button" disabled={pending.isFetching} onClick={retryList}>
             刷新列表
           </Button>
         ) : null}
@@ -309,13 +289,9 @@ export function IntakePendingList({
             const archiving = archivingOperationId === item.operation_id;
             const confirmingArchive = archiveOperationId === item.operation_id;
             const message =
-              detailMessage?.operationId === item.operation_id
-                ? detailMessage.message
-                : null;
+              detailMessage?.operationId === item.operation_id ? detailMessage.message : null;
             const archiveFailure =
-              archiveError?.operationId === item.operation_id
-                ? archiveError.message
-                : null;
+              archiveError?.operationId === item.operation_id ? archiveError.message : null;
             return (
               <li className="intake-pending-row" key={item.operation_id}>
                 <div className="intake-pending-copy">
@@ -344,9 +320,7 @@ export function IntakePendingList({
                     {pendingStatus(item.error_code)}
                   </p>
                   {!item.can_resume ? (
-                    <p className="intake-pending-reason">
-                      {reasonMessage(item.reason_code)}
-                    </p>
+                    <p className="intake-pending-reason">{reasonMessage(item.reason_code)}</p>
                   ) : null}
                   {message === null ? null : (
                     <Alert
@@ -367,10 +341,12 @@ export function IntakePendingList({
                     />
                   )}
                   {confirmingArchive ? (
-                    <div className="intake-pending-archive-confirm" role="group" aria-label={`确认归档 ${item.title}`}>
-                      <p>
-                        归档只隐藏这项未完成办理，不删除原案件或回执；已开始的上传仍可能完成。
-                      </p>
+                    <div
+                      className="intake-pending-archive-confirm"
+                      role="group"
+                      aria-label={`确认归档 ${item.title}`}
+                    >
+                      <p>归档只隐藏这项未完成办理，不删除原案件或回执；已开始的上传仍可能完成。</p>
                       <Button
                         danger
                         htmlType="button"
@@ -396,17 +372,13 @@ export function IntakePendingList({
                       type="primary"
                       htmlType="button"
                       loading={detailBusy}
-                      disabled={
-                        detailOperationId !== null || archivingOperationId !== null
-                      }
+                      disabled={detailOperationId !== null || archivingOperationId !== null}
                       onClick={() => void selectContinuation(item)}
                     >
                       继续办理
                     </Button>
                   ) : null}
-                  <Button href={caseHref(item.case_id, null)}>
-                    打开原案件
-                  </Button>
+                  <Button href={caseHref(item.case_id, null)}>打开原案件</Button>
                   {item.can_archive && !confirmingArchive ? (
                     <Button
                       htmlType="button"

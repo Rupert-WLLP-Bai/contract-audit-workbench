@@ -11,8 +11,19 @@
 import { useState } from "react";
 import { Alert, Button, Select, Space, Typography } from "antd";
 import { useQueryClient } from "@tanstack/react-query";
-import { ApiError, captureCommandContext, captureCommandContextIfAvailable, invalidateSessionIdentity } from "../api/http";
-import { clearIdentityQueries, queryKeys, revalidateSessionContext, useContextChoices, useSwitchContext } from "../api/queries";
+import {
+  ApiError,
+  captureCommandContext,
+  captureCommandContextIfAvailable,
+  invalidateSessionIdentity,
+} from "../api/http";
+import {
+  clearIdentityQueries,
+  queryKeys,
+  revalidateSessionContext,
+  useContextChoices,
+  useSwitchContext,
+} from "../api/queries";
 import type { Actor, SessionAudience } from "../api/types";
 
 export function ContextSwitcher({
@@ -51,7 +62,11 @@ export function ContextSwitcher({
         type="error"
         showIcon
         title={error ?? "上下文尚未重新确认"}
-        action={<Button htmlType="button" onClick={() => void retryRevalidation()}>重新确认</Button>}
+        action={
+          <Button htmlType="button" onClick={() => void retryRevalidation()}>
+            重新确认
+          </Button>
+        }
       />
     ) : null;
   }
@@ -61,7 +76,11 @@ export function ContextSwitcher({
         type="error"
         showIcon
         title={error ?? "上下文尚未重新确认"}
-        action={<Button htmlType="button" onClick={() => void retryRevalidation()}>重新确认</Button>}
+        action={
+          <Button htmlType="button" onClick={() => void retryRevalidation()}>
+            重新确认
+          </Button>
+        }
       />
     );
   }
@@ -82,7 +101,7 @@ export function ContextSwitcher({
   }));
   const currentId = actor.active_context.membership_id ?? undefined;
   return (
-      <Space orientation="vertical" size={2}>
+    <Space orientation="vertical" size={2}>
       <Select
         aria-label="切换工作上下文"
         value={currentId}
@@ -97,21 +116,35 @@ export function ContextSwitcher({
           setError(null);
           setRevalidationRequired(false);
           onTransition(true);
-          void switching.mutateAsync({ membershipId, context })
+          void switching
+            .mutateAsync({ membershipId, context })
             .then(() => {
               setRevalidationRequired(false);
               onTransition(false);
             })
             .catch((cause: unknown) => {
-              setError(cause instanceof ApiError ? cause.message : "切换未完成，请重新确认当前上下文");
+              setError(
+                cause instanceof ApiError ? cause.message : "切换未完成，请重新确认当前上下文",
+              );
               if (captureCommandContextIfAvailable()) onTransition(false);
               else setRevalidationRequired(true);
-            })
+            });
         }}
       />
       {revalidationRequired ? (
-        <Alert type="error" showIcon title={error ?? "上下文尚未重新确认"} action={<Button htmlType="button" onClick={() => void retryRevalidation()}>重新确认</Button>} />
-      ) : error ? <Alert type="error" showIcon title={error} /> : null}
+        <Alert
+          type="error"
+          showIcon
+          title={error ?? "上下文尚未重新确认"}
+          action={
+            <Button htmlType="button" onClick={() => void retryRevalidation()}>
+              重新确认
+            </Button>
+          }
+        />
+      ) : error ? (
+        <Alert type="error" showIcon title={error} />
+      ) : null}
       <Typography.Text className="sr-only">
         当前组织：{actor.active_context.org_name}
       </Typography.Text>

@@ -95,7 +95,8 @@ async function pageState(page: Page): Promise<PageState> {
     if (!node) return "ready";
     const kind = Array.from(node.classList).find((name) => name.startsWith("page-status-"));
     const value = kind ? kind.replace("page-status-", "") : "";
-    if (value === "loading" || value === "empty" || value === "error" || value === "denied") return value;
+    if (value === "loading" || value === "empty" || value === "error" || value === "denied")
+      return value;
     return "unknown";
   });
 }
@@ -106,8 +107,12 @@ const targets: Target[] = [
     site: "client",
     path: "/login",
     ready: async (page) => {
-      await page.locator('input[name="username"]').waitFor({ state: "visible", timeout: readyTimeout });
-      await page.locator('input[name="password"]').waitFor({ state: "visible", timeout: readyTimeout });
+      await page
+        .locator('input[name="username"]')
+        .waitFor({ state: "visible", timeout: readyTimeout });
+      await page
+        .locator('input[name="password"]')
+        .waitFor({ state: "visible", timeout: readyTimeout });
     },
   },
   {
@@ -126,7 +131,10 @@ const targets: Target[] = [
     path: casePath,
     needs: "E2E_CASE_ID",
     ready: async (page) => {
-      await page.locator(".document-list li[data-document-id]").first().waitFor({ state: "visible", timeout: readyTimeout });
+      await page
+        .locator(".document-list li[data-document-id]")
+        .first()
+        .waitFor({ state: "visible", timeout: readyTimeout });
       await waitForText(page, ".page-head h1");
     },
   },
@@ -138,15 +146,22 @@ const targets: Target[] = [
     ready: async (page) => {
       // Source text and at least one finding must be visibly rendered.
       await page.locator(".workspace-grid").waitFor({ state: "visible", timeout: readyTimeout });
-      await page.locator(".finding-button").first().waitFor({ state: "visible", timeout: readyTimeout });
+      await page
+        .locator(".finding-button")
+        .first()
+        .waitFor({ state: "visible", timeout: readyTimeout });
       await waitForText(page, ".col-doc .doc-pane[data-document-version-id]");
       const inspector = page.locator(".execution-inspector-disclosure");
       await inspector.waitFor({ state: "visible", timeout: readyTimeout });
       if (!(await inspector.evaluate((element) => (element as HTMLDetailsElement).open))) {
         await inspector.locator(":scope > summary.execution-inspector-summary").click();
       }
-      await page.locator(".execution-inspector-body").waitFor({ state: "visible", timeout: readyTimeout });
-      await page.locator('.execution-inspector-body select[aria-label="查看执行记录"]').waitFor({ state: "visible", timeout: readyTimeout });
+      await page
+        .locator(".execution-inspector-body")
+        .waitFor({ state: "visible", timeout: readyTimeout });
+      await page
+        .locator('.execution-inspector-body select[aria-label="查看执行记录"]')
+        .waitFor({ state: "visible", timeout: readyTimeout });
     },
   },
   {
@@ -155,12 +170,16 @@ const targets: Target[] = [
     path: "/api-docs",
     ready: async (page) => {
       await page.locator(".api-docs-browser").waitFor({ state: "visible", timeout: readyTimeout });
-      await page.waitForFunction(() => {
-        const loading = document.querySelector(".api-docs-loading");
-        const browser = document.querySelector(".api-docs-browser");
-        const failure = document.querySelector(".api-docs-page .ant-alert-error");
-        return !loading && failure === null && (browser?.textContent ?? "").trim().length > 0;
-      }, undefined, { timeout: readyTimeout });
+      await page.waitForFunction(
+        () => {
+          const loading = document.querySelector(".api-docs-loading");
+          const browser = document.querySelector(".api-docs-browser");
+          const failure = document.querySelector(".api-docs-page .ant-alert-error");
+          return !loading && failure === null && (browser?.textContent ?? "").trim().length > 0;
+        },
+        undefined,
+        { timeout: readyTimeout },
+      );
     },
   },
   {
@@ -171,7 +190,10 @@ const targets: Target[] = [
     ready: async (page) => {
       // Actual settings content, not the loading shell.
       await page.locator("table.data-table").waitFor({ state: "visible", timeout: readyTimeout });
-      await page.locator("section dl.execution-dl").first().waitFor({ state: "visible", timeout: readyTimeout });
+      await page
+        .locator("section dl.execution-dl")
+        .first()
+        .waitFor({ state: "visible", timeout: readyTimeout });
     },
   },
   {
@@ -181,19 +203,27 @@ const targets: Target[] = [
     needs: "E2E_PORTAL",
     ready: async (page) => {
       await page.locator(".api-docs-browser").waitFor({ state: "visible", timeout: readyTimeout });
-      await page.waitForFunction(() => {
-        const loading = document.querySelector(".api-docs-loading");
-        const browser = document.querySelector(".api-docs-browser");
-        const failure = document.querySelector(".api-docs-page .ant-alert-error");
-        return !loading && failure === null && (browser?.textContent ?? "").trim().length > 0;
-      }, undefined, { timeout: readyTimeout });
+      await page.waitForFunction(
+        () => {
+          const loading = document.querySelector(".api-docs-loading");
+          const browser = document.querySelector(".api-docs-browser");
+          const failure = document.querySelector(".api-docs-page .ant-alert-error");
+          return !loading && failure === null && (browser?.textContent ?? "").trim().length > 0;
+        },
+        undefined,
+        { timeout: readyTimeout },
+      );
     },
   },
 ];
 
 /** Keyboard traversal: focus must move, stay visible and stay inside the viewport. */
 async function keyboardAudit(page: Page): Promise<{
-  steps: number; distinct: number; targets: string[]; offscreen: string[]; hidden: string[];
+  steps: number;
+  distinct: number;
+  targets: string[];
+  offscreen: string[];
+  hidden: string[];
 }> {
   const identities: number[] = [];
   const targets: string[] = [];
@@ -210,13 +240,26 @@ async function keyboardAudit(page: Page): Promise<{
       while (element?.shadowRoot?.activeElement instanceof HTMLElement) {
         element = element.shadowRoot.activeElement as HTMLElement;
       }
-      if (!element || element === document.body || element === document.documentElement || element.tabIndex < 0) {
-        return { identity: null, label: element?.tagName ?? "NONE", visible: false, onScreen: false };
+      if (
+        !element ||
+        element === document.body ||
+        element === document.documentElement ||
+        element.tabIndex < 0
+      ) {
+        return {
+          identity: null,
+          label: element?.tagName ?? "NONE",
+          visible: false,
+          onScreen: false,
+        };
       }
       const auditWindow = window as Window & {
         __matrixFocusAudit?: { nextId: number; ids: WeakMap<Element, number> };
       };
-      const registry = auditWindow.__matrixFocusAudit ?? { nextId: 1, ids: new WeakMap<Element, number>() };
+      const registry = auditWindow.__matrixFocusAudit ?? {
+        nextId: 1,
+        ids: new WeakMap<Element, number>(),
+      };
       auditWindow.__matrixFocusAudit = registry;
       let identity = registry.ids.get(element);
       if (identity === undefined) {
@@ -225,8 +268,16 @@ async function keyboardAudit(page: Page): Promise<{
       }
       const rect = element.getBoundingClientRect();
       const style = window.getComputedStyle(element);
-      const visible = style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
-      const onScreen = rect.left < window.innerWidth && rect.right > 0 && rect.top < window.innerHeight && rect.bottom > 0;
+      const visible =
+        style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0;
+      const onScreen =
+        rect.left < window.innerWidth &&
+        rect.right > 0 &&
+        rect.top < window.innerHeight &&
+        rect.bottom > 0;
       const label = `${element.tagName}:${(element.getAttribute("aria-label") || element.textContent || "").trim().slice(0, 40)}`;
       return { identity, label, visible, onScreen };
     });
@@ -246,8 +297,12 @@ async function workspaceAudit(page: Page): Promise<Record<string, unknown>> {
   return await page.evaluate(() => {
     const grid = document.querySelector(".workspace-grid");
     if (!grid) return { ok: false, reason: "no .workspace-grid" };
-    const columns = window.getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length;
-    const text = (selector: string) => (document.querySelector(selector)?.textContent ?? "").trim().length;
+    const columns = window
+      .getComputedStyle(grid)
+      .gridTemplateColumns.split(" ")
+      .filter(Boolean).length;
+    const text = (selector: string) =>
+      (document.querySelector(selector)?.textContent ?? "").trim().length;
     return {
       ok: true,
       columns,
@@ -256,7 +311,10 @@ async function workspaceAudit(page: Page): Promise<Record<string, unknown>> {
       doc_text: text(".col-doc .doc-pane[data-document-version-id]"),
       findings: document.querySelectorAll(".col-findings .finding-button").length,
       inspector_text: text(".execution-inspector"),
-      inspector_open: Boolean((document.querySelector(".execution-inspector-disclosure") as HTMLDetailsElement | null)?.open),
+      inspector_open: Boolean(
+        (document.querySelector(".execution-inspector-disclosure") as HTMLDetailsElement | null)
+          ?.open,
+      ),
       inspector_body_text: text(".execution-inspector-body"),
     };
   });
@@ -301,17 +359,25 @@ async function signIn(page: Page, base: string): Promise<Record<string, unknown>
   let submitted = false;
   try {
     await page.goto(new URL("/login", base).toString(), { waitUntil: "load" });
-    await page.waitForFunction(() => window.location.pathname !== "/login" ||
-      document.querySelector('input[name="password"]') instanceof HTMLInputElement,
-    undefined, { timeout: readyTimeout });
-    if (await page.locator('input[name="password"]').count() > 0) {
+    await page.waitForFunction(
+      () =>
+        window.location.pathname !== "/login" ||
+        document.querySelector('input[name="password"]') instanceof HTMLInputElement,
+      undefined,
+      { timeout: readyTimeout },
+    );
+    if ((await page.locator('input[name="password"]').count()) > 0) {
       await page.getByLabel("账号", { exact: true }).fill(username);
       await page.getByLabel("密码", { exact: true }).fill(password);
       await page.getByRole("button", { name: "登录", exact: true }).click();
-      await page.locator('input[name="password"]').waitFor({ state: "detached", timeout: readyTimeout });
+      await page
+        .locator('input[name="password"]')
+        .waitFor({ state: "detached", timeout: readyTimeout });
       submitted = true;
     }
-    const session = await page.request.get(new URL(`/api/session?audience=${audience}`, base).toString());
+    const session = await page.request.get(
+      new URL(`/api/session?audience=${audience}`, base).toString(),
+    );
     const protectedPath = audience === "admin" ? "/api/admin/settings" : "/api/cases";
     const protectedResponse = await page.request.get(new URL(protectedPath, base).toString());
     return {
@@ -349,8 +415,10 @@ async function persistManifest(): Promise<void> {
     admin: adminSite === "" ? "NOT_RUN" : adminSite,
     portal: portalSite === "" ? "NOT_RUN" : portalSite,
     viewports: VIEWPORTS.map((viewport) => viewport.id),
-    gating: "page-specific readiness + PageStatus probe; loading/empty/error/denied cells are never captured",
-    validations: "a capture also requires no horizontal overflow, real three-column workspace content at >=1280px and at least three distinct visible keyboard focus targets; nonfocusable body sentinels are ignored",
+    gating:
+      "page-specific readiness + PageStatus probe; loading/empty/error/denied cells are never captured",
+    validations:
+      "a capture also requires no horizontal overflow, real three-column workspace content at >=1280px and at least three distinct visible keyboard focus targets; nonfocusable body sentinels are ignored",
     access_probes: accessProbes,
     captures,
   };
@@ -361,7 +429,9 @@ const browser = await chromium.launch({
   executablePath: chromiumExecutable(),
   args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
 });
-const page = await browser.newPage({ viewport: { width: VIEWPORTS[0].width, height: VIEWPORTS[0].height } });
+const page = await browser.newPage({
+  viewport: { width: VIEWPORTS[0].width, height: VIEWPORTS[0].height },
+});
 const consoleErrors: string[] = [];
 page.on("console", (message) => {
   if (message.type() === "error") consoleErrors.push(message.text());
@@ -375,7 +445,9 @@ page.on("response", (response) => {
   }
 });
 page.on("requestfailed", (request) => {
-  networkErrors.push(`${request.method()} ${request.url()} ${request.failure()?.errorText ?? "request failed"}`);
+  networkErrors.push(
+    `${request.method()} ${request.url()} ${request.failure()?.errorText ?? "request failed"}`,
+  );
 });
 
 try {
@@ -386,18 +458,35 @@ try {
     if (base === "" || target.path === null) {
       const reason = `${target.needs} was not provided`;
       for (const viewport of VIEWPORTS) {
-        captures.push({ target: target.id, viewport: viewport.id, site: target.site, url: null, state: "not_ready", status: "NOT_RUN", reason });
+        captures.push({
+          target: target.id,
+          viewport: viewport.id,
+          site: target.site,
+          url: null,
+          state: "not_ready",
+          status: "NOT_RUN",
+          reason,
+        });
       }
       await persistManifest();
       continue;
     }
-    if (target.id === "cases" && username !== "" && password !== "") accessProbes.push(await signIn(page, web));
-    if (target.id === "admin-settings" && username !== "" && password !== "") accessProbes.push(await signIn(page, adminSite));
+    if (target.id === "cases" && username !== "" && password !== "")
+      accessProbes.push(await signIn(page, web));
+    if (target.id === "admin-settings" && username !== "" && password !== "")
+      accessProbes.push(await signIn(page, adminSite));
     const url = `${base}${target.path}`;
     let navigated = false;
     let responseStatus = 0;
     for (const viewport of VIEWPORTS) {
-      const record: Capture = { target: target.id, viewport: viewport.id, site: target.site, url, state: "not_ready", status: "failed" };
+      const record: Capture = {
+        target: target.id,
+        viewport: viewport.id,
+        site: target.site,
+        url,
+        state: "not_ready",
+        status: "failed",
+      };
       const file = `${target.id}-${viewport.id}.png`;
       try {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
@@ -429,18 +518,20 @@ try {
           const workspace = await workspaceAudit(page);
           validation.workspace = workspace;
           const wide = viewport.width >= 1280;
-          validation.workspace_ok = Boolean(workspace.ok)
-            && (wide ? workspace.columns === 3 : true)
-            && Number(workspace.doc_text) > 0
-            && Number(workspace.findings) >= 1
-            && Number(workspace.inspector_text) > 0
-            && workspace.inspector_open === true
-            && Number(workspace.inspector_body_text) > 0
-            && (wide ? Number(workspace.nav_text) > 0 : true);
+          validation.workspace_ok =
+            Boolean(workspace.ok) &&
+            (wide ? workspace.columns === 3 : true) &&
+            Number(workspace.doc_text) > 0 &&
+            Number(workspace.findings) >= 1 &&
+            Number(workspace.inspector_text) > 0 &&
+            workspace.inspector_open === true &&
+            Number(workspace.inspector_body_text) > 0 &&
+            (wide ? Number(workspace.nav_text) > 0 : true);
         }
         const keyboard = await keyboardAudit(page);
         validation.keyboard = keyboard;
-        validation.keyboard_ok = keyboard.distinct >= 3 && keyboard.hidden.length === 0 && keyboard.offscreen.length === 0;
+        validation.keyboard_ok =
+          keyboard.distinct >= 3 && keyboard.hidden.length === 0 && keyboard.offscreen.length === 0;
         record.validation = validation;
         if (state !== "ready") {
           record.status = state === target.emptyWhen ? "NOT_RUN" : "failed";
@@ -502,16 +593,29 @@ const states = captures.reduce<Record<string, number>>((counts, capture) => {
   counts[capture.state] = (counts[capture.state] ?? 0) + 1;
   return counts;
 }, {});
-console.log(JSON.stringify({
-  out: outDir,
-  captured: captures.length - failed.length - notRun.length,
-  failed: failed.length,
-  not_run: notRun.length,
-  states,
-  horizontal_overflow: captures
-    .filter((capture) => (capture.horizontal_overflow_px ?? 0) > 1)
-    .map((capture) => `${capture.target}@${capture.viewport}`),
-  validated_captures: captures.filter((capture) => capture.status === "captured" && capture.validation).length,
-  result: failed.length === 0 ? "screenshot matrix completed" : "screenshot matrix had failures",
-}, null, 2));
-assert.equal(failed.length, 0, `screenshot matrix failures: ${failed.map((capture) => `${capture.target}@${capture.viewport}: ${capture.reason}`).join(" | ")}`);
+console.log(
+  JSON.stringify(
+    {
+      out: outDir,
+      captured: captures.length - failed.length - notRun.length,
+      failed: failed.length,
+      not_run: notRun.length,
+      states,
+      horizontal_overflow: captures
+        .filter((capture) => (capture.horizontal_overflow_px ?? 0) > 1)
+        .map((capture) => `${capture.target}@${capture.viewport}`),
+      validated_captures: captures.filter(
+        (capture) => capture.status === "captured" && capture.validation,
+      ).length,
+      result:
+        failed.length === 0 ? "screenshot matrix completed" : "screenshot matrix had failures",
+    },
+    null,
+    2,
+  ),
+);
+assert.equal(
+  failed.length,
+  0,
+  `screenshot matrix failures: ${failed.map((capture) => `${capture.target}@${capture.viewport}: ${capture.reason}`).join(" | ")}`,
+);

@@ -10,7 +10,11 @@
 
 import { Alert, Button, Tag } from "antd";
 import { useContext } from "react";
-import { OriginalDocumentReader, OriginalSourceContext, supportsOriginalPreview } from "./original-document-reader";
+import {
+  OriginalDocumentReader,
+  OriginalSourceContext,
+  supportsOriginalPreview,
+} from "./original-document-reader";
 import { useQuery } from "@tanstack/react-query";
 import type { FrozenContractCitation } from "../api/contract-citations";
 import { getFrozenContractCitation } from "../api/contract-citations";
@@ -58,17 +62,9 @@ function FrozenText({ citation }: { citation: FrozenContractCitation }) {
       />
     );
   }
-  const segments = segmentText(
-    citation.text,
-    { start: citation.start, end: citation.end },
-    [],
-  );
+  const segments = segmentText(citation.text, { start: citation.start, end: citation.end }, []);
   return (
-    <pre
-      className="frozen-citation-text"
-      tabIndex={0}
-      aria-label="本次冻结原文，引用区间已高亮"
-    >
+    <pre className="frozen-citation-text" tabIndex={0} aria-label="本次冻结原文，引用区间已高亮">
       {segments.map((segment) =>
         segment.highlighted === "evidence" ? (
           <mark key={segment.start} data-offset={segment.start} className="hit-evidence">
@@ -108,24 +104,41 @@ function CitationBody({
           <Tag>材料版本未记录</Tag>
         )}
       </p>
-      <details className="caw-technical-detail"><summary>引用技术详情</summary>
-      <p>字符 {citation.start + 1}–{citation.end}（Unicode 码点）</p>
-      <p>
-        <code>{`原文摘要 ${citation.original_digest}`}</code>
-        <br />
-        <code>{`解析摘要 ${citation.parse_digest}`}</code>
-        <br />
-        <code>{`冻结解析 ${citation.parsed_document_id}`}</code>
-      </p>
+      <details className="caw-technical-detail">
+        <summary>引用技术详情</summary>
+        <p>
+          字符 {citation.start + 1}–{citation.end}（Unicode 码点）
+        </p>
+        <p>
+          <code>{`原文摘要 ${citation.original_digest}`}</code>
+          <br />
+          <code>{`解析摘要 ${citation.parse_digest}`}</code>
+          <br />
+          <code>{`冻结解析 ${citation.parsed_document_id}`}</code>
+        </p>
       </details>
       {originalScope?.caseId === citation.case_id && supportsOriginalPreview(citation.filename) ? (
-        <OriginalDocumentReader scope={originalScope} documentId={citation.document_id}
-          filename={citation.filename} digest={citation.original_digest} text={citation.text}
-          quotes={[{ id: citation.evidence_id, quote: citation.quote, start: citation.start,
-            end: citation.end, page: expected.anchor.page }]}>
+        <OriginalDocumentReader
+          scope={originalScope}
+          documentId={citation.document_id}
+          filename={citation.filename}
+          digest={citation.original_digest}
+          text={citation.text}
+          quotes={[
+            {
+              id: citation.evidence_id,
+              quote: citation.quote,
+              start: citation.start,
+              end: citation.end,
+              page: expected.anchor.page,
+            },
+          ]}
+        >
           <FrozenText citation={citation} />
         </OriginalDocumentReader>
-      ) : <FrozenText citation={citation} />}
+      ) : (
+        <FrozenText citation={citation} />
+      )}
     </>
   );
 }
@@ -150,8 +163,14 @@ export function FrozenContractCitationReader({
 }) {
   const citation = useQuery({
     queryKey: [
-      "cases", caseId, "runs", runId, "attempts", attemptId,
-      "contract-citations", evidenceId,
+      "cases",
+      caseId,
+      "runs",
+      runId,
+      "attempts",
+      attemptId,
+      "contract-citations",
+      evidenceId,
     ],
     queryFn: ({ signal }) =>
       getFrozenContractCitation(caseId, runId, attemptId, evidenceId, signal),

@@ -19,23 +19,28 @@ import { PageStatus } from "../components/page-status";
 import { CircuitMark } from "../components/circuit-mark";
 import { CompetitionIdentity } from "../components/competition-identity";
 
-export function LoginPage({
-  audience = "client",
-}: {
-  audience?: SessionAudience;
-}) {
+export function LoginPage({ audience = "client" }: { audience?: SessionAudience }) {
   const login = useLogin(audience);
   const session = useSession(audience);
   const navigate = useNavigate();
   const location = useLocation();
   const navigationState: unknown = location.state;
-  const from = navigationState !== null && typeof navigationState === "object" && "from" in navigationState
-    ? navigationState.from : undefined;
-  const returnTo = typeof from === "string" && from.startsWith("/") && !from.startsWith("//") && !from.includes("\\") &&
+  const from =
+    navigationState !== null && typeof navigationState === "object" && "from" in navigationState
+      ? navigationState.from
+      : undefined;
+  const returnTo =
+    typeof from === "string" &&
+    from.startsWith("/") &&
+    !from.startsWith("//") &&
+    !from.includes("\\") &&
     (audience === "admin"
       ? from.startsWith("/admin/") && !from.startsWith("/admin/login")
       : !from.startsWith("/admin") && !from.startsWith("/login"))
-    ? from : audience === "admin" ? "/admin/settings" : "/cases";
+      ? from
+      : audience === "admin"
+        ? "/admin/settings"
+        : "/cases";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
@@ -44,14 +49,12 @@ export function LoginPage({
     login.mutate(
       { username: username.trim(), password },
       {
-        onSuccess: () =>
-          navigate(returnTo, { replace: true }),
+        onSuccess: () => navigate(returnTo, { replace: true }),
       },
     );
   }
 
-  if (session.isLoading)
-    return <PageStatus kind="loading" title="正在确认登录状态" />;
+  if (session.isLoading) return <PageStatus kind="loading" title="正在确认登录状态" />;
   if (session.isError && !isUnauthenticated(session.error)) {
     return (
       <PageStatus
@@ -59,24 +62,14 @@ export function LoginPage({
         title="无法连接审查服务"
         detail={errorMessage(session.error)}
         action={
-          <Button
-            aria-label={"重试"}
-            type="primary"
-            onClick={() => void session.refetch()}
-          >
+          <Button aria-label={"重试"} type="primary" onClick={() => void session.refetch()}>
             重试
           </Button>
         }
       />
     );
   }
-  if (session.isSuccess)
-    return (
-      <Navigate
-        to={returnTo}
-        replace
-      />
-    );
+  if (session.isSuccess) return <Navigate to={returnTo} replace />;
 
   return (
     <main className="login-screen" id="main">
@@ -108,9 +101,7 @@ export function LoginPage({
           </div>
         ) : null}
         <h1>{audience === "admin" ? "登录管理工作台" : "登录合同审查"}</h1>
-        <p>
-          使用组织分配的账号。会话按当前工作区隔离；系统不在这里创建用户，也不会显示模型密钥。
-        </p>
+        <p>使用组织分配的账号。会话按当前工作区隔离；系统不在这里创建用户，也不会显示模型密钥。</p>
         <label className="field">
           账号
           <Input

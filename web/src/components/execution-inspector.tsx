@@ -20,12 +20,7 @@ import type {
   ExecutionUsage,
   Finding,
 } from "../api/types";
-import {
-  isActiveAttemptState,
-  relationLabel,
-  runLabel,
-  runTone,
-} from "../domain/review";
+import { isActiveAttemptState, relationLabel, runLabel, runTone } from "../domain/review";
 import {
   elapsed,
   eventStatusLabel,
@@ -85,9 +80,7 @@ function UsageDetails({ usage }: { usage: ExecutionUsage | null }) {
       </div>
       <div>
         <dt>来源</dt>
-        <dd>
-          {usage.sources.length === 0 ? "未报告" : usage.sources.join("、")}
-        </dd>
+        <dd>{usage.sources.length === 0 ? "未报告" : usage.sources.join("、")}</dd>
       </div>
       <div>
         <dt>已知小计 Token</dt>
@@ -165,14 +158,10 @@ function collectSpanNodes(events: ExecutionEvent[]): {
   return { nodes, bySpanId };
 }
 
-function linkSpanRoots(
-  nodes: SpanGroup[],
-  bySpanId: Map<string, SpanGroup>,
-): SpanGroup[] {
+function linkSpanRoots(nodes: SpanGroup[], bySpanId: Map<string, SpanGroup>): SpanGroup[] {
   const roots: SpanGroup[] = [];
   for (const node of nodes) {
-    const parent =
-      node.parentSpanId === null ? undefined : bySpanId.get(node.parentSpanId);
+    const parent = node.parentSpanId === null ? undefined : bySpanId.get(node.parentSpanId);
     if (parent && parent !== node) parent.children.push(node);
     else roots.push(node);
   }
@@ -210,9 +199,7 @@ function pendingFindingsOf(findings: Finding[], located: Finding[]): Finding[] {
 }
 
 function attemptsOf(execution: Execution): ExecutionAttempt[] {
-  return execution.attempts.some(
-    (attempt) => attempt.id === execution.attempt.id,
-  )
+  return execution.attempts.some((attempt) => attempt.id === execution.attempt.id)
     ? execution.attempts
     : [execution.attempt, ...execution.attempts];
 }
@@ -222,16 +209,12 @@ function latestAttemptOf(
   selected: ExecutionAttempt,
 ): ExecutionAttempt {
   return attempts.reduce(
-    (current, attempt) =>
-      attempt.ordinal > current.ordinal ? attempt : current,
+    (current, attempt) => (attempt.ordinal > current.ordinal ? attempt : current),
     selected,
   );
 }
 
-function selectedEventsOf(
-  execution: Execution,
-  selected: ExecutionAttempt,
-): ExecutionEvent[] {
+function selectedEventsOf(execution: Execution, selected: ExecutionAttempt): ExecutionEvent[] {
   return execution.events
     .filter((event) => event.attempt_id === selected.id)
     .slice()
@@ -247,10 +230,7 @@ function attemptOptions(attempts: ExecutionAttempt[], latestId: string) {
     }));
 }
 
-function durationLabel(
-  execution: Execution,
-  selected: ExecutionAttempt,
-): string {
+function durationLabel(execution: Execution, selected: ExecutionAttempt): string {
   if (execution.duration_ms === null && isActiveAttemptState(selected.state)) {
     return "运行中，尚无终态时长";
   }
@@ -315,9 +295,7 @@ function SpanTreeNode({
             label: (
               <>
                 {title}
-                {node.spanId ? (
-                  <span className="meta">，span {node.spanId}</span>
-                ) : null}
+                {node.spanId ? <span className="meta">，span {node.spanId}</span> : null}
               </>
             ),
             children: (
@@ -354,15 +332,7 @@ function SpanTreeNode({
   );
 }
 
-function CodePair({
-  label,
-  value,
-  code,
-}: {
-  label: string;
-  value: string;
-  code?: string | null;
-}) {
+function CodePair({ label, value, code }: { label: string; value: string; code?: string | null }) {
   return (
     <div>
       <dt>{label}</dt>
@@ -396,15 +366,11 @@ const MODEL_OUTPUT_ERROR_LABELS: Record<string, string> = {
 
 function errorCodeLabel(code: string | null, fallback: string): string {
   if (code === null) return fallback;
-  return Object.hasOwn(MODEL_OUTPUT_ERROR_LABELS, code)
-    ? MODEL_OUTPUT_ERROR_LABELS[code]!
-    : code;
+  return Object.hasOwn(MODEL_OUTPUT_ERROR_LABELS, code) ? MODEL_OUTPUT_ERROR_LABELS[code]! : code;
 }
 
 function errorCodeDiagnostic(code: string | null): string | null {
-  return code !== null && Object.hasOwn(MODEL_OUTPUT_ERROR_LABELS, code)
-    ? code
-    : null;
+  return code !== null && Object.hasOwn(MODEL_OUTPUT_ERROR_LABELS, code) ? code : null;
 }
 
 function EventDetailDl({ event }: { event: ExecutionEvent }) {
@@ -426,11 +392,7 @@ function EventDetailDl({ event }: { event: ExecutionEvent }) {
       <CodePair
         label="事件类型"
         value={eventTypeLabel(event.event_type)}
-        code={
-          eventTypeLabel(event.event_type) !== event.event_type
-            ? event.event_type
-            : null
-        }
+        code={eventTypeLabel(event.event_type) !== event.event_type ? event.event_type : null}
       />
       <div>
         <dt>时间</dt>
@@ -539,12 +501,7 @@ function EventsPanel({
       ) : view === "tree" ? (
         <ul className="execution-tree">
           {trees.map((node) => (
-            <SpanTreeNode
-              key={node.key}
-              node={node}
-              event={event}
-              onSelect={selectSeq}
-            />
+            <SpanTreeNode key={node.key} node={node} event={event} onSelect={selectSeq} />
           ))}
         </ul>
       ) : (
@@ -552,14 +509,8 @@ function EventsPanel({
           {events.map((item) => (
             <li key={item.seq}>
               <time dateTime={item.at ?? undefined}>{instant(item.at)}</time>
-              <EventButton
-                item={item}
-                current={event?.seq === item.seq}
-                onSelect={selectSeq}
-              />
-              <span className="execution-event-duration">
-                {elapsed(item.duration_ms)}
-              </span>
+              <EventButton item={item} current={event?.seq === item.seq} onSelect={selectSeq} />
+              <span className="execution-event-duration">{elapsed(item.duration_ms)}</span>
             </li>
           ))}
         </ol>
@@ -602,9 +553,7 @@ function AttemptStats({
       </div>
       <div>
         <dt>模型调用</dt>
-        <dd>
-          {execution.usage === null ? "未报告" : `${execution.usage.calls} 次`}
-        </dd>
+        <dd>{execution.usage === null ? "未报告" : `${execution.usage.calls} 次`}</dd>
       </div>
     </dl>
   );
@@ -722,9 +671,7 @@ function FindingButton({
     <Button
       aria-label={String(finding.claim)}
       htmlType="button"
-      aria-current={
-        selectedFindingId === finding.id ? "true" : undefined
-      }
+      aria-current={selectedFindingId === finding.id ? "true" : undefined}
       onClick={() => onSelectFinding(finding.id)}
     >
       {finding.claim}
@@ -750,10 +697,7 @@ function ResultsSection({
     [findings, locatedFindings],
   );
   const gaps = useMemo(
-    () =>
-      evaluations.filter(
-        (evaluation) => evaluation.relation === "insufficient",
-      ),
+    () => evaluations.filter((evaluation) => evaluation.relation === "insufficient"),
     [evaluations],
   );
   return (
@@ -846,13 +790,11 @@ function ExecutionHeader({
         <h2 id="execution-inspector-title">执行检查器</h2>
         <p className="meta">
           第 {selected.ordinal} 次执行，最近保存的阶段{" "}
-          {latestEvent ? phaseLabel(latestEvent.phase) : "未报告"}，
-          第一条能在原文中找到引用的线索 {locatedFindings[0]?.claim || "未报告"}
+          {latestEvent ? phaseLabel(latestEvent.phase) : "未报告"}， 第一条能在原文中找到引用的线索{" "}
+          {locatedFindings[0]?.claim || "未报告"}
         </p>
       </div>
-      <StatusText tone={runTone(selected.state)}>
-        {runLabel(selected.state)}
-      </StatusText>
+      <StatusText tone={runTone(selected.state)}>{runLabel(selected.state)}</StatusText>
     </div>
   );
 }
@@ -879,24 +821,13 @@ function ExecutionBody({
   onSelectAttempt: (attemptId: string) => void;
 }) {
   const selected = execution.attempt;
-  const attempts = useMemo(
-    () => attemptsOf(execution),
-    [execution.attempt, execution.attempts],
-  );
-  const latest = useMemo(
-    () => latestAttemptOf(attempts, selected),
-    [attempts, selected],
-  );
+  const attempts = useMemo(() => attemptsOf(execution), [execution.attempt, execution.attempts]);
+  const latest = useMemo(() => latestAttemptOf(attempts, selected), [attempts, selected]);
   const duration = durationLabel(execution, selected);
   const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
-  const eventBySeq = useMemo(
-    () => new Map(events.map((item) => [item.seq, item])),
-    [events],
-  );
+  const eventBySeq = useMemo(() => new Map(events.map((item) => [item.seq, item])), [events]);
   const event =
-    (selectedSeq === null ? undefined : eventBySeq.get(selectedSeq)) ??
-    events[0] ??
-    null;
+    (selectedSeq === null ? undefined : eventBySeq.get(selectedSeq)) ?? events[0] ?? null;
   const trees = useMemo(() => buildSpanTree(events), [events]);
   return (
     <div className="execution-inspector-body">
@@ -924,11 +855,7 @@ function ExecutionBody({
         selectedOrdinal={selected.ordinal}
         onSelectSeq={setSelectedSeq}
       />
-      <AttemptSummary
-        execution={execution}
-        selected={selected}
-        duration={duration}
-      />
+      <AttemptSummary execution={execution} selected={selected} duration={duration} />
       <ResultsSection
         findings={findings}
         locatedFindings={locatedFindings}
@@ -966,10 +893,7 @@ export function ExecutionInspector({
     [execution.events, selected.id],
   );
   const latestEvent = events.at(-1);
-  const locatedFindings = useMemo(
-    () => locatedFindingsOf(findings),
-    [findings],
-  );
+  const locatedFindings = useMemo(() => locatedFindingsOf(findings), [findings]);
   return (
     <section
       id="execution-inspector"

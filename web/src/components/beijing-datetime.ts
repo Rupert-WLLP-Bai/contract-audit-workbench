@@ -22,7 +22,8 @@ export function toBeijingInputValue(value: string): string {
     minute: "2-digit",
     hourCycle: "h23",
   }).formatToParts(instant);
-  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? "";
   return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`;
 }
 

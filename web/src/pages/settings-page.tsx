@@ -17,10 +17,7 @@ import { TenantOperationsPanel } from "../components/tenant-operations-panel";
 import { CollapsibleSection } from "../components/collapsible-section";
 import { TenantConfigPanel } from "../components/tenant-config-panel";
 import { TenantCostPolicyPanel } from "../components/tenant-cost-policy-panel";
-import {
-  LLMEndpointPanel,
-  LLMModelSelection,
-} from "../components/llm-endpoint";
+import { LLMEndpointPanel, LLMModelSelection } from "../components/llm-endpoint";
 import { actorRoleLabel, formatWait, modelStatusLabel } from "../domain/review";
 
 type ModelFact = {
@@ -57,18 +54,13 @@ function modelFacts(label: string): ModelFact[] {
   });
 }
 
-export function SettingsPage({
-  audience = "admin",
-}: {
-  audience?: "client" | "admin";
-}) {
+export function SettingsPage({ audience = "admin" }: { audience?: "client" | "admin" }) {
   const settings = useSettings(audience);
   const session = useSession(audience);
   const [endpointOpen, setEndpointOpen] = useState(false);
   const isAdmin = audience === "admin" && session.data?.role === "admin";
   const endpoint = useLLMEndpoint(isAdmin);
-  if (settings.isLoading)
-    return <PageStatus kind="loading" title="正在加载设置" />;
+  if (settings.isLoading) return <PageStatus kind="loading" title="正在加载设置" />;
   if (settings.isError) {
     return (
       <PageStatus
@@ -76,11 +68,7 @@ export function SettingsPage({
         title="设置没有加载"
         detail={errorMessage(settings.error)}
         action={
-          <Button
-            aria-label={"重试"}
-            type="primary"
-            onClick={() => void settings.refetch()}
-          >
+          <Button aria-label={"重试"} type="primary" onClick={() => void settings.refetch()}>
             重试
           </Button>
         }
@@ -89,11 +77,9 @@ export function SettingsPage({
   }
   if (!settings.data) return <PageStatus kind="empty" title="没有设置数据" />;
   const data = settings.data;
-  const queueDepth =
-    data.queue.depth === null ? "未报告" : String(data.queue.depth);
+  const queueDepth = data.queue.depth === null ? "未报告" : String(data.queue.depth);
   const oldestWait = formatWait(data.queue.oldest_wait_ms);
-  const modelConnected =
-    data.model.status === "connected" || data.model.status === "configured";
+  const modelConnected = data.model.status === "connected" || data.model.status === "configured";
   const executionFigures = data.execution
     ? [
         { label: "全部执行记录", value: data.execution.total_attempts, tone: "neutral" },
@@ -110,13 +96,9 @@ export function SettingsPage({
         },
         {
           label: "队列深度",
-          value:
-            data.execution.queue_depth === null
-              ? "未报告"
-              : data.execution.queue_depth,
+          value: data.execution.queue_depth === null ? "未报告" : data.execution.queue_depth,
           tone:
-            data.execution.queue_depth !== null &&
-            data.execution.queue_depth > 0
+            data.execution.queue_depth !== null && data.execution.queue_depth > 0
               ? "insufficient"
               : "neutral",
         },
@@ -142,36 +124,41 @@ export function SettingsPage({
         </div>
       </header>
       <section className="settings-overview" aria-label="设置概览">
-        <Statistic
-          title="模型连通"
-          value={modelStatusLabel(data.model.status)}
-        />
+        <Statistic title="模型连通" value={modelStatusLabel(data.model.status)} />
         <Statistic title="等待任务" value={queueDepth} />
         <Statistic title="最长等待" value={oldestWait} />
         <Statistic title="用户" value={data.users.length} />
       </section>
-      {isAdmin && session.data ? <>
-        <CollapsibleSection id="settings-tenant-operations" title="租户运营、准入与模型预算" summaryLabel="展开租户运营、准入与模型预算">
-          <TenantOperationsPanel />
-        </CollapsibleSection>
-        <CollapsibleSection id="settings-cost-policy" title="模型费用限额" summaryLabel="展开模型费用限额">
-          <TenantCostPolicyPanel actor={session.data} />
-        </CollapsibleSection>
-        <CollapsibleSection id="settings-tenant-config" title="租户配置采用与实时停发" summaryLabel="展开租户配置采用与实时停发">
-          <TenantConfigPanel actor={session.data} />
-        </CollapsibleSection>
-      </> : null}
+      {isAdmin && session.data ? (
+        <>
+          <CollapsibleSection
+            id="settings-tenant-operations"
+            title="租户运营、准入与模型预算"
+            summaryLabel="展开租户运营、准入与模型预算"
+          >
+            <TenantOperationsPanel />
+          </CollapsibleSection>
+          <CollapsibleSection
+            id="settings-cost-policy"
+            title="模型费用限额"
+            summaryLabel="展开模型费用限额"
+          >
+            <TenantCostPolicyPanel actor={session.data} />
+          </CollapsibleSection>
+          <CollapsibleSection
+            id="settings-tenant-config"
+            title="租户配置采用与实时停发"
+            summaryLabel="展开租户配置采用与实时停发"
+          >
+            <TenantConfigPanel actor={session.data} />
+          </CollapsibleSection>
+        </>
+      ) : null}
       <div className="settings-grid">
-        <section
-          className="settings-panel"
-          aria-labelledby="settings-model-title"
-        >
+        <section className="settings-panel" aria-labelledby="settings-model-title">
           <header className="settings-panel-head">
             <h2 id="settings-model-title">模型连通</h2>
-            <span
-              className="settings-badge"
-              data-tone={modelConnected ? "good" : "attention"}
-            >
+            <span className="settings-badge" data-tone={modelConnected ? "good" : "attention"}>
               {modelStatusLabel(data.model.status)}
             </span>
           </header>
@@ -179,9 +166,7 @@ export function SettingsPage({
             {modelFacts(data.model.label).map((fact, index) => (
               <div key={`${fact.detail}-${index}`} data-tone={fact.tone}>
                 {fact.term ? <dt>{fact.term}</dt> : null}
-                <dd className={fact.mono ? "is-code" : undefined}>
-                  {fact.detail}
-                </dd>
+                <dd className={fact.mono ? "is-code" : undefined}>{fact.detail}</dd>
               </div>
             ))}
           </dl>
@@ -193,10 +178,7 @@ export function SettingsPage({
             />
           ) : null}
         </section>
-        <section
-          className="settings-panel"
-          aria-labelledby="settings-queue-title"
-        >
+        <section className="settings-panel" aria-labelledby="settings-queue-title">
           <h2 id="settings-queue-title">队列</h2>
           <dl className="settings-pairs">
             <div>
@@ -220,26 +202,16 @@ export function SettingsPage({
           onOpenChange={setEndpointOpen}
         />
       ) : null}
-      <section
-        className="settings-panel"
-        aria-labelledby="settings-redaction-title"
-      >
+      <section className="settings-panel" aria-labelledby="settings-redaction-title">
         <h2 id="settings-redaction-title">脱敏政策</h2>
         <p className="settings-policy">
-          {data.redaction_policy === ""
-            ? "未提供脱敏政策说明。"
-            : data.redaction_policy}
+          {data.redaction_policy === "" ? "未提供脱敏政策说明。" : data.redaction_policy}
         </p>
       </section>
       {session.data?.role === "admin" ? (
-        <section
-          className="settings-panel"
-          aria-labelledby="execution-operations-title"
-        >
+        <section className="settings-panel" aria-labelledby="execution-operations-title">
           <h2 id="execution-operations-title">执行运维统计</h2>
-          <p className="meta">
-            仅展示授权的汇总元数据，不包含案件正文或执行事件。
-          </p>
+          <p className="meta">仅展示授权的汇总元数据，不包含案件正文或执行事件。</p>
           {executionFigures.length > 0 ? (
             <dl className="settings-figures">
               {executionFigures.map((item) => (
@@ -256,9 +228,7 @@ export function SettingsPage({
       ) : null}
       <section className="settings-panel" aria-labelledby="settings-users-title">
         <h2 id="settings-users-title">用户与角色</h2>
-        <p className="meta">
-          首版只读展示。账号的创建和停用不在这个页面里完成。
-        </p>
+        <p className="meta">首版只读展示。账号的创建和停用不在这个页面里完成。</p>
         {data.users.length === 0 ? <p>没有返回用户。</p> : null}
         <Table
           className="data-table"

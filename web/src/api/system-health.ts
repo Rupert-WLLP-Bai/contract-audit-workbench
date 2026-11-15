@@ -93,21 +93,14 @@ export type SystemHealth = {
   cluster: HealthCluster | null;
 };
 function invalid(): never {
-  throw new ApiError(
-    "系统健康响应格式无效",
-    500,
-    "invalid_response",
-    false,
-    null,
-  );
+  throw new ApiError("系统健康响应格式无效", 500, "invalid_response", false, null);
 }
 function text(value: unknown): string {
   if (typeof value !== "string") return invalid();
   return value;
 }
 function counter(value: unknown): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
-    return invalid();
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) return invalid();
   return value;
 }
 function optionalText(value: unknown): string | undefined {
@@ -208,8 +201,7 @@ export function parseSystemHealth(value: unknown): SystemHealth {
     return invalid();
   let cluster: HealthCluster | null = null;
   if (value.cluster !== null) {
-    if (!isRecord(value.cluster) || !Array.isArray(value.cluster.nodes))
-      return invalid();
+    if (!isRecord(value.cluster) || !Array.isArray(value.cluster.nodes)) return invalid();
     const status = text(value.cluster.status),
       observed_at = text(value.cluster.observed_at);
     if (
@@ -217,21 +209,13 @@ export function parseSystemHealth(value: unknown): SystemHealth {
       !Number.isFinite(Date.parse(observed_at))
     )
       return invalid();
-    const nodes = value.cluster.nodes.map(
-      (node): HealthCluster["nodes"][number] => {
-        if (!isRecord(node)) return invalid();
-        const status = text(node.status);
-        if (
-          status !== "ready" &&
-          status !== "unavailable" &&
-          status !== "unknown"
-        )
-          return invalid();
-        return { name: text(node.name), status, version: text(node.version) };
-      },
-    );
-    if (new Set(nodes.map((node) => node.name)).size !== nodes.length)
-      return invalid();
+    const nodes = value.cluster.nodes.map((node): HealthCluster["nodes"][number] => {
+      if (!isRecord(node)) return invalid();
+      const status = text(node.status);
+      if (status !== "ready" && status !== "unavailable" && status !== "unknown") return invalid();
+      return { name: text(node.name), status, version: text(node.version) };
+    });
+    if (new Set(nodes.map((node) => node.name)).size !== nodes.length) return invalid();
     cluster = {
       status,
       namespace: text(value.cluster.namespace),
@@ -243,45 +227,37 @@ export function parseSystemHealth(value: unknown): SystemHealth {
   const observed = text(value.observed_at);
   if (!Number.isFinite(Date.parse(observed))) return invalid();
   const services = value.services.map(parseService);
-  if (new Set(services.map((item) => item.id)).size !== services.length)
-    return invalid();
-  const architecture = value.architecture.map(
-    (component): ProductionComponent => {
-      if (!isRecord(component) || !Array.isArray(component.service_ids))
-        return invalid();
-      const state = text(component.state),
-        verification = text(component.verification);
-      if (state !== "observed" && state !== "not_connected") return invalid();
-      if (
-        verification !== "PASS" &&
-        verification !== "FAIL" &&
-        verification !== "BLOCKED" &&
-        verification !== "NOT_RUN" &&
-        verification !== "NOT_APPLICABLE"
-      )
-        return invalid();
-      const reference = text(component.reference);
-      if (!reference.startsWith("https://")) return invalid();
-      return {
-        id: text(component.id),
-        name: text(component.name),
-        category: text(component.category),
-        target: text(component.target),
-        observed: text(component.observed),
-        state,
-        verification,
-        service_ids: component.service_ids.map(text),
-        reference,
-      };
-    },
-  );
-  if (new Set(architecture.map((item) => item.id)).size !== architecture.length)
-    return invalid();
-  const groups = Array.isArray(value.groups)
-    ? value.groups.map(parseGroup)
-    : [];
-  if (new Set(groups.map((item) => item.id)).size !== groups.length)
-    return invalid();
+  if (new Set(services.map((item) => item.id)).size !== services.length) return invalid();
+  const architecture = value.architecture.map((component): ProductionComponent => {
+    if (!isRecord(component) || !Array.isArray(component.service_ids)) return invalid();
+    const state = text(component.state),
+      verification = text(component.verification);
+    if (state !== "observed" && state !== "not_connected") return invalid();
+    if (
+      verification !== "PASS" &&
+      verification !== "FAIL" &&
+      verification !== "BLOCKED" &&
+      verification !== "NOT_RUN" &&
+      verification !== "NOT_APPLICABLE"
+    )
+      return invalid();
+    const reference = text(component.reference);
+    if (!reference.startsWith("https://")) return invalid();
+    return {
+      id: text(component.id),
+      name: text(component.name),
+      category: text(component.category),
+      target: text(component.target),
+      observed: text(component.observed),
+      state,
+      verification,
+      service_ids: component.service_ids.map(text),
+      reference,
+    };
+  });
+  if (new Set(architecture.map((item) => item.id)).size !== architecture.length) return invalid();
+  const groups = Array.isArray(value.groups) ? value.groups.map(parseGroup) : [];
+  if (new Set(groups.map((item) => item.id)).size !== groups.length) return invalid();
   return {
     schema_version: value.schema_version,
     observed_at: observed,
@@ -298,9 +274,7 @@ export function useSystemHealth(audience: SessionAudience = "client") {
     queryKey: ["system-health", audience],
     queryFn: ({ signal }) =>
       requestJson(
-        audience === "admin"
-          ? "/api/admin/system-health"
-          : "/api/system-health",
+        audience === "admin" ? "/api/admin/system-health" : "/api/system-health",
         { method: "GET", signal },
         parseSystemHealth,
       ),

@@ -35,8 +35,9 @@ import type {
   AgentReviewStatus,
 } from "./types";
 
-const { invalid, record, text, integer, bool, array, optionalText } =
-  responseReader((path) => `五域审查响应中的 ${path} 无法识别`);
+const { invalid, record, text, integer, bool, array, optionalText } = responseReader(
+  (path) => `五域审查响应中的 ${path} 无法识别`,
+);
 
 function optionalRecord(
   value: unknown,
@@ -72,24 +73,15 @@ function nullableInteger(value: unknown, path: string): number | null {
 
 function domain(value: unknown, path: string): AgentReviewDomain {
   return (
-    enumValue(value, [
-      "compliance",
-      "commercial",
-      "technical",
-      "fulfillment",
-      "counterparty",
-    ]) ?? invalid(path)
+    enumValue(value, ["compliance", "commercial", "technical", "fulfillment", "counterparty"]) ??
+    invalid(path)
   );
 }
 
 function mode(value: unknown, path: string): AgentPlannerMode {
   return (
-    enumValue(value, [
-      "fixed_chain",
-      "deterministic_planner",
-      "model_fixture",
-      "model_live",
-    ]) ?? invalid(path)
+    enumValue(value, ["fixed_chain", "deterministic_planner", "model_fixture", "model_live"]) ??
+    invalid(path)
   );
 }
 
@@ -135,14 +127,8 @@ function sourceSnapshot(value: unknown): AgentReview["source_snapshot"] {
   ]);
   return {
     document_ids: strings(item.document_ids, "source_snapshot.document_ids"),
-    parsed_document_ids: strings(
-      item.parsed_document_ids,
-      "source_snapshot.parsed_document_ids",
-    ),
-    parse_selection_hash: text(
-      item.parse_selection_hash,
-      "source_snapshot.parse_selection_hash",
-    ),
+    parsed_document_ids: strings(item.parsed_document_ids, "source_snapshot.parsed_document_ids"),
+    parse_selection_hash: text(item.parse_selection_hash, "source_snapshot.parse_selection_hash"),
     parser_configuration_id: text(
       item.parser_configuration_id,
       "source_snapshot.parser_configuration_id",
@@ -178,10 +164,7 @@ const advisoryBands: readonly AgentReviewAdvisoryBand[] = [
   "unknown",
 ];
 
-const advisoryModes: readonly AgentReviewAdvisoryMode[] = [
-  "advisory",
-  "fixture",
-];
+const advisoryModes: readonly AgentReviewAdvisoryMode[] = ["advisory", "fixture"];
 
 const advisoryProviders: readonly AgentReviewAdvisoryProvider[] = [
   "model-gateway",
@@ -191,32 +174,16 @@ const advisoryProviders: readonly AgentReviewAdvisoryProvider[] = [
 
 function probability(value: unknown, path: string): number | null {
   if (value === undefined) return null;
-  if (
-    typeof value !== "number" ||
-    !Number.isFinite(value) ||
-    value < 0 ||
-    value > 1
-  )
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1)
     return invalid(path);
   return value;
 }
 
-function advisoryCandidate(
-  value: unknown,
-  path: string,
-): AgentReviewKnowledgeAdvisoryCandidate {
+function advisoryCandidate(value: unknown, path: string): AgentReviewKnowledgeAdvisoryCandidate {
   const item = optionalRecord(
     value,
     path,
-    [
-      "knowledge_id",
-      "version_id",
-      "content_sha256",
-      "alias",
-      "band",
-      "rank_before",
-      "rank_after",
-    ],
+    ["knowledge_id", "version_id", "content_sha256", "alias", "band", "rank_before", "rank_after"],
     ["probability", "reason"],
   );
   return {
@@ -232,10 +199,7 @@ function advisoryCandidate(
   };
 }
 
-function advisoryEnvelope(
-  value: unknown,
-  path: string,
-): Record<string, unknown> {
+function advisoryEnvelope(value: unknown, path: string): Record<string, unknown> {
   const item = optionalRecord(
     value,
     path,
@@ -274,30 +238,21 @@ function optionalAdvisoryText(
   return item[key] === undefined ? null : text(item[key], `${path}.${key}`);
 }
 
-function knowledgeAdvisory(
-  value: unknown,
-  path: string,
-): AgentReviewKnowledgeAdvisory {
+function knowledgeAdvisory(value: unknown, path: string): AgentReviewKnowledgeAdvisory {
   const item = advisoryEnvelope(value, path);
   const candidates = item.candidates as unknown[];
   return {
     mode: enumValue(item.mode, advisoryModes) ?? invalid(`${path}.mode`),
     feature: "knowledge_rerank",
-    provider:
-      enumValue(item.provider, advisoryProviders) ??
-      invalid(`${path}.provider`),
+    provider: enumValue(item.provider, advisoryProviders) ?? invalid(`${path}.provider`),
     configuration_id: text(item.configuration_id, `${path}.configuration_id`),
     model_requested: optionalAdvisoryText(item, "model_requested", path),
     model_observed: optionalAdvisoryText(item, "model_observed", path),
-    question_set_version: text(
-      item.question_set_version,
-      `${path}.question_set_version`,
-    ),
+    question_set_version: text(item.question_set_version, `${path}.question_set_version`),
     egress: "minimized",
     request_sha256: optionalAdvisoryText(item, "request_sha256", path),
     judgment_id: optionalAdvisoryText(item, "judgment_id", path),
-    status:
-      enumValue(item.status, advisoryStatuses) ?? invalid(`${path}.status`),
+    status: enumValue(item.status, advisoryStatuses) ?? invalid(`${path}.status`),
     error_code: optionalAdvisoryText(item, "error_code", path),
     truncated: item.truncated === true,
     candidates: candidates.map((candidate, index) =>
@@ -306,9 +261,7 @@ function knowledgeAdvisory(
   };
 }
 
-function knowledgeSelection(
-  value: unknown,
-): AgentReviewKnowledgeSelection | null {
+function knowledgeSelection(value: unknown): AgentReviewKnowledgeSelection | null {
   if (value === undefined || value === null) return null;
   const item = optionalRecord(
     value,
@@ -327,26 +280,14 @@ function knowledgeSelection(
     ["advisory"],
   );
   return {
-    snapshot_sha256: text(
-      item.snapshot_sha256,
-      "knowledge_selection.snapshot_sha256",
-    ),
+    snapshot_sha256: text(item.snapshot_sha256, "knowledge_selection.snapshot_sha256"),
     algorithm: text(item.algorithm, "knowledge_selection.algorithm"),
-    policy_status: text(
-      item.policy_status,
-      "knowledge_selection.policy_status",
-    ),
-    policy_reason: text(
-      item.policy_reason,
-      "knowledge_selection.policy_reason",
-    ),
+    policy_status: text(item.policy_status, "knowledge_selection.policy_status"),
+    policy_reason: text(item.policy_reason, "knowledge_selection.policy_reason"),
     advisory:
       item.advisory === undefined
         ? null
-        : knowledgeAdvisory(
-            item.advisory,
-            "knowledge_selection.advisory",
-          ),
+        : knowledgeAdvisory(item.advisory, "knowledge_selection.advisory"),
   };
 }
 
@@ -370,8 +311,7 @@ function planner(value: unknown): AgentReview["planner"] {
     "max_duration_ms",
     "max_evidence_bytes",
   ]);
-  if (typeof item.fallback_used !== "boolean")
-    return invalid("planner.fallback_used");
+  if (typeof item.fallback_used !== "boolean") return invalid("planner.fallback_used");
   return {
     identity: text(item.identity, "planner.identity"),
     configuration_id: text(item.configuration_id, "planner.configuration_id"),
@@ -383,25 +323,12 @@ function planner(value: unknown): AgentReview["planner"] {
     prompt_sha256: text(item.prompt_sha256, "planner.prompt_sha256"),
     schema_version: text(item.schema_version, "planner.schema_version"),
     runtime_version: text(item.runtime_version, "planner.runtime_version"),
-    tool_catalog_version: text(
-      item.tool_catalog_version,
-      "planner.tool_catalog_version",
-    ),
+    tool_catalog_version: text(item.tool_catalog_version, "planner.tool_catalog_version"),
     fallback_used: item.fallback_used,
     fallback_code: nullableText(item.fallback_code, "planner.fallback_code"),
     limits: {
-      max_rounds: boundedInteger(
-        limits.max_rounds,
-        "planner.limits.max_rounds",
-        1,
-        3,
-      ),
-      max_calls: boundedInteger(
-        limits.max_calls,
-        "planner.limits.max_calls",
-        1,
-        16,
-      ),
+      max_rounds: boundedInteger(limits.max_rounds, "planner.limits.max_rounds", 1, 3),
+      max_calls: boundedInteger(limits.max_calls, "planner.limits.max_calls", 1, 16),
       max_duration_ms: boundedInteger(
         limits.max_duration_ms,
         "planner.limits.max_duration_ms",
@@ -446,10 +373,7 @@ function capability(
   );
   return {
     capability_id: text(item.capability_id, `${path}.capability_id`),
-    mandatory:
-      item.mandatory === undefined
-        ? false
-        : bool(item.mandatory, `${path}.mandatory`),
+    mandatory: item.mandatory === undefined ? false : bool(item.mandatory, `${path}.mandatory`),
     status:
       enumValue<AgentReviewCapabilityStatus>(item.status, [
         "supported",
@@ -470,10 +394,7 @@ function capability(
   };
 }
 
-function domainCoverage(
-  value: unknown,
-  path: string,
-): AgentReview["domains"][number] {
+function domainCoverage(value: unknown, path: string): AgentReview["domains"][number] {
   const item = record(value, path, ["domain", "status", "capabilities"]);
   if (!Array.isArray(item.capabilities)) return invalid(`${path}.capabilities`);
   return {
@@ -499,24 +420,14 @@ function gap(value: unknown, path: string): AgentReview["gaps"][number] {
   const item = optionalRecord(
     value,
     path,
-    [
-      "gap_id",
-      "domain",
-      "capability_id",
-      "status",
-      "reason_code",
-      "evidence_ids",
-    ],
+    ["gap_id", "domain", "capability_id", "status", "reason_code", "evidence_ids"],
     ["mandatory"],
   );
   return {
     gap_id: text(item.gap_id, `${path}.gap_id`),
     domain: domain(item.domain, `${path}.domain`),
     capability_id: text(item.capability_id, `${path}.capability_id`),
-    mandatory:
-      item.mandatory === undefined
-        ? false
-        : bool(item.mandatory, `${path}.mandatory`),
+    mandatory: item.mandatory === undefined ? false : bool(item.mandatory, `${path}.mandatory`),
     status:
       enumValue<AgentReviewGapStatus>(item.status, [
         "open",
@@ -531,10 +442,7 @@ function gap(value: unknown, path: string): AgentReview["gaps"][number] {
   };
 }
 
-function plannedCall(
-  value: unknown,
-  path: string,
-): AgentReview["plan"]["calls"][number] {
+function plannedCall(value: unknown, path: string): AgentReview["plan"]["calls"][number] {
   const item = record(value, path, [
     "call_id",
     "tool_id",
@@ -569,10 +477,7 @@ function plannedCall(
   };
 }
 
-function planRound(
-  value: unknown,
-  path: string,
-): AgentReview["plan"]["rounds"][number] {
+function planRound(value: unknown, path: string): AgentReview["plan"]["rounds"][number] {
   const item = record(value, path, [
     "round",
     "status",
@@ -597,9 +502,7 @@ function planRound(
         "failed",
       ]) ?? invalid(`${path}.status`),
     gap_ids: strings(item.gap_ids, `${path}.gap_ids`),
-    calls: item.calls.map((call, index) =>
-      plannedCall(call, `${path}.calls[${index}]`),
-    ),
+    calls: item.calls.map((call, index) => plannedCall(call, `${path}.calls[${index}]`)),
     new_evidence_ids:
       item.new_evidence_ids === null
         ? null
@@ -608,20 +511,12 @@ function planRound(
       item.resolved_gap_ids === null
         ? null
         : strings(item.resolved_gap_ids, `${path}.resolved_gap_ids`),
-    termination_code: nullableText(
-      item.termination_code,
-      `${path}.termination_code`,
-    ),
+    termination_code: nullableText(item.termination_code, `${path}.termination_code`),
   };
 }
 
 function plan(value: unknown): AgentReview["plan"] {
-  const item = record(value, "plan", [
-    "status",
-    "rejection_code",
-    "calls",
-    "rounds",
-  ]);
+  const item = record(value, "plan", ["status", "rejection_code", "calls", "rounds"]);
   const status =
     enumValue<AgentReviewPlanStatus>(item.status, [
       "not_planned",
@@ -637,19 +532,12 @@ function plan(value: unknown): AgentReview["plan"] {
   return {
     status,
     rejection_code: nullableText(item.rejection_code, "plan.rejection_code"),
-    calls: item.calls.map((call, index) =>
-      plannedCall(call, `plan.calls[${index}]`),
-    ),
-    rounds: item.rounds.map((round, index) =>
-      planRound(round, `plan.rounds[${index}]`),
-    ),
+    calls: item.calls.map((call, index) => plannedCall(call, `plan.calls[${index}]`)),
+    rounds: item.rounds.map((round, index) => planRound(round, `plan.rounds[${index}]`)),
   };
 }
 
-function evidence(
-  value: unknown,
-  path: string,
-): AgentReview["evidence"][number] {
+function evidence(value: unknown, path: string): AgentReview["evidence"][number] {
   const item = record(value, path, [
     "evidence_id",
     "semantic_type",
@@ -691,14 +579,8 @@ function evidence(
     anchor: {
       id: text(anchor.id, `${path}.anchor.id`),
       document_id: text(anchor.document_id, `${path}.anchor.document_id`),
-      parsed_document_id: text(
-        anchor.parsed_document_id,
-        `${path}.anchor.parsed_document_id`,
-      ),
-      normalized_digest: text(
-        anchor.normalized_digest,
-        `${path}.anchor.normalized_digest`,
-      ),
+      parsed_document_id: text(anchor.parsed_document_id, `${path}.anchor.parsed_document_id`),
+      normalized_digest: text(anchor.normalized_digest, `${path}.anchor.normalized_digest`),
       quote: text(anchor.quote, `${path}.anchor.quote`),
       status: anchorStatus(anchor.status, `${path}.anchor.status`),
       start,
@@ -714,15 +596,7 @@ function event(value: unknown, path: string): AgentReview["events"][number] {
   const item = optionalRecord(
     value,
     path,
-    [
-      "sequence",
-      "round",
-      "kind",
-      "call_id",
-      "domain",
-      "code",
-      "duration_ms",
-    ],
+    ["sequence", "round", "kind", "call_id", "domain", "code", "duration_ms"],
     ["event_id", "tool_id", "gap_id", "occurred_at"],
   );
   return {
@@ -791,10 +665,7 @@ function observation(value: unknown, path: string): AgentReviewObservation {
     summary: text(item.summary, `${path}.summary`),
     claim_status: text(item.claim_status, `${path}.claim_status`),
     fact_ids: strings(item.fact_ids, `${path}.fact_ids`),
-    located_evidence_ids: strings(
-      item.located_evidence_ids,
-      `${path}.located_evidence_ids`,
-    ),
+    located_evidence_ids: strings(item.located_evidence_ids, `${path}.located_evidence_ids`),
     truncated: bool(item.truncated, `${path}.truncated`),
   };
 }
@@ -843,8 +714,7 @@ export function parseAgentReview(value: unknown): AgentReview {
     ],
     ["knowledge_selection", "observations", "knowledge_reads"],
   );
-  if (item.schema_version !== "five-domain-review/v1")
-    return invalid("schema_version");
+  if (item.schema_version !== "five-domain-review/v1") return invalid("schema_version");
   const usage = record(item.usage, "usage", [
     "planner_calls",
     "input_tokens",
@@ -868,28 +738,15 @@ export function parseAgentReview(value: unknown): AgentReview {
     rulepack: rulePack(item.rulepack),
     knowledge_selection: knowledgeSelection(item.knowledge_selection),
     planner: planner(item.planner),
-    scope: item.scope.map((entry, index) =>
-      scopeItem(entry, `scope[${index}]`),
-    ),
-    domains: item.domains.map((entry, index) =>
-      domainCoverage(entry, `domains[${index}]`),
-    ),
+    scope: item.scope.map((entry, index) => scopeItem(entry, `scope[${index}]`)),
+    domains: item.domains.map((entry, index) => domainCoverage(entry, `domains[${index}]`)),
     gaps: item.gaps.map((entry, index) => gap(entry, `gaps[${index}]`)),
     plan: plan(item.plan),
-    evidence: item.evidence.map((entry, index) =>
-      evidence(entry, `evidence[${index}]`),
-    ),
+    evidence: item.evidence.map((entry, index) => evidence(entry, `evidence[${index}]`)),
     usage: {
-      planner_calls: boundedInteger(
-        usage.planner_calls,
-        "usage.planner_calls",
-        0,
-      ),
+      planner_calls: boundedInteger(usage.planner_calls, "usage.planner_calls", 0),
       input_tokens: nullableInteger(usage.input_tokens, "usage.input_tokens"),
-      output_tokens: nullableInteger(
-        usage.output_tokens,
-        "usage.output_tokens",
-      ),
+      output_tokens: nullableInteger(usage.output_tokens, "usage.output_tokens"),
       total_tokens: nullableInteger(usage.total_tokens, "usage.total_tokens"),
     },
     unresolved_gap_ids: strings(item.unresolved_gap_ids, "unresolved_gap_ids"),

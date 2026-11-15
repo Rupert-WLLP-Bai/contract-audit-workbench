@@ -66,11 +66,8 @@ export const legalApplicabilityControlledValues: Record<
   ],
 };
 
-export function isLegalApplicabilityControlledValue(
-  dimension: string,
-  value: string,
-): boolean {
-  return legalApplicabilityControlledValues[dimension]?.some(
-    (option) => option.value === value,
-  ) === true;
+export function isLegalApplicabilityControlledValue(dimension: string, value: string): boolean {
+  return (
+    legalApplicabilityControlledValues[dimension]?.some((option) => option.value === value) === true
+  );
 }

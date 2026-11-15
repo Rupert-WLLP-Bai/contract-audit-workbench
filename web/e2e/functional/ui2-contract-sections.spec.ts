@@ -38,9 +38,16 @@ async function sectionGeometry(page: Page, info: TestInfo, label: string) {
   const result = await page.evaluate(() => {
     const root = document.documentElement;
     const editor = document.querySelector<HTMLElement>(".contracts-page-editor");
-    const visible = [...document.querySelectorAll<HTMLElement>("fieldset.contracts-page-section")]
-      .find((fieldset) => !fieldset.hasAttribute("hidden"));
-    const controls = visible ? [...visible.querySelectorAll<HTMLElement>("input, textarea, select, button, [role=combobox]")] : [];
+    const visible = [
+      ...document.querySelectorAll<HTMLElement>("fieldset.contracts-page-section"),
+    ].find((fieldset) => !fieldset.hasAttribute("hidden"));
+    const controls = visible
+      ? [
+          ...visible.querySelectorAll<HTMLElement>(
+            "input, textarea, select, button, [role=combobox]",
+          ),
+        ]
+      : [];
     // Controls inside a local horizontal scroller are intentionally reachable by
     // scrolling that container; they are not root-level viewport overflow.
     const outside = controls.filter((element) => {
@@ -51,11 +58,18 @@ async function sectionGeometry(page: Page, info: TestInfo, label: string) {
     }).length;
     const tables = visible ? [...visible.querySelectorAll<HTMLElement>(".ant-table-content")] : [];
     return {
-      rootScrollWidth: root.scrollWidth, rootClientWidth: root.clientWidth,
-      editorScrollWidth: editor?.scrollWidth ?? 0, editorClientWidth: editor?.clientWidth ?? 0,
-      sectionScrollWidth: visible?.scrollWidth ?? 0, sectionClientWidth: visible?.clientWidth ?? 0,
-      controlCount: controls.length, controlsOutsideViewport: outside,
-      tables: tables.map((table) => ({ clientWidth: table.clientWidth, scrollWidth: table.scrollWidth })),
+      rootScrollWidth: root.scrollWidth,
+      rootClientWidth: root.clientWidth,
+      editorScrollWidth: editor?.scrollWidth ?? 0,
+      editorClientWidth: editor?.clientWidth ?? 0,
+      sectionScrollWidth: visible?.scrollWidth ?? 0,
+      sectionClientWidth: visible?.clientWidth ?? 0,
+      controlCount: controls.length,
+      controlsOutsideViewport: outside,
+      tables: tables.map((table) => ({
+        clientWidth: table.clientWidth,
+        scrollWidth: table.scrollWidth,
+      })),
     };
   });
   writeFileSync(info.outputPath(`${label}.json`), JSON.stringify(result, null, 2));
@@ -63,15 +77,21 @@ async function sectionGeometry(page: Page, info: TestInfo, label: string) {
 }
 
 for (const mode of ["empty", "editable"] as const) {
-  test(`UI2 ${mode} sections stay inside the editor across viewport widths`, async ({ page }, info) => {
+  test(`UI2 ${mode} sections stay inside the editor across viewport widths`, async ({
+    page,
+  }, info) => {
     const fixture = await openDraft(page, mode);
     const issues: string[] = [];
     const localScrolls: string[] = [];
     if (mode === "empty") {
       for (const width of [1440, 1280, 1024, 390]) {
         await page.setViewportSize({ width, height: 900 });
-        const root = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
-        if (root.scroll > root.client + 1) issues.push(`${width}: empty workspace root overflow ${root.scroll}/${root.client}`);
+        const root = await page.evaluate(() => ({
+          scroll: document.documentElement.scrollWidth,
+          client: document.documentElement.clientWidth,
+        }));
+        if (root.scroll > root.client + 1)
+          issues.push(`${width}: empty workspace root overflow ${root.scroll}/${root.client}`);
       }
       expect(fixture.unmatched).toEqual([]);
       expect(fixture.blocked).toEqual([]);
@@ -81,21 +101,29 @@ for (const mode of ["empty", "editable"] as const) {
     for (const width of [1440, 1280, 1024, 390]) {
       await page.setViewportSize({ width, height: 900 });
       const sectionButtons = page.locator(".contracts-form-sections button");
-      const availableSections = await sectionButtons.count() ? sections : [sections[0]];
+      const availableSections = (await sectionButtons.count()) ? sections : [sections[0]];
       for (const section of availableSections) {
         if (await page.getByRole("button", { name: section, exact: true }).count())
           await page.getByRole("button", { name: section, exact: true }).click();
         const result = await sectionGeometry(page, info, `ui2-${mode}-${width}-${section}`);
         const prefix = `${width}/${section}`;
-        if (result.rootScrollWidth > result.rootClientWidth + 1) issues.push(`${prefix}: root overflow`);
-        if (result.editorScrollWidth > result.editorClientWidth + 1) issues.push(`${prefix}: editor overflow`);
-        if (result.sectionScrollWidth > result.sectionClientWidth + 1) issues.push(`${prefix}: section overflow`);
+        if (result.rootScrollWidth > result.rootClientWidth + 1)
+          issues.push(`${prefix}: root overflow`);
+        if (result.editorScrollWidth > result.editorClientWidth + 1)
+          issues.push(`${prefix}: editor overflow`);
+        if (result.sectionScrollWidth > result.sectionClientWidth + 1)
+          issues.push(`${prefix}: section overflow`);
         if (result.controlsOutsideViewport > 0) issues.push(`${prefix}: controls outside viewport`);
         for (const table of result.tables) {
-          if (table.scrollWidth > table.clientWidth + 1) localScrolls.push(`${prefix}: table ${table.clientWidth}/${table.scrollWidth}`);
+          if (table.scrollWidth > table.clientWidth + 1)
+            localScrolls.push(`${prefix}: table ${table.clientWidth}/${table.scrollWidth}`);
         }
         // Keyboard focus must remain on an on-screen control inside the active section.
-        const focusTarget = page.locator("fieldset.contracts-page-section:not([hidden]) input:not([disabled]), fieldset.contracts-page-section:not([hidden]) button:not([disabled])").last();
+        const focusTarget = page
+          .locator(
+            "fieldset.contracts-page-section:not([hidden]) input:not([disabled]), fieldset.contracts-page-section:not([hidden]) button:not([disabled])",
+          )
+          .last();
         if (await focusTarget.count()) {
           await focusTarget.focus();
           const focus = await page.evaluate(() => {
@@ -104,11 +132,15 @@ for (const mode of ["empty", "editable"] as const) {
             const box = element.getBoundingClientRect();
             return { focused: true, inViewport: box.left >= -1 && box.right <= innerWidth + 1 };
           });
-          if (!focus.focused || !focus.inViewport) issues.push(`${prefix}: keyboard focus unreachable or off-screen`);
+          if (!focus.focused || !focus.inViewport)
+            issues.push(`${prefix}: keyboard focus unreachable or off-screen`);
         }
       }
       if (width === 1440 || width === 390) {
-        await page.screenshot({ path: info.outputPath(`ui2-${mode}-${width}.png`), fullPage: false });
+        await page.screenshot({
+          path: info.outputPath(`ui2-${mode}-${width}.png`),
+          fullPage: false,
+        });
       }
     }
     if (mode === "editable") {
@@ -119,7 +151,10 @@ for (const mode of ["empty", "editable"] as const) {
     }
     expect(fixture.unmatched).toEqual([]);
     expect(fixture.blocked).toEqual([]);
-    writeFileSync(info.outputPath("ui2-section-evidence.json"), JSON.stringify({ mode, localScrolls, issues }, null, 2));
+    writeFileSync(
+      info.outputPath("ui2-section-evidence.json"),
+      JSON.stringify({ mode, localScrolls, issues }, null, 2),
+    );
     expect(issues).toEqual([]);
   });
 }

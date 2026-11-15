@@ -66,13 +66,9 @@ describe("run provenance", () => {
       </MemoryRouter>,
     );
     await open(user, "运行依据与规则评估");
-    expect(
-      screen.getByText("未获取到本次审查的材料和规则记录。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("未获取到本次审查的材料和规则记录。")).toBeInTheDocument();
     expect(screen.getByText("没有返回规则评估记录。")).toBeInTheDocument();
-    expect(
-      screen.getByText("材料与引用以本次审查记录为准。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("材料与引用以本次审查记录为准。")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "修改稿对照" })).not.toBeInTheDocument();
   });
 
@@ -95,9 +91,7 @@ describe("run provenance", () => {
       </MemoryRouter>,
     );
     await open(user, "运行依据与规则评估");
-    expect(
-      screen.getByText("请核对本次审查的材料与引用。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("请核对本次审查的材料与引用。")).toBeInTheDocument();
     expect(screen.getByText("履约，冲突")).toBeInTheDocument();
     expect(screen.getByText("期限不一致")).toBeInTheDocument();
     expect(screen.queryByText("rule-1")).not.toBeInTheDocument();
@@ -130,11 +124,11 @@ describe("run provenance", () => {
     expect(within(region).getByText("playbook-hash")).toBeInTheDocument();
     expect(within(region).getByText("comparator-v1")).toBeInTheDocument();
     expect(within(region).getByText("model-v1")).toBeInTheDocument();
+    expect(within(region).getByText(/rule-1，v2，capability-1/)).toBeInTheDocument();
     expect(
-      within(region).getByText(/rule-1，v2，capability-1/),
-    ).toBeInTheDocument();
-    expect(
-      within(region).getByText(/业务对象：object-1、object-2，规则依据：date_mismatch，事实：fact-1/),
+      within(region).getByText(
+        /业务对象：object-1、object-2，规则依据：date_mismatch，事实：fact-1/,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -170,9 +164,7 @@ describe("run provenance", () => {
     await open(user, "运行依据与规则评估");
     expect(screen.getAllByText("未返回")).toHaveLength(4);
     expect(screen.getByText("未记录")).toBeInTheDocument();
-    expect(
-      screen.getByText(/规则身份未返回，版本未返回，能力身份未返回/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/规则身份未返回，版本未返回，能力身份未返回/)).toBeInTheDocument();
     expect(
       screen.getByText(/业务对象：未返回，规则依据：未返回，事实：未返回/),
     ).toBeInTheDocument();
@@ -199,9 +191,7 @@ describe("run provenance", () => {
     await open(user, "运行依据与规则评估");
     const region = screen.getByRole("region", { name: "运行依据与复审" });
     expect(within(region).queryByText("未返回")).not.toBeInTheDocument();
-    expect(
-      within(region).getByText("比较器").nextElementSibling,
-    ).toHaveTextContent("");
+    expect(within(region).getByText("比较器").nextElementSibling).toHaveTextContent("");
   });
 
   it("links back to the previous run and compares revisions", async () => {
@@ -243,15 +233,14 @@ describe("run provenance", () => {
       </MemoryRouter>,
     );
     await open(user, "修改稿对照");
-    expect(
-      screen.getByRole("link", { name: "查看上一轮审查" }),
-    ).toHaveAttribute("href", "/cases/case-1/reviews/run-0");
+    expect(screen.getByRole("link", { name: "查看上一轮审查" })).toHaveAttribute(
+      "href",
+      "/cases/case-1/reviews/run-0",
+    );
     expect(screen.getByText("规则版本变化")).toBeInTheDocument();
     expect(screen.getByText("新增，履约")).toBeInTheDocument();
     expect(screen.getByText("新增期限差异")).toBeInTheDocument();
-    expect(
-      screen.getByText("先前决定：确认风险，审查员甲，已核实"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("先前决定：确认风险，审查员甲，已核实")).toBeInTheDocument();
     expect(screen.getByText("保留，商务")).toBeInTheDocument();
     expect(screen.getByText("保留的线索")).toBeInTheDocument();
   });
@@ -260,9 +249,7 @@ describe("run provenance", () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter>
-        <RunProvenance
-          workspace={workspace({ previous_run_id: "run-0", revisions: [] })}
-        />
+        <RunProvenance workspace={workspace({ previous_run_id: "run-0", revisions: [] })} />
       </MemoryRouter>,
     );
     await open(user, "修改稿对照");

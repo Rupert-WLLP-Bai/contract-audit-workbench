@@ -83,20 +83,12 @@ function stringValue(value: unknown, label: string): string {
   return value;
 }
 
-function optionalString(
-  record: OpenApiRecord,
-  key: string,
-  fallback = "",
-): string {
+function optionalString(record: OpenApiRecord, key: string, fallback = ""): string {
   if (!Object.hasOwn(record, key) || record[key] === undefined) return fallback;
   return stringValue(record[key], key);
 }
 
-function optionalBoolean(
-  record: OpenApiRecord,
-  key: string,
-  fallback = false,
-): boolean {
+function optionalBoolean(record: OpenApiRecord, key: string, fallback = false): boolean {
   if (!Object.hasOwn(record, key) || record[key] === undefined) return fallback;
   const value = record[key];
   if (typeof value !== "boolean") throw new Error(`${key} 必须是布尔值`);
@@ -108,30 +100,20 @@ function arrayValue(value: unknown, label: string): unknown[] {
   return value;
 }
 
-export function resolveOpenApiReference(
-  value: unknown,
-  root: OpenApiRecord,
-): unknown {
+export function resolveOpenApiReference(value: unknown, root: OpenApiRecord): unknown {
   let current = value;
   const visited = new Set<string>();
-  while (
-    typeof current === "object" &&
-    current !== null &&
-    !Array.isArray(current)
-  ) {
+  while (typeof current === "object" && current !== null && !Array.isArray(current)) {
     const reference = (current as OpenApiRecord).$ref;
     if (typeof reference !== "string") return current;
-    if (!reference.startsWith("#/"))
-      throw new Error(`不支持外部 OpenAPI 引用：${reference}`);
-    if (visited.has(reference))
-      throw new Error(`OpenAPI 引用存在循环：${reference}`);
+    if (!reference.startsWith("#/")) throw new Error(`不支持外部 OpenAPI 引用：${reference}`);
+    if (visited.has(reference)) throw new Error(`OpenAPI 引用存在循环：${reference}`);
     visited.add(reference);
     let target: unknown = root;
     for (const encodedPart of reference.slice(2).split("/")) {
       const part = encodedPart.replaceAll("~1", "/").replaceAll("~0", "~");
       const parent = recordOf(target, `引用 ${reference}`);
-      if (!Object.hasOwn(parent, part))
-        throw new Error(`无法解析 OpenAPI 引用：${reference}`);
+      if (!Object.hasOwn(parent, part)) throw new Error(`无法解析 OpenAPI 引用：${reference}`);
       target = parent[part];
     }
     current = target;
@@ -153,27 +135,17 @@ function parameterLocation(value: unknown): OpenApiParameterLocation {
   return location as OpenApiParameterLocation;
 }
 
-function parameterSchema(
-  parameter: OpenApiRecord,
-): OpenApiRecord | null {
+function parameterSchema(parameter: OpenApiRecord): OpenApiRecord | null {
   if (parameter.schema === undefined) return null;
   return recordOf(parameter.schema, "参数 schema");
 }
 
-function parameterExample(
-  parameter: OpenApiRecord,
-  schema: OpenApiRecord | null,
-): unknown {
-  const example = Object.hasOwn(parameter, "example")
-    ? parameter.example
-    : schema?.example;
+function parameterExample(parameter: OpenApiRecord, schema: OpenApiRecord | null): unknown {
+  const example = Object.hasOwn(parameter, "example") ? parameter.example : schema?.example;
   return example ?? null;
 }
 
-function parseParameter(
-  entry: unknown,
-  root: OpenApiRecord,
-): OpenApiParameter {
+function parseParameter(entry: unknown, root: OpenApiRecord): OpenApiParameter {
   const raw = resolveOpenApiReference(entry, root);
   const parameter = recordOf(raw, "参数");
   const location = parameterLocation(parameter.in);
@@ -189,24 +161,14 @@ function parseParameter(
   };
 }
 
-function parseParameters(
-  value: unknown,
-  root: OpenApiRecord,
-  label: string,
-): OpenApiParameter[] {
+function parseParameters(value: unknown, root: OpenApiRecord, label: string): OpenApiParameter[] {
   if (value === undefined) return [];
   return arrayValue(value, label).map((entry) => parseParameter(entry, root));
 }
 
-function selectRequestBodyContent(
-  content: OpenApiRecord,
-): [string, unknown] | null {
+function selectRequestBodyContent(content: OpenApiRecord): [string, unknown] | null {
   const entries = Object.entries(content);
-  return (
-    entries.find(([mediaType]) => mediaType === "application/json") ??
-    entries[0] ??
-    null
-  );
+  return entries.find(([mediaType]) => mediaType === "application/json") ?? entries[0] ?? null;
 }
 
 function namedExample(examples: OpenApiRecord): unknown {
@@ -221,10 +183,7 @@ function schemaExample(schema: OpenApiRecord): unknown {
   return Object.hasOwn(schema, "default") ? schema.default : null;
 }
 
-function requestBodyExample(
-  media: OpenApiRecord,
-  schema: OpenApiRecord | null,
-): unknown {
+function requestBodyExample(media: OpenApiRecord, schema: OpenApiRecord | null): unknown {
   let example: unknown = Object.hasOwn(media, "example") ? media.example : null;
   if (example === null && media.examples !== undefined)
     example = namedExample(recordOf(media.examples, "请求体 examples"));
@@ -243,23 +202,17 @@ function emptyRequestBody(requestBody: OpenApiRecord): OpenApiRequestBody {
   };
 }
 
-function parseRequestBody(
-  value: unknown,
-  root: OpenApiRecord,
-): OpenApiRequestBody | null {
+function parseRequestBody(value: unknown, root: OpenApiRecord): OpenApiRequestBody | null {
   if (value === undefined) return null;
   const raw = resolveOpenApiReference(value, root);
   const requestBody = recordOf(raw, "请求体");
   const content =
-    requestBody.content === undefined
-      ? {}
-      : recordOf(requestBody.content, "请求体 content");
+    requestBody.content === undefined ? {} : recordOf(requestBody.content, "请求体 content");
   const selected = selectRequestBodyContent(content);
   if (!selected) return emptyRequestBody(requestBody);
   const [mediaType, rawMedia] = selected;
   const media = recordOf(rawMedia, "请求体 media type");
-  const schema =
-    media.schema === undefined ? null : recordOf(media.schema, "请求体 schema");
+  const schema = media.schema === undefined ? null : recordOf(media.schema, "请求体 schema");
   return {
     required: optionalBoolean(requestBody, "required"),
     description: optionalString(requestBody, "description"),
@@ -270,10 +223,7 @@ function parseRequestBody(
   };
 }
 
-function parseResponses(
-  value: unknown,
-  root: OpenApiRecord,
-): OpenApiResponse[] {
+function parseResponses(value: unknown, root: OpenApiRecord): OpenApiResponse[] {
   const responses = recordOf(value, "responses");
   return Object.entries(responses).map(([status, entry]) => {
     const raw = resolveOpenApiReference(entry, root);
@@ -294,11 +244,7 @@ function parseOperation(
   root: OpenApiRecord,
 ): OpenApiOperation {
   const operation = recordOf(rawOperation, `${method.toUpperCase()} ${path}`);
-  const pathParameters = parseParameters(
-    pathItem.parameters,
-    root,
-    `${path} parameters`,
-  );
+  const pathParameters = parseParameters(pathItem.parameters, root, `${path} parameters`);
   const operationParameters = parseParameters(
     operation.parameters,
     root,
@@ -307,11 +253,7 @@ function parseOperation(
   const parameterMap = new Map<string, OpenApiParameter>();
   for (const parameter of [...pathParameters, ...operationParameters])
     parameterMap.set(`${parameter.location}:${parameter.name}`, parameter);
-  const operationId = optionalString(
-    operation,
-    "operationId",
-    `${method.toUpperCase()} ${path}`,
-  );
+  const operationId = optionalString(operation, "operationId", `${method.toUpperCase()} ${path}`);
   const tags =
     operation.tags === undefined
       ? []
@@ -336,41 +278,23 @@ function parseOperation(
 }
 
 function invalidOpenApiPath(path: string): boolean {
-  return (
-    !path.startsWith("/") ||
-    path.startsWith("//") ||
-    path.includes("?") ||
-    path.includes("#")
-  );
+  return !path.startsWith("/") || path.startsWith("//") || path.includes("?") || path.includes("#");
 }
 
-function collectOperations(
-  paths: OpenApiRecord,
-  root: OpenApiRecord,
-): OpenApiOperation[] {
+function collectOperations(paths: OpenApiRecord, root: OpenApiRecord): OpenApiOperation[] {
   const operations: OpenApiOperation[] = [];
   for (const [path, rawPathItem] of Object.entries(paths)) {
     if (invalidOpenApiPath(path)) throw new Error(`OpenAPI 路径无效：${path}`);
     const pathItem = recordOf(rawPathItem, `paths.${path}`);
     for (const [method, rawOperation] of Object.entries(pathItem)) {
       if (METHODS[method.toLowerCase()] === true)
-        operations.push(
-          parseOperation(
-            method.toLowerCase(),
-            path,
-            pathItem,
-            rawOperation,
-            root,
-          ),
-        );
+        operations.push(parseOperation(method.toLowerCase(), path, pathItem, rawOperation, root));
     }
   }
   return operations;
 }
 
-function parseContractTags(
-  root: OpenApiRecord,
-): { name: string; description: string }[] {
+function parseContractTags(root: OpenApiRecord): { name: string; description: string }[] {
   if (root.tags === undefined) return [];
   return arrayValue(root.tags, "tags").map((entry) => {
     const tag = recordOf(entry, "tag");

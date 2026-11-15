@@ -19,7 +19,11 @@ import { renderWithAntd } from "./antd";
 it("retains the same stateful child through prop changes", async () => {
   function Counter({ label }: { label: string }) {
     const [count, setCount] = useState(0);
-    return <button onClick={() => setCount((value) => value + 1)}>{label}: {count}</button>;
+    return (
+      <button onClick={() => setCount((value) => value + 1)}>
+        {label}: {count}
+      </button>
+    );
   }
 
   const view = renderWithAntd(<Counter label="A" />);

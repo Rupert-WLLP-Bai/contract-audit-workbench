@@ -15,8 +15,9 @@ import type { ReactNode } from "react";
 export const caseSelectPresentation = {
   virtual: false,
   styles: { popup: { listItem: { whiteSpace: "normal" as const } } },
-  optionRender: (option: { label?: ReactNode }) =>
-    <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{option.label}</div>,
+  optionRender: (option: { label?: ReactNode }) => (
+    <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{option.label}</div>
+  ),
   labelRender: ({ label }: { label: ReactNode }) =>
     typeof label === "string" ? label.split(" · ").slice(0, 2).join(" · ") : label,
 };

@@ -53,20 +53,12 @@ describe("parsed document summary", () => {
     render(<ParsedDocumentSummary document={document()} />);
     const summary = screen.getByLabelText("解析来源与摘要");
     expect(summary).toHaveTextContent("原件 SHA-256 document");
-    expect(summary).toHaveTextContent(
-      `解析 ${shortDigest(parsed.id)}，解析器 parser-a@v2`,
-    );
+    expect(summary).toHaveTextContent(`解析 ${shortDigest(parsed.id)}，解析器 parser-a@v2`);
     expect(summary).toHaveTextContent(`配置 SHA-256 ${shortDigest(parsed.config_hash)}`);
     expect(summary).toHaveTextContent("规范化 norm-v1");
-    expect(summary).toHaveTextContent(
-      `正文 SHA-256 ${shortDigest(parsed.normalized_digest!)}`,
-    );
-    expect(summary).toHaveTextContent(
-      `IR SHA-256 ${shortDigest(parsed.ir_digest!)}`,
-    );
-    expect(summary).toHaveTextContent(
-      `产物 SHA-256 ${shortDigest(parsed.artifact_digest)}`,
-    );
+    expect(summary).toHaveTextContent(`正文 SHA-256 ${shortDigest(parsed.normalized_digest!)}`);
+    expect(summary).toHaveTextContent(`IR SHA-256 ${shortDigest(parsed.ir_digest!)}`);
+    expect(summary).toHaveTextContent(`产物 SHA-256 ${shortDigest(parsed.artifact_digest)}`);
     expect(summary).toHaveTextContent(`解析就绪，${formatDateTime(at)}`);
   });
 
@@ -115,7 +107,10 @@ describe("parsed document summary", () => {
   it("labels a short missing original digest instead of inventing one", () => {
     render(
       <ParsedDocumentSummary
-        document={document({ digest: "", parsed_document: { ...parsed, normalized_digest: "", ir_digest: "" } })}
+        document={document({
+          digest: "",
+          parsed_document: { ...parsed, normalized_digest: "", ir_digest: "" },
+        })}
       />,
     );
     const summary = screen.getByLabelText("解析来源与摘要");
@@ -133,9 +128,7 @@ describe("parsed document summary", () => {
         })}
       />,
     );
-    expect(
-      screen.getAllByText("摘要缺失", { selector: "span" })[0],
-    ).not.toHaveAttribute("title");
+    expect(screen.getAllByText("摘要缺失", { selector: "span" })[0]).not.toHaveAttribute("title");
     const summary = screen.getByLabelText("解析来源与摘要");
     const titles = summary.querySelectorAll("span[title]");
     expect([...titles].map((span) => span.getAttribute("title"))).toContain("");
@@ -149,14 +142,8 @@ describe("parsed document summary", () => {
   });
 
   it("marks an unavailable original digest as unrecorded", () => {
-    render(
-      <ParsedDocumentSummary
-        document={document({ digest: null as unknown as string })}
-      />,
-    );
-    expect(screen.getByLabelText("解析来源与摘要")).toHaveTextContent(
-      "原件 SHA-256 未记录",
-    );
+    render(<ParsedDocumentSummary document={document({ digest: null as unknown as string })} />);
+    expect(screen.getByLabelText("解析来源与摘要")).toHaveTextContent("原件 SHA-256 未记录");
   });
 
   it("calls a legacy parse without metadata a historical record", () => {
@@ -166,9 +153,7 @@ describe("parsed document summary", () => {
       />,
     );
     const summary = screen.getByLabelText("解析来源与摘要");
-    expect(summary).toHaveTextContent(
-      "解析来源 未记录（历史记录），正文摘要 未记录",
-    );
+    expect(summary).toHaveTextContent("解析来源 未记录（历史记录），正文摘要 未记录");
     expect(summary).toHaveAttribute("data-parsed-document-id", "");
     expect(summary).toHaveAttribute("data-status", "");
   });
@@ -190,8 +175,6 @@ describe("parsed document summary", () => {
         document={document({ parse_status: "pending", parsed_document: null })}
       />,
     );
-    expect(screen.getByLabelText("解析来源与摘要")).toHaveTextContent(
-      "解析来源 尚无解析结果",
-    );
+    expect(screen.getByLabelText("解析来源与摘要")).toHaveTextContent("解析来源 尚无解析结果");
   });
 });

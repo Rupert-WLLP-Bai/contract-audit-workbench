@@ -21,7 +21,25 @@ import { ReportArchivePanel } from "./report-archive-panel";
 
 const at = "2026-10-21T06:00:00Z";
 const clients: QueryClient[] = [];
-const actor: Actor = { id: "reviewer-1", display_name: "审查员", role: "reviewer", tenant_id: "tenant-1", org_id: "org-1", audience: "client", principal_id: "principal-reviewer", active_context: { membership_id: "membership", tenant_id: "tenant-1", tenant_name: "租户", org_id: "org-1", org_name: "组织", context_version: "1" }, csrf_token: "r".repeat(32), context_switch_enabled: false };
+const actor: Actor = {
+  id: "reviewer-1",
+  display_name: "审查员",
+  role: "reviewer",
+  tenant_id: "tenant-1",
+  org_id: "org-1",
+  audience: "client",
+  principal_id: "principal-reviewer",
+  active_context: {
+    membership_id: "membership",
+    tenant_id: "tenant-1",
+    tenant_name: "租户",
+    org_id: "org-1",
+    org_name: "组织",
+    context_version: "1",
+  },
+  csrf_token: "r".repeat(32),
+  context_switch_enabled: false,
+};
 const detail: CaseDetail = {
   id: "case-1",
   title: "合同",
@@ -59,16 +77,8 @@ function publicAttempt(id: string, ordinal: number, state: string) {
 }
 
 function publicWorkspace(selectedId = "attempt-2", state = "completed") {
-  const first = publicAttempt(
-    "attempt-1",
-    1,
-    selectedId === "attempt-1" ? state : "failed",
-  );
-  const second = publicAttempt(
-    "attempt-2",
-    2,
-    selectedId === "attempt-2" ? state : "completed",
-  );
+  const first = publicAttempt("attempt-1", 1, selectedId === "attempt-1" ? state : "failed");
+  const second = publicAttempt("attempt-2", 2, selectedId === "attempt-2" ? state : "completed");
   return {
     run: {
       id: "run-1",
@@ -118,10 +128,7 @@ function open(
       ) {
         return Response.json(response);
       }
-      if (
-        url.pathname === "/api/cases/case-1/reports" &&
-        init?.method === "POST"
-      ) {
+      if (url.pathname === "/api/cases/case-1/reports" && init?.method === "POST") {
         return Response.json({
           id: "report-1",
           version: 1,
@@ -134,10 +141,7 @@ function open(
           created_at: at,
         });
       }
-      return Response.json(
-        { error: { message: "Unexpected request" } },
-        { status: 404 },
-      );
+      return Response.json({ error: { message: "Unexpected request" } }, { status: 404 });
     }),
   );
   const client = new QueryClient({
@@ -180,12 +184,8 @@ afterEach(() => {
 describe("report creation with public attempt history", () => {
   it("creates a report for the selected terminal attempt without diagnostics", async () => {
     const { requests, user } = open();
-    expect(
-      await screen.findByText("第 2 次"),
-    ).toBeInTheDocument();
-    const form = screen
-      .getByRole("button", { name: "生成报告" })
-      .closest("form")!;
+    expect(await screen.findByText("第 2 次")).toBeInTheDocument();
+    const form = screen.getByRole("button", { name: "生成报告" }).closest("form")!;
     expect(within(form).queryByText("输入摘要")).not.toBeInTheDocument();
     expect(within(form).getByText("合同正文.txt")).toBeInTheDocument();
     expect(within(form).getByTitle("run-1")).not.toBeVisible();
@@ -195,9 +195,7 @@ describe("report creation with public attempt history", () => {
       expect(within(form).getByRole("button", { name: "生成报告" })).toBeEnabled(),
     );
     await user.click(within(form).getByRole("button", { name: "生成报告" }));
-    await waitFor(() =>
-      expect(requests.some(({ init }) => init?.method === "POST")).toBe(true),
-    );
+    await waitFor(() => expect(requests.some(({ init }) => init?.method === "POST")).toBe(true));
     const request = requests.find(({ init }) => init?.method === "POST")!;
     expect(request.url.pathname).toBe("/api/cases/case-1/reports");
     expect(new Headers(request.init?.headers).get("X-Context-Version")).toBe("1");
@@ -212,24 +210,28 @@ describe("report creation with public attempt history", () => {
   it("shows report and archive versions without technical identifiers or hashes", () => {
     open(publicWorkspace(), parseReviewWorkspace(publicWorkspace()), {
       ...detail,
-      reports: [{
-        id: "report-private",
-        version: 3,
-        run_id: "run-private",
-        attempt_id: "attempt-private",
-        input_hash: "input-private",
-        output_hash: "output-private",
-        decision_snapshot_hash: "decision-private",
-        digest: "digest-private",
-        created_at: at,
-      }],
-      archives: [{
-        id: "archive-private",
-        case_id: "case-private",
-        report_id: "report-private",
-        reason: "审批完成",
-        archived_at: at,
-      }],
+      reports: [
+        {
+          id: "report-private",
+          version: 3,
+          run_id: "run-private",
+          attempt_id: "attempt-private",
+          input_hash: "input-private",
+          output_hash: "output-private",
+          decision_snapshot_hash: "decision-private",
+          digest: "digest-private",
+          created_at: at,
+        },
+      ],
+      archives: [
+        {
+          id: "archive-private",
+          case_id: "case-private",
+          report_id: "report-private",
+          reason: "审批完成",
+          archived_at: at,
+        },
+      ],
     });
     const panel = screen.getByRole("heading", { name: "审查报告与归档" }).closest("section")!;
     expect(within(panel).getByText("报告版本 3")).toBeInTheDocument();
@@ -239,9 +241,17 @@ describe("report creation with public attempt history", () => {
       "/api/cases/case-1/reports/report-private?format=html",
     );
     for (const hidden of [
-      "report-private", "run-private", "attempt-private", "input-private",
-      "output-private", "decision-private", "digest-private", "archive-private", "case-private",
-    ]) expect(panel).not.toHaveTextContent(hidden);
+      "report-private",
+      "run-private",
+      "attempt-private",
+      "input-private",
+      "output-private",
+      "decision-private",
+      "digest-private",
+      "archive-private",
+      "case-private",
+    ])
+      expect(panel).not.toHaveTextContent(hidden);
   });
 
   it("does not infer a selectable attempt from diagnostics alone", () => {
@@ -257,7 +267,9 @@ describe("report creation with public attempt history", () => {
     });
     const { requests } = open(publicWorkspace(), historyWorkspace);
     expect(
-      screen.getByText("没有可用于生成报告的执行记录。较早的审查如果没有保存当时使用的材料版本记录，不能用于生成报告。"),
+      screen.getByText(
+        "没有可用于生成报告的执行记录。较早的审查如果没有保存当时使用的材料版本记录，不能用于生成报告。",
+      ),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "生成报告" })).toBeDisabled();
     expect(requests).toHaveLength(0);
@@ -267,7 +279,11 @@ describe("report creation with public attempt history", () => {
     "does not display diagnostic hashes embedded in the business response for %s",
     async (diagnosticAttemptId) => {
       const diagnosticAttempt = {
-        ...publicAttempt(diagnosticAttemptId, diagnosticAttemptId === "attempt-1" ? 1 : 2, "completed"),
+        ...publicAttempt(
+          diagnosticAttemptId,
+          diagnosticAttemptId === "attempt-1" ? 1 : 2,
+          "completed",
+        ),
         input_hash: "private-input",
         output_hash: "private-output",
       };
@@ -303,19 +319,21 @@ describe("report creation with public attempt history", () => {
   });
 });
 
-function renderArchive(options: {
-  detail?: CaseDetail;
-  history?: { runId: string; workspace: ReturnType<typeof parseReviewWorkspace> }[];
-  historyLoading?: boolean;
-  historyError?: unknown;
-  canCreateReport?: boolean;
-  canArchive?: boolean;
-  canReadReports?: boolean;
-  archived?: boolean;
-  reviewResponse?: () => Response | Promise<Response>;
-  reportResponse?: () => Response | Promise<Response>;
-  archiveResponse?: () => Response | Promise<Response>;
-} = {}) {
+function renderArchive(
+  options: {
+    detail?: CaseDetail;
+    history?: { runId: string; workspace: ReturnType<typeof parseReviewWorkspace> }[];
+    historyLoading?: boolean;
+    historyError?: unknown;
+    canCreateReport?: boolean;
+    canArchive?: boolean;
+    canReadReports?: boolean;
+    archived?: boolean;
+    reviewResponse?: () => Response | Promise<Response>;
+    reportResponse?: () => Response | Promise<Response>;
+    archiveResponse?: () => Response | Promise<Response>;
+  } = {},
+) {
   const requests: { url: URL; init?: RequestInit }[] = [];
   vi.stubGlobal(
     "fetch",
@@ -416,9 +434,7 @@ const archiveRecord = {
 describe("report archive permissions and states", () => {
   it("explains missing report permission without hiding history", () => {
     renderArchive({ canCreateReport: false });
-    expect(
-      screen.getByText("当前身份没有已定义的报告生成权限。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("当前身份没有已定义的报告生成权限。")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "生成报告" })).not.toBeInTheDocument();
     expect(screen.getByText("报告历史")).toBeInTheDocument();
   });
@@ -429,9 +445,7 @@ describe("report archive permissions and states", () => {
       detail: { ...detail, archived_at: at },
     });
     expect(screen.getAllByText(/已归档/).length).toBeGreaterThan(0);
-    expect(
-      screen.getByText(/归档后的案件保留授权读取/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/归档后的案件保留授权读取/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "生成报告" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "归档案件" })).not.toBeInTheDocument();
   });
@@ -445,21 +459,15 @@ describe("report archive permissions and states", () => {
 
   it("reports history loading, errors and empty choices", () => {
     const view = renderArchive({ historyLoading: true });
-    expect(
-      screen.getByText("正在读取可用于生成报告的审查和执行记录。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("正在读取可用于生成报告的审查和执行记录。")).toBeInTheDocument();
     view.unmount();
     renderArchive({ historyError: new Error("boom") });
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "运行历史没有加载：请求没有完成",
-    );
+    expect(screen.getByRole("alert")).toHaveTextContent("运行历史没有加载：请求没有完成");
   });
 
   it("explains the absence of usable attempts", () => {
     renderArchive({ history: [] });
-    expect(
-      screen.getByText(/没有可用于生成报告的执行记录/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/没有可用于生成报告的执行记录/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "生成报告" })).toBeDisabled();
   });
 
@@ -475,14 +483,9 @@ describe("report archive permissions and states", () => {
     view.unmount();
     renderArchive({
       reviewResponse: () =>
-        Response.json(
-          { error: { message: "读取失败", code: "failed" } },
-          { status: 500 },
-        ),
+        Response.json({ error: { message: "读取失败", code: "failed" } }, { status: 500 }),
     });
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "所选尝试没有加载：读取失败",
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("所选尝试没有加载：读取失败");
   });
 
   it("renders the selected review without an attempt as unavailable", async () => {
@@ -490,9 +493,7 @@ describe("report archive permissions and states", () => {
     renderArchive({ reviewResponse: () => Response.json(workspace) });
     expect(await screen.findByText("未返回")).toBeInTheDocument();
     expect(screen.getByText("未返回")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: "审查工作区" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "审查工作区" })).not.toBeInTheDocument();
   });
 });
 
@@ -507,9 +508,7 @@ describe("report creation and archiving actions", () => {
     const generate = await screen.findByRole("button", { name: "生成报告" });
     await waitFor(() => expect(generate).toBeEnabled());
     await user.click(generate);
-    expect(
-      await screen.findByRole("button", { name: "正在生成报告" }),
-    ).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "正在生成报告" })).toBeDisabled();
     resolveReport(
       Response.json({ error: { message: "生成失败", code: "failed" } }, { status: 500 }),
     );
@@ -545,9 +544,7 @@ describe("report creation and archiving actions", () => {
 
   it("disables archiving without a report or reason and explains the missing report", () => {
     renderArchive({ detail: { ...detail, reports: [] } });
-    expect(
-      screen.getByText("先生成实际报告版本，再执行归档。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("先生成实际报告版本，再执行归档。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "归档案件" })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "归档所依据的报告" })).toBeDisabled();
   });
@@ -556,10 +553,7 @@ describe("report creation and archiving actions", () => {
     const { user } = renderArchive({
       detail: { ...detail, reports: [reportRecord] },
       archiveResponse: () =>
-        Response.json(
-          { error: { message: "归档失败", code: "failed" } },
-          { status: 500 },
-        ),
+        Response.json({ error: { message: "归档失败", code: "failed" } }, { status: 500 }),
     });
     await user.type(screen.getByLabelText("归档理由"), "审批完成");
     await user.click(screen.getByRole("button", { name: "归档案件" }));

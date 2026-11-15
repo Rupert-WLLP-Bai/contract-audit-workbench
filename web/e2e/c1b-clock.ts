@@ -26,21 +26,37 @@ export function c1bBusinessAtInput(timeZone = C1B_BUSINESS_TIME_ZONE): string {
     minute: "2-digit",
     hourCycle: "h23",
   }).formatToParts(new Date(C1B_BUSINESS_AT_UTC));
-  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value;
   const year = value("year");
   const month = value("month");
   const day = value("day");
   const hour = value("hour");
   const minute = value("minute");
-  assert.ok(year && month && day && hour && minute, `could not format C1-B business time for ${timeZone}`);
+  assert.ok(
+    year && month && day && hour && minute,
+    `could not format C1-B business time for ${timeZone}`,
+  );
   return `${year}-${month}-${day}T${hour}:${minute}`;
 }
 
 export async function enterC1BBusinessAt(page: Page): Promise<void> {
-  const actualTimeZone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
-  assert.equal(actualTimeZone, C1B_BUSINESS_TIME_ZONE, "C1-B browser timezone is not pinned to Asia/Shanghai");
+  const actualTimeZone = await page.evaluate(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+  );
+  assert.equal(
+    actualTimeZone,
+    C1B_BUSINESS_TIME_ZONE,
+    "C1-B browser timezone is not pinned to Asia/Shanghai",
+  );
   const input = page.getByLabel("审查业务时间（北京时间）", { exact: true });
   await input.fill(c1bBusinessAtInput());
-  const submittedInstant = await input.evaluate((element) => new Date((element as HTMLInputElement).value).toISOString());
-  assert.equal(submittedInstant, C1B_BUSINESS_AT_UTC, "C1-B business time did not resolve to its frozen UTC instant");
+  const submittedInstant = await input.evaluate((element) =>
+    new Date((element as HTMLInputElement).value).toISOString(),
+  );
+  assert.equal(
+    submittedInstant,
+    C1B_BUSINESS_AT_UTC,
+    "C1-B business time did not resolve to its frozen UTC instant",
+  );
 }

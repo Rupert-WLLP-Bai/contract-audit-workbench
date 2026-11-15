@@ -22,12 +22,8 @@ export function invalidResponse(message: string, status = 200): never {
  * Membership check only. Callers keep their own failure policy: parser
  * modules reject the payload, display modules fall back to "unknown".
  */
-export function enumValue<T extends string>(
-  value: unknown,
-  allowed: readonly T[],
-): T | null {
-  return typeof value === "string" &&
-    (allowed as readonly string[]).includes(value)
+export function enumValue<T extends string>(value: unknown, allowed: readonly T[]): T | null {
+  return typeof value === "string" && (allowed as readonly string[]).includes(value)
     ? (value as T)
     : null;
 }
@@ -48,11 +44,7 @@ export interface ResponseReader {
   integer: (value: unknown, path: string, minimum?: number) => number;
   bool: (value: unknown, path: string) => boolean;
   nullableBool: (value: unknown, path: string) => boolean | null;
-  array: <T>(
-    value: unknown,
-    path: string,
-    parse: (entry: unknown, path: string) => T,
-  ) => T[];
+  array: <T>(value: unknown, path: string, parse: (entry: unknown, path: string) => T) => T[];
   nullableArray: <T>(
     value: unknown,
     path: string,
@@ -67,13 +59,8 @@ export interface ResponseReader {
 
 type Invalid = (path: string) => never;
 
-function objectReader(
-  invalid: Invalid,
-  value: unknown,
-  path: string,
-): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return invalid(path);
+function objectReader(invalid: Invalid, value: unknown, path: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return invalid(path);
   return value as Record<string, unknown>;
 }
 
@@ -97,14 +84,8 @@ function textReader(invalid: Invalid, value: unknown, path: string): string {
   return typeof value === "string" ? value : invalid(path);
 }
 
-function optionalTextReader(
-  invalid: Invalid,
-  value: unknown,
-  path: string,
-): string | null {
-  return value === undefined || value === null
-    ? null
-    : textReader(invalid, value, path);
+function optionalTextReader(invalid: Invalid, value: unknown, path: string): string | null {
+  return value === undefined || value === null ? null : textReader(invalid, value, path);
 }
 
 function sentinelTextReader<S extends null | undefined>(
@@ -116,12 +97,7 @@ function sentinelTextReader<S extends null | undefined>(
   return value === sentinel ? sentinel : textReader(invalid, value, path);
 }
 
-function integerReader(
-  invalid: Invalid,
-  value: unknown,
-  path: string,
-  minimum?: number,
-): number {
+function integerReader(invalid: Invalid, value: unknown, path: string, minimum?: number): number {
   return typeof value === "number" &&
     Number.isSafeInteger(value) &&
     (minimum === undefined || value >= minimum)
@@ -133,11 +109,7 @@ function boolReader(invalid: Invalid, value: unknown, path: string): boolean {
   return typeof value === "boolean" ? value : invalid(path);
 }
 
-function nullableBoolReader(
-  invalid: Invalid,
-  value: unknown,
-  path: string,
-): boolean | null {
+function nullableBoolReader(invalid: Invalid, value: unknown, path: string): boolean | null {
   return value === null ? null : boolReader(invalid, value, path);
 }
 
@@ -158,19 +130,14 @@ function sentinelArrayReader<T, S extends null | undefined>(
   sentinel: S,
   parse: (entry: unknown, path: string) => T,
 ): T[] | S {
-  return value === sentinel
-    ? sentinel
-    : arrayReader(invalid, value, path, parse);
+  return value === sentinel ? sentinel : arrayReader(invalid, value, path, parse);
 }
 
 /**
  * Binds the shared payload readers to one response family. Modules keep their
  * own message text; the validation decisions live here once.
  */
-export function responseReader(
-  message: (path: string) => string,
-  status = 200,
-): ResponseReader {
+export function responseReader(message: (path: string) => string, status = 200): ResponseReader {
   const invalid = (path: string): never => invalidResponse(message(path), status);
   return {
     invalid,
@@ -179,16 +146,13 @@ export function responseReader(
       recordReader(invalid, value, path, keys, required),
     text: (value, path) => textReader(invalid, value, path),
     optionalText: (value, path) => optionalTextReader(invalid, value, path),
-    nullableText: (value, path) =>
-      sentinelTextReader(invalid, value, path, null),
-    maybeText: (value, path) =>
-      sentinelTextReader(invalid, value, path, undefined),
+    nullableText: (value, path) => sentinelTextReader(invalid, value, path, null),
+    maybeText: (value, path) => sentinelTextReader(invalid, value, path, undefined),
     integer: (value, path, minimum) => integerReader(invalid, value, path, minimum),
     bool: (value, path) => boolReader(invalid, value, path),
     nullableBool: (value, path) => nullableBoolReader(invalid, value, path),
     array: (value, path, parse) => arrayReader(invalid, value, path, parse),
-    nullableArray: (value, path, parse) =>
-      sentinelArrayReader(invalid, value, path, null, parse),
+    nullableArray: (value, path, parse) => sentinelArrayReader(invalid, value, path, null, parse),
     optionalArray: (value, path, parse) =>
       sentinelArrayReader(invalid, value, path, undefined, parse),
   };

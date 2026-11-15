@@ -15,8 +15,11 @@ export function formatDateTime(value: string, seconds = false): string {
   if (isInvalidTime(value)) return "时间格式异常";
   return new Intl.DateTimeFormat("zh-CN", {
     timeZone: "Asia/Shanghai",
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
     ...(seconds ? { second: "2-digit" as const } : {}),
     hourCycle: "h23",
   }).format(date);
@@ -40,7 +43,11 @@ export function preciseTime(value: string | null | undefined): string {
   if (!value) return "未记录";
   if (isInvalidTime(value)) return "时间格式异常";
   const offset = new Intl.DateTimeFormat("en", {
-    timeZone: "Asia/Shanghai", timeZoneName: "longOffset",
-  }).formatToParts(new Date(value)).find((part) => part.type === "timeZoneName")?.value.replace(/^GMT/, "UTC");
+    timeZone: "Asia/Shanghai",
+    timeZoneName: "longOffset",
+  })
+    .formatToParts(new Date(value))
+    .find((part) => part.type === "timeZoneName")
+    ?.value.replace(/^GMT/, "UTC");
   return `${formatDateTime(value, true)}（北京时间${offset ? ` ${offset}` : ""}）`;
 }

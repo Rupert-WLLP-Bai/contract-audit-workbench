@@ -20,10 +20,7 @@ import { type OperatorAuditFlags } from "./feature-flags";
 import { ExternalEvidenceGate } from "./external-evidence-gate";
 import { useStableIdempotencyKey } from "./idempotency";
 import { bindingStatusLabel, bindingStatusTone, timeLabel } from "./labels";
-import type {
-  CreateObjectBindingInput,
-  ObjectBinding,
-} from "./types";
+import type { CreateObjectBindingInput, ObjectBinding } from "./types";
 
 export interface ContractObjectOption {
   objectType: string;
@@ -67,8 +64,7 @@ function localDateTimeToIso(value: string): string | null {
 }
 
 function windowLabel(binding: ObjectBinding): string {
-  if (binding.effectiveFrom === null && binding.effectiveUntil === null)
-    return "有效区间未报告";
+  if (binding.effectiveFrom === null && binding.effectiveUntil === null) return "有效区间未报告";
   return `${timeLabel(binding.effectiveFrom)} 至 ${
     binding.effectiveUntil === null ? "时间未报告" : timeLabel(binding.effectiveUntil)
   }`;
@@ -80,9 +76,7 @@ const bindingColumns = (externalObjects: ExternalObjectOption[]): ColumnsType<Ob
     key: "contract",
     render: (_, binding) => (
       <>
-        <strong>
-          {suppliedBusinessName(binding.contractObject.label, "合同对象名称未提供")}
-        </strong>
+        <strong>{suppliedBusinessName(binding.contractObject.label, "合同对象名称未提供")}</strong>
         <div className="meta">
           {binding.contractObject.objectType ?? "类型未报告"} ·{" "}
           {binding.contractObject.objectId ?? "ID 未报告"}
@@ -94,9 +88,20 @@ const bindingColumns = (externalObjects: ExternalObjectOption[]): ColumnsType<Ob
     title: "外部对象",
     key: "external",
     render: (_, binding) => {
-      const candidate = externalObjects.find((option) => option.connectorId === binding.externalObject.connectorId && option.externalObjectId === binding.externalObject.externalObjectId);
-      return <><strong>{suppliedBusinessName(candidate?.label, "外部对象名称未提供")}</strong>
-        <div className="meta">连接器标识 {binding.externalObject.connectorId ?? "未报告"} · 外部对象标识 {binding.externalObject.externalObjectId ?? "未报告"}</div></>;
+      const candidate = externalObjects.find(
+        (option) =>
+          option.connectorId === binding.externalObject.connectorId &&
+          option.externalObjectId === binding.externalObject.externalObjectId,
+      );
+      return (
+        <>
+          <strong>{suppliedBusinessName(candidate?.label, "外部对象名称未提供")}</strong>
+          <div className="meta">
+            连接器标识 {binding.externalObject.connectorId ?? "未报告"} · 外部对象标识{" "}
+            {binding.externalObject.externalObjectId ?? "未报告"}
+          </div>
+        </>
+      );
     },
   },
   {
@@ -111,9 +116,7 @@ const bindingColumns = (externalObjects: ExternalObjectOption[]): ColumnsType<Ob
   {
     title: "版本",
     key: "version",
-    render: (_, binding) => (
-      <span className="digest">{binding.version ?? "版本未报告"}</span>
-    ),
+    render: (_, binding) => <span className="digest">{binding.version ?? "版本未报告"}</span>,
   },
   {
     title: "确认人",
@@ -151,18 +154,15 @@ function ObjectBindingPanelContent({
   const [created, setCreated] = useState<ObjectBinding | null>(null);
 
   const contract =
-    contractObjects.find((option) => contractKey(option) === selectedContract) ??
-    null;
+    contractObjects.find((option) => contractKey(option) === selectedContract) ?? null;
   const external =
-    externalObjects.find((option) => externalKey(option) === selectedExternal) ??
-    null;
+    externalObjects.find((option) => externalKey(option) === selectedExternal) ?? null;
   const effectiveFromIso = localDateTimeToIso(effectiveFrom);
   const effectiveUntilIso = localDateTimeToIso(effectiveUntil);
   const timeInvalid =
     (effectiveFrom !== "" && effectiveFromIso === null) ||
     (effectiveUntil !== "" && effectiveUntilIso === null);
-  const ready =
-    contract !== null && external !== null && confirmed && !timeInvalid && !pending;
+  const ready = contract !== null && external !== null && confirmed && !timeInvalid && !pending;
 
   const bindings = [
     ...existingBindings.filter((binding) => binding.id !== created?.id),
@@ -215,9 +215,7 @@ function ObjectBindingPanelContent({
       <header className="workflow-panel-head">
         <div>
           <h2>合同对象与外部对象映射</h2>
-          <p className="meta">
-            映射由人工逐项确认并按版本保存；缺失或多义映射只按信息不足处理。
-          </p>
+          <p className="meta">映射由人工逐项确认并按版本保存；缺失或多义映射只按信息不足处理。</p>
         </div>
       </header>
 
@@ -301,9 +299,7 @@ function ObjectBindingPanelContent({
             disabled={pending}
           />
         </label>
-        {timeInvalid ? (
-          <p className="callout">时间无法识别，请重新选择。</p>
-        ) : null}
+        {timeInvalid ? <p className="callout">时间无法识别，请重新选择。</p> : null}
         <Checkbox
           checked={confirmed}
           onChange={(event) => setConfirmed(event.target.checked)}
@@ -311,9 +307,7 @@ function ObjectBindingPanelContent({
         >
           我已人工核对上述合同对象与外部对象的对应关系
         </Checkbox>
-        <p className="meta">
-          确认人和映射版本由服务端根据当前会话返回，页面不会代替服务端填写。
-        </p>
+        <p className="meta">确认人和映射版本由服务端根据当前会话返回，页面不会代替服务端填写。</p>
         <OperatorAuditError error={error} />
         {created ? (
           <p role="status">
@@ -321,12 +315,7 @@ function ObjectBindingPanelContent({
             {created.confirmedBy ?? "未报告"}。
           </p>
         ) : null}
-        <Button
-          type="primary"
-          htmlType="submit"
-          loading={pending}
-          disabled={!ready}
-        >
+        <Button type="primary" htmlType="submit" loading={pending} disabled={!ready}>
           确认对象映射
         </Button>
       </form>

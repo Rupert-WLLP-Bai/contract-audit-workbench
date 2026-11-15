@@ -51,7 +51,9 @@ export function CollapsibleSection({
   const sectionRef = useRef<HTMLDetailsElement>(null);
   const openSection = useCallback(() => setOpen(true), []);
   useNavigableSection(sectionRef, openSection);
-  useEffect(() => { if (openRequest !== undefined) setOpen(true); }, [openRequest]);
+  useEffect(() => {
+    if (openRequest !== undefined) setOpen(true);
+  }, [openRequest]);
   return (
     <details
       ref={sectionRef}
@@ -61,9 +63,7 @@ export function CollapsibleSection({
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary className="caw-section-summary">
-        <span className="caw-section-title">
-          {open ? title : (summaryLabel ?? title)}
-        </span>
+        <span className="caw-section-title">{open ? title : (summaryLabel ?? title)}</span>
         <span className="caw-section-summary-meta">
           {meta === undefined ? null : <span className="caw-section-meta">{meta}</span>}
           {count === undefined ? null : (

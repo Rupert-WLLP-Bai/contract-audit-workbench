@@ -52,13 +52,9 @@ function string(record: Record<string, unknown>, key: string): string {
   return value;
 }
 
-function nullableString(
-  record: Record<string, unknown>,
-  key: string,
-): string | null {
+function nullableString(record: Record<string, unknown>, key: string): string | null {
   const value = record[key];
-  if (value !== null && typeof value !== "string")
-    return invalid(`${key}不是字符串或null`);
+  if (value !== null && typeof value !== "string") return invalid(`${key}不是字符串或null`);
   return value;
 }
 
@@ -69,10 +65,7 @@ function count(record: Record<string, unknown>, key: string): number {
   return value;
 }
 
-function nullableDuration(
-  record: Record<string, unknown>,
-  key: string,
-): number | null {
+function nullableDuration(record: Record<string, unknown>, key: string): number | null {
   const value = record[key];
   if (value === null) return null;
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
@@ -91,11 +84,7 @@ function isoTime(record: Record<string, unknown>, key: string): string {
   return value;
 }
 
-function array<T>(
-  record: Record<string, unknown>,
-  key: string,
-  parse: (value: unknown) => T,
-): T[] {
+function array<T>(record: Record<string, unknown>, key: string, parse: (value: unknown) => T): T[] {
   const value = record[key];
   if (!Array.isArray(value)) return invalid(`${key}不是数组`);
   return value.map(parse);
@@ -210,10 +199,7 @@ function hasCaseEnvelope(record: Record<string, unknown>): boolean {
 function isCaseProgress(value: unknown): boolean {
   return (
     value === null ||
-    (typeof value === "number" &&
-      Number.isFinite(value) &&
-      value >= 0 &&
-      value <= 100)
+    (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100)
   );
 }
 
@@ -221,8 +207,7 @@ function workbenchCase(value: unknown): WorkbenchCase {
   const record = object(value, "案件");
   if (record.can_create_task !== undefined && typeof record.can_create_task !== "boolean")
     return invalid("案件 can_create_task 不是布尔值");
-  if (!hasCaseEnvelope(record))
-    return invalid("案件缺少profile、severity、progress或latest_run");
+  if (!hasCaseEnvelope(record)) return invalid("案件缺少profile、severity、progress或latest_run");
   const severity = nullableString(record, "severity");
   const progress = record.progress;
   if (!isCaseProgress(progress)) return invalid("案件 progress 无效");
@@ -242,24 +227,20 @@ function dashboard(value: unknown): WorkbenchDashboard {
     const item = object(entry, "进展统计");
     return { status: string(item, "status"), count: count(item, "count") };
   });
-  const risks = array<WorkbenchDashboard["risks"][number]>(
-    record,
-    "risks",
-    (entry) => {
-      const item = object(entry, "风险统计");
-      const severity = string(item, "severity");
-      if (
-        severity !== "high" &&
-        severity !== "medium" &&
-        severity !== "low" &&
-        severity !== "info" &&
-        severity !== "unrated"
-      ) {
-        return invalid("风险统计 severity 无效");
-      }
-      return { severity, count: count(item, "count") };
-    },
-  );
+  const risks = array<WorkbenchDashboard["risks"][number]>(record, "risks", (entry) => {
+    const item = object(entry, "风险统计");
+    const severity = string(item, "severity");
+    if (
+      severity !== "high" &&
+      severity !== "medium" &&
+      severity !== "low" &&
+      severity !== "info" &&
+      severity !== "unrated"
+    ) {
+      return invalid("风险统计 severity 无效");
+    }
+    return { severity, count: count(item, "count") };
+  });
   return {
     visible_cases: count(record, "visible_cases"),
     my_pending_tasks: count(record, "my_pending_tasks"),
@@ -277,8 +258,7 @@ function parsedDocument(value: unknown): ParsedDocumentMetadata | null {
   if (value === null) return null;
   const record = object(value, "解析产物");
   const status = string(record, "status");
-  if (status !== "ready" && status !== "failed")
-    return invalid("解析产物 status 无效");
+  if (status !== "ready" && status !== "failed") return invalid("解析产物 status 无效");
   return {
     id: string(record, "id"),
     document_id: string(record, "document_id"),
@@ -378,8 +358,7 @@ function template(value: unknown): Template {
   const record = object(value, "模板");
   const fields = array(record, "fields", (fieldValue) => {
     const field = object(fieldValue, "模板字段");
-    if (typeof field.required !== "boolean")
-      return invalid("模板字段 required 无效");
+    if (typeof field.required !== "boolean") return invalid("模板字段 required 无效");
     return {
       key: string(field, "key"),
       label: string(field, "label"),
@@ -401,11 +380,9 @@ export function parseWorkbenchSnapshot(
   requestedPeriod: WorkbenchPeriod,
 ): WorkbenchSnapshot {
   const record = object(value, "响应");
-  if (record.schema_version !== "workbench/v1")
-    return invalid("schema_version 不受支持");
+  if (record.schema_version !== "workbench/v1") return invalid("schema_version 不受支持");
   const period = string(record, "period");
-  if (period !== "day" && period !== "week" && period !== "month")
-    return invalid("period 无效");
+  if (period !== "day" && period !== "week" && period !== "month") return invalid("period 无效");
   if (period !== requestedPeriod) return invalid("响应 period 与请求不一致");
   const modelRecord = object(record.model, "模型配置");
   const tools = array(record, "tools", (toolValue) => {

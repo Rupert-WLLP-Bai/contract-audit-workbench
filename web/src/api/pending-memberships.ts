@@ -42,7 +42,11 @@ function parseMembershipChoice(value: unknown): MembershipChoice {
 function parsePendingMembershipList(value: unknown): WireSchemas["PendingMembershipList"] {
   const result = reader.record(value, "pending_memberships", ["memberships"]);
   return {
-    memberships: reader.array(result.memberships, "pending_memberships.memberships", parseMembershipChoice),
+    memberships: reader.array(
+      result.memberships,
+      "pending_memberships.memberships",
+      parseMembershipChoice,
+    ),
   };
 }
 
@@ -65,9 +69,5 @@ export function selectPendingMembership(
     audience,
     membership_id: membershipId,
   };
-  return requestJson(
-    paths.oidcMemberships(audience),
-    jsonInit("POST", body),
-    parseEmpty,
-  );
+  return requestJson(paths.oidcMemberships(audience), jsonInit("POST", body), parseEmpty);
 }

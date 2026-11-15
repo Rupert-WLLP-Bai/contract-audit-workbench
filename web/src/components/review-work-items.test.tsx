@@ -12,21 +12,68 @@ import { useState } from "react";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithAntd as render } from "../test/antd";
-import type { WorkFilter, WorkItem, WorkProjection, WorkTarget } from "../features/review/work-items";
+import type {
+  WorkFilter,
+  WorkItem,
+  WorkProjection,
+  WorkTarget,
+} from "../features/review/work-items";
 import { ReviewWorkItems } from "./review-work-items";
 
-const make = (category: WorkFilter, kind: WorkTarget["kind"], id: string, sourceRunId = "run-current"): WorkItem => ({
-  key: id, category, title: `事项 ${id}`, origin: "来源", status: "待处理", verification: "尚未核验",
-  sourceRunId, sourceAttemptId: sourceRunId === "run-current" ? "attempt-current" : "attempt-old",
-  target: { kind, id, runId: sourceRunId, attemptId: "attempt-current" }, needsCheck: false,
+const make = (
+  category: WorkFilter,
+  kind: WorkTarget["kind"],
+  id: string,
+  sourceRunId = "run-current",
+): WorkItem => ({
+  key: id,
+  category,
+  title: `事项 ${id}`,
+  origin: "来源",
+  status: "待处理",
+  verification: "尚未核验",
+  sourceRunId,
+  sourceAttemptId: sourceRunId === "run-current" ? "attempt-current" : "attempt-old",
+  target: { kind, id, runId: sourceRunId, attemptId: "attempt-current" },
+  needsCheck: false,
 });
-const projection: WorkProjection = { frozenScope: true, sourcesKnown: true, agentSkipped: false, requestsKnown: true, caseKnown: true,
-  items: [make("judgment", "finding", "f1"), make("evidence", "request", "r1", "run-old"), make("remediation", "remediation", "m1", "run-old")] };
+const projection: WorkProjection = {
+  frozenScope: true,
+  sourcesKnown: true,
+  agentSkipped: false,
+  requestsKnown: true,
+  caseKnown: true,
+  items: [
+    make("judgment", "finding", "f1"),
+    make("evidence", "request", "r1", "run-old"),
+    make("remediation", "remediation", "m1", "run-old"),
+  ],
+};
 
-function Harness({ onOpen, value = projection, error = null }: { onOpen: (target: WorkTarget) => void; value?: WorkProjection; error?: string | null }) {
+function Harness({
+  onOpen,
+  value = projection,
+  error = null,
+}: {
+  onOpen: (target: WorkTarget) => void;
+  value?: WorkProjection;
+  error?: string | null;
+}) {
   const [filter, setFilter] = useState<WorkFilter>("judgment");
-  return <ReviewWorkItems projection={value} filter={filter} onFilter={setFilter} onOpen={onOpen} refreshing={false} error={error}
-    canPrepareRequest currentRunId="run-current" currentAttemptId="attempt-current" currentOrdinal={2} />;
+  return (
+    <ReviewWorkItems
+      projection={value}
+      filter={filter}
+      onFilter={setFilter}
+      onOpen={onOpen}
+      refreshing={false}
+      error={error}
+      canPrepareRequest
+      currentRunId="run-current"
+      currentAttemptId="attempt-current"
+      currentOrdinal={2}
+    />
+  );
 }
 
 it("filters the three kinds and opens the exact target without exposing technical identities in the main text", async () => {
@@ -48,7 +95,9 @@ it("filters the three kinds and opens the exact target without exposing technica
 });
 
 it("does not report an empty or complete queue when the latest refresh failed", () => {
-  render(<Harness onOpen={vi.fn()} value={{ ...projection, items: [] }} error="补件请求读取失败" />);
+  render(
+    <Harness onOpen={vi.fn()} value={{ ...projection, items: [] }} error="补件请求读取失败" />,
+  );
   expect(screen.getByRole("alert")).toHaveTextContent("数量待重新核对");
   expect(screen.getByText("当前分类的状态尚未确认。")).toBeVisible();
   expect(screen.queryByText("当前分类没有未完成事项。")).not.toBeInTheDocument();

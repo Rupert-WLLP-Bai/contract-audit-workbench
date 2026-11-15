@@ -113,7 +113,7 @@ export function buildSwimlanes(execution: Execution): SwimlaneModel {
       kind,
       title: stepTitle(event, kind),
       tool: kind === "tool" ? (event.model_ref ?? nodeKindLabel(event.node_kind)) : null,
-      model: kind === "model" ? (event.trace?.reported_model || event.model_ref) ?? null : null,
+      model: kind === "model" ? ((event.trace?.reported_model || event.model_ref) ?? null) : null,
       status: event.status ?? "unknown",
       at: event.at,
       durationMs: event.duration_ms,

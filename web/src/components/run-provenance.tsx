@@ -48,9 +48,7 @@ function EvaluationDiagnostics({ item }: { item: ConstraintEvaluation }) {
       </p>
       <p className="meta">
         业务对象：
-        {item.object_refs.length === 0
-          ? "未返回"
-          : item.object_refs.join("、")}
+        {item.object_refs.length === 0 ? "未返回" : item.object_refs.join("、")}
         ，规则依据：{item.reason_code || "未返回"}，事实：
         {item.fact_ids.length === 0 ? "未返回" : item.fact_ids.join("、")}
       </p>
@@ -97,9 +95,14 @@ function EvidenceSection({
       <dl>
         <dt>本次运行采用的租户配置</dt>
         <dd>
-          {snapshot?.adopted_tenant_config
-            ? <><code>{snapshot.adopted_tenant_config.version_id}</code> · SHA-256 <code>{snapshot.adopted_tenant_config.digest}</code></>
-            : "历史未记录 / 未知"}
+          {snapshot?.adopted_tenant_config ? (
+            <>
+              <code>{snapshot.adopted_tenant_config.version_id}</code> · SHA-256{" "}
+              <code>{snapshot.adopted_tenant_config.digest}</code>
+            </>
+          ) : (
+            "历史未记录 / 未知"
+          )}
         </dd>
       </dl>
       {snapshot && showDiagnostics ? (
@@ -110,21 +113,12 @@ function EvidenceSection({
         <p>未获取到本次审查的材料和规则记录。</p>
       )}
       <p className="meta">材料与引用以本次审查记录为准。</p>
-      <EvaluationList
-        evaluations={evaluations}
-        showDiagnostics={showDiagnostics}
-      />
+      <EvaluationList evaluations={evaluations} showDiagnostics={showDiagnostics} />
     </>
   );
 }
 
-function RevisionRow({
-  item,
-  index,
-}: {
-  item: RevisionComparison;
-  index: number;
-}) {
+function RevisionRow({ item, index }: { item: RevisionComparison; index: number }) {
   return (
     <li key={`${item.finding_id ?? item.previous_finding_id ?? "row"}-${index}`}>
       <strong>
@@ -134,8 +128,7 @@ function RevisionRow({
       {item.prior_decision ? (
         <p>
           先前决定：
-          {decisionLabel(item.prior_decision.action)}，
-          {item.prior_decision.actor}，
+          {decisionLabel(item.prior_decision.action)}，{item.prior_decision.actor}，
           {item.prior_decision.reason}
         </p>
       ) : null}
@@ -157,9 +150,7 @@ function RevisionSection({
   return (
     <>
       <Link to={`/cases/${caseId}/reviews/${previous}`}>查看上一轮审查</Link>
-      <p className="meta">
-        请对照规则要求和已核对的原文。
-      </p>
+      <p className="meta">请对照规则要求和已核对的原文。</p>
       {reason ? <p className="callout">{reason}</p> : null}
       {revisions.length === 0 ? (
         <p>没有返回可比较的线索。</p>
@@ -181,12 +172,7 @@ export function RunProvenance({
   workspace: ReviewWorkspace;
   showDiagnostics?: boolean;
 }) {
-  const {
-    snapshot,
-    evaluations = [],
-    revisions = [],
-    previous_run_id: previous,
-  } = workspace;
+  const { snapshot, evaluations = [], revisions = [], previous_run_id: previous } = workspace;
   return (
     <section className="review-provenance" aria-label="运行依据与复审">
       <Collapse

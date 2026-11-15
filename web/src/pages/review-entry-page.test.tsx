@@ -8,11 +8,7 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import {
-  QueryClient,
-  QueryClientProvider,
-  onlineManager,
-} from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router";
@@ -215,29 +211,15 @@ describe("审查入口", () => {
     expect(screen.getByText("尚未发起")).toBeInTheDocument();
     expect(screen.getByText("业务编号：BW-2026-09")).toBeInTheDocument();
     expect(screen.getByText("进行中")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "发起审查" })).toHaveAttribute(
-      "href",
-      "/cases",
-    );
+    expect(screen.getByRole("link", { name: "发起审查" })).toHaveAttribute("href", "/cases");
     expect(screen.getByRole("link", { name: "进入案件" })).toHaveAttribute(
       "href",
       "/cases/case%2Fwithout-review",
     );
-    const summary = within(
-      screen.getByRole("list", { name: "审查工作区摘要" }),
-    );
-    expect(summary.getByText("可见案件").closest("li")).toHaveAttribute(
-      "data-state",
-      "filled",
-    );
-    expect(summary.getByText("本周运行").closest("li")).toHaveAttribute(
-      "data-state",
-      "filled",
-    );
-    expect(summary.getByText("待人工处理").closest("li")).toHaveAttribute(
-      "data-state",
-      "open",
-    );
+    const summary = within(screen.getByRole("list", { name: "审查工作区摘要" }));
+    expect(summary.getByText("可见案件").closest("li")).toHaveAttribute("data-state", "filled");
+    expect(summary.getByText("本周运行").closest("li")).toHaveAttribute("data-state", "filled");
+    expect(summary.getByText("待人工处理").closest("li")).toHaveAttribute("data-state", "open");
     expect(screen.getByRole("combobox")).toBeInTheDocument();
   });
 
@@ -245,10 +227,7 @@ describe("审查入口", () => {
     const client = makeClient(snapshot());
     renderEntry(client, "/review?view=mine");
 
-    expect(screen.getByRole("tab", { name: "待我处理" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(screen.getByRole("tab", { name: "待我处理" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("row", { name: /专线合同审查/ })).toBeInTheDocument();
     expect(screen.queryByText("暂无运行案件")).not.toBeInTheDocument();
     expect(screen.getByTestId("location-search")).toHaveTextContent("view=mine");
@@ -258,10 +237,7 @@ describe("审查入口", () => {
     const client = makeClient(snapshot());
     renderEntry(client, "/review?view=recent");
 
-    expect(screen.getByRole("tab", { name: "最近审查" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(screen.getByRole("tab", { name: "最近审查" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("row", { name: /专线合同审查/ })).toBeInTheDocument();
     expect(screen.queryByText("暂无运行案件")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "打开审查" })).toHaveAttribute(
@@ -280,9 +256,7 @@ describe("审查入口", () => {
 
     expect(screen.getByRole("row", { name: /暂无运行案件/ })).toBeInTheDocument();
     expect(screen.queryByText("专线合同审查")).not.toBeInTheDocument();
-    expect(screen.getByTestId("location-search")).toHaveTextContent(
-      "view=all&q=without-review",
-    );
+    expect(screen.getByTestId("location-search")).toHaveTextContent("view=all&q=without-review");
   });
 
   it("shows the empty state when no cases are visible", () => {
@@ -299,26 +273,13 @@ describe("审查入口", () => {
     });
     renderEntry(client);
 
-    expect(
-      screen.getByRole("heading", { name: "当前身份没有可访问案件" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "当前身份没有可访问案件" })).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getAllByText("0", { selector: "strong" })).toHaveLength(3);
-    const summary = within(
-      screen.getByRole("list", { name: "审查工作区摘要" }),
-    );
-    expect(summary.getByText("可见案件").closest("li")).toHaveAttribute(
-      "data-state",
-      "empty",
-    );
-    expect(summary.getByText("本周运行").closest("li")).toHaveAttribute(
-      "data-state",
-      "empty",
-    );
-    expect(summary.getByText("待人工处理").closest("li")).toHaveAttribute(
-      "data-state",
-      "filled",
-    );
+    const summary = within(screen.getByRole("list", { name: "审查工作区摘要" }));
+    expect(summary.getByText("可见案件").closest("li")).toHaveAttribute("data-state", "empty");
+    expect(summary.getByText("本周运行").closest("li")).toHaveAttribute("data-state", "empty");
+    expect(summary.getByText("待人工处理").closest("li")).toHaveAttribute("data-state", "filled");
   });
 
   it("marks one visible case and one run as filled", () => {
@@ -335,17 +296,9 @@ describe("审查入口", () => {
     });
     renderEntry(client);
 
-    const summary = within(
-      screen.getByRole("list", { name: "审查工作区摘要" }),
-    );
-    expect(summary.getByText("可见案件").closest("li")).toHaveAttribute(
-      "data-state",
-      "filled",
-    );
-    expect(summary.getByText("本周运行").closest("li")).toHaveAttribute(
-      "data-state",
-      "filled",
-    );
+    const summary = within(screen.getByRole("list", { name: "审查工作区摘要" }));
+    expect(summary.getByText("可见案件").closest("li")).toHaveAttribute("data-state", "filled");
+    expect(summary.getByText("本周运行").closest("li")).toHaveAttribute("data-state", "filled");
   });
 
   it("shows a refresh error when a stale workbench snapshot fails to reload", async () => {
@@ -353,17 +306,12 @@ describe("审查入口", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
-        Response.json(
-          { error: { message: "工作区刷新暂不可用" } },
-          { status: 503 },
-        ),
+        Response.json({ error: { message: "工作区刷新暂不可用" } }, { status: 503 }),
       ),
     );
     renderEntry(client);
 
-    expect(
-      await screen.findByRole("heading", { name: "审查工作区没有加载" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "审查工作区没有加载" })).toBeInTheDocument();
     expect(screen.getByText("工作区刷新暂不可用")).toBeInTheDocument();
     expect(screen.queryByText("专线合同审查")).not.toBeInTheDocument();
   });
@@ -373,9 +321,7 @@ describe("审查入口", () => {
     const client = makeClient();
     renderEntry(client);
 
-    expect(
-      await screen.findByRole("heading", { name: "审查工作区没有加载" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "审查工作区没有加载" })).toBeInTheDocument();
     expect(screen.getByText("请求没有完成")).toBeInTheDocument();
     expect(screen.queryByText("合同审查")).not.toBeInTheDocument();
   });

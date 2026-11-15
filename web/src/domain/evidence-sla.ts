@@ -69,9 +69,7 @@ export function firstResponseDurationMs(
   return elapsed >= 0 ? elapsed : null;
 }
 
-export function averageResponseDurationMs(
-  durations: readonly (number | null)[],
-): number | null {
+export function averageResponseDurationMs(durations: readonly (number | null)[]): number | null {
   let total = 0;
   let count = 0;
   for (const duration of durations) {

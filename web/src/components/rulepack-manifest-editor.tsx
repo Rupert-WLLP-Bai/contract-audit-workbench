@@ -60,9 +60,7 @@ function blankRule(tenantId: string): RulePackRule {
     authority_sources: [{ id: "", version: "", kind: "" }],
   };
 }
-export function createEmptyRulePackDraft(
-  tenantId: string,
-): RulePackManifestInput {
+export function createEmptyRulePackDraft(tenantId: string): RulePackManifestInput {
   return {
     schema_version: "rulepack/v1",
     id: "",
@@ -135,10 +133,7 @@ function comparatorDefaults(
     },
     required_fact: {
       ...rule.required_fact,
-      exclusions:
-        comparator === "monthly_sla"
-          ? (rule.required_fact.exclusions ?? [])
-          : null,
+      exclusions: comparator === "monthly_sla" ? (rule.required_fact.exclusions ?? []) : null,
     },
   };
 }
@@ -159,10 +154,7 @@ function RuleIdentitySection({
   onChange: (next: RulePackManifestInput) => void;
 }) {
   return (
-    <section
-      className="rulepack-editor-section"
-      aria-labelledby="rulepack-identity-heading"
-    >
+    <section className="rulepack-editor-section" aria-labelledby="rulepack-identity-heading">
       <h2 id="rulepack-identity-heading">规则包身份与适用期</h2>
       <div className="rulepack-fields">
         <label className="field" htmlFor="rulepack-id">
@@ -172,9 +164,7 @@ function RuleIdentitySection({
             required
             value={value.id}
             readOnly={lockedIdentity || lockedPackId}
-            onChange={(event) =>
-              onChange({ ...value, id: event.target.value })
-            }
+            onChange={(event) => onChange({ ...value, id: event.target.value })}
           />
         </label>
         <label className="field" htmlFor="rulepack-version">
@@ -184,9 +174,7 @@ function RuleIdentitySection({
             required
             value={value.version}
             readOnly={lockedIdentity}
-            onChange={(event) =>
-              onChange({ ...value, version: event.target.value })
-            }
+            onChange={(event) => onChange({ ...value, version: event.target.value })}
           />
         </label>
         <label className="field" htmlFor="rulepack-tenant">
@@ -234,8 +222,7 @@ function RuleIdentitySection({
           />
         </label>
         <p className="meta">
-          提交时按 UTC RFC 3339
-          保存。适用时间范围为开始时刻（含）至结束时刻（不含）。
+          提交时按 UTC RFC 3339 保存。适用时间范围为开始时刻（含）至结束时刻（不含）。
         </p>
       </div>
     </section>
@@ -350,12 +337,7 @@ function RuleBasicsFields({
       </label>
       <label className="field" htmlFor={`rule-${index}-tenant`}>
         规则租户
-        <Input
-          disabled={disabled}
-          id={`rule-${index}-tenant`}
-          value={tenantId}
-          readOnly
-        />
+        <Input disabled={disabled} id={`rule-${index}-tenant`} value={tenantId} readOnly />
       </label>
       <label className="field" htmlFor={`rule-${index}-comparator`}>
         比较器
@@ -548,12 +530,7 @@ function RuleFactFields({
           }
         />
       </label>
-      <RuleOptionalFactFields
-        rule={rule}
-        index={index}
-        disabled={disabled}
-        onPatch={onPatch}
-      />
+      <RuleOptionalFactFields rule={rule} index={index} disabled={disabled} onPatch={onPatch} />
       <label className="field" htmlFor={`rule-${index}-exclusions`}>
         排除项（每行一项）
         <Input.TextArea
@@ -592,9 +569,7 @@ function RuleCheckboxes({
         id={`rule-${index}-mandatory`}
         checked={rule.mandatory}
         disabled={disabled || (core && rule.mandatory)}
-        onChange={(event) =>
-          onPatch({ mandatory: core ? true : event.target.checked })
-        }
+        onChange={(event) => onPatch({ mandatory: core ? true : event.target.checked })}
         className="workflow-check"
       >
         此项为必检规则
@@ -636,10 +611,7 @@ function AuthorityRow({
 }) {
   return (
     <div className="rulepack-source-row">
-      <label
-        className="field"
-        htmlFor={`rule-${ruleIndex}-authority-${sourceIndex}-id`}
-      >
+      <label className="field" htmlFor={`rule-${ruleIndex}-authority-${sourceIndex}-id`}>
         来源 ID
         <Input
           disabled={disabled}
@@ -649,10 +621,7 @@ function AuthorityRow({
           onChange={(event) => onUpdate({ id: event.target.value })}
         />
       </label>
-      <label
-        className="field"
-        htmlFor={`rule-${ruleIndex}-authority-${sourceIndex}-version`}
-      >
+      <label className="field" htmlFor={`rule-${ruleIndex}-authority-${sourceIndex}-version`}>
         来源版本
         <Input
           disabled={disabled}
@@ -662,10 +631,7 @@ function AuthorityRow({
           onChange={(event) => onUpdate({ version: event.target.value })}
         />
       </label>
-      <label
-        className="field"
-        htmlFor={`rule-${ruleIndex}-authority-${sourceIndex}-kind`}
-      >
+      <label className="field" htmlFor={`rule-${ruleIndex}-authority-${sourceIndex}-kind`}>
         来源类型
         <Input
           disabled={disabled}
@@ -714,12 +680,7 @@ function AuthoritySection({
         <h3 id={`rule-${ruleIndex}-authority-heading`} tabIndex={-1}>
           规则依据来源
         </h3>
-        <Button
-          aria-label={"添加来源"}
-          disabled={disabled}
-          htmlType="button"
-          onClick={onAdd}
-        >
+        <Button aria-label={"添加来源"} disabled={disabled} htmlType="button" onClick={onAdd}>
           添加来源
         </Button>
       </header>
@@ -761,10 +722,7 @@ function RuleCard({
   canRemove: boolean;
   onPatch: RulePatch;
   onAddAuthority: () => void;
-  onUpdateAuthority: (
-    sourceIndex: number,
-    patch: Partial<RulePackAuthoritySource>,
-  ) => void;
+  onUpdateAuthority: (sourceIndex: number, patch: Partial<RulePackAuthoritySource>) => void;
   onRemoveAuthority: (sourceIndex: number) => void;
   onAddLegalAuthority: (authority: RulePackLegalAuthority) => void;
   onRemoveLegalAuthority: (index: number) => void;
@@ -773,9 +731,7 @@ function RuleCard({
   return (
     <Card
       role="group"
-      aria-label={
-        "规则 " + String(index + 1) + String(rule.rule_id ? `，${rule.rule_id}` : "")
-      }
+      aria-label={"规则 " + String(index + 1) + String(rule.rule_id ? `，${rule.rule_id}` : "")}
       className="rulepack-rule"
       title={
         <>
@@ -825,12 +781,18 @@ function RuleCard({
   );
 }
 
-function FixtureSuiteEditor({ value, disabled, onChange }: {
+function FixtureSuiteEditor({
+  value,
+  disabled,
+  onChange,
+}: {
   value: RulePackManifestInput;
   disabled: boolean;
   onChange: (next: RulePackManifestInput) => void;
 }) {
-  const [raw, setRaw] = useState(() => value.fixture_suite ? JSON.stringify(value.fixture_suite, null, 2) : "");
+  const [raw, setRaw] = useState(() =>
+    value.fixture_suite ? JSON.stringify(value.fixture_suite, null, 2) : "",
+  );
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     setRaw(value.fixture_suite ? JSON.stringify(value.fixture_suite, null, 2) : "");
@@ -840,7 +802,12 @@ function FixtureSuiteEditor({ value, disabled, onChange }: {
   function apply() {
     try {
       const suite = parseRulePackFixtureSuite(JSON.parse(raw));
-      if (suite.schema_version !== "rulepack-fixture-suite/v1" || suite.data_class !== "synthetic" || suite.pack_id !== value.id || suite.pack_version !== value.version) {
+      if (
+        suite.schema_version !== "rulepack-fixture-suite/v1" ||
+        suite.data_class !== "synthetic" ||
+        suite.pack_id !== value.id ||
+        suite.pack_version !== value.version
+      ) {
         setError("套件须为合成数据，且规则包 ID、版本与当前草稿完全一致。");
         return;
       }
@@ -861,14 +828,35 @@ function FixtureSuiteEditor({ value, disabled, onChange }: {
   return (
     <section className="rulepack-editor-section" aria-labelledby="rulepack-fixture-title">
       <h2 id="rulepack-fixture-title">合成样本套件</h2>
-      <p className="meta">粘贴套件 JSON 并先应用到草稿，再保存。套件包含正例、反例和信息不足样本，随版本与内容摘要冻结；校验时逐样本执行。套件格式可参考仓库内的 author-demo.json。</p>
+      <p className="meta">
+        粘贴套件 JSON
+        并先应用到草稿，再保存。套件包含正例、反例和信息不足样本，随版本与内容摘要冻结；校验时逐样本执行。套件格式可参考仓库内的
+        author-demo.json。
+      </p>
       <label className="field" htmlFor="rulepack-fixture-json">
         样本套件 JSON
-        <Input.TextArea id="rulepack-fixture-json" rows={10} value={raw} disabled={disabled} onChange={(event) => setRaw(event.target.value)} aria-describedby="rulepack-fixture-error" />
+        <Input.TextArea
+          id="rulepack-fixture-json"
+          rows={10}
+          value={raw}
+          disabled={disabled}
+          onChange={(event) => setRaw(event.target.value)}
+          aria-describedby="rulepack-fixture-error"
+        />
       </label>
-      {error ? <p id="rulepack-fixture-error" role="alert">{error}</p> : null}
-      <Button htmlType="button" disabled={disabled || !raw.trim()} onClick={apply}>应用套件到草稿</Button>{" "}
-      {value.fixture_suite ? <Button htmlType="button" disabled={disabled} onClick={remove}>移除套件</Button> : null}
+      {error ? (
+        <p id="rulepack-fixture-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <Button htmlType="button" disabled={disabled || !raw.trim()} onClick={apply}>
+        应用套件到草稿
+      </Button>{" "}
+      {value.fixture_suite ? (
+        <Button htmlType="button" disabled={disabled} onClick={remove}>
+          移除套件
+        </Button>
+      ) : null}
     </section>
   );
 }
@@ -890,13 +878,9 @@ export function RulePackManifestEditor({
 }) {
   const keySequence = useRef(0);
   const nextLocalKey = (kind: string) => `${kind}-${keySequence.current++}`;
-  const [ruleKeys, setRuleKeys] = useState(() =>
-    value.rules.map(() => nextLocalKey("rule")),
-  );
+  const [ruleKeys, setRuleKeys] = useState(() => value.rules.map(() => nextLocalKey("rule")));
   const [authorityKeys, setAuthorityKeys] = useState(() =>
-    value.rules.map((rule) =>
-      rule.authority_sources.map(() => nextLocalKey("source")),
-    ),
+    value.rules.map((rule) => rule.authority_sources.map(() => nextLocalKey("source"))),
   );
 
   function addRule() {
@@ -909,9 +893,7 @@ export function RulePackManifestEditor({
 
   function removeRule(ruleIndex: number) {
     setRuleKeys((current) => current.filter((_, index) => index !== ruleIndex));
-    setAuthorityKeys((current) =>
-      current.filter((_, index) => index !== ruleIndex),
-    );
+    setAuthorityKeys((current) => current.filter((_, index) => index !== ruleIndex));
     onChange({
       ...value,
       rules: value.rules.filter((_, index) => index !== ruleIndex),
@@ -921,9 +903,7 @@ export function RulePackManifestEditor({
   function addAuthority(ruleIndex: number) {
     const sourceKey = nextLocalKey("source");
     setAuthorityKeys((current) =>
-      current.map((keys, index) =>
-        index === ruleIndex ? [...keys, sourceKey] : keys,
-      ),
+      current.map((keys, index) => (index === ruleIndex ? [...keys, sourceKey] : keys)),
     );
     updateRule(value, onChange, ruleIndex, {
       authority_sources: [
@@ -936,9 +916,7 @@ export function RulePackManifestEditor({
   function removeAuthority(ruleIndex: number, sourceIndex: number) {
     setAuthorityKeys((current) =>
       current.map((keys, index) =>
-        index === ruleIndex
-          ? keys.filter((_, itemIndex) => itemIndex !== sourceIndex)
-          : keys,
+        index === ruleIndex ? keys.filter((_, itemIndex) => itemIndex !== sourceIndex) : keys,
       ),
     );
     updateRule(value, onChange, ruleIndex, {
@@ -951,15 +929,23 @@ export function RulePackManifestEditor({
   function addLegalAuthority(ruleIndex: number, authority: RulePackLegalAuthority) {
     const rule = value.rules[ruleIndex];
     if (!rule) return;
-    const sourceExists = rule.authority_sources.some((source) =>
-      source.id === authority.source_id && source.version === authority.norm_version && source.kind === "normative",
+    const sourceExists = rule.authority_sources.some(
+      (source) =>
+        source.id === authority.source_id &&
+        source.version === authority.norm_version &&
+        source.kind === "normative",
     );
     const sources = sourceExists
       ? rule.authority_sources
-      : [...rule.authority_sources, { id: authority.source_id, version: authority.norm_version, kind: "normative" }];
+      : [
+          ...rule.authority_sources,
+          { id: authority.source_id, version: authority.norm_version, kind: "normative" },
+        ];
     if (!sourceExists) {
       const key = nextLocalKey("source");
-      setAuthorityKeys((current) => current.map((keys, index) => index === ruleIndex ? [...keys, key] : keys));
+      setAuthorityKeys((current) =>
+        current.map((keys, index) => (index === ruleIndex ? [...keys, key] : keys)),
+      );
     }
     updateRule(value, onChange, ruleIndex, {
       authority_sources: sources,
@@ -971,7 +957,9 @@ export function RulePackManifestEditor({
     const rule = value.rules[ruleIndex];
     if (!rule) return;
     updateRule(value, onChange, ruleIndex, {
-      legal_authorities: (rule.legal_authorities ?? []).filter((_, index) => index !== authorityIndex),
+      legal_authorities: (rule.legal_authorities ?? []).filter(
+        (_, index) => index !== authorityIndex,
+      ),
     });
   }
 
@@ -985,25 +973,15 @@ export function RulePackManifestEditor({
         disabled={disabled}
         onChange={onChange}
       />
-      <section
-        className="rulepack-editor-section"
-        aria-labelledby="rulepack-rules-heading"
-      >
+      <section className="rulepack-editor-section" aria-labelledby="rulepack-rules-heading">
         <div className="workflow-panel-head">
           <div>
             <h2 id="rulepack-rules-heading" tabIndex={-1}>
               比较规则
             </h2>
-            <p className="meta">
-              仅支持服务器内置的三个确定性比较器；不能上传代码或表达式。
-            </p>
+            <p className="meta">仅支持服务器内置的三个确定性比较器；不能上传代码或表达式。</p>
           </div>
-          <Button
-            aria-label={"添加规则"}
-            htmlType="button"
-            disabled={disabled}
-            onClick={addRule}
-          >
+          <Button aria-label={"添加规则"} htmlType="button" disabled={disabled} onClick={addRule}>
             添加规则
           </Button>
         </div>
@@ -1016,19 +994,13 @@ export function RulePackManifestEditor({
             disabled={disabled}
             authorityKeys={authorityKeys[ruleIndex] ?? []}
             canRemove={value.rules.length > 1 && !isCoreCapability(rule)}
-            onPatch={(patch) =>
-              updateRule(value, onChange, ruleIndex, patch)
-            }
+            onPatch={(patch) => updateRule(value, onChange, ruleIndex, patch)}
             onAddAuthority={() => addAuthority(ruleIndex)}
             onUpdateAuthority={(sourceIndex, patch) =>
               updateAuthority(value, onChange, ruleIndex, sourceIndex, patch)
             }
-            onRemoveAuthority={(sourceIndex) =>
-              removeAuthority(ruleIndex, sourceIndex)
-            }
-            onAddLegalAuthority={(authority) =>
-              addLegalAuthority(ruleIndex, authority)
-            }
+            onRemoveAuthority={(sourceIndex) => removeAuthority(ruleIndex, sourceIndex)}
+            onAddLegalAuthority={(authority) => addLegalAuthority(ruleIndex, authority)}
             onRemoveLegalAuthority={(authorityIndex) =>
               removeLegalAuthority(ruleIndex, authorityIndex)
             }

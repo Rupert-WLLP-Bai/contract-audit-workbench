@@ -26,11 +26,7 @@ import {
   jobStateTone,
   timeLabel,
 } from "./labels";
-import type {
-  ExternalCollectionJob,
-  ExternalField,
-  ExternalObservation,
-} from "./types";
+import type { ExternalCollectionJob, ExternalField, ExternalObservation } from "./types";
 
 export interface ExternalEvidencePanelProps {
   caseId: string;
@@ -61,9 +57,7 @@ const fieldColumns: ColumnsType<ExternalField> = [
   {
     title: "JSON Pointer",
     key: "pointer",
-    render: (_, field) => (
-      <span className="digest">{field.sourcePointer ?? "未报告"}</span>
-    ),
+    render: (_, field) => <span className="digest">{field.sourcePointer ?? "未报告"}</span>,
   },
   {
     title: "语义类型",
@@ -82,9 +76,7 @@ const jobColumns: ColumnsType<ExternalCollectionJob> = [
     title: "状态",
     key: "state",
     render: (_, job) => (
-      <StatusText tone={jobStateTone(job.state)}>
-        {jobStateLabel(job.state)}
-      </StatusText>
+      <StatusText tone={jobStateTone(job.state)}>{jobStateLabel(job.state)}</StatusText>
     ),
   },
   {
@@ -96,11 +88,7 @@ const jobColumns: ColumnsType<ExternalCollectionJob> = [
     title: "外部对象",
     key: "object",
     render: (_, job) =>
-      job.externalObjectId ? (
-        <span className="digest">{job.externalObjectId}</span>
-      ) : (
-        "未报告"
-      ),
+      job.externalObjectId ? <span className="digest">{job.externalObjectId}</span> : "未报告",
   },
   {
     title: "受理时间",
@@ -111,13 +99,9 @@ const jobColumns: ColumnsType<ExternalCollectionJob> = [
 
 function effectiveWindowLabel(snapshot: ExternalObservation): string {
   const from =
-    snapshot.effectiveFrom === null
-      ? "开始时间未报告"
-      : timeLabel(snapshot.effectiveFrom);
+    snapshot.effectiveFrom === null ? "开始时间未报告" : timeLabel(snapshot.effectiveFrom);
   const until =
-    snapshot.effectiveUntil === null
-      ? "结束时间未报告"
-      : timeLabel(snapshot.effectiveUntil);
+    snapshot.effectiveUntil === null ? "结束时间未报告" : timeLabel(snapshot.effectiveUntil);
   return `${from} 至 ${until}`;
 }
 
@@ -126,19 +110,15 @@ function coversBusinessAt(
   snapshot: ExternalObservation,
   businessAt: string | null | undefined,
 ): boolean | null {
-  if (!businessAt || !snapshot.effectiveFrom || !snapshot.effectiveUntil)
-    return null;
+  if (!businessAt || !snapshot.effectiveFrom || !snapshot.effectiveUntil) return null;
   const at = Date.parse(businessAt);
   const from = Date.parse(snapshot.effectiveFrom);
   const until = Date.parse(snapshot.effectiveUntil);
-  if (Number.isNaN(at) || Number.isNaN(from) || Number.isNaN(until))
-    return null;
+  if (Number.isNaN(at) || Number.isNaN(from) || Number.isNaN(until)) return null;
   return from <= at && at < until;
 }
 
-function availabilityNote(
-  availability: ExternalObservation["availability"],
-): string | null {
+function availabilityNote(availability: ExternalObservation["availability"]): string | null {
   switch (availability) {
     case "unavailable":
       return "该快照不可用，请重新采集后再用于核对。";
@@ -222,20 +202,12 @@ function SnapshotCard({
         </div>
       </dl>
       {note ? <p className="callout">{note}</p> : null}
-      {snapshot.availability === "available" ? (
-        <p className="meta">
-          该快照可用于核验。
-        </p>
-      ) : null}
+      {snapshot.availability === "available" ? <p className="meta">该快照可用于核验。</p> : null}
       {covers === false ? (
-        <p className="callout">
-          业务时点不在该快照的有效区间内，不能作为该时点的证据。
-        </p>
+        <p className="callout">业务时点不在该快照的有效区间内，不能作为该时点的证据。</p>
       ) : null}
       {snapshot.dataClass === "synthetic" ? (
-        <p className="meta">
-          合成 fixture 数据：仅用于组件与流程演示，不是生产数据。
-        </p>
+        <p className="meta">合成 fixture 数据：仅用于组件与流程演示，不是生产数据。</p>
       ) : null}
       <Table<ExternalField>
         rowKey={(field) => `${field.name}:${field.sourcePointer ?? ""}`}
@@ -260,18 +232,14 @@ function ExternalEvidencePanelContent({
     queryFn: ({ signal }) => client.listExternalSnapshots(caseId, signal),
     enabled: caseId !== "",
   });
-  const rejectedJobs = jobs.filter(
-    (job) => job.state === "denied" || job.state === "rejected",
-  );
+  const rejectedJobs = jobs.filter((job) => job.state === "denied" || job.state === "rejected");
 
   return (
     <section className="workflow-panel" aria-label="外部证据">
       <header className="workflow-panel-head">
         <div>
           <h2>外部证据快照</h2>
-          <p className="meta">
-            受理后仍需取得可用且在有效期内的快照。
-          </p>
+          <p className="meta">受理后仍需取得可用且在有效期内的快照。</p>
         </div>
         <Button
           htmlType="button"
@@ -293,16 +261,12 @@ function ExternalEvidencePanelContent({
             size="small"
           />
           {rejectedJobs.length > 0 ? (
-            <p className="callout">
-              有采集任务被拒绝，尚未取得外部数据；请处理拒绝原因后重试。
-            </p>
+            <p className="callout">有采集任务被拒绝，尚未取得外部数据；请处理拒绝原因后重试。</p>
           ) : null}
         </section>
       ) : null}
 
-      {snapshots.isLoading ? (
-        <PageStatus kind="loading" title="正在读取外部证据快照" />
-      ) : null}
+      {snapshots.isLoading ? <PageStatus kind="loading" title="正在读取外部证据快照" /> : null}
       {snapshots.isError && isForbidden(snapshots.error) ? (
         <PageStatus
           kind="denied"
@@ -332,11 +296,7 @@ function ExternalEvidencePanelContent({
       {snapshots.isSuccess && snapshots.data.length > 0 ? (
         <div className="evidence-stack">
           {snapshots.data.map((snapshot) => (
-            <SnapshotCard
-              key={snapshot.snapshotId}
-              snapshot={snapshot}
-              businessAt={businessAt}
-            />
+            <SnapshotCard key={snapshot.snapshotId} snapshot={snapshot} businessAt={businessAt} />
           ))}
         </div>
       ) : null}

@@ -48,10 +48,7 @@ function attempt(
   };
 }
 
-function event(
-  seq: number,
-  overrides: Partial<ExecutionEvent> = {},
-): ExecutionEvent {
+function event(seq: number, overrides: Partial<ExecutionEvent> = {}): ExecutionEvent {
   return {
     seq,
     attempt_id: "attempt-2",
@@ -142,9 +139,7 @@ const pendingFinding: Finding = {
   claim: "待定位线索",
   verification_status: "unverified",
   unverified_reason: "引用未核对",
-  evidence: [
-    { ...locatedFinding.evidence[0]!, id: "a2", status: "anchor_mismatch" },
-  ],
+  evidence: [{ ...locatedFinding.evidence[0]!, id: "a2", status: "anchor_mismatch" }],
 };
 
 const unresolvedFinding: Finding = {
@@ -226,9 +221,7 @@ function execution(overrides: Partial<Execution> = {}): Execution {
   };
 }
 
-function renderInspector(
-  overrides: Partial<Parameters<typeof ExecutionInspector>[0]> = {},
-) {
+function renderInspector(overrides: Partial<Parameters<typeof ExecutionInspector>[0]> = {}) {
   const onSelectFinding = vi.fn();
   const onSelectAttempt = vi.fn();
   const onCancel = vi.fn();
@@ -256,22 +249,14 @@ function renderInspector(
 describe("execution inspector", () => {
   it("summarizes the attempt, phase, duration, events and usage", () => {
     renderInspector();
-    expect(
-      screen.getByText(/第 2 次执行，最近保存的阶段 确定性规则审查/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/第 2 次执行，最近保存的阶段 确定性规则审查/)).toBeInTheDocument();
     expect(screen.getAllByText(/已定位线索/).length).toBeGreaterThan(0);
-    expect(
-      screen.getAllByText("运行中，尚无终态时长").length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("运行中，尚无终态时长").length).toBeGreaterThan(0);
     expect(screen.getByText("4 条")).toBeInTheDocument();
     expect(screen.getByText("2 次")).toBeInTheDocument();
+    expect(screen.getByText("第 2 次尝试状态：审查中。")).toBeInTheDocument();
     expect(
-      screen.getByText("第 2 次尝试状态：审查中。"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(
-        "较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。",
-      ),
+      screen.queryByText("较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。"),
     ).not.toBeInTheDocument();
   });
 
@@ -284,9 +269,7 @@ describe("execution inspector", () => {
     });
     renderInspector({ execution: result });
     expect(
-      screen.getByText(
-        "较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。",
-      ),
+      screen.getByText("较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。"),
     ).toBeInTheDocument();
     expect(screen.getAllByText("5.00 秒").length).toBeGreaterThan(0);
   });
@@ -403,32 +386,18 @@ describe("execution inspector", () => {
       }),
     });
 
-    await user.click(
-      screen.getByRole("button", { name: /模型调用完成，已完成/ }),
-    );
+    await user.click(screen.getByRole("button", { name: /模型调用完成，已完成/ }));
     const completedCallDetail = screen.getByText("序号").closest("dl")!;
-    const completedError = within(completedCallDetail)
-      .getByText("错误代码")
-      .parentElement!;
+    const completedError = within(completedCallDetail).getByText("错误代码").parentElement!;
     expect(within(completedError).getByText("未报告")).toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole("button", { name: /模型请求，模型调用失败，失败/ }),
-    );
+    await user.click(screen.getByRole("button", { name: /模型请求，模型调用失败，失败/ }));
     const failedCallDetail = screen.getByText("序号").closest("dl")!;
-    expect(
-      within(failedCallDetail).getByText("供应商拒绝了结构化请求"),
-    ).toBeInTheDocument();
-    expect(
-      within(failedCallDetail).getByText("structured_request_rejected"),
-    ).toBeInTheDocument();
+    expect(within(failedCallDetail).getByText("供应商拒绝了结构化请求")).toBeInTheDocument();
+    expect(within(failedCallDetail).getByText("structured_request_rejected")).toBeInTheDocument();
 
     for (const [index, [code, explanation]] of diagnostics.entries()) {
-      await user.click(
-        screen.getAllByRole("button", { name: /模型审查，节点失败，失败/ })[
-          index
-        ]!,
-      );
+      await user.click(screen.getAllByRole("button", { name: /模型审查，节点失败，失败/ })[index]!);
       const detail = screen.getByText("序号").closest("dl")!;
       expect(within(detail).getByText(explanation)).toBeInTheDocument();
       expect(within(detail).getByText(code)).toBeInTheDocument();
@@ -439,9 +408,7 @@ describe("execution inspector", () => {
     const user = userEvent.setup();
     const view = renderInspector();
     await user.click(screen.getByRole("button", { name: "事件树" }));
-    expect(
-      screen.getByText(/确定性规则审查，span/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/确定性规则审查，span/)).toBeInTheDocument();
     expect(screen.getByText(/，span span-2/)).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
@@ -457,17 +424,13 @@ describe("execution inspector", () => {
   it("lists located citations, pending citations and evaluation gaps", async () => {
     const user = userEvent.setup();
     const { onSelectFinding } = renderInspector();
-    expect(
-      screen.getAllByText("已定位线索").length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("已定位线索").length).toBeGreaterThan(0);
     expect(screen.getAllByText("待定位线索").length).toBeGreaterThan(0);
     expect(screen.getByText(/引用未核对/)).toBeInTheDocument();
     expect(screen.getByText("引用尚未全部定位")).toBeInTheDocument();
     expect(screen.getByText("履约，缺少验收记录")).toBeInTheDocument();
     expect(screen.queryByText("商务，金额不一致")).not.toBeInTheDocument();
-    await user.click(
-      screen.getAllByRole("button", { name: "待定位线索" })[0]!,
-    );
+    await user.click(screen.getAllByRole("button", { name: "待定位线索" })[0]!);
     expect(onSelectFinding).toHaveBeenCalledWith("f2");
   });
 
@@ -477,9 +440,7 @@ describe("execution inspector", () => {
       evaluations: [],
     });
     expect(screen.getByText("当前尝试没有全部引用已定位的线索。")).toBeInTheDocument();
-    expect(
-      screen.getByText("没有已报告的引用定位或规则缺口。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("没有已报告的引用定位或规则缺口。")).toBeInTheDocument();
   });
 
   it("renders attempt summary dates, hashes, parse ids and usage details", () => {
@@ -490,13 +451,10 @@ describe("execution inspector", () => {
     expect(screen.getAllByText("无已报告错误代码").length).toBeGreaterThan(0);
     expect(screen.getAllByText("输入 Token").length).toBeGreaterThan(0);
     expect(screen.getAllByText("1,500").length).toBeGreaterThan(0);
-    expect(
-      screen.getAllByText("未计算（没有版本化价格表）").length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("未计算（没有版本化价格表）").length).toBeGreaterThan(0);
     expect(screen.getByText("未报告调用用量。")).toBeInTheDocument();
     expect(screen.queryByText("第一")).not.toBeInTheDocument();
     expect(screen.getAllByText("未知").length).toBeGreaterThan(0);
-
   });
 
   it("reports unavailable attempt timestamps and empty parse ids", () => {
@@ -537,8 +495,6 @@ describe("execution inspector", () => {
 
   it("embeds the agent review inspector for the selected attempt", () => {
     renderInspector();
-    expect(
-      screen.getByText(/本次执行没有保存五个方面的检查计划/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/本次执行没有保存五个方面的检查计划/)).toBeInTheDocument();
   });
 });

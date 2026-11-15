@@ -26,43 +26,75 @@ export function originalKind(filename: string): OriginalKind | null {
   return /\.(?:png|jpe?g)$/i.test(filename) ? "image" : null;
 }
 
-const assets = () => new URL(`${import.meta.env.BASE_URL}document-reader/`, globalThis.location?.origin ?? "http://localhost").href;
+const assets = () =>
+  new URL(
+    `${import.meta.env.BASE_URL}document-reader/`,
+    globalThis.location?.origin ?? "http://localhost",
+  ).href;
 
-function checkActive(signal: AbortSignal): void { signal.throwIfAborted(); }
+function checkActive(signal: AbortSignal): void {
+  signal.throwIfAborted();
+}
 
-function abortable<T>(work: Promise<T>, signal: AbortSignal, cancel: () => void = () => undefined): Promise<T> {
+function abortable<T>(
+  work: Promise<T>,
+  signal: AbortSignal,
+  cancel: () => void = () => undefined,
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const abort = () => {
       signal.removeEventListener("abort", abort);
-      cancel(); reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+      cancel();
+      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
     };
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) abort();
-    work.then((value) => { signal.removeEventListener("abort", abort); resolve(value); },
-      (error: unknown) => { signal.removeEventListener("abort", abort); reject(error); });
+    work.then(
+      (value) => {
+        signal.removeEventListener("abort", abort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      },
+    );
   });
 }
 
-export async function verifyOriginalDigest(bytes: Uint8Array<ArrayBuffer>, digest: string): Promise<void> {
-  if (!/^[0-9a-f]{64}$/.test(digest)) throw new OriginalReadError("缺少原件版本信息，暂不能显示原件标注");
+export async function verifyOriginalDigest(
+  bytes: Uint8Array<ArrayBuffer>,
+  digest: string,
+): Promise<void> {
+  if (!/^[0-9a-f]{64}$/.test(digest))
+    throw new OriginalReadError("缺少原件版本信息，暂不能显示原件标注");
   const hash = await crypto.subtle.digest("SHA-256", bytes);
-  const actual = [...new Uint8Array(hash)].map((value) => value.toString(16).padStart(2, "0")).join("");
+  const actual = [...new Uint8Array(hash)]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
   if (actual !== digest) throw new OriginalReadError("读取的原件与本次审查材料不一致，未显示标注");
 }
 
 export async function openOriginalSource(
-  bytes: Uint8Array<ArrayBuffer>, kind: OriginalKind, signal: AbortSignal,
+  bytes: Uint8Array<ArrayBuffer>,
+  kind: OriginalKind,
+  signal: AbortSignal,
 ): Promise<OriginalSource> {
   checkActive(signal);
   if (kind === "image") return openImage(bytes, signal);
-  if (new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") throw new OriginalReadError("原件不是可读取的 PDF 文件");
+  if (new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-")
+    throw new OriginalReadError("原件不是可读取的 PDF 文件");
   const pdfjs = await abortable(import("pdfjs-dist/legacy/build/pdf.mjs"), signal);
   checkActive(signal);
   pdfjs.GlobalWorkerOptions.workerSrc = `${assets()}pdf/pdf.worker.min.js`;
   const loading = pdfjs.getDocument({
-    data: bytes, cMapUrl: `${assets()}pdf/cmaps/`, cMapPacked: true,
-    standardFontDataUrl: `${assets()}pdf/fonts/`, wasmUrl: `${assets()}pdf/wasm/`,
-    isEvalSupported: false, enableXfa: false,
+    data: bytes,
+    cMapUrl: `${assets()}pdf/cmaps/`,
+    cMapPacked: true,
+    standardFontDataUrl: `${assets()}pdf/fonts/`,
+    wasmUrl: `${assets()}pdf/wasm/`,
+    isEvalSupported: false,
+    enableXfa: false,
   });
   let disposed = false;
   const dispose = () => {
@@ -76,8 +108,12 @@ export async function openOriginalSource(
     checkActive(signal);
     if (pdf.numPages > 128) throw new OriginalReadError("原件页数超过页面预览范围，请下载后核对");
     return {
-      pages: pdf.numPages, kind,
-      dispose: () => { signal.removeEventListener("abort", dispose); dispose(); },
+      pages: pdf.numPages,
+      kind,
+      dispose: () => {
+        signal.removeEventListener("abort", dispose);
+        dispose();
+      },
       async render(pageNumber, canvas, renderSignal) {
         checkActive(signal);
         checkActive(renderSignal);
@@ -87,15 +123,21 @@ export async function openOriginalSource(
         const natural = page.getViewport({ scale: 1 });
         const scale = Math.min(2, 2400 / Math.max(natural.width, natural.height));
         const viewport = page.getViewport({ scale });
-        if (!(viewport.width > 0 && viewport.height > 0)) throw new OriginalReadError("原件页面尺寸无法读取");
+        if (!(viewport.width > 0 && viewport.height > 0))
+          throw new OriginalReadError("原件页面尺寸无法读取");
         canvas.width = Math.ceil(viewport.width);
         canvas.height = Math.ceil(viewport.height);
         const context = canvas.getContext("2d");
-        if (!context) throw new OriginalReadError("当前浏览器无法显示原件，请切换文字原文或下载核对");
+        if (!context)
+          throw new OriginalReadError("当前浏览器无法显示原件，请切换文字原文或下载核对");
         const task = page.render({ canvas, canvasContext: context, viewport });
         const cancel = () => task.cancel();
         renderSignal.addEventListener("abort", cancel, { once: true });
-        try { await task.promise; } finally { renderSignal.removeEventListener("abort", cancel); }
+        try {
+          await task.promise;
+        } finally {
+          renderSignal.removeEventListener("abort", cancel);
+        }
         checkActive(signal);
         checkActive(renderSignal);
         const content = await page.getTextContent();
@@ -109,19 +151,35 @@ export async function openOriginalSource(
           if (style?.vertical) angle += Math.PI / 2;
           const height = Math.hypot(transform[2]!, transform[3]!);
           const width = (style?.vertical ? item.height : item.width) * scale;
-          const ascent = (style?.ascent ?? (style?.descent === undefined ? 1 : 1 + style.descent)) * height;
+          const ascent =
+            (style?.ascent ?? (style?.descent === undefined ? 1 : 1 + style.descent)) * height;
           const x = transform[4]! + ascent * Math.sin(angle);
           const y = transform[5]! - ascent * Math.cos(angle);
-          const corners = [[x, y], [x + width * Math.cos(angle), y + width * Math.sin(angle)],
+          const corners = [
+            [x, y],
+            [x + width * Math.cos(angle), y + width * Math.sin(angle)],
             [x - height * Math.sin(angle), y + height * Math.cos(angle)],
-            [x + width * Math.cos(angle) - height * Math.sin(angle), y + width * Math.sin(angle) + height * Math.cos(angle)]];
+            [
+              x + width * Math.cos(angle) - height * Math.sin(angle),
+              y + width * Math.sin(angle) + height * Math.cos(angle),
+            ],
+          ];
           const left = Math.max(0, Math.min(...corners.map((point) => point[0]!)));
           const top = Math.max(0, Math.min(...corners.map((point) => point[1]!)));
           const right = Math.min(canvas.width, Math.max(...corners.map((point) => point[0]!)));
           const bottom = Math.min(canvas.height, Math.max(...corners.map((point) => point[1]!)));
           if (right <= left || bottom <= top) return [];
-          return [{ text: item.str, box: { x: left / canvas.width, y: top / canvas.height,
-            width: (right - left) / canvas.width, height: (bottom - top) / canvas.height } }];
+          return [
+            {
+              text: item.str,
+              box: {
+                x: left / canvas.width,
+                y: top / canvas.height,
+                width: (right - left) / canvas.width,
+                height: (bottom - top) / canvas.height,
+              },
+            },
+          ];
         });
       },
     };
@@ -132,7 +190,10 @@ export async function openOriginalSource(
   }
 }
 
-async function openImage(bytes: Uint8Array<ArrayBuffer>, signal: AbortSignal): Promise<OriginalSource> {
+async function openImage(
+  bytes: Uint8Array<ArrayBuffer>,
+  signal: AbortSignal,
+): Promise<OriginalSource> {
   const png = bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71;
   const jpeg = bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
   if (!png && !jpeg) throw new OriginalReadError("原件不是可读取的 PNG 或 JPEG 扫描件");
@@ -142,10 +203,19 @@ async function openImage(bytes: Uint8Array<ArrayBuffer>, signal: AbortSignal): P
   try {
     await abortable(image.decode(), signal);
     checkActive(signal);
-    if (image.naturalWidth * image.naturalHeight > 40_000_000) throw new OriginalReadError("扫描件尺寸超过页面预览范围，请下载后核对");
-  } catch (error) { URL.revokeObjectURL(url); throw error; }
+    if (image.naturalWidth * image.naturalHeight > 40_000_000)
+      throw new OriginalReadError("扫描件尺寸超过页面预览范围，请下载后核对");
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
   return {
-    pages: 1, kind: "image", dispose: () => { URL.revokeObjectURL(url); image.src = ""; },
+    pages: 1,
+    kind: "image",
+    dispose: () => {
+      URL.revokeObjectURL(url);
+      image.src = "";
+    },
     async render(page, canvas, renderSignal) {
       checkActive(signal);
       checkActive(renderSignal);
@@ -170,19 +240,29 @@ export async function configureOriginalOCR(worker: Pick<Worker, "setParameters">
 }
 
 export async function recognizePageWords(
-  canvas: HTMLCanvasElement, signal: AbortSignal, progress: (value: number) => void,
+  canvas: HTMLCanvasElement,
+  signal: AbortSignal,
+  progress: (value: number) => void,
 ): Promise<SourceWord[]> {
   const { createWorker } = await abortable(import("tesseract.js"), signal);
   checkActive(signal);
   const state: { worker: Awaited<ReturnType<typeof createWorker>> | null } = { worker: null };
   const work = (async () => {
     const worker = await createWorker(["chi_sim", "eng"], 1, {
-      workerPath: `${assets()}ocr/worker.min.js`, corePath: `${assets()}ocr/core`,
-      langPath: `${assets()}ocr/lang`, cacheMethod: "none", workerBlobURL: false,
-      logger: (message) => { if (!signal.aborted && message.status === "recognizing text") progress(message.progress); },
+      workerPath: `${assets()}ocr/worker.min.js`,
+      corePath: `${assets()}ocr/core`,
+      langPath: `${assets()}ocr/lang`,
+      cacheMethod: "none",
+      workerBlobURL: false,
+      logger: (message) => {
+        if (!signal.aborted && message.status === "recognizing text") progress(message.progress);
+      },
     });
     state.worker = worker;
-    if (signal.aborted) { await worker.terminate(); checkActive(signal); }
+    if (signal.aborted) {
+      await worker.terminate();
+      checkActive(signal);
+    }
     await configureOriginalOCR(worker);
     checkActive(signal);
     const { data } = await worker.recognize(canvas, {}, { tsv: true, text: false });
@@ -190,7 +270,9 @@ export async function recognizePageWords(
     return parseOCRWords(data.tsv ?? "", canvas.width, canvas.height);
   })();
   try {
-    return await abortable(work, signal, () => { void state.worker?.terminate(); });
+    return await abortable(work, signal, () => {
+      void state.worker?.terminate();
+    });
   } finally {
     // The worker factory may resolve after cancellation. Its continuation above
     // releases that late worker before any original pixels are sent to it.

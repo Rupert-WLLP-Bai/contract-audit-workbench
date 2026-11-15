@@ -26,9 +26,7 @@ export function OperatorAuditEntry(props: {
   if (props.attemptId) params.set("attempt_id", props.attemptId);
   return (
     <p className="meta">
-      <Link to={`/cases/${props.caseId}/operator-audit?${params.toString()}`}>
-        进入跨系统核验
-      </Link>{" "}
+      <Link to={`/cases/${props.caseId}/operator-audit?${params.toString()}`}>进入跨系统核验</Link>{" "}
       · 合同约定与授权业务记录的只读对照
     </p>
   );

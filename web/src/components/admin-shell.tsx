@@ -32,10 +32,7 @@ type VersionedRouteTitles = {
   list: string;
 };
 
-function versionedRouteTitle(
-  pathname: string,
-  titles: VersionedRouteTitles,
-): string {
+function versionedRouteTitle(pathname: string, titles: VersionedRouteTitles): string {
   if (pathname.endsWith("/new")) return titles.create;
   if (pathname.includes("/versions/")) return titles.version;
   return titles.list;
@@ -61,10 +58,10 @@ function adminBreadcrumb(pathname: string): string {
 
 function adminMenuKey(pathname: string): string {
   if (pathname.startsWith("/admin/tenant-lifecycle")) return "/admin/tenant-lifecycle";
-  if (pathname.startsWith("/admin/jurisdiction-operations")) return "/admin/jurisdiction-operations";
+  if (pathname.startsWith("/admin/jurisdiction-operations"))
+    return "/admin/jurisdiction-operations";
   if (pathname.startsWith("/admin/infrastructure")) return "/admin/infrastructure";
-  if (pathname.startsWith("/admin/governed-knowledge"))
-    return "/admin/governed-knowledge";
+  if (pathname.startsWith("/admin/governed-knowledge")) return "/admin/governed-knowledge";
   if (pathname.startsWith("/admin/rulepacks")) return "/admin/rulepacks";
   return "/admin/settings";
 }
@@ -93,9 +90,7 @@ const ADMIN_MENU_ITEMS = [
       {
         key: "/admin/infrastructure",
         icon: <ApiOutlined />,
-        label: (
-          <NavLink to="/admin/infrastructure">基础设施与中间件</NavLink>
-        ),
+        label: <NavLink to="/admin/infrastructure">基础设施与中间件</NavLink>,
       },
     ],
   },
@@ -144,9 +139,7 @@ function AdminTopbar({
       <div className="who" aria-label="当前管理身份">
         {actor ? (
           <>
-            <Avatar className="header-avatar">
-              {Array.from(actor.display_name)[0]}
-            </Avatar>
+            <Avatar className="header-avatar">{Array.from(actor.display_name)[0]}</Avatar>
             <span className="identity-copy">
               <strong>{actor.display_name}</strong>
               <span className="meta">{actorRoleLabel(actor.role)}</span>
@@ -238,7 +231,9 @@ export function AdminShell() {
           <main id="main" tabIndex={-1}>
             {contextTransition ? (
               <PageStatus kind="loading" title="正在确认新的工作上下文" />
-            ) : <Outlet />}
+            ) : (
+              <Outlet />
+            )}
           </main>
         </Layout.Content>
       </Layout>

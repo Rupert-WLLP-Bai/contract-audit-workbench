@@ -89,8 +89,9 @@ export interface BusinessAgentReview {
   observations: BusinessAgentObservation[] | null;
 }
 
-const { invalid, record, text, integer, nullableText, nullableArray } =
-  responseReader((path) => `业务审查响应中的 ${path} 无法识别`);
+const { invalid, record, text, integer, nullableText, nullableArray } = responseReader(
+  (path) => `业务审查响应中的 ${path} 无法识别`,
+);
 
 function scope(value: unknown, path: string): BusinessAgentScope {
   const item = record(value, path, ["domain", "capability_ids", "source_ids"]);
@@ -102,7 +103,15 @@ function scope(value: unknown, path: string): BusinessAgentScope {
 }
 
 function capability(value: unknown, path: string): BusinessAgentCapability {
-  const item = record(value, path, ["capability_id", "mandatory", "status", "relation", "reason_code", "evidence_ids", "canonical_evaluation_ids"]);
+  const item = record(value, path, [
+    "capability_id",
+    "mandatory",
+    "status",
+    "relation",
+    "reason_code",
+    "evidence_ids",
+    "canonical_evaluation_ids",
+  ]);
   return {
     capability_id: text(item.capability_id, `${path}.capability_id`),
     mandatory: typeof item.mandatory === "boolean" ? item.mandatory : invalid(`${path}.mandatory`),
@@ -110,7 +119,11 @@ function capability(value: unknown, path: string): BusinessAgentCapability {
     relation: nullableText(item.relation, `${path}.relation`),
     reason_code: text(item.reason_code, `${path}.reason_code`),
     evidence_ids: nullableArray(item.evidence_ids, `${path}.evidence_ids`, text),
-    canonical_evaluation_ids: nullableArray(item.canonical_evaluation_ids, `${path}.canonical_evaluation_ids`, text),
+    canonical_evaluation_ids: nullableArray(
+      item.canonical_evaluation_ids,
+      `${path}.canonical_evaluation_ids`,
+      text,
+    ),
   };
 }
 
@@ -124,7 +137,15 @@ function domain(value: unknown, path: string): BusinessAgentDomain {
 }
 
 function gap(value: unknown, path: string): BusinessAgentGap {
-  const item = record(value, path, ["gap_id", "domain", "capability_id", "mandatory", "status", "reason_code", "evidence_ids"]);
+  const item = record(value, path, [
+    "gap_id",
+    "domain",
+    "capability_id",
+    "mandatory",
+    "status",
+    "reason_code",
+    "evidence_ids",
+  ]);
   return {
     gap_id: text(item.gap_id, `${path}.gap_id`),
     domain: text(item.domain, `${path}.domain`),
@@ -137,8 +158,27 @@ function gap(value: unknown, path: string): BusinessAgentGap {
 }
 
 function evidence(value: unknown, path: string): BusinessAgentEvidence {
-  const item = record(value, path, ["evidence_id", "semantic_type", "value", "unit", "currency", "verification", "anchor"]);
-  const anchor = record(item.anchor, `${path}.anchor`, ["id", "document_id", "parsed_document_id", "quote", "status", "start", "end", "reason", "page", "element_id"]);
+  const item = record(value, path, [
+    "evidence_id",
+    "semantic_type",
+    "value",
+    "unit",
+    "currency",
+    "verification",
+    "anchor",
+  ]);
+  const anchor = record(item.anchor, `${path}.anchor`, [
+    "id",
+    "document_id",
+    "parsed_document_id",
+    "quote",
+    "status",
+    "start",
+    "end",
+    "reason",
+    "page",
+    "element_id",
+  ]);
   return {
     evidence_id: text(item.evidence_id, `${path}.evidence_id`),
     semantic_type: text(item.semantic_type, `${path}.semantic_type`),
@@ -196,24 +236,40 @@ function observation(value: unknown, path: string): BusinessAgentObservation {
 
 export function parseBusinessAgentReview(value: unknown): BusinessAgentReview | null {
   if (value === null || value === undefined) return null;
-  const item = record(value, "agent_review", ["attempt_id", "status", "rulepack", "scope", "domains", "gaps", "evidence", "unresolved_gap_ids", "observations"]);
-  const pack = item.rulepack === null ? null : record(item.rulepack, "agent_review.rulepack", ["id", "version"]);
+  const item = record(value, "agent_review", [
+    "attempt_id",
+    "status",
+    "rulepack",
+    "scope",
+    "domains",
+    "gaps",
+    "evidence",
+    "unresolved_gap_ids",
+    "observations",
+  ]);
+  const pack =
+    item.rulepack === null
+      ? null
+      : record(item.rulepack, "agent_review.rulepack", ["id", "version"]);
   return {
     attempt_id: nullableText(item.attempt_id, "agent_review.attempt_id"),
     status: nullableText(item.status, "agent_review.status"),
-    rulepack: pack === null ? null : {
-      id: text(pack.id, "agent_review.rulepack.id"),
-      version: text(pack.version, "agent_review.rulepack.version"),
-    },
+    rulepack:
+      pack === null
+        ? null
+        : {
+            id: text(pack.id, "agent_review.rulepack.id"),
+            version: text(pack.version, "agent_review.rulepack.version"),
+          },
     scope: nullableArray(item.scope, "agent_review.scope", scope),
     domains: nullableArray(item.domains, "agent_review.domains", domain),
     gaps: nullableArray(item.gaps, "agent_review.gaps", gap),
     evidence: nullableArray(item.evidence, "agent_review.evidence", evidence),
-    unresolved_gap_ids: nullableArray(item.unresolved_gap_ids, "agent_review.unresolved_gap_ids", text),
-    observations: nullableArray(
-      item.observations,
-      "agent_review.observations",
-      observation,
+    unresolved_gap_ids: nullableArray(
+      item.unresolved_gap_ids,
+      "agent_review.unresolved_gap_ids",
+      text,
     ),
+    observations: nullableArray(item.observations, "agent_review.observations", observation),
   };
 }

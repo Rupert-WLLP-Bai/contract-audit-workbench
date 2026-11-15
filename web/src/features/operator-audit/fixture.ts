@@ -80,10 +80,7 @@ export const cloudServicesPack: CapabilityPack = {
   dataClass: "synthetic",
 };
 
-export const capabilityPacks: CapabilityPack[] = [
-  dedicatedLinePack,
-  cloudServicesPack,
-];
+export const capabilityPacks: CapabilityPack[] = [dedicatedLinePack, cloudServicesPack];
 
 export const confirmedBinding: ObjectBinding = {
   id: "binding-1",
@@ -225,9 +222,7 @@ export const conflictCheck: CheckResult = {
     },
   ],
   requiresHumanReview: true,
-  limitations: [
-    "只表明合成配置记录与合同要求不一致，不证明实际吞吐或赔偿责任。",
-  ],
+  limitations: ["只表明合成配置记录与合同要求不一致，不证明实际吞吐或赔偿责任。"],
 };
 
 export const compatibleCheck: CheckResult = {

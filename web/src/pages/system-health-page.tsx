@@ -33,11 +33,7 @@ import {
   type SystemHealth,
 } from "../api/system-health";
 import type { SessionAudience } from "../api/types";
-import {
-  errorMessage,
-  isForbidden,
-  isUnauthenticated,
-} from "../api/http";
+import { errorMessage, isForbidden, isUnauthenticated } from "../api/http";
 import { PageStatus } from "../components/page-status";
 import { CollapsibleSection } from "../components/collapsible-section";
 import { formatDateTime } from "../domain/review";
@@ -184,9 +180,7 @@ function matchesFact(id: string, name: string, definition: FactDefinition): bool
 function latestObservedAt(items: HealthService[]): string | undefined {
   return items.reduce<string | undefined>(
     (latest, item) =>
-      item.observed_at && (!latest || item.observed_at > latest)
-        ? item.observed_at
-        : latest,
+      item.observed_at && (!latest || item.observed_at > latest) ? item.observed_at : latest,
     undefined,
   );
 }
@@ -215,16 +209,10 @@ function groupObservationLabel(group: HealthGroup): string {
   return STATUS[group.status].label;
 }
 
-function buildHealthFacts(
-  data: SystemHealth,
-  audience: SessionAudience,
-): HealthFact[] {
-  const definitions =
-    audience === "admin" ? ADMIN_FACT_DEFINITIONS : CLIENT_FACT_DEFINITIONS;
+function buildHealthFacts(data: SystemHealth, audience: SessionAudience): HealthFact[] {
+  const definitions = audience === "admin" ? ADMIN_FACT_DEFINITIONS : CLIENT_FACT_DEFINITIONS;
   return definitions.map((definition) => {
-    const group = data.groups.find((item) =>
-      matchesFact(item.id, item.name, definition),
-    );
+    const group = data.groups.find((item) => matchesFact(item.id, item.name, definition));
     const instances = data.services.filter((item) =>
       matchesFact(logicalId(item), item.name, definition),
     );
@@ -236,8 +224,7 @@ function buildHealthFacts(
       missing: true,
       detail,
     });
-    if (!group && instances.length === 0)
-      return missing("未在下发的健康快照中找到该服务的观测。");
+    if (!group && instances.length === 0) return missing("未在下发的健康快照中找到该服务的观测。");
     if (
       group &&
       group.observed_instances === 0 &&
@@ -245,9 +232,7 @@ function buildHealthFacts(
     )
       return missing(group.detail);
     const status = group?.status ?? aggregateServiceStatus(instances);
-    const running = instances.find(
-      (item) => item.container?.state.toLowerCase() === "running",
-    );
+    const running = instances.find((item) => item.container?.state.toLowerCase() === "running");
     if ((!group || status === "unknown") && running)
       return {
         key: definition.key,
@@ -264,9 +249,7 @@ function buildHealthFacts(
       value: group ? groupObservationLabel(group) : STATUS[status].label,
       tone: STATUS[status].tone,
       observedAt:
-        group?.observed_at ??
-        latestObservedAt(instances) ??
-        (group ? data.observed_at : undefined),
+        group?.observed_at ?? latestObservedAt(instances) ?? (group ? data.observed_at : undefined),
       missing: false,
       detail: group?.detail ?? instances[0]?.detail ?? "",
     };
@@ -318,9 +301,7 @@ function buildDependencyRows(data: SystemHealth): DependencyRow[] {
   for (const preference of preferred) {
     const match =
       edges.find(
-        (edge) =>
-          logicalId(edge.from) === preference.source &&
-          edge.targetId === preference.target,
+        (edge) => logicalId(edge.from) === preference.source && edge.targetId === preference.target,
       ) ?? edges.find((edge) => edge.targetId === preference.target);
     if (match && !chosen.includes(match)) chosen.push(match);
   }
@@ -342,11 +323,8 @@ function buildDependencyRows(data: SystemHealth): DependencyRow[] {
     return {
       key: edge.key,
       fromName: edge.from.name,
-      toName:
-        target?.name ?? DEPENDENCY_NAMES[edge.targetId] ?? edge.targetId,
-      status: group
-        ? groupObservationLabel(group)
-        : STATUS[target?.status ?? "unknown"].label,
+      toName: target?.name ?? DEPENDENCY_NAMES[edge.targetId] ?? edge.targetId,
+      status: group ? groupObservationLabel(group) : STATUS[target?.status ?? "unknown"].label,
       detail: group?.detail ?? target?.detail ?? "未报告",
     };
   });
@@ -425,8 +403,7 @@ function FactCard({ fact }: { fact: HealthFact }) {
 }
 
 function DependencySummary({ rows }: { rows: DependencyRow[] }) {
-  if (rows.length === 0)
-    return <p className="health-note">未取得可核对的依赖关系。</p>;
+  if (rows.length === 0) return <p className="health-note">未取得可核对的依赖关系。</p>;
   return (
     <ul className="health-dependency-list">
       {rows.map((row) => (
@@ -444,8 +421,7 @@ function DependencySummary({ rows }: { rows: DependencyRow[] }) {
 }
 
 function IssueList({ issues }: { issues: HealthIssue[] }) {
-  if (issues.length === 0)
-    return <p className="health-issue-empty">当前观测没有需关注的异常。</p>;
+  if (issues.length === 0) return <p className="health-issue-empty">当前观测没有需关注的异常。</p>;
   return (
     <ul className="health-issue-list">
       {issues.map((issue) => (
@@ -459,20 +435,10 @@ function IssueList({ issues }: { issues: HealthIssue[] }) {
 }
 
 function HealthSummary({ data }: { data: SystemHealth }) {
-  const readyInstances = data.groups.reduce(
-    (sum, item) => sum + item.ready_instances,
-    0,
-  );
-  const observedInstances = data.groups.reduce(
-    (sum, item) => sum + item.observed_instances,
-    0,
-  );
-  const attentionGroups = data.groups.filter((item) =>
-    ATTENTION_STATUSES.has(item.status),
-  );
-  const unconfiguredGroups = data.groups.filter(
-    (item) => item.status === "unconfigured",
-  );
+  const readyInstances = data.groups.reduce((sum, item) => sum + item.ready_instances, 0);
+  const observedInstances = data.groups.reduce((sum, item) => sum + item.observed_instances, 0);
+  const attentionGroups = data.groups.filter((item) => ATTENTION_STATUSES.has(item.status));
+  const unconfiguredGroups = data.groups.filter((item) => item.status === "unconfigured");
   return (
     <ol className="health-summary" aria-label="系统健康统计">
       {[
@@ -614,8 +580,7 @@ function GroupTable({
       render: (_: unknown, group) => {
         const instance = services.find(
           (service) =>
-            (service.logical_id ?? service.id) === group.id &&
-            service.container !== null,
+            (service.logical_id ?? service.id) === group.id && service.container !== null,
         );
         return instance ? (
           <Button
@@ -684,8 +649,7 @@ function Topology({
       onSelect={(keys) => {
         const key = String(keys[0] ?? "");
         if (key.startsWith("service:")) onSelect(key.slice(8));
-        else if (key.startsWith("dependency:"))
-          onSelect(key.split(":").slice(2).join(":"));
+        else if (key.startsWith("dependency:")) onSelect(key.split(":").slice(2).join(":"));
       }}
     />
   );
@@ -804,8 +768,7 @@ function ProductionArchitecture({
               {
                 key: "category",
                 label: "所属领域",
-                children:
-                  ARCHITECTURE_GROUPS[selected.category] ?? selected.category,
+                children: ARCHITECTURE_GROUPS[selected.category] ?? selected.category,
               },
               { key: "target", label: "生产目标", children: selected.target },
               { key: "actual", label: "当前证据", children: selected.observed },
@@ -898,16 +861,12 @@ function ServiceInventory({
                     title={item.name}
                     extra={<HealthTag status={item.status} />}
                   >
-                    <code className="health-target">
-                      {item.target || "未配置连接地址"}
-                    </code>
+                    <code className="health-target">{item.target || "未配置连接地址"}</code>
                     <p className="health-service-detail">{item.detail}</p>
                     <div className="health-card-footer">
                       <span>
                         {item.container?.name ??
-                          (item.kind === "container"
-                            ? "未发现部署容器"
-                            : "外部集成")}
+                          (item.kind === "container" ? "未发现部署容器" : "外部集成")}
                       </span>
                       <Button
                         type="link"
@@ -936,9 +895,7 @@ function ClusterPanel({ cluster }: { cluster: NonNullable<SystemHealth["cluster"
       aria-label={"Kubernetes 节点"}
       title="Kubernetes 节点"
       extra={
-        <Tag color={cluster.status === "ready" ? "processing" : "error"}>
-          {cluster.namespace}
-        </Tag>
+        <Tag color={cluster.status === "ready" ? "processing" : "error"}>{cluster.namespace}</Tag>
       }
     >
       <p>{cluster.detail}</p>
@@ -974,8 +931,7 @@ function ContainerTable({
       title: "容器名称",
       key: "name",
       width: 280,
-      sorter: (a, b) =>
-        (a.container?.name ?? "").localeCompare(b.container?.name ?? ""),
+      sorter: (a, b) => (a.container?.name ?? "").localeCompare(b.container?.name ?? ""),
       render: (_: unknown, item) => (
         <Button
           aria-label={String(item.container?.name)}
@@ -1027,8 +983,7 @@ function ContainerTable({
       title: "重启次数",
       key: "restarts",
       width: 100,
-      sorter: (a, b) =>
-        (a.container?.restarts ?? 0) - (b.container?.restarts ?? 0),
+      sorter: (a, b) => (a.container?.restarts ?? 0) - (b.container?.restarts ?? 0),
       render: (_: unknown, item) => item.container?.restarts,
     },
     {
@@ -1036,8 +991,7 @@ function ContainerTable({
       key: "started",
       width: 175,
       render: (_: unknown, item) =>
-        item.container?.started_at &&
-        !item.container.started_at.startsWith("0001-")
+        item.container?.started_at && !item.container.started_at.startsWith("0001-")
           ? formatDateTime(item.container.started_at)
           : "未启动",
     },
@@ -1060,11 +1014,7 @@ function ContainerTable({
   );
 }
 
-export function SystemHealthPage({
-  audience = "client",
-}: {
-  audience?: SessionAudience;
-}) {
+export function SystemHealthPage({ audience = "client" }: { audience?: SessionAudience }) {
   const tabs = audience === "admin" ? ADMIN_TABS : CLIENT_TABS;
   const query = useSystemHealth(audience);
   const [tab, setTab] = useState<string>(tabs[0]);
@@ -1080,14 +1030,9 @@ export function SystemHealthPage({
   // deployment snapshot on screen, even if React Query still caches it.
   if (isUnauthenticated(query.error) || isForbidden(query.error))
     return (
-      <PageStatus
-        kind="denied"
-        title="没有访问系统健康的权限"
-        detail={errorMessage(query.error)}
-      />
+      <PageStatus kind="denied" title="没有访问系统健康的权限" detail={errorMessage(query.error)} />
     );
-  if (query.isLoading)
-    return <PageStatus kind="loading" title="正在读取系统健康" />;
+  if (query.isLoading) return <PageStatus kind="loading" title="正在读取系统健康" />;
   if (!query.data)
     return (
       <PageStatus
@@ -1105,12 +1050,9 @@ export function SystemHealthPage({
   const observedAt = Date.parse(data.observed_at);
   const ageSeconds = Math.max(0, Math.floor((now - observedAt) / 1000));
   const stale = ageSeconds > 75;
-  const partial =
-    data.source === "docker_partial" || data.source === "kubernetes_partial";
+  const partial = data.source === "docker_partial" || data.source === "kubernetes_partial";
   const attentionIds = new Set(
-    data.services
-      .filter((item) => ATTENTION_STATUSES.has(item.status))
-      .map((item) => item.id),
+    data.services.filter((item) => ATTENTION_STATUSES.has(item.status)).map((item) => item.id),
   );
   const needle = search.trim().toLocaleLowerCase();
   const visible = data.services.filter(
@@ -1123,9 +1065,7 @@ export function SystemHealthPage({
   const architecture = data.architecture.filter(
     (item) =>
       (group === "all" || item.category === group) &&
-      `${item.name} ${item.target} ${item.observed}`
-        .toLocaleLowerCase()
-        .includes(needle),
+      `${item.name} ${item.target} ${item.observed}`.toLocaleLowerCase().includes(needle),
   );
   const facts = buildHealthFacts(data, audience);
   const dependencies = buildDependencyRows(data);
@@ -1137,9 +1077,8 @@ export function SystemHealthPage({
   const capacityKey = tabsConfig[1];
   const exceptionKey = tabsConfig[2];
   const selected =
-    data.services.find(
-      (item) => (item.instance_id ?? item.id) === selectedId,
-    ) ?? data.services.find((item) => (item.logical_id ?? item.id) === selectedId);
+    data.services.find((item) => (item.instance_id ?? item.id) === selectedId) ??
+    data.services.find((item) => (item.logical_id ?? item.id) === selectedId);
   const pageStyle: CSSProperties & Record<`--health-${string}`, string> = {
     background: "var(--surface-page)",
     color: "var(--text-primary)",
@@ -1180,11 +1119,11 @@ export function SystemHealthPage({
         >
           <IssueList issues={issues.slice(0, 3)} />
           {issues.length > 3 ? (
-            <p className="health-note">另有 {issues.length - 3} 项，请在{exceptionKey}中查看。</p>
+            <p className="health-note">
+              另有 {issues.length - 3} 项，请在{exceptionKey}中查看。
+            </p>
           ) : null}
-          <p className="health-note health-issue-note">
-            诊断入口只展示当前身份获准的内容。
-          </p>
+          <p className="health-note health-issue-note">诊断入口只展示当前身份获准的内容。</p>
           <div className="health-panel-actions">
             <Button aria-label="查看诊断" onClick={() => setTab(exceptionKey)}>
               查看诊断
@@ -1225,11 +1164,7 @@ export function SystemHealthPage({
           </Tag>
         }
       >
-        <GroupTable
-          groups={data.groups}
-          services={data.services}
-          onSelect={setSelectedId}
-        />
+        <GroupTable groups={data.groups} services={data.services} onSelect={setSelectedId} />
       </Card>
       {data.cluster ? <ClusterPanel cluster={data.cluster} /> : null}
       <CollapsibleSection
@@ -1320,11 +1255,7 @@ export function SystemHealthPage({
           </Tag>
         }
       >
-        <GroupTable
-          groups={data.groups}
-          services={data.services}
-          onSelect={setSelectedId}
-        />
+        <GroupTable groups={data.groups} services={data.services} onSelect={setSelectedId} />
       </Card>
       {data.cluster ? <ClusterPanel cluster={data.cluster} /> : null}
       <HealthPanel title="事件与异常">
@@ -1348,9 +1279,7 @@ export function SystemHealthPage({
           <p>服务、中间件与容器的实际运行状态。每 30 秒自动刷新。</p>
         </div>
         <div className="health-refresh">
-          <span className="health-note">
-            最近观测 {formatDateTime(data.observed_at)}
-          </span>
+          <span className="health-note">最近观测 {formatDateTime(data.observed_at)}</span>
           <Button
             aria-label={"刷新状态"}
             type="primary"
@@ -1468,9 +1397,7 @@ export function SystemHealthPage({
                 {
                   key: "observed",
                   label: "本次观测",
-                  children: formatDateTime(
-                    selected.observed_at ?? data.observed_at,
-                  ),
+                  children: formatDateTime(selected.observed_at ?? data.observed_at),
                 },
                 { key: "detail", label: "状态说明", children: selected.detail },
                 {
@@ -1490,18 +1417,13 @@ export function SystemHealthPage({
                 },
                 {
                   key: "health",
-                  label:
-                    data.mode === "kubernetes"
-                      ? "Pod 就绪状态"
-                      : "Docker 健康检查",
+                  label: data.mode === "kubernetes" ? "Pod 就绪状态" : "Docker 健康检查",
                   children: selected.container?.health || "未配置",
                 },
                 {
                   key: "probe",
                   label: "探测耗时",
-                  children: selected.probe
-                    ? `${selected.probe.duration_ms} ms`
-                    : "未执行额外探测",
+                  children: selected.probe ? `${selected.probe.duration_ms} ms` : "未执行额外探测",
                 },
                 {
                   key: "dependencies",
@@ -1510,16 +1432,14 @@ export function SystemHealthPage({
                     ? selected.depends_on.map((id) => (
                         <Button
                           aria-label={String(
-                            data.services.find((item) => item.id === id)
-                              ?.name ?? id,
+                            data.services.find((item) => item.id === id)?.name ?? id,
                           )}
                           key={id}
                           type="link"
                           size="small"
                           onClick={() => setSelectedId(id)}
                         >
-                          {data.services.find((item) => item.id === id)?.name ??
-                            id}
+                          {data.services.find((item) => item.id === id)?.name ?? id}
                         </Button>
                       ))
                     : "无声明依赖",
@@ -1529,9 +1449,7 @@ export function SystemHealthPage({
           </>
         ) : null}
       </Drawer>
-      <p className="health-note">
-        容器观测与端点探测分别呈现；未探测的外部模型保持待确认。
-      </p>
+      <p className="health-note">容器观测与端点探测分别呈现；未探测的外部模型保持待确认。</p>
     </section>
   );
 }

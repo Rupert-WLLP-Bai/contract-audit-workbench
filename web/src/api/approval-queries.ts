@@ -8,12 +8,7 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   decideApprovalTask,
   getApprovalTask,
@@ -28,11 +23,7 @@ import {
   type ApprovalRoundReadDetail,
   type ApprovalTaskReadDetail,
 } from "./approvals";
-import {
-  clearPendingMutationKey,
-  idempotencyActorScope,
-  pendingMutationKey,
-} from "./idempotency";
+import { clearPendingMutationKey, idempotencyActorScope, pendingMutationKey } from "./idempotency";
 import { queryKeys } from "./queries";
 import type { Actor } from "./types";
 
@@ -42,21 +33,15 @@ export const approvalQueryKeys = {
   inbox: (actorScope: string, view: ApprovalInboxView) =>
     ["approvals", "inbox", actorScope, view] as const,
   task: (taskId: string) => ["approvals", "task", taskId] as const,
-  rounds: (contractId: string) =>
-    ["approvals", "rounds", contractId] as const,
+  rounds: (contractId: string) => ["approvals", "rounds", contractId] as const,
   round: (contractId: string, roundId: string) =>
     ["approvals", "round", contractId, roundId] as const,
 };
 
-export function useApprovalInbox(
-  view: ApprovalInboxView,
-  actorScope: string,
-  enabled: boolean,
-) {
+export function useApprovalInbox(view: ApprovalInboxView, actorScope: string, enabled: boolean) {
   return useInfiniteQuery({
     queryKey: approvalQueryKeys.inbox(actorScope, view),
-    queryFn: ({ pageParam, signal }) =>
-      listApprovalInbox(view, pageParam, 25, signal),
+    queryFn: ({ pageParam, signal }) => listApprovalInbox(view, pageParam, 25, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: ApprovalInboxPage) =>
       lastPage.has_more ? nextApprovalCursor(lastPage) : undefined,
@@ -72,10 +57,7 @@ export function useApprovalTaskDetail(taskId: string | null) {
   });
 }
 
-export function useContractApprovalRounds(
-  contractId: string | null,
-  enabled: boolean,
-) {
+export function useContractApprovalRounds(contractId: string | null, enabled: boolean) {
   return useInfiniteQuery({
     queryKey: approvalQueryKeys.rounds(contractId ?? ""),
     queryFn: ({ pageParam, signal }) =>
@@ -87,21 +69,11 @@ export function useContractApprovalRounds(
   });
 }
 
-export function useContractApprovalRound(
-  contractId: string | null,
-  roundId: string | null,
-) {
+export function useContractApprovalRound(contractId: string | null, roundId: string | null) {
   return useQuery<ApprovalRoundReadDetail>({
-    queryKey: approvalQueryKeys.round(
-      contractId ?? "",
-      roundId ?? "",
-    ),
+    queryKey: approvalQueryKeys.round(contractId ?? "", roundId ?? ""),
     queryFn: ({ signal }) =>
-      getContractApprovalRound(
-        contractId as string,
-        roundId as string,
-        signal,
-      ),
+      getContractApprovalRound(contractId as string, roundId as string, signal),
     enabled: contractId !== null && roundId !== null,
   });
 }

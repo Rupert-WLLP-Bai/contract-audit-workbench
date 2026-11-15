@@ -42,19 +42,10 @@ export const RUN_FILTERS = [
 ] as const;
 export type RunFilter = (typeof RUN_FILTERS)[number];
 
-export type CaseSortField =
-  | "updated_at"
-  | "title"
-  | "pending_decisions"
-  | "document_count";
+export type CaseSortField = "updated_at" | "title" | "pending_decisions" | "document_count";
 export type SortDirection = "asc" | "desc";
 
-export const FINDING_FILTERS = [
-  "all",
-  "conflict",
-  "insufficient",
-  "undecided",
-] as const;
+export const FINDING_FILTERS = ["all", "conflict", "insufficient", "undecided"] as const;
 export type FindingFilter = (typeof FINDING_FILTERS)[number];
 
 export type FindingDecisionInput = DecisionInput & { findingId: string };
@@ -165,11 +156,7 @@ const TASK_KIND_LABELS: Record<string, string> = {
   general: "一般任务",
 };
 
-export function labelOf(
-  table: Record<string, string>,
-  value: string,
-  fallback: string,
-): string {
+export function labelOf(table: Record<string, string>, value: string, fallback: string): string {
   if (value === "") return fallback;
   const label = Object.hasOwn(table, value) ? table[value] : undefined;
   return label ?? fallback;
@@ -179,12 +166,7 @@ export function runLabel(state: string): string {
   return labelOf(RUN_LABELS, state, "状态未识别");
 }
 export function isActiveAttemptState(state: string): boolean {
-  return (
-    state === "accepted" ||
-    state === "queued" ||
-    state === "started" ||
-    state === "running"
-  );
+  return state === "accepted" || state === "queued" || state === "started" || state === "running";
 }
 export function isTerminalAttemptState(state: string): boolean {
   return (
@@ -228,7 +210,9 @@ export function modelStatusLabel(status: string): string {
 
 export function businessStatusLabel(value: string): string {
   if (value === "") return "业务状态未提供";
-  return Object.hasOwn(BUSINESS_STATUS_LABELS, value) ? BUSINESS_STATUS_LABELS[value]! : "业务状态待核对";
+  return Object.hasOwn(BUSINESS_STATUS_LABELS, value)
+    ? BUSINESS_STATUS_LABELS[value]!
+    : "业务状态待核对";
 }
 
 export function businessStatusTone(value: string): StatusTone {
@@ -253,16 +237,13 @@ export type StatusTone = "neutral" | "attention" | "good" | "bad" | "progress";
 export function runTone(state: string): StatusTone {
   if (state === "awaiting_human" || state === "partial") return "attention";
   if (state === "completed") return "good";
-  if (state === "failed" || state === "cancelled" || state === "interrupted")
-    return "bad";
+  if (state === "failed" || state === "cancelled" || state === "interrupted") return "bad";
   if (isActiveAttemptState(state)) return "progress";
   return "neutral";
 }
 
 export function parseTone(status: string): StatusTone {
-  return Object.hasOwn(PARSE_TONES, status)
-    ? (PARSE_TONES[status] ?? "neutral")
-    : "neutral";
+  return Object.hasOwn(PARSE_TONES, status) ? (PARSE_TONES[status] ?? "neutral") : "neutral";
 }
 
 export function parseRunFilter(value: string | null): RunFilter {
@@ -283,18 +264,13 @@ export function filterCases(
       const haystack = caseSearchText(item);
       if (!haystack.includes(needle)) return false;
     }
-    if (businessStatus !== "all" && item.business_status !== businessStatus)
-      return false;
+    if (businessStatus !== "all" && item.business_status !== businessStatus) return false;
     const state = item.latest_run?.state ?? null;
     if (run === "all") return true;
-    if (run === "needs_human")
-      return state === "awaiting_human" || item.pending_decisions > 0;
+    if (run === "needs_human") return state === "awaiting_human" || item.pending_decisions > 0;
     if (run === "active")
       return (
-        state === "queued" ||
-        state === "running" ||
-        state === "accepted" ||
-        state === "started"
+        state === "queued" || state === "running" || state === "accepted" || state === "started"
       );
     if (run === "partial") return state === "partial";
     if (run === "completed") return state === "completed";
@@ -309,13 +285,9 @@ export function latestDecision(finding: Finding) {
   return finding.decisions[finding.decisions.length - 1] ?? null;
 }
 
-export function filterFindings(
-  findings: Finding[],
-  filter: FindingFilter,
-): Finding[] {
+export function filterFindings(findings: Finding[], filter: FindingFilter): Finding[] {
   if (filter === "all") return findings;
-  if (filter === "conflict")
-    return findings.filter((finding) => finding.relation === "conflict");
+  if (filter === "conflict") return findings.filter((finding) => finding.relation === "conflict");
   if (filter === "insufficient")
     return findings.filter((finding) => finding.relation === "insufficient");
   return findings.filter((finding) => latestDecision(finding) === null);
@@ -333,9 +305,12 @@ export function sortFindings(findings: readonly Finding[]): Finding[] {
   return findings
     .map((finding, index) => ({ finding, index }))
     .sort((left, right) => {
-      const decided = Number(latestDecision(left.finding) !== null) - Number(latestDecision(right.finding) !== null);
+      const decided =
+        Number(latestDecision(left.finding) !== null) -
+        Number(latestDecision(right.finding) !== null);
       if (decided !== 0) return decided;
-      const severity = (FINDING_SEVERITY_ORDER[left.finding.severity ?? ""] ?? 4) -
+      const severity =
+        (FINDING_SEVERITY_ORDER[left.finding.severity ?? ""] ?? 4) -
         (FINDING_SEVERITY_ORDER[right.finding.severity ?? ""] ?? 4);
       return severity || left.index - right.index;
     })
@@ -346,7 +321,11 @@ export function findingQueue(findings: Finding[], filter: FindingFilter): Findin
   return filterFindings(sortFindings(findings), filter);
 }
 
-export function adjacentFindingId(queue: Finding[], selectedId: string | null, direction: -1 | 1): string | null {
+export function adjacentFindingId(
+  queue: Finding[],
+  selectedId: string | null,
+  direction: -1 | 1,
+): string | null {
   if (queue.length === 0) return null;
   const index = queue.findIndex((finding) => finding.id === selectedId);
   if (index === -1) return queue[direction === 1 ? 0 : queue.length - 1]?.id ?? null;
@@ -357,24 +336,48 @@ export function nextUndecidedFindingId(queue: Finding[], selectedId: string): st
   const index = queue.findIndex((finding) => finding.id === selectedId);
   const start = index < 0 ? 0 : index + 1;
   const candidates = [...queue.slice(start), ...queue.slice(0, Math.max(index, 0))];
-  return candidates.find((finding) => finding.id !== selectedId && latestDecision(finding) === null)?.id ?? null;
+  return (
+    candidates.find((finding) => finding.id !== selectedId && latestDecision(finding) === null)
+      ?.id ?? null
+  );
 }
 
 export type FindingBatchGroup = { ruleId: string; ruleVersion: string; relation: string };
 
 /** Only a unique, linked rule evaluation proves that findings share a rule. */
-export function findingBatchGroup(finding: Finding, evaluations: readonly ConstraintEvaluation[]): FindingBatchGroup | null {
+export function findingBatchGroup(
+  finding: Finding,
+  evaluations: readonly ConstraintEvaluation[],
+): FindingBatchGroup | null {
   if (finding.origin !== "rule" || !finding.relation || finding.relation === "unknown") return null;
   const linked = evaluations.filter((evaluation) => evaluation.finding_id === finding.id);
   if (linked.length !== 1) return null;
   const evaluation = linked[0];
-  if (!evaluation || !evaluation.rule_id.trim() || evaluation.domain !== finding.domain || evaluation.relation !== finding.relation) return null;
-  return { ruleId: evaluation.rule_id, ruleVersion: evaluation.rule_version, relation: finding.relation };
+  if (
+    !evaluation ||
+    !evaluation.rule_id.trim() ||
+    evaluation.domain !== finding.domain ||
+    evaluation.relation !== finding.relation
+  )
+    return null;
+  return {
+    ruleId: evaluation.rule_id,
+    ruleVersion: evaluation.rule_version,
+    relation: finding.relation,
+  };
 }
 
-export function sameFindingBatchGroup(left: FindingBatchGroup | null, right: FindingBatchGroup | null): boolean {
-  return left !== null && right !== null && left.ruleId === right.ruleId &&
-    left.ruleVersion === right.ruleVersion && left.relation === right.relation;
+export function sameFindingBatchGroup(
+  left: FindingBatchGroup | null,
+  right: FindingBatchGroup | null,
+): boolean {
+  return (
+    left !== null &&
+    right !== null &&
+    left.ruleId === right.ruleId &&
+    left.ruleVersion === right.ruleVersion &&
+    left.relation === right.relation
+  );
 }
 
 export function reviewLayout(viewportWidth: number): ReviewLayout {
@@ -405,14 +408,9 @@ export function parseRunEvent(data: string): RunEvent | null {
   }
   if (typeof value !== "object" || value === null) return null;
   const record = value as Record<string, unknown>;
-  if (
-    typeof record.seq !== "number" ||
-    !Number.isInteger(record.seq) ||
-    record.seq < 0
-  )
+  if (typeof record.seq !== "number" || !Number.isInteger(record.seq) || record.seq < 0)
     return null;
-  const type =
-    typeof record.event_type === "string" ? record.event_type : record.type;
+  const type = typeof record.event_type === "string" ? record.event_type : record.type;
   if (typeof type !== "string" || type === "") return null;
   const state =
     typeof record.status === "string"
@@ -447,12 +445,8 @@ export function readyDocumentCount(statuses: readonly string[]): number {
   return statuses.filter((status) => status === "ready").length;
 }
 
-export function selectedFindingId(
-  findings: Finding[],
-  requested: string | null,
-): string | null {
-  if (requested && findings.some((finding) => finding.id === requested))
-    return requested;
+export function selectedFindingId(findings: Finding[], requested: string | null): string | null {
+  if (requested && findings.some((finding) => finding.id === requested)) return requested;
   const ordered = sortFindings(findings);
   return ordered[0]?.id ?? null;
 }
@@ -462,8 +456,7 @@ export function latestRun(runs: WorkbenchRun[]): WorkbenchRun | null {
   return (
     [...runs].sort(
       (left, right) =>
-        right.updated_at.localeCompare(left.updated_at) ||
-        right.id.localeCompare(left.id),
+        right.updated_at.localeCompare(left.updated_at) || right.id.localeCompare(left.id),
     )[0] ?? null
   );
 }
@@ -477,7 +470,5 @@ export function caseHref(
   const base = `/cases/${encodeURIComponent(caseId)}`;
   if (runId === null) return base;
   const review = `${base}/reviews/${encodeURIComponent(runId)}`;
-  return attemptId === null
-    ? review
-    : `${review}?attempt_id=${encodeURIComponent(attemptId)}`;
+  return attemptId === null ? review : `${review}?attempt_id=${encodeURIComponent(attemptId)}`;
 }

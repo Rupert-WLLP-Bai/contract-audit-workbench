@@ -11,22 +11,8 @@
 import { SearchOutlined } from "@ant-design/icons";
 import { Menu, Tabs } from "antd";
 import { Collapse } from "antd";
-import {
-  Input,
-  Button,
-  Table,
-  Upload,
-  type TableProps,
-  type UploadFile,
-} from "antd";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
+import { Input, Button, Table, Upload, type TableProps, type UploadFile } from "antd";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   parseOpenApiContract,
   type OpenApiContract,
@@ -46,13 +32,7 @@ import { useSession } from "../api/queries";
 import { CircuitMark } from "../components/circuit-mark";
 import "./api-docs.css";
 
-type DocumentationSection =
-  | "docs"
-  | "reference"
-  | "auth"
-  | "sdk"
-  | "changelog"
-  | "community";
+type DocumentationSection = "docs" | "reference" | "auth" | "sdk" | "changelog" | "community";
 type ApiResponse =
   | {
       kind: "http";
@@ -76,9 +56,7 @@ const SECTIONS: { key: DocumentationSection; label: string }[] = [
 
 function MethodStamp({ method }: { method: string }) {
   return (
-    <span className={`api-method api-method-${method.toLocaleLowerCase("en-US")}`}>
-      {method}
-    </span>
+    <span className={`api-method api-method-${method.toLocaleLowerCase("en-US")}`}>{method}</span>
   );
 }
 
@@ -132,8 +110,7 @@ function ContractLoader({
           signal: controller.signal,
           headers: { Accept: "application/json" },
         });
-        if (!response.ok)
-          throw new Error(`接口契约加载失败（HTTP ${response.status}）`);
+        if (!response.ok) throw new Error(`接口契约加载失败（HTTP ${response.status}）`);
         let parsed: OpenApiContract;
         try {
           parsed = parseOpenApiContract(await response.json());
@@ -145,9 +122,7 @@ function ContractLoader({
         if (!controller.signal.aborted) onLoad(parsed);
       } catch (failure) {
         if (!controller.signal.aborted)
-          onError(
-            failure instanceof Error ? failure.message : "接口契约加载失败",
-          );
+          onError(failure instanceof Error ? failure.message : "接口契约加载失败");
       }
     })();
     return () => controller.abort();
@@ -193,9 +168,7 @@ function ParameterField({
       <Input
         aria-label={`${parameter.name} ${parameter.location}`}
         value={value}
-        placeholder={
-          example || (parameter.required ? "填写真实参数" : "可留空")
-        }
+        placeholder={example || (parameter.required ? "填写真实参数" : "可留空")}
         onChange={(event) => onChange(key, event.target.value)}
       />
     </label>
@@ -243,9 +216,7 @@ function OperationReference({
       title: "类型",
       key: "type",
       render: (_, field) =>
-        typeof field.schema.type === "string"
-          ? field.schema.type
-          : "见完整定义",
+        typeof field.schema.type === "string" ? field.schema.type : "见完整定义",
     },
     {
       title: "必填",
@@ -257,9 +228,7 @@ function OperationReference({
       key: "description",
       render: (_, field) =>
         field.description ||
-        (Array.isArray(field.schema.enum)
-          ? field.schema.enum.join(" / ")
-          : "未提供"),
+        (Array.isArray(field.schema.enum) ? field.schema.enum.join(" / ") : "未提供"),
     },
   ];
   return (
@@ -298,9 +267,7 @@ function OperationReference({
       </section>
       {operation.requestBody ? (
         <section className="api-contract-section">
-          <h2>
-            请求体{operation.requestBody.required ? "，必填" : "，可选"}
-          </h2>
+          <h2>请求体{operation.requestBody.required ? "，必填" : "，可选"}</h2>
           <p>
             {operation.requestBody.description || "OpenAPI 未提供请求体说明。"}
             <span className="api-contract-media">
@@ -327,9 +294,7 @@ function OperationReference({
                   label: "完整请求体 Schema",
                   children: (
                     <>
-                      <pre className="api-json-schema">
-                        {pretty(operation.requestBody.schema)}
-                      </pre>
+                      <pre className="api-json-schema">{pretty(operation.requestBody.schema)}</pre>
                     </>
                   ),
                 },
@@ -390,9 +355,7 @@ function ApiExplorer({
 }) {
   const [operationKey, setOperationKey] = useState("");
   const [filter, setFilter] = useState("");
-  const [parameterValues, setParameterValues] = useState<
-    Record<string, string>
-  >({});
+  const [parameterValues, setParameterValues] = useState<Record<string, string>>({});
   const [bodyText, setBodyText] = useState("");
   const [bodyValues, setBodyValues] = useState<Record<string, string>>({});
   const [bodyFiles, setBodyFiles] = useState<Record<string, File[]>>({});
@@ -404,10 +367,7 @@ function ApiExplorer({
   const requestPanelRef = useRef<HTMLElement | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
 
-  const groups = useMemo(
-    () => operationGroups(contract, filter),
-    [contract, filter],
-  );
+  const groups = useMemo(() => operationGroups(contract, filter), [contract, filter]);
   const firstListedOperation = groups[0]?.operations[0] ?? null;
   const operation =
     contract.operations.find((entry) => entry.key === operationKey) ??
@@ -425,8 +385,7 @@ function ApiExplorer({
     } catch (failure) {
       return {
         fields: [],
-        error:
-          failure instanceof Error ? failure.message : "请求体 schema 无效。",
+        error: failure instanceof Error ? failure.message : "请求体 schema 无效。",
       };
     }
   }, [contract.raw, requestBody]);
@@ -441,16 +400,11 @@ function ApiExplorer({
         schemaRoot: contract.raw,
       })
     : { request: null, error: "请选择 OpenAPI 操作。" };
-  const code = operation
-    ? apiRequestCode(operation, built.request, contract.raw)
-    : null;
+  const code = operation ? apiRequestCode(operation, built.request, contract.raw) : null;
   useEffect(() => onCodeChange(code), [code, onCodeChange]);
   const hasCookieParameter =
-    operation?.parameters.some(
-      (parameter) => parameter.location === "cookie",
-    ) ?? false;
-  const hasExample =
-    requestBody?.example !== null && requestBody?.example !== undefined;
+    operation?.parameters.some((parameter) => parameter.location === "cookie") ?? false;
+  const hasExample = requestBody?.example !== null && requestBody?.example !== undefined;
   const binaryRequest = bodyMode === "binary";
 
   function selectOperation(next: OpenApiOperation) {
@@ -536,9 +490,7 @@ function ApiExplorer({
         status: httpResponse.status,
         statusText: httpResponse.statusText,
         ok: httpResponse.ok,
-        headers: [...httpResponse.headers.entries()].map(
-          ([name, value]) => `${name}: ${value}`,
-        ),
+        headers: [...httpResponse.headers.entries()].map(([name, value]) => `${name}: ${value}`),
         body: rawBody,
       });
     } catch (failure) {
@@ -575,9 +527,7 @@ function ApiExplorer({
           inlineIndent={12}
           selectedKeys={operation ? [operation.key] : []}
           onClick={({ key }) => {
-            const selectedOperation = contract.operations.find(
-              (item) => item.key === key,
-            );
+            const selectedOperation = contract.operations.find((item) => item.key === key);
             if (selectedOperation) selectOperation(selectedOperation);
           }}
           items={groups.map((group) => ({
@@ -595,17 +545,11 @@ function ApiExplorer({
             })),
           }))}
         />
-        {groups.length === 0 ? (
-          <p className="api-filter-empty">没有匹配的接口</p>
-        ) : null}
+        {groups.length === 0 ? <p className="api-filter-empty">没有匹配的接口</p> : null}
       </aside>
       {operation ? (
         <>
-          <main
-            ref={referenceRef}
-            className="api-reference-content"
-            aria-label="接口详细文档"
-          >
+          <main ref={referenceRef} className="api-reference-content" aria-label="接口详细文档">
             <OperationReference
               key={operation.key}
               operation={operation}
@@ -613,11 +557,7 @@ function ApiExplorer({
               bodyFields={bodyFieldsResult.fields}
             />
           </main>
-          <aside
-            ref={requestPanelRef}
-            className="api-request-panel"
-            aria-label="真实请求调试区"
-          >
+          <aside ref={requestPanelRef} className="api-request-panel" aria-label="真实请求调试区">
             <header className="api-request-head">
               <div>
                 <h2>试运行</h2>
@@ -651,9 +591,8 @@ function ApiExplorer({
                   Cookie 参数由浏览器会话管理。此处不会收集或覆盖身份 Cookie。
                 </p>
               ) : null}
-              {operation.parameters.filter(
-                (parameter) => parameter.location !== "cookie",
-              ).length > 0 ? (
+              {operation.parameters.filter((parameter) => parameter.location !== "cookie").length >
+              0 ? (
                 <section className="api-request-fields">
                   <h3>路径、查询与 Header 参数</h3>
                   {operation.parameters
@@ -663,11 +602,7 @@ function ApiExplorer({
                         key={`${parameter.location}:${parameter.name}`}
                         operation={operation}
                         parameter={parameter}
-                        value={
-                          parameterValues[
-                            apiParameterInputKey(operation, parameter)
-                          ] ?? ""
-                        }
+                        value={parameterValues[apiParameterInputKey(operation, parameter)] ?? ""}
                         onChange={updateParameter}
                       />
                     ))}
@@ -678,9 +613,7 @@ function ApiExplorer({
               {requestBody ? (
                 <section className="api-request-body" aria-label="请求体编辑器">
                   <div className="api-request-body-heading">
-                    <h3>
-                      请求体{requestBody.required ? "，必填" : "，可选"}
-                    </h3>
+                    <h3>请求体{requestBody.required ? "，必填" : "，可选"}</h3>
                     <span>{requestBody.mediaType ?? "媒体类型未声明"}</span>
                   </div>
                   {bodyMode === "multipart" || bodyMode === "urlencoded" ? (
@@ -704,9 +637,7 @@ function ApiExplorer({
                             </small>
                           </span>
                           {field.description ? (
-                            <small className="api-field-description">
-                              {field.description}
-                            </small>
+                            <small className="api-field-description">{field.description}</small>
                           ) : null}
                           {field.file ? (
                             <Upload
@@ -715,15 +646,11 @@ function ApiExplorer({
                               data-request-body-field={field.name}
                               multiple={field.multiple}
                               beforeUpload={() => false}
-                              fileList={(bodyFiles[field.name] ?? []).map(
-                                (file, index) => ({
-                                  uid: uploadFileUid(file, index),
-                                  name: file.name,
-                                }),
-                              )}
-                              onChange={({ fileList }) =>
-                                handleUploadChange(field.name, fileList)
-                              }
+                              fileList={(bodyFiles[field.name] ?? []).map((file, index) => ({
+                                uid: uploadFileUid(file, index),
+                                name: file.name,
+                              }))}
+                              onChange={({ fileList }) => handleUploadChange(field.name, fileList)}
                             >
                               <Button aria-label={"选择文件"} htmlType="button">
                                 选择文件
@@ -734,9 +661,7 @@ function ApiExplorer({
                               aria-label={`请求体 ${field.name}`}
                               value={bodyValues[field.name] ?? ""}
                               placeholder="填写 JSON 对象"
-                              onChange={(event) =>
-                                updateBodyValue(field.name, event.target.value)
-                              }
+                              onChange={(event) => updateBodyValue(field.name, event.target.value)}
                             />
                           ) : (
                             <Input
@@ -749,9 +674,7 @@ function ApiExplorer({
                                     ? "填写真实字段值"
                                     : "可留空"
                               }
-                              onChange={(event) =>
-                                updateBodyValue(field.name, event.target.value)
-                              }
+                              onChange={(event) => updateBodyValue(field.name, event.target.value)}
                             />
                           )}
                         </label>
@@ -765,8 +688,7 @@ function ApiExplorer({
                       ) : null}
                       {bodyMode === "multipart" ? (
                         <p className="api-request-body-note">
-                          文件以浏览器所选原件作为 multipart part
-                          发送；浏览器会自动添加 boundary。
+                          文件以浏览器所选原件作为 multipart part 发送；浏览器会自动添加 boundary。
                         </p>
                       ) : null}
                     </>
@@ -781,12 +703,10 @@ function ApiExplorer({
                         aria-label="请求原件"
                         data-request-body-field="__request_body__"
                         beforeUpload={() => false}
-                        fileList={(bodyFiles.__request_body__ ?? []).map(
-                          (file, index) => ({
-                            uid: uploadFileUid(file, index),
-                            name: file.name,
-                          }),
-                        )}
+                        fileList={(bodyFiles.__request_body__ ?? []).map((file, index) => ({
+                          uid: uploadFileUid(file, index),
+                          name: file.name,
+                        }))}
                         onChange={({ fileList }) =>
                           handleUploadChange("__request_body__", fileList)
                         }
@@ -814,8 +734,7 @@ function ApiExplorer({
                       />
                     </label>
                   )}
-                  {hasExample &&
-                  (bodyMode === "json" || bodyMode === "text") ? (
+                  {hasExample && (bodyMode === "json" || bodyMode === "text") ? (
                     <Button
                       aria-label={"使用 OpenAPI 契约示例"}
                       className="api-example-button"
@@ -872,17 +791,14 @@ function ApiExplorer({
                           children: (
                             <>
                               <pre>
-                                {response.headers.join("\n") ||
-                                  "没有可读取的响应 Header。"}
+                                {response.headers.join("\n") || "没有可读取的响应 Header。"}
                               </pre>
                             </>
                           ),
                         },
                       ]}
                     />
-                    <pre className="api-response-body">
-                      {response.body || "（响应体为空）"}
-                    </pre>
+                    <pre className="api-response-body">{response.body || "（响应体为空）"}</pre>
                   </>
                 ) : response.kind === "network-error" ? (
                   <p role="alert">{response.message}</p>
@@ -936,9 +852,7 @@ function SectionContent({
             </dd>
           </div>
         </dl>
-        <p>
-          页面不会要求输入身份 Cookie 或远程服务地址；请求通过当前页面同源发送。
-        </p>
+        <p>页面不会要求输入身份 Cookie 或远程服务地址；请求通过当前页面同源发送。</p>
       </section>
     );
   if (section === "sdk")
@@ -947,17 +861,14 @@ function SectionContent({
         <h1>SDK 资源</h1>
         <p>
           当前 OpenAPI 契约没有声明已发布的 SDK
-          包或下载资源。请求区提供基于实际操作、参数和同源会话生成的 Fetch
-          调用代码。
+          包或下载资源。请求区提供基于实际操作、参数和同源会话生成的 Fetch 调用代码。
         </p>
         {sampleCode ? (
           <pre className="api-section-code">
             <code>{sampleCode}</code>
           </pre>
         ) : (
-          <p className="api-no-data">
-            选择 API 参考中的操作并填写必填参数后，可查看同源调用代码。
-          </p>
+          <p className="api-no-data">选择 API 参考中的操作并填写必填参数后，可查看同源调用代码。</p>
         )}
       </section>
     );
@@ -979,10 +890,7 @@ function SectionContent({
             <dd>{contract.version}</dd>
           </div>
         </dl>
-        <p>
-          当前 OpenAPI 文档未声明独立的 API
-          更新日志资源；此处显示本次读取到的服务端契约版本。
-        </p>
+        <p>当前 OpenAPI 文档未声明独立的 API 更新日志资源；此处显示本次读取到的服务端契约版本。</p>
       </section>
     );
   if (section === "community")
@@ -1031,8 +939,7 @@ function SectionContent({
           <li key={tag}>
             <span className="api-docs-tag-name">{tag}</span>
             <span className="api-docs-tag-description">
-              {contract.tags.find((entry) => entry.name === tag)?.description ||
-                "—"}
+              {contract.tags.find((entry) => entry.name === tag)?.description || "—"}
             </span>
             <span className="api-docs-tag-count">{operations.length}</span>
           </li>
@@ -1093,9 +1000,7 @@ export default function ApiDocsPage() {
           />
         </nav>
         <div className="api-docs-session">
-          {session.data
-            ? `${session.data.display_name}，${session.data.role}`
-            : "当前会话"}
+          {session.data ? `${session.data.display_name}，${session.data.role}` : "当前会话"}
         </div>
       </header>
       {error ? (
@@ -1120,11 +1025,7 @@ export default function ApiDocsPage() {
       ) : section === "reference" ? (
         <ApiExplorer contract={contract} onCodeChange={setSampleCode} />
       ) : (
-        <SectionContent
-          section={section}
-          contract={contract}
-          sampleCode={sampleCode}
-        />
+        <SectionContent section={section} contract={contract} sampleCode={sampleCode} />
       )}
     </div>
   );

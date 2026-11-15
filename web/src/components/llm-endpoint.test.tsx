@@ -9,13 +9,7 @@
 // End file metadata.
 
 import { useState } from "react";
-import {
-  cleanup,
-  fireEvent,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -131,9 +125,7 @@ describe("LLM endpoint settings", () => {
       target: { value: "https://new.example.com/v1" },
     });
     expect(
-      screen.getByText(
-        "端点地址已更改：请重新输入密钥，或勾选清除已保存的密钥",
-      ),
+      screen.getByText("端点地址已更改：请重新输入密钥，或勾选清除已保存的密钥"),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "保存端点" }));
     expect(save).not.toHaveBeenCalled();
@@ -153,26 +145,14 @@ describe("LLM endpoint settings", () => {
     clients.push(client);
     render(
       <QueryClientProvider client={client}>
-        <LLMModelSelection
-          endpoint={endpoint}
-          loading={false}
-          onConfigure={() => undefined}
-        />
+        <LLMModelSelection endpoint={endpoint} loading={false} onConfigure={() => undefined} />
       </QueryClientProvider>,
     );
 
     const saveButton = screen.getByRole("button", { name: "保存模型选择" });
     expect(saveButton).toBeDisabled();
-    await chooseScopedOption(
-      user,
-      screen.getByRole("combobox", { name: "审查模型" }),
-      "gamma",
-    );
-    await chooseScopedOption(
-      user,
-      screen.getByRole("combobox", { name: "图片转写模型" }),
-      "alpha",
-    );
+    await chooseScopedOption(user, screen.getByRole("combobox", { name: "审查模型" }), "gamma");
+    await chooseScopedOption(user, screen.getByRole("combobox", { name: "图片转写模型" }), "alpha");
     expect(saveButton).toBeEnabled();
     await user.click(saveButton);
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));

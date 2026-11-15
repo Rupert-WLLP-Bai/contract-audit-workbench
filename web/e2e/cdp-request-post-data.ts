@@ -26,7 +26,10 @@ export async function readCDPRequestPostData(input: CDPRequestPostDataInput): Pr
     response = await Promise.race([
       input.getRequestPostData(input.requestId, input.sessionId),
       new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => reject(new Error("timed out reading CDP request body after 10000ms")), 10000);
+        timeout = setTimeout(
+          () => reject(new Error("timed out reading CDP request body after 10000ms")),
+          10000,
+        );
       }),
     ]);
   } finally {
@@ -35,10 +38,8 @@ export async function readCDPRequestPostData(input: CDPRequestPostDataInput): Pr
   if (response === null || typeof response !== "object" || Array.isArray(response))
     throw new Error("CDP returned an invalid request-body response");
   const record = response as Record<string, unknown>;
-  if (typeof record.postData !== "string")
-    throw new Error("CDP returned no request body");
-  if (record.base64Encoded === true)
-    return Buffer.from(record.postData, "base64").toString("utf8");
+  if (typeof record.postData !== "string") throw new Error("CDP returned no request body");
+  if (record.base64Encoded === true) return Buffer.from(record.postData, "base64").toString("utf8");
   if (record.base64Encoded !== undefined && typeof record.base64Encoded !== "boolean")
     throw new Error("CDP returned an invalid base64Encoded flag");
   return record.postData;

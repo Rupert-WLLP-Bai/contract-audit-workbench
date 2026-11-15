@@ -249,7 +249,8 @@
   color: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease-out),
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out);
 }
 

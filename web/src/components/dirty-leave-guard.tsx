@@ -16,13 +16,7 @@ import { useBlocker } from "react-router";
 // refresh are covered by the beforeunload listener below. Both stay inert
 // until `dirty` becomes true. Drafts live in memory, so SPA navigation keeps
 // them and only closing or reloading the tab loses them.
-export function DirtyLeaveGuard({
-  dirty,
-  description,
-}: {
-  dirty: boolean;
-  description?: string;
-}) {
+export function DirtyLeaveGuard({ dirty, description }: { dirty: boolean; description?: string }) {
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
       dirty && currentLocation.pathname !== nextLocation.pathname,

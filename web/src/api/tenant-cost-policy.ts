@@ -35,7 +35,9 @@ export interface TenantCostPolicy {
   month: TenantCostPolicyWindow;
 }
 
-const { object, text, bool, invalid } = responseReader((path) => `租户费用政策响应中的 ${path} 无法识别`);
+const { object, text, bool, invalid } = responseReader(
+  (path) => `租户费用政策响应中的 ${path} 无法识别`,
+);
 function nullableAmount(value: unknown, path: string): string | null {
   if (value === null) return null;
   const result = text(value, path);
@@ -60,7 +62,13 @@ function windowValue(value: unknown, path: string, pattern: RegExp): TenantCostP
 }
 function parseTenantCostPolicy(value: unknown): TenantCostPolicy {
   const item = object(value, "tenant_cost_policy");
-  if (item.schema_version !== "tenant-cost-policy/v1" || item.currency !== "USD" || item.minor_unit_scale !== 6 || item.timezone !== "UTC") return invalid("identity_or_unit");
+  if (
+    item.schema_version !== "tenant-cost-policy/v1" ||
+    item.currency !== "USD" ||
+    item.minor_unit_scale !== 6 ||
+    item.timezone !== "UTC"
+  )
+    return invalid("identity_or_unit");
   const priceState = text(item.price_state, "price_state");
   if (priceState !== "known" && priceState !== "unconfigured") return invalid("price_state");
   const result: TenantCostPolicy = {
@@ -68,13 +76,17 @@ function parseTenantCostPolicy(value: unknown): TenantCostPolicy {
     tenant_id: text(item.tenant_id, "tenant_id"),
     revision: text(item.revision, "revision"),
     configured: bool(item.configured, "configured"),
-    currency: "USD", minor_unit_scale: 6, timezone: "UTC", price_state: priceState,
+    currency: "USD",
+    minor_unit_scale: 6,
+    timezone: "UTC",
+    price_state: priceState,
     day_limit_minor: nullableAmount(item.day_limit_minor, "day_limit_minor"),
     month_limit_minor: nullableAmount(item.month_limit_minor, "month_limit_minor"),
     day: windowValue(item.day, "day", /^\d{4}-\d{2}-\d{2}$/),
     month: windowValue(item.month, "month", /^\d{4}-\d{2}$/),
   };
-  if (!result.tenant_id || !/^(0|[1-9][0-9]*)$/.test(result.revision)) return invalid("identity_or_revision");
+  if (!result.tenant_id || !/^(0|[1-9][0-9]*)$/.test(result.revision))
+    return invalid("identity_or_revision");
   return result;
 }
 
@@ -88,10 +100,18 @@ export function updateTenantCostCaps(
   monthLimitMinor: string | null,
   commandContext: CommandContext,
 ): Promise<TenantCostPolicy> {
-  return requestJson(TENANT_COST_POLICY_PATH, {
-    ...jsonInit("PUT", { expected_revision: expectedRevision, day_limit_minor: dayLimitMinor, month_limit_minor: monthLimitMinor }),
-    commandContext,
-  }, parseTenantCostPolicy);
+  return requestJson(
+    TENANT_COST_POLICY_PATH,
+    {
+      ...jsonInit("PUT", {
+        expected_revision: expectedRevision,
+        day_limit_minor: dayLimitMinor,
+        month_limit_minor: monthLimitMinor,
+      }),
+      commandContext,
+    },
+    parseTenantCostPolicy,
+  );
 }
 export function useTenantCostPolicy(tenantId: string | undefined, enabled: boolean) {
   return useQuery({

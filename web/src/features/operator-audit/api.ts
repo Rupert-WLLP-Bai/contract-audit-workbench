@@ -62,10 +62,7 @@ export interface OperatorAuditClient {
     input: CreateExternalCollectionJobInput,
     idempotencyKey: string,
   ): Promise<ExternalCollectionJob>;
-  listExternalSnapshots(
-    caseId: string,
-    signal?: AbortSignal,
-  ): Promise<ExternalObservation[]>;
+  listExternalSnapshots(caseId: string, signal?: AbortSignal): Promise<ExternalObservation[]>;
   createFulfillmentEvaluation(
     caseId: string,
     input: FulfillmentEvaluationInput,
@@ -76,11 +73,7 @@ export interface OperatorAuditClient {
     evaluationId: string,
     signal?: AbortSignal,
   ): Promise<FulfillmentEvaluation>;
-  getImpactPlan(
-    caseId: string,
-    evaluationId: string,
-    signal?: AbortSignal,
-  ): Promise<ImpactPlan>;
+  getImpactPlan(caseId: string, evaluationId: string, signal?: AbortSignal): Promise<ImpactPlan>;
 }
 
 const { invalid, object: asRecord } = responseReader(
@@ -88,11 +81,7 @@ const { invalid, object: asRecord } = responseReader(
 );
 
 /** Accept both `{ [key]: value }` and the bare object for single resources. */
-function unwrap(
-  value: unknown,
-  key: string,
-  field: string,
-): Record<string, unknown> {
+function unwrap(value: unknown, key: string, field: string): Record<string, unknown> {
   const item = asRecord(value, field);
   const nested = item[key];
   if (nested === undefined || nested === null) return item;
@@ -121,10 +110,7 @@ function optionalBoolean(value: unknown): boolean | null {
 
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value.filter(
-    (entry): entry is string =>
-      typeof entry === "string" && entry.trim() !== "",
-  );
+  return value.filter((entry): entry is string => typeof entry === "string" && entry.trim() !== "");
 }
 
 function recordList(value: unknown, field: string): unknown[] {
@@ -169,29 +155,18 @@ const availability = (value: unknown): Availability =>
   ]) ?? "unknown";
 
 const bindingStatus = (value: unknown): BindingStatus =>
-  enumValue<Exclude<BindingStatus, "unknown">>(value, [
-    "confirmed",
-    "missing",
-    "ambiguous",
-  ]) ?? "unknown";
-
-const impactMode = (value: unknown): ImpactMode =>
-  enumValue<Exclude<ImpactMode, "unknown">>(value, ["explain", "shadow"]) ??
+  enumValue<Exclude<BindingStatus, "unknown">>(value, ["confirmed", "missing", "ambiguous"]) ??
   "unknown";
 
+const impactMode = (value: unknown): ImpactMode =>
+  enumValue<Exclude<ImpactMode, "unknown">>(value, ["explain", "shadow"]) ?? "unknown";
+
 const impactAction = (value: unknown): ImpactAction =>
-  enumValue<Exclude<ImpactAction, "unknown">>(value, [
-    "recompute",
-    "reuse_candidate",
-    "deny",
-  ]) ?? "unknown";
+  enumValue<Exclude<ImpactAction, "unknown">>(value, ["recompute", "reuse_candidate", "deny"]) ??
+  "unknown";
 
 const impactFallback = (value: unknown): ImpactFallback =>
-  enumValue<Exclude<ImpactFallback, "unknown">>(value, [
-    "none",
-    "full",
-    "deny",
-  ]) ?? "unknown";
+  enumValue<Exclude<ImpactFallback, "unknown">>(value, ["none", "full", "deny"]) ?? "unknown";
 
 export function parsePackRef(value: unknown): PackRef | null {
   if (value === undefined || value === null) return null;
@@ -203,16 +178,14 @@ export function parsePackRef(value: unknown): PackRef | null {
 
 export function parseCapabilityPack(value: unknown): CapabilityPack {
   const item = asRecord(value, "capability pack");
-  const capabilities = recordList(item.capabilities, "capabilities").map(
-    (entry) => {
-      const capability = asRecord(entry, "capability");
-      return {
-        id: requiredString(capability.id, "capability.id"),
-        effect: optionalString(capability.effect),
-        connectorRef: optionalString(capability.connector_ref),
-      };
-    },
-  );
+  const capabilities = recordList(item.capabilities, "capabilities").map((entry) => {
+    const capability = asRecord(entry, "capability");
+    return {
+      id: requiredString(capability.id, "capability.id"),
+      effect: optionalString(capability.effect),
+      connectorRef: optionalString(capability.connector_ref),
+    };
+  });
   const checks = recordList(item.checks, "checks").map((entry) => {
     const check = asRecord(entry, "capability check");
     return {
@@ -262,9 +235,7 @@ export function parseObjectBinding(value: unknown): ObjectBinding {
     },
     externalObject: {
       connectorId: external ? optionalString(external.connector_id) : null,
-      externalObjectId: external
-        ? optionalString(external.external_object_id)
-        : null,
+      externalObjectId: external ? optionalString(external.external_object_id) : null,
     },
     confirmedBy: optionalString(item.confirmed_by),
     confirmedAt: optionalString(item.confirmed_at),
@@ -273,9 +244,7 @@ export function parseObjectBinding(value: unknown): ObjectBinding {
   };
 }
 
-export function parseExternalCollectionJob(
-  value: unknown,
-): ExternalCollectionJob {
+export function parseExternalCollectionJob(value: unknown): ExternalCollectionJob {
   const item = unwrap(value, "job", "external collection job");
   return {
     jobId: requiredString(item.job_id ?? item.id, "job_id"),
@@ -340,9 +309,7 @@ function parseContractFact(value: unknown): ContractFact {
   };
 }
 
-export function parseExternalObservationList(
-  value: unknown,
-): ExternalObservation[] {
+export function parseExternalObservationList(value: unknown): ExternalObservation[] {
   return listItems(value, "external snapshots").map(parseExternalObservation);
 }
 
@@ -384,15 +351,10 @@ export function parseCheckResult(value: unknown): CheckResult {
   };
 }
 
-export function parseFulfillmentEvaluationRef(
-  value: unknown,
-): FulfillmentEvaluationRef {
+export function parseFulfillmentEvaluationRef(value: unknown): FulfillmentEvaluationRef {
   const item = unwrap(value, "evaluation", "fulfillment evaluation ref");
   return {
-    evaluationId: requiredString(
-      item.evaluation_id ?? item.id,
-      "evaluation_id",
-    ),
+    evaluationId: requiredString(item.evaluation_id ?? item.id, "evaluation_id"),
     jobId: optionalString(item.job_id),
   };
 }
@@ -418,60 +380,60 @@ function parseFulfillmentObject(value: unknown): FulfillmentObject {
     factRefs: recordList(item.fact_refs, "fact_refs"),
     facts: recordList(item.facts, "object facts").map(parseContractFact),
     checks: recordList(item.checks, "object checks").map(parseCheckResult),
-    source: source === null ? null : {
-      runId: optionalString(source.run_id),
-      attemptId: optionalString(source.attempt_id),
-      associationRunId: optionalString(source.association_run_id),
-      associationAttemptId: optionalString(source.association_attempt_id),
-      materialId: optionalString(source.material_id),
-      materialVersion: optionalNumber(source.material_version),
-      documentId: optionalString(source.document_id),
-      parsedDocumentId: optionalString(source.parsed_document_id),
-      purpose: optionalString(source.purpose),
-    },
+    source:
+      source === null
+        ? null
+        : {
+            runId: optionalString(source.run_id),
+            attemptId: optionalString(source.attempt_id),
+            associationRunId: optionalString(source.association_run_id),
+            associationAttemptId: optionalString(source.association_attempt_id),
+            materialId: optionalString(source.material_id),
+            materialVersion: optionalNumber(source.material_version),
+            documentId: optionalString(source.document_id),
+            parsedDocumentId: optionalString(source.parsed_document_id),
+            purpose: optionalString(source.purpose),
+          },
   };
 }
 
-export function parseFulfillmentEvaluation(
-  value: unknown,
-): FulfillmentEvaluation {
+export function parseFulfillmentEvaluation(value: unknown): FulfillmentEvaluation {
   const item = unwrap(value, "evaluation", "fulfillment evaluation");
   const scope = item.scope == null ? null : asRecord(item.scope, "evaluation scope");
   const coverage = item.coverage == null ? null : asRecord(item.coverage, "evaluation coverage");
   return {
-    evaluationId: requiredString(
-      item.evaluation_id ?? item.id,
-      "evaluation_id",
-    ),
+    evaluationId: requiredString(item.evaluation_id ?? item.id, "evaluation_id"),
     sourceReviewId: optionalString(item.source_review_id),
     sourceAttemptId: optionalString(item.source_attempt_id),
     pack: parsePackRef(item.pack_ref ?? item.pack),
-    contractVersion: optionalString(
-      item.contract_version ?? item.contract_version_id,
-    ),
+    contractVersion: optionalString(item.contract_version ?? item.contract_version_id),
     rulePackVersion: optionalString(item.rule_pack_version),
     objectBindingVersion: optionalString(item.object_binding_version),
     snapshotSetId: optionalString(item.snapshot_set_id),
     businessAt: optionalString(item.business_at),
     evidenceCutoffAt: optionalString(item.evidence_cutoff_at),
-    scope: scope === null ? null : {
-      kind: optionalString(scope.kind),
-      serviceObjectIds: stringList(scope.service_object_ids),
-    },
-    coverage: coverage === null ? null : {
-      scopeKind: optionalString(coverage.scope_kind),
-      candidateCount: optionalNumber(coverage.candidate_count),
-      evaluatedCount: optionalNumber(coverage.evaluated_count),
-      unresolvedCount: optionalNumber(coverage.unresolved_count),
-      insufficientCount: optionalNumber(coverage.insufficient_count),
-      status: optionalString(coverage.status),
-      reasonCode: optionalString(coverage.reason_code),
-    },
+    scope:
+      scope === null
+        ? null
+        : {
+            kind: optionalString(scope.kind),
+            serviceObjectIds: stringList(scope.service_object_ids),
+          },
+    coverage:
+      coverage === null
+        ? null
+        : {
+            scopeKind: optionalString(coverage.scope_kind),
+            candidateCount: optionalNumber(coverage.candidate_count),
+            evaluatedCount: optionalNumber(coverage.evaluated_count),
+            unresolvedCount: optionalNumber(coverage.unresolved_count),
+            insufficientCount: optionalNumber(coverage.insufficient_count),
+            status: optionalString(coverage.status),
+            reasonCode: optionalString(coverage.reason_code),
+          },
     objects: recordList(item.objects, "evaluation objects").map(parseFulfillmentObject),
     checks: recordList(item.checks, "checks").map(parseCheckResult),
-    contractFacts: recordList(item.contract_facts, "contract_facts").map(
-      parseContractFact,
-    ),
+    contractFacts: recordList(item.contract_facts, "contract_facts").map(parseContractFact),
     dataClass: optionalString(item.data_class),
   };
 }
@@ -504,13 +466,7 @@ export function parseImpactPlan(value: unknown): ImpactPlan {
 
 function idempotencyHeaders(key: string): Record<string, string> {
   if (typeof key !== "string" || key.trim() === "") {
-    throw new ApiError(
-      "写请求缺少幂等键，未发送请求",
-      0,
-      "invalid_request",
-      false,
-      null,
-    );
+    throw new ApiError("写请求缺少幂等键，未发送请求", 0, "invalid_request", false, null);
   }
   return { "Idempotency-Key": key };
 }
@@ -558,20 +514,14 @@ export function createHttpOperatorAuditClient(): OperatorAuditClient {
     },
     getFulfillmentEvaluation(caseId, evaluationId, signal) {
       return requestJson(
-        casePath(
-          caseId,
-          `fulfillment-evaluations/${encodeURIComponent(evaluationId)}`,
-        ),
+        casePath(caseId, `fulfillment-evaluations/${encodeURIComponent(evaluationId)}`),
         { method: "GET", signal },
         parseFulfillmentEvaluation,
       );
     },
     getImpactPlan(caseId, evaluationId, signal) {
       return requestJson(
-        casePath(
-          caseId,
-          `fulfillment-evaluations/${encodeURIComponent(evaluationId)}/impact`,
-        ),
+        casePath(caseId, `fulfillment-evaluations/${encodeURIComponent(evaluationId)}/impact`),
         { method: "GET", signal },
         parseImpactPlan,
       );

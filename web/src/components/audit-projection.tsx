@@ -12,9 +12,7 @@ import { Collapse } from "antd";
 import type { AuditEvent, BusinessAuditEvent } from "../api/types";
 
 function eventLabel(eventType: string): string {
-  return Object.hasOwn(EVENT_LABELS, eventType)
-    ? EVENT_LABELS[eventType]!
-    : "其他审查记录";
+  return Object.hasOwn(EVENT_LABELS, eventType) ? EVENT_LABELS[eventType]! : "其他审查记录";
 }
 
 const EVENT_LABELS: Record<string, string> = {
@@ -51,55 +49,60 @@ export function AuditProjection({ runId, events, showDiagnostics = false }: Audi
                     {events.map((event) => (
                       <li key={event.event_id}>
                         {showDiagnostics ? (
-                        <Collapse
-                          items={[
-                            {
-                              key: "content",
-                              label: (
-                                <>
-                                  序号 {event.seq}，{event.event_type}，{" "}
-                                  {event.actor}
-                                </>
-                              ),
-                              children: (
-                                <>
-                                  <dl className="execution-dl">
-                                    <div>
-                                      <dt>事件编号</dt>
-                                      <dd>{event.event_id}</dd>
-                                    </div>
-                                    <div>
-                                      <dt>审查编号</dt>
-                                      <dd>{event.run_id}</dd>
-                                    </div>
-                                    {"hash" in event ? (
-                                      <>
-                                        <div>
-                                          <dt>记录摘要</dt>
-                                          <dd><code>{event.hash}</code></dd>
-                                        </div>
-                                        <div>
-                                          <dt>前序摘要</dt>
-                                          <dd><code>{event.prev_hash || "起始记录"}</code></dd>
-                                        </div>
-                                      </>
-                                    ) : null}
-                                    <div>
-                                      <dt>关联编号</dt>
-                                      <dd>
-                                        {event.correlation_ids.length === 0
-                                          ? "未提供"
-                                          : event.correlation_ids.join("、")}
-                                      </dd>
-                                    </div>
-                                  </dl>
-                                </>
-                              ),
-                            },
-                          ]}
-                        />
+                          <Collapse
+                            items={[
+                              {
+                                key: "content",
+                                label: (
+                                  <>
+                                    序号 {event.seq}，{event.event_type}， {event.actor}
+                                  </>
+                                ),
+                                children: (
+                                  <>
+                                    <dl className="execution-dl">
+                                      <div>
+                                        <dt>事件编号</dt>
+                                        <dd>{event.event_id}</dd>
+                                      </div>
+                                      <div>
+                                        <dt>审查编号</dt>
+                                        <dd>{event.run_id}</dd>
+                                      </div>
+                                      {"hash" in event ? (
+                                        <>
+                                          <div>
+                                            <dt>记录摘要</dt>
+                                            <dd>
+                                              <code>{event.hash}</code>
+                                            </dd>
+                                          </div>
+                                          <div>
+                                            <dt>前序摘要</dt>
+                                            <dd>
+                                              <code>{event.prev_hash || "起始记录"}</code>
+                                            </dd>
+                                          </div>
+                                        </>
+                                      ) : null}
+                                      <div>
+                                        <dt>关联编号</dt>
+                                        <dd>
+                                          {event.correlation_ids.length === 0
+                                            ? "未提供"
+                                            : event.correlation_ids.join("、")}
+                                        </dd>
+                                      </div>
+                                    </dl>
+                                  </>
+                                ),
+                              },
+                            ]}
+                          />
                         ) : (
-                          <p>记录 {event.seq}，{eventLabel(event.event_type)}</p>
+                          <p>
+                            记录 {event.seq}，{eventLabel(event.event_type)}
+                          </p>
                         )}
                       </li>
                     ))}

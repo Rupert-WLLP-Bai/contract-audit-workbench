@@ -10,7 +10,9 @@
 
 import { test, expect, adminURL, uiLogin } from "./helpers";
 
-test("admin settings keeps the header and side rail pinned while the endpoint modal locks the page", async ({ page }) => {
+test("admin settings keeps the header and side rail pinned while the endpoint modal locks the page", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await uiLogin(page, "admin");
   await page.goto(`${new URL(adminURL).origin}/admin/settings`);
@@ -39,7 +41,9 @@ test("admin settings keeps the header and side rail pinned while the endpoint mo
   await page.getByRole("button", { name: "取消" }).click();
   await expect(dialog).toBeHidden();
   const beforeCloseWheel = await page.evaluate(() => scrollY);
-  const canScrollDown = await page.evaluate(() => scrollY + innerHeight < document.documentElement.scrollHeight);
+  const canScrollDown = await page.evaluate(
+    () => scrollY + innerHeight < document.documentElement.scrollHeight,
+  );
   await page.mouse.move(1200, 300);
   await page.mouse.wheel(0, canScrollDown ? 200 : -200);
   await expect.poll(async () => page.evaluate(() => scrollY)).not.toBe(beforeCloseWheel);

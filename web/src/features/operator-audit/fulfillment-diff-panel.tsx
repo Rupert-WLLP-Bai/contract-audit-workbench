@@ -11,10 +11,7 @@
 import { Button, Card } from "antd";
 import { PageStatus } from "../../components/page-status";
 import { StatusText } from "../../components/status-text";
-import {
-  DEFAULT_OPERATOR_AUDIT_FLAGS,
-  type OperatorAuditFlags,
-} from "./feature-flags";
+import { DEFAULT_OPERATOR_AUDIT_FLAGS, type OperatorAuditFlags } from "./feature-flags";
 import {
   machineStatusLabel,
   machineStatusTone,
@@ -64,8 +61,7 @@ function relationNote(relation: Relation): string {
 }
 
 function DocumentEvidenceList({ entries }: { entries: DocumentEvidence[] }) {
-  if (entries.length === 0)
-    return <p className="meta">本次检查没有原文证据。</p>;
+  if (entries.length === 0) return <p className="meta">本次检查没有原文证据。</p>;
   return (
     <ul>
       {entries.map((entry, index) => {
@@ -76,18 +72,14 @@ function DocumentEvidenceList({ entries }: { entries: DocumentEvidence[] }) {
           entry.start !== null &&
           entry.end !== null;
         return (
-          <li
-            key={`${entry.documentVersionId ?? "doc"}-${entry.start ?? "x"}-${index}`}
-          >
+          <li key={`${entry.documentVersionId ?? "doc"}-${entry.start ?? "x"}-${index}`}>
             <blockquote>{entry.quote ?? "引用未报告"}</blockquote>
             <p className="meta">
               文档版本 {entry.documentVersionId ?? "未报告"} · 解析版本{" "}
-              {entry.parsedVersionId ?? "未报告"} · 区间{" "}
-              {entry.start ?? "未报告"}–{entry.end ?? "未报告"}
+              {entry.parsedVersionId ?? "未报告"} · 区间 {entry.start ?? "未报告"}–
+              {entry.end ?? "未报告"}
             </p>
-            {!complete ? (
-              <p className="callout">引用不完整，不能作为已确认引用。</p>
-            ) : null}
+            {!complete ? <p className="callout">引用不完整，不能作为已确认引用。</p> : null}
           </li>
         );
       })}
@@ -95,26 +87,19 @@ function DocumentEvidenceList({ entries }: { entries: DocumentEvidence[] }) {
   );
 }
 
-function SnapshotEvidenceList({
-  entries,
-}: {
-  entries: ExternalSnapshotEvidence[];
-}) {
-  if (entries.length === 0)
-    return <p className="meta">本次检查没有外部快照证据。</p>;
+function SnapshotEvidenceList({ entries }: { entries: ExternalSnapshotEvidence[] }) {
+  if (entries.length === 0) return <p className="meta">本次检查没有外部快照证据。</p>;
   return (
     <ul>
       {entries.map((entry, index) => (
-        <li
-          key={`${entry.snapshotId ?? "snapshot"}-${entry.fieldPointer ?? "x"}-${index}`}
-        >
+        <li key={`${entry.snapshotId ?? "snapshot"}-${entry.fieldPointer ?? "x"}-${index}`}>
           <p>
-            快照 <span className="digest">{entry.snapshotId ?? "未报告"}</span>{" "}
-            / 记录 {entry.recordId ?? "未报告"}
+            快照 <span className="digest">{entry.snapshotId ?? "未报告"}</span> / 记录{" "}
+            {entry.recordId ?? "未报告"}
           </p>
           <p>
-            字段 <span className="digest">{entry.fieldPointer ?? "未报告"}</span>
-            ：<span>{entry.displayValue ?? "展示值未报告"}</span>
+            字段 <span className="digest">{entry.fieldPointer ?? "未报告"}</span>：
+            <span>{entry.displayValue ?? "展示值未报告"}</span>
           </p>
           <p className="meta">观测时间 {timeLabel(entry.observedAt)}</p>
         </li>
@@ -149,8 +134,7 @@ function ComparisonCard({
     (entry): entry is DocumentEvidence => entry.kind === "document",
   );
   const snapshots = check.evidence.filter(
-    (entry): entry is ExternalSnapshotEvidence =>
-      entry.kind === "external_snapshot",
+    (entry): entry is ExternalSnapshotEvidence => entry.kind === "external_snapshot",
   );
   const unknown = check.evidence.filter(
     (entry): entry is UnknownEvidence => entry.kind === "unknown",
@@ -165,8 +149,7 @@ function ComparisonCard({
           <div>
             <h3>{check.checkId}</h3>
             <p className="meta">
-              原因代码 {check.reasonCode ?? "未报告"} ·{" "}
-              {machineStatusLabel(check.machineStatus)}
+              原因代码 {check.reasonCode ?? "未报告"} · {machineStatusLabel(check.machineStatus)}
             </p>
           </div>
           <StatusText tone={relationTone(check.relation)}>
@@ -187,8 +170,7 @@ function ComparisonCard({
         <div>
           <dt>单位</dt>
           <dd>
-            合同 {contractValue?.unit ?? "未报告"}；配置{" "}
-            {configuredValue?.unit ?? "未报告"}
+            合同 {contractValue?.unit ?? "未报告"}；配置 {configuredValue?.unit ?? "未报告"}
           </dd>
         </div>
         <div>
@@ -206,9 +188,7 @@ function ComparisonCard({
         <div>
           <dt>人工复核</dt>
           <dd>
-            <StatusText
-              tone={check.requiresHumanReview === true ? "attention" : "neutral"}
-            >
+            <StatusText tone={check.requiresHumanReview === true ? "attention" : "neutral"}>
               {check.requiresHumanReview === true
                 ? "需要人工复核"
                 : check.requiresHumanReview === false
@@ -251,18 +231,13 @@ function ComparisonCard({
 
       <h4>人工复核</h4>
       {onOpenHumanReview ? (
-        <Button
-          htmlType="button"
-          onClick={() => onOpenHumanReview(check.checkId)}
-        >
+        <Button htmlType="button" onClick={() => onOpenHumanReview(check.checkId)}>
           进入人工复核
         </Button>
       ) : href !== null ? (
         <a href={href}>进入人工复核</a>
       ) : (
-        <p className="meta">
-          人工复核入口尚未在当前页面接线；机器结果不是最终结论。
-        </p>
+        <p className="meta">人工复核入口尚未在当前页面接线；机器结果不是最终结论。</p>
       )}
     </Card>
   );
@@ -281,20 +256,14 @@ export function FulfillmentDiffPanel({
       <header className="workflow-panel-head">
         <div>
           <h2>合同与配置履约对照</h2>
-          <p className="meta">
-            同屏对照合同值、配置值与证据；机器结果不替代人工决定。
-          </p>
+          <p className="meta">同屏对照合同值、配置值与证据；机器结果不替代人工决定。</p>
         </div>
       </header>
       <p className="callout">
         这里比较的是合同约定与配置记录；是否构成吞吐违约，请结合现场与人工复核判断。
       </p>
       {items.length === 0 ? (
-        <PageStatus
-          kind="empty"
-          title="当前评估没有可展示的检查结果"
-          detail="当前没有结果。"
-        />
+        <PageStatus kind="empty" title="当前评估没有可展示的检查结果" detail="当前没有结果。" />
       ) : (
         <div className="evidence-stack">
           {items.map((item, index) => (

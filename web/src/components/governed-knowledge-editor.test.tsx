@@ -66,7 +66,13 @@ const packSummary = {
   is_active: true,
   active_pointer_revision: 1,
 };
-const secondPack = { ...packSummary, id: "pack2", version: "2", content_hash: digest("e"), snapshot_sha256: digest("f") };
+const secondPack = {
+  ...packSummary,
+  id: "pack2",
+  version: "2",
+  content_hash: digest("e"),
+  snapshot_sha256: digest("f"),
+};
 const draftPack = { ...packSummary, id: "draft-pack", status: "draft", is_active: false };
 const packDetail = {
   pack: packSummary,
@@ -137,10 +143,7 @@ function installApi(overrides: (path: string) => Response | null = () => null) {
     if (path === "/api/admin/governed-knowledge") {
       return json({ items: [policySummary] });
     }
-    return json(
-      { error: { code: "not_found", message: "没有找到", retryable: false } },
-      404,
-    );
+    return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
   });
   vi.stubGlobal("fetch", fetchMock);
   return { fetchMock, calls };
@@ -233,9 +236,7 @@ describe("validateKnowledgeDraft", () => {
       ),
     ).toContainEqual({ id: "knowledge-until", message: "失效时间必须晚于生效时间" });
     expect(
-      validateKnowledgeDraft(
-        draft({ scope: { ...draft().scope, case_id: "case-1" } }),
-      ),
+      validateKnowledgeDraft(draft({ scope: { ...draft().scope, case_id: "case-1" } })),
     ).toContainEqual({ id: "knowledge-org", message: "限定案件时需要填写所属组织 ID" });
     expect(
       validateKnowledgeDraft(
@@ -318,9 +319,7 @@ describe("validateKnowledgeDraft", () => {
     );
     expect(issues).toContainEqual({ id: "knowledge-exception", message: "请填写例外批准依据" });
     expect(issues).toContainEqual({ id: "knowledge-org", message: "请填写限定组织 ID" });
-    expect(issues).not.toContainEqual(
-      expect.objectContaining({ id: "knowledge-policy-refs" }),
-    );
+    expect(issues).not.toContainEqual(expect.objectContaining({ id: "knowledge-policy-refs" }));
   });
 
   it("requires reviewed experience fields, exclusions and policy references", () => {
@@ -371,7 +370,15 @@ describe("validateKnowledgeDraft", () => {
   });
 
   it("requires policy references for experience and exception knowledge", () => {
-    expect(validateKnowledgeDraft(draft({ kind: "exception", exception_basis: "批准", scope: { ...draft().scope, org_id: "org-1" } }))).toContainEqual({
+    expect(
+      validateKnowledgeDraft(
+        draft({
+          kind: "exception",
+          exception_basis: "批准",
+          scope: { ...draft().scope, org_id: "org-1" },
+        }),
+      ),
+    ).toContainEqual({
       id: "knowledge-policy-refs",
       message: "请添加政策依赖",
     });
@@ -511,10 +518,7 @@ describe("KnowledgeEditor", () => {
     expect(screen.getByText("请填写标题")).toBeInTheDocument();
     expect(document.getElementById("knowledge-spans")).toHaveAttribute("tabindex", "-1");
     expect(screen.getAllByRole("alert").map((item) => item.textContent)).toEqual(
-      expect.arrayContaining([
-        "至少添加一条规则及对应正文引用",
-        "请添加政策依赖",
-      ]),
+      expect.arrayContaining(["至少添加一条规则及对应正文引用", "请添加政策依赖"]),
     );
     fireEvent.change(title, { target: { value: "新标题" } });
     expect(changes.at(-1)?.title).toBe("新标题");
@@ -558,12 +562,16 @@ describe("KnowledgeEditor", () => {
       onChange: (value) => changes.push(value),
     });
     expect(
-      within(screen.getByRole("button", { name: "添加适用条件" }).parentElement!)
-        .getByRole("heading", { name: "适用条件（全部满足）" }),
+      within(screen.getByRole("button", { name: "添加适用条件" }).parentElement!).getByRole(
+        "heading",
+        { name: "适用条件（全部满足）" },
+      ),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByRole("button", { name: "添加排除条件" }).parentElement!)
-        .getByRole("heading", { name: "排除条件（任一满足即排除）" }),
+      within(screen.getByRole("button", { name: "添加排除条件" }).parentElement!).getByRole(
+        "heading",
+        { name: "排除条件（任一满足即排除）" },
+      ),
     ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("等于"), { target: { value: "closed" } });
     expect(changes.at(-1)?.applicability?.[0]).toEqual({
@@ -573,9 +581,7 @@ describe("KnowledgeEditor", () => {
     await chooseOption(user, screen.getByLabelText("条件 1 字段"), "组织 ID");
     expect(changes.at(-1)?.applicability?.[0]?.field).toBe("org_id");
     await user.click(screen.getByRole("button", { name: "添加排除条件" }));
-    expect(changes.at(-1)?.exclusions).toEqual([
-      { field: "business_status", equals: "" },
-    ]);
+    expect(changes.at(-1)?.exclusions).toEqual([{ field: "business_status", equals: "" }]);
     fireEvent.change(screen.getByLabelText("等于", { selector: "#exclusions-value-0" }), {
       target: { value: "draft" },
     });
@@ -591,11 +597,7 @@ describe("KnowledgeEditor", () => {
     show({ onChange: (value) => changes.push(value) });
     await screen.findByText(/规则包有效期/);
     expect(screen.queryByText(/draft-pack/)).not.toBeInTheDocument();
-    await chooseOption(
-      user,
-      screen.getByLabelText("已发布并生效的规则包"),
-      "pack2 · 2",
-    );
+    await chooseOption(user, screen.getByLabelText("已发布并生效的规则包"), "pack2 · 2");
     expect(changes.at(-1)?.binding).toMatchObject({
       pack_id: "pack2",
       pack_version: "2",
@@ -617,9 +619,7 @@ describe("KnowledgeEditor", () => {
     });
     expect(await screen.findByText("legacy · 0（原绑定）")).toBeInTheDocument();
     await user.click(screen.getByLabelText("已发布并生效的规则包"));
-    expect(
-      await screen.findByRole("option", { name: "legacy · 0（原绑定）" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "legacy · 0（原绑定）" })).toBeInTheDocument();
   });
 
   it("offers the current pack binding once and no empty original binding", async () => {
@@ -629,9 +629,7 @@ describe("KnowledgeEditor", () => {
     await screen.findByText(/规则包有效期/);
     await user.click(screen.getByLabelText("已发布并生效的规则包"));
     expect(await screen.findByRole("option", { name: "pack · 1" })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "pack · 1（原绑定）" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "pack · 1（原绑定）" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /原绑定/ })).not.toBeInTheDocument();
   });
 
@@ -673,7 +671,9 @@ describe("KnowledgeEditor", () => {
       await screen.findByRole("option", { name: /^最低保障带宽.*规则标识 BW/ }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "BW" })).not.toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "审查项目待核对 · 规则标识 CUSTOM（原绑定）" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "审查项目待核对 · 规则标识 CUSTOM（原绑定）" }),
+    ).toBeInTheDocument();
   });
 
   it("does not offer an empty rule option for a new span", async () => {
@@ -756,9 +756,7 @@ describe("KnowledgeEditor", () => {
     );
     const user = userEvent.setup();
     show();
-    await user.click(
-      screen.getByRole("combobox", { name: /从可访问的生效政策添加/ }),
-    );
+    await user.click(screen.getByRole("combobox", { name: /从可访问的生效政策添加/ }));
     expect(await screen.findByRole("option", { name: "基础政策 · policy v3" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /操作指引 · guidance/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /旧政策 · old-policy/ })).not.toBeInTheDocument();
@@ -782,7 +780,11 @@ describe("KnowledgeEditor", () => {
     const ruleSelect = screen.getByLabelText("引用 1 的规则");
     await user.click(ruleSelect);
     await user.type(ruleSelect, "dedicated_line.minimum_bandwidth");
-    await user.click(await screen.findByRole("option", { name: "最低保障带宽 · 政企业务 / 业务场景待核对 / 服务合同 · 规则标识 BW" }));
+    await user.click(
+      await screen.findByRole("option", {
+        name: "最低保障带宽 · 政企业务 / 业务场景待核对 / 服务合同 · 规则标识 BW",
+      }),
+    );
     expect(changes.at(-1)?.binding.rule_ids).toEqual(["BW"]);
     expect(screen.getByLabelText("起始字符位置（从 0 开始）")).toHaveAttribute("min", "0");
     fireEvent.change(screen.getByLabelText("正文中的原文"), {
@@ -823,7 +825,9 @@ describe("KnowledgeEditor", () => {
         },
       }),
     });
-    expect(await screen.findByText("审查项目待核对 · 规则标识 CUSTOM（原绑定）")).toBeInTheDocument();
+    expect(
+      await screen.findByText("审查项目待核对 · 规则标识 CUSTOM（原绑定）"),
+    ).toBeInTheDocument();
   });
 
   it("edits binding notes and retries failed rulepack reads", async () => {
@@ -832,7 +836,14 @@ describe("KnowledgeEditor", () => {
       if (path === "/api/admin/rulepacks" && failures > 0) {
         failures -= 1;
         return json(
-          { error: { code: "unavailable", message: "规则包不可用", retryable: true, details: "稍后重试" } },
+          {
+            error: {
+              code: "unavailable",
+              message: "规则包不可用",
+              retryable: true,
+              details: "稍后重试",
+            },
+          },
           503,
         );
       }
@@ -845,7 +856,9 @@ describe("KnowledgeEditor", () => {
     expect(screen.getByText(/unavailable/)).toBeInTheDocument();
     expect(screen.getByText(/稍后重试/)).toBeInTheDocument();
     await user.click(screen.getAllByRole("button", { name: "重试" })[0]!);
-    await waitFor(() => expect(calls.filter((path) => path === "/api/admin/rulepacks")).toHaveLength(2));
+    await waitFor(() =>
+      expect(calls.filter((path) => path === "/api/admin/rulepacks")).toHaveLength(2),
+    );
     fireEvent.change(screen.getByLabelText("候选规则差异说明"), {
       target: { value: "新的差异" },
     });
@@ -863,7 +876,14 @@ describe("KnowledgeEditor", () => {
         attempts += 1;
         if (attempts === 1) {
           return json(
-            { error: { code: "invalid_response", message: "详情损坏", retryable: false, details: { field: "rules" } } },
+            {
+              error: {
+                code: "invalid_response",
+                message: "详情损坏",
+                retryable: false,
+                details: { field: "rules" },
+              },
+            },
             500,
           );
         }
@@ -876,7 +896,9 @@ describe("KnowledgeEditor", () => {
     expect(screen.getByText(/"field":"rules"/)).toBeInTheDocument();
     await user.click(screen.getAllByRole("button", { name: "重试" })[0]!);
     await waitFor(() =>
-      expect(calls.filter((path) => path === "/api/admin/rulepacks/pack/versions/1")).toHaveLength(2),
+      expect(calls.filter((path) => path === "/api/admin/rulepacks/pack/versions/1")).toHaveLength(
+        2,
+      ),
     );
   });
 
@@ -996,8 +1018,7 @@ describe("KnowledgeEditor", () => {
       }),
       onChange: (value) => changes.push(value),
     });
-    const picker = () =>
-      screen.getByRole("combobox", { name: /从可访问的生效政策添加/ });
+    const picker = () => screen.getByRole("combobox", { name: /从可访问的生效政策添加/ });
     await chooseOption(user, picker(), "基础政策 · policy v3");
     await chooseOption(user, picker(), "基础政策 · policy v4");
     expect(changes.at(-1)?.policy_refs).toHaveLength(2);
@@ -1029,8 +1050,7 @@ describe("KnowledgeEditor", () => {
       }),
       onChange: (value) => changes.push(value),
     });
-    const picker = () =>
-      screen.getByRole("combobox", { name: /从可访问的生效政策添加/ });
+    const picker = () => screen.getByRole("combobox", { name: /从可访问的生效政策添加/ });
     await chooseOption(user, picker(), "基础政策 · policy v3");
     await chooseOption(user, picker(), "其他政策 · other v5");
     await chooseOption(user, picker(), "基础政策 · policy v3");

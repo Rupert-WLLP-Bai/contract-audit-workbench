@@ -26,11 +26,20 @@ export async function browserSessionCommandHeaders(
   const url = new URL("/api/session", baseURL);
   if (audience === "admin") url.searchParams.set("audience", audience);
   const response = await request.get(url.toString());
-  assert.equal(response.status(), 200, `current browser session returned HTTP ${response.status()}`);
-  const session = await response.json() as SessionResponse;
+  assert.equal(
+    response.status(),
+    200,
+    `current browser session returned HTTP ${response.status()}`,
+  );
+  const session = (await response.json()) as SessionResponse;
   const version = session.active_context?.context_version;
   const csrf = session.csrf_token;
-  if (typeof version !== "string" || version.length === 0 || typeof csrf !== "string" || csrf.length === 0) {
+  if (
+    typeof version !== "string" ||
+    version.length === 0 ||
+    typeof csrf !== "string" ||
+    csrf.length === 0
+  ) {
     throw new Error("current browser session omitted context version or CSRF proof");
   }
   return { "X-Context-Version": version, "X-CSRF-Token": csrf };

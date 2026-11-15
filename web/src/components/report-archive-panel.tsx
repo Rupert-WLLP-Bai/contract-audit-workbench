@@ -10,13 +10,7 @@
 
 import { Button, Input, Select } from "antd";
 import { Link } from "react-router";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type RefObject,
-} from "react";
+import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
 import { errorMessage } from "../api/http";
 import { paths } from "../api/paths";
 import { useArchiveCase, useCreateReport, useReview } from "../api/queries";
@@ -45,10 +39,7 @@ function choiceAttemptMatches(
   choice: ReturnType<typeof reviewChoiceForKey>,
 ): boolean {
   const attempt = review.data?.review_attempts?.attempt;
-  return (
-    attempt?.id === choice?.attempt.id &&
-    isTerminalAttemptState(attempt?.state ?? "")
-  );
+  return attempt?.id === choice?.attempt.id && isTerminalAttemptState(attempt?.state ?? "");
 }
 
 function reviewMatchesChoice(
@@ -56,9 +47,7 @@ function reviewMatchesChoice(
   choice: ReturnType<typeof reviewChoiceForKey>,
 ): boolean {
   return (
-    review.isSuccess &&
-    choiceRunMatches(review, choice) &&
-    choiceAttemptMatches(review, choice)
+    review.isSuccess && choiceRunMatches(review, choice) && choiceAttemptMatches(review, choice)
   );
 }
 
@@ -68,27 +57,14 @@ function reportPrepared(
   choice: ReturnType<typeof reviewChoiceForKey>,
   review: ReturnType<typeof useReview>,
 ): boolean {
-  return (
-    canCreateReport &&
-    !archived &&
-    choice !== null &&
-    reviewMatchesChoice(review, choice)
-  );
+  return canCreateReport && !archived && choice !== null && reviewMatchesChoice(review, choice);
 }
 
-function documentName(
-  review: ReturnType<typeof useReview>["data"],
-  id: string,
-): string {
-  return (
-    review?.documents.find((document) => document.id === id)?.filename ||
-    "材料信息未返回"
-  );
+function documentName(review: ReturnType<typeof useReview>["data"], id: string): string {
+  return review?.documents.find((document) => document.id === id)?.filename || "材料信息未返回";
 }
 
-function snapshotDocumentNames(
-  review: ReturnType<typeof useReview>["data"],
-): string[] {
+function snapshotDocumentNames(review: ReturnType<typeof useReview>["data"]): string[] {
   return review?.snapshot?.document_ids.map((id) => documentName(review, id)) ?? [];
 }
 
@@ -113,10 +89,7 @@ function useDefaultArchiveReport(
   }, [archiveReportId, reports, setArchiveReportId]);
 }
 
-function useFocusOnError(
-  error: unknown,
-  ref: RefObject<HTMLParagraphElement | null>,
-) {
+function useFocusOnError(error: unknown, ref: RefObject<HTMLParagraphElement | null>) {
   useEffect(() => {
     if (error) ref.current?.focus();
   }, [error, ref]);
@@ -132,19 +105,11 @@ function reviewArgsOf(choice: ReturnType<typeof reviewChoiceForKey>): {
   };
 }
 
-function archivedAtOf(
-  data: { archived_at: string } | undefined,
-): string | null {
+function archivedAtOf(data: { archived_at: string } | undefined): string | null {
   return data?.archived_at ?? null;
 }
 
-function ArchivedBadge({
-  archived,
-  archivedAt,
-}: {
-  archived: boolean;
-  archivedAt: string | null;
-}) {
+function ArchivedBadge({ archived, archivedAt }: { archived: boolean; archivedAt: string | null }) {
   if (!archived) return null;
   return (
     <StatusText tone="neutral">
@@ -192,16 +157,10 @@ function ReviewChoiceSection({
 }
 
 function runStateOf(review: ReturnType<typeof useReview>): string {
-  return (
-    review.data?.review_attempts?.attempt.state ?? review.data?.run.state ?? ""
-  );
+  return review.data?.review_attempts?.attempt.state ?? review.data?.run.state ?? "";
 }
 
-function ReviewAttemptSummary({
-  review,
-}: {
-  review: ReturnType<typeof useReview>;
-}) {
+function ReviewAttemptSummary({ review }: { review: ReturnType<typeof useReview> }) {
   const attempt = review.data?.review_attempts?.attempt;
   const documents = snapshotDocumentNames(review.data);
   return (
@@ -213,9 +172,7 @@ function ReviewAttemptSummary({
       <div>
         <dt>执行状态</dt>
         <dd>
-          <StatusText tone={runTone(runStateOf(review))}>
-            {runLabel(runStateOf(review))}
-          </StatusText>
+          <StatusText tone={runTone(runStateOf(review))}>{runLabel(runStateOf(review))}</StatusText>
           <TechnicalDetail label="执行状态技术详情" value={runStateOf(review)} />
         </dd>
       </div>
@@ -240,23 +197,14 @@ function ReviewTechnicalLink({
   return (
     <p className="meta">
       审查的技术信息可由管理员在{" "}
-      <Link to={caseHref(caseId, review.data.run.id, attempt.id)}>
-        审查工作区
-      </Link>{" "}
-      中按需读取。
+      <Link to={caseHref(caseId, review.data.run.id, attempt.id)}>审查工作区</Link> 中按需读取。
     </p>
   );
 }
 
-function NonTerminalNotice({
-  attempt,
-}: {
-  attempt: { state: string } | undefined;
-}) {
+function NonTerminalNotice({ attempt }: { attempt: { state: string } | undefined }) {
   if (!attempt || isTerminalAttemptState(attempt.state)) return null;
-  return (
-    <p className="callout">所选尝试仍在执行，终态生成报告操作尚不可用。</p>
-  );
+  return <p className="callout">所选尝试仍在执行，终态生成报告操作尚不可用。</p>;
 }
 
 function SelectedReviewSection({
@@ -269,18 +217,14 @@ function SelectedReviewSection({
   const attempt = review.data?.review_attempts?.attempt;
   return (
     <>
-      {review.isLoading ? (
-        <p role="status">正在读取所选执行记录。</p>
-      ) : null}
+      {review.isLoading ? <p role="status">正在读取所选执行记录。</p> : null}
       {review.isError ? (
         <p className="workflow-error" role="alert">
           所选尝试没有加载：{errorMessage(review.error)}
         </p>
       ) : null}
       {review.data ? <ReviewAttemptSummary review={review} /> : null}
-      {attempt ? (
-        <ReviewTechnicalLink caseId={caseId} review={review} attempt={attempt} />
-      ) : null}
+      {attempt ? <ReviewTechnicalLink caseId={caseId} review={review} attempt={attempt} /> : null}
       <NonTerminalNotice attempt={attempt} />
     </>
   );
@@ -350,9 +294,7 @@ function ReportCreationForm({
           {errorMessage(error)}
         </p>
       ) : null}
-      {data ? (
-        <p role="status">报告已创建，版本 {data.version}。</p>
-      ) : null}
+      {data ? <p role="status">报告已创建，版本 {data.version}。</p> : null}
       <ReportSubmit ready={ready} pending={pending} />
     </form>
   );
@@ -379,9 +321,7 @@ function ReportHistory({
               <header className="workflow-panel-head">
                 <div>
                   <strong>报告版本 {report.version}</strong>
-                  <p className="meta">
-                    创建于 {formatDateTime(report.created_at)}
-                  </p>
+                  <p className="meta">创建于 {formatDateTime(report.created_at)}</p>
                 </div>
               </header>
               {canReadReports ? (
@@ -489,9 +429,7 @@ function ArchiveForm({
           disabled={pending}
         />
       </label>
-      {reports.length === 0 ? (
-        <p>先生成实际报告版本，再执行归档。</p>
-      ) : null}
+      {reports.length === 0 ? <p>先生成实际报告版本，再执行归档。</p> : null}
       {error ? (
         <p ref={errorRef} className="workflow-error" role="alert" tabIndex={-1}>
           {errorMessage(error)}
@@ -507,10 +445,7 @@ function ArchiveForm({
   );
 }
 
-function archiveReportVersion(
-  reports: CaseDetail["reports"],
-  reportId: string,
-): string | number {
+function archiveReportVersion(reports: CaseDetail["reports"], reportId: string): string | number {
   return reports.find((report) => report.id === reportId)?.version ?? "未返回";
 }
 
@@ -533,8 +468,7 @@ function ArchiveHistory({
       {records.length === 0 ? (
         archived ? (
           <p>
-            案件已归档，归档时间{" "}
-            {archivedAt ? formatDateTime(archivedAt) : "未报告"}
+            案件已归档，归档时间 {archivedAt ? formatDateTime(archivedAt) : "未报告"}
             ，但服务未返回归档记录。
           </p>
         ) : (
@@ -586,27 +520,19 @@ function PanelStatusMessages({
 }) {
   return (
     <>
-      {!canCreateReport ? (
-        <p className="callout">当前身份没有已定义的报告生成权限。</p>
-      ) : null}
+      {!canCreateReport ? <p className="callout">当前身份没有已定义的报告生成权限。</p> : null}
       {archived ? (
         <p className="callout">
           归档后的案件保留授权读取。所有后续业务写入会被服务端拒绝（HTTP 409）。
         </p>
       ) : null}
-      {historyLoading ? (
-        <p role="status">正在读取可用于生成报告的审查和执行记录。</p>
-      ) : null}
+      {historyLoading ? <p role="status">正在读取可用于生成报告的审查和执行记录。</p> : null}
       {historyError ? (
         <p className="workflow-error" role="alert">
           运行历史没有加载：{errorMessage(historyError)}
         </p>
       ) : null}
-      {archivedAt ? (
-        <p role="status">
-          已保存归档记录：{formatDateTime(archivedAt)}。
-        </p>
-      ) : null}
+      {archivedAt ? <p role="status">已保存归档记录：{formatDateTime(archivedAt)}。</p> : null}
     </>
   );
 }
@@ -644,29 +570,16 @@ export function ReportArchivePanel({
   const archiveErrorRef = useRef<HTMLParagraphElement>(null);
   const selectedChoice = reviewChoiceForKey(choices, choiceKey);
   const reviewArgs = reviewArgsOf(selectedChoice);
-  const selectedReview = useReview(
-    caseId,
-    reviewArgs.runId,
-    reviewArgs.attemptId,
-  );
+  const selectedReview = useReview(caseId, reviewArgs.runId, reviewArgs.attemptId);
   const reportFormVisible = canCreateReport && !archived;
   const archiveFormVisible = !archived && canArchive;
 
   useDefaultChoice(choices, choiceKey, setChoiceKey);
-  useDefaultArchiveReport(
-    detail.reports,
-    archiveReportId,
-    setArchiveReportId,
-  );
+  useDefaultArchiveReport(detail.reports, archiveReportId, setArchiveReportId);
   useFocusOnError(createReport.error, reportErrorRef);
   useFocusOnError(archive.error, archiveErrorRef);
 
-  const reportReady = reportPrepared(
-    canCreateReport,
-    archived,
-    selectedChoice,
-    selectedReview,
-  );
+  const reportReady = reportPrepared(canCreateReport, archived, selectedChoice, selectedReview);
 
   function onCreateReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -692,9 +605,7 @@ export function ReportArchivePanel({
       <header className="workflow-panel-head">
         <div>
           <h2 id="report-archive-title">审查报告与归档</h2>
-          <p className="meta">
-            报告保存所选审查当时的内容，生成后不会随材料更新而改变。
-          </p>
+          <p className="meta">报告保存所选审查当时的内容，生成后不会随材料更新而改变。</p>
         </div>
         <ArchivedBadge archived={archived} archivedAt={detail.archived_at} />
       </header>
@@ -724,11 +635,7 @@ export function ReportArchivePanel({
           onSubmit={onCreateReport}
         />
       ) : null}
-      <ReportHistory
-        caseId={caseId}
-        reports={detail.reports}
-        canReadReports={canReadReports}
-      />
+      <ReportHistory caseId={caseId} reports={detail.reports} canReadReports={canReadReports} />
       {archiveFormVisible ? (
         <ArchiveForm
           reports={detail.reports}

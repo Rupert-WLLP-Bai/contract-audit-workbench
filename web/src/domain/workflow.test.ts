@@ -13,13 +13,31 @@ import { parseReviewWorkspace } from "../api/parse";
 import { reviewChoiceForKey, reviewChoiceKey, reviewChoiceLabel, reviewChoices } from "./workflow";
 
 function entry(runId: string, attemptId: string, accepted: string | null) {
-  const attempt = { id: attemptId, run_id: runId, ordinal: 2, state: "completed", accepted_at: accepted,
-    started_at: "2026-11-05T01:02:10Z", finished_at: "2026-11-05T01:03:11Z", history_kind: "frozen" };
-  return { runId, workspace: parseReviewWorkspace({
-    run: { id: runId, case_id: "case-1", state: "completed", updated_at: "2026-11-06T01:00:00Z" },
-    review_attempts: { attempt, attempts: [attempt] }, documents: [], findings: [], audit_events: [],
-    execution: null, snapshot: null, evaluations: [], revisions: [], previous_run_id: null,
-  }) };
+  const attempt = {
+    id: attemptId,
+    run_id: runId,
+    ordinal: 2,
+    state: "completed",
+    accepted_at: accepted,
+    started_at: "2026-11-05T01:02:10Z",
+    finished_at: "2026-11-05T01:03:11Z",
+    history_kind: "frozen",
+  };
+  return {
+    runId,
+    workspace: parseReviewWorkspace({
+      run: { id: runId, case_id: "case-1", state: "completed", updated_at: "2026-11-06T01:00:00Z" },
+      review_attempts: { attempt, attempts: [attempt] },
+      documents: [],
+      findings: [],
+      audit_events: [],
+      execution: null,
+      snapshot: null,
+      evaluations: [],
+      revisions: [],
+      previous_run_id: null,
+    }),
+  };
 }
 
 describe("stable review choices", () => {

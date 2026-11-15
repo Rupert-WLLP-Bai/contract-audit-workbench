@@ -35,11 +35,7 @@ function safeRequestMessage(error: unknown): string {
   return "身份服务暂时无法完成请求，请稍后重试。";
 }
 
-export function PendingMembershipPage({
-  audience,
-}: {
-  audience: PendingMembershipAudience;
-}) {
+export function PendingMembershipPage({ audience }: { audience: PendingMembershipAudience }) {
   const [memberships, setMemberships] = useState<MembershipChoice[] | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -87,7 +83,12 @@ export function PendingMembershipPage({
   }, [load]);
 
   async function submitSelection() {
-    if (submittingRef.current || !selectedId || !memberships?.some((item) => item.id === selectedId)) return;
+    if (
+      submittingRef.current ||
+      !selectedId ||
+      !memberships?.some((item) => item.id === selectedId)
+    )
+      return;
     const requestGeneration = generation.current;
     submittingRef.current = true;
     setSubmitting(true);
@@ -120,7 +121,14 @@ export function PendingMembershipPage({
     <main className="login-screen" id="main">
       <section className="login-card" aria-labelledby="membership-heading">
         <div className="login-mobile-brand competition-brand">
-          {audience === "client" ? <CompetitionIdentity /> : <><CircuitMark size={34} /><strong>合同智能审计工作台</strong></>}
+          {audience === "client" ? (
+            <CompetitionIdentity />
+          ) : (
+            <>
+              <CircuitMark size={34} />
+              <strong>合同智能审计工作台</strong>
+            </>
+          )}
         </div>
         <h1 id="membership-heading">选择组织身份</h1>
         <p>请选择进入{audienceLabel}时使用的组织身份。选项由服务端根据本次登录提供。</p>
@@ -176,7 +184,9 @@ export function PendingMembershipPage({
                 >
                   <span>
                     <strong>{membership.tenant_name}</strong>
-                    <span style={{ display: "block" }}>{membership.org_name} · {membership.role}</span>
+                    <span style={{ display: "block" }}>
+                      {membership.org_name} · {membership.role}
+                    </span>
                   </span>
                 </Radio>
               ))}
@@ -192,7 +202,9 @@ export function PendingMembershipPage({
             </Button>
           </>
         ) : null}
-        <Button type="link" href={loginPath}>返回登录页面</Button>
+        <Button type="link" href={loginPath}>
+          返回登录页面
+        </Button>
       </section>
     </main>
   );

@@ -12,12 +12,7 @@ import { cleanup, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "../api/endpoints";
-import type {
-  Actor,
-  LLMEndpointView,
-  SessionAudience,
-  SettingsView,
-} from "../api/types";
+import type { Actor, LLMEndpointView, SessionAudience, SettingsView } from "../api/types";
 import { renderWithAntd as render } from "../test/antd";
 import { SettingsPage } from "./settings-page";
 
@@ -53,7 +48,14 @@ function actor(role: string, audience: SessionAudience): Actor {
     org_id: "org-1",
     audience,
     principal_id: "principal-user-1",
-    active_context: { membership_id: "membership-1", tenant_id: "tenant-1", tenant_name: "租户一", org_id: "org-1", org_name: "组织一", context_version: "1" },
+    active_context: {
+      membership_id: "membership-1",
+      tenant_id: "tenant-1",
+      tenant_name: "租户一",
+      org_id: "org-1",
+      org_name: "组织一",
+      context_version: "1",
+    },
     csrf_token: "test-csrf",
     context_switch_enabled: false,
   };
@@ -67,16 +69,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderPage(
-  audience: SessionAudience,
-  role: string,
-  view: LLMEndpointView = endpoint,
-) {
+function renderPage(audience: SessionAudience, role: string, view: LLMEndpointView = endpoint) {
   vi.spyOn(api, "getSettings").mockResolvedValue(settings);
   vi.spyOn(api, "getSession").mockResolvedValue(actor(role, audience));
   const getEndpoint = vi.spyOn(api, "getLLMEndpoint").mockResolvedValue(view);
   vi.spyOn(globalThis, "fetch").mockResolvedValue(
-    new Response(JSON.stringify({ error: { code: "model_usage_unavailable", message: "用量账本暂不可用", retryable: false } }), { status: 503, headers: { "Content-Type": "application/json" } }),
+    new Response(
+      JSON.stringify({
+        error: { code: "model_usage_unavailable", message: "用量账本暂不可用", retryable: false },
+      }),
+      { status: 503, headers: { "Content-Type": "application/json" } },
+    ),
   );
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -104,8 +107,6 @@ describe("settings LLM endpoint access", () => {
     expect(getEndpoint).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("https://llm.example.com/v1")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "审查模型" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("combobox", { name: "图片转写模型" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "图片转写模型" })).toBeInTheDocument();
   });
 });

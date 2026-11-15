@@ -27,7 +27,6 @@ export function ExternalEvidenceGate({
   flags?: OperatorAuditFlags;
   children: ReactNode;
 }) {
-  if (!externalEvidenceEnabled(flags ?? DEFAULT_OPERATOR_AUDIT_FLAGS))
-    return null;
+  if (!externalEvidenceEnabled(flags ?? DEFAULT_OPERATOR_AUDIT_FLAGS)) return null;
   return <>{children}</>;
 }

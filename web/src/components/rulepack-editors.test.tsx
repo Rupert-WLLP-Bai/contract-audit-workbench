@@ -9,20 +9,11 @@
 // End file metadata.
 
 import { useState, type ReactElement } from "react";
-import {
-  cleanup,
-  fireEvent,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  createEmptyRulePackDraft,
-  RulePackManifestEditor,
-} from "./rulepack-manifest-editor";
+import { createEmptyRulePackDraft, RulePackManifestEditor } from "./rulepack-manifest-editor";
 import { RulePackTestPanel } from "./rulepack-test-panel";
 import { chooseOption, renderWithAntd } from "../test/antd";
 import type {
@@ -41,9 +32,7 @@ function render(ui: ReactElement) {
     },
   });
   clients.push(client);
-  return renderWithAntd(
-    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
-  );
+  return renderWithAntd(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 }
 
 afterEach(() => {
@@ -56,13 +45,7 @@ function ControlledManifestEditor() {
   const [value, setValue] = useState<RulePackManifestInput>(() =>
     createEmptyRulePackDraft("tenant-test"),
   );
-  return (
-    <RulePackManifestEditor
-      value={value}
-      tenantId="tenant-test"
-      onChange={setValue}
-    />
-  );
+  return <RulePackManifestEditor value={value} tenantId="tenant-test" onChange={setValue} />;
 }
 
 const manifest: RulePackManifest = {
@@ -94,9 +77,7 @@ const manifest: RulePackManifest = {
         unit_family: "bandwidth",
         exclusions: [],
       },
-      authority_sources: [
-        { id: "internal-policy", version: "1", kind: "policy" },
-      ],
+      authority_sources: [{ id: "internal-policy", version: "1", kind: "policy" }],
     },
   ],
   lifecycle: { state: "draft" },
@@ -107,9 +88,7 @@ describe("RulePack editable row focus", () => {
     const user = userEvent.setup();
     const changes: RulePackManifestInput[] = [];
     function Editor() {
-      const [value, setValue] = useState(() =>
-        createEmptyRulePackDraft("tenant-test"),
-      );
+      const [value, setValue] = useState(() => createEmptyRulePackDraft("tenant-test"));
       return (
         <RulePackManifestEditor
           value={value}
@@ -122,19 +101,12 @@ describe("RulePack editable row focus", () => {
       );
     }
     render(<Editor />);
-    expect(
-      createEmptyRulePackDraft("tenant-test").rules[0]?.required_fact
-        .exclusions,
-    ).toBeNull();
+    expect(createEmptyRulePackDraft("tenant-test").rules[0]?.required_fact.exclusions).toBeNull();
     expect(screen.getByLabelText("排除项（每行一项）")).toBeDisabled();
     await chooseOption(user, screen.getByLabelText("比较器"), /monthly_sla/);
     expect(changes.at(-1)?.rules[0]?.required_fact.exclusions).toEqual([]);
     expect(screen.getByLabelText("排除项（每行一项）")).toBeEnabled();
-    await chooseOption(
-      user,
-      screen.getByLabelText("比较器"),
-      /advance_payment_ceiling/,
-    );
+    await chooseOption(user, screen.getByLabelText("比较器"), /advance_payment_ceiling/);
     expect(changes.at(-1)?.rules[0]?.required_fact.exclusions).toBeNull();
   });
 
@@ -224,9 +196,7 @@ function renderManifest(
   const changes: RulePackManifestInput[] = [];
   function Editor() {
     const { lifecycle: _lifecycle, ...content } = initial;
-    const [value, setValue] = useState<RulePackManifestInput>(() =>
-      structuredClone(content),
-    );
+    const [value, setValue] = useState<RulePackManifestInput>(() => structuredClone(content));
     return (
       <RulePackManifestEditor
         value={value}
@@ -352,10 +322,7 @@ function renderPanel(
   return requests;
 }
 
-async function addSource(
-  user: ReturnType<typeof userEvent.setup>,
-  text = "🚀带宽100 Mbit/s",
-) {
+async function addSource(user: ReturnType<typeof userEvent.setup>, text = "🚀带宽100 Mbit/s") {
   await user.click(screen.getByRole("button", { name: "添加样本材料" }));
   inputValue("样本材料 ID", "contract-A");
   inputValue("材料版本", "3");
@@ -438,9 +405,7 @@ describe("RulePackManifestEditor structured edits", () => {
     const changes = renderManifest(manifest);
     expect(screen.getByLabelText(/此项为必检规则/)).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "添加规则" }));
-    expect(
-      screen.queryByRole("button", { name: "移除规则 1" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "移除规则 1" })).not.toBeInTheDocument();
     const second = within(screen.getByRole("group", { name: "规则 2" }));
     fireEvent.change(second.getByLabelText("能力 ID"), {
       target: { value: "__proto__" },
@@ -464,16 +429,12 @@ describe("RulePackManifestEditor structured edits", () => {
         ...structuredClone(manifest.rules[0]!),
         rule_id: id,
         capability_id: id,
-        authority_sources: [
-          { id: `${id}-policy`, version: "1", kind: "policy" },
-        ],
+        authority_sources: [{ id: `${id}-policy`, version: "1", kind: "policy" }],
       })),
     };
     const changes = renderManifest(initial);
     await user.click(screen.getByRole("button", { name: "移除规则 2" }));
-    const remaining = within(
-      screen.getByRole("group", { name: "规则 2，optional-C" }),
-    );
+    const remaining = within(screen.getByRole("group", { name: "规则 2，optional-C" }));
     await user.click(remaining.getByRole("button", { name: "添加来源" }));
     fireEvent.change(remaining.getAllByLabelText("来源 ID")[1]!, {
       target: { value: "replacement-policy" },
@@ -484,13 +445,8 @@ describe("RulePackManifestEditor structured edits", () => {
     fireEvent.change(remaining.getAllByLabelText("来源类型")[1]!, {
       target: { value: "regulation" },
     });
-    await user.click(
-      remaining.getByRole("button", { name: "移除规则 2 的来源 1" }),
-    );
-    expect(changes.at(-1)!.rules.map((rule) => rule.rule_id)).toEqual([
-      "optional-A",
-      "optional-C",
-    ]);
+    await user.click(remaining.getByRole("button", { name: "移除规则 2 的来源 1" }));
+    expect(changes.at(-1)!.rules.map((rule) => rule.rule_id)).toEqual(["optional-A", "optional-C"]);
     expect(changes.at(-1)!.rules[0]!.authority_sources).toEqual([
       { id: "optional-A-policy", version: "1", kind: "policy" },
     ]);
@@ -503,32 +459,21 @@ describe("RulePackManifestEditor structured edits", () => {
     const user = userEvent.setup();
     const changes = renderManifest(manifest, { lockedIdentity: true });
     expect(screen.getByLabelText("规则包 ID")).toHaveAttribute("readonly");
-    expect(screen.getByLabelText("版本", { exact: true })).toHaveAttribute(
-      "readonly",
-    );
+    expect(screen.getByLabelText("版本", { exact: true })).toHaveAttribute("readonly");
     inputValue("生效时间（本地时区）", "2026-11-03T08:45");
-    expect(changes.at(-1)!.effective_from).toBe(
-      new Date(2026, 10, 3, 8, 45).toISOString(),
-    );
+    expect(changes.at(-1)!.effective_from).toBe(new Date(2026, 10, 3, 8, 45).toISOString());
     inputValue("失效时间（本地时区，结束时刻不含）", "");
     expect(changes.at(-1)!.effective_until).toBe("");
     inputValue("阈值单位", "");
     await chooseOption(user, screen.getByLabelText("比较器"), /monthly_sla/);
-    inputValue(
-      "排除项（每行一项）",
-      " planned maintenance \n\n force majeure ",
-    );
+    inputValue("排除项（每行一项）", " planned maintenance \n\n force majeure ");
     expect(changes.at(-1)!.rules[0]!.threshold.unit).toBe("percent");
     expect(changes.at(-1)!.rules[0]!.required_fact.exclusions).toEqual([
       "planned maintenance",
       "force majeure",
     ]);
     inputValue("阈值单位", "");
-    await chooseOption(
-      user,
-      screen.getByLabelText("比较器"),
-      /advance_payment_ceiling/,
-    );
+    await chooseOption(user, screen.getByLabelText("比较器"), /advance_payment_ceiling/);
     expect(changes.at(-1)!.rules[0]!.threshold.unit).toBe("ratio");
     expect(changes.at(-1)!.rules[0]!.required_fact.exclusions).toBeNull();
   });
@@ -591,13 +536,9 @@ describe("RulePackTestPanel consumer behavior", () => {
     inputValue("排除项（每行一项）", " planned \n\n external ");
     await chooseOption(user, screen.getByLabelText("适用性"), "不适用");
     await user.click(screen.getByRole("button", { name: "测试当前修订" }));
-    expect(
-      await screen.findByRole("heading", { name: "测试结果" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "测试结果" })).toBeInTheDocument();
     expect(requests).toHaveLength(1);
-    expect(requests[0]?.path).toBe(
-      "/api/admin/rulepacks/telecom-core/versions/1/test",
-    );
+    expect(requests[0]?.path).toBe("/api/admin/rulepacks/telecom-core/versions/1/test");
     expect(requests[0]?.init?.method).toBe("POST");
     expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
       expected_revision: 6,
@@ -642,9 +583,7 @@ describe("RulePackTestPanel consumer behavior", () => {
       ],
     });
     const results = screen.getByRole("region", { name: "测试结果" });
-    expect(results).toHaveTextContent(
-      "总关系：符合、冲突、缺证 / 不可比较、不适用",
-    );
+    expect(results).toHaveTextContent("总关系：符合、冲突、缺证 / 不可比较、不适用");
     expect(results).toHaveTextContent("fact-bandwidth");
     expect(results).toHaveTextContent("verified_bandwidth");
     expect(results).toHaveTextContent("码点 [1,6)");
@@ -677,9 +616,7 @@ describe("RulePackTestPanel consumer behavior", () => {
     async ({ label, value, message }) => {
       const requests = renderPanel();
       inputValue(label, value);
-      await userEvent
-        .setup()
-        .click(screen.getByRole("button", { name: "测试当前修订" }));
+      await userEvent.setup().click(screen.getByRole("button", { name: "测试当前修订" }));
       expect(screen.getByRole("alert")).toHaveTextContent(message);
       expect(screen.getByRole("alert")).toHaveFocus();
       expect(requests).toHaveLength(0);
@@ -701,17 +638,13 @@ describe("RulePackTestPanel consumer behavior", () => {
       fireEvent.change(second.getByLabelText(label!), { target: { value } });
     }
     await user.click(screen.getByRole("button", { name: "测试当前修订" }));
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      /ID 与版本组合不能重复/,
-    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/ID 与版本组合不能重复/);
     expect(requests).toHaveLength(0);
     fireEvent.change(second.getByLabelText("材料版本"), {
       target: { value: "4" },
     });
     await user.click(screen.getByRole("button", { name: "测试当前修订" }));
-    expect(
-      await screen.findByRole("heading", { name: "测试结果" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "测试结果" })).toBeInTheDocument();
     expect(
       JSON.parse(String(requests[0]?.init?.body)).sources.map(
         (source: { version: string }) => source.version,
@@ -724,31 +657,23 @@ describe("RulePackTestPanel consumer behavior", () => {
     const requests = renderPanel();
     await addSource(user);
     await addCitedFact(user);
-    await user.click(
-      screen.getByRole("button", { name: "移除事实 1 的引用 1" }),
-    );
+    await user.click(screen.getByRole("button", { name: "移除事实 1 的引用 1" }));
     await user.click(screen.getByRole("button", { name: "测试当前修订" }));
     expect(screen.getByRole("alert")).toHaveTextContent(/1–8 条来源引用/);
     expect(requests).toHaveLength(0);
     selectSource();
     await user.click(screen.getByRole("button", { name: "添加当前选区引用" }));
     inputValue("样本文本", "🚀合同只承诺50 Mbit/s");
-    expect(
-      screen.getByRole("button", { name: "添加当前选区引用" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "添加当前选区引用" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "测试当前修订" }));
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      /引用与样本文本的码点范围不一致/,
-    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/引用与样本文本的码点范围不一致/);
     expect(requests).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "移除事实 1" }));
     await user.click(screen.getByRole("button", { name: "移除材料 1" }));
     expect(screen.queryByLabelText("事实 ID")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("样本材料 ID")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "测试当前修订" }));
-    expect(
-      await screen.findByRole("heading", { name: "测试结果" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "测试结果" })).toBeInTheDocument();
     expect(JSON.parse(String(requests[0]?.init?.body))).toMatchObject({
       sources: [],
       facts: [],
@@ -774,9 +699,7 @@ describe("RulePackTestPanel consumer behavior", () => {
     await addSource(user);
     await user.click(screen.getByRole("button", { name: "测试当前修订" }));
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "正在测试样本" }),
-      ).toBeDisabled(),
+      expect(screen.getByRole("button", { name: "正在测试样本" })).toBeDisabled(),
     );
     expect(screen.getByLabelText("样本文本")).toBeDisabled();
     resolve(
@@ -806,9 +729,7 @@ describe("RulePackTestPanel consumer behavior", () => {
     await user.click(screen.getByRole("button", { name: "添加事实" }));
     await user.click(screen.getByRole("button", { name: "测试当前修订" }));
     expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "测试结果" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "测试结果" })).not.toBeInTheDocument();
     expect(requests).toHaveLength(1);
   });
 
@@ -841,13 +762,9 @@ describe("RulePackTestPanel consumer behavior", () => {
         report: { ...report.report, relations: ["unknown_relation"] },
       }),
     );
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "测试当前修订" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "测试当前修订" }));
     expect(await screen.findByRole("alert")).toHaveFocus();
-    expect(
-      screen.queryByRole("heading", { name: "测试结果" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "测试结果" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "测试当前修订" })).toBeEnabled();
   });
 });
@@ -863,16 +780,8 @@ describe("RulePackTestPanel fact field edits", () => {
     inputValue("事实维度", "custom_dimension");
     inputValue("事实值", "42");
     inputValue("单位", "Gbit/s");
-    await chooseOption(
-      user,
-      screen.getByRole("combobox", { name: "对应规则" }),
-      "选择规则",
-    );
-    await chooseOption(
-      user,
-      screen.getByRole("combobox", { name: "材料角色" }),
-      "procurement",
-    );
+    await chooseOption(user, screen.getByRole("combobox", { name: "对应规则" }), "选择规则");
+    await chooseOption(user, screen.getByRole("combobox", { name: "材料角色" }), "procurement");
     selectSource();
     await user.click(screen.getByRole("button", { name: "添加当前选区引用" }));
     await user.click(screen.getByRole("button", { name: "测试当前修订" }));
@@ -895,9 +804,7 @@ describe("RulePackTestPanel fact field edits", () => {
     text.setSelectionRange(2, 2);
     fireEvent.select(text);
     await user.click(screen.getByRole("button", { name: "添加事实" }));
-    expect(
-      screen.getByRole("button", { name: "添加当前选区引用" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "添加当前选区引用" })).toBeDisabled();
   });
 });
 
@@ -941,9 +848,7 @@ describe("RulePack editor literal values and fact selection", () => {
     const requests = renderPanel(undefined, inputManifest);
     await addSource(user);
     await user.click(screen.getByRole("button", { name: "添加样本材料" }));
-    const sourceFields = within(
-      screen.getByRole("group", { name: "样本材料 2" }),
-    );
+    const sourceFields = within(screen.getByRole("group", { name: "样本材料 2" }));
     for (const [label, value] of [
       ["样本材料 ID", "contract-A"],
       ["材料版本", "4"],
@@ -961,15 +866,12 @@ describe("RulePack editor literal values and fact selection", () => {
     expect(screen.getByLabelText("事实维度")).toHaveValue("availability");
     expect(screen.getByLabelText("单位")).toHaveValue("percent");
     await user.click(screen.getByRole("combobox", { name: "材料角色" }));
-    expect(
-      screen.getAllByRole("option", { name: "contract" }).at(-1),
-    ).toHaveAttribute("aria-selected", "true");
-    await user.keyboard("{Escape}");
-    await chooseOption(
-      user,
-      screen.getByLabelText("引用材料"),
-      "contract-A v4",
+    expect(screen.getAllByRole("option", { name: "contract" }).at(-1)).toHaveAttribute(
+      "aria-selected",
+      "true",
     );
+    await user.keyboard("{Escape}");
+    await chooseOption(user, screen.getByLabelText("引用材料"), "contract-A v4");
     const text = sourceFields.getByLabelText<HTMLTextAreaElement>("样本文本");
     text.focus();
     text.setSelectionRange(0, 10);
@@ -1018,22 +920,17 @@ describe("RulePack editor literal values and fact selection", () => {
       expect(fact).not.toHaveProperty(field);
   });
 
-  it.each(["version", "removed"])(
-    "rejects a citation whose source is %s",
-    async (change) => {
-      const user = userEvent.setup();
-      const requests = renderPanel();
-      await addSource(user);
-      await addCitedFact(user);
-      if (change === "version") inputValue("材料版本", "4");
-      else await user.click(screen.getByRole("button", { name: "移除材料 1" }));
-      await user.click(screen.getByRole("button", { name: "测试当前修订" }));
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        /引用与样本文本的码点范围不一致/,
-      );
-      expect(requests).toHaveLength(0);
-    },
-  );
+  it.each(["version", "removed"])("rejects a citation whose source is %s", async (change) => {
+    const user = userEvent.setup();
+    const requests = renderPanel();
+    await addSource(user);
+    await addCitedFact(user);
+    if (change === "version") inputValue("材料版本", "4");
+    else await user.click(screen.getByRole("button", { name: "移除材料 1" }));
+    await user.click(screen.getByRole("button", { name: "测试当前修订" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/引用与样本文本的码点范围不一致/);
+    expect(requests).toHaveLength(0);
+  });
 
   it("rejects duplicate fact IDs even when each fact has a valid citation", async () => {
     const user = userEvent.setup();
@@ -1059,9 +956,7 @@ describe("RulePack editor literal values and fact selection", () => {
     await user.click(screen.getByRole("button", { name: "测试当前修订" }));
     await screen.findByRole("heading", { name: "测试结果" });
     expect(
-      JSON.parse(String(requests[0]?.init?.body)).facts.map(
-        (fact: { id: string }) => fact.id,
-      ),
+      JSON.parse(String(requests[0]?.init?.body)).facts.map((fact: { id: string }) => fact.id),
     ).toEqual(["fact-bandwidth", "fact-other"]);
   });
 });

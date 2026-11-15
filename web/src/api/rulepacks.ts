@@ -14,23 +14,9 @@ import { enumValue, responseReader } from "./respond";
 
 export type RulePackState = "draft" | "validated" | "approved" | "published";
 export type RulePackHistoryAction =
-  | "create"
-  | "edit"
-  | "validate"
-  | "approve"
-  | "publish"
-  | "disable"
-  | "rollback"
-  | "test";
-export type RulePackRelation =
-  | "compatible"
-  | "conflict"
-  | "insufficient"
-  | "not_applicable";
-export type RulePackComparator =
-  | "minimum_bandwidth"
-  | "monthly_sla"
-  | "advance_payment_ceiling";
+  "create" | "edit" | "validate" | "approve" | "publish" | "disable" | "rollback" | "test";
+export type RulePackRelation = "compatible" | "conflict" | "insufficient" | "not_applicable";
+export type RulePackComparator = "minimum_bandwidth" | "monthly_sla" | "advance_payment_ceiling";
 
 export interface RulePackAuthoritySource {
   id: string;
@@ -311,8 +297,7 @@ const {
   nullableBool: nullableBoolean,
   integer: safeInteger,
 } = responseReader((path) => `RulePack 响应中的 ${path} 无法识别`);
-const integer = (value: unknown, path: string): number =>
-  safeInteger(value, path, 0);
+const integer = (value: unknown, path: string): number => safeInteger(value, path, 0);
 function nonEmptyString(value: unknown, path: string): string {
   const parsed = string(value, path);
   return parsed.length > 0 ? parsed : fail(path);
@@ -322,7 +307,6 @@ function sha256(value: unknown, path: string): string {
   const parsed = string(value, path);
   return /^[0-9a-f]{64}$/.test(parsed) ? parsed : fail(path);
 }
-
 
 function positiveInteger(value: unknown, path: string): number {
   const parsed = integer(value, path);
@@ -334,19 +318,12 @@ function optionalString(
   key: string,
   path: string,
 ): string | undefined {
-  return Object.hasOwn(record, key)
-    ? string(record[key], `${path}.${key}`)
-    : undefined;
+  return Object.hasOwn(record, key) ? string(record[key], `${path}.${key}`) : undefined;
 }
 
 function parseState(value: unknown, path: string): RulePackState {
   return (
-    enumValue<RulePackState>(value, [
-      "draft",
-      "validated",
-      "approved",
-      "published",
-    ]) ?? fail(path)
+    enumValue<RulePackState>(value, ["draft", "validated", "approved", "published"]) ?? fail(path)
   );
 }
 
@@ -360,10 +337,7 @@ function parseRelation(value: unknown, path: string): RulePackRelation {
     ]) ?? fail(path)
   );
 }
-function parseHistoryAction(
-  value: unknown,
-  path: string,
-): RulePackHistoryAction {
+function parseHistoryAction(value: unknown, path: string): RulePackHistoryAction {
   return (
     enumValue<RulePackHistoryAction>(value, [
       "create",
@@ -378,10 +352,7 @@ function parseHistoryAction(
   );
 }
 
-function parseAuthoritySource(
-  value: unknown,
-  path: string,
-): RulePackAuthoritySource {
+function parseAuthoritySource(value: unknown, path: string): RulePackAuthoritySource {
   const record = object(value, path, ["id", "version", "kind"]);
   return {
     id: string(record.id, `${path}.id`),
@@ -392,43 +363,106 @@ function parseAuthoritySource(
 
 const legalApplicabilityValues: Record<string, readonly string[]> = {
   buyer_kind: ["state_organ", "institution", "social_organization", "enterprise", "natural_person"],
-  seller_kind: ["state_organ", "institution", "social_organization", "enterprise", "natural_person"],
+  seller_kind: [
+    "state_organ",
+    "institution",
+    "social_organization",
+    "enterprise",
+    "natural_person",
+  ],
   buyer_enterprise_size: ["large", "sme", "not_enterprise"],
   seller_enterprise_size: ["large", "sme", "not_enterprise"],
   funding_kind: ["fiscal", "mixed_with_fiscal", "state_owned_non_fiscal", "private"],
-  procurement_scope: ["centralized_catalog", "above_limit", "catalog_and_above_limit", "outside_catalog_and_below_limit"],
-  project_kind: ["construction", "construction_related_goods", "construction_related_services", "standalone_goods", "standalone_services"],
+  procurement_scope: [
+    "centralized_catalog",
+    "above_limit",
+    "catalog_and_above_limit",
+    "outside_catalog_and_below_limit",
+  ],
+  project_kind: [
+    "construction",
+    "construction_related_goods",
+    "construction_related_services",
+    "standalone_goods",
+    "standalone_services",
+  ],
   contract_clause_kind: ["standard_form", "negotiated"],
   transaction_kind: ["civil_contract", "non_civil"],
 };
-const legalDocumentTypes = ["law", "administrative_regulation", "judicial_interpretation", "normative_notice", "draft", "legislative_plan"] as const;
+const legalDocumentTypes = [
+  "law",
+  "administrative_regulation",
+  "judicial_interpretation",
+  "normative_notice",
+  "draft",
+  "legislative_plan",
+] as const;
 
-function parseLegalApplicabilityCondition(value: unknown, path: string): RulePackLegalApplicabilityCondition {
+function parseLegalApplicabilityCondition(
+  value: unknown,
+  path: string,
+): RulePackLegalApplicabilityCondition {
   const record = object(value, path, ["field", "one_of"]);
   const field = string(record.field, `${path}.field`);
   const allowed = legalApplicabilityValues[field];
   const oneOf = array(record.one_of, `${path}.one_of`, string);
-  if (!allowed || oneOf.length === 0 || oneOf.length > 16 || oneOf.some((item) => !allowed.includes(item))) return fail(path);
+  if (
+    !allowed ||
+    oneOf.length === 0 ||
+    oneOf.length > 16 ||
+    oneOf.some((item) => !allowed.includes(item))
+  )
+    return fail(path);
   return { field, one_of: oneOf };
 }
 
 function parseLegalAuthority(value: unknown, path: string): RulePackLegalAuthority {
   const record = object(value, path, [
-    "authority_source_id", "knowledge_id", "version_id", "content_sha256", "source_id",
-    "source_snapshot_id", "norm_title", "norm_version", "article_number", "document_type",
-    "source_sha256", "article_text_sha256", "effective_from", "effective_until", "quote_span", "applicability",
+    "authority_source_id",
+    "knowledge_id",
+    "version_id",
+    "content_sha256",
+    "source_id",
+    "source_snapshot_id",
+    "norm_title",
+    "norm_version",
+    "article_number",
+    "document_type",
+    "source_sha256",
+    "article_text_sha256",
+    "effective_from",
+    "effective_until",
+    "quote_span",
+    "applicability",
   ]);
   const quote = object(record.quote_span, `${path}.quote_span`, ["start", "end", "quote"]);
   const applicability = object(record.applicability, `${path}.applicability`, ["all_of"]);
   const start = integer(quote.start, `${path}.quote_span.start`);
   const end = integer(quote.end, `${path}.quote_span.end`);
   const quoteText = string(quote.quote, `${path}.quote_span.quote`);
-  const allOf = array(applicability.all_of, `${path}.applicability.all_of`, parseLegalApplicabilityCondition);
+  const allOf = array(
+    applicability.all_of,
+    `${path}.applicability.all_of`,
+    parseLegalApplicabilityCondition,
+  );
   const documentType = string(record.document_type, `${path}.document_type`);
   const effectiveFrom = string(record.effective_from, `${path}.effective_from`);
   const effectiveUntil = string(record.effective_until, `${path}.effective_until`);
-  const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
-  if (end <= start || Array.from(quoteText).length !== end - start || quoteText.trim() === "" || allOf.length === 0 || allOf.length > 9 || !legalDocumentTypes.includes(documentType as typeof legalDocumentTypes[number]) || !validDate(effectiveFrom) || (effectiveUntil !== "" && (!validDate(effectiveUntil) || effectiveUntil <= effectiveFrom))) return fail(path);
+  const validDate = (value: string) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) &&
+    new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  if (
+    end <= start ||
+    Array.from(quoteText).length !== end - start ||
+    quoteText.trim() === "" ||
+    allOf.length === 0 ||
+    allOf.length > 9 ||
+    !legalDocumentTypes.includes(documentType as (typeof legalDocumentTypes)[number]) ||
+    !validDate(effectiveFrom) ||
+    (effectiveUntil !== "" && (!validDate(effectiveUntil) || effectiveUntil <= effectiveFrom))
+  )
+    return fail(path);
   return {
     authority_source_id: nonEmptyString(record.authority_source_id, `${path}.authority_source_id`),
     knowledge_id: nonEmptyString(record.knowledge_id, `${path}.knowledge_id`),
@@ -475,11 +509,7 @@ function parseSummary(value: unknown, path = "pack"): RulePackSummary {
     snapshot_sha256: sha256(record.snapshot_sha256, `${path}.snapshot_sha256`),
     effective_from: string(record.effective_from, `${path}.effective_from`),
     effective_until: string(record.effective_until, `${path}.effective_until`),
-    authority_sources: array(
-      record.authority_sources,
-      `${path}.authority_sources`,
-      string,
-    ),
+    authority_sources: array(record.authority_sources, `${path}.authority_sources`, string),
     is_active: boolean(record.is_active, `${path}.is_active`),
     active_pointer_revision: integer(
       record.active_pointer_revision,
@@ -489,12 +519,7 @@ function parseSummary(value: unknown, path = "pack"): RulePackSummary {
 }
 
 function parseThreshold(value: unknown, path: string): RulePackThreshold {
-  const record = object(
-    value,
-    path,
-    ["value", "unit", "basis"],
-    ["value", "unit"],
-  );
+  const record = object(value, path, ["value", "unit", "basis"], ["value", "unit"]);
   const basis = optionalString(record, "basis", path);
   return {
     value: string(record.value, `${path}.value`),
@@ -530,18 +555,12 @@ function parseRequiredFact(value: unknown, path: string): RulePackRequiredFact {
     object_required: boolean(record.object_required, `${path}.object_required`),
     unit_family: string(record.unit_family, `${path}.unit_family`),
     exclusions:
-      record.exclusions === null
-        ? null
-        : array(record.exclusions, `${path}.exclusions`, string),
+      record.exclusions === null ? null : array(record.exclusions, `${path}.exclusions`, string),
     ...(optional("measurement_window") === undefined
       ? {}
       : { measurement_window: optional("measurement_window") }),
-    ...(optional("time_zone") === undefined
-      ? {}
-      : { time_zone: optional("time_zone") }),
-    ...(optional("calendar") === undefined
-      ? {}
-      : { calendar: optional("calendar") }),
+    ...(optional("time_zone") === undefined ? {} : { time_zone: optional("time_zone") }),
+    ...(optional("calendar") === undefined ? {} : { calendar: optional("calendar") }),
     ...(optional("outage_definition") === undefined
       ? {}
       : { outage_definition: optional("outage_definition") }),
@@ -564,7 +583,12 @@ function parseRule(value: unknown, path: string): RulePackRule {
     "authority_sources",
     "legal_authorities",
   ] as const;
-  const record = object(value, path, keys, keys.filter((key) => key !== "legal_authorities"));
+  const record = object(
+    value,
+    path,
+    keys,
+    keys.filter((key) => key !== "legal_authorities"),
+  );
   const scope = object(record.business_scope, `${path}.business_scope`, [
     "business_line",
     "scenario",
@@ -577,10 +601,7 @@ function parseRule(value: unknown, path: string): RulePackRule {
     comparator !== "advance_payment_ceiling"
   )
     return fail(`${path}.comparator`);
-  const requiredFact = parseRequiredFact(
-    record.required_fact,
-    `${path}.required_fact`,
-  );
+  const requiredFact = parseRequiredFact(record.required_fact, `${path}.required_fact`);
   if (comparator === "monthly_sla" && requiredFact.exclusions === null)
     return fail(`${path}.required_fact.exclusions`);
   return {
@@ -590,15 +611,9 @@ function parseRule(value: unknown, path: string): RulePackRule {
     capability_id: string(record.capability_id, `${path}.capability_id`),
     mandatory: boolean(record.mandatory, `${path}.mandatory`),
     business_scope: {
-      business_line: string(
-        scope.business_line,
-        `${path}.business_scope.business_line`,
-      ),
+      business_line: string(scope.business_line, `${path}.business_scope.business_line`),
       scenario: string(scope.scenario, `${path}.business_scope.scenario`),
-      contract_type: string(
-        scope.contract_type,
-        `${path}.business_scope.contract_type`,
-      ),
+      contract_type: string(scope.contract_type, `${path}.business_scope.contract_type`),
     },
     tenant_id: string(record.tenant_id, `${path}.tenant_id`),
     comparator,
@@ -622,12 +637,7 @@ function parseRule(value: unknown, path: string): RulePackRule {
 }
 
 function parseLifecycle(value: unknown, path: string): RulePackLifecycle {
-  const record = object(
-    value,
-    path,
-    ["state", "verification", "approval", "release"],
-    ["state"],
-  );
+  const record = object(value, path, ["state", "verification", "approval", "release"], ["state"]);
   const result: RulePackLifecycle = {
     state: parseState(record.state, `${path}.state`),
   };
@@ -638,10 +648,7 @@ function parseLifecycle(value: unknown, path: string): RulePackLifecycle {
       "passed",
     ]);
     result.verification = {
-      manifest_hash: string(
-        verification.manifest_hash,
-        `${path}.verification.manifest_hash`,
-      ),
+      manifest_hash: string(verification.manifest_hash, `${path}.verification.manifest_hash`),
       verifier_version: string(
         verification.verifier_version,
         `${path}.verification.verifier_version`,
@@ -656,14 +663,8 @@ function parseLifecycle(value: unknown, path: string): RulePackLifecycle {
       "actor_id",
     ]);
     result.approval = {
-      manifest_hash: string(
-        approval.manifest_hash,
-        `${path}.approval.manifest_hash`,
-      ),
-      verification_hash: string(
-        approval.verification_hash,
-        `${path}.approval.verification_hash`,
-      ),
+      manifest_hash: string(approval.manifest_hash, `${path}.approval.manifest_hash`),
+      verification_hash: string(approval.verification_hash, `${path}.approval.verification_hash`),
       actor_id: string(approval.actor_id, `${path}.approval.actor_id`),
     };
   }
@@ -674,25 +675,26 @@ function parseLifecycle(value: unknown, path: string): RulePackLifecycle {
       "release_hash",
     ]);
     result.release = {
-      manifest_hash: string(
-        release.manifest_hash,
-        `${path}.release.manifest_hash`,
-      ),
-      approval_hash: string(
-        release.approval_hash,
-        `${path}.release.approval_hash`,
-      ),
-      release_hash: string(
-        release.release_hash,
-        `${path}.release.release_hash`,
-      ),
+      manifest_hash: string(release.manifest_hash, `${path}.release.manifest_hash`),
+      approval_hash: string(release.approval_hash, `${path}.release.approval_hash`),
+      release_hash: string(release.release_hash, `${path}.release.release_hash`),
     };
   }
   return result;
 }
 
-export function parseRulePackFixtureSuite(value: unknown, path = "fixture_suite"): RulePackFixtureSuite {
-  const item = object(value, path, ["schema_version", "id", "pack_id", "pack_version", "data_class", "cases"]);
+export function parseRulePackFixtureSuite(
+  value: unknown,
+  path = "fixture_suite",
+): RulePackFixtureSuite {
+  const item = object(value, path, [
+    "schema_version",
+    "id",
+    "pack_id",
+    "pack_version",
+    "data_class",
+    "cases",
+  ]);
   return {
     schema_version: nonEmptyString(item.schema_version, `${path}.schema_version`),
     id: nonEmptyString(item.id, `${path}.id`),
@@ -703,10 +705,7 @@ export function parseRulePackFixtureSuite(value: unknown, path = "fixture_suite"
   };
 }
 
-export function parseRulePackManifest(
-  value: unknown,
-  path = "manifest",
-): RulePackManifest {
+export function parseRulePackManifest(value: unknown, path = "manifest"): RulePackManifest {
   const keys = [
     "schema_version",
     "id",
@@ -718,9 +717,13 @@ export function parseRulePackManifest(
     "fixture_suite",
     "lifecycle",
   ] as const;
-  const record = object(value, path, keys, keys.filter((key) => key !== "fixture_suite"));
-  if (record.schema_version !== "rulepack/v1")
-    return fail(`${path}.schema_version`);
+  const record = object(
+    value,
+    path,
+    keys,
+    keys.filter((key) => key !== "fixture_suite"),
+  );
+  if (record.schema_version !== "rulepack/v1") return fail(`${path}.schema_version`);
   return {
     schema_version: "rulepack/v1",
     id: nonEmptyString(record.id, `${path}.id`),
@@ -729,9 +732,11 @@ export function parseRulePackManifest(
     effective_from: string(record.effective_from, `${path}.effective_from`),
     effective_until: string(record.effective_until, `${path}.effective_until`),
     rules: array(record.rules, `${path}.rules`, parseRule),
-    ...(record.fixture_suite === undefined ? {} : {
-      fixture_suite: parseRulePackFixtureSuite(record.fixture_suite, `${path}.fixture_suite`),
-    }),
+    ...(record.fixture_suite === undefined
+      ? {}
+      : {
+          fixture_suite: parseRulePackFixtureSuite(record.fixture_suite, `${path}.fixture_suite`),
+        }),
     lifecycle: parseLifecycle(record.lifecycle, `${path}.lifecycle`),
   };
 }
@@ -744,9 +749,7 @@ export function parseRulePackDetail(value: unknown): RulePackDetail {
   };
 }
 
-export function parseRulePackMutationResult(
-  value: unknown,
-): RulePackMutationResult {
+export function parseRulePackMutationResult(value: unknown): RulePackMutationResult {
   const record = object(value, "mutation", ["pack", "manifest"], ["pack"]);
   return Object.hasOwn(record, "manifest")
     ? parseRulePackDetail(record)
@@ -776,35 +779,16 @@ function parseHistoryEntry(value: unknown, path: string): RulePackHistoryEntry {
     action: parseHistoryAction(record.action, `${path}.action`),
     actor_id: string(record.actor_id, `${path}.actor_id`),
     content_hash: sha256(record.content_hash, `${path}.content_hash`),
-    pointer_revision: integer(
-      record.pointer_revision,
-      `${path}.pointer_revision`,
-    ),
+    pointer_revision: integer(record.pointer_revision, `${path}.pointer_revision`),
     created_at: string(record.created_at, `${path}.created_at`),
-    previous_version: nullableString(
-      record.previous_version,
-      `${path}.previous_version`,
-    ),
-    previous_active: nullableBoolean(
-      record.previous_active,
-      `${path}.previous_active`,
-    ),
-    resulting_version: nullableString(
-      record.resulting_version,
-      `${path}.resulting_version`,
-    ),
-    resulting_active: nullableBoolean(
-      record.resulting_active,
-      `${path}.resulting_active`,
-    ),
+    previous_version: nullableString(record.previous_version, `${path}.previous_version`),
+    previous_active: nullableBoolean(record.previous_active, `${path}.previous_active`),
+    resulting_version: nullableString(record.resulting_version, `${path}.resulting_version`),
+    resulting_active: nullableBoolean(record.resulting_active, `${path}.resulting_active`),
   };
 }
 
-function list<T>(
-  value: unknown,
-  name: string,
-  parse: (entry: unknown, path: string) => T,
-): T[] {
+function list<T>(value: unknown, name: string, parse: (entry: unknown, path: string) => T): T[] {
   const record = object(value, name, ["items"]);
   return array(record.items, `${name}.items`, parse);
 }
@@ -817,10 +801,7 @@ export function parseRulePackHistory(value: unknown): RulePackHistoryEntry[] {
   return list(value, "history", parseHistoryEntry);
 }
 
-function parseReportCitation(
-  value: unknown,
-  path: string,
-): RulePackReportCitation {
+function parseReportCitation(value: unknown, path: string): RulePackReportCitation {
   const record = object(value, path, [
     "source_id",
     "source_version",
@@ -833,10 +814,7 @@ function parseReportCitation(
   ]);
   return {
     source_id: nonEmptyString(record.source_id, `${path}.source_id`),
-    source_version: nonEmptyString(
-      record.source_version,
-      `${path}.source_version`,
-    ),
+    source_version: nonEmptyString(record.source_version, `${path}.source_version`),
     tenant_id: nonEmptyString(record.tenant_id, `${path}.tenant_id`),
     case_id: nonEmptyString(record.case_id, `${path}.case_id`),
     source_digest: sha256(record.source_digest, `${path}.source_digest`),
@@ -877,18 +855,28 @@ function parseTestResult(value: unknown, path: string): RulePackTestResult {
     mandatory: boolean(record.mandatory, `${path}.mandatory`),
     relation: parseRelation(record.relation, `${path}.relation`),
     reason_code: string(record.reason_code, `${path}.reason_code`),
-    ...(record.legal_authority_outcome === undefined ? {} : { legal_authority_outcome: string(record.legal_authority_outcome, `${path}.legal_authority_outcome`) }),
-    ...(record.legal_authority_reason === undefined ? {} : { legal_authority_reason: string(record.legal_authority_reason, `${path}.legal_authority_reason`) }),
+    ...(record.legal_authority_outcome === undefined
+      ? {}
+      : {
+          legal_authority_outcome: string(
+            record.legal_authority_outcome,
+            `${path}.legal_authority_outcome`,
+          ),
+        }),
+    ...(record.legal_authority_reason === undefined
+      ? {}
+      : {
+          legal_authority_reason: string(
+            record.legal_authority_reason,
+            `${path}.legal_authority_reason`,
+          ),
+        }),
     ...(Object.hasOwn(record, "fact_ids")
       ? { fact_ids: array(record.fact_ids, `${path}.fact_ids`, string) }
       : {}),
     ...(Object.hasOwn(record, "citations")
       ? {
-          citations: array(
-            record.citations,
-            `${path}.citations`,
-            parseReportCitation,
-          ),
+          citations: array(record.citations, `${path}.citations`, parseReportCitation),
         }
       : {}),
   };
@@ -912,7 +900,14 @@ function parseTestReport(value: unknown, path: string): RulePackTestReport {
 }
 
 function parseFixtureRun(value: unknown, path: string): RulePackFixtureRun {
-  const item = object(value, path, ["suite_id", "pack_id", "pack_version", "pack_hash", "passed", "cases"]);
+  const item = object(value, path, [
+    "suite_id",
+    "pack_id",
+    "pack_version",
+    "pack_hash",
+    "passed",
+    "cases",
+  ]);
   return {
     suite_id: nonEmptyString(item.suite_id, `${path}.suite_id`),
     pack_id: nonEmptyString(item.pack_id, `${path}.pack_id`),
@@ -920,21 +915,33 @@ function parseFixtureRun(value: unknown, path: string): RulePackFixtureRun {
     pack_hash: sha256(item.pack_hash, `${path}.pack_hash`),
     passed: boolean(item.passed, `${path}.passed`),
     cases: array(item.cases, `${path}.cases`, (value, casePath) => {
-      const result = object(value, casePath, ["id", "title", "kind", "passed", "failures", "report"], ["id", "title", "kind", "passed", "failures"]);
+      const result = object(
+        value,
+        casePath,
+        ["id", "title", "kind", "passed", "failures", "report"],
+        ["id", "title", "kind", "passed", "failures"],
+      );
       return {
         id: nonEmptyString(result.id, `${casePath}.id`),
         title: string(result.title, `${casePath}.title`),
         kind: string(result.kind, `${casePath}.kind`),
         passed: boolean(result.passed, `${casePath}.passed`),
         failures: array(result.failures, `${casePath}.failures`, string),
-        ...(result.report === undefined ? {} : { report: parseTestReport(result.report, `${casePath}.report`) }),
+        ...(result.report === undefined
+          ? {}
+          : { report: parseTestReport(result.report, `${casePath}.report`) }),
       };
     }),
   };
 }
 
 export function parseRulePackFixtureResponse(value: unknown): RulePackFixtureResponse {
-  const item = object(value, "suite_test", ["revision", "content_hash", "suite", "comparison", "compare_revision"], ["revision", "content_hash", "suite"]);
+  const item = object(
+    value,
+    "suite_test",
+    ["revision", "content_hash", "suite", "comparison", "compare_revision"],
+    ["revision", "content_hash", "suite"],
+  );
   const result: RulePackFixtureResponse = {
     revision: positiveInteger(item.revision, "suite_test.revision"),
     content_hash: sha256(item.content_hash, "suite_test.content_hash"),
@@ -946,14 +953,29 @@ export function parseRulePackFixtureResponse(value: unknown): RulePackFixtureRes
     result.comparison = {
       baseline: parseFixtureRun(comparison.baseline, "suite_test.comparison.baseline"),
       changes: array(comparison.changes, "suite_test.comparison.changes", (value, path) => {
-        const change = object(value, path, ["case_id", "rule_id", "before", "after", "before_error", "after_error"], ["case_id"]);
+        const change = object(
+          value,
+          path,
+          ["case_id", "rule_id", "before", "after", "before_error", "after_error"],
+          ["case_id"],
+        );
         return {
           case_id: string(change.case_id, `${path}.case_id`),
-          ...(change.rule_id === undefined ? {} : { rule_id: string(change.rule_id, `${path}.rule_id`) }),
-          ...(change.before === undefined ? {} : { before: parseTestResult(change.before, `${path}.before`) }),
-          ...(change.after === undefined ? {} : { after: parseTestResult(change.after, `${path}.after`) }),
-          ...(change.before_error === undefined ? {} : { before_error: string(change.before_error, `${path}.before_error`) }),
-          ...(change.after_error === undefined ? {} : { after_error: string(change.after_error, `${path}.after_error`) }),
+          ...(change.rule_id === undefined
+            ? {}
+            : { rule_id: string(change.rule_id, `${path}.rule_id`) }),
+          ...(change.before === undefined
+            ? {}
+            : { before: parseTestResult(change.before, `${path}.before`) }),
+          ...(change.after === undefined
+            ? {}
+            : { after: parseTestResult(change.after, `${path}.after`) }),
+          ...(change.before_error === undefined
+            ? {}
+            : { before_error: string(change.before_error, `${path}.before_error`) }),
+          ...(change.after_error === undefined
+            ? {}
+            : { after_error: string(change.after_error, `${path}.after_error`) }),
         };
       }),
     };
@@ -963,9 +985,7 @@ export function parseRulePackFixtureResponse(value: unknown): RulePackFixtureRes
   return result;
 }
 
-export function parseRulePackTestResponse(
-  value: unknown,
-): RulePackTestResponse {
+export function parseRulePackTestResponse(value: unknown): RulePackTestResponse {
   const record = object(value, "test", ["revision", "content_hash", "report"]);
   return {
     revision: positiveInteger(record.revision, "test.revision"),
@@ -975,18 +995,10 @@ export function parseRulePackTestResponse(
 }
 
 export function listRulePacks(signal?: AbortSignal) {
-  return requestJson(
-    paths.rulePacks,
-    { method: "GET", signal },
-    parseRulePackList,
-  );
+  return requestJson(paths.rulePacks, { method: "GET", signal }, parseRulePackList);
 }
 
-export function getRulePack(
-  packId: string,
-  version: string,
-  signal?: AbortSignal,
-) {
+export function getRulePack(packId: string, version: string, signal?: AbortSignal) {
   return requestJson(
     paths.rulePack(packId, version),
     { method: "GET", signal },
@@ -1003,11 +1015,7 @@ export function getRulePackHistory(packId: string, signal?: AbortSignal) {
 }
 
 export function createRulePack(manifest: RulePackManifestInput) {
-  return requestJson(
-    paths.rulePacks,
-    jsonInit("POST", { manifest }),
-    parseRulePackDetail,
-  );
+  return requestJson(paths.rulePacks, jsonInit("POST", { manifest }), parseRulePackDetail);
 }
 
 export function editRulePack(
@@ -1023,11 +1031,7 @@ export function editRulePack(
   );
 }
 
-export function validateRulePack(
-  packId: string,
-  version: string,
-  expectedRevision: number,
-) {
+export function validateRulePack(packId: string, version: string, expectedRevision: number) {
   return requestJson(
     paths.rulePackAction(packId, version, "validate"),
     jsonInit("POST", { expected_revision: expectedRevision }),
@@ -1105,11 +1109,7 @@ export function rollbackRulePack(
   );
 }
 
-export function testRulePack(
-  packId: string,
-  version: string,
-  input: RulePackTestInput,
-) {
+export function testRulePack(packId: string, version: string, input: RulePackTestInput) {
   return requestJson(
     paths.rulePackAction(packId, version, "test"),
     jsonInit("POST", input),
@@ -1117,6 +1117,14 @@ export function testRulePack(
   );
 }
 
-export function testRulePackFixtureSuite(packId: string, version: string, input: RulePackFixtureRequest) {
-  return requestJson(paths.rulePackAction(packId, version, "test"), jsonInit("POST", input), parseRulePackFixtureResponse);
+export function testRulePackFixtureSuite(
+  packId: string,
+  version: string,
+  input: RulePackFixtureRequest,
+) {
+  return requestJson(
+    paths.rulePackAction(packId, version, "test"),
+    jsonInit("POST", input),
+    parseRulePackFixtureResponse,
+  );
 }

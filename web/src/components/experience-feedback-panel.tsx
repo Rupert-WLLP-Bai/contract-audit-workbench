@@ -9,14 +9,7 @@
 // End file metadata.
 
 import { Button, Card, Input, Select } from "antd";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-  type SyntheticEvent,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type SyntheticEvent } from "react";
 import {
   getExperienceCandidate,
   getExperienceDistillation,
@@ -64,17 +57,11 @@ type Selection = {
   evidence: ExperienceEvidenceRef;
 };
 
-function distillationBlocked(
-  canSubmit: boolean,
-  requesting: boolean,
-): boolean {
+function distillationBlocked(canSubmit: boolean, requesting: boolean): boolean {
   return !canSubmit || requesting;
 }
 
-function recoveryBlocked(
-  manualFeedbackId: string,
-  recovering: boolean,
-): boolean {
+function recoveryBlocked(manualFeedbackId: string, recovering: boolean): boolean {
   return !manualFeedbackId.trim() || recovering;
 }
 
@@ -151,9 +138,7 @@ function parsedSourceMatches(document: ReviewDocument, id: string): boolean {
   const parsed = document.parsed_document;
   return (
     parsed === null ||
-    (parsed.status === "ready" &&
-      parsed.document_id === document.id &&
-      parsed.id === id)
+    (parsed.status === "ready" && parsed.document_id === document.id && parsed.id === id)
   );
 }
 
@@ -185,10 +170,7 @@ function originalOffset(text: string, displayedOffset: number): number | null {
   return displayed === displayedOffset ? source : null;
 }
 
-function displayedSelectionIsReal(
-  document: ReviewDocument,
-  element: HTMLTextAreaElement,
-): boolean {
+function displayedSelectionIsReal(document: ReviewDocument, element: HTMLTextAreaElement): boolean {
   const text = document.text;
   return (
     text !== null &&
@@ -204,7 +186,8 @@ function selectionFromTextArea(
 ): Selection | null {
   const text = document.text;
   const parsedId = parseId(document);
-  if (text === null || parsedId === null || !displayedSelectionIsReal(document, element)) return null;
+  if (text === null || parsedId === null || !displayedSelectionIsReal(document, element))
+    return null;
   const startIndex = originalOffset(text, element.selectionStart);
   const endIndex = originalOffset(text, element.selectionEnd);
   if (startIndex === null || endIndex === null) return null;
@@ -244,20 +227,38 @@ function selectionFromPanelQuote(
   runId: string,
   attemptId: string | null,
 ): Selection | null {
-  if (selection === null || scope === null || !attemptId ||
-    scope.caseId !== caseId || scope.runId !== runId ||
-    scope.attemptId !== attemptId || !scope.isFrozenAttempt ||
-    selection.caseId !== caseId || selection.runId !== runId ||
-    selection.attemptId !== attemptId) return null;
-  const source = sources.find((document) => document.id === selection.documentId &&
-    document.parsed_document_id === selection.parsedDocumentId);
+  if (
+    selection === null ||
+    scope === null ||
+    !attemptId ||
+    scope.caseId !== caseId ||
+    scope.runId !== runId ||
+    scope.attemptId !== attemptId ||
+    !scope.isFrozenAttempt ||
+    selection.caseId !== caseId ||
+    selection.runId !== runId ||
+    selection.attemptId !== attemptId
+  )
+    return null;
+  const source = sources.find(
+    (document) =>
+      document.id === selection.documentId &&
+      document.parsed_document_id === selection.parsedDocumentId,
+  );
   if (!frozenQuoteMatchesDocument(selection, scope, source)) return null;
   return selectionFromFrozenQuote(selection, source);
 }
 
-function feedbackMatchesSource(item: ExperienceFeedback, props: ExperienceFeedbackPanelProps): boolean {
-  return item.case_id === props.caseId && item.run_id === props.runId &&
-    item.attempt_id === props.attemptId && item.finding_id === props.finding?.id;
+function feedbackMatchesSource(
+  item: ExperienceFeedback,
+  props: ExperienceFeedbackPanelProps,
+): boolean {
+  return (
+    item.case_id === props.caseId &&
+    item.run_id === props.runId &&
+    item.attempt_id === props.attemptId &&
+    item.finding_id === props.finding?.id
+  );
 }
 
 function ErrorNotice({ error }: { error: unknown }) {
@@ -267,9 +268,14 @@ function ErrorNotice({ error }: { error: unknown }) {
       <p>{errorMessage(error)}</p>
       {error instanceof ApiError ? (
         <>
-          <p>错误代码：{error.code}（HTTP {error.status}）</p>
+          <p>
+            错误代码：{error.code}（HTTP {error.status}）
+          </p>
           {error.details !== null && error.details !== undefined ? (
-            <details><summary>错误详情</summary><pre>{JSON.stringify(error.details, null, 2)}</pre></details>
+            <details>
+              <summary>错误详情</summary>
+              <pre>{JSON.stringify(error.details, null, 2)}</pre>
+            </details>
           ) : null}
         </>
       ) : null}
@@ -280,26 +286,78 @@ function ErrorNotice({ error }: { error: unknown }) {
 function CandidateList({ items }: { items: string[] | null }) {
   if (items === null) return <span>未提供</span>;
   if (items.length === 0) return <span>无</span>;
-  return <ul>{items.map((item, index) => <li key={`${index}:${item}`}>{item || "未提供"}</li>)}</ul>;
+  return (
+    <ul>
+      {items.map((item, index) => (
+        <li key={`${index}:${item}`}>{item || "未提供"}</li>
+      ))}
+    </ul>
+  );
 }
 
 function CandidateFields({ candidate }: { candidate: ExperienceCandidate }) {
   const { content } = candidate;
   return (
     <dl className="execution-dl">
-      <div><dt>检查动作</dt><dd>{content.check_action || "未提供"}</dd></div>
-      <div><dt>适用条件</dt><dd><CandidateList items={content.applicability} /></dd></div>
-      <div><dt>排除条件</dt><dd><CandidateList items={content.exclusions} /></dd></div>
-      <div><dt>最低证据</dt><dd><CandidateList items={content.minimum_evidence} /></dd></div>
-      <div><dt>反例</dt><dd><CandidateList items={content.counterexamples} /></dd></div>
-      <div><dt>有效期</dt><dd>{content.valid_from || "未提供"} 至 {content.valid_until || "未提供"}</dd></div>
-      <div><dt>审查差异</dt><dd>{content.review_diff || "未提供"}</dd></div>
-      <div><dt>引用制度版本</dt><dd>{content.policy_refs === null ? "未提供" : content.policy_refs.length ? `已引用 ${content.policy_refs.length} 项制度版本` : "无"}</dd></div>
+      <div>
+        <dt>检查动作</dt>
+        <dd>{content.check_action || "未提供"}</dd>
+      </div>
+      <div>
+        <dt>适用条件</dt>
+        <dd>
+          <CandidateList items={content.applicability} />
+        </dd>
+      </div>
+      <div>
+        <dt>排除条件</dt>
+        <dd>
+          <CandidateList items={content.exclusions} />
+        </dd>
+      </div>
+      <div>
+        <dt>最低证据</dt>
+        <dd>
+          <CandidateList items={content.minimum_evidence} />
+        </dd>
+      </div>
+      <div>
+        <dt>反例</dt>
+        <dd>
+          <CandidateList items={content.counterexamples} />
+        </dd>
+      </div>
+      <div>
+        <dt>有效期</dt>
+        <dd>
+          {content.valid_from || "未提供"} 至 {content.valid_until || "未提供"}
+        </dd>
+      </div>
+      <div>
+        <dt>审查差异</dt>
+        <dd>{content.review_diff || "未提供"}</dd>
+      </div>
+      <div>
+        <dt>引用制度版本</dt>
+        <dd>
+          {content.policy_refs === null
+            ? "未提供"
+            : content.policy_refs.length
+              ? `已引用 ${content.policy_refs.length} 项制度版本`
+              : "无"}
+        </dd>
+      </div>
     </dl>
   );
 }
 
-function CandidateView({ candidate, completed }: { candidate: ExperienceCandidate; completed: boolean }) {
+function CandidateView({
+  candidate,
+  completed,
+}: {
+  candidate: ExperienceCandidate;
+  completed: boolean;
+}) {
   const query = new URLSearchParams({
     source_case: candidate.case_id,
     candidate_id: candidate.candidate_id,
@@ -314,7 +372,11 @@ function CandidateView({ candidate, completed }: { candidate: ExperienceCandidat
       <h4>已生成经验候选</h4>
       <p>候选还需要治理审核后才能发布。</p>
       <CandidateFields candidate={candidate} />
-      {completed ? <p><a href={governanceUrl}>在知识治理中审阅此候选</a></p> : null}
+      {completed ? (
+        <p>
+          <a href={governanceUrl}>在知识治理中审阅此候选</a>
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -368,10 +430,17 @@ function DecisionSelect({
   return (
     <label className="field">
       审查判断
-      <Select aria-label="审查判断" value={value || undefined} placeholder="选择已记录的决定"
+      <Select
+        aria-label="审查判断"
+        value={value || undefined}
+        placeholder="选择已记录的决定"
         disabled={disabled}
         onChange={onChange}
-        options={decisions.map((decision, index) => ({ value: decision.id, label: `第 ${index + 1} 条 · ${decisionLabel(decision.action)} · ${decision.actor} · ${formatDateTime(decision.decided_at)}` }))} />
+        options={decisions.map((decision, index) => ({
+          value: decision.id,
+          label: `第 ${index + 1} 条 · ${decisionLabel(decision.action)} · ${decision.actor} · ${formatDateTime(decision.decided_at)}`,
+        }))}
+      />
     </label>
   );
 }
@@ -390,10 +459,17 @@ function SourceSelect({
   return (
     <label className="field">
       本次审查材料
-      <Select aria-label="本次审查材料" value={value || undefined} placeholder="选择材料"
+      <Select
+        aria-label="本次审查材料"
+        value={value || undefined}
+        placeholder="选择材料"
         disabled={disabled}
         onChange={onChange}
-        options={sources.map((document, index) => ({ value: sourceKey(document), label: `第 ${index + 1} 份 · ${document.filename} · ${roleLabel(document.role)}` }))} />
+        options={sources.map((document, index) => ({
+          value: sourceKey(document),
+          label: `第 ${index + 1} 份 · ${document.filename} · ${roleLabel(document.role)}`,
+        }))}
+      />
     </label>
   );
 }
@@ -431,17 +507,36 @@ function EvidencePicker({
         <>
           <label className="field">
             本次审查使用的原文（选择一段后点击选用）
-            <Input.TextArea aria-label="本次审查使用的原文" readOnly value={displayText} rows={6}
-              onSelect={onSelect} />
+            <Input.TextArea
+              aria-label="本次审查使用的原文"
+              readOnly
+              value={displayText}
+              rows={6}
+              onSelect={onSelect}
+            />
           </label>
           <p className="meta">可用鼠标或键盘选择原文，最多 4096 个 Unicode 字符。</p>
-          <Button htmlType="button" disabled={!canSubmit || pending || !selection || selection.sourceKey !== selectedSource}
-            onClick={onChoose}>选用选中原文</Button>
+          <Button
+            htmlType="button"
+            disabled={!canSubmit || pending || !selection || selection.sourceKey !== selectedSource}
+            onClick={onChoose}
+          >
+            选用选中原文
+          </Button>
         </>
       ) : null}
-      <Button htmlType="button" disabled={!canSubmit || pending || !canUseFrozenSelection}
-        onClick={onUseFrozenSelection}>填入工作区正文当前选区</Button>
-      {validEvidence && chosenEvidence ? <blockquote>已选证据：{chosenEvidence.evidence.quote}</blockquote> : <p>请选择一段与本次审查使用的原文一致的内容。</p>}
+      <Button
+        htmlType="button"
+        disabled={!canSubmit || pending || !canUseFrozenSelection}
+        onClick={onUseFrozenSelection}
+      >
+        填入工作区正文当前选区
+      </Button>
+      {validEvidence && chosenEvidence ? (
+        <blockquote>已选证据：{chosenEvidence.evidence.quote}</blockquote>
+      ) : (
+        <p>请选择一段与本次审查使用的原文一致的内容。</p>
+      )}
     </>
   );
 }
@@ -498,20 +593,53 @@ function FeedbackForm({
   const disabled = !canSubmit || pending || recovering;
   return (
     <form onSubmit={onSubmit}>
-      <DecisionSelect decisions={decisions} value={decisionId} onChange={onDecision} disabled={disabled} />
-      <SourceSelect sources={sources} value={selectedSource} onChange={onSource} disabled={disabled} />
-      <EvidencePicker source={source} displayText={displayText} selection={selection}
-        validEvidence={validEvidence} chosenEvidence={chosenEvidence} canSubmit={canSubmit}
-        pending={pending} selectedSource={selectedSource} onSelect={onSelect} onChoose={onChoose}
-        canUseFrozenSelection={canUseFrozenSelection} onUseFrozenSelection={onUseFrozenSelection} />
+      <DecisionSelect
+        decisions={decisions}
+        value={decisionId}
+        onChange={onDecision}
+        disabled={disabled}
+      />
+      <SourceSelect
+        sources={sources}
+        value={selectedSource}
+        onChange={onSource}
+        disabled={disabled}
+      />
+      <EvidencePicker
+        source={source}
+        displayText={displayText}
+        selection={selection}
+        validEvidence={validEvidence}
+        chosenEvidence={chosenEvidence}
+        canSubmit={canSubmit}
+        pending={pending}
+        selectedSource={selectedSource}
+        onSelect={onSelect}
+        onChoose={onChoose}
+        canUseFrozenSelection={canUseFrozenSelection}
+        onUseFrozenSelection={onUseFrozenSelection}
+      />
       <label className="field">
         经验建议理由
-        <Input.TextArea aria-label="经验建议理由" value={reason} rows={3} disabled={disabled}
-          onChange={(event) => onReason(event.target.value)} />
+        <Input.TextArea
+          aria-label="经验建议理由"
+          value={reason}
+          rows={3}
+          disabled={disabled}
+          onChange={(event) => onReason(event.target.value)}
+        />
       </label>
       <p className="meta">填写 2 至 1000 个字符。提交后保留原审查判断。</p>
       <ErrorNotice error={submitError} />
-      <Button type="primary" htmlType="submit" aria-label="提交经验建议并请求提炼" disabled={!ready} loading={pending}>提交经验建议并请求提炼</Button>
+      <Button
+        type="primary"
+        htmlType="submit"
+        aria-label="提交经验建议并请求提炼"
+        disabled={!ready}
+        loading={pending}
+      >
+        提交经验建议并请求提炼
+      </Button>
     </form>
   );
 }
@@ -525,7 +653,13 @@ function DistillationStatusLine({
 }) {
   if (status) {
     return (
-      <p>任务状态：{Object.hasOwn(STATUS_LABELS, status.state) ? STATUS_LABELS[status.state] : `未识别（${status.state}）`}{status.failure_code ? `，失败代码：${status.failure_code}` : ""}</p>
+      <p>
+        任务状态：
+        {Object.hasOwn(STATUS_LABELS, status.state)
+          ? STATUS_LABELS[status.state]
+          : `未识别（${status.state}）`}
+        {status.failure_code ? `，失败代码：${status.failure_code}` : ""}
+      </p>
     );
   }
   if (statusError) return null;
@@ -548,7 +682,14 @@ function RetryDistillationButton({
   const retryable = status?.state === "failed" || status?.state === "cancelled";
   if (!retryable || !canSubmit) return null;
   return (
-    <Button htmlType="button" loading={distillPending} disabled={distillPending || pending} onClick={onRetry}>重新请求提炼</Button>
+    <Button
+      htmlType="button"
+      loading={distillPending}
+      disabled={distillPending || pending}
+      onClick={onRetry}
+    >
+      重新请求提炼
+    </Button>
   );
 }
 
@@ -565,7 +706,9 @@ function RequestDistillationButton({
 }) {
   if (distillPending || !canSubmit) return null;
   return (
-    <Button htmlType="button" disabled={pending} onClick={onRequest}>请求提炼</Button>
+    <Button htmlType="button" disabled={pending} onClick={onRequest}>
+      请求提炼
+    </Button>
   );
 }
 
@@ -581,7 +724,15 @@ function AnotherSuggestionButton({
   onAnother: () => void;
 }) {
   return (
-    <p><Button htmlType="button" disabled={pending || distillPending || !canSubmit} onClick={onAnother}>提出另一条建议</Button></p>
+    <p>
+      <Button
+        htmlType="button"
+        disabled={pending || distillPending || !canSubmit}
+        onClick={onAnother}
+      >
+        提出另一条建议
+      </Button>
+    </p>
   );
 }
 
@@ -611,16 +762,31 @@ function DistillationActions({
       {jobId ? (
         <>
           <p>提炼任务已受理。</p>
-          <Button htmlType="button" onClick={onRefresh}>刷新任务状态</Button>{" "}
-          <RetryDistillationButton status={status} pending={pending}
-            distillPending={distillPending} canSubmit={canSubmit} onRetry={onRetry} />
+          <Button htmlType="button" onClick={onRefresh}>
+            刷新任务状态
+          </Button>{" "}
+          <RetryDistillationButton
+            status={status}
+            pending={pending}
+            distillPending={distillPending}
+            canSubmit={canSubmit}
+            onRetry={onRetry}
+          />
         </>
       ) : (
-        <RequestDistillationButton distillPending={distillPending} pending={pending}
-          canSubmit={canSubmit} onRequest={onRequest} />
+        <RequestDistillationButton
+          distillPending={distillPending}
+          pending={pending}
+          canSubmit={canSubmit}
+          onRequest={onRequest}
+        />
       )}
-      <AnotherSuggestionButton pending={pending} distillPending={distillPending}
-        canSubmit={canSubmit} onAnother={onAnother} />
+      <AnotherSuggestionButton
+        pending={pending}
+        distillPending={distillPending}
+        canSubmit={canSubmit}
+        onAnother={onAnother}
+      />
     </>
   );
 }
@@ -637,7 +803,11 @@ function CandidateSection({
   return (
     <>
       <ErrorNotice error={candidateError} />
-      {candidate ? <CandidateView candidate={candidate} completed={status?.state === "completed"} /> : status?.candidate_id && status.version_id ? <p>候选已生成；内容尚未读取。</p> : null}
+      {candidate ? (
+        <CandidateView candidate={candidate} completed={status?.state === "completed"} />
+      ) : status?.candidate_id && status.version_id ? (
+        <p>候选已生成；内容尚未读取。</p>
+      ) : null}
     </>
   );
 }
@@ -670,7 +840,9 @@ function FeedbackProgressChain({
       <ol>
         <li>
           <strong>人工决定与冻结证据</strong>
-          <span>{decisionLabel(feedback.decision_action)} · {feedback.evidence_refs.length} 条证据</span>
+          <span>
+            {decisionLabel(feedback.decision_action)} · {feedback.evidence_refs.length} 条证据
+          </span>
         </li>
         <li>
           <strong>已提交反馈</strong>
@@ -735,10 +907,17 @@ function FeedbackProgress({
   return (
     <section aria-label="经验反馈进度" aria-live="polite">
       <h3>反馈已记录</h3>
-      <FeedbackProgressChain feedback={feedback} status={status} candidate={candidate} jobId={jobId} />
+      <FeedbackProgressChain
+        feedback={feedback}
+        status={status}
+        candidate={candidate}
+        jobId={jobId}
+      />
       <p>审查判断：{decisionLabel(feedback.decision_action)}。</p>
       <p>建议理由：{feedback.reason}</p>
-      {feedback.evidence_refs.map((ref, index) => <blockquote key={`${ref.document_id}:${ref.start}:${index}`}>{ref.quote}</blockquote>)}
+      {feedback.evidence_refs.map((ref, index) => (
+        <blockquote key={`${ref.document_id}:${ref.start}:${index}`}>{ref.quote}</blockquote>
+      ))}
       {distillPending ? <p role="status">正在请求经验提炼…</p> : null}
       <ErrorNotice error={distillError} />
       {jobId ? (
@@ -749,9 +928,15 @@ function FeedbackProgress({
         </>
       ) : null}
       <DistillationActions
-        status={status} jobId={jobId} distillPending={distillPending} pending={pending}
-        canSubmit={canSubmit} onRefresh={onRefresh} onRetry={onRetry}
-        onRequest={onRequest} onAnother={onAnother}
+        status={status}
+        jobId={jobId}
+        distillPending={distillPending}
+        pending={pending}
+        canSubmit={canSubmit}
+        onRefresh={onRefresh}
+        onRetry={onRetry}
+        onRequest={onRequest}
+        onAnother={onAnother}
       />
     </section>
   );
@@ -784,17 +969,48 @@ function RecoveryDetails({
     <details>
       <summary>用反馈编号和任务编号恢复状态</summary>
       <p>更换浏览器或清除会话后，可以输入已记录的编号恢复状态。查看时仍需要有该案件的访问权限。</p>
-      {feedback ? <p>反馈编号：{feedback.feedback_id}{jobId ? <>；任务编号：{jobId}</> : null}</p> : null}
-      <label className="field">反馈编号<Input aria-label="反馈编号" value={manualFeedbackId} onChange={(event) => onFeedbackId(event.target.value)} /></label>
-      <label className="field">任务编号（可选）<Input aria-label="任务编号" value={manualJobId} onChange={(event) => onJobId(event.target.value)} /></label>
-      <Button htmlType="button" disabled={!manualFeedbackId.trim() || recovering || pending || distillPending} loading={recovering} onClick={onRecover}>读取反馈和任务</Button>
+      {feedback ? (
+        <p>
+          反馈编号：{feedback.feedback_id}
+          {jobId ? <>；任务编号：{jobId}</> : null}
+        </p>
+      ) : null}
+      <label className="field">
+        反馈编号
+        <Input
+          aria-label="反馈编号"
+          value={manualFeedbackId}
+          onChange={(event) => onFeedbackId(event.target.value)}
+        />
+      </label>
+      <label className="field">
+        任务编号（可选）
+        <Input
+          aria-label="任务编号"
+          value={manualJobId}
+          onChange={(event) => onJobId(event.target.value)}
+        />
+      </label>
+      <Button
+        htmlType="button"
+        disabled={!manualFeedbackId.trim() || recovering || pending || distillPending}
+        loading={recovering}
+        onClick={onRecover}
+      >
+        读取反馈和任务
+      </Button>
     </details>
   );
 }
 
 function decisionsOf(finding: Finding | null): HumanDecision[] {
-  return finding?.decisions.filter((decision) => decision.id.trim() !== "" &&
-    DECISION_ACTIONS.some((action) => action.action === decision.action)) ?? [];
+  return (
+    finding?.decisions.filter(
+      (decision) =>
+        decision.id.trim() !== "" &&
+        DECISION_ACTIONS.some((action) => action.action === decision.action),
+    ) ?? []
+  );
 }
 
 function validEvidenceOf(
@@ -804,18 +1020,27 @@ function validEvidenceOf(
   runId: string,
   attemptId: string | null,
 ): boolean {
-  return chosenEvidence !== null && chosenEvidence.caseId === caseId &&
-    chosenEvidence.runId === runId && chosenEvidence.attemptId === attemptId &&
-    sources.some((document) => sourceKey(document) === chosenEvidence.sourceKey &&
-      document.digest === chosenEvidence.digest && document.text !== null &&
-      document.text === chosenEvidence.text &&
-      sliceByCodePoints(document.text, chosenEvidence.evidence.start, chosenEvidence.evidence.end) === chosenEvidence.evidence.quote);
+  return (
+    chosenEvidence !== null &&
+    chosenEvidence.caseId === caseId &&
+    chosenEvidence.runId === runId &&
+    chosenEvidence.attemptId === attemptId &&
+    sources.some(
+      (document) =>
+        sourceKey(document) === chosenEvidence.sourceKey &&
+        document.digest === chosenEvidence.digest &&
+        document.text !== null &&
+        document.text === chosenEvidence.text &&
+        sliceByCodePoints(
+          document.text,
+          chosenEvidence.evidence.start,
+          chosenEvidence.evidence.end,
+        ) === chosenEvidence.evidence.quote,
+    )
+  );
 }
 
-function decisionChosen(
-  decisions: HumanDecision[],
-  decisionId: string,
-): boolean {
+function decisionChosen(decisions: HumanDecision[], decisionId: string): boolean {
   return decisions.some((decision) => decision.id === decisionId);
 }
 
@@ -825,9 +1050,7 @@ function submitSubjectPresent(params: {
   attemptId: string | null;
   finding: Finding | null;
 }): boolean {
-  return Boolean(
-    params.caseId && params.runId && params.attemptId && params.finding?.id,
-  );
+  return Boolean(params.caseId && params.runId && params.attemptId && params.finding?.id);
 }
 
 function reasonLengthValid(length: number): boolean {
@@ -841,10 +1064,7 @@ function idleState(params: {
   feedback: ExperienceFeedback | null;
 }): boolean {
   return (
-    !params.pending &&
-    !params.distillPending &&
-    !params.recovering &&
-    params.feedback === null
+    !params.pending && !params.distillPending && !params.recovering && params.feedback === null
   );
 }
 
@@ -889,10 +1109,7 @@ function submissionBlocked(params: {
   );
 }
 
-function distillationKey(
-  newOperation: boolean,
-  current: string | null,
-): string {
+function distillationKey(newOperation: boolean, current: string | null): string {
   return newOperation || !current ? newIdempotencyKey() : current;
 }
 
@@ -911,16 +1128,25 @@ function useTrackedRecovery(
   useEffect(() => {
     if (!saved) return;
     const controller = new AbortController();
-    void getExperienceFeedback(props.caseId, saved.feedbackId, controller.signal).then((item) => {
-      if (!feedbackMatchesSource(item, props)) {
-        throw new ApiError("该反馈不属于当前审查执行记录和线索", 200, "invalid_response", false, null);
-      }
-      if (!controller.signal.aborted) setFeedback(item);
-    }).catch((error: unknown) => {
-      if (!controller.signal.aborted) setRecoveryError(error);
-    }).finally(() => {
-      if (!controller.signal.aborted) setRecovering(false);
-    });
+    void getExperienceFeedback(props.caseId, saved.feedbackId, controller.signal)
+      .then((item) => {
+        if (!feedbackMatchesSource(item, props)) {
+          throw new ApiError(
+            "该反馈不属于当前审查执行记录和线索",
+            200,
+            "invalid_response",
+            false,
+            null,
+          );
+        }
+        if (!controller.signal.aborted) setFeedback(item);
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) setRecoveryError(error);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setRecovering(false);
+      });
     return () => controller.abort();
     // The component remounts whenever the source key changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -938,7 +1164,14 @@ async function readCandidateState(
     return { candidate: null, error: null };
   }
   try {
-    const candidate = await getExperienceCandidate(caseId, feedbackId, jobId, status.candidate_id, status.version_id, signal);
+    const candidate = await getExperienceCandidate(
+      caseId,
+      feedbackId,
+      jobId,
+      status.candidate_id,
+      status.version_id,
+      signal,
+    );
     return { candidate, error: null };
   } catch (error) {
     return { candidate: null, error };
@@ -967,10 +1200,7 @@ async function pollDistillation(
       setters.setCandidate(result.candidate);
       setters.setCandidateError(result.error);
     }
-    return (
-      !signal.aborted &&
-      (status.state === "queued" || status.state === "running")
-    );
+    return !signal.aborted && (status.state === "queued" || status.state === "running");
   } catch (error) {
     if (!signal.aborted) {
       setters.setStatus(null);
@@ -1076,7 +1306,11 @@ async function runStartDistillation(
   saveTracking(ctx.key, { feedbackId: item.feedback_id, jobId: null, distillKey: requestKey });
   try {
     const receipt = await requestExperienceDistillation(ctx.caseId, item.feedback_id, requestKey);
-    saveTracking(ctx.key, { feedbackId: item.feedback_id, jobId: receipt.job_id, distillKey: requestKey });
+    saveTracking(ctx.key, {
+      feedbackId: item.feedback_id,
+      jobId: receipt.job_id,
+      distillKey: requestKey,
+    });
     ctx.setJobId(receipt.job_id);
   } catch (error) {
     ctx.setDistillError(error);
@@ -1088,13 +1322,16 @@ async function runStartDistillation(
 
 async function runSubmit(ctx: FeedbackActionContext, event: FormEvent<HTMLFormElement>) {
   event.preventDefault();
-  if (submissionBlocked({
-    ready: ctx.ready,
-    attemptId: ctx.attemptId,
-    finding: ctx.finding,
-    chosenEvidence: ctx.chosenEvidence,
-    submitting: ctx.submitting.current,
-  })) return;
+  if (
+    submissionBlocked({
+      ready: ctx.ready,
+      attemptId: ctx.attemptId,
+      finding: ctx.finding,
+      chosenEvidence: ctx.chosenEvidence,
+      submitting: ctx.submitting.current,
+    })
+  )
+    return;
   ctx.submitting.current = true;
   const input: ExperienceFeedbackInput = {
     run_id: ctx.runId,
@@ -1105,12 +1342,17 @@ async function runSubmit(ctx: FeedbackActionContext, event: FormEvent<HTMLFormEl
     evidence_refs: [ctx.chosenEvidence!.evidence],
   };
   const body = JSON.stringify(input);
-  if (ctx.feedbackOperation.current?.body !== body) ctx.feedbackOperation.current = { body, key: newIdempotencyKey() };
+  if (ctx.feedbackOperation.current?.body !== body)
+    ctx.feedbackOperation.current = { body, key: newIdempotencyKey() };
   ctx.setPending(true);
   ctx.setSubmitError(null);
   ctx.setRecoveryError(null);
   try {
-    const item = await submitExperienceFeedback(ctx.caseId, input, ctx.feedbackOperation.current.key);
+    const item = await submitExperienceFeedback(
+      ctx.caseId,
+      input,
+      ctx.feedbackOperation.current.key,
+    );
     ctx.setFeedback(item);
     ctx.distillKey.current = null;
     saveTracking(ctx.key, { feedbackId: item.feedback_id, jobId: null, distillKey: null });
@@ -1130,7 +1372,13 @@ async function runRecover(ctx: FeedbackActionContext) {
   try {
     const item = await getExperienceFeedback(ctx.caseId, ctx.manualFeedbackId.trim());
     if (!feedbackMatchesSource(item, ctx.props)) {
-      throw new ApiError("该反馈不属于当前审查执行记录和线索", 200, "invalid_response", false, null);
+      throw new ApiError(
+        "该反馈不属于当前审查执行记录和线索",
+        200,
+        "invalid_response",
+        false,
+        null,
+      );
     }
     const restoredJob = restoredJobId(ctx.manualJobId);
     ctx.distillKey.current = null;
@@ -1189,9 +1437,15 @@ function useFeedbackPanelState(props: ExperienceFeedbackPanelProps) {
   const sources = useMemo(() => documents.filter(sourceUsable), [documents]);
   const quoteScope = props.quoteScope ?? null;
   const frozenSelection = useMemo(
-    () => selectionFromPanelQuote(
-      props.quoteSelection ?? null, quoteScope, sources, caseId, runId, attemptId,
-    ),
+    () =>
+      selectionFromPanelQuote(
+        props.quoteSelection ?? null,
+        quoteScope,
+        sources,
+        caseId,
+        runId,
+        attemptId,
+      ),
     [attemptId, caseId, props.quoteSelection, quoteScope, runId, sources],
   );
   const canUseFrozenSelection = frozenSelection !== null;
@@ -1203,8 +1457,19 @@ function useFeedbackPanelState(props: ExperienceFeedbackPanelProps) {
   );
   const reasonLength = Array.from(reason.trim()).length;
   const ready = feedbackReady({
-    canSubmit, caseId, runId, attemptId, finding, decisions, decisionId,
-    validEvidence, reasonLength, pending, distillPending, recovering, feedback,
+    canSubmit,
+    caseId,
+    runId,
+    attemptId,
+    finding,
+    decisions,
+    decisionId,
+    validEvidence,
+    reasonLength,
+    pending,
+    distillPending,
+    recovering,
+    feedback,
   });
 
   const actionContext: FeedbackActionContext = {
@@ -1364,7 +1629,9 @@ function FeedbackPanelContent({ state }: { state: FeedbackPanelState }) {
           onUseFrozenSelection={state.useFrozenSelection}
           onDecision={state.setDecisionId}
           onSource={state.onSourceChange}
-          onSelect={(event) => selectFromSource(state.source, event, state.setSelection, state.quoteScope)}
+          onSelect={(event) =>
+            selectFromSource(state.source, event, state.setSelection, state.quoteScope)
+          }
           onChoose={() => state.setChosenEvidence(state.selection)}
           onReason={state.setReason}
           onSubmit={(event) => void state.submit(event)}
@@ -1410,10 +1677,17 @@ function FeedbackForSource(props: ExperienceFeedbackPanelProps) {
   const state = useFeedbackPanelState(props);
   return (
     <Card title="复盘经验建议" className="workflow-panel">
-      <p>选择已记录的审查判断和本次审查使用的原文，说明希望今后参考的经验。整理出的经验还需要审核。</p>
-      <FeedbackNotices finding={state.finding} attemptId={state.attemptId}
-        canSubmit={state.canSubmit} decisions={state.decisions}
-        sources={state.sources} recovering={state.recovering} />
+      <p>
+        选择已记录的审查判断和本次审查使用的原文，说明希望今后参考的经验。整理出的经验还需要审核。
+      </p>
+      <FeedbackNotices
+        finding={state.finding}
+        attemptId={state.attemptId}
+        canSubmit={state.canSubmit}
+        decisions={state.decisions}
+        sources={state.sources}
+        recovering={state.recovering}
+      />
       <FeedbackPanelContent state={state} />
     </Card>
   );

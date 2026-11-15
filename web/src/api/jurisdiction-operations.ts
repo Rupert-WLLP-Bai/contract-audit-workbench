@@ -66,12 +66,16 @@ export interface JurisdictionOperationsView {
   jurisdictions: JurisdictionOperationsSummary[];
 }
 
-const { object, text, integer, bool, array, nullableText, invalid } = responseReader((path) => `辖区运营统计响应中的 ${path} 无法识别`);
+const { object, text, integer, bool, array, nullableText, invalid } = responseReader(
+  (path) => `辖区运营统计响应中的 ${path} 无法识别`,
+);
 const PROJECTION_STATES = ["current", "stale", "rebuilding"] as const;
 const WATERMARK_KINDS = ["pg_snapshot", "unknown"] as const;
 const TENANT_STATES = ["active", "suspended", "closed"] as const;
 function date(value: string, path: string): string {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`)) ? value : invalid(path);
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`))
+    ? value
+    : invalid(path);
 }
 function timestamp(value: string | null, path: string): string | null {
   if (value === null) return null;
@@ -88,7 +92,8 @@ function parseMoney(value: unknown, path: string): OperationsCost {
   const scale = integer(item.minor_unit_scale, `${path}.minor_unit_scale`, 0);
   if (currency !== "USD" || scale !== 6) return invalid(`${path}.unit`);
   return {
-    currency, minor_unit_scale: scale,
+    currency,
+    minor_unit_scale: scale,
     known: bool(item.known, `${path}.known`),
     settled_minor: count(item.settled_minor, `${path}.settled_minor`),
     unknown_hold_minor: count(item.unknown_hold_minor, `${path}.unknown_hold_minor`),
@@ -120,8 +125,10 @@ function parseMetrics(value: unknown, path: string): OperationsMetricSummary {
     runs_completed: count(item.runs_completed, `${path}.runs_completed`),
     attempts_completed: count(item.attempts_completed, `${path}.attempts_completed`),
     money: item.money === null ? null : parseMoney(item.money, `${path}.money`),
-    logical_quota: item.logical_quota === null ? null : parseQuota(item.logical_quota, `${path}.logical_quota`),
-    shared_pool: item.shared_pool === null ? null : parsePool(item.shared_pool, `${path}.shared_pool`),
+    logical_quota:
+      item.logical_quota === null ? null : parseQuota(item.logical_quota, `${path}.logical_quota`),
+    shared_pool:
+      item.shared_pool === null ? null : parsePool(item.shared_pool, `${path}.shared_pool`),
   };
 }
 function parseTenant(value: unknown, path: string): TenantOperationsSummary {
@@ -146,14 +153,25 @@ function parseJurisdictionOperations(value: unknown): JurisdictionOperationsView
   if (item.schema_version !== "jurisdiction-operations/v1") return invalid("schema_version");
   const observedAt = timestamp(text(item.observed_at, "observed_at"), "observed_at");
   if (observedAt === null) return invalid("observed_at");
-  const watermarkKind = enumValue(item.watermark_kind, WATERMARK_KINDS) ?? invalid("watermark_kind");
+  const watermarkKind =
+    enumValue(item.watermark_kind, WATERMARK_KINDS) ?? invalid("watermark_kind");
   const watermark = nullableText(item.watermark, "watermark");
-  if (watermarkKind === "pg_snapshot" && watermark !== null) return invalid("watermark.pg_snapshot_has_no_event_sequence");
-  const projectionState = enumValue(item.projection_state, PROJECTION_STATES) ?? invalid("projection_state");
+  if (watermarkKind === "pg_snapshot" && watermark !== null)
+    return invalid("watermark.pg_snapshot_has_no_event_sequence");
+  const projectionState =
+    enumValue(item.projection_state, PROJECTION_STATES) ?? invalid("projection_state");
   const fromDate = date(text(item.from_date, "from_date"), "from_date");
   const toDate = date(text(item.to_date, "to_date"), "to_date");
-  if (fromDate > toDate || Date.parse(`${toDate}T00:00:00Z`) - Date.parse(`${fromDate}T00:00:00Z`) > 30 * 24 * 60 * 60 * 1000) return invalid("date_range");
-  const age = item.projection_age_seconds === null ? null : integer(item.projection_age_seconds, "projection_age_seconds", 0);
+  if (
+    fromDate > toDate ||
+    Date.parse(`${toDate}T00:00:00Z`) - Date.parse(`${fromDate}T00:00:00Z`) >
+      30 * 24 * 60 * 60 * 1000
+  )
+    return invalid("date_range");
+  const age =
+    item.projection_age_seconds === null
+      ? null
+      : integer(item.projection_age_seconds, "projection_age_seconds", 0);
   return {
     schema_version: "jurisdiction-operations/v1",
     observed_at: observedAt,
@@ -171,7 +189,11 @@ function parseJurisdictionOperations(value: unknown): JurisdictionOperationsView
 }
 export function getJurisdictionOperations(fromDate: string, toDate: string, signal?: AbortSignal) {
   const query = new URLSearchParams({ from_date: fromDate, to_date: toDate });
-  return requestJson(`/api/admin/jurisdiction/operations?${query.toString()}`, { method: "GET", signal }, parseJurisdictionOperations);
+  return requestJson(
+    `/api/admin/jurisdiction/operations?${query.toString()}`,
+    { method: "GET", signal },
+    parseJurisdictionOperations,
+  );
 }
 export function useJurisdictionOperations(fromDate: string, toDate: string, enabled: boolean) {
   return useQuery({

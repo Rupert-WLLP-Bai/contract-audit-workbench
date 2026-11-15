@@ -13,9 +13,7 @@ import { Route, Routes, useLocation, useSearchParams } from "react-router";
 import { AppShell } from "./components/app-shell";
 import { PageStatus } from "./components/page-status";
 import { SessionGate } from "./pages/session-gate";
-const AdminApp = lazy(() =>
-  import("./admin-app").then((module) => ({ default: module.AdminApp })),
-);
+const AdminApp = lazy(() => import("./admin-app").then((module) => ({ default: module.AdminApp })));
 
 const HomePage = lazy(() =>
   import("./pages/home-page").then((module) => ({ default: module.HomePage })),
@@ -26,8 +24,14 @@ const CaseDetailPage = lazy(() =>
     default: module.CaseDetailPage,
   })),
 );
-const SupportGrantsPage = lazy(() => import("./pages/support-grant-pages").then((module) => ({ default: module.SupportGrantsPage })));
-const SupportGrantCasePage = lazy(() => import("./pages/support-grant-pages").then((module) => ({ default: module.SupportGrantCasePage })));
+const SupportGrantsPage = lazy(() =>
+  import("./pages/support-grant-pages").then((module) => ({ default: module.SupportGrantsPage })),
+);
+const SupportGrantCasePage = lazy(() =>
+  import("./pages/support-grant-pages").then((module) => ({
+    default: module.SupportGrantCasePage,
+  })),
+);
 const SubjectsPage = lazy(() =>
   import("./pages/subjects-page").then((module) => ({ default: module.SubjectsPage })),
 );
@@ -35,9 +39,13 @@ const SubjectDetailPage = lazy(() =>
   import("./pages/subjects-page").then((module) => ({ default: module.SubjectDetailPage })),
 );
 const SubjectChangeReviewPage = lazy(() =>
-  import("./pages/subject-change-review-page").then((module) => ({ default: module.SubjectChangeReviewPage })),
+  import("./pages/subject-change-review-page").then((module) => ({
+    default: module.SubjectChangeReviewPage,
+  })),
 );
-const LegalKnowledgePage = lazy(() => import("./pages/legal-knowledge-page").then((module) => ({ default: module.LegalKnowledgePage })));
+const LegalKnowledgePage = lazy(() =>
+  import("./pages/legal-knowledge-page").then((module) => ({ default: module.LegalKnowledgePage })),
+);
 const CasesPage = lazy(() =>
   import("./pages/cases-page").then((module) => ({
     default: module.CasesPage,
@@ -124,9 +132,7 @@ export function App() {
   // Admin owns an absolute route tree; do not add a second /admin route base.
   if (pathname === "/admin" || pathname.startsWith("/admin/")) {
     return (
-      <Suspense
-        fallback={<PageStatus kind="loading" title="正在加载管理工作台" />}
-      >
+      <Suspense fallback={<PageStatus kind="loading" title="正在加载管理工作台" />}>
         <AdminApp />
       </Suspense>
     );
@@ -149,18 +155,9 @@ export function App() {
             <Route path="/cases/:caseId/legal-knowledge" element={<LegalKnowledgePage />} />
             <Route path="/subjects" element={<SubjectsPage />} />
             <Route path="/subjects/:subjectId" element={<SubjectDetailPage />} />
-            <Route
-              path="/cases/:caseId/operator-audit"
-              element={<OperatorAuditPage />}
-            />
-            <Route
-              path="/cases/:caseId/reviews/:runId"
-              element={<ReviewPage />}
-            />
-            <Route
-              path="/cases/:caseId/reviews/:runId/agent"
-              element={<AgentStudioPage />}
-            />
+            <Route path="/cases/:caseId/operator-audit" element={<OperatorAuditPage />} />
+            <Route path="/cases/:caseId/reviews/:runId" element={<ReviewPage />} />
+            <Route path="/cases/:caseId/reviews/:runId/agent" element={<AgentStudioPage />} />
             <Route
               path="/cases/:caseId/subject-changes/:requestId"
               element={<SubjectChangeReviewPage />}
@@ -168,10 +165,7 @@ export function App() {
             <Route path="/compare" element={<CompareRoute />} />
             <Route path="/workbench/health" element={<SystemHealthPage />} />
             <Route path="/workbench/evidence-sla" element={<EvidenceSLAPage />} />
-            <Route
-              path="/workbench/:module"
-              element={<WorkbenchModulePage />}
-            />
+            <Route path="/workbench/:module" element={<WorkbenchModulePage />} />
             <Route path="/api-docs" element={<ApiDocsPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>

@@ -11,16 +11,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button, Checkbox, Input, Modal, Select } from "antd";
 import { errorMessage } from "../api/http";
-import {
-  useProbeLLMEndpoint,
-  useSaveLLMEndpoint,
-  useSaveLLMModels,
-} from "../api/queries";
+import { useProbeLLMEndpoint, useSaveLLMEndpoint, useSaveLLMModels } from "../api/queries";
 import type { LLMEndpointView } from "../api/types";
 
-const protocolOptions = [
-  { value: "openai-compatible", label: "OpenAI 兼容（/v1）" },
-];
+const protocolOptions = [{ value: "openai-compatible", label: "OpenAI 兼容（/v1）" }];
 
 function endpointActive(endpoint: LLMEndpointView): boolean {
   return (
@@ -34,10 +28,8 @@ function endpointActive(endpoint: LLMEndpointView): boolean {
 
 function endpointState(endpoint: LLMEndpointView | undefined, loading: boolean) {
   if (loading) return { label: "正在读取", tone: "attention" as const };
-  if (!endpoint?.configured)
-    return { label: "未配置", tone: "attention" as const };
-  if (endpointActive(endpoint))
-    return { label: "已启用", tone: "good" as const };
+  if (!endpoint?.configured) return { label: "未配置", tone: "attention" as const };
+  if (endpointActive(endpoint)) return { label: "已启用", tone: "good" as const };
   return { label: "待选择模型", tone: "attention" as const };
 }
 
@@ -47,11 +39,7 @@ type ConfigDialogProps = {
   onOpenChange: (open: boolean) => void;
 };
 
-function LLMEndpointDialog({
-  endpoint,
-  open,
-  onOpenChange,
-}: ConfigDialogProps) {
+function LLMEndpointDialog({ endpoint, open, onOpenChange }: ConfigDialogProps) {
   const [name, setName] = useState("");
   const [protocol, setProtocol] = useState("openai-compatible");
   const [baseUrl, setBaseUrl] = useState("");
@@ -62,9 +50,7 @@ function LLMEndpointDialog({
   const [submitted, setSubmitted] = useState(false);
   // The revision the dialog is editing. A save bumps the stored revision, so the
   // dialog tracks the version it just wrote instead of the refetched one.
-  const [editingRevision, setEditingRevision] = useState<number | undefined>(
-    undefined,
-  );
+  const [editingRevision, setEditingRevision] = useState<number | undefined>(undefined);
   const probe = useProbeLLMEndpoint();
   const save = useSaveLLMEndpoint();
 
@@ -214,9 +200,7 @@ function LLMEndpointDialog({
             disabled={clearAPIKey}
             autoComplete="off"
             placeholder={
-              endpoint?.has_api_key
-                ? "已保存密钥；留空保持不变"
-                : "端点不需要密钥时可留空"
+              endpoint?.has_api_key ? "已保存密钥；留空保持不变" : "端点不需要密钥时可留空"
             }
             onChange={(event) => setApiKey(event.target.value)}
           />
@@ -252,9 +236,7 @@ function LLMEndpointDialog({
               发现 {probeResult.models.length} 个模型，耗时 {probeResult.latency_ms} ms
             </span>
           ) : (
-            <span className="settings-panel-note">
-              探测读取端点的 /models 列表，不会保存配置。
-            </span>
+            <span className="settings-panel-note">探测读取端点的 /models 列表，不会保存配置。</span>
           )}
         </div>
         {probe.isError ? (
@@ -285,11 +267,7 @@ function LLMEndpointDialog({
           </p>
         ) : null}
         <div className="dialog-actions">
-          <Button
-            type="text"
-            htmlType="button"
-            onClick={() => onOpenChange(false)}
-          >
+          <Button type="text" htmlType="button" onClick={() => onOpenChange(false)}>
             取消
           </Button>
           <Button
@@ -324,11 +302,7 @@ export function LLMEndpointPanel({
   const state = endpointState(endpoint, loading);
   return (
     <section className="settings-panel" aria-labelledby="settings-endpoint-title">
-      <LLMEndpointDialog
-        endpoint={endpoint}
-        open={open}
-        onOpenChange={onOpenChange}
-      />
+      <LLMEndpointDialog endpoint={endpoint} open={open} onOpenChange={onOpenChange} />
       <header className="settings-panel-head">
         <h2 id="settings-endpoint-title">LLM 端点</h2>
         <span className="settings-badge" data-tone={state.tone}>
@@ -336,7 +310,8 @@ export function LLMEndpointPanel({
         </span>
       </header>
       <p className="meta">
-        平台级的 OpenAI 兼容端点。端点模型列表保存后，还需在模型连通里选择审查模型和图片转写模型才会启用。
+        平台级的 OpenAI
+        兼容端点。端点模型列表保存后，还需在模型连通里选择审查模型和图片转写模型才会启用。
       </p>
       {error ? (
         <p className="workflow-error" role="alert">
@@ -354,11 +329,7 @@ export function LLMEndpointPanel({
           </div>
           <div>
             <dt>协议</dt>
-            <dd>
-              {endpoint.protocol === "openai-compatible"
-                ? "OpenAI 兼容"
-                : endpoint.protocol}
-            </dd>
+            <dd>{endpoint.protocol === "openai-compatible" ? "OpenAI 兼容" : endpoint.protocol}</dd>
           </div>
           <div>
             <dt>地址</dt>
@@ -427,9 +398,7 @@ export function LLMModelSelection({
   if (!endpoint?.configured || endpoint.models.length === 0) {
     return (
       <div className="settings-model-controls">
-        <p className="settings-panel-note">
-          还没有可选的模型列表。先配置 LLM 端点并探测模型。
-        </p>
+        <p className="settings-panel-note">还没有可选的模型列表。先配置 LLM 端点并探测模型。</p>
         <div>
           <Button type="default" htmlType="button" onClick={onConfigure}>
             配置端点
@@ -440,8 +409,7 @@ export function LLMModelSelection({
   }
 
   const options = endpoint.models.map((id) => ({ value: id, label: id }));
-  const changed =
-    reviewModel !== endpoint.review_model || ocrModel !== endpoint.ocr_model;
+  const changed = reviewModel !== endpoint.review_model || ocrModel !== endpoint.ocr_model;
   const ready = reviewModel !== "" && ocrModel !== "";
   const active = endpointActive(endpoint);
 

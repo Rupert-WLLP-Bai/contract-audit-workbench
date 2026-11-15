@@ -15,19 +15,13 @@ import { ApiError } from "../../api/http";
 import { CapabilityPackPanel } from "./capability-pack-panel";
 import { DEMO_OPERATOR_AUDIT_FLAGS } from "./feature-flags";
 import { capabilityPacks } from "./fixture";
-import {
-  deferred,
-  operatorAuditClient,
-  renderOperatorAudit,
-} from "./test-utils";
+import { deferred, operatorAuditClient, renderOperatorAudit } from "./test-utils";
 
 describe("capability pack panel", () => {
   it("is off by default and does not query the server", () => {
     const listCapabilityPacks = vi.fn(async () => capabilityPacks);
     renderOperatorAudit(
-      <CapabilityPackPanel
-        client={operatorAuditClient({ listCapabilityPacks })}
-      />,
+      <CapabilityPackPanel client={operatorAuditClient({ listCapabilityPacks })} />,
     );
     expect(screen.queryByText("能力包目录")).not.toBeInTheDocument();
     expect(listCapabilityPacks).not.toHaveBeenCalled();
@@ -42,20 +36,14 @@ describe("capability pack panel", () => {
         })}
       />,
     );
-    expect(
-      await screen.findByText("专线配置核验（合成示例）"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("云服务规则复用（合成示例）"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("专线配置核验（合成示例）")).toBeInTheDocument();
+    expect(screen.getByText("云服务规则复用（合成示例）")).toBeInTheDocument();
     expect(screen.getAllByText("1.0.0")).toHaveLength(2);
     expect(screen.getByText("政企专线")).toBeInTheDocument();
     expect(screen.getByText("云服务采购")).toBeInTheDocument();
     expect(screen.getAllByText("已发布")).toHaveLength(2);
     expect(screen.getAllByText("合成数据（fixture）")).toHaveLength(2);
-    expect(
-      screen.getByText("operator.dedicated_line"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("operator.dedicated_line")).toBeInTheDocument();
   });
 
   it("shows loading first and an explicit empty catalogue afterwards", async () => {
@@ -72,12 +60,8 @@ describe("capability pack panel", () => {
     await act(async () => {
       gate.resolve([]);
     });
-    expect(
-      await screen.findByText("当前范围没有已发布的能力包"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("当前目录为空。"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("当前范围没有已发布的能力包")).toBeInTheDocument();
+    expect(screen.getByText("当前目录为空。")).toBeInTheDocument();
   });
 
   it("treats a forbidden response as denied, not as an empty list", async () => {
@@ -91,15 +75,9 @@ describe("capability pack panel", () => {
         })}
       />,
     );
-    expect(
-      await screen.findByText("没有查看能力包目录的权限"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("当前范围没有已发布的能力包"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "重试读取能力包" }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByText("没有查看能力包目录的权限")).toBeInTheDocument();
+    expect(screen.queryByText("当前范围没有已发布的能力包")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试读取能力包" })).not.toBeInTheDocument();
   });
 
   it("surfaces a load failure and allows an explicit retry", async () => {
@@ -108,13 +86,7 @@ describe("capability pack panel", () => {
     const listCapabilityPacks = vi.fn(async () => {
       attempt += 1;
       if (attempt === 1) {
-        throw new ApiError(
-          "能力包服务暂不可用",
-          503,
-          "unavailable",
-          true,
-          null,
-        );
+        throw new ApiError("能力包服务暂不可用", 503, "unavailable", true, null);
       }
       return capabilityPacks;
     });
@@ -124,16 +96,10 @@ describe("capability pack panel", () => {
         client={operatorAuditClient({ listCapabilityPacks })}
       />,
     );
-    expect(
-      await screen.findByText("能力包目录读取失败"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("能力包目录读取失败")).toBeInTheDocument();
     expect(screen.getByText("能力包服务暂不可用")).toBeInTheDocument();
-    await user.click(
-      screen.getByRole("button", { name: "重试读取能力包" }),
-    );
-    expect(
-      await screen.findByText("专线配置核验（合成示例）"),
-    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "重试读取能力包" }));
+    expect(await screen.findByText("专线配置核验（合成示例）")).toBeInTheDocument();
     expect(listCapabilityPacks).toHaveBeenCalledTimes(2);
   });
 });

@@ -11,10 +11,7 @@
 import { Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { StatusText } from "../../components/status-text";
-import {
-  DEFAULT_OPERATOR_AUDIT_FLAGS,
-  type OperatorAuditFlags,
-} from "./feature-flags";
+import { DEFAULT_OPERATOR_AUDIT_FLAGS, type OperatorAuditFlags } from "./feature-flags";
 import {
   dataClassLabel,
   dataClassTone,
@@ -47,9 +44,7 @@ const checkColumns: ColumnsType<ImpactCheck> = [
         <StatusText tone={impactActionTone(check.action)}>
           {impactActionLabel(check.action)}
         </StatusText>
-        {check.action === "reuse_candidate" ? (
-          <div className="meta">仅候选，未跳过执行</div>
-        ) : null}
+        {check.action === "reuse_candidate" ? <div className="meta">仅候选，未跳过执行</div> : null}
       </>
     ),
   },
@@ -81,18 +76,13 @@ export function ImpactPlanPanel({
 
   const sourceAnomaly = plan.businessResultSource !== "full";
   const warnings: string[] = [];
-  if (plan.mode === "unknown")
-    warnings.push("模式未报告；不视为可执行计划。");
+  if (plan.mode === "unknown") warnings.push("模式未报告；不视为可执行计划。");
   if (flags.reviewImpactMode === "explain" && plan.mode === "shadow")
-    warnings.push(
-      "当前开关只启用解释模式，服务端 shadow 结果仅作对照，不改变业务结果。",
-    );
-  if (plan.dependencyComplete === null)
-    warnings.push("依赖完整性未报告，请先补齐后再复用。");
+    warnings.push("当前开关只启用解释模式，服务端 shadow 结果仅作对照，不改变业务结果。");
+  if (plan.dependencyComplete === null) warnings.push("依赖完整性未报告，请先补齐后再复用。");
   if (plan.dependencyComplete === false && plan.fallback === "none")
     warnings.push("依赖不完整但未报告回退策略，本计划不能用于跳过检查。");
-  if (plan.fallback === "full")
-    warnings.push("依赖不完整，按完整执行重新计算，不采用复用。");
+  if (plan.fallback === "full") warnings.push("依赖不完整，按完整执行重新计算，不采用复用。");
   if (plan.fallback === "deny")
     warnings.push("依赖或授权无法证明，拒绝复用；请按完整执行或人工处理。");
 
@@ -101,18 +91,12 @@ export function ImpactPlanPanel({
       <header className="workflow-panel-head">
         <div>
           <h2>影响解释与影子对照</h2>
-          <p className="meta">
-            解释依赖变化对检查的影响；不改变业务结果，也不继承人工确认。
-          </p>
+          <p className="meta">解释依赖变化对检查的影响；不改变业务结果，也不继承人工确认。</p>
         </div>
-        <StatusText tone={impactModeTone(plan.mode)}>
-          {impactModeLabel(plan.mode)}
-        </StatusText>
+        <StatusText tone={impactModeTone(plan.mode)}>{impactModeLabel(plan.mode)}</StatusText>
       </header>
 
-      <p className="callout">
-        影响计划只用于解释与影子对照；业务结果始终来自完整执行（full）。
-      </p>
+      <p className="callout">影响计划只用于解释与影子对照；业务结果始终来自完整执行（full）。</p>
 
       {sourceAnomaly ? (
         <p className="workflow-error" role="alert">
@@ -150,18 +134,12 @@ export function ImpactPlanPanel({
         <div>
           <dt>变更输入</dt>
           <dd>
-            {plan.changedInputs.length > 0
-              ? plan.changedInputs.join("、")
-              : "没有报告变更输入"}
+            {plan.changedInputs.length > 0 ? plan.changedInputs.join("、") : "没有报告变更输入"}
           </dd>
         </div>
         <div>
           <dt>业务结果来源</dt>
-          <dd>
-            {sourceAnomaly
-              ? (plan.businessResultSource ?? "未报告")
-              : "full（完整执行）"}
-          </dd>
+          <dd>{sourceAnomaly ? (plan.businessResultSource ?? "未报告") : "full（完整执行）"}</dd>
         </div>
         <div>
           <dt>数据分类</dt>
@@ -183,19 +161,11 @@ export function ImpactPlanPanel({
         locale={{ emptyText: "计划未列出检查项。" }}
       />
 
-      <p className="meta">
-        “预计可复用”只是候选，本次没有跳过任何检查；业务结果仍来自完整执行。
-      </p>
+      <p className="meta">“预计可复用”只是候选，本次没有跳过任何检查；业务结果仍来自完整执行。</p>
       {!flags.incrementalReuseEnabled ? (
-        <p className="meta">
-          增量复用开关未启用，所有检查仍按完整执行计算。
-        </p>
+        <p className="meta">增量复用开关未启用，所有检查仍按完整执行计算。</p>
       ) : null}
-      {plan.dataClass === "synthetic" ? (
-        <p className="meta">
-          合成计划，仅用于演示与测试。
-        </p>
-      ) : null}
+      {plan.dataClass === "synthetic" ? <p className="meta">合成计划，仅用于演示与测试。</p> : null}
     </section>
   );
 }

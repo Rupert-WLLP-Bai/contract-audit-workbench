@@ -15,7 +15,8 @@ import type { WireSchemas } from "./wire.generated";
 export type ExperienceEvidenceRef = WireSchemas["ExperienceEvidenceView"];
 // The case identity and idempotency key are supplied by the route and header.
 export type ExperienceFeedbackInput = Omit<
-  WireSchemas["ExperienceFeedbackRequest"], "case_id" | "idempotency_key"
+  WireSchemas["ExperienceFeedbackRequest"],
+  "case_id" | "idempotency_key"
 >;
 
 export interface ExperienceFeedback extends Omit<ExperienceFeedbackInput, "evidence_refs"> {
@@ -65,11 +66,14 @@ export interface ExperienceCandidate {
   };
 }
 
-const { invalid, object, text, array, integer: safeInteger } = responseReader(
-  (field) => `经验反馈响应中的 ${field} 无法识别`,
-);
-const integer = (value: unknown, field: string): number =>
-  safeInteger(value, field, 0);
+const {
+  invalid,
+  object,
+  text,
+  array,
+  integer: safeInteger,
+} = responseReader((field) => `经验反馈响应中的 ${field} 无法识别`);
+const integer = (value: unknown, field: string): number => safeInteger(value, field, 0);
 
 function identity(value: unknown, field: string): string {
   const result = text(value, field);
@@ -89,7 +93,8 @@ function evidence(value: unknown, field: string): ExperienceEvidenceRef {
   const start = integer(item.start, `${field}.start`);
   const end = integer(item.end, `${field}.end`);
   const quote = text(item.quote, `${field}.quote`);
-  if (end <= start || quote === "" || Array.from(quote).length !== end - start) return invalid(field);
+  if (end <= start || quote === "" || Array.from(quote).length !== end - start)
+    return invalid(field);
   return {
     document_id: identity(item.document_id, `${field}.document_id`),
     parsed_document_id: identity(item.parsed_document_id, `${field}.parsed_document_id`),
@@ -101,7 +106,8 @@ function evidence(value: unknown, field: string): ExperienceEvidenceRef {
 
 function parseFeedback(value: unknown): ExperienceFeedback {
   const item = object(value, "feedback");
-  if (!Array.isArray(item.evidence_refs) || item.evidence_refs.length === 0) return invalid("evidence_refs");
+  if (!Array.isArray(item.evidence_refs) || item.evidence_refs.length === 0)
+    return invalid("evidence_refs");
   return {
     feedback_id: identity(item.feedback_id, "feedback_id"),
     case_id: identity(item.case_id, "case_id"),
@@ -112,7 +118,9 @@ function parseFeedback(value: unknown): ExperienceFeedback {
     decision_action: text(item.decision_action, "decision_action"),
     decision_disposition: text(item.decision_disposition, "decision_disposition"),
     reason: text(item.reason, "reason"),
-    evidence_refs: item.evidence_refs.map((entry, index) => evidence(entry, `evidence_refs[${index}]`)),
+    evidence_refs: item.evidence_refs.map((entry, index) =>
+      evidence(entry, `evidence_refs[${index}]`),
+    ),
     applicant_id: identity(item.applicant_id, "applicant_id"),
     created_at: text(item.created_at, "created_at"),
   };
@@ -160,14 +168,23 @@ function parseCandidate(value: unknown): ExperienceCandidate {
       counterexamples: stringArray(content.counterexamples, "content.counterexamples"),
       valid_from: text(content.valid_from, "content.valid_from"),
       valid_until: text(content.valid_until, "content.valid_until"),
-      policy_refs: policyRefs === null ? null : policyRefs.map((value, index) => {
-        const ref = object(value, `content.policy_refs[${index}]`);
-        return {
-          knowledge_id: identity(ref.knowledge_id, `content.policy_refs[${index}].knowledge_id`),
-          version_id: identity(ref.version_id, `content.policy_refs[${index}].version_id`),
-          content_sha256: text(ref.content_sha256, `content.policy_refs[${index}].content_sha256`),
-        };
-      }),
+      policy_refs:
+        policyRefs === null
+          ? null
+          : policyRefs.map((value, index) => {
+              const ref = object(value, `content.policy_refs[${index}]`);
+              return {
+                knowledge_id: identity(
+                  ref.knowledge_id,
+                  `content.policy_refs[${index}].knowledge_id`,
+                ),
+                version_id: identity(ref.version_id, `content.policy_refs[${index}].version_id`),
+                content_sha256: text(
+                  ref.content_sha256,
+                  `content.policy_refs[${index}].content_sha256`,
+                ),
+              };
+            }),
       review_diff: text(content.review_diff, "content.review_diff"),
     },
   };
@@ -183,42 +200,62 @@ function sameFeedbackIdentity(
   caseId: string,
   input: ExperienceFeedbackInput,
 ): boolean {
-  return item.case_id === caseId && item.run_id === input.run_id &&
-    item.attempt_id === input.attempt_id && item.finding_id === input.finding_id &&
-    item.decision_id === input.decision_id;
+  return (
+    item.case_id === caseId &&
+    item.run_id === input.run_id &&
+    item.attempt_id === input.attempt_id &&
+    item.finding_id === input.finding_id &&
+    item.decision_id === input.decision_id
+  );
 }
 
-function sameEvidenceRef(
-  actual: ExperienceEvidenceRef,
-  expected: ExperienceEvidenceRef,
-): boolean {
-  return actual.document_id === expected.document_id &&
+function sameEvidenceRef(actual: ExperienceEvidenceRef, expected: ExperienceEvidenceRef): boolean {
+  return (
+    actual.document_id === expected.document_id &&
     actual.parsed_document_id === expected.parsed_document_id &&
-    actual.quote === expected.quote && actual.start === expected.start &&
-    actual.end === expected.end;
+    actual.quote === expected.quote &&
+    actual.start === expected.start &&
+    actual.end === expected.end
+  );
 }
 
 function sameEvidenceRefs(
   actual: readonly ExperienceEvidenceRef[],
   expected: readonly ExperienceEvidenceRef[],
 ): boolean {
-  return actual.length === expected.length &&
+  return (
+    actual.length === expected.length &&
     actual.every((ref, index) => {
       const expectedRef = expected[index];
       return expectedRef !== undefined && sameEvidenceRef(ref, expectedRef);
-    });
+    })
+  );
 }
 
-function checkFeedbackSource(item: ExperienceFeedback, caseId: string, input: ExperienceFeedbackInput): ExperienceFeedback {
+function checkFeedbackSource(
+  item: ExperienceFeedback,
+  caseId: string,
+  input: ExperienceFeedbackInput,
+): ExperienceFeedback {
   if (!sameFeedbackIdentity(item, caseId, input)) return invalid("来源身份");
-  if (item.reason !== input.reason.trim() ||
-      !sameEvidenceRefs(item.evidence_refs, input.evidence_refs)) return invalid("反馈内容");
+  if (
+    item.reason !== input.reason.trim() ||
+    !sameEvidenceRefs(item.evidence_refs, input.evidence_refs)
+  )
+    return invalid("反馈内容");
   return item;
 }
 
-export function submitExperienceFeedback(caseId: string, input: ExperienceFeedbackInput, idempotencyKey: string) {
-  return requestJson(feedbackPath(caseId), jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
-    (value) => checkFeedbackSource(parseFeedback(value), caseId, input));
+export function submitExperienceFeedback(
+  caseId: string,
+  input: ExperienceFeedbackInput,
+  idempotencyKey: string,
+) {
+  return requestJson(
+    feedbackPath(caseId),
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    (value) => checkFeedbackSource(parseFeedback(value), caseId, input),
+  );
 }
 
 export function getExperienceFeedback(caseId: string, feedbackId: string, signal?: AbortSignal) {
@@ -228,24 +265,51 @@ export function getExperienceFeedback(caseId: string, feedbackId: string, signal
   });
 }
 
-export function requestExperienceDistillation(caseId: string, feedbackId: string, idempotencyKey: string) {
-  return requestJson(`${feedbackPath(caseId, feedbackId)}/distillations`,
-    jsonInit("POST", {}, { "Idempotency-Key": idempotencyKey }), parseReceipt);
+export function requestExperienceDistillation(
+  caseId: string,
+  feedbackId: string,
+  idempotencyKey: string,
+) {
+  return requestJson(
+    `${feedbackPath(caseId, feedbackId)}/distillations`,
+    jsonInit("POST", {}, { "Idempotency-Key": idempotencyKey }),
+    parseReceipt,
+  );
 }
 
-export function getExperienceDistillation(caseId: string, feedbackId: string, jobId: string, signal?: AbortSignal) {
-  return requestJson(`${feedbackPath(caseId, feedbackId)}/distillations/${encodeURIComponent(jobId)}`,
-    { method: "GET", signal }, (value) => {
+export function getExperienceDistillation(
+  caseId: string,
+  feedbackId: string,
+  jobId: string,
+  signal?: AbortSignal,
+) {
+  return requestJson(
+    `${feedbackPath(caseId, feedbackId)}/distillations/${encodeURIComponent(jobId)}`,
+    { method: "GET", signal },
+    (value) => {
       const item = parseStatus(value);
       return item.feedback_id === feedbackId && item.job_id === jobId ? item : invalid("任务身份");
-    });
+    },
+  );
 }
 
-export function getExperienceCandidate(caseId: string, feedbackId: string, jobId: string, candidateId: string, versionId: string, signal?: AbortSignal) {
+export function getExperienceCandidate(
+  caseId: string,
+  feedbackId: string,
+  jobId: string,
+  candidateId: string,
+  versionId: string,
+  signal?: AbortSignal,
+) {
   const path = `/api/cases/${encodeURIComponent(caseId)}/experience-candidates/${encodeURIComponent(candidateId)}/versions/${encodeURIComponent(versionId)}`;
   return requestJson(path, { method: "GET", signal }, (value) => {
     const item = parseCandidate(value);
-    return item.case_id === caseId && item.feedback_id === feedbackId && item.job_id === jobId &&
-      item.candidate_id === candidateId && item.version_id === versionId ? item : invalid("候选身份");
+    return item.case_id === caseId &&
+      item.feedback_id === feedbackId &&
+      item.job_id === jobId &&
+      item.candidate_id === candidateId &&
+      item.version_id === versionId
+      ? item
+      : invalid("候选身份");
   });
 }

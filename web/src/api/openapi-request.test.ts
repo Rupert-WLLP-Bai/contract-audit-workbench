@@ -45,9 +45,7 @@ function parameter(
   };
 }
 
-function requestBody(
-  overrides: Partial<OpenApiRequestBody> = {},
-): OpenApiRequestBody {
+function requestBody(overrides: Partial<OpenApiRequestBody> = {}): OpenApiRequestBody {
   return {
     required: false,
     description: "",
@@ -59,9 +57,7 @@ function requestBody(
   };
 }
 
-function operation(
-  overrides: Partial<OpenApiOperation> & { path: string },
-): OpenApiOperation {
+function operation(overrides: Partial<OpenApiOperation> & { path: string }): OpenApiOperation {
   const method = (overrides.method ?? "GET").toUpperCase();
   return {
     key: `${method} ${overrides.path}`,
@@ -95,10 +91,7 @@ function input(
   };
 }
 
-function build(
-  target: OpenApiOperation,
-  overrides: Partial<ApiRequestInput> = {},
-) {
+function build(target: OpenApiOperation, overrides: Partial<ApiRequestInput> = {}) {
   return buildApiRequest(input(target, overrides));
 }
 
@@ -348,9 +341,7 @@ describe("apiRequestBodyFields", () => {
       "表单字段 a 是文件，但媒体类型不支持文件上传",
     ],
   ])("rejects %s", (_label, body, root, message) => {
-    expect(() => apiRequestBodyFields(body, root as OpenApiRecord)).toThrow(
-      message,
-    );
+    expect(() => apiRequestBodyFields(body, root as OpenApiRecord)).toThrow(message);
   });
 });
 
@@ -395,7 +386,7 @@ describe("buildApiRequest parameters", () => {
         "POST /cases/{id}/{slug}:header:X-Flag": "true",
         "POST /cases/{id}/{slug}:query:X-Rate": "3",
         "POST /cases/{id}/{slug}:query:empty": "   ",
-        "unrelated": "x",
+        unrelated: "x",
       },
     });
     expect(built.error).toBeNull();
@@ -429,8 +420,7 @@ describe("buildApiRequest parameters", () => {
       ],
     });
     expect(
-      build(target, { values: { "GET /pairs/{id}/with/{id}:path:id": "x y" } })
-        .request?.url,
+      build(target, { values: { "GET /pairs/{id}/with/{id}:path:id": "x y" } }).request?.url,
     ).toBe("/pairs/x%20y/with/x%20y");
   });
 
@@ -454,9 +444,7 @@ describe("buildApiRequest parameters", () => {
         parameter({ name: "q", location: "query", schema: { type: "integer" } }),
       ],
     });
-    expect(
-      build(target, { values: { "GET /cases:query:q": " " } }).request?.url,
-    ).toBe("/cases");
+    expect(build(target, { values: { "GET /cases:query:q": " " } }).request?.url).toBe("/cases");
   });
 
   it("rejects a missing required parameter", () => {
@@ -467,9 +455,9 @@ describe("buildApiRequest parameters", () => {
       ],
     });
     expect(build(target).error).toBe("请填写必填参数：q");
-    expect(
-      build(target, { values: { "GET /cases:query:q": "  " } }).error,
-    ).toBe("请填写必填参数：q");
+    expect(build(target, { values: { "GET /cases:query:q": "  " } }).error).toBe(
+      "请填写必填参数：q",
+    );
   });
 
   it("rejects a path without its placeholder", () => {
@@ -479,32 +467,25 @@ describe("buildApiRequest parameters", () => {
         parameter({ name: "id", location: "path", required: true, schema: { type: "string" } }),
       ],
     });
-    expect(
-      build(target, { values: { "GET /cases:path:id": "1" } }).error,
-    ).toBe("契约路径缺少参数占位符 {id}");
+    expect(build(target, { values: { "GET /cases:path:id": "1" } }).error).toBe(
+      "契约路径缺少参数占位符 {id}",
+    );
   });
 
   it("rejects unfilled braces and non-absolute paths", () => {
-    expect(
-      build(operation({ path: "/cases/{other}" })).error,
-    ).toBe("路径仍包含未填写的参数");
+    expect(build(operation({ path: "/cases/{other}" })).error).toBe("路径仍包含未填写的参数");
     for (const path of ["cases", "//evil.test/cases"]) {
-      expect(build(operation({ path })).error).toBe(
-        "请求路径必须是契约中的同源绝对路径",
-      );
+      expect(build(operation({ path })).error).toBe("请求路径必须是契约中的同源绝对路径");
     }
   });
 
   it("rejects an invalid base origin and a non-normalised origin", () => {
     expect(
-      buildApiRequest(
-        input(operation({ path: "/cases", method: "get" }), { origin: "not a url" }),
-      ).error,
+      buildApiRequest(input(operation({ path: "/cases", method: "get" }), { origin: "not a url" }))
+        .error,
     ).toBe("请求路径无效");
     expect(
-      buildApiRequest(
-        input(operation({ path: "/cases" }), { origin: "http://api.test:80" }),
-      ).error,
+      buildApiRequest(input(operation({ path: "/cases" }), { origin: "http://api.test:80" })).error,
     ).toBe("请求只能发送到当前服务源");
   });
 
@@ -560,13 +541,10 @@ describe("buildApiRequest parameters", () => {
   it("rejects a parameter schema that does not resolve to an object", () => {
     const target = operation({
       path: "/cases",
-      parameters: [
-        parameter({ name: "p", location: "query", schema: { $ref: "#/bad" } }),
-      ],
+      parameters: [parameter({ name: "p", location: "query", schema: { $ref: "#/bad" } })],
     });
     expect(
-      build(target, { schemaRoot: { bad: 7 }, values: { "GET /cases:query:p": "x" } })
-        .error,
+      build(target, { schemaRoot: { bad: 7 }, values: { "GET /cases:query:p": "x" } }).error,
     ).toBe("p schema 必须是对象");
   });
 
@@ -581,9 +559,7 @@ describe("buildApiRequest parameters", () => {
     );
     const target = operation({
       path: "/cases",
-      parameters: [
-        parameter({ name: "p", location: "query", schema: hostile as OpenApiRecord }),
-      ],
+      parameters: [parameter({ name: "p", location: "query", schema: hostile as OpenApiRecord })],
     });
     expect(
       build(target, {
@@ -598,9 +574,7 @@ describe("buildApiRequest JSON bodies", () => {
     operation({ path: "/cases", method: "post", requestBody: body });
 
   it("returns a valid nonempty array request without hanging", async () => {
-    const moduleUrl = pathToFileURL(
-      resolve(process.cwd(), "src/api/openapi-request.ts"),
-    ).href;
+    const moduleUrl = pathToFileURL(resolve(process.cwd(), "src/api/openapi-request.ts")).href;
     const script = `
       import { buildApiRequest } from ${JSON.stringify(moduleUrl)};
       const built = buildApiRequest({
@@ -675,18 +649,16 @@ describe("buildApiRequest JSON bodies", () => {
   });
 
   it("requires a JSON body when the contract marks it required", () => {
-    expect(
-      build(target(requestBody({ required: true }))).error,
-    ).toBe("此操作要求请求体，请填写真实请求 JSON。");
-    expect(
-      build(target(requestBody({ required: true, mediaType: "text/plain" }))).error,
-    ).toBe("此操作要求请求体，请填写真实请求内容。");
+    expect(build(target(requestBody({ required: true }))).error).toBe(
+      "此操作要求请求体，请填写真实请求 JSON。",
+    );
+    expect(build(target(requestBody({ required: true, mediaType: "text/plain" }))).error).toBe(
+      "此操作要求请求体，请填写真实请求内容。",
+    );
   });
 
   it("rejects invalid JSON text", () => {
-    expect(
-      build(target(requestBody()), { bodyText: "{" }).error,
-    ).toBe("请求体不是有效 JSON。");
+    expect(build(target(requestBody()), { bodyText: "{" }).error).toBe("请求体不是有效 JSON。");
   });
 
   it("normalises an accepted JSON body and sets the media type", () => {
@@ -702,10 +674,9 @@ describe("buildApiRequest JSON bodies", () => {
   });
 
   it("keeps a text body verbatim", () => {
-    const built = build(
-      target(requestBody({ mediaType: "text/plain; charset=utf-8" })),
-      { bodyText: "hello\n" },
-    );
+    const built = build(target(requestBody({ mediaType: "text/plain; charset=utf-8" })), {
+      bodyText: "hello\n",
+    });
     expect(built.request?.init.body).toBe("hello\n");
     expect(built.request?.init.headers).toEqual({
       Accept: "application/json",
@@ -721,18 +692,8 @@ describe("buildApiRequest JSON bodies", () => {
 
   it.each([
     ["type", { type: "object" }, "[]", "请求体 类型不符合 OpenAPI schema"],
-    [
-      "required",
-      { type: "object", required: ["a"] },
-      "{}",
-      "请求体.a 是必填字段",
-    ],
-    [
-      "required shape",
-      { type: "object", required: "a" },
-      "{}",
-      "请求体 的 schema required 无效",
-    ],
+    ["required", { type: "object", required: ["a"] }, "{}", "请求体.a 是必填字段"],
+    ["required shape", { type: "object", required: "a" }, "{}", "请求体 的 schema required 无效"],
     [
       "properties shape",
       { type: "object", properties: 7 },
@@ -753,20 +714,20 @@ describe("buildApiRequest JSON bodies", () => {
     ],
     ["const", { const: { a: 1 } }, '{"a":2}', "请求体 不符合 schema const"],
     ["enum", { enum: [{ a: 1 }, "x"] }, '"y"', "请求体 不在 schema enum 允许值中"],
+    ["allOf shape", { allOf: [7] }, "1", "请求体 的 schema allOf 无效"],
+    ["allOf member", { allOf: [{ type: "string" }] }, "1", "请求体 类型不符合 OpenAPI schema"],
     [
-      "allOf shape",
-      { allOf: [7] },
+      "anyOf",
+      { anyOf: [{ type: "string" }, { type: "boolean" }] },
       "1",
-      "请求体 的 schema allOf 无效",
+      "请求体 不符合 schema anyOf",
     ],
     [
-      "allOf member",
-      { allOf: [{ type: "string" }] },
+      "oneOf",
+      { oneOf: [{ type: "number" }, { type: "integer" }] },
       "1",
-      "请求体 类型不符合 OpenAPI schema",
+      "请求体 不符合 schema oneOf",
     ],
-    ["anyOf", { anyOf: [{ type: "string" }, { type: "boolean" }] }, "1", "请求体 不符合 schema anyOf"],
-    ["oneOf", { oneOf: [{ type: "number" }, { type: "integer" }] }, "1", "请求体 不符合 schema oneOf"],
     ["oneOf none", { oneOf: [{ type: "string" }] }, "1", "请求体 不符合 schema oneOf"],
     ["items shape", { type: "array", items: 7 }, "[]", "请求体 的 schema items 无效"],
     [
@@ -812,18 +773,16 @@ describe("buildApiRequest JSON bodies", () => {
   });
 
   it("still validates a non-null value against a nullable schema", () => {
-    const built = build(
-      target(requestBody({ schema: { nullable: true, type: "string" } })),
-      { bodyText: "1" },
-    );
+    const built = build(target(requestBody({ schema: { nullable: true, type: "string" } })), {
+      bodyText: "1",
+    });
     expect(built.error).toBe("请求体 类型不符合 OpenAPI schema");
   });
 
   it("ignores non-string type declarations", () => {
-    const built = build(
-      target(requestBody({ schema: { type: ["string", 7] } })),
-      { bodyText: '"a"' },
-    );
+    const built = build(target(requestBody({ schema: { type: ["string", 7] } })), {
+      bodyText: '"a"',
+    });
     expect(built.error).toBeNull();
   });
 
@@ -836,10 +795,9 @@ describe("buildApiRequest JSON bodies", () => {
   });
 
   it("applies required only to object values", () => {
-    const built = build(
-      target(requestBody({ schema: { required: ["a"] } })),
-      { bodyText: '"text"' },
-    );
+    const built = build(target(requestBody({ schema: { required: ["a"] } })), {
+      bodyText: '"text"',
+    });
     expect(built.error).toBeNull();
   });
 
@@ -852,18 +810,16 @@ describe("buildApiRequest JSON bodies", () => {
   });
 
   it("does not treat object values with length-like keys as arrays", () => {
-    const built = build(
-      target(requestBody({ schema: { items: { type: "string" } } })),
-      { bodyText: '{"length":1,"0":7}' },
-    );
+    const built = build(target(requestBody({ schema: { items: { type: "string" } } })), {
+      bodyText: '{"length":1,"0":7}',
+    });
     expect(built.error).toBeNull();
   });
 
   it("validates items for an array schema without an explicit array type", () => {
-    const built = build(
-      target(requestBody({ schema: { items: { type: "string" } } })),
-      { bodyText: "[1]" },
-    );
+    const built = build(target(requestBody({ schema: { items: { type: "string" } } })), {
+      bodyText: "[1]",
+    });
     expect(built.error).toBe("请求体[0] 类型不符合 OpenAPI schema");
   });
 
@@ -921,10 +877,10 @@ describe("buildApiRequest JSON bodies", () => {
       value = { nest: value };
     }
     const schemaRoot = { components: { schemas: { Deep: deep } } };
-    const built = build(
-      target(requestBody({ schema: { $ref: "#/components/schemas/Deep" } })),
-      { bodyText: JSON.stringify(value), schemaRoot },
-    );
+    const built = build(target(requestBody({ schema: { $ref: "#/components/schemas/Deep" } })), {
+      bodyText: JSON.stringify(value),
+      schemaRoot,
+    });
     expect(built.error).toMatch(/递归层级超出限制$/);
   });
 
@@ -949,10 +905,10 @@ describe("buildApiRequest JSON bodies", () => {
         },
       },
     };
-    const built = build(
-      target(requestBody({ schema: { $ref: "#/components/schemas/Payload" } })),
-      { bodyText: '{"a":"x"}', schemaRoot },
-    );
+    const built = build(target(requestBody({ schema: { $ref: "#/components/schemas/Payload" } })), {
+      bodyText: '{"a":"x"}',
+      schemaRoot,
+    });
     expect(built.error).toBeNull();
     const invalid = build(
       target(requestBody({ schema: { $ref: "#/components/schemas/Payload" } })),
@@ -990,7 +946,10 @@ describe("buildApiRequest JSON bodies", () => {
     const schema = {
       type: "object",
       properties: {
-        list: { type: "array", items: { type: "object", required: ["id"], properties: { id: { type: "integer" } } } },
+        list: {
+          type: "array",
+          items: { type: "object", required: ["id"], properties: { id: { type: "integer" } } },
+        },
       },
     };
     const built = build(target(requestBody({ schema })), {
@@ -1012,15 +971,13 @@ describe("buildApiRequest binary and form bodies", () => {
 
   it("accepts exactly one request file", () => {
     const file = new File(["x"], "contract.bin");
-    const built = build(
-      target(requestBody({ mediaType: "application/octet-stream" })),
-      { bodyFiles: { __request_body__: [file, new File(["y"], "second.bin")] } },
-    );
+    const built = build(target(requestBody({ mediaType: "application/octet-stream" })), {
+      bodyFiles: { __request_body__: [file, new File(["y"], "second.bin")] },
+    });
     expect(built.error).toBe("此操作只接受一个请求原件。");
-    const single = build(
-      target(requestBody({ mediaType: "image/png" })),
-      { bodyFiles: { __request_body__: [file] } },
-    );
+    const single = build(target(requestBody({ mediaType: "image/png" })), {
+      bodyFiles: { __request_body__: [file] },
+    });
     expect(single.request?.init.body).toBe(file);
     expect(single.request?.init.headers).toEqual({
       Accept: "application/json",
@@ -1086,8 +1043,7 @@ describe("buildApiRequest binary and form bodies", () => {
   it("accepts schema nesting at the limit and rejects the next level for a form field", () => {
     function buildWithAllOfDepth(depth: number) {
       let field: OpenApiRecord = { type: "string" };
-      for (let index = 0; index < depth; index += 1)
-        field = { allOf: [field] };
+      for (let index = 0; index < depth; index += 1) field = { allOf: [field] };
       return build(
         target(
           requestBody({
@@ -1106,9 +1062,7 @@ describe("buildApiRequest binary and form bodies", () => {
     ]);
 
     const beyondLimit = buildWithAllOfDepth(65);
-    expect(beyondLimit.error).toBe(
-      "请求体.title 的 schema 递归层级超出限制",
-    );
+    expect(beyondLimit.error).toBe("请求体.title 的 schema 递归层级超出限制");
     expect(beyondLimit.request).toBeNull();
   });
 
@@ -1149,13 +1103,10 @@ describe("buildApiRequest binary and form bodies", () => {
         gallery: { type: "array", items: { type: "string", format: "binary" } },
       },
     };
-    const built = build(
-      target(requestBody({ mediaType: "multipart/form-data", schema })),
-      {
-        bodyValues: { title: "合同", count: "3", tags: "a, b" },
-        bodyFiles: { attachment: [file], gallery: [file, second] },
-      },
-    );
+    const built = build(target(requestBody({ mediaType: "multipart/form-data", schema })), {
+      bodyValues: { title: "合同", count: "3", tags: "a, b" },
+      bodyFiles: { attachment: [file], gallery: [file, second] },
+    });
     expect(built.error).toBeNull();
     expect(built.request?.init.headers).toEqual({ Accept: "application/json" });
     const form = built.request?.init.body as FormData;
@@ -1208,18 +1159,18 @@ describe("buildApiRequest binary and form bodies", () => {
         bodyValues,
       });
     expect(form({})?.error).toBe("请求体.title 是必填字段");
-    expect(
-      form({ title: "t", list: " , ", count: "1", flag: "true", meta: "{}" }).error,
-    ).toBe("请求体.list 至少需要一个值");
-    expect(
-      form({ title: "t", list: "a", count: "1.5", flag: "true", meta: "{}" }).error,
-    ).toBe("请求体.count 的值不符合 integer 类型");
-    expect(
-      form({ title: "t", list: "a", count: "1", flag: "yes", meta: "{}" }).error,
-    ).toBe("请求体.flag 只能填写 true 或 false");
-    expect(
-      form({ title: "t", list: "a", count: "1", flag: "true", meta: "no" }).error,
-    ).toBe("请求体.meta 需要填写 JSON 对象");
+    expect(form({ title: "t", list: " , ", count: "1", flag: "true", meta: "{}" }).error).toBe(
+      "请求体.list 至少需要一个值",
+    );
+    expect(form({ title: "t", list: "a", count: "1.5", flag: "true", meta: "{}" }).error).toBe(
+      "请求体.count 的值不符合 integer 类型",
+    );
+    expect(form({ title: "t", list: "a", count: "1", flag: "yes", meta: "{}" }).error).toBe(
+      "请求体.flag 只能填写 true 或 false",
+    );
+    expect(form({ title: "t", list: "a", count: "1", flag: "true", meta: "no" }).error).toBe(
+      "请求体.meta 需要填写 JSON 对象",
+    );
   });
 
   it("serialises an array field without an items schema as strings", () => {
@@ -1349,7 +1300,7 @@ describe("apiRequestCode", () => {
       'const response = await fetch("/cases", {\n' +
         '  method: "POST",\n' +
         '  credentials: "same-origin",\n' +
-        '  headers: {\n' +
+        "  headers: {\n" +
         '    "Accept": "application/json"\n' +
         "  },\n" +
         '  body: "{\\"a\\":1}",\n' +
@@ -1407,7 +1358,7 @@ describe("apiRequestCode", () => {
     expect(code).toContain("const body = new FormData();");
     expect(code).toContain('body.append("title", "合同");');
     expect(code).toContain(
-      "const fileInput0 = Array.from(document.querySelectorAll('input[type=\"file\"][data-request-body-field]')).find((element) => element.dataset.requestBodyField === \"attachment\");",
+      'const fileInput0 = Array.from(document.querySelectorAll(\'input[type="file"][data-request-body-field]\')).find((element) => element.dataset.requestBodyField === "attachment");',
     );
     expect(code).toContain("const file1 = fileInput0?.files?.[0];");
     expect(code).toContain('if (!file1) throw new Error("请选择文件：attachment");');
@@ -1442,13 +1393,13 @@ describe("apiRequestCode", () => {
       {},
     );
     expect(code).toContain(
-      "const fileInput0 = Array.from(document.querySelectorAll('input[type=\"file\"][data-request-body-field]')).find((element) => element.dataset.requestBodyField === \"gallery\");",
+      'const fileInput0 = Array.from(document.querySelectorAll(\'input[type="file"][data-request-body-field]\')).find((element) => element.dataset.requestBodyField === "gallery");',
     );
     expect(code).toContain(
       'for (const file of fileInput0?.files ?? []) body.append("gallery", file);',
     );
     expect(code).toContain(
-      "const fileInput1 = Array.from(document.querySelectorAll('input[type=\"file\"][data-request-body-field]')).find((element) => element.dataset.requestBodyField === \"attachment\");",
+      'const fileInput1 = Array.from(document.querySelectorAll(\'input[type="file"][data-request-body-field]\')).find((element) => element.dataset.requestBodyField === "attachment");',
     );
     expect(code).toContain("const file2 = fileInput1?.files?.[0];");
     expect(code).toContain('if (!file2) throw new Error("请选择文件：attachment");');
@@ -1464,7 +1415,7 @@ describe("apiRequestCode", () => {
       {},
     );
     expect(code).toContain(
-      "const fileInput0 = Array.from(document.querySelectorAll('input[type=\"file\"][data-request-body-field]')).find((element) => element.dataset.requestBodyField === \"extra\");",
+      'const fileInput0 = Array.from(document.querySelectorAll(\'input[type="file"][data-request-body-field]\')).find((element) => element.dataset.requestBodyField === "extra");',
     );
     expect(code).toContain("const file1 = fileInput0?.files?.[0];");
     expect(code).toContain('if (!file1) throw new Error("请选择文件：extra");');

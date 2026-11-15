@@ -12,13 +12,7 @@ import type { ReactNode } from "react";
 import type { StatusTone } from "../domain/review";
 import { Tag } from "antd";
 
-export function StatusText({
-  tone,
-  children,
-}: {
-  tone: StatusTone;
-  children: ReactNode;
-}) {
+export function StatusText({ tone, children }: { tone: StatusTone; children: ReactNode }) {
   const color =
     tone === "good"
       ? "success"

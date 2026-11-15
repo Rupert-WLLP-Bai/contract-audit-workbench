@@ -34,12 +34,7 @@ import {
   type IntakeResult,
 } from "../api/intakes";
 import type { Actor } from "../api/types";
-import {
-  caseHref,
-  formatBytes,
-  formatDateTime,
-  validateCaseTitle,
-} from "../domain/review";
+import { caseHref, formatBytes, formatDateTime, validateCaseTitle } from "../domain/review";
 import {
   clearIntakeContinuation,
   continuationFileProblem,
@@ -91,10 +86,8 @@ interface Conflict {
 
 function problemFromError(error: unknown): Problem {
   if (isUnauthenticated(error)) return { kind: "unauthenticated" };
-  if (isForbidden(error))
-    return { kind: "forbidden", message: errorMessage(error) };
-  if (error instanceof ApiError && error.status === 404)
-    return { kind: "missing" };
+  if (isForbidden(error)) return { kind: "forbidden", message: errorMessage(error) };
+  if (error instanceof ApiError && error.status === 404) return { kind: "missing" };
   return { kind: "error", message: errorMessage(error) };
 }
 
@@ -146,8 +139,7 @@ const CONTINUATION_REASON_LABELS: Record<string, string> = {
   archived: "该办理已归档。归档只从未完成列表中隐藏办理，不会删除原案件；已开始的上传仍可能完成。",
 };
 
-const ARCHIVED_NOTICE =
-  CONTINUATION_REASON_LABELS.archived ?? "该办理已归档，继续上传已关闭。";
+const ARCHIVED_NOTICE = CONTINUATION_REASON_LABELS.archived ?? "该办理已归档，继续上传已关闭。";
 
 /**
  * Homepage entry that creates one case from one primary contract. The server
@@ -173,8 +165,7 @@ export function IntakePrimaryContract({
   const [hydrated, setHydrated] = useState(false);
   const [draft, setDraft] = useState<IntakeContinuation | null>(null);
 
-  const [localAccess, setLocalAccess] =
-    useState<IntakeContinuationSelection | null>(null);
+  const [localAccess, setLocalAccess] = useState<IntakeContinuationSelection | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -195,11 +186,14 @@ export function IntakePrimaryContract({
   const actorKey =
     actor === null
       ? ""
-      : [actor.audience, actor.tenant_id, actor.org_id, actor.id, actor.active_context?.context_version ?? ""].join(
-          "\u0000",
-        );
-  const canCreate =
-    actor !== null && (actor.role === "admin" || actor.role === "clerk");
+      : [
+          actor.audience,
+          actor.tenant_id,
+          actor.org_id,
+          actor.id,
+          actor.active_context?.context_version ?? "",
+        ].join("\u0000");
+  const canCreate = actor !== null && (actor.role === "admin" || actor.role === "clerk");
   const selectedOperationId = selectedContinuation?.detail.operation_id ?? "";
   const selectedOperationRef = useRef(selectedOperationId);
   selectedOperationRef.current = selectedOperationId;
@@ -217,8 +211,7 @@ export function IntakePrimaryContract({
         : selectedContinuation?.detail.operation_id === draft.receipt.operation_id
           ? selectedContinuation
           : null;
-  const canResumeCurrent =
-    activeAccess?.detail.can_resume === true && !activeAccess.archived;
+  const canResumeCurrent = activeAccess?.detail.can_resume === true && !activeAccess.archived;
 
   function isCurrentContinuation(continuation: IntakeContinuation): boolean {
     return (
@@ -230,7 +223,8 @@ export function IntakePrimaryContract({
           continuation.scope.actor_id,
           continuation.scope.context_version,
         ].join("\u0000") &&
-      (continuation.scope.context_version === "legacy" || isCommandContextVersionCurrent(continuation.scope.context_version)) &&
+      (continuation.scope.context_version === "legacy" ||
+        isCommandContextVersionCurrent(continuation.scope.context_version)) &&
       isSessionIdentityCurrent(actorSessionIdentityRef.current) &&
       activeContinuationKeyRef.current === continuation.idempotency_key
     );
@@ -295,11 +289,7 @@ export function IntakePrimaryContract({
       } catch {
         stored = null;
       }
-      if (
-        controller.signal.aborted ||
-        selectionAtStart !== selectedOperationRef.current
-      )
-        return;
+      if (controller.signal.aborted || selectionAtStart !== selectedOperationRef.current) return;
       activeContinuationKeyRef.current = stored?.idempotency_key ?? null;
       setDraft(stored);
       setHydrated(true);
@@ -307,28 +297,14 @@ export function IntakePrimaryContract({
       setBusy("recovering");
       try {
         const result = await requestReceipt(stored, controller.signal);
-        if (
-          controller.signal.aborted ||
-          selectionAtStart !== selectedOperationRef.current
-        )
-          return;
+        if (controller.signal.aborted || selectionAtStart !== selectedOperationRef.current) return;
         let next = withReceipt(stored, result);
         if (result.state === "upload_pending") {
-          const detail = await getIntakeContinuation(
-            result.operation_id,
-            controller.signal,
-          );
-          if (
-            controller.signal.aborted ||
-            selectionAtStart !== selectedOperationRef.current
-          )
+          const detail = await getIntakeContinuation(result.operation_id, controller.signal);
+          if (controller.signal.aborted || selectionAtStart !== selectedOperationRef.current)
             return;
           setLocalAccess({ detail, error_code: result.error_code, archived: false });
-          if (
-            detail.can_resume &&
-            detail.request !== null &&
-            detail.idempotency_key !== null
-          ) {
+          if (detail.can_resume && detail.request !== null && detail.idempotency_key !== null) {
             next = {
               ...next,
               request: detail.request,
@@ -371,8 +347,7 @@ export function IntakePrimaryContract({
               archived: false,
             });
           } catch (detailError) {
-            if (!controller.signal.aborted)
-              setProblem(problemFromError(detailError));
+            if (!controller.signal.aborted) setProblem(problemFromError(detailError));
           }
         } else {
           setProblem(problemFromError(error));
@@ -415,8 +390,7 @@ export function IntakePrimaryContract({
 
   async function submitNew(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (actor === null || !canCreate || busy !== null || submitting.current)
-      return;
+    if (actor === null || !canCreate || busy !== null || submitting.current) return;
     const actorKeyAtSubmit = actorKey;
     const commandContext = captureCommandContext(actor);
     const titleProblem = validateCaseTitle(title);
@@ -531,11 +505,7 @@ export function IntakePrimaryContract({
             error_code: result.error_code,
             archived: false,
           });
-          if (
-            detail.can_resume &&
-            detail.request !== null &&
-            detail.idempotency_key !== null
-          ) {
+          if (detail.can_resume && detail.request !== null && detail.idempotency_key !== null) {
             next = {
               ...next,
               request: detail.request,
@@ -543,8 +513,7 @@ export function IntakePrimaryContract({
             };
           }
         } catch (detailError) {
-          if (isCurrentContinuation(continuation))
-            setProblem(problemFromError(detailError));
+          if (isCurrentContinuation(continuation)) setProblem(problemFromError(detailError));
         }
       }
       if (!isCurrentContinuation(continuation)) return;
@@ -593,16 +562,11 @@ export function IntakePrimaryContract({
         continuation.receipt.operation_id !== null
       ) {
         setBusy("recovering");
-        blockLocalContinuation(
-          continuation.receipt.operation_id,
-          "archived",
-        );
+        blockLocalContinuation(continuation.receipt.operation_id, "archived");
         setNotice(ARCHIVED_NOTICE);
         setResumeFile(null);
         try {
-          const detail = await getIntakeContinuation(
-            continuation.receipt.operation_id,
-          );
+          const detail = await getIntakeContinuation(continuation.receipt.operation_id);
           if (!isCurrentContinuation(continuation)) return;
           setLocalAccess({
             detail,
@@ -611,8 +575,7 @@ export function IntakePrimaryContract({
           });
           setNotice(ARCHIVED_NOTICE);
         } catch (detailError) {
-          if (isCurrentContinuation(continuation))
-            setProblem(problemFromError(detailError));
+          if (isCurrentContinuation(continuation)) setProblem(problemFromError(detailError));
         } finally {
           if (isCurrentContinuation(continuation)) setBusy(null);
         }
@@ -623,16 +586,11 @@ export function IntakePrimaryContract({
         ["forbidden", "read_only", "case_not_writable"].includes(error.code) &&
         continuation.receipt.operation_id !== null
       ) {
-        blockLocalContinuation(
-          continuation.receipt.operation_id,
-          error.code,
-        );
+        blockLocalContinuation(continuation.receipt.operation_id, error.code);
         setResumeFile(null);
         setBusy("recovering");
         try {
-          const detail = await getIntakeContinuation(
-            continuation.receipt.operation_id,
-          );
+          const detail = await getIntakeContinuation(continuation.receipt.operation_id);
           if (!isCurrentContinuation(continuation)) return;
           setLocalAccess({
             detail,
@@ -663,9 +621,7 @@ export function IntakePrimaryContract({
       }
       if (
         error instanceof ApiError &&
-        (error.status === 0 ||
-          error.status >= 500 ||
-          error.code === "invalid_response")
+        (error.status === 0 || error.status >= 500 || error.code === "invalid_response")
       ) {
         try {
           const recovered = await requestReceipt(continuation);
@@ -679,11 +635,7 @@ export function IntakePrimaryContract({
               error_code: recovered.error_code,
               archived: false,
             });
-            if (
-              detail.can_resume &&
-              detail.request !== null &&
-              detail.idempotency_key !== null
-            ) {
+            if (detail.can_resume && detail.request !== null && detail.idempotency_key !== null) {
               next = {
                 ...next,
                 request: detail.request,
@@ -702,21 +654,17 @@ export function IntakePrimaryContract({
           }
           if (!isCurrentContinuation(next)) return;
           setNotice("已按同一幂等键从服务器恢复该操作。");
-          if (recovered.state === "completed")
-            navigate(caseHref(recovered.case_id, null));
+          if (recovered.state === "completed") navigate(caseHref(recovered.case_id, null));
           return;
         } catch (recoverError) {
-          if (isAbortError(recoverError) || !isCurrentContinuation(continuation))
-            return;
+          if (isAbortError(recoverError) || !isCurrentContinuation(continuation)) return;
           if (
             recoverError instanceof ApiError &&
             recoverError.code === "intake_archived" &&
             continuation.receipt.operation_id !== null
           ) {
             try {
-              const detail = await getIntakeContinuation(
-                continuation.receipt.operation_id,
-              );
+              const detail = await getIntakeContinuation(continuation.receipt.operation_id);
               if (!isCurrentContinuation(continuation)) return;
               setLocalAccess({
                 detail,
@@ -725,8 +673,7 @@ export function IntakePrimaryContract({
               });
               setNotice(ARCHIVED_NOTICE);
             } catch (detailError) {
-              if (isCurrentContinuation(continuation))
-                setProblem(problemFromError(detailError));
+              if (isCurrentContinuation(continuation)) setProblem(problemFromError(detailError));
             }
             return;
           }
@@ -741,18 +688,14 @@ export function IntakePrimaryContract({
     }
   }
 
-  async function retryWithFile(
-    chosen: File,
-    reportError: (message: string | null) => void,
-  ) {
+  async function retryWithFile(chosen: File, reportError: (message: string | null) => void) {
     const current = draft;
     if (current === null || actor === null || busy !== null || submitting.current) return;
-    const allowed =
-      current.receipt.state === "upload_pending"
-        ? canResumeCurrent
-        : canCreate;
+    const allowed = current.receipt.state === "upload_pending" ? canResumeCurrent : canCreate;
     if (!allowed) {
-      reportError("服务端当前未授权继续该办理；请从未完成办理列表刷新权限状态。打开原案件不会更改办理。 ");
+      reportError(
+        "服务端当前未授权继续该办理；请从未完成办理列表刷新权限状态。打开原案件不会更改办理。 ",
+      );
       return;
     }
     const actorKeyAtStart = actorKey;
@@ -772,11 +715,7 @@ export function IntakePrimaryContract({
       try {
         sha256 = await fileSha256(chosen);
         assertCommandContextCurrent(commandContext);
-        if (
-          actorKeyRef.current !== actorKeyAtStart ||
-          !isCurrentContinuation(current)
-        )
-          return;
+        if (actorKeyRef.current !== actorKeyAtStart || !isCurrentContinuation(current)) return;
       } catch {
         if (!isCurrentContinuation(current)) return;
         setBusy(null);
@@ -807,8 +746,7 @@ export function IntakePrimaryContract({
 
   async function refreshState() {
     const current = draft;
-    if (current === null || busy !== null || !isCurrentContinuation(current))
-      return;
+    if (current === null || busy !== null || !isCurrentContinuation(current)) return;
     setProblem(null);
     setConflict(null);
     setNotice(null);
@@ -821,11 +759,7 @@ export function IntakePrimaryContract({
         const detail = await getIntakeContinuation(result.operation_id);
         if (!isCurrentContinuation(current)) return;
         setLocalAccess({ detail, error_code: result.error_code, archived: false });
-        if (
-          detail.can_resume &&
-          detail.request !== null &&
-          detail.idempotency_key !== null
-        ) {
+        if (detail.can_resume && detail.request !== null && detail.idempotency_key !== null) {
           next = {
             ...next,
             request: detail.request,
@@ -859,16 +793,13 @@ export function IntakePrimaryContract({
         setNotice(ARCHIVED_NOTICE);
         setResumeFile(null);
         try {
-          const detail = await getIntakeContinuation(
-            current.receipt.operation_id,
-          );
+          const detail = await getIntakeContinuation(current.receipt.operation_id);
           if (!isCurrentContinuation(current)) return;
           setLocalAccess({ detail, error_code: "intake_archived", archived: false });
           setNotice(ARCHIVED_NOTICE);
           return;
         } catch (detailError) {
-          if (isCurrentContinuation(current))
-            setProblem(problemFromError(detailError));
+          if (isCurrentContinuation(current)) setProblem(problemFromError(detailError));
           return;
         }
       }
@@ -878,8 +809,7 @@ export function IntakePrimaryContract({
         ["forbidden", "read_only", "case_not_writable"].includes(error.code)
       ) {
         const operationId = current.receipt.operation_id;
-        if (operationId !== null)
-          blockLocalContinuation(operationId, error.code);
+        if (operationId !== null) blockLocalContinuation(operationId, error.code);
         setResumeFile(null);
       }
     } finally {
@@ -909,9 +839,7 @@ export function IntakePrimaryContract({
   function renderProgress() {
     const stage = busy === "hashing" ? 1 : 2;
     const label =
-      busy === "hashing"
-        ? "正在计算主合同文件的 SHA-256"
-        : "正在上传主合同并等待服务器确认";
+      busy === "hashing" ? "正在计算主合同文件的 SHA-256" : "正在上传主合同并等待服务器确认";
     return (
       <div className="home-intake-progress" role="status" aria-live="polite">
         <Progress
@@ -977,11 +905,7 @@ export function IntakePrimaryContract({
       <Alert
         type={problem.kind === "forbidden" ? "warning" : "error"}
         showIcon
-        title={
-          problem.kind === "forbidden"
-            ? "当前身份没有权限继续该操作"
-            : "主合同上传没有完成"
-        }
+        title={problem.kind === "forbidden" ? "当前身份没有权限继续该操作" : "主合同上传没有完成"}
         description={description}
         action={retry}
       />
@@ -1000,8 +924,8 @@ export function IntakePrimaryContract({
         <div>
           <dt>主合同文件</dt>
           <dd>
-            {continuation.request.file_name} ·{" "}
-            {formatBytes(continuation.request.file_size)} · SHA-256{" "}
+            {continuation.request.file_name} · {formatBytes(continuation.request.file_size)} ·
+            SHA-256{" "}
             <code title={continuation.request.file_sha256}>
               {shortDigest(continuation.request.file_sha256)}…
             </code>
@@ -1010,21 +934,13 @@ export function IntakePrimaryContract({
         <div>
           <dt>操作编号</dt>
           <dd>
-            {receipt.operation_id === null ? (
-              "尚未取得"
-            ) : (
-              <code>{receipt.operation_id}</code>
-            )}
+            {receipt.operation_id === null ? "尚未取得" : <code>{receipt.operation_id}</code>}
           </dd>
         </div>
         <div>
           <dt>案件编号</dt>
           <dd>
-            {caseId === null ? (
-              "尚未取得"
-            ) : (
-              <Link to={caseHref(caseId, null)}>{caseId}</Link>
-            )}
+            {caseId === null ? "尚未取得" : <Link to={caseHref(caseId, null)}>{caseId}</Link>}
           </dd>
         </div>
       </dl>
@@ -1102,7 +1018,8 @@ export function IntakePrimaryContract({
           />
         </div>
         <p className="home-intake-hint" id={hintId}>
-          单个文件不超过 32 MiB。系统按「新增 · 草稿合同 · 主合同」登记这一份文件，不会替换已有主合同。
+          单个文件不超过 32 MiB。系统按「新增 · 草稿合同 ·
+          主合同」登记这一份文件，不会替换已有主合同。
         </p>
         {file === null ? null : (
           <p className="home-intake-selected">
@@ -1127,9 +1044,7 @@ export function IntakePrimaryContract({
             前往案件中心完整建案
           </Button>
         </div>
-        <p className="home-intake-note">
-          上传成功后进入案件页，再在案件里确认准备清单并开始审查。
-        </p>
+        <p className="home-intake-note">上传成功后进入案件页，再在案件里确认准备清单并开始审查。</p>
       </form>
     );
   }
@@ -1149,44 +1064,22 @@ export function IntakePrimaryContract({
           <div>
             <dt>操作编号</dt>
             <dd>
-              {receipt.operation_id === null ? (
-                "未报告"
-              ) : (
-                <code>{receipt.operation_id}</code>
-              )}
+              {receipt.operation_id === null ? "未报告" : <code>{receipt.operation_id}</code>}
             </dd>
           </div>
           <div>
             <dt>案件编号</dt>
-            <dd>
-              {receipt.case_id === null ? (
-                "未报告"
-              ) : (
-                <code>{receipt.case_id}</code>
-              )}
-            </dd>
+            <dd>{receipt.case_id === null ? "未报告" : <code>{receipt.case_id}</code>}</dd>
           </div>
           <div>
             <dt>文档编号</dt>
-            <dd>
-              {receipt.document_id === null ? (
-                "未报告"
-              ) : (
-                <code>{receipt.document_id}</code>
-              )}
-            </dd>
+            <dd>{receipt.document_id === null ? "未报告" : <code>{receipt.document_id}</code>}</dd>
           </div>
           <div>
             <dt>材料版本</dt>
             <dd>
-              {receipt.material_id === null ? (
-                "未报告"
-              ) : (
-                <code>{receipt.material_id}</code>
-              )}
-              {receipt.material_version === null
-                ? ""
-                : ` · v${receipt.material_version}`}
+              {receipt.material_id === null ? "未报告" : <code>{receipt.material_id}</code>}
+              {receipt.material_version === null ? "" : ` · v${receipt.material_version}`}
             </dd>
           </div>
         </dl>
@@ -1196,11 +1089,7 @@ export function IntakePrimaryContract({
               打开案件与准备清单
             </Button>
           )}
-          <Button
-            htmlType="button"
-            disabled={busy !== null}
-            onClick={() => void refreshState()}
-          >
+          <Button htmlType="button" disabled={busy !== null} onClick={() => void refreshState()}>
             重新确认回执
           </Button>
           <Button
@@ -1220,9 +1109,7 @@ export function IntakePrimaryContract({
             清除本机回执
           </Button>
         </div>
-        <p className="home-intake-note">
-          清除本机回执只影响这台浏览器，不影响案件和服务器记录。
-        </p>
+        <p className="home-intake-note">清除本机回执只影响这台浏览器，不影响案件和服务器记录。</p>
       </div>
     );
   }
@@ -1239,11 +1126,12 @@ export function IntakePrimaryContract({
           description={`${
             receipt.error_code === null
               ? "上传服务暂不可用"
-              : INTAKE_ERROR_LABELS[receipt.error_code] ?? "主合同上传没有完成"
+              : (INTAKE_ERROR_LABELS[receipt.error_code] ?? "主合同上传没有完成")
           }。案件与操作编号已经保留，继续上传不会重复建案。`}
         />
         <p>
-          请重新选择最初提交的主合同文件。系统会先核对 SHA-256，再使用同一幂等键重试；不会替换已有主合同。
+          请重新选择最初提交的主合同文件。系统会先核对
+          SHA-256，再使用同一幂等键重试；不会替换已有主合同。
         </p>
         <form className="home-intake-form" onSubmit={submitResume} noValidate>
           <div className="home-intake-field">
@@ -1263,18 +1151,10 @@ export function IntakePrimaryContract({
             </p>
           )}
           <div className="home-intake-actions">
-            <Button
-              type="primary"
-              htmlType="submit"
-              disabled={busy !== null || !canResumeCurrent}
-            >
+            <Button type="primary" htmlType="submit" disabled={busy !== null || !canResumeCurrent}>
               继续上传同一文件
             </Button>
-            <Button
-              htmlType="button"
-              disabled={busy !== null}
-              onClick={() => void refreshState()}
-            >
+            <Button htmlType="button" disabled={busy !== null} onClick={() => void refreshState()}>
               刷新服务器状态
             </Button>
             {caseId === null ? null : (
@@ -1308,17 +1188,13 @@ export function IntakePrimaryContract({
       continuation.receipt.error_code === "intake_archived";
     const completed = detail?.state === "completed" || reasonCode === "completed";
     const caseId = detail?.case_id ?? continuation.receipt.case_id;
-    const title = archived
-      ? "该办理已归档"
-      : completed
-        ? "该办理已完成"
-        : "当前不能继续此办理";
+    const title = archived ? "该办理已归档" : completed ? "该办理已完成" : "当前不能继续此办理";
     const description = archived
       ? CONTINUATION_REASON_LABELS.archived
       : completed
         ? CONTINUATION_REASON_LABELS.completed
-        : CONTINUATION_REASON_LABELS[reasonCode] ??
-          "尚未取得服务器续办授权。请从“我的未完成办理”重新选择，或查看原案件。";
+        : (CONTINUATION_REASON_LABELS[reasonCode] ??
+          "尚未取得服务器续办授权。请从“我的未完成办理”重新选择，或查看原案件。");
     return (
       <div className="home-intake-state">
         <Alert
@@ -1334,11 +1210,7 @@ export function IntakePrimaryContract({
             </Button>
           )}
           {!archived && !completed ? (
-            <Button
-              htmlType="button"
-              disabled={busy !== null}
-              onClick={() => void refreshState()}
-            >
+            <Button htmlType="button" disabled={busy !== null} onClick={() => void refreshState()}>
               重新检查续办权限
             </Button>
           ) : null}
@@ -1357,8 +1229,7 @@ export function IntakePrimaryContract({
           description="第一次响应可能丢失。系统会沿用同一个幂等键重新提交；如果服务器已经建案，会返回原案件，不会重复建案。"
         />
         <p>
-          已保存的请求：{continuation.request.title}，文件{" "}
-          {continuation.request.file_name}（
+          已保存的请求：{continuation.request.title}，文件 {continuation.request.file_name}（
           {formatBytes(continuation.request.file_size)}）。
         </p>
         <form className="home-intake-form" onSubmit={submitResume} noValidate>
@@ -1379,18 +1250,10 @@ export function IntakePrimaryContract({
             </p>
           )}
           <div className="home-intake-actions">
-            <Button
-              type="primary"
-              htmlType="submit"
-              disabled={busy !== null || !canCreate}
-            >
+            <Button type="primary" htmlType="submit" disabled={busy !== null || !canCreate}>
               重新提交同一主合同
             </Button>
-            <Button
-              htmlType="button"
-              disabled={busy !== null}
-              onClick={() => void refreshState()}
-            >
+            <Button htmlType="button" disabled={busy !== null} onClick={() => void refreshState()}>
               查询服务器状态
             </Button>
             <Button
@@ -1417,17 +1280,13 @@ export function IntakePrimaryContract({
             正在向服务器确认该操作的当前状态…
           </p>
         ) : null}
-        {notice === null ? null : (
-          <Alert type="info" showIcon title={notice} />
-        )}
+        {notice === null ? null : <Alert type="info" showIcon title={notice} />}
         {renderProblem()}
         {conflict !== null && !confirmNew ? renderConflict() : null}
         {confirmNew ? renderConfirmNew() : null}
         {busy === "hashing" || busy === "uploading" ? renderProgress() : null}
-        {conflict === null &&
-        !confirmNew &&
-        (busy === null || busy === "recovering") ? (
-          draft.receipt.state === "completed"
+        {conflict === null && !confirmNew && (busy === null || busy === "recovering")
+          ? draft.receipt.state === "completed"
             ? renderCompleted(draft)
             : draft.receipt.state === "upload_pending"
               ? activeAccess?.archived === true ||
@@ -1439,7 +1298,7 @@ export function IntakePrimaryContract({
                 ? renderBlockedPending(draft)
                 : renderPending(draft)
               : renderLost(draft)
-        ) : null}
+          : null}
         <p className="home-intake-local">
           续办记录按当前身份、租户和工作区保存在本机，只含幂等键、案件元数据、文件大小与
           SHA-256；不含文件内容、Cookie 或登录凭据。
@@ -1456,11 +1315,7 @@ export function IntakePrimaryContract({
         <Alert
           type="error"
           showIcon
-          title={
-            client
-              ? "所选文件与最初提交的主合同不一致"
-              : "服务器按幂等键拒绝了这次提交"
-          }
+          title={client ? "所选文件与最初提交的主合同不一致" : "服务器按幂等键拒绝了这次提交"}
           description={
             <>
               <p>{conflict.message}</p>
@@ -1468,14 +1323,15 @@ export function IntakePrimaryContract({
                 同一幂等键不能绑定不同的文件或案件信息。系统不会替换已有主合同，也不会再建一个案件。
               </p>
               {conflict.existing === null ? (
-                <p>{client ? "返回当前记录并重新选择原文件，即可继续这项办理。" : "暂时无法读取该办理的服务器状态；请重新查询后再继续。"}</p>
+                <p>
+                  {client
+                    ? "返回当前记录并重新选择原文件，即可继续这项办理。"
+                    : "暂时无法读取该办理的服务器状态；请重新查询后再继续。"}
+                </p>
               ) : (
                 <p>
-                  服务器已有该幂等键对应的操作：案件{" "}
-                  <code>{conflict.existing.case_id}</code>，状态{" "}
-                  {conflict.existing.state === "completed"
-                    ? "已完成"
-                    : "等待上传"}。
+                  服务器已有该幂等键对应的操作：案件 <code>{conflict.existing.case_id}</code>，状态{" "}
+                  {conflict.existing.state === "completed" ? "已完成" : "等待上传"}。
                 </p>
               )}
             </>
@@ -1483,15 +1339,9 @@ export function IntakePrimaryContract({
         />
         <div className="home-intake-actions">
           {conflict.existing === null ? null : (
-            <Button href={caseHref(conflict.existing.case_id, null)}>
-              打开已有案件
-            </Button>
+            <Button href={caseHref(conflict.existing.case_id, null)}>打开已有案件</Button>
           )}
-          <Button
-            htmlType="button"
-            disabled={busy !== null}
-            onClick={() => void refreshState()}
-          >
+          <Button htmlType="button" disabled={busy !== null} onClick={() => void refreshState()}>
             查询服务器状态
           </Button>
           <Button
@@ -1502,11 +1352,7 @@ export function IntakePrimaryContract({
           >
             另建一份主合同
           </Button>
-          <Button
-            type="text"
-            htmlType="button"
-            onClick={() => setConflict(null)}
-          >
+          <Button type="text" htmlType="button" onClick={() => setConflict(null)}>
             返回当前记录
           </Button>
         </div>
@@ -1539,11 +1385,7 @@ export function IntakePrimaryContract({
           >
             确认另建主合同
           </Button>
-          <Button
-            type="text"
-            htmlType="button"
-            onClick={() => setConfirmNew(false)}
-          >
+          <Button type="text" htmlType="button" onClick={() => setConfirmNew(false)}>
             取消
           </Button>
         </div>
@@ -1582,9 +1424,7 @@ export function IntakePrimaryContract({
       {hydrated && actor !== null && draft === null ? (
         <div className="home-intake-body">
           {renderProblem()}
-          {busy === "hashing" || busy === "uploading"
-            ? renderProgress()
-            : renderNewForm()}
+          {busy === "hashing" || busy === "uploading" ? renderProgress() : renderNewForm()}
         </div>
       ) : null}
       {hydrated && actor !== null ? renderContinuation() : null}

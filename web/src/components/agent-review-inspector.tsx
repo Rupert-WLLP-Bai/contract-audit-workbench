@@ -39,11 +39,9 @@ const DOMAIN_LABELS: Record<AgentReviewDomain, string> = {
 const CAPABILITY_EXPRESSIONS: Record<string, string> = {
   authorization_basis:
     "尚未接入有版本记录的制度或审批材料，因此证据不足。提取审批原文只提供事实，不能直接得出合规结论。",
-  commercial_baseline:
-    "比较当前规则支持的金额和付款表述。",
+  commercial_baseline: "比较当前规则支持的金额和付款表述。",
   warranty_months: "比较支持的材料中关于质保期的表述；其他技术承诺尚未覆盖。",
-  acceptance_schedule:
-    "比较支持的交付、进场和验收时间表述。",
+  acceptance_schedule: "比较支持的交付、进场和验收时间表述。",
   counterparty_record:
     "尚未接入授权的登记信息来源，无法核实登记状态和关联关系。提取主体名称不会推断其资质或关联关系。",
   amount: "从本次审查使用的材料中提取金额原文事实；抽取结果本身不作合规或付款判断。",
@@ -61,12 +59,10 @@ const CAPABILITY_EXPRESSIONS: Record<string, string> = {
   payee:
     "从本次审查使用的材料中提取收款方原文；名称相同不足以确认收款资格，需核验稳定主体 ID 与收款角色关联。",
   responsibility: "从本次材料提取责任、义务原文。",
-  "dedicated_line.minimum_bandwidth":
-    "比较同一电路的最低保障带宽；单位和比较对象必须对应。",
+  "dedicated_line.minimum_bandwidth": "比较同一电路的最低保障带宽；单位和比较对象必须对应。",
   "dedicated_line.monthly_availability":
     "比较同口径自然月可用率，测量周期、时区、日历和故障口径需一致。",
-  "payment.advance_ratio.ceiling":
-    "比较预付款比例与已配置上限，并保留合同总额等计算基数口径。",
+  "payment.advance_ratio.ceiling": "比较预付款比例与已配置上限，并保留合同总额等计算基数口径。",
 };
 
 function capabilityExpression(capabilityId: string): string {
@@ -121,15 +117,9 @@ const ADVISORY_PROVIDER_LABELS: Record<AgentReviewAdvisoryProvider, string> = {
   direct: "直接调用",
 };
 
-function reviewTone(
-  status: AgentReview["status"],
-): "neutral" | "attention" | "bad" {
+function reviewTone(status: AgentReview["status"]): "neutral" | "attention" | "bad" {
   if (status === "failed" || status === "rejected") return "bad";
-  if (
-    status === "partial" ||
-    status === "blocked_live" ||
-    status === "cancelled"
-  )
+  if (status === "partial" || status === "blocked_live" || status === "cancelled")
     return "attention";
   return "neutral";
 }
@@ -165,8 +155,7 @@ function relationTone(
 ): "good" | "bad" | "attention" | "neutral" {
   if (UNRESOLVED_CAPABILITY_STATUSES.has(capability.status)) return "attention";
   if (capability.relation === "conflict") return "bad";
-  if (capability.relation === "insufficient" || capability.relation === null)
-    return "attention";
+  if (capability.relation === "insufficient" || capability.relation === null) return "attention";
   if (
     capability.relation === "compatible" &&
     (capability.status === "supported" || capability.status === "completed") &&
@@ -185,25 +174,16 @@ function domainTone(status: AgentReviewDomainStatus): "neutral" | "attention" {
     : "attention";
 }
 
-function callTone(
-  status: AgentReviewCallStatus,
-): "neutral" | "attention" | "bad" {
+function callTone(status: AgentReviewCallStatus): "neutral" | "attention" | "bad" {
   if (status === "denied" || status === "failed") return "bad";
-  if (
-    status === "cancelled" ||
-    status === "insufficient" ||
-    status === "unsupported"
-  )
+  if (status === "cancelled" || status === "insufficient" || status === "unsupported")
     return "attention";
   return "neutral";
 }
 
-function planTone(
-  status: AgentReview["plan"]["status"],
-): "neutral" | "attention" | "bad" {
+function planTone(status: AgentReview["plan"]["status"]): "neutral" | "attention" | "bad" {
   if (status === "guard_rejected") return "bad";
-  if (status === "not_planned" || status === "partial" || status === "fallback")
-    return "attention";
+  if (status === "not_planned" || status === "partial" || status === "fallback") return "attention";
   return "neutral";
 }
 
@@ -216,19 +196,11 @@ function nullableCount(value: number | null): string {
 }
 
 function showIds(values: string[] | null): string {
-  return values === null
-    ? "未记录"
-    : values.length === 0
-      ? "无已报告 ID"
-      : values.join("、");
+  return values === null ? "未记录" : values.length === 0 ? "无已报告 ID" : values.join("、");
 }
 
-function knowledgeAdvisoryTone(
-  status: AgentReviewAdvisoryStatus,
-): "neutral" | "attention" {
-  return status === "completed" || status === "not_applicable"
-    ? "neutral"
-    : "attention";
+function knowledgeAdvisoryTone(status: AgentReviewAdvisoryStatus): "neutral" | "attention" {
+  return status === "completed" || status === "not_applicable" ? "neutral" : "attention";
 }
 
 function AdvisoryCandidates({
@@ -237,11 +209,7 @@ function AdvisoryCandidates({
   candidates: AgentReviewKnowledgeAdvisory["candidates"];
 }) {
   if (candidates.length === 0) {
-    return (
-      <p className="meta">
-        没有可选知识候选获得建议；排序保持确定性顺序。
-      </p>
-    );
+    return <p className="meta">没有可选知识候选获得建议；排序保持确定性顺序。</p>;
   }
   return (
     <ul className="agent-review-list">
@@ -253,17 +221,14 @@ function AdvisoryCandidates({
             <strong>
               <code>{candidate.knowledge_id}</code> v{candidate.version_id}
             </strong>
-            <StatusText tone="neutral">
-              {ADVISORY_BAND_LABELS[candidate.band]}
-            </StatusText>
+            <StatusText tone="neutral">{ADVISORY_BAND_LABELS[candidate.band]}</StatusText>
           </header>
           <p>
             建议概率{" "}
             {candidate.probability === null
               ? "未返回"
               : `${(candidate.probability * 100).toFixed(1)}%`}
-            ，确定性排序第 {candidate.rank_before} 位，建议排序第{" "}
-            {candidate.rank_after} 位
+            ，确定性排序第 {candidate.rank_before} 位，建议排序第 {candidate.rank_after} 位
             {candidate.reason ? `，原因 ${candidate.reason}` : ""}
           </p>
         </li>
@@ -272,13 +237,8 @@ function AdvisoryCandidates({
   );
 }
 
-function KnowledgeAdvisoryDetails({
-  advisory,
-}: {
-  advisory: AgentReviewKnowledgeAdvisory;
-}) {
-  const failed =
-    advisory.status !== "completed" && advisory.status !== "not_applicable";
+function KnowledgeAdvisoryDetails({ advisory }: { advisory: AgentReviewKnowledgeAdvisory }) {
+  const failed = advisory.status !== "completed" && advisory.status !== "not_applicable";
   return (
     <>
       <p className="callout">
@@ -298,8 +258,7 @@ function KnowledgeAdvisoryDetails({
         <div>
           <dt>提供方与模式</dt>
           <dd>
-            {ADVISORY_PROVIDER_LABELS[advisory.provider]}，{" "}
-            {ADVISORY_MODE_LABELS[advisory.mode]}
+            {ADVISORY_PROVIDER_LABELS[advisory.provider]}， {ADVISORY_MODE_LABELS[advisory.mode]}
           </dd>
         </div>
         <div>
@@ -338,11 +297,7 @@ function KnowledgeAdvisoryDetails({
       <p className="meta">
         概率表示模型对相关性的判断，不是正确率，也不是风险结论；候选身份与概率来自冻结审查记录。
       </p>
-      {failed ? (
-        <p className="callout">
-          建议不可用时，审查按确定性规则继续。
-        </p>
-      ) : null}
+      {failed ? <p className="callout">建议不可用时，审查按确定性规则继续。</p> : null}
     </>
   );
 }
@@ -393,10 +348,7 @@ function ConfigurationSection({
   modelSources: string[];
 }) {
   return (
-    <section
-      className="agent-review-section"
-      aria-labelledby="agent-review-mode-title"
-    >
+    <section className="agent-review-section" aria-labelledby="agent-review-mode-title">
       <h4 id="agent-review-mode-title">本次使用的配置和材料来源</h4>
       <dl className="agent-review-grid">
         <div>
@@ -445,26 +397,23 @@ function ConfigurationSection({
             {review.planner.limits.max_rounds} 轮，
             {review.planner.limits.max_calls} 次调用，
             {review.planner.limits.max_duration_ms} ms，
-            {review.planner.limits.max_evidence_bytes.toLocaleString("zh-CN")}{" "}
-            字节证据
+            {review.planner.limits.max_evidence_bytes.toLocaleString("zh-CN")} 字节证据
           </dd>
         </div>
       </dl>
       {review.source_snapshot ? (
         <p className="meta">
-          本次使用的材料 {showIds(review.source_snapshot.document_ids)}，
-          解析版本 {showIds(review.source_snapshot.parsed_document_ids)}{" "}
-          ，解析选择摘要 <code>{review.source_snapshot.parse_selection_hash}</code>
+          本次使用的材料 {showIds(review.source_snapshot.document_ids)}， 解析版本{" "}
+          {showIds(review.source_snapshot.parsed_document_ids)} ，解析选择摘要{" "}
+          <code>{review.source_snapshot.parse_selection_hash}</code>
         </p>
       ) : (
-        <p className="callout">
-          未提供本次审查的材料来源记录，无法确认来源已经核对。
-        </p>
+        <p className="callout">未提供本次审查的材料来源记录，无法确认来源已经核对。</p>
       )}
       {review.rulepack ? (
         <p className="meta">
-          本次使用的规则包 {review.rulepack.id} v{review.rulepack.version} ，
-          SHA-256 <code>{review.rulepack.content_sha256}</code>
+          本次使用的规则包 {review.rulepack.id} v{review.rulepack.version} ， SHA-256{" "}
+          <code>{review.rulepack.content_sha256}</code>
         </p>
       ) : (
         <p className="meta">这份检查记录没有提供规则包编号。</p>
@@ -519,24 +468,17 @@ function EvidenceCitationRow({
     <li>
       <p>
         <strong>来源事实：</strong>
-        <code>{evidenceId}</code>，{evidence.semantic_type}，
-        {evidence.verification}
+        <code>{evidenceId}</code>，{evidence.semantic_type}，{evidence.verification}
       </p>
       {anchor.status === "located" ? (
         <>
           <p>
             材料 {anchor.document_id}，码点半开区间 [{anchor.start},{anchor.end})
           </p>
-          {anchor.quote ? (
-            <blockquote>{anchor.quote}</blockquote>
-          ) : (
-            <p>没有报告原文引用。</p>
-          )}
+          {anchor.quote ? <blockquote>{anchor.quote}</blockquote> : <p>没有报告原文引用。</p>}
         </>
       ) : (
-        <p>
-          引用未定位：{anchor.reason === null ? "未提供原因" : anchor.reason}
-        </p>
+        <p>引用未定位：{anchor.reason === null ? "未提供原因" : anchor.reason}</p>
       )}
     </li>
   );
@@ -554,9 +496,7 @@ function CoverageCapabilityRow({
       <header>
         <code>{capability.capability_id}</code>
         <StatusText tone={relationTone(capability, review.evidence)}>
-          {capability.relation
-            ? RELATION_LABELS[capability.relation]
-            : capability.status}
+          {capability.relation ? RELATION_LABELS[capability.relation] : capability.status}
         </StatusText>
       </header>
       <p>
@@ -580,9 +520,7 @@ function CoverageCapabilityRow({
             <EvidenceCitationRow
               key={evidenceId}
               evidenceId={evidenceId}
-              evidence={review.evidence.find(
-                (item) => item.evidence_id === evidenceId,
-              )}
+              evidence={review.evidence.find((item) => item.evidence_id === evidenceId)}
             />
           ))}
         </ul>
@@ -597,9 +535,7 @@ function coverageStatusCode(
   return coverage === undefined ? "unknown" : coverage.status;
 }
 
-function coverageStatusLabel(
-  coverage: AgentReviewDomainCoverage | undefined,
-): string {
+function coverageStatusLabel(coverage: AgentReviewDomainCoverage | undefined): string {
   return coverage === undefined ? "未报告" : coverage.status;
 }
 
@@ -610,9 +546,7 @@ function ScopeCard({
   scope: AgentReview["scope"][number];
   review: AgentReview;
 }) {
-  const coverage = review.domains.find(
-    (item) => item.domain === scope.domain,
-  );
+  const coverage = review.domains.find((item) => item.domain === scope.domain);
   return (
     <li className="agent-review-card">
       <header>
@@ -648,14 +582,10 @@ function ScopeCard({
 
 function ScopeSection({ review }: { review: AgentReview }) {
   const hasOutOfScopeDomains = review.domains.some(
-    (coverage) =>
-      !review.scope.some((scope) => scope.domain === coverage.domain),
+    (coverage) => !review.scope.some((scope) => scope.domain === coverage.domain),
   );
   return (
-    <section
-      className="agent-review-section"
-      aria-labelledby="agent-review-scope-title"
-    >
+    <section className="agent-review-section" aria-labelledby="agent-review-scope-title">
       <h4 id="agent-review-scope-title">范围、支持表达与证据覆盖</h4>
       {review.scope.length === 0 ? (
         <p>没有报告审查范围。</p>
@@ -712,23 +642,14 @@ function GapRow({
   );
 }
 
-function UnreportedGapRow({
-  gapId,
-  caseId,
-}: {
-  gapId: string;
-  caseId: string;
-}) {
+function UnreportedGapRow({ gapId, caseId }: { gapId: string; caseId: string }) {
   return (
     <li>
       <header>
         <strong>未报告缺口详情，{gapId}</strong>
         <StatusText tone="attention">未解决</StatusText>
       </header>
-      <p>
-        服务端报告了该缺口
-        ID，但未提供领域、能力、原因或证据详情；保持未知。
-      </p>
+      <p>服务端报告了该缺口 ID，但未提供领域、能力、原因或证据详情；保持未知。</p>
       {caseId ? (
         <Button
           aria-label={"查看案件材料并补证后新建审查"}
@@ -753,31 +674,21 @@ function GapsSection({
   unreportedGapIds: string[];
 }) {
   return (
-    <section
-      className="agent-review-section"
-      aria-labelledby="agent-review-gaps-title"
-    >
+    <section className="agent-review-section" aria-labelledby="agent-review-gaps-title">
       <h4 id="agent-review-gaps-title">未解决缺口与下一步</h4>
       {review.gaps.length === 0 && unreportedGapIds.length === 0 ? (
         <p>没有报告缺口记录；这不等同于合同没有风险。</p>
       ) : (
         <ul className="agent-review-list">
           {review.gaps.map((gap) => (
-            <GapRow
-              key={gap.gap_id}
-              gap={gap}
-              unresolved={unresolved}
-              caseId={caseId}
-            />
+            <GapRow key={gap.gap_id} gap={gap} unresolved={unresolved} caseId={caseId} />
           ))}
           {unreportedGapIds.map((gapId) => (
             <UnreportedGapRow key={gapId} gapId={gapId} caseId={caseId} />
           ))}
         </ul>
       )}
-      <p className="meta">
-        补充材料后，需要发起新的审查；本页仍显示当前这次执行使用的材料和结果。
-      </p>
+      <p className="meta">补充材料后，需要发起新的审查；本页仍显示当前这次执行使用的材料和结果。</p>
     </section>
   );
 }
@@ -827,25 +738,14 @@ function PlanRoundRow({ round }: { round: AgentReviewPlan["rounds"][number] }) {
         {showIds(round.new_evidence_ids)}，已解决缺口：
         {showIds(round.resolved_gap_ids)}
       </p>
-      {round.termination_code ? (
-        <p>停止原因：{round.termination_code}</p>
-      ) : null}
+      {round.termination_code ? <p>停止原因：{round.termination_code}</p> : null}
     </li>
   );
 }
 
-function PlanSection({
-  plan,
-  events,
-}: {
-  plan: AgentReviewPlan;
-  events: AgentReviewEvent[];
-}) {
+function PlanSection({ plan, events }: { plan: AgentReviewPlan; events: AgentReviewEvent[] }) {
   return (
-    <section
-      className="agent-review-section"
-      aria-labelledby="agent-review-plan-title"
-    >
+    <section className="agent-review-section" aria-labelledby="agent-review-plan-title">
       <h4 id="agent-review-plan-title">计划、守卫与调用</h4>
       <p>
         计划状态：
@@ -875,8 +775,7 @@ function PlanSection({
           规划事件：
           {events
             .map(
-              (item) =>
-                `${item.sequence}:${eventRoundLabel(item.round)}:${item.kind}/${item.code}`,
+              (item) => `${item.sequence}:${eventRoundLabel(item.round)}:${item.kind}/${item.code}`,
             )
             .join("，")}
         </p>
@@ -904,8 +803,7 @@ function EvidenceItem({ item }: { item: AgentReviewEvidence }) {
         证据 {item.evidence_id}，{item.verification}
       </p>
       <p>
-        材料 {item.anchor.document_id}，解析版本{" "}
-        {item.anchor.parsed_document_id}，规范化摘要{" "}
+        材料 {item.anchor.document_id}，解析版本 {item.anchor.parsed_document_id}，规范化摘要{" "}
         <code>{item.anchor.normalized_digest}</code>
       </p>
       <p>
@@ -920,10 +818,7 @@ function EvidenceItem({ item }: { item: AgentReviewEvidence }) {
 
 function EvidenceSection({ evidence }: { evidence: AgentReviewEvidence[] }) {
   return (
-    <section
-      className="agent-review-section"
-      aria-labelledby="agent-review-evidence-title"
-    >
+    <section className="agent-review-section" aria-labelledby="agent-review-evidence-title">
       <h4 id="agent-review-evidence-title">经核验的新证据</h4>
       {evidence.length === 0 ? (
         <p>没有返回新提取的事实；结果为空时仍需核实，不能视为没有风险。</p>
@@ -940,10 +835,7 @@ function EvidenceSection({ evidence }: { evidence: AgentReviewEvidence[] }) {
 
 function UsageSection({ usage }: { usage: AgentReview["usage"] }) {
   return (
-    <section
-      className="agent-review-section"
-      aria-labelledby="agent-review-usage-title"
-    >
+    <section className="agent-review-section" aria-labelledby="agent-review-usage-title">
       <h4 id="agent-review-usage-title">规划用量</h4>
       <dl className="agent-review-grid">
         <div>
@@ -969,17 +861,13 @@ function UsageSection({ usage }: { usage: AgentReview["usage"] }) {
 
 function unreportedGapIdsOf(review: AgentReview): string[] {
   const reportedGapIds = new Set(review.gaps.map((gap) => gap.gap_id));
-  return [...new Set(review.unresolved_gap_ids)].filter(
-    (gapId) => !reportedGapIds.has(gapId),
-  );
+  return [...new Set(review.unresolved_gap_ids)].filter((gapId) => !reportedGapIds.has(gapId));
 }
 
 function modelRefsOf(events: ExecutionEvent[]): string[] {
   return [
     ...new Set(
-      events
-        .map((event) => event.model_ref)
-        .filter((value): value is string => value !== null),
+      events.map((event) => event.model_ref).filter((value): value is string => value !== null),
     ),
   ];
 }

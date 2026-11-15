@@ -36,8 +36,10 @@ function text(row: Record<string, unknown>, key: string): string {
 export function parseSupportGrant(value: unknown): SupportGrant {
   const row = record(value, "support_grant");
   const status = row.status;
-  if (!["pending", "approved", "revoked", "expired"].includes(String(status))) fail("支援授权状态无效");
-  if (!Array.isArray(row.actions) || row.actions.length !== 1 || row.actions[0] !== "case.read") fail("支援授权动作无效");
+  if (!["pending", "approved", "revoked", "expired"].includes(String(status)))
+    fail("支援授权状态无效");
+  if (!Array.isArray(row.actions) || row.actions.length !== 1 || row.actions[0] !== "case.read")
+    fail("支援授权动作无效");
   if (row.approved_by !== null && typeof row.approved_by !== "string") fail("approved_by 无效");
   return {
     id: text(row, "id"),
@@ -87,13 +89,25 @@ export function requestSupportGrant(caseId: string, input: SupportGrantRequest) 
 }
 
 export function approveSupportGrant(grantId: string, expectedRevision: string) {
-  return requestJson(paths.supportGrantApprove(grantId), jsonInit("POST", { expected_revision: expectedRevision }), parseSupportGrant);
+  return requestJson(
+    paths.supportGrantApprove(grantId),
+    jsonInit("POST", { expected_revision: expectedRevision }),
+    parseSupportGrant,
+  );
 }
 
 export function revokeSupportGrant(grantId: string, expectedRevision: string) {
-  return requestJson(paths.supportGrantRevoke(grantId), jsonInit("POST", { expected_revision: expectedRevision }), parseSupportGrant);
+  return requestJson(
+    paths.supportGrantRevoke(grantId),
+    jsonInit("POST", { expected_revision: expectedRevision }),
+    parseSupportGrant,
+  );
 }
 
 export function getSupportGrantCase(grantId: string, signal?: AbortSignal) {
-  return requestJson(paths.supportGrantCase(grantId), { method: "GET", signal }, parseSupportCaseView);
+  return requestJson(
+    paths.supportGrantCase(grantId),
+    { method: "GET", signal },
+    parseSupportCaseView,
+  );
 }

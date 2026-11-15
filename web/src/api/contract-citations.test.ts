@@ -46,13 +46,19 @@ describe("frozen contract citation parsing", () => {
   });
 
   it("rejects a range that does not reproduce its own quote", () => {
-    expect(() => parseFrozenContractCitation(payload({ start: 5 }))).toThrow(/区间与引用原文不一致/);
-    expect(() => parseFrozenContractCitation(payload({ quote: "999万元" }))).toThrow(/区间与引用原文不一致/);
+    expect(() => parseFrozenContractCitation(payload({ start: 5 }))).toThrow(
+      /区间与引用原文不一致/,
+    );
+    expect(() => parseFrozenContractCitation(payload({ quote: "999万元" }))).toThrow(
+      /区间与引用原文不一致/,
+    );
     expect(() => parseFrozenContractCitation(payload({ end: 99 }))).toThrow(/区间无效/);
   });
 
   it("rejects malformed digests, unknown fields and half a material identity", () => {
-    expect(() => parseFrozenContractCitation(payload({ original_digest: "short" }))).toThrow(/不是 SHA-256/);
+    expect(() => parseFrozenContractCitation(payload({ original_digest: "short" }))).toThrow(
+      /不是 SHA-256/,
+    );
     expect(() => parseFrozenContractCitation(payload({ extra: true }))).toThrow(/无法识别/);
     expect(() =>
       parseFrozenContractCitation(payload({ material_id: "material-1", material_version: null })),

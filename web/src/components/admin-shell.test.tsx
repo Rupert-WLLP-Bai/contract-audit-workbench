@@ -36,7 +36,14 @@ const admin: Actor = {
   org_id: "demo-org",
   audience: "admin",
   principal_id: "principal-1",
-  active_context: { membership_id: "membership-1", tenant_id: "tenant-1", tenant_name: "租户一", org_id: "demo-org", org_name: "演示组织", context_version: "1" },
+  active_context: {
+    membership_id: "membership-1",
+    tenant_id: "tenant-1",
+    tenant_name: "租户一",
+    org_id: "demo-org",
+    org_name: "演示组织",
+    context_version: "1",
+  },
   csrf_token: "test-csrf",
   context_switch_enabled: false,
 };
@@ -77,9 +84,7 @@ describe("admin shell", () => {
     renderShell("/admin/rulepacks");
     expect(screen.getByText("需要管理权限")).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "当前管理会话没有管理角色。案件访问权限由业务工作台单独授权。",
-      ),
+      screen.getByText("当前管理会话没有管理角色。案件访问权限由业务工作台单独授权。"),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText("管理导航")).not.toBeInTheDocument();
     expect(screen.queryByText("管理内容")).not.toBeInTheDocument();
@@ -87,28 +92,26 @@ describe("admin shell", () => {
 
   it("shows the administration identity, organization and read-only disclaimer", () => {
     renderShell();
-    expect(screen.getByLabelText("管理工作台")).toHaveAttribute(
-      "href",
-      "/admin/settings",
-    );
+    expect(screen.getByLabelText("管理工作台")).toHaveAttribute("href", "/admin/settings");
     expect(screen.getByText("合同智能审计工作台")).toBeInTheDocument();
     expect(screen.getByText("两江新区分公司")).toBeInTheDocument();
-    expect(
-      screen.getByText("此工作区不授予案件正文访问权限。"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("此工作区不授予案件正文访问权限。")).toBeInTheDocument();
     const who = screen.getByLabelText("当前管理身份");
     expect(within(who).getByText("管理员甲")).toBeInTheDocument();
     expect(within(who).getByText("管")).toHaveClass("ant-avatar-string");
     expect(within(who).getByText("管理员")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "规则库" }),
-    ).toHaveAttribute("href", "/admin/rulepacks");
-    expect(
-      screen.getByRole("link", { name: "知识治理" }),
-    ).toHaveAttribute("href", "/admin/governed-knowledge");
-    expect(
-      screen.getByRole("link", { name: "基础设施与中间件" }),
-    ).toHaveAttribute("href", "/admin/infrastructure");
+    expect(screen.getByRole("link", { name: "规则库" })).toHaveAttribute(
+      "href",
+      "/admin/rulepacks",
+    );
+    expect(screen.getByRole("link", { name: "知识治理" })).toHaveAttribute(
+      "href",
+      "/admin/governed-knowledge",
+    );
+    expect(screen.getByRole("link", { name: "基础设施与中间件" })).toHaveAttribute(
+      "href",
+      "/admin/infrastructure",
+    );
     expect(screen.getByText("管理内容")).toBeInTheDocument();
     expect(screen.getByText(/按当前管理身份授权/)).toBeInTheDocument();
   });
@@ -143,10 +146,7 @@ describe("admin shell", () => {
     ["/admin/infrastructure", "基础设施与中间件"],
   ])("marks the active navigation link for %s", (path, label) => {
     renderShell(path);
-    expect(screen.getByRole("link", { name: label })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    expect(screen.getByRole("link", { name: label })).toHaveAttribute("aria-current", "page");
   });
 
   it("navigates to the admin login after logging out", async () => {
@@ -155,9 +155,7 @@ describe("admin shell", () => {
     await user.click(screen.getByRole("button", { name: "退出" }));
     expect(mutateAsync).toHaveBeenCalledTimes(1);
     await waitFor(() =>
-      expect(screen.getByTestId("location")).toHaveTextContent(
-        "/admin/login|REPLACE",
-      ),
+      expect(screen.getByTestId("location")).toHaveTextContent("/admin/login|REPLACE"),
     );
   });
 

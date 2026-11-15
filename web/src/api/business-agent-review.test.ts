@@ -47,7 +47,17 @@ const projection = {
   rulepack: { id: "rules", version: "1" },
   scope: [{ domain: "technical", capability_ids: ["warranty_months"], source_ids: null }],
   domains: [{ domain: "technical", status: "partial", capabilities: [capability] }],
-  gaps: [{ gap_id: "gap-1", domain: "technical", capability_id: "warranty_months", mandatory: true, status: "open", reason_code: "required_source_or_field_missing", evidence_ids: null }],
+  gaps: [
+    {
+      gap_id: "gap-1",
+      domain: "technical",
+      capability_id: "warranty_months",
+      mandatory: true,
+      status: "open",
+      reason_code: "required_source_or_field_missing",
+      evidence_ids: null,
+    },
+  ],
   evidence: [evidence],
   unresolved_gap_ids: ["gap-1"],
   observations: null,
@@ -58,13 +68,36 @@ describe("business agent review projection", () => {
     expect(parseBusinessAgentReview(projection)).toEqual(projection);
     expect(parseBusinessAgentReview(null)).toBeNull();
     expect(parseBusinessAgentReview(undefined)).toBeNull();
-    expect(parseBusinessAgentReview({ ...projection, scope: null, domains: null, gaps: null, evidence: null, unresolved_gap_ids: null })).toMatchObject({
-      scope: null, domains: null, gaps: null, evidence: null, unresolved_gap_ids: null,
+    expect(
+      parseBusinessAgentReview({
+        ...projection,
+        scope: null,
+        domains: null,
+        gaps: null,
+        evidence: null,
+        unresolved_gap_ids: null,
+      }),
+    ).toMatchObject({
+      scope: null,
+      domains: null,
+      gaps: null,
+      evidence: null,
+      unresolved_gap_ids: null,
     });
   });
 
   it("retains unfamiliar status values without interpreting them as success", () => {
-    const result = parseBusinessAgentReview({ ...projection, status: "new-status", domains: [{ domain: "technical", status: "new-status", capabilities: [{ ...capability, status: "new-status", relation: null }] }] });
+    const result = parseBusinessAgentReview({
+      ...projection,
+      status: "new-status",
+      domains: [
+        {
+          domain: "technical",
+          status: "new-status",
+          capabilities: [{ ...capability, status: "new-status", relation: null }],
+        },
+      ],
+    });
     expect(result?.status).toBe("new-status");
     expect(result?.domains?.[0]?.capabilities?.[0]?.status).toBe("new-status");
   });
@@ -72,9 +105,21 @@ describe("business agent review projection", () => {
   it("rejects missing or malformed business fields", () => {
     const missingMandatory: Record<string, unknown> = { ...capability };
     delete missingMandatory.mandatory;
-    expect(() => parseBusinessAgentReview({ ...projection, domains: [{ domain: "technical", status: "partial", capabilities: [missingMandatory] }] })).toThrow(/capabilities\[0\]/);
-    expect(() => parseBusinessAgentReview({ ...projection, gaps: "none" })).toThrow(/agent_review.gaps/);
-    expect(() => parseBusinessAgentReview({ ...projection, evidence: [{ ...evidence, anchor: { ...anchor, start: 1.5 } }] })).toThrow(/anchor.start/);
+    expect(() =>
+      parseBusinessAgentReview({
+        ...projection,
+        domains: [{ domain: "technical", status: "partial", capabilities: [missingMandatory] }],
+      }),
+    ).toThrow(/capabilities\[0\]/);
+    expect(() => parseBusinessAgentReview({ ...projection, gaps: "none" })).toThrow(
+      /agent_review.gaps/,
+    );
+    expect(() =>
+      parseBusinessAgentReview({
+        ...projection,
+        evidence: [{ ...evidence, anchor: { ...anchor, start: 1.5 } }],
+      }),
+    ).toThrow(/anchor.start/);
   });
 
   it("parses bounded tool returns without treating them as conclusions", () => {
@@ -95,12 +140,26 @@ describe("business agent review projection", () => {
     expect(result?.observations?.[0]).toEqual(observation);
     const missing = { ...observation } as Record<string, unknown>;
     delete missing.truncated;
-    expect(() => parseBusinessAgentReview({ ...projection, observations: [missing] })).toThrow(/observations\[0\]/);
-    expect(() => parseBusinessAgentReview({ ...projection, observations: [{ ...observation, prompt: "private" }] })).toThrow(/observations\[0\]/);
+    expect(() => parseBusinessAgentReview({ ...projection, observations: [missing] })).toThrow(
+      /observations\[0\]/,
+    );
+    expect(() =>
+      parseBusinessAgentReview({
+        ...projection,
+        observations: [{ ...observation, prompt: "private" }],
+      }),
+    ).toThrow(/observations\[0\]/);
   });
 
   it("rejects diagnostic fields rather than carrying them into the business view", () => {
-    expect(() => parseBusinessAgentReview({ ...projection, planner: { prompt_sha256: "private" } })).toThrow(/agent_review/);
-    expect(() => parseBusinessAgentReview({ ...projection, evidence: [{ ...evidence, anchor: { ...anchor, normalized_digest: "private" } }] })).toThrow(/anchor/);
+    expect(() =>
+      parseBusinessAgentReview({ ...projection, planner: { prompt_sha256: "private" } }),
+    ).toThrow(/agent_review/);
+    expect(() =>
+      parseBusinessAgentReview({
+        ...projection,
+        evidence: [{ ...evidence, anchor: { ...anchor, normalized_digest: "private" } }],
+      }),
+    ).toThrow(/anchor/);
   });
 });

@@ -38,9 +38,7 @@ function installFetch(fetchMock: unknown) {
   globalThis.fetch = fetchMock as typeof fetch;
 }
 
-function mockFetch(
-  impl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
-) {
+function mockFetch(impl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {
   return vi.fn(impl);
 }
 
@@ -60,11 +58,9 @@ describe("http client", () => {
     };
     expect(parseErrorPayload(payload).code).toBe("conflict");
     installFetch(mockFetch(async () => jsonResponse(409, payload)));
-    const error = await requestJson(
-      "/api/cases",
-      { method: "GET" },
-      () => null,
-    ).catch((caught: unknown) => caught);
+    const error = await requestJson("/api/cases", { method: "GET" }, () => null).catch(
+      (caught: unknown) => caught,
+    );
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({
       status: 409,
@@ -79,9 +75,7 @@ describe("http client", () => {
       throw new TypeError("offline");
     });
     installFetch(fetchMock);
-    await expect(
-      requestJson("/api/session", { method: "GET" }, () => null),
-    ).rejects.toMatchObject({
+    await expect(requestJson("/api/session", { method: "GET" }, () => null)).rejects.toMatchObject({
       status: 0,
       code: "network",
       retryable: true,
@@ -114,20 +108,37 @@ describe("http client", () => {
   });
 
   it("submits the chosen governed instant and omits it for ungoverned starts", async () => {
-    setSessionIdentity({ id: "reviewer", role: "reviewer", active_context: { context_version: "1" }, csrf_token: "csrf" });
+    setSessionIdentity({
+      id: "reviewer",
+      role: "reviewer",
+      active_context: { context_version: "1" },
+      csrf_token: "csrf",
+    });
     const fetchMock = mockFetch(async () => jsonResponse(202, { id: "r1", attempt_id: "a1" }));
     installFetch(fetchMock);
     await startReview("case", { business_at: "2026-10-21T08:00:00.000Z" });
     await startReview("case");
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ business_at: "2026-10-21T08:00:00.000Z" });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      business_at: "2026-10-21T08:00:00.000Z",
+    });
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({});
   });
 
   it("rejects diagnostics belonging to another case or run", async () => {
-    installFetch(mockFetch(async () => jsonResponse(200, {
-      case_id: "other", run_id: "r1", execution: null, snapshot: null, audit_events: [],
-    })));
-    await expect(getReviewDiagnostics("c1", "r1")).rejects.toMatchObject({ code: "invalid_response" });
+    installFetch(
+      mockFetch(async () =>
+        jsonResponse(200, {
+          case_id: "other",
+          run_id: "r1",
+          execution: null,
+          snapshot: null,
+          audit_events: [],
+        }),
+      ),
+    );
+    await expect(getReviewDiagnostics("c1", "r1")).rejects.toMatchObject({
+      code: "invalid_response",
+    });
   });
 
   it("reads every documented error payload shape", () => {
@@ -191,18 +202,14 @@ describe("http client", () => {
       retryable: null,
       details: null,
     });
-    expect(
-      parseErrorPayload({ error: { message: "x".repeat(400) } }).message,
-    ).toHaveLength(300);
+    expect(parseErrorPayload({ error: { message: "x".repeat(400) } }).message).toHaveLength(300);
     expect(parseErrorPayload({ code: 7, retryable: "yes" })).toEqual({
       message: null,
       code: null,
       retryable: null,
       details: null,
     });
-    expect(
-      parseErrorPayload({ error: "直接消息", message: "" }).message,
-    ).toBe("");
+    expect(parseErrorPayload({ error: "直接消息", message: "" }).message).toBe("");
     expect(parseErrorPayload({ details: false }).details).toBe(false);
     expect(parseErrorPayload({ details: 0 }).details).toBe(0);
   });
@@ -216,9 +223,7 @@ describe("http client", () => {
       [418, "request_failed", "审查服务暂时不能完成这个操作"],
     ] as const;
     for (const [status, code, message] of statuses) {
-      const error = await errorFromResponse(
-        new Response("not json", { status }),
-      );
+      const error = await errorFromResponse(new Response("not json", { status }));
       expect(error).toMatchObject({
         status,
         code,
@@ -252,12 +257,8 @@ describe("http client", () => {
   });
 
   it("classifies errors without throwing on unknown values", () => {
-    expect(isUnauthenticated(new ApiError("x", 401, "other", false, null))).toBe(
-      true,
-    );
-    expect(isUnauthenticated(new ApiError("x", 400, "unauthenticated", false, null))).toBe(
-      true,
-    );
+    expect(isUnauthenticated(new ApiError("x", 401, "other", false, null))).toBe(true);
+    expect(isUnauthenticated(new ApiError("x", 400, "unauthenticated", false, null))).toBe(true);
     expect(isUnauthenticated(new Error("x"))).toBe(false);
     expect(isUnauthenticated({ status: 401 })).toBe(false);
     expect(isUnauthenticated({ code: "unauthenticated" })).toBe(false);
@@ -267,9 +268,7 @@ describe("http client", () => {
     expect(isForbidden(new ApiError("x", 403, "other", false, null))).toBe(true);
     expect(isForbidden(new ApiError("x", 400, "forbidden", false, null))).toBe(true);
     expect(isForbidden({ status: 403 })).toBe(false);
-    expect(errorMessage(new ApiError("消息", 500, "code", false, null))).toBe(
-      "消息",
-    );
+    expect(errorMessage(new ApiError("消息", 500, "code", false, null))).toBe("消息");
     expect(errorMessage(new Error("消息"))).toBe("请求没有完成");
     expect(statusLabel(0)).toBe("无法连接服务");
     expect(statusLabel(500)).toBe("HTTP 500");
@@ -328,24 +327,24 @@ describe("http client", () => {
         throw new DOMException("aborted", "AbortError");
       }),
     );
-    await expect(
-      requestJson("/api/cases", {}, () => null),
-    ).rejects.toMatchObject({ name: "AbortError" });
+    await expect(requestJson("/api/cases", {}, () => null)).rejects.toMatchObject({
+      name: "AbortError",
+    });
     installFetch(
       mockFetch(async () => {
         throw new Error("socket");
       }),
     );
-    await expect(
-      requestJson("/api/cases", {}, () => null),
-    ).rejects.toMatchObject({ status: 0, code: "network", retryable: true });
+    await expect(requestJson("/api/cases", {}, () => null)).rejects.toMatchObject({
+      status: 0,
+      code: "network",
+      retryable: true,
+    });
   });
 
   it("reports unrecognisable response content and keeps parser errors", async () => {
     installFetch(mockFetch(async () => new Response("{", { status: 200 })));
-    await expect(
-      requestJson("/api/cases", {}, () => null),
-    ).rejects.toMatchObject({
+    await expect(requestJson("/api/cases", {}, () => null)).rejects.toMatchObject({
       status: 200,
       code: "invalid_response",
       retryable: false,
@@ -367,9 +366,9 @@ describe("http client", () => {
         return jsonResponse(200, {});
       }),
     );
-    await expect(
-      requestJson("/api/cases", {}, () => null),
-    ).rejects.toMatchObject({ name: "AbortError" });
+    await expect(requestJson("/api/cases", {}, () => null)).rejects.toMatchObject({
+      name: "AbortError",
+    });
     setSessionIdentity({ id: "u3", role: "reviewer" });
     const fakeResponse = {
       ok: true,
@@ -381,9 +380,9 @@ describe("http client", () => {
       json: async () => ({}),
     } as Response;
     installFetch(mockFetch(async () => fakeResponse));
-    await expect(
-      requestJson("/api/cases", {}, () => null),
-    ).rejects.toMatchObject({ name: "AbortError" });
+    await expect(requestJson("/api/cases", {}, () => null)).rejects.toMatchObject({
+      name: "AbortError",
+    });
     setSessionIdentity({ id: "u5", role: "reviewer" });
     installFetch(
       mockFetch(async () => {
@@ -391,19 +390,28 @@ describe("http client", () => {
         return jsonResponse(200, { ok: true });
       }),
     );
-    await expect(
-      requestJson("/api/session", {}, (value) => value),
-    ).resolves.toEqual({ ok: true });
+    await expect(requestJson("/api/session", {}, (value) => value)).resolves.toEqual({ ok: true });
     setSessionIdentity(null);
   });
 
   it("rejects a delayed idempotent dispatch after a version-1 identity switch", async () => {
     const actorA = {
-      id: "actor-a", role: "clerk", audience: "client", tenant_id: "tenant-a", org_id: "org-a",
-      principal_id: "principal-a", active_context: { context_version: "1" }, csrf_token: "csrf-a",
+      id: "actor-a",
+      role: "clerk",
+      audience: "client",
+      tenant_id: "tenant-a",
+      org_id: "org-a",
+      principal_id: "principal-a",
+      active_context: { context_version: "1" },
+      csrf_token: "csrf-a",
     };
     const actorB = {
-      ...actorA, id: "actor-b", tenant_id: "tenant-b", org_id: "org-b", principal_id: "principal-b", csrf_token: "csrf-b",
+      ...actorA,
+      id: "actor-b",
+      tenant_id: "tenant-b",
+      org_id: "org-b",
+      principal_id: "principal-b",
+      csrf_token: "csrf-b",
     };
     setSessionIdentity(actorA);
     const originalContext = captureCommandContext(actorA);
@@ -414,20 +422,25 @@ describe("http client", () => {
     installFetch(fetchMock);
     setSessionIdentity(actorB);
 
-    await expect(requestJson(
-      "/api/cases/case-1/materials",
-      { method: "POST", headers: { "Idempotency-Key": key }, body: "{\"old\":true}" },
-      (value) => value,
-    )).rejects.toMatchObject({ name: "AbortError" });
+    await expect(
+      requestJson(
+        "/api/cases/case-1/materials",
+        { method: "POST", headers: { "Idempotency-Key": key }, body: '{"old":true}' },
+        (value) => value,
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" });
     expect(fetchMock).not.toHaveBeenCalled();
     setSessionIdentity(null);
   });
 
   it("posts a decision with the expected version and an idempotency key", async () => {
-    setSessionIdentity({ id: "reviewer", role: "reviewer", active_context: { context_version: "1" }, csrf_token: "csrf" });
-    const fetchMock = mockFetch(
-      async () => new Response(null, { status: 204 }),
-    );
+    setSessionIdentity({
+      id: "reviewer",
+      role: "reviewer",
+      active_context: { context_version: "1" },
+      csrf_token: "csrf",
+    });
+    const fetchMock = mockFetch(async () => new Response(null, { status: 204 }));
     installFetch(fetchMock);
     await submitDecision("case", "run", "finding", {
       action: "false_positive",

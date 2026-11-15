@@ -11,30 +11,20 @@
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DEMO_OPERATOR_AUDIT_FLAGS } from "./feature-flags";
-import {
-  conflictCheck,
-  fulfillmentComparisons,
-} from "./fixture";
+import { conflictCheck, fulfillmentComparisons } from "./fixture";
 import { FulfillmentDiffPanel } from "./fulfillment-diff-panel";
 import { renderOperatorAudit } from "./test-utils";
 import type { FulfillmentComparison } from "./types";
 
 describe("fulfillment diff panel", () => {
   it("is off by default", () => {
-    renderOperatorAudit(
-      <FulfillmentDiffPanel items={fulfillmentComparisons} />,
-    );
-    expect(
-      screen.queryByText("合同与配置履约对照"),
-    ).not.toBeInTheDocument();
+    renderOperatorAudit(<FulfillmentDiffPanel items={fulfillmentComparisons} />);
+    expect(screen.queryByText("合同与配置履约对照")).not.toBeInTheDocument();
   });
 
   it("shows contract value, configured value and units side by side", () => {
     renderOperatorAudit(
-      <FulfillmentDiffPanel
-        items={fulfillmentComparisons}
-        flags={DEMO_OPERATOR_AUDIT_FLAGS}
-      />,
+      <FulfillmentDiffPanel items={fulfillmentComparisons} flags={DEMO_OPERATOR_AUDIT_FLAGS} />,
     );
     expect(screen.getAllByText("合同值")).toHaveLength(2);
     expect(screen.getAllByText("配置值")).toHaveLength(2);
@@ -43,9 +33,7 @@ describe("fulfillment diff panel", () => {
     expect(screen.getByText("99.9 %")).toBeInTheDocument();
     expect(screen.getByText("99.95 %")).toBeInTheDocument();
     expect(screen.getAllByText("观测时间")).toHaveLength(2);
-    expect(
-      screen.getByText(/配置差异不等于实际吞吐违约/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/配置差异不等于实际吞吐违约/)).toBeInTheDocument();
     expect(screen.getByText("冲突")).toBeInTheDocument();
     expect(screen.getByText("一致")).toBeInTheDocument();
   });
@@ -66,13 +54,9 @@ describe("fulfillment diff panel", () => {
     const snapshots = screen.getByRole("region", { name: "外部快照证据" });
     expect(within(snapshots).getByText("80 Mbit/s")).toBeInTheDocument();
     expect(
-      within(snapshots).queryByText(
-        "合成示例：本线路最低保障带宽100Mbit/s。",
-      ),
+      within(snapshots).queryByText("合成示例：本线路最低保障带宽100Mbit/s。"),
     ).not.toBeInTheDocument();
-    expect(
-      within(snapshots).getByText("/serviceCharacteristic/0/value"),
-    ).toBeInTheDocument();
+    expect(within(snapshots).getByText("/serviceCharacteristic/0/value")).toBeInTheDocument();
   });
 
   it("does not classify unknown evidence as contract or snapshot evidence", () => {
@@ -84,23 +68,14 @@ describe("fulfillment diff panel", () => {
       contractValue: null,
       configuredValue: null,
     };
-    renderOperatorAudit(
-      <FulfillmentDiffPanel
-        items={[item]}
-        flags={DEMO_OPERATOR_AUDIT_FLAGS}
-      />,
-    );
+    renderOperatorAudit(<FulfillmentDiffPanel items={[item]} flags={DEMO_OPERATOR_AUDIT_FLAGS} />);
     const other = screen.getByRole("region", { name: "其他证据" });
     expect(within(other).getByText(/scanned_image/)).toBeInTheDocument();
     expect(
-      within(screen.getByRole("region", { name: "合同原文证据" })).queryByText(
-        /scanned_image/,
-      ),
+      within(screen.getByRole("region", { name: "合同原文证据" })).queryByText(/scanned_image/),
     ).not.toBeInTheDocument();
     expect(
-      within(screen.getByRole("region", { name: "外部快照证据" })).queryByText(
-        /scanned_image/,
-      ),
+      within(screen.getByRole("region", { name: "外部快照证据" })).queryByText(/scanned_image/),
     ).not.toBeInTheDocument();
   });
 
@@ -114,16 +89,9 @@ describe("fulfillment diff panel", () => {
       contractValue: null,
       configuredValue: null,
     };
-    renderOperatorAudit(
-      <FulfillmentDiffPanel
-        items={[item]}
-        flags={DEMO_OPERATOR_AUDIT_FLAGS}
-      />,
-    );
+    renderOperatorAudit(<FulfillmentDiffPanel items={[item]} flags={DEMO_OPERATOR_AUDIT_FLAGS} />);
     expect(screen.getByText("信息不足")).toBeInTheDocument();
-    expect(
-      screen.getByText(/不产生确定性结论/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/不产生确定性结论/)).toBeInTheDocument();
     expect(screen.getAllByText("数值未报告")).toHaveLength(2);
     expect(screen.queryByText("一致")).not.toBeInTheDocument();
   });
@@ -151,21 +119,12 @@ describe("fulfillment diff panel", () => {
         flags={DEMO_OPERATOR_AUDIT_FLAGS}
       />,
     );
-    expect(
-      screen.getByText(/人工复核入口尚未在当前页面接线/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/人工复核入口尚未在当前页面接线/)).toBeInTheDocument();
   });
 
   it("states that an empty result is not a pass", () => {
-    renderOperatorAudit(
-      <FulfillmentDiffPanel
-        items={[]}
-        flags={DEMO_OPERATOR_AUDIT_FLAGS}
-      />,
-    );
-    expect(
-      screen.getByText("当前评估没有可展示的检查结果"),
-    ).toBeInTheDocument();
+    renderOperatorAudit(<FulfillmentDiffPanel items={[]} flags={DEMO_OPERATOR_AUDIT_FLAGS} />);
+    expect(screen.getByText("当前评估没有可展示的检查结果")).toBeInTheDocument();
     expect(screen.getByText("当前没有结果。")).toBeInTheDocument();
   });
 });

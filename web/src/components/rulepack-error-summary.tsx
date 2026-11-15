@@ -11,11 +11,7 @@
 import { useEffect, useRef } from "react";
 import type { RulePackFormIssue } from "../domain/rulepack-form";
 
-export function RulePackErrorSummary({
-  issues,
-}: {
-  issues: RulePackFormIssue[];
-}) {
+export function RulePackErrorSummary({ issues }: { issues: RulePackFormIssue[] }) {
   const summary = useRef<HTMLElement>(null);
   useEffect(() => {
     if (issues.length > 0) summary.current?.focus();
