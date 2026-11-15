@@ -446,6 +446,7 @@
       "internal/store/execution_app.go",
       "internal/store/execution_app_test.go",
       "internal/store/execution_model_aliases.go",
+      "internal/store/experience_usage_pg_test.go",
       "internal/store/export_test.go",
       "internal/store/generation_template_proof.go",
       "internal/store/governed_playbooks.go",
@@ -46306,15 +46307,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-15",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "0373652cc5166ae370429836d0b6e7f61ad6b55a",
           "path": "internal/store/contract_signing_pg_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -48420,6 +48421,54 @@
         }
       },
       "revision": "r2",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/store/experience_usage_pg_test.go": {
+      "purpose": "Exercises governed experience usage against a real published experience candidate: option discovery before decision, append-only recording, idempotent replay, conflict and role rejection, and outcome metrics after the human decision.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "0373652cc5166ae370429836d0b6e7f61ad6b55a",
+          "path": "internal/store/experience_usage_pg_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "0373652cc5166ae370429836d0b6e7f61ad6b55a",
+          "path": "internal/store/experience_usage_pg_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -65751,7 +65800,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r75",
+      "revision": "r76",
       "copyright": [
         {
           "holder": "Bai Junhao",
