@@ -651,6 +651,7 @@
       "web/src/components/contract-reminder-inbox.tsx",
       "web/src/components/contract-reminders-panel.test.tsx",
       "web/src/components/contract-reminders-panel.tsx",
+      "web/src/components/contract-signing-panel.test.tsx",
       "web/src/components/contract-signing-panel.tsx",
       "web/src/components/contract-source-capability-panel.tsx",
       "web/src/components/evidence-sla-dashboard.test.tsx",
@@ -65810,7 +65811,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r79",
+      "revision": "r80",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -94649,6 +94650,54 @@
           "kind": "git-last-content-change",
           "commit": "e71fadab475b2d2643ec694edb66d44f1aa7559d",
           "path": "web/src/components/contract-assets-panel.test.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/components/contract-signing-panel.test.tsx": {
+      "purpose": "Checks signing registration read-only facts, transcription comparison results, manual confirmation gates, idempotent registration and supplement draft creation with server-resolved parties and revisions.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "a53e5326cb73ada234183f6382e8b9eb275c9244",
+          "path": "web/src/components/contract-signing-panel.test.tsx",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "a53e5326cb73ada234183f6382e8b9eb275c9244",
+          "path": "web/src/components/contract-signing-panel.test.tsx",
           "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
