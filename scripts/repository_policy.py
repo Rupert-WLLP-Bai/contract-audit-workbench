@@ -19,7 +19,13 @@ ROOT_MARKDOWN_ALLOWLIST = REQUIRED_MARKDOWN | {"CHANGELOG.md", "CONTRIBUTING.md"
 HANDBOOK_DIRS = {"architecture", "engineering", "glossary", "operations", "product"}
 FORBIDDEN_ROOTS = {"demos", "presentation", "materials", "references", "screenshots"}
 FORBIDDEN_DOC_DIRS = {"docs/research", "docs/prompts", "docs/samples", "docs/reports", "docs/screenshots"}
-HANDBOOK_DATA = {"docs/glossary/concepts.json", "docs/architecture/store-ownership.csv"}
+HANDBOOK_DATA = {
+    "docs/glossary/concepts.json",
+    "docs/architecture/store-ownership.csv",
+    # Exact-path exception for the #260 UI2 coverage registry. It is curated
+    # data consumed by scripts/test_ui_style_scan.py, not delivery material.
+    "docs/engineering/ui-coverage-matrix.json",
+}
 BULK_SUFFIXES = {
     ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx",
     ".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".mov", ".wav",
