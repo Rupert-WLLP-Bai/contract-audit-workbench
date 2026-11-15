@@ -150,9 +150,12 @@
       "internal/contract/model/clause_proposal_test.go",
       "internal/contract/model/draft_amounts.go",
       "internal/contract/model/draft_model.go",
+      "internal/contract/model/draft_validation_test.go",
       "internal/contract/model/source_observation.go",
+      "internal/contract/model/source_observation_test.go",
       "internal/contract/model/types.go",
       "internal/contract/model/version_model.go",
+      "internal/contract/model/version_projection_test.go",
       "internal/contract/postgres/approval.go",
       "internal/contract/postgres/clause_proposal.go",
       "internal/contract/postgres/draft_commands.go",
@@ -192,10 +195,14 @@
       "internal/execution/postgres/steps.go",
       "internal/execution/steps/steps.go",
       "internal/fulfillment/app/commands.go",
+      "internal/fulfillment/app/commands_flow_test.go",
+      "internal/fulfillment/app/commands_test.go",
       "internal/fulfillment/app/queries.go",
+      "internal/fulfillment/app/queries_test.go",
       "internal/fulfillment/app/reminder.go",
       "internal/fulfillment/app/reminder_test.go",
       "internal/fulfillment/app/rules.go",
+      "internal/fulfillment/app/rules_test.go",
       "internal/fulfillment/app/types.go",
       "internal/fulfillment/postgres/fulfillment.go",
       "internal/fulfillment/postgres/reminder.go",
@@ -24858,15 +24865,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-13",
+        "value": "2026-11-15",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "2fad287f0f28182680a45dee72ab653dbad16258",
+          "commit": "c059e19e2b7c6a610dc009b384662198a82a7a2c",
           "path": "internal/fulfillment/app/queries.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -65800,7 +65807,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r76",
+      "revision": "r77",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -94159,6 +94166,342 @@
           "kind": "git-last-content-change",
           "commit": "84902a10cf146694d2e967211e0da2f49d402c88",
           "path": "web/src/test/session.ts",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/contract/model/draft_validation_test.go": {
+      "purpose": "Exercises draft content format validation, amount reconciliation and canonical request helpers across complete, minimal and malformed contract drafts.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "f49f8372e2d18ca5dd543b63f4f90a0904023d3c",
+          "path": "internal/contract/model/draft_validation_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "f49f8372e2d18ca5dd543b63f4f90a0904023d3c",
+          "path": "internal/contract/model/draft_validation_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/contract/model/source_observation_test.go": {
+      "purpose": "Exercises external contract source observation preparation: authority and event validation, case scoping, snapshot normalization, unknown amount handling and digest preservation.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "f49f8372e2d18ca5dd543b63f4f90a0904023d3c",
+          "path": "internal/contract/model/source_observation_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "f49f8372e2d18ca5dd543b63f4f90a0904023d3c",
+          "path": "internal/contract/model/source_observation_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/contract/model/version_projection_test.go": {
+      "purpose": "Exercises frozen material and revision-plan projections plus aggregate summary and draft command derivation, keeping invalid identities out of immutable indexes.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "f49f8372e2d18ca5dd543b63f4f90a0904023d3c",
+          "path": "internal/contract/model/version_projection_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "f49f8372e2d18ca5dd543b63f4f90a0904023d3c",
+          "path": "internal/contract/model/version_projection_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/fulfillment/app/rules_test.go": {
+      "purpose": "Exercises fulfillment rule primitives: time and exact-decimal parsing, acceptance classification, frozen plan selection, item metadata lookup and evidence ordering.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "f49f8372e2d18ca5dd543b63f4f90a0904023d3c",
+          "path": "internal/fulfillment/app/rules_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "f49f8372e2d18ca5dd543b63f4f90a0904023d3c",
+          "path": "internal/fulfillment/app/rules_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/fulfillment/app/commands_test.go": {
+      "purpose": "Exercises fulfillment command preparation: identity normalization, row-version and decimal grammar, bounded text, evidence purpose resolution and idempotent request digests.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "f49f8372e2d18ca5dd543b63f4f90a0904023d3c",
+          "path": "internal/fulfillment/app/commands_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "f49f8372e2d18ca5dd543b63f4f90a0904023d3c",
+          "path": "internal/fulfillment/app/commands_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/fulfillment/app/queries_test.go": {
+      "purpose": "Exercises fulfillment query projections over fake repositories: delivery and acceptance histories, evidence redaction, revision metadata, summaries and accepted-total facts.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "f49f8372e2d18ca5dd543b63f4f90a0904023d3c",
+          "path": "internal/fulfillment/app/queries_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "f49f8372e2d18ca5dd543b63f4f90a0904023d3c",
+          "path": "internal/fulfillment/app/queries_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/fulfillment/app/commands_flow_test.go": {
+      "purpose": "Exercises fulfillment write orchestration over fakes: delivery, acceptance and rectification command flows, frozen-plan limits, evidence resolution, events, receipts and replay.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "f49f8372e2d18ca5dd543b63f4f90a0904023d3c",
+          "path": "internal/fulfillment/app/commands_flow_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "f49f8372e2d18ca5dd543b63f4f90a0904023d3c",
+          "path": "internal/fulfillment/app/commands_flow_test.go",
           "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
