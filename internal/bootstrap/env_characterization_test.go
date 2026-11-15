@@ -12,7 +12,6 @@ package bootstrap
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -29,6 +28,8 @@ import (
 	"contractaudit/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	tracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 var bootstrapTelemetryEnvironment = []string{
@@ -107,22 +108,11 @@ func TestConfiguredTelemetryNamesTheServiceAndInstance(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/v1/traces" {
 				body, _ := io.ReadAll(r.Body)
-				var request struct {
-					ResourceSpans []struct {
-						Resource struct {
-							Attributes []struct {
-								Key   string `json:"key"`
-								Value struct {
-									String string `json:"stringValue"`
-								} `json:"value"`
-							} `json:"attributes"`
-						} `json:"resource"`
-					} `json:"resourceSpans"`
-				}
-				if err := json.Unmarshal(body, &request); err == nil && len(request.ResourceSpans) == 1 {
+				request := new(tracepb.ExportTraceServiceRequest)
+				if err := proto.Unmarshal(body, request); err == nil && len(request.ResourceSpans) == 1 {
 					values := map[string]string{}
 					for _, item := range request.ResourceSpans[0].Resource.Attributes {
-						values[item.Key] = item.Value.String
+						values[item.Key] = item.Value.GetStringValue()
 					}
 					select {
 					case results <- resource{Service: values["service.name"], Instance: values["service.instance.id"]}:
@@ -130,8 +120,8 @@ func TestConfiguredTelemetryNamesTheServiceAndInstance(t *testing.T) {
 					}
 				}
 			}
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(w, `{}`)
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			w.WriteHeader(http.StatusOK)
 		}))
 		t.Cleanup(server.Close)
 		return server, results
