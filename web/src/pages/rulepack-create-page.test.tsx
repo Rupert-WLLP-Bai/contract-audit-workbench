@@ -4,14 +4,14 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-15
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import type { RulePackDetail, RulePackManifestInput } from "../api/rulepacks";
 import { setSessionIdentity } from "../api/http";
@@ -28,6 +28,17 @@ const session = {
     tenant_id: "tenant-test",
     org_id: "org-test",
   },
+  principal_id: "principal-admin-test",
+  active_context: {
+    membership_id: "membership-test",
+    tenant_id: "tenant-test",
+    tenant_name: "测试租户",
+    org_id: "org-test",
+    org_name: "测试组织",
+    context_version: "1",
+  },
+  csrf_token: "test-csrf",
+  context_switch_enabled: false,
 };
 const manifest: RulePackManifestInput = {
   schema_version: "rulepack/v1",
@@ -262,6 +273,16 @@ async function fillDraft(user: ReturnType<typeof userEvent.setup>) {
     }
   }
 }
+
+beforeEach(() => {
+  setSessionIdentity({
+    ...session.actor,
+    audience: "admin",
+    principal_id: session.principal_id,
+    active_context: session.active_context,
+    csrf_token: session.csrf_token,
+  });
+});
 
 afterEach(() => {
   cleanup();

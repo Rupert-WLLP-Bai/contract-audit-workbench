@@ -2,9 +2,9 @@
 // Purpose: Parses the versioned single-contract facts projection with bounded fields, explicit uncertainty and exact frozen-source citation identities.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
-// Created: 2026-11-12
-// Updated: 2026-11-12
-// Revision: r1
+// Created: 2026-11-14
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -131,8 +131,8 @@ function fact(value: unknown, path: string): ContractFact {
   }
   const valueText = text(item.value, `${path}.value`);
   const citations = array(item.citations, `${path}.citations`, citation);
+  if (Array.from(valueText).length > 1200) return invalid(`${path}.value`);
   if (
-    Array.from(valueText).length > 1200 ||
     (status === "unknown" && (valueText !== "" || citations.length !== 0)) ||
     (status === "known" && (valueText.trim() === "" || citations.length === 0)) ||
     (status === "conflicting" && (valueText !== "" || citations.length < 2)) ||
@@ -161,14 +161,14 @@ export function parseContractFacts(value: unknown): ContractFactsProjection | nu
     item.structured_output_status,
     "contract_facts.structured_output_status",
   );
+  if (schemaVersion !== "contract-facts/v1") return invalid("contract_facts.schema_version");
+  if (status !== "suggested" && status !== "partial") return invalid("contract_facts.status");
   if (
-    schemaVersion !== "contract-facts/v1" ||
-    (status !== "suggested" && status !== "partial") ||
-    (structuredOutputStatus !== "valid" &&
-      structuredOutputStatus !== "invalid" &&
-      structuredOutputStatus !== "not_returned")
+    structuredOutputStatus !== "valid" &&
+    structuredOutputStatus !== "invalid" &&
+    structuredOutputStatus !== "not_returned"
   ) {
-    return invalid("contract_facts.schema_version");
+    return invalid("contract_facts.structured_output_status");
   }
   const sourceValue = source(item.source, "contract_facts.source");
   const fields = array(item.fields, "contract_facts.fields", fact);

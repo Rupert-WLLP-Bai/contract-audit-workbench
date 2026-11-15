@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-28
 // Updated: 2026-11-15
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -402,7 +402,9 @@ describe("business agent review", () => {
     expect(screen.getByText("授权依据")).toBeInTheDocument();
     expect(screen.getByText("审查项目待核对")).toBeInTheDocument();
     expect(screen.queryByText(/internal.secret_code|private-hash/)).not.toBeInTheDocument();
-    expect(screen.getByText("暂无缺口资料；这不等于不存在风险。")).toBeInTheDocument();
+    expect(
+      screen.getByText("暂无缺口资料；如需确认风险，请继续核对材料与审查结果。"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("已通过")).not.toBeInTheDocument();
   });
 

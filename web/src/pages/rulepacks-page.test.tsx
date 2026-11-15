@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-15
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -42,6 +42,17 @@ function open(listStatus: number) {
           tenant_id: "tenant-test",
           org_id: "org-test",
         },
+        principal_id: "principal-admin-test",
+        active_context: {
+          membership_id: "membership-test",
+          tenant_id: "tenant-test",
+          tenant_name: "测试租户",
+          org_id: "org-test",
+          org_name: "测试组织",
+          context_version: "1",
+        },
+        csrf_token: "test-csrf",
+        context_switch_enabled: false,
       });
     }
     if (path === "/api/admin/rulepacks") {

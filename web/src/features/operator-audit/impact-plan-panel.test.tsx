@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-29
 // Updated: 2026-11-15
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -39,7 +39,7 @@ describe("impact plan panel", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("增量复用开关未启用，所有检查仍按完整执行计算。")).toBeInTheDocument();
     expect(screen.queryByText(/已经跳过/)).not.toBeInTheDocument();
-    expect(screen.getByText(/合成 fixture 计划：仅用于演示与测试/)).toBeInTheDocument();
+    expect(screen.getByText("合成计划，仅用于演示与测试。")).toBeInTheDocument();
   });
 
   it("shows the full fallback when dependencies are incomplete", () => {
@@ -92,7 +92,7 @@ describe("impact plan panel", () => {
     expect(screen.getByText("依赖完整性未报告")).toBeInTheDocument();
     expect(screen.getByText("回退策略未报告")).toBeInTheDocument();
     expect(screen.getByText("模式未报告；不视为可执行计划。")).toBeInTheDocument();
-    expect(screen.getByText("依赖完整性未报告，不能据此复用。")).toBeInTheDocument();
+    expect(screen.getByText("依赖完整性未报告，请先补齐后再复用。")).toBeInTheDocument();
   });
 
   it("explains rather than silently accepting a server shadow plan", () => {

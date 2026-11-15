@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r9
+// Updated: 2026-11-15
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -31,7 +31,7 @@ const serviceRoleSchemaSQL = `CREATE TABLE IF NOT EXISTS service_database_roles 
 var serviceOwnedTables = map[string][]string{
 	"core":      {"clm_clause_proposals", "clm_clause_proposal_decisions", "clm_clause_proposal_receipts", "clm_fulfillment_reminders", "clm_fulfillment_reminder_history", "clm_fulfillment_reminder_deliveries", "clm_fulfillment_reminder_attempts", "sessions", "cases", "case_intake_operations", "case_intake_requests", "case_intake_archives", "intake_authority_tickets", "operation_authority_tickets", "worker_claim_identities", "decisions", "idempotency", "activity", "business_remediations", "business_remediation_revisions", "business_reports", "business_archives", "business_run_events", "business_audit_events", "business_case_profiles", "business_workbench_tasks", "business_case_relations", "business_knowledge", "business_workbench_audit", "rule_pack_versions", "rule_pack_pointers", "rule_pack_history", "rule_pack_idempotency", "experience_feedback", "experience_candidate_versions", "governed_knowledge_versions", "governed_knowledge_state", "governed_knowledge_pointers", "governed_knowledge_history", "governed_knowledge_idempotency", "governed_policy_rule_bindings", "legal_source_captures", "evidence_requests", "evidence_receipts", "evidence_request_events", "operator_object_bindings", "operator_external_snapshot_sets", "operator_external_collection_claims", "operator_external_observations", "operator_fulfillment_evaluations", "operator_fulfillment_checks", "operator_fulfillment_evaluation_objects", "operator_impact_plans", "operator_mapping_lineages", "operator_mapping_change_requests", "operator_mapping_change_decisions", "service_objects", "service_object_versions", "service_object_contract_associations", "service_object_mutation_receipts", "subjects", "subject_versions", "subject_current_identifier_claims", "case_subject_roles", "case_subject_role_versions", "subject_change_requests", "subject_change_decisions", "subject_write_idempotency", "subject_source_snapshots", "case_legal_applicability_facts", "case_legal_applicability_fact_versions", "core_write_receipts", "manual_finding_records", "rule_pack_shadow_reports", "experience_finding_usage", "clm_contracts", "clm_contract_revisions", "clm_contract_cases", "clm_approval_rounds", "clm_business_events", "clm_outbox_delivery", "clm_contract_drafts", "clm_contract_write_receipts", "clm_legacy_imports", "clm_contract_saved_views", "clm_contract_exports", "clm_contract_version_materials", "clm_contract_version_seals", "clm_workflow_templates", "clm_workflow_template_nodes", "clm_workflow_template_pointers", "clm_workflow_roles", "clm_workflow_role_bindings", "clm_approval_tasks", "clm_approval_task_assignments", "clm_approval_task_materials", "clm_approval_decisions", "clm_approval_task_transfers", "clm_contract_audit_bindings", "clm_contract_signing_registrations", "clm_contract_supplements", "clm_contract_revision_items", "clm_contract_deliveries", "clm_contract_acceptances", "clm_contract_acceptance_defects", "clm_contract_rectifications", "clm_contract_acceptance_rectifications", "clm_contract_payment_eligibility_checks", "clm_contract_payment_receipts", "clm_contract_revision_asset_plans", "clm_contract_asset_handovers", "clm_contract_asset_receipts", "clm_contract_source_observations", "tenant_config_versions", "model_money_limits"},
 	"document":  {"documents", "parsed_documents", "business_generations", "document_activity", "case_contract_chains", "material_entities", "material_versions", "document_upload_idempotency"},
-	"execution": {"review_runs", "review_attempts", "review_attempt_inputs", "review_attempt_parse_selections", "execution_events", "findings", "constraint_evaluations", "run_events", "review_run_snapshots", "audit_events", "worker_jobs", "outbox_events", "execution_activity", "execution_queue_policies", "execution_queue_cursor", "execution_queue_tenants", "execution_agent_reviews", "execution_agent_step_checkpoints", "advisory_judgments", "experience_distill_inputs", "experience_distill_results", "experience_distill_failures", "execution_write_receipts", "review_rulepack_inputs"},
+	"execution": {"review_runs", "review_attempts", "review_attempt_inputs", "review_attempt_parse_selections", "execution_events", "findings", "constraint_evaluations", "run_events", "review_run_snapshots", "audit_events", "worker_jobs", "worker_claim_identities", "outbox_events", "execution_activity", "execution_queue_policies", "execution_queue_cursor", "execution_queue_tenants", "execution_agent_reviews", "execution_agent_step_checkpoints", "advisory_judgments", "experience_distill_inputs", "experience_distill_results", "experience_distill_failures", "execution_write_receipts", "review_rulepack_inputs"},
 	"model":     {"model_call_leases", "model_usage"},
 	"tool":      {"tool_call_ledger"},
 }
@@ -397,7 +397,7 @@ func MigrateServiceRoles(ctx context.Context) error {
 				"fulfillment_reminder_lock_claim(text,text,text,text,bigint,boolean)",
 				"fulfillment_reminder_finish_claim(text,text,text,text,bigint,boolean)",
 				"experience_distill_lock_result(text,bigint,text,text)",
-				"experience_distill_enqueue(text,text,text,text,text,text,text,text,text,text,bytea,text,text,integer,integer,integer,integer)",
+				"experience_distill_enqueue(text,text,text,text,text,text,text,text,text,text,bytea,text,text,integer,integer,integer,integer,boolean)",
 				"model_money_publish_price(text,text,text,numeric,numeric,text,text)",
 				"model_money_publish_global(bigint,numeric,numeric,text)",
 				"model_money_global_control()",
@@ -495,7 +495,7 @@ func MigrateServiceRoles(ctx context.Context) error {
 	}
 	workerClaimIdentityTable := pgx.Identifier{schema, "worker_claim_identities"}.Sanitize()
 	for _, role := range configuredRoles {
-		if role == coreRoleName {
+		if role == coreRoleName || role == executionRoleName {
 			continue
 		}
 		if _, err := tx.Exec(ctx, `REVOKE ALL PRIVILEGES ON TABLE `+workerClaimIdentityTable+` FROM `+pgx.Identifier{role}.Sanitize()); err != nil {

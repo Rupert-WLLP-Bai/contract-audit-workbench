@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r5
+// Updated: 2026-11-15
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -41,6 +41,17 @@ func durableSessionUser(t *testing.T, core *Store, user accounts.User) (accounts
 		t.Fatal(err)
 	}
 	return user, token
+}
+
+// registerTestTenant gives synthetic fixture tenants the identity row that
+// runtime admission and the operations projection require. Production tenants
+// arrive through the tenant lifecycle, never through this helper.
+func registerTestTenant(t *testing.T, env *durableRoleEnvironment, tenantID string) {
+	t.Helper()
+	if _, err := env.harness.pool.Exec(context.Background(), `INSERT INTO identity_tenants(tenant_id,display_name,status)
+		VALUES($1,$1,'active') ON CONFLICT (tenant_id) DO NOTHING`, tenantID); err != nil {
+		t.Fatalf("register test tenant %q: %v", tenantID, err)
+	}
 }
 
 func (a durableTestOperationAuthority) ResolveOperation(ctx context.Context, scope model.DelegatedScope) (accounts.User, error) {
@@ -187,6 +198,57 @@ type durableCaseFixture struct {
 	sessionToken string
 }
 
+// scopedQueryRow verifies durable state through the core role with an explicit
+// tenant/actor scope. Unscoped application pools intentionally see no
+// RLS-protected rows, so these checks must not use core.pool directly.
+func (f durableCaseFixture) scopedQueryRow(t *testing.T, ctx context.Context, scope dbScope, query string, args []any, dest ...any) {
+	t.Helper()
+	tx, err := f.core.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := setLocalScope(ctx, tx, scope); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.QueryRow(ctx, query, args...).Scan(dest...); err != nil {
+		t.Fatalf("scoped verification query: %v", err)
+	}
+}
+
+// scopedExec runs a scoped verification statement through the core role and
+// commits on success so data-changing verification steps persist.
+func (f durableCaseFixture) scopedExec(ctx context.Context, scope dbScope, query string, args ...any) error {
+	tx, err := f.core.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := setLocalScope(ctx, tx, scope); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, query, args...); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// harnessScopedExec runs a scoped statement through the schema-owner harness,
+// which keeps owner privileges for append-only trigger checks while still
+// exposing rows to the tenant policy.
+func (f durableCaseFixture) harnessScopedExec(ctx context.Context, scope dbScope, query string, args ...any) error {
+	tx, err := f.environment.harness.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := setLocalScope(ctx, tx, scope); err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, query, args...)
+	return err
+}
+
 func newDurableCaseFixture(t *testing.T, initializeSession ...func(*testing.T, *Store, accounts.User) (accounts.User, string)) (durableCaseFixture, bool) {
 	t.Helper()
 	environment, ok := newDurableRoleEnvironment(t)
@@ -246,6 +308,10 @@ type durableFixture struct {
 	jobID       string
 	claim       JobClaim
 	dir         string
+	// admissionCtx carries the exact browser-session token used for the
+	// fixture acceptance; subsequent admissions on the same execution store
+	// must present the same session identity.
+	admissionCtx context.Context
 }
 
 func newDurableFixture(t *testing.T) (durableFixture, bool) {
@@ -282,7 +348,8 @@ func newDurableFixtureAs(t *testing.T, actor accounts.User) (durableFixture, boo
 	execution.UseOperationAuthority(authority)
 	execution.UseDocumentPreparer(setup.document)
 	execution.UseModels(&frozenOCRModel{})
-	accepted, err := execution.StartReviewAsync(WithAdmissionSessionToken(context.Background(), sessionToken), actor, setup.caseID)
+	admissionCtx := WithAdmissionSessionToken(context.Background(), sessionToken)
+	accepted, err := execution.StartReviewAsync(admissionCtx, actor, setup.caseID)
 	if err != nil {
 		t.Fatalf("durable acceptance failed: %v", err)
 	}
@@ -300,6 +367,7 @@ func newDurableFixtureAs(t *testing.T, actor accounts.User) (durableFixture, boo
 		environment: setup.environment, core: setup.core, document: setup.document, execution: execution,
 		admin: setup.admin, actor: actor, caseID: setup.caseID, runID: accepted.RunID,
 		attemptID: accepted.AttemptID, jobID: accepted.JobID, claim: claim, dir: setup.dir,
+		admissionCtx: admissionCtx,
 	}, true
 }
 
@@ -357,6 +425,7 @@ func newDurableTelecomFixture(t *testing.T) (durableFixture, bool) {
 		environment: environment, core: core, document: document, execution: execution,
 		admin: admin, actor: admin, caseID: caseID, runID: accepted.RunID,
 		attemptID: accepted.AttemptID, jobID: accepted.JobID, claim: claim, dir: environment.dir,
+		admissionCtx: ctx,
 	}, true
 }
 

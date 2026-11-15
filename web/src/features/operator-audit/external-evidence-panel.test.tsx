@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-29
 // Updated: 2026-11-15
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -63,7 +63,7 @@ describe("external evidence panel", () => {
     expect(screen.getByText("/serviceCharacteristic/0/value")).toBeInTheDocument();
     expect(screen.getByText("采集中")).toBeInTheDocument();
     expect(screen.getByText("已拒绝")).toBeInTheDocument();
-    expect(screen.getByText(/有采集任务被拒绝：未取得外部数据/)).toBeInTheDocument();
+    expect(screen.getByText(/有采集任务被拒绝，尚未取得外部数据/)).toBeInTheDocument();
   });
 
   it("keeps stale, unavailable and rejected snapshots explicitly inconclusive", async () => {
@@ -81,9 +81,9 @@ describe("external evidence panel", () => {
       />,
     );
     expect(await screen.findByText("已过期")).toBeInTheDocument();
-    expect(screen.getByText(/该快照已过期：不能作为当前证据/)).toBeInTheDocument();
+    expect(screen.getByText(/该快照已过期，请重新采集/)).toBeInTheDocument();
     expect(screen.getByText("不可用")).toBeInTheDocument();
-    expect(screen.getByText(/该快照不可用：不能作为证据/)).toBeInTheDocument();
+    expect(screen.getByText(/该快照不可用，请重新采集/)).toBeInTheDocument();
     expect(screen.getByText(/该快照已被拒绝：不能进入核验/)).toBeInTheDocument();
     expect(screen.queryByText("当前快照与合同一致")).not.toBeInTheDocument();
   });

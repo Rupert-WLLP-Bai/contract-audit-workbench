@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-15
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -189,29 +189,25 @@ func TestSequentialApprovalDecisionsAdvanceAndCompleteRound(t *testing.T) {
 		}
 	}
 	var decisions, approvedTasks, sealedRevisions int
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT
+	fixture.scopedQueryRow(t, ctx, userScope(fixture.admin), `SELECT
 		(SELECT count(*) FROM clm_approval_decisions WHERE tenant_id=$1 AND contract_id=$2),
 		(SELECT count(*) FROM clm_approval_tasks WHERE tenant_id=$1 AND contract_id=$2 AND state='approved'),
 		(SELECT count(*) FROM clm_contract_version_seals WHERE tenant_id=$1 AND contract_id=$2)`,
-		fixture.admin.TenantID, contractID).Scan(&decisions, &approvedTasks, &sealedRevisions); err != nil {
-		t.Fatal(err)
-	}
+		[]any{fixture.admin.TenantID, contractID}, &decisions, &approvedTasks, &sealedRevisions)
 	if decisions != clmApprovalNodeCount || approvedTasks != clmApprovalNodeCount || sealedRevisions != 1 {
 		t.Fatalf("decisions=%d approved_tasks=%d seals=%d", decisions, approvedTasks, sealedRevisions)
 	}
 	var lifecycle, roundState string
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT contract.lifecycle_state, round.state
+	fixture.scopedQueryRow(t, ctx, userScope(fixture.admin), `SELECT contract.lifecycle_state, round.state
 		FROM clm_contracts contract JOIN clm_approval_rounds round
 		  ON round.tenant_id=contract.tenant_id AND round.contract_id=contract.contract_id
 		WHERE contract.tenant_id=$1 AND contract.contract_id=$2`,
-		fixture.admin.TenantID, contractID).Scan(&lifecycle, &roundState); err != nil {
-		t.Fatal(err)
-	}
+		[]any{fixture.admin.TenantID, contractID}, &lifecycle, &roundState)
 	if lifecycle != "ready_to_sign" || roundState != "approved" {
 		t.Fatalf("lifecycle=%s round=%s", lifecycle, roundState)
 	}
 	// Decisions are evidence: the append-only trigger must refuse a rewrite.
-	if _, err := fixture.core.pool.Exec(ctx, `UPDATE clm_approval_decisions SET comment='rewritten'
+	if err := fixture.scopedExec(ctx, userScope(fixture.admin), `UPDATE clm_approval_decisions SET comment='rewritten'
 		WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, contractID); err == nil {
 		t.Fatal("approval decisions must be append-only")
 	}
@@ -403,11 +399,9 @@ func TestApprovalDecisionIdempotencyAndReturnCancelsRemainingTasks(t *testing.T)
 		t.Fatalf("return result %+v", returned)
 	}
 	var cancelled int
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT count(*) FROM clm_approval_tasks
+	fixture.scopedQueryRow(t, ctx, userScope(fixture.admin), `SELECT count(*) FROM clm_approval_tasks
 		WHERE tenant_id=$1 AND contract_id=$2 AND approval_round_id=$3 AND state='cancelled'`,
-		fixture.admin.TenantID, contractID, submitted.Round.ApprovalRoundID).Scan(&cancelled); err != nil {
-		t.Fatal(err)
-	}
+		[]any{fixture.admin.TenantID, contractID, submitted.Round.ApprovalRoundID}, &cancelled)
 	if cancelled != clmApprovalNodeCount-2 {
 		t.Fatalf("pending tasks cancelled=%d", cancelled)
 	}
@@ -428,11 +422,9 @@ func TestApprovalDecisionIdempotencyAndReturnCancelsRemainingTasks(t *testing.T)
 		t.Fatalf("new round number %d", resubmitted.Round.RoundNumber)
 	}
 	var firstRoundDecisions int
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT count(*) FROM clm_approval_decisions
+	fixture.scopedQueryRow(t, ctx, userScope(fixture.admin), `SELECT count(*) FROM clm_approval_decisions
 		WHERE tenant_id=$1 AND contract_id=$2 AND approval_round_id=$3`,
-		fixture.admin.TenantID, contractID, submitted.Round.ApprovalRoundID).Scan(&firstRoundDecisions); err != nil {
-		t.Fatal(err)
-	}
+		[]any{fixture.admin.TenantID, contractID, submitted.Round.ApprovalRoundID}, &firstRoundDecisions)
 	if firstRoundDecisions != 2 {
 		t.Fatalf("old round decisions changed: %d", firstRoundDecisions)
 	}
@@ -485,13 +477,11 @@ func TestConcurrentApprovalDecisionsCommitExactlyOnce(t *testing.T) {
 		t.Fatalf("successes=%d conflicts=%d", successes, conflicts)
 	}
 	var decisions, approved, active int
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT
+	fixture.scopedQueryRow(t, ctx, userScope(fixture.admin), `SELECT
 		(SELECT count(*) FROM clm_approval_decisions WHERE tenant_id=$1 AND contract_id=$2),
 		(SELECT count(*) FROM clm_approval_tasks WHERE tenant_id=$1 AND contract_id=$2 AND state='approved'),
 		(SELECT count(*) FROM clm_approval_tasks WHERE tenant_id=$1 AND contract_id=$2 AND state='active')`,
-		fixture.admin.TenantID, contractID).Scan(&decisions, &approved, &active); err != nil {
-		t.Fatal(err)
-	}
+		[]any{fixture.admin.TenantID, contractID}, &decisions, &approved, &active)
 	if decisions != 1 || approved != 1 || active != 1 {
 		t.Fatalf("decisions=%d approved=%d active=%d", decisions, approved, active)
 	}

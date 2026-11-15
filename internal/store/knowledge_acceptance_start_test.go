@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -72,6 +72,7 @@ func TestAttemptStartedEventIsFencedAndGenerationBound(t *testing.T) {
 
 	expireDurableClaim(t, fixture)
 	takeoverStore := fixture.environment.openRole(t, "execution")
+	takeoverStore.UseOperationAuthority(durableTestOperationAuthority{core: fixture.core})
 	takeover, err := takeoverStore.ClaimNextJob(ctx, "start-takeover", time.Minute)
 	if err != nil || takeover.JobID != fixture.jobID || takeover.Generation != fixture.claim.Generation+1 {
 		t.Fatalf("takeover claim: %+v %v", takeover, err)

@@ -4,12 +4,13 @@
 // Contact: +86 13617696321
 // Created: 2026-10-28
 // Updated: 2026-11-15
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, setSessionIdentity } from "./http";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { bindTestIdempotency, clearTestSession, installTestSession } from "../test/session";
+import { ApiError } from "./http";
 import {
   commandGovernedKnowledge,
   createGovernedKnowledge,
@@ -61,9 +62,13 @@ function json(value: unknown, status = 200): Response {
     headers: { "Content-Type": "application/json" },
   });
 }
+beforeEach(() => {
+  installTestSession("admin");
+  bindTestIdempotency("create-key", "command-key");
+});
 afterEach(() => {
   vi.unstubAllGlobals();
-  setSessionIdentity(null);
+  clearTestSession();
 });
 
 describe("governed knowledge API", () => {

@@ -4,12 +4,13 @@
 // Contact: +86 13617696321
 // Created: 2026-10-30
 // Updated: 2026-11-15
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Actor } from "../api/types";
@@ -26,6 +27,14 @@ vi.mock("../api/queries", () => ({
     isPending: logoutPending,
     mutateAsync,
   }),
+  useContextChoices: () => ({ data: [], isPending: false, isError: false }),
+  useSwitchContext: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  clearIdentityQueries: vi.fn(),
+  revalidateSessionContext: vi.fn(),
+  queryKeys: {
+    session: ["session", "client"],
+    sessionFor: (audience: string) => ["session", audience],
+  },
 }));
 
 const admin: Actor = {
@@ -59,15 +68,20 @@ function LocationEcho() {
 }
 
 function renderShell(path = "/admin/settings") {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/admin/login" element={<LocationEcho />} />
-        <Route path="/admin" element={<AdminShell />}>
-          <Route path="*" element={<p>管理内容</p>} />
-        </Route>
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/admin/login" element={<LocationEcho />} />
+          <Route path="/admin" element={<AdminShell />}>
+            <Route path="*" element={<p>管理内容</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -90,11 +104,18 @@ describe("admin shell", () => {
     expect(screen.queryByText("管理内容")).not.toBeInTheDocument();
   });
 
-  it("shows the administration identity, organization and read-only disclaimer", () => {
+  it("shows the administration identity, active tenant and read-only disclaimer", () => {
     renderShell();
     expect(screen.getByLabelText("管理工作台")).toHaveAttribute("href", "/admin/settings");
     expect(screen.getByText("合同智能审计工作台")).toBeInTheDocument();
-    expect(screen.getByText("两江新区分公司")).toBeInTheDocument();
+    expect(screen.getByText("租户一")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        (_content, element) =>
+          element?.classList.contains("sr-only") === true &&
+          element.textContent === "当前组织：演示组织",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("此工作区不授予案件正文访问权限。")).toBeInTheDocument();
     const who = screen.getByLabelText("当前管理身份");
     expect(within(who).getByText("管理员甲")).toBeInTheDocument();
@@ -120,7 +141,8 @@ describe("admin shell", () => {
     session = { data: undefined };
     renderShell();
     expect(screen.getByText("身份未知")).toBeInTheDocument();
-    expect(screen.getByText("正在确认")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "退出" })).toBeInTheDocument();
+    expect(screen.queryByText(/^租户：/)).not.toBeInTheDocument();
   });
 
   it.each([

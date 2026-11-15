@@ -4,11 +4,12 @@
 // Contact: +86 13617696321
 // Created: 2026-10-29
 // Updated: 2026-11-15
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { bindTestIdempotency, clearTestSession, installTestSession } from "../../test/session";
 import { ApiError } from "../../api/http";
 import {
   createHttpOperatorAuditClient,
@@ -64,7 +65,12 @@ const evaluationInput: FulfillmentEvaluationInput = {
   business_at: "2026-10-28T08:00:00Z",
 };
 
+beforeEach(() => {
+  installTestSession();
+  bindTestIdempotency("binding-key-1", "job-key", "evaluation-key");
+});
 afterEach(() => {
+  clearTestSession();
   vi.unstubAllGlobals();
 });
 

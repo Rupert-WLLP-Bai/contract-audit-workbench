@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-14
-// Revision: r10
+// Updated: 2026-11-15
+// Revision: r11
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -38,7 +38,7 @@ type clmRoleQueryer interface {
 // The running application accepts only this explicitly reviewed version range.
 const (
 	schemaMinCompatibleVersion = 49
-	schemaMaxCompatibleVersion = 49
+	schemaMaxCompatibleVersion = 51
 )
 
 //go:embed migrations/*.sql

@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-15
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,6 +12,7 @@ import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setSessionIdentity } from "../api/http";
 import { fileSha256 } from "../api/idempotency";
 import type { Actor } from "../api/types";
 import {
@@ -188,6 +189,7 @@ function renderIntake(
   actor: Actor,
   selectedContinuation: IntakeContinuationSelection | null = null,
 ) {
+  setSessionIdentity(actor);
   render(
     <MemoryRouter initialEntries={["/"]}>
       <Routes>
@@ -264,6 +266,7 @@ const completedReceipt: IntakeContinuation["receipt"] = {
 
 afterEach(() => {
   cleanup();
+  setSessionIdentity(null);
   localStorage.clear();
   vi.unstubAllGlobals();
 });

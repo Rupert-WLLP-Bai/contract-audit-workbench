@@ -473,6 +473,22 @@
       ],
       "handling": "manifest-only",
       "reason": "Versioned SQL migration bytes are integrity-checked after application and must not be changed by metadata headers."
+    },
+    {
+      "id": "operations-projection-unregistered-tenants-migration",
+      "paths": [
+        "internal/store/migrations/0050_operations_projection_unregistered_tenants.sql"
+      ],
+      "handling": "manifest-only",
+      "reason": "Versioned SQL migration bytes are integrity-checked after application and must not be changed by metadata headers."
+    },
+    {
+      "id": "experience-distill-admission-epoch-migration",
+      "paths": [
+        "internal/store/migrations/0051_experience_distill_admission_epoch.sql"
+      ],
+      "handling": "manifest-only",
+      "reason": "Versioned SQL migration bytes are integrity-checked after application and must not be changed by metadata headers."
     }
   ],
   "unclassified_file_policy": "Do not infer a comment syntax or purpose. Add a reviewed class or path rule before the complete inventory is accepted.",

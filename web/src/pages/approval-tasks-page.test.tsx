@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-01
 // Updated: 2026-11-15
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,12 +12,43 @@ import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApprovalTasksPage } from "./approval-tasks-page";
 import { renderWithAntd as render } from "../test/antd";
 import { setSessionIdentity } from "../api/http";
 
 const at = "2026-11-01T02:30:00Z";
+const sessionResponse = {
+  audience: "client",
+  actor: {
+    id: "actor-1",
+    display_name: "审查员甲",
+    role: "reviewer",
+    tenant_id: "tenant-1",
+    org_id: "org-1",
+  },
+  principal_id: "principal-actor-1",
+  active_context: {
+    membership_id: "membership-1",
+    tenant_id: "tenant-1",
+    tenant_name: "测试租户",
+    org_id: "org-1",
+    org_name: "测试组织",
+    context_version: "1",
+  },
+  csrf_token: "test-csrf",
+  context_switch_enabled: false,
+};
+
+beforeEach(() => {
+  setSessionIdentity({
+    ...sessionResponse.actor,
+    audience: "client",
+    principal_id: sessionResponse.principal_id,
+    active_context: sessionResponse.active_context,
+    csrf_token: sessionResponse.csrf_token,
+  });
+});
 
 function json(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
@@ -241,16 +272,7 @@ class ApprovalService {
     });
 
     if (url.pathname === "/api/session") {
-      return json({
-        audience: "client",
-        actor: {
-          id: "actor-1",
-          display_name: "审查员甲",
-          role: "reviewer",
-          tenant_id: "tenant-1",
-          org_id: "org-1",
-        },
-      });
+      return json(sessionResponse);
     }
     if (url.pathname === "/api/approval-tasks" && method === "GET") {
       const view = url.searchParams.get("view");

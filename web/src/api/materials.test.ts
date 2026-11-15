@@ -4,11 +4,12 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-15
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { bindTestIdempotency, clearTestSession, installTestSession } from "../test/session";
 import { confirmLegacyMaterialSelection, createGeneration, uploadDocument } from "./endpoints";
 
 function jsonResponse(value: unknown, status = 201): Response {
@@ -18,7 +19,14 @@ function jsonResponse(value: unknown, status = 201): Response {
   });
 }
 
-afterEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  installTestSession();
+  bindTestIdempotency("retry-key-1", "cas-key", "generation-key");
+});
+afterEach(() => {
+  clearTestSession();
+  vi.restoreAllMocks();
+});
 
 describe("material API contract", () => {
   it("sends an explicit add intent and parses the server material/version identity", async () => {

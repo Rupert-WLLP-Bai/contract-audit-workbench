@@ -4,17 +4,24 @@
 // Contact: +86 13617696321
 // Created: 2026-10-30
 // Updated: 2026-11-15
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { bindTestIdempotency, clearTestSession, installTestSession } from "../test/session";
 import {
   createEvidenceReceipt,
   listEvidenceHistory,
   parseEvidenceRequest,
   uploadEvidenceDocument,
 } from "./evidence-workflow";
+
+beforeEach(() => {
+  installTestSession();
+  bindTestIdempotency("key-1", "key-2");
+});
+afterEach(() => clearTestSession());
 
 const baseRequest = {
   id: "request-1",

@@ -4,13 +4,14 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-15
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { bindTestIdempotency, clearTestSession, installTestSession } from "../test/session";
 import {
   getLegalApplicabilityFactHistory,
   getLegalApplicabilityFacts,
@@ -34,7 +35,14 @@ function json(value: unknown, status = 200): Response {
   });
 }
 
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => {
+  installTestSession();
+  bindTestIdempotency("stable-fact-key");
+});
+afterEach(() => {
+  clearTestSession();
+  vi.unstubAllGlobals();
+});
 
 describe("legal applicability fact API", () => {
   it("parses Go-marshaled fact resolution and append-only version fixtures", () => {

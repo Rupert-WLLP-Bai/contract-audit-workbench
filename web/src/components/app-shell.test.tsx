@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-12
-// Revision: r5
+// Updated: 2026-11-15
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -209,7 +209,9 @@ describe("app shell", () => {
 
   it("marks the active navigation entry and review layout", () => {
     renderShell("/cases/case-1/reviews/run-1");
-    expect(screen.getByRole("link", { name: "案件" })).toHaveAttribute("aria-current", "page");
+    expect(
+      within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件" }),
+    ).toHaveAttribute("aria-current", "page");
     expect(document.querySelector(".app")).toHaveClass("app--review");
   });
 

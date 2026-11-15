@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-29
 // Updated: 2026-11-15
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -33,7 +33,7 @@ describe("fulfillment diff panel", () => {
     expect(screen.getByText("99.9 %")).toBeInTheDocument();
     expect(screen.getByText("99.95 %")).toBeInTheDocument();
     expect(screen.getAllByText("观测时间")).toHaveLength(2);
-    expect(screen.getByText(/配置差异不等于实际吞吐违约/)).toBeInTheDocument();
+    expect(screen.getByText(/不能直接认定为实际吞吐违约/)).toBeInTheDocument();
     expect(screen.getByText("冲突")).toBeInTheDocument();
     expect(screen.getByText("一致")).toBeInTheDocument();
   });
