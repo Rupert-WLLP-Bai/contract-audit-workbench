@@ -142,6 +142,55 @@ func TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision(t *tes
 		t.Fatalf("registration fact was mutable: %v", err)
 	}
 
+	// A signed, active parent accepts a supplement draft that stays linked to the
+	// same case; replay is idempotent and the child view exposes its parent link.
+	signedParent, err := fixture.core.LoadContractDetail(ctx, fixture.admin, contractID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signedParent.CurrentRevisionID == nil || signedParent.Summary.RowVersion < 1 {
+		t.Fatalf("registered parent lost its frozen revision: %+v", signedParent)
+	}
+	supplementInput := CreateContractSupplementInput{
+		ParentContractID: contractID, ExpectedRowVersion: signedParent.Summary.RowVersion,
+		ParentRevisionID: *signedParent.CurrentRevisionID, RelationType: "supplementary_agreement",
+		Reason: "补充验收与付款安排", Draft: freezeCompleteDraft(), IdempotencyKey: "signing-supplement",
+	}
+	supplement, err := fixture.core.CreateContractSupplement(ctx, fixture.admin, supplementInput)
+	if err != nil || supplement.Supplement.ParentContractID != contractID ||
+		supplement.Supplement.SupplementContractID == "" || supplement.Contract.Summary.ContractID != supplement.Supplement.SupplementContractID ||
+		supplement.Contract.Draft == nil {
+		t.Fatalf("supplement creation: %+v err=%v", supplement, err)
+	}
+	replayedSupplement, err := fixture.core.CreateContractSupplement(ctx, fixture.admin, supplementInput)
+	if err != nil || replayedSupplement.Supplement.SupplementContractID != supplement.Supplement.SupplementContractID {
+		t.Fatalf("supplement replay: %+v err=%v", replayedSupplement, err)
+	}
+	listedSupplements, err := fixture.core.ListContractSupplements(ctx, fixture.admin, contractID)
+	if err != nil || len(listedSupplements.Items) != 1 ||
+		listedSupplements.Items[0].SupplementContractID != supplement.Supplement.SupplementContractID ||
+		listedSupplements.Items[0].ContractState != "draft" {
+		t.Fatalf("parent supplement list: %+v err=%v", listedSupplements, err)
+	}
+	childSupplements, err := fixture.core.ListContractSupplements(ctx, fixture.admin, supplement.Supplement.SupplementContractID)
+	if err != nil || childSupplements.Parent == nil || childSupplements.Parent.ParentContractID != contractID {
+		t.Fatalf("child supplement list: %+v err=%v", childSupplements, err)
+	}
+	staleSupplement := supplementInput
+	staleSupplement.ExpectedRowVersion++
+	staleSupplement.IdempotencyKey = "signing-supplement-stale"
+	assertFaultStatus(t, func() error {
+		_, err := fixture.core.CreateContractSupplement(ctx, fixture.admin, staleSupplement)
+		return err
+	}(), 409, "stale parent row version")
+	invalidSupplement := supplementInput
+	invalidSupplement.RelationType = "not_a_relation"
+	invalidSupplement.IdempotencyKey = "signing-supplement-invalid"
+	assertFaultStatus(t, func() error {
+		_, err := fixture.core.CreateContractSupplement(ctx, fixture.admin, invalidSupplement)
+		return err
+	}(), 422, "invalid supplement relation")
+
 	// The contract-only reader can read this contract but has no grant to the
 	// signed material's source case. Sensitive material facts must be omitted.
 	dir := t.TempDir()
