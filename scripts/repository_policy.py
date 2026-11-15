@@ -9,6 +9,7 @@
 # End file metadata.
 
 """Source-repository boundary: runtime code stays, delivery material stays out."""
+
 import os
 from pathlib import Path
 import re
@@ -18,7 +19,13 @@ REQUIRED_MARKDOWN = {"README.md", "AGENTS.md"}
 ROOT_MARKDOWN_ALLOWLIST = REQUIRED_MARKDOWN | {"CHANGELOG.md", "CONTRIBUTING.md"}
 HANDBOOK_DIRS = {"architecture", "engineering", "glossary", "operations", "product"}
 FORBIDDEN_ROOTS = {"demos", "presentation", "materials", "references", "screenshots"}
-FORBIDDEN_DOC_DIRS = {"docs/research", "docs/prompts", "docs/samples", "docs/reports", "docs/screenshots"}
+FORBIDDEN_DOC_DIRS = {
+    "docs/research",
+    "docs/prompts",
+    "docs/samples",
+    "docs/reports",
+    "docs/screenshots",
+}
 HANDBOOK_DATA = {
     "docs/glossary/concepts.json",
     "docs/architecture/store-ownership.csv",
@@ -27,10 +34,31 @@ HANDBOOK_DATA = {
     "docs/engineering/ui-coverage-matrix.json",
 }
 BULK_SUFFIXES = {
-    ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx",
-    ".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".mov", ".wav",
-    ".zip", ".tar", ".tgz", ".7z", ".rar",
-    ".safetensors", ".gguf", ".onnx", ".pt", ".pth",
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".ppt",
+    ".pptx",
+    ".xls",
+    ".xlsx",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
+    ".mp4",
+    ".mov",
+    ".wav",
+    ".zip",
+    ".tar",
+    ".tgz",
+    ".7z",
+    ".rar",
+    ".safetensors",
+    ".gguf",
+    ".onnx",
+    ".pt",
+    ".pth",
 }
 FIXTURE_MARKERS = ("testdata",)
 # Current regression fixtures are under 100 KiB. This bound keeps a force-added
@@ -114,8 +142,17 @@ def tracked_files(root):
     # including when this tree has a corrupt .git directory or Gitfile.
     try:
         completed = subprocess.run(
-            ["git", "-C", str(root), "--git-dir", str(metadata),
-             "--work-tree", str(root), "ls-files", "-z"],
+            [
+                "git",
+                "-C",
+                str(root),
+                "--git-dir",
+                str(metadata),
+                "--work-tree",
+                str(root),
+                "ls-files",
+                "-z",
+            ],
             capture_output=True,
         )
     except OSError as error:
@@ -171,7 +208,9 @@ def _append_path_violations(root, relative, found):
     if path.parts and path.parts[0] in FORBIDDEN_ROOTS:
         found.append(f"delivery material is in the source tree: {relative}")
     if path.parts and path.parts[0] == "docs":
-        if any(relative == prefix or relative.startswith(prefix + "/") for prefix in FORBIDDEN_DOC_DIRS):
+        if any(
+            relative == prefix or relative.startswith(prefix + "/") for prefix in FORBIDDEN_DOC_DIRS
+        ):
             found.append(f"delivery material is in the source tree: {relative}")
         elif path.suffix.lower() != ".md" and relative not in HANDBOOK_DATA:
             found.append(f"docs content is outside the handbook allowlist: {relative}")
