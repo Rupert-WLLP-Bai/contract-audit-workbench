@@ -4,8 +4,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-27
-# Updated: 2026-10-27
-# Revision: r1
+# Updated: 2026-11-15
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -25,8 +25,14 @@ import urllib.parse
 
 REPOSITORY = Path(__file__).resolve().parent.parent
 HOP_HEADERS = {
-    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
-    "te", "trailer", "transfer-encoding", "upgrade",
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
 }
 
 
@@ -132,29 +138,47 @@ class Recorder(http.server.BaseHTTPRequestHandler):
         connection = None
         client_interrupted = False
         try:
-            with private_file(directory / "request.body") as request_body, private_file(directory / "response.body") as response_body:
+            with (
+                private_file(directory / "request.body") as request_body,
+                private_file(directory / "response.body") as response_body,
+            ):
                 path = urllib.parse.urlsplit(self.path)
                 endpoint = path.path
-                metadata["endpoint"] = endpoint if endpoint in ("/v1/models", "/v1/chat/completions") else None
+                metadata["endpoint"] = (
+                    endpoint if endpoint in ("/v1/models", "/v1/chat/completions") else None
+                )
                 size = copy_request_body(self, request_body)
-                if (endpoint, self.command) not in (("/v1/models", "GET"), ("/v1/chat/completions", "POST")):
+                if (endpoint, self.command) not in (
+                    ("/v1/models", "GET"),
+                    ("/v1/chat/completions", "POST"),
+                ):
                     metadata["interrupted"] = False
                     metadata["error"] = "unsupported_endpoint_or_method"
                     self.send_error(404)
                     return
                 request_body.flush()
                 upstream = self.server.upstream
-                connection_class = http.client.HTTPSConnection if upstream.scheme == "https" else http.client.HTTPConnection
+                connection_class = (
+                    http.client.HTTPSConnection
+                    if upstream.scheme == "https"
+                    else http.client.HTTPConnection
+                )
                 connection = connection_class(upstream.hostname, upstream.port, timeout=600)
-                target = upstream.path.rstrip("/") + endpoint[len("/v1"):]
+                target = upstream.path.rstrip("/") + endpoint[len("/v1") :]
                 if path.query:
                     target += "?" + path.query
-                connection.putrequest(self.command, target, skip_host=True, skip_accept_encoding=True)
+                connection.putrequest(
+                    self.command, target, skip_host=True, skip_accept_encoding=True
+                )
                 connection.putheader("Host", upstream.netloc)
                 for name, value in filtered_headers(self.headers):
                     if name.lower() not in ("host", "content-length"):
                         connection.putheader(name, value)
-                if size or self.headers.get("Content-Length") is not None or self.headers.get("Transfer-Encoding"):
+                if (
+                    size
+                    or self.headers.get("Content-Length") is not None
+                    or self.headers.get("Transfer-Encoding")
+                ):
                     connection.putheader("Content-Length", str(size))
                 connection.endheaders()
                 with open(directory / "request.body", "rb") as stored_request:
@@ -232,14 +256,25 @@ class Server(http.server.ThreadingHTTPServer):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--upstream", required=True, help="OpenAI-compatible root URL, e.g. http://127.0.0.1:3425/v1")
+    parser.add_argument(
+        "--upstream",
+        required=True,
+        help="OpenAI-compatible root URL, e.g. http://127.0.0.1:3425/v1",
+    )
     parser.add_argument("--listen", required=True, help="127.0.0.1:PORT")
-    parser.add_argument("--out", required=True, help="private recording directory outside the source repository")
+    parser.add_argument(
+        "--out", required=True, help="private recording directory outside the source repository"
+    )
     args = parser.parse_args()
     upstream = urllib.parse.urlsplit(args.upstream)
     try:
-        if (upstream.scheme not in ("http", "https") or not upstream.hostname or "@" in upstream.netloc
-                or upstream.query or upstream.fragment):
+        if (
+            upstream.scheme not in ("http", "https")
+            or not upstream.hostname
+            or "@" in upstream.netloc
+            or upstream.query
+            or upstream.fragment
+        ):
             raise ValueError
         upstream.port
         host, port = args.listen.rsplit(":", 1)

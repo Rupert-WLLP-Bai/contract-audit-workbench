@@ -3,12 +3,13 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-31
-# Updated: 2026-10-31
-# Revision: r1
+# Updated: 2026-11-15
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
 """Local behavior checks for the P0 source and route acceptance helper."""
+
 import tempfile
 import threading
 import unittest
@@ -47,7 +48,9 @@ class RouteFixture:
                 if owner.bad_marker and owner.role == "client":
                     body = b"not a release artifact"
                 self.send_response(200)
-                self.send_header("Content-Type", "application/json" if owner.role == "gateway" else "text/html")
+                self.send_header(
+                    "Content-Type", "application/json" if owner.role == "gateway" else "text/html"
+                )
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -77,9 +80,17 @@ class RouteAcceptanceTests(unittest.TestCase):
     def test_release_routes_check_three_sites_and_gateway(self):
         checks, passed = p0_runtime.route_checks(*self.urls())
         self.assertTrue(passed)
-        self.assertEqual([check["name"] for check in checks], [
-            "client_entry", "admin_redirect", "admin_entry", "portal_redirect", "portal_entry", "gateway_ready",
-        ])
+        self.assertEqual(
+            [check["name"] for check in checks],
+            [
+                "client_entry",
+                "admin_redirect",
+                "admin_entry",
+                "portal_redirect",
+                "portal_entry",
+                "gateway_ready",
+            ],
+        )
         self.assertTrue(all(check["passed"] for check in checks))
 
     def test_missing_asset_marker_or_wrong_redirect_fails(self):
@@ -109,7 +120,19 @@ class SnapshotFileSelectionTests(unittest.TestCase):
             (source / "artifacts" / "run.json").write_text("runtime output", encoding="utf-8")
             (source / "secret-target").write_text("private", encoding="utf-8")
             (source / "linked-secret").symlink_to("secret-target")
-            subprocess.run(["git", "-C", str(source), "add", "README.md", ".env.example", "tracked.go", ".gitignore"], check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(source),
+                    "add",
+                    "README.md",
+                    ".env.example",
+                    "tracked.go",
+                    ".gitignore",
+                ],
+                check=True,
+            )
             paths = p0_runtime.source_paths(source)
             names = {path.as_posix() for path in paths}
             self.assertIn(".env.example", names)

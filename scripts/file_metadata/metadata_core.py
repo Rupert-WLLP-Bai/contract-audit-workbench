@@ -4,6 +4,7 @@ This draft deliberately handles only a recognized metadata mirror block and
 body/mode comparison. Git inventory, schema validation, provenance, and CI
 selection remain separate, not-yet-implemented work.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,7 +15,12 @@ from typing import Mapping
 LABELS = (b"Purpose", b"Author", b"Contact", b"Created", b"Updated", b"Revision", b"Copyright")
 START = b"File metadata (manifest mirror):"
 END = b"End file metadata."
-SUPPORTED_HANDLING = {"header-and-manifest", "manifest-only", "preserve-notice-and-manifest", "generated-manifest-only"}
+SUPPORTED_HANDLING = {
+    "header-and-manifest",
+    "manifest-only",
+    "preserve-notice-and-manifest",
+    "generated-manifest-only",
+}
 
 
 class MetadataError(ValueError):
@@ -121,7 +127,10 @@ def parse_header(data: bytes, style: CommentStyle) -> ParsedHeader | None:
     if end_index - start_index != len(LABELS) + 1:
         raise MetadataError("metadata block must contain exactly seven ordered fields")
     fields: dict[str, str] = {}
-    if _content_line(lines[start_index], style) != START or _content_line(lines[end_index], style) != END:
+    if (
+        _content_line(lines[start_index], style) != START
+        or _content_line(lines[end_index], style) != END
+    ):
         raise MetadataError("metadata marker lines are malformed")
     for label_index, label in enumerate(LABELS, start=start_index + 1):
         value = _content_line(lines[label_index], style)
@@ -140,14 +149,15 @@ def parse_header(data: bytes, style: CommentStyle) -> ParsedHeader | None:
     newline = _line_ending(data)
     # Require one empty separator line after the end marker. This exact envelope
     # makes add/remove a reversible byte operation instead of normalizing body.
-    if data[end:end + len(newline) * 2] != newline * 2:
+    if data[end : end + len(newline) * 2] != newline * 2:
         raise MetadataError("metadata block must be followed by exactly one blank separator line")
     end += len(newline) * 2
     return ParsedHeader(fields=fields, start=start, end=end)
 
 
-def metadata_body(data: bytes, style: CommentStyle, handling: str, *, file_kind: str | None = None,
-                  mode: str) -> bytes:
+def metadata_body(
+    data: bytes, style: CommentStyle, handling: str, *, file_kind: str | None = None, mode: str
+) -> bytes:
     """Return bytes outside one eligible header; protected formats remain byte-exact."""
     if handling not in SUPPORTED_HANDLING:
         raise MetadataError(f"unsupported handling value: {handling!r}")
@@ -166,8 +176,16 @@ def metadata_body(data: bytes, style: CommentStyle, handling: str, *, file_kind:
     return data[: header.start] + data[header.end :]
 
 
-def content_changed(before: bytes, after: bytes, *, mode_before: str, mode_after: str,
-                    style: CommentStyle, handling: str, file_kind: str) -> bool:
+def content_changed(
+    before: bytes,
+    after: bytes,
+    *,
+    mode_before: str,
+    mode_after: str,
+    style: CommentStyle,
+    handling: str,
+    file_kind: str,
+) -> bool:
     """One auditable snapshot-window change means body bytes OR Git mode changed."""
     if handling not in SUPPORTED_HANDLING:
         raise MetadataError(f"unsupported handling value: {handling!r}")
@@ -199,13 +217,19 @@ def render_fields(record: Mapping[str, object]) -> dict[str, str]:
         if not isinstance(created, dict) or not isinstance(updated, dict):
             raise TypeError
         created_value, updated_value = str(created["value"]), str(updated["value"])
-        copyright_values = [str(item["notice"]) for item in copyright if isinstance(item, dict) and item.get("notice")]
+        copyright_values = [
+            str(item["notice"])
+            for item in copyright
+            if isinstance(item, dict) and item.get("notice")
+        ]
         if not copyright_values:
             raise TypeError
         values = {
             "Purpose": str(purpose),
             "Author": "; ".join(author_values),
-            "Contact": "; ".join(str(a["contact"]) for a in authors if isinstance(a, dict) and a.get("contact")),
+            "Contact": "; ".join(
+                str(a["contact"]) for a in authors if isinstance(a, dict) and a.get("contact")
+            ),
             "Created": created_value,
             "Updated": updated_value,
             "Revision": str(revision),
@@ -218,8 +242,15 @@ def render_fields(record: Mapping[str, object]) -> dict[str, str]:
     return values
 
 
-def insert_header(data: bytes, record: Mapping[str, object], *, style: CommentStyle,
-                  handling: str, file_kind: str, mode: str) -> bytes:
+def insert_header(
+    data: bytes,
+    record: Mapping[str, object],
+    *,
+    style: CommentStyle,
+    handling: str,
+    file_kind: str,
+    mode: str,
+) -> bytes:
     """Insert one mirror only at a conservative, supported directive boundary."""
     if handling != "header-and-manifest":
         raise MetadataError("header insertion is forbidden for manifest-only/protected content")
@@ -232,23 +263,33 @@ def insert_header(data: bytes, record: Mapping[str, object], *, style: CommentSt
     fields = render_fields(record)
     if existing is not None:
         if existing.start != _safe_insertion_offset(data, file_kind):
-            raise MetadataError("existing metadata header is not at the approved directive-safe location")
+            raise MetadataError(
+                "existing metadata header is not at the approved directive-safe location"
+            )
         if dict(existing.fields) != fields:
             raise MetadataError("existing metadata header differs from the manifest mirror")
         return data
     newline = _line_ending(data)
     insertion = _safe_insertion_offset(data, file_kind)
-    block_lines = [START] + [label + b": " + fields[label.decode("ascii")].encode("utf-8") for label in LABELS] + [END]
+    block_lines = (
+        [START]
+        + [label + b": " + fields[label.decode("ascii")].encode("utf-8") for label in LABELS]
+        + [END]
+    )
     for line in block_lines:
         if style.suffix:
             terminator = b"-->" if b"--" in style.suffix else b"*/"
             opener = b"<!--" if terminator == b"-->" else b"/*"
             if terminator in line or opener in line:
                 raise MetadataError("header value contains a block-comment delimiter")
-    rendered = newline.join(style.prefix + line + style.suffix for line in block_lines) + newline * 2
+    rendered = (
+        newline.join(style.prefix + line + style.suffix for line in block_lines) + newline * 2
+    )
     needs_leading_newline = insertion > 0 and data[insertion - 1 : insertion] not in (b"\n", b"\r")
     if needs_leading_newline:
-        raise MetadataError("directive preamble has no line ending; refusing non-reversible insertion")
+        raise MetadataError(
+            "directive preamble has no line ending; refusing non-reversible insertion"
+        )
     return data[:insertion] + rendered + data[insertion:]
 
 
@@ -262,7 +303,7 @@ def _validate_kind_style(file_kind: str | None, style: CommentStyle) -> None:
 
 def _safe_insertion_offset(data: bytes, file_kind: str) -> int:
     """Keep directives and format prologues before the metadata block."""
-    newline = _line_ending(data)
+    _line_ending(data)
     pos = 3 if data.startswith(b"\xef\xbb\xbf") else 0
     lines, offsets = _split_lines(data[pos:])
     local_offsets = [pos + value for value in offsets]
@@ -280,7 +321,9 @@ def _safe_insertion_offset(data: bytes, file_kind: str) -> int:
             consumed += 1
     elif file_kind == "markdown" or file_kind == "html":
         if consumed < len(lines) and lines[consumed].strip() == b"---":
-            closing = next((i for i in range(consumed + 1, len(lines)) if lines[i].strip() == b"---"), None)
+            closing = next(
+                (i for i in range(consumed + 1, len(lines)) if lines[i].strip() == b"---"), None
+            )
             if closing is None:
                 raise MetadataError("unterminated front matter; refusing insertion")
             consumed = closing + 1
@@ -296,7 +339,11 @@ def _safe_insertion_offset(data: bytes, file_kind: str) -> int:
             if consumed < len(lines) and lines[consumed] == b"":
                 consumed += 1
     elif file_kind in {"typescript", "javascript"}:
-        while consumed < len(lines) and lines[consumed].strip().startswith((b'"use ', b"'use ")) and lines[consumed].strip().endswith((b'";', b"';")):
+        while (
+            consumed < len(lines)
+            and lines[consumed].strip().startswith((b'"use ', b"'use "))
+            and lines[consumed].strip().endswith((b'";', b"';"))
+        ):
             consumed += 1
         if consumed and consumed < len(lines) and lines[consumed] == b"":
             consumed += 1

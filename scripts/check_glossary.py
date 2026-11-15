@@ -4,8 +4,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-11-01
-# Updated: 2026-11-01
-# Revision: r1
+# Updated: 2026-11-15
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -49,24 +49,65 @@ def render_view(data: dict, audience: str) -> str:
         heading = concept["user_term"] if user_view else concept["system_term"]
         other_label = "系统映射" if user_view else "用户词"
         other_value = concept["system_term"] if user_view else concept["user_term"]
-        out.extend(["", f"## {concept['id']} · {heading}", "", f"**{other_label}：** `{other_value}`", "", concept["definition"], "", "边界："])
+        out.extend(
+            [
+                "",
+                f"## {concept['id']} · {heading}",
+                "",
+                f"**{other_label}：** `{other_value}`",
+                "",
+                concept["definition"],
+                "",
+                "边界：",
+            ]
+        )
         out.extend(f"- {item}" for item in concept.get("boundaries", []))
         for example in concept.get("misuse_examples", []):
-            out.extend(["", f"**误用：** {example['incorrect']}", "", f"**原因：** {example['why_incorrect']}", "", f"**建议：** {example['preferred']}"])
+            out.extend(
+                [
+                    "",
+                    f"**误用：** {example['incorrect']}",
+                    "",
+                    f"**原因：** {example['why_incorrect']}",
+                    "",
+                    f"**建议：** {example['preferred']}",
+                ]
+            )
         implementation = concept["implementation"]
         status_label = data["status_legend"][implementation["status"]]
-        out.extend(["", f"**实现状态：** `{implementation['status']}` — {status_label}", "", implementation["note"], ""])
+        out.extend(
+            [
+                "",
+                f"**实现状态：** `{implementation['status']}` — {status_label}",
+                "",
+                implementation["note"],
+                "",
+            ]
+        )
         if concept.get("code_anchors"):
             out.append("源码锚点：")
-            out.extend(f"- `{anchor['symbol']}` — [`{anchor['path']}`](../../{anchor['path']})" for anchor in concept["code_anchors"])
+            out.extend(
+                f"- `{anchor['symbol']}` — [`{anchor['path']}`](../../{anchor['path']})"
+                for anchor in concept["code_anchors"]
+            )
         if concept.get("related_concepts"):
-            out.extend(["", "相关概念：" + ", ".join(f"`{item}`" for item in concept["related_concepts"]), ""])
+            out.extend(
+                [
+                    "",
+                    "相关概念：" + ", ".join(f"`{item}`" for item in concept["related_concepts"]),
+                    "",
+                ]
+            )
     return "\n".join(out).rstrip() + "\n"
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--write-views", action="store_true", help="regenerate the user and system reading views from concepts.json")
+    parser.add_argument(
+        "--write-views",
+        action="store_true",
+        help="regenerate the user and system reading views from concepts.json",
+    )
     args = parser.parse_args()
     try:
         data = json.loads(SOURCE.read_text(encoding="utf-8"))
@@ -103,7 +144,9 @@ def main() -> None:
                 fail(f"{concept_id}: misuse_examples[{index}] must be an object")
             for field in ("incorrect", "why_incorrect", "preferred"):
                 if not isinstance(example.get(field), str) or not example[field].strip():
-                    fail(f"{concept_id}: misuse_examples[{index}].{field} must be a non-empty string")
+                    fail(
+                        f"{concept_id}: misuse_examples[{index}].{field} must be a non-empty string"
+                    )
 
         for field in ("code_anchors", "related_concepts"):
             values = concept.get(field, [])
@@ -165,11 +208,17 @@ def main() -> None:
             fail(f"{view_name}: concept IDs differ (missing={missing}, extra={extra})")
 
     if present_views == 0:
-        print(f"PASS: {len(ids)} unique concepts, terms, relationships and source anchors validated; reading views are NOT_RUN")
+        print(
+            f"PASS: {len(ids)} unique concepts, terms, relationships and source anchors validated; reading views are NOT_RUN"
+        )
     elif present_views != len(generated_views):
-        print(f"PASS: {len(ids)} concepts and {present_views}/{len(generated_views)} reading views validated; remaining views are NOT_RUN")
+        print(
+            f"PASS: {len(ids)} concepts and {present_views}/{len(generated_views)} reading views validated; remaining views are NOT_RUN"
+        )
     else:
-        print(f"PASS: {len(ids)} concepts, source anchors and {present_views} reading views validated")
+        print(
+            f"PASS: {len(ids)} concepts, source anchors and {present_views} reading views validated"
+        )
 
 
 if __name__ == "__main__":

@@ -3,12 +3,13 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-11-01
-# Updated: 2026-11-08
-# Revision: r3
+# Updated: 2026-11-15
+# Revision: r4
 # Copyright: See LICENSE
 # End file metadata.
 
 """Unit checks for the named direct-import policies."""
+
 from __future__ import annotations
 
 import copy
@@ -38,7 +39,8 @@ class NamedPolicyTests(unittest.TestCase):
             {
                 "ImportPath": "contractaudit/internal/modelgateway",
                 "GoFiles": ["jev.go"],
-                "Imports": gateway_imports or [
+                "Imports": gateway_imports
+                or [
                     "contractaudit/internal/advisorycontract",
                     "contractaudit/internal/store",
                     "net/http",
@@ -75,7 +77,9 @@ class NamedPolicyTests(unittest.TestCase):
                 for path in domain[role]:
                     name = cfg["module"] + "/" + path
                     if name not in seen:
-                        completed.append({"ImportPath": name, "GoFiles": ["fixture.go"], "Imports": []})
+                        completed.append(
+                            {"ImportPath": name, "GoFiles": ["fixture.go"], "Imports": []}
+                        )
                         seen.add(name)
         return completed
 
@@ -86,54 +90,82 @@ class NamedPolicyTests(unittest.TestCase):
 
     def test_all_policies_pass_and_store_direct_import_is_allowed(self):
         report = self.inspect(self.records())
-        self.assertEqual([row["id"] for row in report["policy_results"]], [
-            "contractmoney-pure-domain",
-            "advisory-contract-boundary",
-            "core-authority-transport-boundary",
-        ])
-        self.assertEqual([row["status"] for row in report["policy_results"]],
-                         ["PASS", "PASS", "PASS"])
+        self.assertEqual(
+            [row["id"] for row in report["policy_results"]],
+            [
+                "contractmoney-pure-domain",
+                "advisory-contract-boundary",
+                "core-authority-transport-boundary",
+            ],
+        )
+        self.assertEqual(
+            [row["status"] for row in report["policy_results"]], ["PASS", "PASS", "PASS"]
+        )
         gateway = report["policy_results"][1]["checks"][0]
-        self.assertIn("contractaudit/internal/store",
-                      gateway["direct_production_imports"])
+        self.assertIn("contractaudit/internal/store", gateway["direct_production_imports"])
         self.assertEqual(report["violations"], [])
 
     def test_gateway_forbids_both_direct_orchestration_edges(self):
-        report = self.inspect(self.records(gateway_imports=[
-            "contractaudit/internal/agentflow/advisory",
-            "contractaudit/internal/advisory/provider",
-            "contractaudit/internal/store",
-        ]))
+        report = self.inspect(
+            self.records(
+                gateway_imports=[
+                    "contractaudit/internal/agentflow/advisory",
+                    "contractaudit/internal/advisory/provider",
+                    "contractaudit/internal/store",
+                ]
+            )
+        )
         self.assertEqual(report["policy_results"][0]["status"], "PASS")
         self.assertEqual(report["policy_results"][1]["status"], "FAIL")
-        self.assertEqual({row["to"] for row in report["violations"]}, {
-            "contractaudit/internal/agentflow/advisory",
-            "contractaudit/internal/advisory/provider",
-        })
+        self.assertEqual(
+            {row["to"] for row in report["violations"]},
+            {
+                "contractaudit/internal/agentflow/advisory",
+                "contractaudit/internal/advisory/provider",
+            },
+        )
 
     def test_neutral_contract_allows_time_but_rejects_nonallowlisted_imports(self):
-        report = self.inspect(self.records(contract_imports=[
-            "time", "fmt", "contractaudit/internal/agentflow",
-        ]))
+        report = self.inspect(
+            self.records(
+                contract_imports=[
+                    "time",
+                    "fmt",
+                    "contractaudit/internal/agentflow",
+                ]
+            )
+        )
         check = report["policy_results"][1]["checks"][1]
         self.assertEqual(check["allowed_direct_imports"], ["time"])
-        self.assertEqual(set(check["forbidden_imports"]), {
-            "fmt", "contractaudit/internal/agentflow",
-        })
+        self.assertEqual(
+            set(check["forbidden_imports"]),
+            {
+                "fmt",
+                "contractaudit/internal/agentflow",
+            },
+        )
 
     def test_missing_or_empty_named_target_is_blocked(self):
         records = self.records()
-        without_target = [record for record in records
-                          if record["ImportPath"] != "contractaudit/internal/advisorycontract"]
+        without_target = [
+            record
+            for record in records
+            if record["ImportPath"] != "contractaudit/internal/advisorycontract"
+        ]
         with self.assertRaises(guard.Blocked):
-            guard.inspect_package(without_target, self.config["module"],
-                                  self.config["policies"][1]["checks"][1])
+            guard.inspect_package(
+                without_target, self.config["module"], self.config["policies"][1]["checks"][1]
+            )
         empty = copy.deepcopy(records)
-        next(record for record in empty
-             if record["ImportPath"] == "contractaudit/internal/advisorycontract")["GoFiles"] = []
+        next(
+            record
+            for record in empty
+            if record["ImportPath"] == "contractaudit/internal/advisorycontract"
+        )["GoFiles"] = []
         with self.assertRaisesRegex(guard.Blocked, "zero GoFiles"):
-            guard.inspect_package(empty, self.config["module"],
-                                  self.config["policies"][1]["checks"][1])
+            guard.inspect_package(
+                empty, self.config["module"], self.config["policies"][1]["checks"][1]
+            )
 
     def test_unknown_or_malformed_policy_is_blocked(self):
         malformed = copy.deepcopy(self.config)
@@ -148,12 +180,10 @@ class NamedPolicyTests(unittest.TestCase):
         missing_policy["policies"] = [missing_policy["policies"][0]]
         mutations.append(missing_policy)
 
-        for check_id in ("modelgateway-no-orchestration-or-facade",
-                         "advisorycontract-stdlib-only"):
+        for check_id in ("modelgateway-no-orchestration-or-facade", "advisorycontract-stdlib-only"):
             missing_check = copy.deepcopy(self.config)
             policy = missing_check["policies"][1]
-            policy["checks"] = [check for check in policy["checks"]
-                                if check["id"] != check_id]
+            policy["checks"] = [check for check in policy["checks"] if check["id"] != check_id]
             mutations.append(missing_check)
 
         changed_target = copy.deepcopy(self.config)
@@ -166,7 +196,8 @@ class NamedPolicyTests(unittest.TestCase):
 
         weakened_deny = copy.deepcopy(self.config)
         weakened_deny["policies"][1]["checks"][0]["forbidden_direct_imports"].remove(
-            "internal/agentflow")
+            "internal/agentflow"
+        )
         mutations.append(weakened_deny)
 
         weakened_allow = copy.deepcopy(self.config)
@@ -183,7 +214,8 @@ class NamedPolicyTests(unittest.TestCase):
         original = json.loads(schema_path.read_text(encoding="utf-8"))
         for mutate in (
             lambda schema: schema["$defs"]["forbidCheck"]["required"].remove(
-                "forbidden_direct_imports"),
+                "forbidden_direct_imports"
+            ),
             lambda schema: schema["properties"]["policies"].update(maxItems=1),
         ):
             schema = copy.deepcopy(original)
@@ -198,32 +230,67 @@ class NamedPolicyTests(unittest.TestCase):
         guard.validate_config(old)
 
     def test_new_package_store_ratchet_and_exact_legacy_exception(self):
-        records = self.records() + [{"ImportPath": "contractaudit/internal/newbusiness", "GoFiles": ["x.go"], "Imports": ["contractaudit/internal/store"]}]
+        records = self.records() + [
+            {
+                "ImportPath": "contractaudit/internal/newbusiness",
+                "GoFiles": ["x.go"],
+                "Imports": ["contractaudit/internal/store"],
+            }
+        ]
         report = self.inspect(records)
-        self.assertEqual([(v["check_id"], v["from"]) for v in report["violations"]], [("store-no-new-business-import", "contractaudit/internal/newbusiness")])
+        self.assertEqual(
+            [(v["check_id"], v["from"]) for v in report["violations"]],
+            [("store-no-new-business-import", "contractaudit/internal/newbusiness")],
+        )
         records[-1]["Imports"] = ["fmt"]
         self.assertEqual(self.inspect(records)["violations"], [])
-        self.assertEqual(self.inspect(records)["ratchet"]["store_guard"], "active for all internal packages except exact legacy importers")
+        self.assertEqual(
+            self.inspect(records)["ratchet"]["store_guard"],
+            "active for all internal packages except exact legacy importers",
+        )
 
     def test_registered_domains_enforce_both_postgres_directions_and_transport(self):
         self.config["ratchet"]["domains"] = [
-            {"id": "alpha", "app": ["internal/alpha/app"], "transport": ["internal/alpha/transport"], "postgres": ["internal/alpha/postgres"]},
-            {"id": "beta", "app": ["internal/beta/app"], "transport": ["internal/beta/transport"], "postgres": ["internal/beta/postgres"]},
+            {
+                "id": "alpha",
+                "app": ["internal/alpha/app"],
+                "transport": ["internal/alpha/transport"],
+                "postgres": ["internal/alpha/postgres"],
+            },
+            {
+                "id": "beta",
+                "app": ["internal/beta/app"],
+                "transport": ["internal/beta/transport"],
+                "postgres": ["internal/beta/postgres"],
+            },
         ]
         guard.validate_config(self.config)
         records = self.with_ratchet(self.records())
         by_name = {r["ImportPath"]: r for r in records}
-        by_name["contractaudit/internal/alpha/postgres"]["Imports"] = ["contractaudit/internal/beta/postgres/query"]
-        by_name["contractaudit/internal/beta/postgres"]["Imports"] = ["contractaudit/internal/alpha/postgres"]
-        by_name["contractaudit/internal/alpha/transport"]["Imports"] = ["contractaudit/internal/alpha/app", "database/sql"]
+        by_name["contractaudit/internal/alpha/postgres"]["Imports"] = [
+            "contractaudit/internal/beta/postgres/query"
+        ]
+        by_name["contractaudit/internal/beta/postgres"]["Imports"] = [
+            "contractaudit/internal/alpha/postgres"
+        ]
+        by_name["contractaudit/internal/alpha/transport"]["Imports"] = [
+            "contractaudit/internal/alpha/app",
+            "database/sql",
+        ]
         report = self.inspect(records)
-        self.assertEqual([v["check_id"] for v in report["violations"]].count("cross-domain-postgres"), 2)
+        self.assertEqual(
+            [v["check_id"] for v in report["violations"]].count("cross-domain-postgres"), 2
+        )
         self.assertIn("transport-no-sql", [v["check_id"] for v in report["violations"]])
         by_name["contractaudit/internal/alpha/postgres"]["Imports"] = []
         by_name["contractaudit/internal/beta/postgres"]["Imports"] = []
-        by_name["contractaudit/internal/alpha/transport"]["Imports"] = ["contractaudit/internal/alpha/app"]
+        by_name["contractaudit/internal/alpha/transport"]["Imports"] = [
+            "contractaudit/internal/alpha/app"
+        ]
         self.assertEqual(self.inspect(records)["violations"], [])
-        by_name["contractaudit/internal/alpha/transport"]["Imports"] = ["contractaudit/internal/beta/app"]
+        by_name["contractaudit/internal/alpha/transport"]["Imports"] = [
+            "contractaudit/internal/beta/app"
+        ]
         self.assertEqual(self.inspect(records)["violations"][0]["check_id"], "transport-to-app")
 
     def test_ratchet_cannot_expand_legacy_exemptions(self):
@@ -238,12 +305,22 @@ class NamedPolicyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             config = Path(temporary) / "architecture.json"
             config.write_text(json.dumps(old))
-            with patch.object(guard, "CONFIG_PATH", config), self.assertRaisesRegex(guard.Blocked, "active configuration"):
+            with (
+                patch.object(guard, "CONFIG_PATH", config),
+                self.assertRaisesRegex(guard.Blocked, "active configuration"),
+            ):
                 guard.load_config()
 
     def test_registered_prefixes_are_monotonic_and_disjoint(self):
         base = copy.deepcopy(self.config)
-        base["ratchet"]["domains"] = [{"id": "alpha", "app": ["internal/alpha/app"], "transport": ["internal/alpha/transport"], "postgres": ["internal/alpha/postgres"]}]
+        base["ratchet"]["domains"] = [
+            {
+                "id": "alpha",
+                "app": ["internal/alpha/app"],
+                "transport": ["internal/alpha/transport"],
+                "postgres": ["internal/alpha/postgres"],
+            }
+        ]
         candidate = copy.deepcopy(base)
         guard.validate_base_ratchet(base, candidate)
         candidate["ratchet"]["domains"][0]["app"].clear()
@@ -255,7 +332,9 @@ class NamedPolicyTests(unittest.TestCase):
         with self.assertRaises(guard.Blocked):
             guard.validate_base_ratchet(base, candidate)
         candidate = copy.deepcopy(base)
-        candidate["ratchet"]["domains"].append({"id": "beta", "app": ["internal/alpha/app/sub"], "transport": [], "postgres": []})
+        candidate["ratchet"]["domains"].append(
+            {"id": "beta", "app": ["internal/alpha/app/sub"], "transport": [], "postgres": []}
+        )
         with self.assertRaisesRegex(guard.Blocked, "disjoint"):
             guard.validate_config(candidate)
         legacy = copy.deepcopy(self.config)
@@ -273,9 +352,13 @@ class NamedPolicyTests(unittest.TestCase):
         guard.validate_config(candidate)
         guard.validate_base_ratchet(base, candidate)
         report = self.inspect(self.records(), candidate)
-        self.assertTrue(any(v["from"] == "contractaudit/internal/modelgateway" and
-                            v["check_id"] == "store-no-new-business-import"
-                            for v in report["violations"]))
+        self.assertTrue(
+            any(
+                v["from"] == "contractaudit/internal/modelgateway"
+                and v["check_id"] == "store-no-new-business-import"
+                for v in report["violations"]
+            )
+        )
 
     def test_removed_legacy_exemption_cannot_be_reintroduced(self):
         base = copy.deepcopy(self.config)
@@ -286,9 +369,12 @@ class NamedPolicyTests(unittest.TestCase):
 
     def test_diverged_base_uses_target_registry_not_merge_base(self):
         base = copy.deepcopy(self.config)
-        base["ratchet"]["domains"] = [{"id": "alpha", "app": ["internal/alpha/app"], "transport": [], "postgres": []}]
+        base["ratchet"]["domains"] = [
+            {"id": "alpha", "app": ["internal/alpha/app"], "transport": [], "postgres": []}
+        ]
         candidate = copy.deepcopy(base)
         base_sha, merge_sha = "a" * 40, "b" * 40
+
         def git_output(argv, cwd):
             if argv[1] == "rev-parse":
                 return base_sha + "\n"
@@ -299,22 +385,49 @@ class NamedPolicyTests(unittest.TestCase):
                 self.assertEqual(argv[2], base_sha + ":scripts/architecture/architecture.json")
                 return json.dumps(base)
             self.fail(f"unexpected command {argv}")
+
         with patch.object(guard, "run_command", side_effect=git_output):
-            self.assertEqual(guard.load_base_ratchet(Path("/unused"), "target", candidate), (base_sha, merge_sha))
+            self.assertEqual(
+                guard.load_base_ratchet(Path("/unused"), "target", candidate), (base_sha, merge_sha)
+            )
             candidate["ratchet"]["domains"] = []
             with self.assertRaisesRegex(guard.Blocked, "removed or reassigned"):
                 guard.load_base_ratchet(Path("/unused"), "target", candidate)
 
     def test_prefix_ownership_applies_to_importer_and_target_subpackages(self):
         self.config["ratchet"]["domains"] = [
-            {"id": "alpha", "app": ["internal/alpha/app"], "transport": ["internal/alpha/transport"], "postgres": ["internal/alpha/postgres"]},
-            {"id": "beta", "app": ["internal/beta/app"], "transport": ["internal/beta/transport"], "postgres": ["internal/beta/postgres"]},
+            {
+                "id": "alpha",
+                "app": ["internal/alpha/app"],
+                "transport": ["internal/alpha/transport"],
+                "postgres": ["internal/alpha/postgres"],
+            },
+            {
+                "id": "beta",
+                "app": ["internal/beta/app"],
+                "transport": ["internal/beta/transport"],
+                "postgres": ["internal/beta/postgres"],
+            },
         ]
-        records = self.records() + [{"ImportPath": "contractaudit/" + path, "GoFiles": ["x.go"], "Imports": []} for d in self.config["ratchet"]["domains"] for role in ("app", "transport", "postgres") for path in d[role]]
+        records = self.records() + [
+            {"ImportPath": "contractaudit/" + path, "GoFiles": ["x.go"], "Imports": []}
+            for d in self.config["ratchet"]["domains"]
+            for role in ("app", "transport", "postgres")
+            for path in d[role]
+        ]
         records += [
-            {"ImportPath": "contractaudit/internal/alpha/postgres/sub", "Imports": ["contractaudit/internal/beta/postgres/sub"]},
-            {"ImportPath": "contractaudit/internal/beta/postgres/sub", "Imports": ["contractaudit/internal/alpha/postgres/sub"]},
-            {"ImportPath": "contractaudit/internal/alpha/transport/http", "Imports": ["contractaudit/internal/beta/app/sub"]},
+            {
+                "ImportPath": "contractaudit/internal/alpha/postgres/sub",
+                "Imports": ["contractaudit/internal/beta/postgres/sub"],
+            },
+            {
+                "ImportPath": "contractaudit/internal/beta/postgres/sub",
+                "Imports": ["contractaudit/internal/alpha/postgres/sub"],
+            },
+            {
+                "ImportPath": "contractaudit/internal/alpha/transport/http",
+                "Imports": ["contractaudit/internal/beta/app/sub"],
+            },
         ]
         found = self.inspect(records)["violations"]
         self.assertEqual([v["check_id"] for v in found].count("cross-domain-postgres"), 2)
@@ -336,8 +449,13 @@ class NamedPolicyTests(unittest.TestCase):
             removed_policy = copy.deepcopy(valid_config)
             removed_policy["policies"] = [removed_policy["policies"][0]]
             config_path.write_text(json.dumps(removed_policy), encoding="utf-8")
-            with patch.object(guard, "CONFIG_PATH", config_path), patch.object(
-                sys, "argv", ["check_architecture.py", "--fixture", "unused", "--out", str(report_path)]
+            with (
+                patch.object(guard, "CONFIG_PATH", config_path),
+                patch.object(
+                    sys,
+                    "argv",
+                    ["check_architecture.py", "--fixture", "unused", "--out", str(report_path)],
+                ),
             ):
                 self.assertEqual(guard.main(), 2)
             self.assertEqual(json.loads(report_path.read_text())["status"], "BLOCKED")
@@ -346,10 +464,14 @@ class NamedPolicyTests(unittest.TestCase):
             changed_schema = copy.deepcopy(valid_schema)
             changed_schema["properties"]["policies"]["maxItems"] = 1
             schema_path.write_text(json.dumps(changed_schema), encoding="utf-8")
-            with patch.object(guard, "CONFIG_PATH", config_path), patch.object(
-                guard, "SCHEMA_PATH", schema_path
-            ), patch.object(
-                sys, "argv", ["check_architecture.py", "--fixture", "unused", "--out", str(report_path)]
+            with (
+                patch.object(guard, "CONFIG_PATH", config_path),
+                patch.object(guard, "SCHEMA_PATH", schema_path),
+                patch.object(
+                    sys,
+                    "argv",
+                    ["check_architecture.py", "--fixture", "unused", "--out", str(report_path)],
+                ),
             ):
                 self.assertEqual(guard.main(), 2)
             final_report = json.loads(report_path.read_text())

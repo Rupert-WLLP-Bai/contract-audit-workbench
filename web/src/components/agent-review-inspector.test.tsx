@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-08
-// Revision: r2
+// Updated: 2026-11-15
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -168,11 +168,7 @@ function reviewWithRuntimeCallStatuses() {
 
 function reviewWithApprovalValidity() {
   const base = reviewWithUnsupportedCapability();
-  const evidenceIds = [
-    "authority-valid-from",
-    "authority-valid-until",
-    "contract-reference-date",
-  ];
+  const evidenceIds = ["authority-valid-from", "authority-valid-until", "contract-reference-date"];
   const capability = {
     capability_id: "approval_validity",
     mandatory: false,
@@ -243,11 +239,7 @@ function reviewWithApprovalValidity() {
       item.domain === "compliance"
         ? {
             ...item,
-            capabilities: [
-              ...item.capabilities,
-              capability,
-              ...identityCapabilities,
-            ],
+            capabilities: [...item.capabilities, capability, ...identityCapabilities],
           }
         : item,
     ),
@@ -312,12 +304,8 @@ describe("AgentReview Inspector", () => {
         />
       </MemoryRouter>,
     );
-    expect(
-      screen.getByText(/从本次审查使用的材料中提取审批或授权原文/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/当前没有这一检查项目的说明/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/从本次审查使用的材料中提取审批或授权原文/)).toBeInTheDocument();
+    expect(screen.getByText(/当前没有这一检查项目的说明/)).toBeInTheDocument();
     const nextStepLinks = screen.getAllByRole("link", {
       name: "查看案件材料并补证后新建审查",
     });
@@ -325,9 +313,9 @@ describe("AgentReview Inspector", () => {
     for (const link of nextStepLinks)
       expect(link).toHaveAttribute("href", "/cases/case-1#case-materials");
     expect(
-      within(
-        screen.getByRole("region", { name: "范围、支持表达与证据覆盖" }),
-      ).getAllByText("unregistered.audit").length,
+      within(screen.getByRole("region", { name: "范围、支持表达与证据覆盖" })).getAllByText(
+        "unregistered.audit",
+      ).length,
     ).toBeGreaterThan(0);
   });
 
@@ -342,17 +330,11 @@ describe("AgentReview Inspector", () => {
         />
       </MemoryRouter>,
     );
-    const scope = within(
-      screen.getByRole("region", { name: "范围、支持表达与证据覆盖" }),
-    );
+    const scope = within(screen.getByRole("region", { name: "范围、支持表达与证据覆盖" }));
     expect(scope.getByText("approval_validity")).toBeInTheDocument();
     expect(scope.getByText(/不能用当前日期代替/)).toBeInTheDocument();
-    expect(
-      scope.getByText(/原因：approval_period_dates_unverified/),
-    ).toBeInTheDocument();
-    const citations = within(
-      scope.getByRole("list", { name: "approval_validity 来源引用" }),
-    );
+    expect(scope.getByText(/原因：approval_period_dates_unverified/)).toBeInTheDocument();
+    const citations = within(scope.getByRole("list", { name: "approval_validity 来源引用" }));
     for (const evidenceId of [
       "authority-valid-from",
       "authority-valid-until",
@@ -369,9 +351,7 @@ describe("AgentReview Inspector", () => {
     }
     expect(scope.getByText(/名称相同不足以确认签署身份/)).toBeInTheDocument();
     expect(scope.getByText(/名称相同不足以确认收款资格/)).toBeInTheDocument();
-    expect(
-      scope.getAllByText(/stable_party_role_linkage_missing/),
-    ).toHaveLength(2);
+    expect(scope.getAllByText(/stable_party_role_linkage_missing/)).toHaveLength(2);
   });
 
   it("marks compatible completed capability results good only with verified located evidence", () => {
@@ -421,9 +401,7 @@ describe("AgentReview Inspector", () => {
         />
       </MemoryRouter>,
     );
-    expect(
-      screen.getByText(/新证据：未记录，\s*已解决缺口：未记录/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/新证据：未记录，\s*已解决缺口：未记录/)).toBeInTheDocument();
   });
 
   it("keeps blocked and rejected lifecycle states distinct", () => {
@@ -465,9 +443,7 @@ describe("AgentReview Inspector", () => {
         />
       </MemoryRouter>,
     );
-    expect(
-      screen.getByText(/1:准备阶段:planning\/plan_started/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/1:准备阶段:planning\/plan_started/)).toBeInTheDocument();
   });
 
   it("keeps unresolved IDs actionable when the response omits gap details", () => {
@@ -486,15 +462,12 @@ describe("AgentReview Inspector", () => {
         />
       </MemoryRouter>,
     );
-    expect(
-      screen.getByText(/未报告缺口详情，\s*gap-without-details/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/未提供领域、能力、原因或证据详情/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "查看案件材料并补证后新建审查" }),
-    ).toHaveAttribute("href", "/cases/case-1#case-materials");
+    expect(screen.getByText(/未报告缺口详情，\s*gap-without-details/)).toBeInTheDocument();
+    expect(screen.getByText(/未提供领域、能力、原因或证据详情/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看案件材料并补证后新建审查" })).toHaveAttribute(
+      "href",
+      "/cases/case-1#case-materials",
+    );
     expect(
       screen.queryByText("没有报告缺口记录；这不等同于合同没有风险。"),
     ).not.toBeInTheDocument();
@@ -502,10 +475,7 @@ describe("AgentReview Inspector", () => {
 
   it("preserves in-progress and denied call statuses from durable planner rounds", () => {
     const review = reviewWithRuntimeCallStatuses();
-    expect(review.plan.calls.map((call) => call.status)).toEqual([
-      "running",
-      "denied",
-    ]);
+    expect(review.plan.calls.map((call) => call.status)).toEqual(["running", "denied"]);
     render(
       <MemoryRouter>
         <AgentReviewInspector
@@ -594,17 +564,11 @@ describe("AgentReview Inspector", () => {
         />
       </MemoryRouter>,
     );
-    const region = within(
-      screen.getByRole("region", { name: "治理知识与排序建议" }),
-    );
-    expect(
-      region.getByText(/Jev 建议排序，不改变结论/),
-    ).toBeInTheDocument();
+    const region = within(screen.getByRole("region", { name: "治理知识与排序建议" }));
+    expect(region.getByText(/Jev 建议排序，不改变结论/)).toBeInTheDocument();
     expect(region.getByText("建议已生成")).toBeInTheDocument();
     expect(region.getByText("guide-b")).toBeInTheDocument();
-    expect(
-      region.getByText(/确定性排序第 2 位，建议排序第 1 位/),
-    ).toBeInTheDocument();
+    expect(region.getByText(/确定性排序第 2 位，建议排序第 1 位/)).toBeInTheDocument();
     expect(region.getByText(/不是正确率，也不是风险结论/)).toBeInTheDocument();
   });
 
@@ -642,17 +606,11 @@ describe("AgentReview Inspector", () => {
         />
       </MemoryRouter>,
     );
-    const region = within(
-      screen.getByRole("region", { name: "治理知识与排序建议" }),
-    );
+    const region = within(screen.getByRole("region", { name: "治理知识与排序建议" }));
     expect(region.getByText("建议不可用")).toBeInTheDocument();
     expect(region.getByText("provider_timeout")).toBeInTheDocument();
-    expect(
-      region.getByText(/按确定性顺序回退/),
-    ).toBeInTheDocument();
-    expect(
-      region.getByText(/排序保持确定性顺序/),
-    ).toBeInTheDocument();
+    expect(region.getByText(/按确定性顺序回退/)).toBeInTheDocument();
+    expect(region.getByText(/排序保持确定性顺序/)).toBeInTheDocument();
   });
 });
 
@@ -705,16 +663,15 @@ describe("AgentReview Inspector tones and missing details", () => {
         />
       </MemoryRouter>,
     );
-    expect(
-      screen.getByText(/本次执行没有保存五个方面的检查计划/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/本次执行没有保存五个方面的检查计划/)).toBeInTheDocument();
   });
 
   it("marks a compatible verified capability good, conflicts bad and unknown relations attention", () => {
     const review = reviewWithApprovalValidity();
     const capability = review.domains[0]?.capabilities.find(
       (item) => item.capability_id === "approval_validity",
-    )!;
+    );
+    if (!capability) throw new Error("approval_validity capability fixture is missing");
     capability.status = "completed";
     capability.relation = "compatible";
     const view = render(
@@ -745,9 +702,7 @@ describe("AgentReview Inspector tones and missing details", () => {
     conflictView.unmount();
     capability.relation = null;
     renderReview(review);
-    expect(screen.getByText("supported").className).toContain(
-      "ant-tag-warning",
-    );
+    expect(screen.getByText("supported").className).toContain("ant-tag-warning");
   });
 
   it("reports an unreported citation detail without inventing evidence", () => {
@@ -764,9 +719,7 @@ describe("AgentReview Inspector tones and missing details", () => {
     });
     review.scope[0]!.capability_ids.push("ghost_capability");
     renderReview(review);
-    const region = within(
-      screen.getByRole("region", { name: "范围、支持表达与证据覆盖" }),
-    );
+    const region = within(screen.getByRole("region", { name: "范围、支持表达与证据覆盖" }));
     expect(region.getByText("ghost-evidence")).toBeInTheDocument();
     expect(region.getByText(/来源引用详情未报告/)).toBeInTheDocument();
   });
@@ -818,9 +771,7 @@ describe("AgentReview Inspector tones and missing details", () => {
       },
     };
     renderReview(review);
-    const region = within(
-      screen.getByRole("region", { name: "治理知识与排序建议" }),
-    );
+    const region = within(screen.getByRole("region", { name: "治理知识与排序建议" }));
     expect(region.getByText("响应无效").className).toContain("ant-tag-warning");
     expect(region.getByText("本地 fixture， 本地 fixture")).toBeInTheDocument();
     expect(region.getByText(/候选过多，本次仅评估了部分可选知识/)).toBeInTheDocument();

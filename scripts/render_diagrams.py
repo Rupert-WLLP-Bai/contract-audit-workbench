@@ -4,12 +4,13 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-25
-# Updated: 2026-10-25
-# Revision: r1
+# Updated: 2026-11-15
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
 """Render checked-in UML locally; never send architecture source to a web service."""
+
 import argparse
 import datetime as dt
 import hashlib
@@ -41,8 +42,13 @@ def render(jar, fonts):
         # Clear corresponding outputs: a render failure must not reuse old images.
         for source in sources:
             (target / f"{source.stem}.{fmt}").unlink(missing_ok=True)
-        subprocess.run(java + [f"-t{fmt}", "-o", str(target)] + [str(p) for p in sources],
-                       cwd=ROOT, env=env, check=True, timeout=240)
+        subprocess.run(
+            java + [f"-t{fmt}", "-o", str(target)] + [str(p) for p in sources],
+            cwd=ROOT,
+            env=env,
+            check=True,
+            timeout=240,
+        )
     manifest = []
     for source in sources:
         svg, png = (BASE / "svg" / f"{source.stem}.svg", BASE / "png" / f"{source.stem}.png")
@@ -55,17 +61,28 @@ def render(jar, fonts):
         body = source.read_text(encoding="utf-8")
         match = re.search(r"(?m)^title\s+(.+)$", body)
         title = match.group(1).replace("\\n", " · ") if match else source.stem
-        manifest.append({"name": source.stem, "title": title,
-                         "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
-                         "svg_sha256": hashlib.sha256(svg.read_bytes()).hexdigest(),
-                         "png_sha256": hashlib.sha256(png.read_bytes()).hexdigest(),
-                         "width": root.attrib.get("width"), "height": root.attrib.get("height")})
-    report = {"generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-              "renderer": "PlantUML (local Java / Smetana)",
-              "renderer_sha256": hashlib.sha256(jar.read_bytes()).hexdigest(),
-              "font": "Noto Sans CJK SC (PNG rendered locally)",
-              "source_count": len(sources), "diagrams": manifest}
-    (BASE / "render-manifest.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+        manifest.append(
+            {
+                "name": source.stem,
+                "title": title,
+                "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                "svg_sha256": hashlib.sha256(svg.read_bytes()).hexdigest(),
+                "png_sha256": hashlib.sha256(png.read_bytes()).hexdigest(),
+                "width": root.attrib.get("width"),
+                "height": root.attrib.get("height"),
+            }
+        )
+    report = {
+        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "renderer": "PlantUML (local Java / Smetana)",
+        "renderer_sha256": hashlib.sha256(jar.read_bytes()).hexdigest(),
+        "font": "Noto Sans CJK SC (PNG rendered locally)",
+        "source_count": len(sources),
+        "diagrams": manifest,
+    }
+    (BASE / "render-manifest.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+    )
     gallery(manifest)
     print(f"PASS: {len(sources)} UML sources rendered to SVG and PNG; offline gallery created")
 
@@ -80,7 +97,7 @@ def gallery(items):
 <a href="png/{name}.png" target="_blank" rel="noopener">打开高清 PNG</a>
 <a href="src/{name}.puml" download>下载可编辑图源</a></div></header>
 <a href="png/{name}.png" target="_blank" rel="noopener"><img loading="lazy" src="png/{name}.png" alt="{title}"></a></section>''')
-    page = '''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+    page = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>运营商合同与业务承诺审查 · UML 图册</title>
 <style>
@@ -100,14 +117,22 @@ nav{position:sticky;top:20px;align-self:start;max-height:94vh;overflow:auto;back
 <div class="layout"><nav><h2>图册目录</h2>NAV</nav><main>
 <div class="notice">这是离线设计文档，不连接业务 API。PNG 保留已验证的中文排版；点击图片查看原尺寸，矢量图可无限缩放。
 完整字段、异常流和验收标准分别见 <a href="../product/USE-CASES.md">42 个用例</a>、<a href="../product/ACCEPTANCE-MATRIX.md">验收矩阵</a>、<a href="../architecture/ARCHITECTURE.md">架构与技术选型</a>。图源使用 PlantUML，可本地重新渲染。</div>
-FIGURES</main></div><footer>来源、规则版本及本次测试证据请查看 README 与 docs/VALIDATION.md。目标图不构成生产认证或业务效果承诺。</footer></body></html>'''
-    (BASE / "index.html").write_text(page.replace("NAV", nav).replace("FIGURES", "\n".join(figures)), encoding="utf-8")
+FIGURES</main></div><footer>来源、规则版本及本次测试证据请查看 README 与 docs/VALIDATION.md。目标图不构成生产认证或业务效果承诺。</footer></body></html>"""
+    (BASE / "index.html").write_text(
+        page.replace("NAV", nav).replace("FIGURES", "\n".join(figures)), encoding="utf-8"
+    )
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--plantuml", default=os.environ.get("PLANTUML_JAR", ""), help="Path to local PlantUML jar")
-    parser.add_argument("--fonts", default=os.environ.get("UML_FONT_DIR", ""), help="Optional directory of installed Chinese fonts")
+    parser.add_argument(
+        "--plantuml", default=os.environ.get("PLANTUML_JAR", ""), help="Path to local PlantUML jar"
+    )
+    parser.add_argument(
+        "--fonts",
+        default=os.environ.get("UML_FONT_DIR", ""),
+        help="Optional directory of installed Chinese fonts",
+    )
     args = parser.parse_args()
     jar = Path(args.plantuml).expanduser().resolve() if args.plantuml else None
     if jar is None or not jar.is_file():

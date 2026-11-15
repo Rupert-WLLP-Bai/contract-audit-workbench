@@ -3,12 +3,13 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-25
-# Updated: 2026-11-02
-# Revision: r2
+# Updated: 2026-11-15
+# Revision: r3
 # Copyright: See LICENSE
 # End file metadata.
 
 """Exercise the optional observation configuration and application lifecycle."""
+
 import importlib.util
 import json
 from pathlib import Path
@@ -24,13 +25,36 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 LEGACY_85B_PROFILE_KEYS = (
     # Exact generated_values key set at 85b967aff3c499236b047483521087eba693f812.
-    "CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL", "EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL",
-    "TOOL_DATABASE_URL", "MIGRATOR_DATABASE_URL", "GATEWAY_CORE_TOKEN", "GATEWAY_DOCUMENT_TOKEN",
-    "GATEWAY_EXECUTION_TOKEN", "GATEWAY_TOOL_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN",
-    "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "CORE_DOCUMENT_TOKEN", "DOCUMENT_MODEL_TOKEN",
-    "CORE_URLS", "DOCUMENT_URL", "EXECUTION_URL", "TOOL_URLS", "DOCUMENT_SERVICE_URL",
-    "CORE_SERVICE_URL", "MODEL_GATEWAY_URL", "NATS_URL", "LLM_BASE_URL", "EDGE_PORT",
-    "CLIENT_PORT", "ADMIN_PORT", "PORTAL_PORT", "CORS_ORIGIN",
+    "CORE_DATABASE_URL",
+    "DOCUMENT_DATABASE_URL",
+    "EXECUTION_DATABASE_URL",
+    "MODEL_DATABASE_URL",
+    "TOOL_DATABASE_URL",
+    "MIGRATOR_DATABASE_URL",
+    "GATEWAY_CORE_TOKEN",
+    "GATEWAY_DOCUMENT_TOKEN",
+    "GATEWAY_EXECUTION_TOKEN",
+    "GATEWAY_TOOL_TOKEN",
+    "WORKER_DOCUMENT_TOKEN",
+    "WORKER_MODEL_TOKEN",
+    "WORKER_TOOL_TOKEN",
+    "WORKER_CORE_TOKEN",
+    "CORE_DOCUMENT_TOKEN",
+    "DOCUMENT_MODEL_TOKEN",
+    "CORE_URLS",
+    "DOCUMENT_URL",
+    "EXECUTION_URL",
+    "TOOL_URLS",
+    "DOCUMENT_SERVICE_URL",
+    "CORE_SERVICE_URL",
+    "MODEL_GATEWAY_URL",
+    "NATS_URL",
+    "LLM_BASE_URL",
+    "EDGE_PORT",
+    "CLIENT_PORT",
+    "ADMIN_PORT",
+    "PORTAL_PORT",
+    "CORS_ORIGIN",
 )
 SPEC = importlib.util.spec_from_file_location("deployment_local", ROOT / "deployments/local.py")
 local = importlib.util.module_from_spec(SPEC)
@@ -47,8 +71,17 @@ K3D_SPEC.loader.exec_module(k3d)
 OBSERVATION_SERVICES = {"otel-collector", "tempo", "prometheus", "grafana"}
 APPLICATION_SERVICES = {
     "health-monitor",
-    "gateway", "core-api", "document-service", "audit-execution", "audit-worker",
-    "model-gateway", "model-gateway-fixture", "tool-gateway", "client", "admin", "portal",
+    "gateway",
+    "core-api",
+    "document-service",
+    "audit-execution",
+    "audit-worker",
+    "model-gateway",
+    "model-gateway-fixture",
+    "tool-gateway",
+    "client",
+    "admin",
+    "portal",
 }
 
 
@@ -83,16 +116,21 @@ class ObserveProfileTest(unittest.TestCase):
         grafana_credential = services["grafana"]["environment"]["GF_SECURITY_ADMIN_PASSWORD"]
         self.assertTrue(grafana_credential.startswith("${GRAFANA_ADMIN_PASSWORD:?"))
         prometheus = self.load_yaml("deploy/app/observe/prometheus.yml")
-        scrape = next(item for item in prometheus["scrape_configs"] if item["job_name"] == "otel-collector")
+        scrape = next(
+            item for item in prometheus["scrape_configs"] if item["job_name"] == "otel-collector"
+        )
         self.assertEqual(scrape["static_configs"], [{"targets": ["otel-collector:8889"]}])
         tempo = self.load_yaml("deploy/app/observe/tempo.yaml")
         self.assertEqual(tempo["storage"]["trace"]["backend"], "local")
         datasources = {
-            item["uid"]: item for item in self.load_yaml("deploy/app/observe/grafana-datasources.yaml")["datasources"]
+            item["uid"]: item
+            for item in self.load_yaml("deploy/app/observe/grafana-datasources.yaml")["datasources"]
         }
         self.assertEqual(datasources["prometheus"]["url"], "http://prometheus:9090")
         self.assertEqual(datasources["tempo"]["url"], "http://tempo:3200")
-        self.assertEqual(datasources["tempo"]["jsonData"]["tracesToMetrics"]["datasourceUid"], "prometheus")
+        self.assertEqual(
+            datasources["tempo"]["jsonData"]["tracesToMetrics"]["datasourceUid"], "prometheus"
+        )
 
 
 class ObservationLifecycleTests(unittest.TestCase):
@@ -128,13 +166,18 @@ class ObservationLifecycleTests(unittest.TestCase):
 
     def compose_commands(self, action):
         return [
-            record["argv"] for record in local.SUBPROCESS_RECORDS
+            record["argv"]
+            for record in local.SUBPROCESS_RECORDS
             if record["argv"][0] == "compose-under-test" and action in record["argv"]
         ]
 
     def assert_observation_profile(self, command, enabled):
         overlay = str(ROOT / "compose.observe.yaml")
-        profiles = [command[index + 1] for index, argument in enumerate(command[:-1]) if argument == "--profile"]
+        profiles = [
+            command[index + 1]
+            for index, argument in enumerate(command[:-1])
+            if argument == "--profile"
+        ]
         if enabled:
             self.assertIn(overlay, command)
             self.assertIn("otel", profiles)
@@ -153,20 +196,34 @@ class ObservationLifecycleTests(unittest.TestCase):
                     self.assertEqual(len(commands), 1)
                     command = commands[0]
                     model = "model-gateway-fixture" if fixture else "model-gateway"
-                    expected = APPLICATION_SERVICES - {"model-gateway", "model-gateway-fixture"} | {model} | OBSERVATION_SERVICES
-                    selected = command[command.index("180") + 1:]
+                    expected = (
+                        APPLICATION_SERVICES - {"model-gateway", "model-gateway-fixture"}
+                        | {model}
+                        | OBSERVATION_SERVICES
+                    )
+                    selected = command[command.index("180") + 1 :]
                     self.assertEqual(set(selected), expected)
                     self.assertEqual(len(selected), len(expected))
                     self.assert_observation_profile(command, True)
                     migration = self.compose_commands("run")
                     self.assertEqual(len(migration), 4)
-                    self.assertEqual([command[-1] for command in migration], ["migrate-offline-migrator", "migrate-clm-owner", "migrate-auth-owner", "migrate"])
-                    self.assertTrue(all(set(command).isdisjoint(OBSERVATION_SERVICES) for command in migration))
+                    self.assertEqual(
+                        [command[-1] for command in migration],
+                        [
+                            "migrate-offline-migrator",
+                            "migrate-clm-owner",
+                            "migrate-auth-owner",
+                            "migrate",
+                        ],
+                    )
+                    self.assertTrue(
+                        all(set(command).isdisjoint(OBSERVATION_SERVICES) for command in migration)
+                    )
 
     def test_enabled_observation_services_use_offline_image_policy(self):
         local.os.environ["OBSERVE"] = "1"
         local.start_apps(False, True, None)
-        command, = self.compose_commands("up")
+        (command,) = self.compose_commands("up")
         self.assertTrue(OBSERVATION_SERVICES.issubset(command))
         self.assertIn("--no-build", command)
         self.assertEqual(command[command.index("--pull") + 1], "never")
@@ -175,8 +232,8 @@ class ObservationLifecycleTests(unittest.TestCase):
     def test_enabled_observation_services_stop_with_applications(self):
         local.os.environ["OBSERVE"] = "1"
         local.stop_apps()
-        command, = self.compose_commands("stop")
-        selected = command[command.index("stop") + 1:]
+        (command,) = self.compose_commands("stop")
+        selected = command[command.index("stop") + 1 :]
         self.assertEqual(set(selected), APPLICATION_SERVICES | OBSERVATION_SERVICES)
         self.assertEqual(len(selected), len(APPLICATION_SERVICES | OBSERVATION_SERVICES))
         self.assert_observation_profile(command, True)
@@ -193,7 +250,7 @@ class ObservationLifecycleTests(unittest.TestCase):
                     local.start_apps(fixture, False, None)
                     local.stop_apps()
                     for action in ("up", "stop"):
-                        command, = self.compose_commands(action)
+                        (command,) = self.compose_commands(action)
                         self.assertTrue(set(command).isdisjoint(OBSERVATION_SERVICES))
                         self.assert_observation_profile(command, False)
 
@@ -205,18 +262,27 @@ class ObservationLifecycleTests(unittest.TestCase):
             ("1", "yes", "0", False),
             ("0", "false", "1", True),
         ):
-            with self.subTest(infrastructure=infrastructure, distributed=distributed, environment=environment):
+            with self.subTest(
+                infrastructure=infrastructure, distributed=distributed, environment=environment
+            ):
                 local.SUBPROCESS_RECORDS.clear()
-                self.infrastructure_env.write_text(f"APP_ENV=development\nOBSERVE={infrastructure}\n", encoding="utf-8")
-                self.distributed_env.write_text("" if distributed is None else f"OBSERVE={distributed}\n", encoding="utf-8")
+                self.infrastructure_env.write_text(
+                    f"APP_ENV=development\nOBSERVE={infrastructure}\n", encoding="utf-8"
+                )
+                self.distributed_env.write_text(
+                    "" if distributed is None else f"OBSERVE={distributed}\n", encoding="utf-8"
+                )
                 local.os.environ.pop("OBSERVE", None)
                 if environment is not None:
                     local.os.environ["OBSERVE"] = environment
                 local.start_apps(False, False, None)
                 local.stop_apps()
                 for action in ("up", "stop"):
-                    command, = self.compose_commands(action)
-                    self.assertEqual(OBSERVATION_SERVICES.intersection(command), OBSERVATION_SERVICES if enabled else set())
+                    (command,) = self.compose_commands(action)
+                    self.assertEqual(
+                        OBSERVATION_SERVICES.intersection(command),
+                        OBSERVATION_SERVICES if enabled else set(),
+                    )
                     self.assert_observation_profile(command, enabled)
 
     def test_infrastructure_lifecycle_does_not_take_ownership_of_observation(self):
@@ -224,7 +290,7 @@ class ObservationLifecycleTests(unittest.TestCase):
         local.start_infrastructure(False)
         local.stop_infrastructure(False)
         for action in ("up", "stop"):
-            command, = self.compose_commands(action)
+            (command,) = self.compose_commands(action)
             self.assertEqual(command[-1], "nats")
             self.assertTrue(set(command).isdisjoint(OBSERVATION_SERVICES))
 
@@ -242,7 +308,8 @@ class ExperienceDeliveryProfileTests(unittest.TestCase):
             "TEST_DATABASE_URL": "postgres://localhost/contract_audit_test",
         }
         self.infrastructure_env.write_text(
-            "".join(f"{key}={value}\n" for key, value in self.infrastructure.items()), encoding="utf-8"
+            "".join(f"{key}={value}\n" for key, value in self.infrastructure.items()),
+            encoding="utf-8",
         )
         for item in (
             patch.object(local, "ENV_PATH", self.infrastructure_env),
@@ -291,8 +358,14 @@ class ExperienceDeliveryProfileTests(unittest.TestCase):
         upgraded = local.ensure_private_environment()
         self.assertEqual(upgraded["AUTH_ADMIN_DATABASE_URL"], legacy_admin)
         self.assertEqual(upgraded["MIGRATOR_DATABASE_URL"], upgraded["DEV_DATABASE_URL"])
-        self.assertEqual(urlsplit(upgraded["MIGRATOR_DATABASE_URL"]).username, "audit_offline_migrator")
-        for key in set(values) - {"AUTH_ADMIN_DATABASE_URL", "MIGRATOR_DATABASE_URL", "DEV_DATABASE_URL"}:
+        self.assertEqual(
+            urlsplit(upgraded["MIGRATOR_DATABASE_URL"]).username, "audit_offline_migrator"
+        )
+        for key in set(values) - {
+            "AUTH_ADMIN_DATABASE_URL",
+            "MIGRATOR_DATABASE_URL",
+            "DEV_DATABASE_URL",
+        }:
             self.assertEqual(upgraded[key], values[key])
         self.assertEqual(self.distributed_env.stat().st_mode & 0o777, 0o600)
 
@@ -314,7 +387,9 @@ class ExperienceDeliveryProfileTests(unittest.TestCase):
         self.write_profile(legacy)
         upgraded = local.ensure_private_environment()
         self.assertEqual(upgraded["AUTH_ADMIN_DATABASE_URL"], legacy_admin)
-        self.assertEqual(urlsplit(upgraded["MIGRATOR_DATABASE_URL"]).username, "audit_offline_migrator")
+        self.assertEqual(
+            urlsplit(upgraded["MIGRATOR_DATABASE_URL"]).username, "audit_offline_migrator"
+        )
         self.assertEqual(upgraded["DEV_DATABASE_URL"], upgraded["MIGRATOR_DATABASE_URL"])
         self.assertEqual(upgraded["TEST_DATABASE_URL"], "")
         self.assertEqual(upgraded["PROD_DATABASE_URL"], "")
@@ -336,7 +411,11 @@ class ExperienceDeliveryProfileTests(unittest.TestCase):
             ("TOOL_CORE_AUTHORITY_TOKEN", self.values["WORKER_CORE_TOKEN"], "WORKER_CORE_TOKEN"),
             ("TOOL_CORE_AUTHORITY_TOKEN", self.values["WORKER_TOOL_TOKEN"], "WORKER_TOOL_TOKEN"),
             ("TOOL_CORE_AUTHORITY_TOKEN", self.values["GATEWAY_TOOL_TOKEN"], "GATEWAY_TOOL_TOKEN"),
-            ("TOOL_CORE_AUTHORITY_TOKEN", self.values["CORE_DOCUMENT_TOKEN"], "CORE_DOCUMENT_TOKEN"),
+            (
+                "TOOL_CORE_AUTHORITY_TOKEN",
+                self.values["CORE_DOCUMENT_TOKEN"],
+                "CORE_DOCUMENT_TOKEN",
+            ),
             ("CORE_MODEL_AUTHORITY_TOKEN", "short", "CORE_MODEL_AUTHORITY_TOKEN"),
             ("CORE_MODEL_AUTHORITY_TOKEN", self.values["WORKER_MODEL_TOKEN"], "WORKER_MODEL_TOKEN"),
             ("CORE_SERVICE_URL", "", "CORE_SERVICE_URL"),
@@ -356,15 +435,31 @@ class ExperienceDeliveryProfileTests(unittest.TestCase):
         with patch.dict(local.os.environ, {"WORKER_CORE_TOKEN": self.values["WORKER_MODEL_TOKEN"]}):
             with self.assertRaisesRegex(ValueError, "WORKER_MODEL_TOKEN"):
                 local.ensure_private_environment()
-        with patch.dict(local.os.environ, {"TOOL_CORE_AUTHORITY_TOKEN": self.values["WORKER_MODEL_TOKEN"]}):
-            with self.assertRaisesRegex(ValueError, "TOOL_CORE_AUTHORITY_TOKEN must differ from WORKER_MODEL_TOKEN"):
+        with patch.dict(
+            local.os.environ, {"TOOL_CORE_AUTHORITY_TOKEN": self.values["WORKER_MODEL_TOKEN"]}
+        ):
+            with self.assertRaisesRegex(
+                ValueError, "TOOL_CORE_AUTHORITY_TOKEN must differ from WORKER_MODEL_TOKEN"
+            ):
                 local.ensure_private_environment()
 
     def test_generated_migration_profile_sets_only_the_app_env_database_slot(self):
         cases = (
-            ("development", {"DEV_DATABASE_URL": "postgres://contractaudit:pw@localhost/contract_audit_dev"}, "DEV_DATABASE_URL"),
-            ("test", {"TEST_DATABASE_URL": "postgres://contractaudit:pw@localhost/contract_audit_test"}, "TEST_DATABASE_URL"),
-            ("production", {"PROD_DATABASE_URL": "postgres://contractaudit:pw@db/contract_audit_prod"}, "PROD_DATABASE_URL"),
+            (
+                "development",
+                {"DEV_DATABASE_URL": "postgres://contractaudit:pw@localhost/contract_audit_dev"},
+                "DEV_DATABASE_URL",
+            ),
+            (
+                "test",
+                {"TEST_DATABASE_URL": "postgres://contractaudit:pw@localhost/contract_audit_test"},
+                "TEST_DATABASE_URL",
+            ),
+            (
+                "production",
+                {"PROD_DATABASE_URL": "postgres://contractaudit:pw@db/contract_audit_prod"},
+                "PROD_DATABASE_URL",
+            ),
         )
         for mode, selected, expected_slot in cases:
             with self.subTest(app_env=mode):
@@ -372,7 +467,9 @@ class ExperienceDeliveryProfileTests(unittest.TestCase):
                 values = local.generated_values(infra)
                 self.assertEqual(local.application_database_slot(infra), expected_slot)
                 self.assertEqual(values[expected_slot], values["MIGRATOR_DATABASE_URL"])
-                for slot in {"DEV_DATABASE_URL", "TEST_DATABASE_URL", "PROD_DATABASE_URL"} - {expected_slot}:
+                for slot in {"DEV_DATABASE_URL", "TEST_DATABASE_URL", "PROD_DATABASE_URL"} - {
+                    expected_slot
+                }:
                     self.assertEqual(values[slot], "")
                 admin = urlsplit(values["AUTH_ADMIN_DATABASE_URL"])
                 migrator = urlsplit(values["MIGRATOR_DATABASE_URL"])
@@ -382,10 +479,13 @@ class ExperienceDeliveryProfileTests(unittest.TestCase):
 
     def test_app_env_rejects_a_database_in_another_environment_slot(self):
         with self.assertRaisesRegex(ValueError, "TEST_DATABASE_URL must select"):
-            local.generated_values({
-                "POSTGRES_PASSWORD": "p" * 40, "APP_ENV": "test",
-                "TEST_DATABASE_URL": "postgres://contractaudit:pw@localhost/contract_audit_dev",
-            })
+            local.generated_values(
+                {
+                    "POSTGRES_PASSWORD": "p" * 40,
+                    "APP_ENV": "test",
+                    "TEST_DATABASE_URL": "postgres://contractaudit:pw@localhost/contract_audit_dev",
+                }
+            )
         with self.assertRaisesRegex(ValueError, "private PROD_DATABASE_URL"):
             local.generated_values({"POSTGRES_PASSWORD": "p" * 40, "APP_ENV": "production"})
 
@@ -393,8 +493,10 @@ class ExperienceDeliveryProfileTests(unittest.TestCase):
 class ExecutionAuthorityDeploymentTests(unittest.TestCase):
     def copy_config(self, destination):
         for relative in (
-            "compose.app.yaml", "deployments/k8s/base/workloads.yaml",
-            "deployments/k8s/base/config.yaml", "deployments/k3d/config-patch.yaml",
+            "compose.app.yaml",
+            "deployments/k8s/base/workloads.yaml",
+            "deployments/k8s/base/config.yaml",
+            "deployments/k3d/config-patch.yaml",
         ):
             target = destination / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -409,10 +511,16 @@ class ExecutionAuthorityDeploymentTests(unittest.TestCase):
     @staticmethod
     def set_runtime_ca_path(config_path, value):
         documents = list(yaml.safe_load_all(config_path.read_text()))
-        runtime = next(doc for doc in documents if doc.get("kind") == "ConfigMap" and
-                       doc.get("metadata", {}).get("name") == "contract-audit-runtime")
+        runtime = next(
+            doc
+            for doc in documents
+            if doc.get("kind") == "ConfigMap"
+            and doc.get("metadata", {}).get("name") == "contract-audit-runtime"
+        )
         runtime["data"]["CORE_AUTHORITY_CA_FILE"] = value
-        config_path.write_text("---\n".join(yaml.safe_dump(doc, sort_keys=False) for doc in documents))
+        config_path.write_text(
+            "---\n".join(yaml.safe_dump(doc, sort_keys=False) for doc in documents)
+        )
 
     def test_execution_receives_authority_config_and_optional_trust_mount(self):
         failures = self.check_root(ROOT)
@@ -422,7 +530,12 @@ class ExecutionAuthorityDeploymentTests(unittest.TestCase):
         self.assertIn("CORE_AUTHORITY_URL", env)
         self.assertIn("CORE_AUTHORITY_CA_FILE", env)
         self.assertIn("CORE_AUTHORITY_ALLOW_INSECURE_DEV", env)
-        self.assertTrue(any("core-authority-ca" in str(volume) for volume in compose["audit-execution"]["volumes"]))
+        self.assertTrue(
+            any(
+                "core-authority-ca" in str(volume)
+                for volume in compose["audit-execution"]["volumes"]
+            )
+        )
         self.assertNotIn("TOOL_CORE_AUTHORITY_TOKEN", env)
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -436,23 +549,39 @@ class ExecutionAuthorityDeploymentTests(unittest.TestCase):
         conformance.check_context_switch_config(ROOT)
         self.assertEqual(conformance.failures, [])
         compose = yaml.safe_load((ROOT / "compose.app.yaml").read_text())["services"]
-        self.assertEqual(conformance.compose_environment(compose["core-api"]["environment"])["CONTEXT_SWITCH_ENABLED"],
-                         "${CONTEXT_SWITCH_ENABLED:-false}")
+        self.assertEqual(
+            conformance.compose_environment(compose["core-api"]["environment"])[
+                "CONTEXT_SWITCH_ENABLED"
+            ],
+            "${CONTEXT_SWITCH_ENABLED:-false}",
+        )
         for name, service in compose.items():
             if name != "core-api":
-                self.assertNotIn("CONTEXT_SWITCH_ENABLED", conformance.compose_environment(service.get("environment")))
+                self.assertNotIn(
+                    "CONTEXT_SWITCH_ENABLED",
+                    conformance.compose_environment(service.get("environment")),
+                )
 
     def test_execution_never_receives_tool_only_service_token(self):
         conformance.failures.clear()
         conformance.check_tool_authority_compose(
-            "audit-execution", "execution", {"TOOL_CORE_AUTHORITY_TOKEN": "${TOOL_CORE_AUTHORITY_TOKEN:?required}"}
+            "audit-execution",
+            "execution",
+            {"TOOL_CORE_AUTHORITY_TOKEN": "${TOOL_CORE_AUTHORITY_TOKEN:?required}"},
         )
         self.assertTrue(any("must not receive" in item for item in conformance.failures))
         conformance.failures.clear()
         conformance.check_tool_authority_kubernetes(
-            "audit-execution", "execution", {"TOOL_CORE_AUTHORITY_TOKEN": {
-                "secretKeyRef": {"name": "contract-audit-service-tokens", "key": "TOOL_CORE_AUTHORITY_TOKEN"}
-            }}
+            "audit-execution",
+            "execution",
+            {
+                "TOOL_CORE_AUTHORITY_TOKEN": {
+                    "secretKeyRef": {
+                        "name": "contract-audit-service-tokens",
+                        "key": "TOOL_CORE_AUTHORITY_TOKEN",
+                    }
+                }
+            },
         )
         self.assertTrue(any("must not receive" in item for item in conformance.failures))
 
@@ -465,7 +594,13 @@ class ExecutionAuthorityDeploymentTests(unittest.TestCase):
             compose["services"]["audit-execution"]["environment"].pop("CORE_AUTHORITY_URL")
             compose_path.write_text(yaml.safe_dump(compose, sort_keys=False))
             failures = self.check_root(root)
-            self.assertTrue(any("compose audit-execution must explicitly pass CORE_AUTHORITY_URL" in x for x in failures), failures)
+            self.assertTrue(
+                any(
+                    "compose audit-execution must explicitly pass CORE_AUTHORITY_URL" in x
+                    for x in failures
+                ),
+                failures,
+            )
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -474,10 +609,18 @@ class ExecutionAuthorityDeploymentTests(unittest.TestCase):
             self.set_runtime_ca_path(config_path, "/run/contract-audit/core-authority-ca/ca.pem")
             workload_path = root / "deployments/k8s/base/workloads.yaml"
             workloads = list(yaml.safe_load_all(workload_path.read_text()))
-            execution = next(item for item in workloads if item.get("metadata", {}).get("name") == "audit-execution")
+            execution = next(
+                item
+                for item in workloads
+                if item.get("metadata", {}).get("name") == "audit-execution"
+            )
             pod = execution["spec"]["template"]["spec"]
-            pod["containers"][0]["volumeMounts"] = [m for m in pod["containers"][0]["volumeMounts"] if m["name"] != "core-authority-ca"]
-            workload_path.write_text("---\n".join(yaml.safe_dump(item, sort_keys=False) for item in workloads))
+            pod["containers"][0]["volumeMounts"] = [
+                m for m in pod["containers"][0]["volumeMounts"] if m["name"] != "core-authority-ca"
+            ]
+            workload_path.write_text(
+                "---\n".join(yaml.safe_dump(item, sort_keys=False) for item in workloads)
+            )
             failures = self.check_root(root)
             self.assertTrue(any("in the audit-execution workload" in x for x in failures), failures)
 
@@ -487,46 +630,103 @@ class ModelAuthorityDeploymentTests(unittest.TestCase):
         conformance.failures.clear()
         conformance.notes.clear()
         compose = yaml.safe_load((ROOT / "compose.app.yaml").read_text())["services"]
-        self.assertEqual(conformance.compose_environment(compose["core-api"]["environment"])["CORE_MODEL_AUTHORITY_TOKEN"],
-                         "${CORE_MODEL_AUTHORITY_TOKEN:?Run make app-bootstrap}")
+        self.assertEqual(
+            conformance.compose_environment(compose["core-api"]["environment"])[
+                "CORE_MODEL_AUTHORITY_TOKEN"
+            ],
+            "${CORE_MODEL_AUTHORITY_TOKEN:?Run make app-bootstrap}",
+        )
         real_env = conformance.compose_environment(compose["model-gateway"]["environment"])
-        self.assertEqual(real_env["CORE_MODEL_AUTHORITY_TOKEN"], "${CORE_MODEL_AUTHORITY_TOKEN:?Run make app-bootstrap}")
+        self.assertEqual(
+            real_env["CORE_MODEL_AUTHORITY_TOKEN"],
+            "${CORE_MODEL_AUTHORITY_TOKEN:?Run make app-bootstrap}",
+        )
         self.assertIn("CORE_AUTHORITY_URL", real_env)
-        fixture_env = conformance.compose_environment(compose["model-gateway-fixture"]["environment"])
-        self.assertEqual(fixture_env["CORE_MODEL_AUTHORITY_TOKEN"], "${CORE_MODEL_AUTHORITY_TOKEN:?Run make app-bootstrap}")
+        fixture_env = conformance.compose_environment(
+            compose["model-gateway-fixture"]["environment"]
+        )
+        self.assertEqual(
+            fixture_env["CORE_MODEL_AUTHORITY_TOKEN"],
+            "${CORE_MODEL_AUTHORITY_TOKEN:?Run make app-bootstrap}",
+        )
         self.assertIn("CORE_AUTHORITY_URL", fixture_env)
         for name, service in compose.items():
-            conformance.check_model_authority_compose(name, conformance.compose_environment(service.get("environment", {})).get("SERVICE_ROLE"),
-                                                       conformance.compose_environment(service.get("environment", {})))
+            conformance.check_model_authority_compose(
+                name,
+                conformance.compose_environment(service.get("environment", {})).get("SERVICE_ROLE"),
+                conformance.compose_environment(service.get("environment", {})),
+            )
         self.assertEqual(conformance.failures, [])
 
-        workloads = [item for item in yaml.safe_load_all((ROOT / "deployments/k8s/base/workloads.yaml").read_text()) if item]
-        by_name = {item.get("metadata", {}).get("name"): item for item in workloads if item.get("kind") == "Deployment"}
+        workloads = [
+            item
+            for item in yaml.safe_load_all(
+                (ROOT / "deployments/k8s/base/workloads.yaml").read_text()
+            )
+            if item
+        ]
+        by_name = {
+            item.get("metadata", {}).get("name"): item
+            for item in workloads
+            if item.get("kind") == "Deployment"
+        }
         for name in ("core-api", "model-gateway"):
-            env = {item["name"]: item.get("valueFrom", item.get("value"))
-                   for item in by_name[name]["spec"]["template"]["spec"]["containers"][0].get("env", [])}
+            env = {
+                item["name"]: item.get("valueFrom", item.get("value"))
+                for item in by_name[name]["spec"]["template"]["spec"]["containers"][0].get(
+                    "env", []
+                )
+            }
             conformance.failures.clear()
-            conformance.check_model_authority_kubernetes(name, "core" if name == "core-api" else "model", env)
+            conformance.check_model_authority_kubernetes(
+                name, "core" if name == "core-api" else "model", env
+            )
             self.assertEqual(conformance.failures, [])
         for name in ("document-service", "audit-execution", "audit-worker", "tool-gateway"):
-            env = {item["name"]: item.get("valueFrom", item.get("value"))
-                   for item in by_name[name]["spec"]["template"]["spec"]["containers"][0].get("env", [])}
+            env = {
+                item["name"]: item.get("valueFrom", item.get("value"))
+                for item in by_name[name]["spec"]["template"]["spec"]["containers"][0].get(
+                    "env", []
+                )
+            }
             conformance.failures.clear()
-            conformance.check_model_authority_kubernetes(name, {
-                "document-service": "document", "audit-execution": "execution",
-                "audit-worker": "worker", "tool-gateway": "tool",
-            }[name], env)
+            conformance.check_model_authority_kubernetes(
+                name,
+                {
+                    "document-service": "document",
+                    "audit-execution": "execution",
+                    "audit-worker": "worker",
+                    "tool-gateway": "tool",
+                }[name],
+                env,
+            )
             self.assertEqual(conformance.failures, [])
 
     def test_missing_or_misbound_model_authority_credential_fails(self):
         conformance.failures.clear()
         conformance.check_model_authority_compose("model-gateway", "model", {})
-        self.assertTrue(any("must require CORE_MODEL_AUTHORITY_TOKEN" in item for item in conformance.failures))
+        self.assertTrue(
+            any("must require CORE_MODEL_AUTHORITY_TOKEN" in item for item in conformance.failures)
+        )
         conformance.failures.clear()
-        conformance.check_model_authority_kubernetes("model-gateway", "model", {
-            "CORE_MODEL_AUTHORITY_TOKEN": {"secretKeyRef": {"name": "contract-audit-service-tokens", "key": "TOOL_CORE_AUTHORITY_TOKEN"}}
-        })
-        self.assertTrue(any("must use the required CORE_MODEL_AUTHORITY_TOKEN" in item for item in conformance.failures))
+        conformance.check_model_authority_kubernetes(
+            "model-gateway",
+            "model",
+            {
+                "CORE_MODEL_AUTHORITY_TOKEN": {
+                    "secretKeyRef": {
+                        "name": "contract-audit-service-tokens",
+                        "key": "TOOL_CORE_AUTHORITY_TOKEN",
+                    }
+                }
+            },
+        )
+        self.assertTrue(
+            any(
+                "must use the required CORE_MODEL_AUTHORITY_TOKEN" in item
+                for item in conformance.failures
+            )
+        )
 
 
 class K3dCredentialUpgradeTests(unittest.TestCase):
@@ -556,12 +756,17 @@ class K3dCredentialUpgradeTests(unittest.TestCase):
             before = dict(values)
             secrets_path.write_text(json.dumps(values), encoding="utf-8")
             secrets_path.chmod(0o600)
-            with patch.object(k3d, "ARTIFACTS", artifacts), patch.object(k3d, "SECRETS", secrets_path):
+            with (
+                patch.object(k3d, "ARTIFACTS", artifacts),
+                patch.object(k3d, "SECRETS", secrets_path),
+            ):
                 upgraded = k3d.ensure_secrets()
             self.assertNotEqual(upgraded["MIGRATOR_DATABASE_URL"], before["MIGRATOR_DATABASE_URL"])
             self.assertEqual(upgraded["AUTH_ADMIN_DATABASE_URL"], before["MIGRATOR_DATABASE_URL"])
             self.assertIn("audit_offline_migrator", upgraded["MIGRATOR_DATABASE_URL"])
-            self.assertEqual(urlsplit(upgraded["PROD_DATABASE_URL"]).username, "audit_offline_migrator")
+            self.assertEqual(
+                urlsplit(upgraded["PROD_DATABASE_URL"]).username, "audit_offline_migrator"
+            )
             self.assertIn("/contract_audit_prod?", upgraded["PROD_DATABASE_URL"])
             self.assertEqual(upgraded["CONTEXT_SWITCH_ENABLED"], "false")
             for key, value in before.items():
@@ -597,26 +802,35 @@ class K3dCredentialUpgradeTests(unittest.TestCase):
             before = dict(values)
             secrets_path.write_text(json.dumps(values), encoding="utf-8")
             secrets_path.chmod(0o600)
-            with patch.object(k3d, "ARTIFACTS", artifacts), patch.object(k3d, "SECRETS", secrets_path):
+            with (
+                patch.object(k3d, "ARTIFACTS", artifacts),
+                patch.object(k3d, "SECRETS", secrets_path),
+            ):
                 upgraded = k3d.ensure_secrets()
             self.assertEqual(upgraded["CONTEXT_SWITCH_ENABLED"], "false")
             for key, value in before.items():
                 self.assertEqual(upgraded[key], value)
 
         result = subprocess.CompletedProcess([], 0, stdout="", stderr="")
-        with patch.object(k3d, "ensure_secrets", return_value={"CONTEXT_SWITCH_ENABLED": "false"}), \
-             patch.dict(k3d.os.environ, {"CONTEXT_SWITCH_ENABLED": "true"}), \
-             patch.object(k3d, "run", return_value=result) as mocked_run:
+        with (
+            patch.object(k3d, "ensure_secrets", return_value={"CONTEXT_SWITCH_ENABLED": "false"}),
+            patch.dict(k3d.os.environ, {"CONTEXT_SWITCH_ENABLED": "true"}),
+            patch.object(k3d, "run", return_value=result) as mocked_run,
+        ):
             k3d.apply_context_switch_override()
         self.assertIn("contract-audit-core-runtime", mocked_run.call_args.args[0])
         self.assertIn('"CONTEXT_SWITCH_ENABLED": "true"', mocked_run.call_args.args[0][-1])
 
     def test_explicit_empty_context_switch_override_keeps_k3d_disabled(self):
         result = subprocess.CompletedProcess([], 0, stdout="", stderr="")
-        with patch.object(k3d, "ensure_secrets", return_value={"CONTEXT_SWITCH_ENABLED": "true"}), \
-             patch.dict(k3d.os.environ, {"CONTEXT_SWITCH_ENABLED": ""}), \
-             patch.object(k3d, "run", return_value=result) as mocked_run:
+        with (
+            patch.object(k3d, "ensure_secrets", return_value={"CONTEXT_SWITCH_ENABLED": "true"}),
+            patch.dict(k3d.os.environ, {"CONTEXT_SWITCH_ENABLED": ""}),
+            patch.object(k3d, "run", return_value=result) as mocked_run,
+        ):
             k3d.apply_context_switch_override()
         self.assertIn('"CONTEXT_SWITCH_ENABLED": "false"', mocked_run.call_args.args[0][-1])
+
+
 if __name__ == "__main__":
     unittest.main()

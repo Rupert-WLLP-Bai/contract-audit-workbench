@@ -3,8 +3,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-11-01
-# Updated: 2026-11-01
-# Revision: r1
+# Updated: 2026-11-15
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -23,38 +23,41 @@ class UITerminologyTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.policy = json.loads(
-            (ROOT / "scripts/ui-terminology/policy.json").read_text(encoding="utf-8"))
+            (ROOT / "scripts/ui-terminology/policy.json").read_text(encoding="utf-8")
+        )
         cls.concepts = json.loads(
-            (ROOT / "docs/glossary/concepts.json").read_text(encoding="utf-8"))
+            (ROOT / "docs/glossary/concepts.json").read_text(encoding="utf-8")
+        )
         cls.source = (ROOT / cls.policy["scope"]).read_text(encoding="utf-8")
 
     def test_actual_panel_source_passes(self):
-        self.assertEqual(check_ui_terminology.inspect_component(
-            self.source, self.policy, self.concepts), ([], []))
+        self.assertEqual(
+            check_ui_terminology.inspect_component(self.source, self.policy, self.concepts),
+            ([], []),
+        )
 
     def test_definite_attempt_and_approval_confusions_fail(self):
         violations, advisories = check_ui_terminology.inspect_copy(
-            "本次执行尝试是会签轮次。人工发现是合同批准。", self.policy)
-        self.assertEqual(violations, ["attempt-is-approval-round",
-                                      "manual-finding-is-approval"])
+            "本次执行尝试是会签轮次。人工发现是合同批准。", self.policy
+        )
+        self.assertEqual(violations, ["attempt-is-approval-round", "manual-finding-is-approval"])
         self.assertEqual(advisories, [])
 
     def test_explicit_boundary_and_uncertain_wording_are_not_failures(self):
         violations, advisories = check_ui_terminology.inspect_copy(
-            "人工发现不是合同批准；本次轮次的来源尚不明确。", self.policy)
+            "人工发现不是合同批准；本次轮次的来源尚不明确。", self.policy
+        )
         self.assertEqual(violations, [])
         self.assertEqual(advisories, ["轮次"])
 
     def test_actual_missing_attempt_slot_cannot_be_renamed_to_approval_round(self):
-        mutated = self.source.replace(
-            "请选择一次执行尝试。", "请选择会签轮次。", 1)
+        mutated = self.source.replace("请选择一次执行尝试。", "请选择会签轮次。", 1)
         self.assertNotEqual(mutated, self.source)
         with self.assertRaises(check_ui_terminology.GuardError):
             check_ui_terminology.inspect_component(mutated, self.policy, self.concepts)
 
     def test_actual_panel_heading_cannot_relabel_manual_finding_as_approval(self):
-        mutated = self.source.replace(
-            ">人工发现</h2>", ">合同批准</h2>", 1)
+        mutated = self.source.replace(">人工发现</h2>", ">合同批准</h2>", 1)
         self.assertNotEqual(mutated, self.source)
         with self.assertRaises(check_ui_terminology.GuardError):
             check_ui_terminology.inspect_component(mutated, self.policy, self.concepts)
@@ -90,16 +93,20 @@ class UITerminologyTest(unittest.TestCase):
     def test_component_boundary_is_unique_and_unknown_cli_options_are_rejected(self):
         with self.assertRaises(check_ui_terminology.GuardError):
             check_ui_terminology._component_and_render(
-                self.source + "\nexport function ManualFindingsPanel() { return (<div />); }\n")
+                self.source + "\nexport function ManualFindingsPanel() { return (<div />); }\n"
+            )
         with self.assertRaises(SystemExit):
             check_ui_terminology.main(["--unknown-option"])
 
     def test_comments_outside_pilot_copy_and_admin_copy_are_not_scanned(self):
-        source = (self.source + "\n// 会签轮次是人工发现；ManualFinding 是合同批准。\n"
-                  "export const administrationCopy = '管理员看见轮次和租户';\n"
-                  "export const technicalName = 'ApprovalRound manual_finding_records';\n")
-        self.assertEqual(check_ui_terminology.inspect_component(
-            source, self.policy, self.concepts), ([], []))
+        source = (
+            self.source + "\n// 会签轮次是人工发现；ManualFinding 是合同批准。\n"
+            "export const administrationCopy = '管理员看见轮次和租户';\n"
+            "export const technicalName = 'ApprovalRound manual_finding_records';\n"
+        )
+        self.assertEqual(
+            check_ui_terminology.inspect_component(source, self.policy, self.concepts), ([], [])
+        )
 
 
 if __name__ == "__main__":

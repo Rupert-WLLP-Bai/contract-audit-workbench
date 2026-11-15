@@ -3,8 +3,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-27
-# Updated: 2026-10-27
-# Revision: r1
+# Updated: 2026-11-15
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -60,7 +60,9 @@ class RecorderTest(unittest.TestCase):
         self.upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
         url = urllib.parse.urlsplit(f"http://127.0.0.1:{self.upstream.server_port}/custom/v1")
         self.proxy = record_model_proxy.Server(("127.0.0.1", 0), url, self.output)
-        self.threads = [threading.Thread(target=server.serve_forever) for server in (self.upstream, self.proxy)]
+        self.threads = [
+            threading.Thread(target=server.serve_forever) for server in (self.upstream, self.proxy)
+        ]
         for thread in self.threads:
             thread.start()
 
@@ -78,17 +80,30 @@ class RecorderTest(unittest.TestCase):
         response = connection.getresponse()
         self.assertEqual(response.status, 200)
         model_body = response.read()
-        payload = b'{"model":"real-model","messages":[{"role":"user","content":"private contract"}]}'
-        connection.request("POST", "/v1/chat/completions?trace=1", body=payload,
-                           headers={"Authorization": "Bearer private-value", "Cookie": "session=private-cookie",
-                                    "X-Api-Key": "private-key", "Content-Type": "application/json"})
+        payload = (
+            b'{"model":"real-model","messages":[{"role":"user","content":"private contract"}]}'
+        )
+        connection.request(
+            "POST",
+            "/v1/chat/completions?trace=1",
+            body=payload,
+            headers={
+                "Authorization": "Bearer private-value",
+                "Cookie": "session=private-cookie",
+                "X-Api-Key": "private-key",
+                "Content-Type": "application/json",
+            },
+        )
         response = connection.getresponse()
         self.assertEqual(response.status, 429)
         error_body = response.read()
         connection.close()
         self.proxy.shutdown()
         self.proxy.server_close()
-        self.assertEqual([entry[0] for entry in Upstream.requests], ["/custom/v1/models", "/custom/v1/chat/completions?trace=1"])
+        self.assertEqual(
+            [entry[0] for entry in Upstream.requests],
+            ["/custom/v1/models", "/custom/v1/chat/completions?trace=1"],
+        )
         self.assertEqual(Upstream.requests[1][1]["Authorization"], "Bearer private-value")
         self.assertEqual(Upstream.requests[1][2], payload)
         records = []
@@ -104,9 +119,13 @@ class RecorderTest(unittest.TestCase):
             self.assertFalse(metadata["interrupted"])
             self.assertIsNotNone(metadata["ended_at"])
             self.assertIsNone(metadata["error"])
-        by_endpoint = {metadata["endpoint"]: (metadata, directory) for metadata, directory in records}
+        by_endpoint = {
+            metadata["endpoint"]: (metadata, directory) for metadata, directory in records
+        }
         self.assertEqual(by_endpoint["/v1/models"][1].joinpath("request.body").read_bytes(), b"")
-        self.assertEqual(by_endpoint["/v1/models"][1].joinpath("response.body").read_bytes(), model_body)
+        self.assertEqual(
+            by_endpoint["/v1/models"][1].joinpath("response.body").read_bytes(), model_body
+        )
         metadata, directory = by_endpoint["/v1/chat/completions"]
         self.assertEqual(metadata["upstream_status"], 429)
         self.assertEqual(directory.joinpath("request.body").read_bytes(), payload)

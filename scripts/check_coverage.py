@@ -4,12 +4,13 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-25
-# Updated: 2026-10-25
-# Revision: r1
+# Updated: 2026-11-15
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
 """Fail-closed coverage gates. Standard library only; no network or secrets."""
+
 import argparse
 import json
 import os
@@ -52,11 +53,15 @@ def parse_go(text):
     covered = sum(v[0] for v in packages.values())
     total = sum(v[1] for v in packages.values())
     return {
-        "covered_statements": covered, "total_statements": total,
+        "covered_statements": covered,
+        "total_statements": total,
         "statement_percent": percentage(covered, total),
         "files": sorted({position.rsplit(":", 1)[0] for position in blocks}),
-        "packages": {k: {"covered": v[0], "total": v[1], "percent": percentage(*v)}
-                     for k, v in sorted(packages.items()) if v[1]},
+        "packages": {
+            k: {"covered": v[0], "total": v[1], "percent": percentage(*v)}
+            for k, v in sorted(packages.items())
+            if v[1]
+        },
     }
 
 
@@ -66,9 +71,17 @@ def parse_web(value):
     for metric in ("lines", "branches", "functions", "statements"):
         row = total[metric]
         covered, denominator = row["covered"], row["total"]
-        if not isinstance(covered, int) or not isinstance(denominator, int) or not 0 <= covered <= denominator:
+        if (
+            not isinstance(covered, int)
+            or not isinstance(denominator, int)
+            or not 0 <= covered <= denominator
+        ):
             raise ValueError(f"invalid {metric} counters")
-        result[metric] = {"covered": covered, "total": denominator, "percent": percentage(covered, denominator)}
+        result[metric] = {
+            "covered": covered,
+            "total": denominator,
+            "percent": percentage(covered, denominator),
+        }
     return result
 
 
@@ -92,8 +105,10 @@ def violations(go, web, config):
 def scope_violations(go_files, web_files, expected_go_files, expected_web_files):
     """Missing non-critical files are still denominator loss, not a free pass."""
     problems = []
-    for kind, actual, expected in (("Go", set(go_files), set(expected_go_files)),
-                                    ("Web", set(web_files), set(expected_web_files))):
+    for kind, actual, expected in (
+        ("Go", set(go_files), set(expected_go_files)),
+        ("Web", set(web_files), set(expected_web_files)),
+    ):
         for filename in sorted(expected - actual):
             problems.append(f"Missing {kind} source coverage: {filename}")
         for filename in sorted(actual - expected):
@@ -119,8 +134,14 @@ def source_inventory(root, go_files):
     whitelist may hide newly added executable code.
     """
     go = os.environ.get("GO", "go")
-    listed = subprocess.run([go, "list", "-json", "./internal/..."], cwd=root,
-                            check=True, capture_output=True, text=True, timeout=60)
+    listed = subprocess.run(
+        [go, "list", "-json", "./internal/..."],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
     expected_go = set()
     exemptions = []
     packages = []
@@ -136,8 +157,14 @@ def source_inventory(root, go_files):
             if not path.resolve().is_relative_to((root / "internal").resolve()):
                 raise ValueError("Go source path escaped internal scope")
             if key not in observed:
-                probe = subprocess.run([go, "tool", "cover", "-mode=set", "-var=ScopeProbe", str(path)],
-                                       cwd=root, check=True, capture_output=True, text=True, timeout=30)
+                probe = subprocess.run(
+                    [go, "tool", "cover", "-mode=set", "-var=ScopeProbe", str(path)],
+                    cwd=root,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
                 literal = re.search(r"NumStmt:\s*\[\d+\]uint16\s*\{(.*?)\}", probe.stdout, re.S)
                 if not literal:
                     raise ValueError(f"cannot inspect omitted source: {key}")
@@ -154,14 +181,21 @@ def source_inventory(root, go_files):
         if not path.is_file() or path.suffix not in (".ts", ".tsx"):
             continue
         relative = path.relative_to(web_src)
-        if (relative.parts[0] == "test" or ".test." in path.name or
-                path.name.endswith(".d.ts") or relative.as_posix() == "main.tsx"):
+        if (
+            relative.parts[0] == "test"
+            or ".test." in path.name
+            or path.name.endswith(".d.ts")
+            or relative.as_posix() == "main.tsx"
+        ):
             continue
         expected_web.add(path.relative_to(root).as_posix())
     if not expected_web:
         raise ValueError("empty web source inventory")
-    return expected_go, expected_web, {"go_packages": sorted(packages),
-                                      "go_zero_statement_files": sorted(exemptions)}
+    return (
+        expected_go,
+        expected_web,
+        {"go_packages": sorted(packages), "go_zero_statement_files": sorted(exemptions)},
+    )
 
 
 def web_source_keys(value, root):
@@ -194,14 +228,26 @@ def main():
         errors = violations(go, web, config)
         root = Path(__file__).resolve().parents[1]
         expected_go, expected_web, inventory = source_inventory(root, go["files"])
-        errors.extend(scope_violations(go["files"], web_source_keys(web_value, root), expected_go, expected_web))
+        errors.extend(
+            scope_violations(
+                go["files"], web_source_keys(web_value, root), expected_go, expected_web
+            )
+        )
         inventory.update({"go_files": len(expected_go), "web_files": len(expected_web)})
-        report = {"go": go, "web": web, "scope": inventory, "passed": not errors, "violations": errors}
+        report = {
+            "go": go,
+            "web": web,
+            "scope": inventory,
+            "passed": not errors,
+            "violations": errors,
+        }
         dest = Path(args.out)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
-        print(f"Go statements {go['statement_percent']:.2f}%; web lines {web['lines']['percent']:.2f}%; "
-              f"branches {web['branches']['percent']:.2f}%; functions {web['functions']['percent']:.2f}%")
+        print(
+            f"Go statements {go['statement_percent']:.2f}%; web lines {web['lines']['percent']:.2f}%; "
+            f"branches {web['branches']['percent']:.2f}%; functions {web['functions']['percent']:.2f}%"
+        )
         for error in errors:
             print("FAIL:", error)
         return 1 if errors else 0

@@ -3,8 +3,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-11-02
-# Updated: 2026-11-02
-# Revision: r1
+# Updated: 2026-11-15
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -26,8 +26,13 @@ from metadata_core import START, STYLES, insert_header
 
 
 def git(repo: Path, *args: str, env=None) -> bytes:
-    return subprocess.run(["git", "-C", str(repo), *args], check=True, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE, env=env).stdout
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    ).stdout
 
 
 def commit(repo: Path, message: str, stamp: str) -> str:
@@ -64,14 +69,24 @@ class GitInventoryTests(unittest.TestCase):
             os.symlink("space name.txt", repo / "linked path")
             first = commit(repo, "tracked paths", "2026-01-02T03:04:05Z")
             git(repo, "update-index", "--add", "--cacheinfo", f"160000,{first},submodule")
-            env = dict(os.environ, GIT_AUTHOR_DATE="2026-01-03T03:04:05Z", GIT_COMMITTER_DATE="2026-01-03T03:04:05Z")
+            env = dict(
+                os.environ,
+                GIT_AUTHOR_DATE="2026-01-03T03:04:05Z",
+                GIT_COMMITTER_DATE="2026-01-03T03:04:05Z",
+            )
             git(repo, "commit", "-m", "gitlink", env=env)
             second = git(repo, "rev-parse", "HEAD").decode().strip()
 
             tool = GitRepo(repo)
             tree = tool.tree_inventory(second)
             index = tool.index_inventory()
-            expected = {"space name.txt", "目录/子 文件.txt", "line\nbreak.txt", "linked path", "submodule"}
+            expected = {
+                "space name.txt",
+                "目录/子 文件.txt",
+                "line\nbreak.txt",
+                "linked path",
+                "submodule",
+            }
             self.assertEqual(set(tree), expected)
             self.assertEqual(set(index), expected)
             self.assertEqual(tree["linked path"].mode, "120000")
@@ -100,9 +115,22 @@ class GitInventoryTests(unittest.TestCase):
 
             changes = GitRepo(repo).diff(before, after)
             renamed = next(change for change in changes if change.status.startswith("R"))
-            self.assertEqual((renamed.old_path, renamed.new_path), (b"old name.txt", "renamed\n名字.txt".encode()))
-            self.assertTrue(any(change.status == "D" and change.old_path == b"delete me.txt" for change in changes))
-            self.assertTrue(any(change.status == "A" and change.new_path == b"added path.txt" for change in changes))
+            self.assertEqual(
+                (renamed.old_path, renamed.new_path),
+                (b"old name.txt", "renamed\n名字.txt".encode()),
+            )
+            self.assertTrue(
+                any(
+                    change.status == "D" and change.old_path == b"delete me.txt"
+                    for change in changes
+                )
+            )
+            self.assertTrue(
+                any(
+                    change.status == "A" and change.new_path == b"added path.txt"
+                    for change in changes
+                )
+            )
 
     def test_provenance_follows_verified_rename_and_uses_synthetic_utc_dates(self):
         with tempfile.TemporaryDirectory(prefix="file-meta-history-") as tmp:
@@ -139,7 +167,9 @@ class GitInventoryTests(unittest.TestCase):
             subject = commit(repo, "snapshot rename", "2026-02-02T00:00:00Z")
             snapshot_bytes = GitRepo(repo).tree_inventory(subject)["snapshot path.txt"].content
 
-            (repo / "snapshot path.txt").write_bytes((repo / "snapshot path.txt").read_bytes().replace(b"FOUR", b"LATER"))
+            (repo / "snapshot path.txt").write_bytes(
+                (repo / "snapshot path.txt").read_bytes().replace(b"FOUR", b"LATER")
+            )
             commit(repo, "later edit", "2026-02-03T00:00:00Z")
             os.rename(repo / "snapshot path.txt", repo / "future path.txt")
             commit(repo, "later rename", "2026-02-04T00:00:00Z")
@@ -147,7 +177,9 @@ class GitInventoryTests(unittest.TestCase):
             commit(repo, "later delete", "2026-02-05T00:00:00Z")
 
             tool = GitRepo(repo)
-            self.assertEqual(tool.tree_inventory(subject)["snapshot path.txt"].content, snapshot_bytes)
+            self.assertEqual(
+                tool.tree_inventory(subject)["snapshot path.txt"].content, snapshot_bytes
+            )
             evidence = tool.path_provenance("snapshot path.txt", subject=subject)
             self.assertEqual(evidence.created.source["commit"], created_sha)
             self.assertEqual(evidence.updated.source["commit"], subject)
@@ -172,7 +204,9 @@ class GitInventoryTests(unittest.TestCase):
             git(parent, "update-index", "--add", "--cacheinfo", f"160000,{first_oid},submodule")
             introduced = commit_index(parent, "add submodule pointer", "2026-02-03T00:00:00Z")
             git(parent, "update-index", "--cacheinfo", f"160000,{second_oid},submodule")
-            pointer_update = commit_index(parent, "update submodule pointer", "2026-02-04T00:00:00Z")
+            pointer_update = commit_index(
+                parent, "update submodule pointer", "2026-02-04T00:00:00Z"
+            )
 
             provenance = GitRepo(parent).path_provenance("submodule", subject=pointer_update)
             self.assertEqual(provenance.created.source["commit"], introduced)
@@ -183,9 +217,17 @@ class GitInventoryTests(unittest.TestCase):
     def test_metadata_revision_window_and_missing_prior_provenance_fail_closed(self):
         record = {
             "purpose": "Fixture purpose describing a test contract.",
-            "authors": [{"name": "Bai Junhao", "email": "baijunhao@cq.chinamobile.com", "contact": "+86 13617696321"}],
-            "created": {"value": "2026-01-01"}, "updated": {"value": "2026-01-02"},
-            "revision": "r1", "copyright": [{"notice": "See LICENSE"}],
+            "authors": [
+                {
+                    "name": "Bai Junhao",
+                    "email": "baijunhao@cq.chinamobile.com",
+                    "contact": "+86 13617696321",
+                }
+            ],
+            "created": {"value": "2026-01-01"},
+            "updated": {"value": "2026-01-02"},
+            "revision": "r1",
+            "copyright": [{"notice": "See LICENSE"}],
         }
         with tempfile.TemporaryDirectory(prefix="file-meta-revision-") as tmp:
             repo = Path(tmp)
@@ -197,28 +239,81 @@ class GitInventoryTests(unittest.TestCase):
             tool = GitRepo(repo)
             original_entry = tool.tree_inventory(first)["script.sh"]
 
-            target.write_bytes(insert_header(original, record, style=STYLES["hash"], handling="header-and-manifest", file_kind="shell", mode="100644"))
+            target.write_bytes(
+                insert_header(
+                    original,
+                    record,
+                    style=STYLES["hash"],
+                    handling="header-and-manifest",
+                    file_kind="shell",
+                    mode="100644",
+                )
+            )
             header_commit = commit(repo, "metadata only", "2026-03-02T00:00:00Z")
             header_entry = tool.tree_inventory(header_commit)["script.sh"]
-            self.assertEqual(revision_for_window("r1", original_entry, header_entry, style=STYLES["hash"], handling="header-and-manifest", file_kind="shell"), "r1")
+            self.assertEqual(
+                revision_for_window(
+                    "r1",
+                    original_entry,
+                    header_entry,
+                    style=STYLES["hash"],
+                    handling="header-and-manifest",
+                    file_kind="shell",
+                ),
+                "r1",
+            )
 
             target.write_bytes(target.read_bytes().replace(b"echo ok", b"echo changed"))
             body_commit = commit(repo, "body update", "2026-03-03T00:00:00Z")
             body_entry = tool.tree_inventory(body_commit)["script.sh"]
-            self.assertEqual(revision_for_window("r1", header_entry, body_entry, style=STYLES["hash"], handling="header-and-manifest", file_kind="shell"), "r2")
+            self.assertEqual(
+                revision_for_window(
+                    "r1",
+                    header_entry,
+                    body_entry,
+                    style=STYLES["hash"],
+                    handling="header-and-manifest",
+                    file_kind="shell",
+                ),
+                "r2",
+            )
 
             target.chmod(0o755)
             mode_commit = commit(repo, "mode update", "2026-03-04T00:00:00Z")
             mode_entry = tool.tree_inventory(mode_commit)["script.sh"]
-            self.assertEqual(revision_for_window("r2", body_entry, mode_entry, style=STYLES["hash"], handling="header-and-manifest", file_kind="shell"), "r3")
+            self.assertEqual(
+                revision_for_window(
+                    "r2",
+                    body_entry,
+                    mode_entry,
+                    style=STYLES["hash"],
+                    handling="header-and-manifest",
+                    file_kind="shell",
+                ),
+                "r3",
+            )
             (repo / "copy.sh").write_bytes(target.read_bytes())
             copy_commit = commit(repo, "new path", "2026-03-05T00:00:00Z")
             copy_entry = tool.tree_inventory(copy_commit)["copy.sh"]
             with self.assertRaises(GitInventoryError):
-                revision_for_window("r3", mode_entry, copy_entry, style=STYLES["hash"], handling="header-and-manifest", file_kind="shell")
+                revision_for_window(
+                    "r3",
+                    mode_entry,
+                    copy_entry,
+                    style=STYLES["hash"],
+                    handling="header-and-manifest",
+                    file_kind="shell",
+                )
             self.assertEqual(new_path_revision(), "r1")
             with self.assertRaises(GitInventoryError):
-                revision_for_window("r1", None, copy_entry, style=STYLES["hash"], handling="header-and-manifest", file_kind="shell")
+                revision_for_window(
+                    "r1",
+                    None,
+                    copy_entry,
+                    style=STYLES["hash"],
+                    handling="header-and-manifest",
+                    file_kind="shell",
+                )
 
     def test_uncommitted_path_dates_are_unknown_and_self_record_is_exact_path_only(self):
         with tempfile.TemporaryDirectory(prefix="file-meta-unknown-") as tmp:
@@ -249,13 +344,36 @@ class GitInventoryTests(unittest.TestCase):
             commit(repo, "make executable", "2026-02-02T00:00:00Z")
             record = {
                 "purpose": "Fixture purpose describing a test contract.",
-                "authors": [{"name": "Bai Junhao", "email": "baijunhao@cq.chinamobile.com", "contact": "+86 13617696321"}],
-                "created": {"value": "2026-02-01"}, "updated": {"value": "2026-02-02"},
-                "revision": "r1", "copyright": [{"notice": "See LICENSE"}],
+                "authors": [
+                    {
+                        "name": "Bai Junhao",
+                        "email": "baijunhao@cq.chinamobile.com",
+                        "contact": "+86 13617696321",
+                    }
+                ],
+                "created": {"value": "2026-02-01"},
+                "updated": {"value": "2026-02-02"},
+                "revision": "r1",
+                "copyright": [{"notice": "See LICENSE"}],
             }
-            target.write_bytes(insert_header(target.read_bytes(), record, style=STYLES["hash"], handling="header-and-manifest", file_kind="shell", mode="100755"))
+            target.write_bytes(
+                insert_header(
+                    target.read_bytes(),
+                    record,
+                    style=STYLES["hash"],
+                    handling="header-and-manifest",
+                    file_kind="shell",
+                    mode="100755",
+                )
+            )
             header_commit = commit(repo, "add metadata mirror only", "2026-02-03T00:00:00Z")
-            evidence = GitRepo(repo).path_provenance("script.sh", subject=header_commit, style=STYLES["hash"], handling="header-and-manifest", file_kind="shell")
+            evidence = GitRepo(repo).path_provenance(
+                "script.sh",
+                subject=header_commit,
+                style=STYLES["hash"],
+                handling="header-and-manifest",
+                file_kind="shell",
+            )
             self.assertEqual(evidence.created.source["commit"], first)
             self.assertEqual(evidence.updated.source["commit"], first)
 
@@ -271,8 +389,13 @@ class GitInventoryTests(unittest.TestCase):
             path.write_bytes(b"value = 2\n")
             ambiguous = commit(repo, "restore ordinary source", "2026-02-03T00:00:00Z")
             g = GitRepo(repo)
-            uncertain = g.path_provenance("fixture.py", subject=ambiguous, style=STYLES["hash"],
-                                          handling="header-and-manifest", file_kind="python")
+            uncertain = g.path_provenance(
+                "fixture.py",
+                subject=ambiguous,
+                style=STYLES["hash"],
+                handling="header-and-manifest",
+                file_kind="python",
+            )
             self.assertEqual(uncertain.created.source["commit"], created)
             self.assertEqual(uncertain.updated.value, "unknown")
             self.assertEqual(uncertain.updated.source["kind"], "unknown")
@@ -280,8 +403,13 @@ class GitInventoryTests(unittest.TestCase):
             self.assertIn("ambiguous", uncertain.updated.source["reason"])
             path.write_bytes(b"value = 3\n")
             latest = commit(repo, "later unambiguous body change", "2026-02-04T00:00:00Z")
-            known = g.path_provenance("fixture.py", subject=latest, style=STYLES["hash"],
-                                      handling="header-and-manifest", file_kind="python")
+            known = g.path_provenance(
+                "fixture.py",
+                subject=latest,
+                style=STYLES["hash"],
+                handling="header-and-manifest",
+                file_kind="python",
+            )
             self.assertEqual(known.created.source["commit"], created)
             self.assertEqual(known.updated.source["commit"], latest)
             self.assertEqual(known.updated.value, "2026-02-04")
@@ -299,7 +427,9 @@ class GitInventoryTests(unittest.TestCase):
                 GitRepo(repo).tree_inventory("HEAD")
 
     def test_manifest_coverage_uses_exact_sets(self):
-        missing, stale = compare_manifest_coverage(["a path", "b\npath", "目录/x"], ["a path", "old path"])
+        missing, stale = compare_manifest_coverage(
+            ["a path", "b\npath", "目录/x"], ["a path", "old path"]
+        )
         self.assertEqual(missing, ["b\npath", "目录/x"])
         self.assertEqual(stale, ["old path"])
         with self.assertRaises(GitInventoryError):

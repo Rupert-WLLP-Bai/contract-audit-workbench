@@ -4,8 +4,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-25
-# Updated: 2026-11-04
-# Revision: r2
+# Updated: 2026-11-15
+# Revision: r3
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -56,7 +56,7 @@ def read_dotenv(path: Path) -> dict[str, str]:
         if not line or line.startswith("#"):
             continue
         if line.startswith("export "):
-            line = line[len("export "):].lstrip()
+            line = line[len("export ") :].lstrip()
         key, separator, value = line.partition("=")
         key = key.strip()
         if not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
@@ -69,7 +69,9 @@ def read_dotenv(path: Path) -> dict[str, str]:
 
 
 def canonical_json(value: object) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
 
 
 def load_dataset(path: Path) -> dict:
@@ -93,11 +95,16 @@ def load_dataset(path: Path) -> dict:
         raise SeedError("dataset must contain the three frozen telecom scenarios")
     for item in scenarios:
         if set(item.get("fields", {})) != REQUIRED_FIELDS:
-            raise SeedError(f"scenario {item.get('id')} does not contain the frozen template fields")
+            raise SeedError(
+                f"scenario {item.get('id')} does not contain the frozen template fields"
+            )
         relations = item.get("expected_relations", {})
         if set(relations) != {"ENT-TECH-BW-001", "ENT-TECH-SLA-001", "ENT-COM-ADV-001"}:
             raise SeedError(f"scenario {item.get('id')} has an incomplete expected relation map")
-        if any(value not in {"compatible", "conflict", "insufficient", "not_applicable"} for value in relations.values()):
+        if any(
+            value not in {"compatible", "conflict", "insufficient", "not_applicable"}
+            for value in relations.values()
+        ):
             raise SeedError(f"scenario {item.get('id')} contains an invalid relation")
     return dataset
 
@@ -144,13 +151,20 @@ class API:
         filename = material["filename"]
         role = material["role"]
         body = (
-            f"--{boundary}\r\nContent-Disposition: form-data; name=\"role\"\r\n\r\n{role}\r\n"
-            f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
-            "Content-Type: text/plain; charset=utf-8\r\n\r\n"
-        ).encode("utf-8") + content + f"\r\n--{boundary}--\r\n".encode("ascii")
+            (
+                f'--{boundary}\r\nContent-Disposition: form-data; name="role"\r\n\r\n{role}\r\n'
+                f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+                "Content-Type: text/plain; charset=utf-8\r\n\r\n"
+            ).encode("utf-8")
+            + content
+            + f"\r\n--{boundary}--\r\n".encode("ascii")
+        )
         _, result = self.request(
-            "POST", f"/api/cases/{case_id}/documents", payload=body,
-            content_type=f"multipart/form-data; boundary={boundary}", timeout=60,
+            "POST",
+            f"/api/cases/{case_id}/documents",
+            payload=body,
+            content_type=f"multipart/form-data; boundary={boundary}",
+            timeout=60,
         )
         return result or {}
 
@@ -177,15 +191,24 @@ def ensure_case(api: API, scenario: dict, existing: dict | None) -> tuple[str, d
     if existing:
         case_id = existing.get("id")
         detail = get_case(api, case_id)
-        if (detail.get("business_line"), detail.get("scenario")) != ("ENT", "telecom_dedicated_line"):
-            raise SeedError(f"case title already exists with different business scope: {scenario['title']}")
+        if (detail.get("business_line"), detail.get("scenario")) != (
+            "ENT",
+            "telecom_dedicated_line",
+        ):
+            raise SeedError(
+                f"case title already exists with different business scope: {scenario['title']}"
+            )
         return case_id, detail
-    _, created = api.request("POST", "/api/cases", {
-        "title": scenario["title"],
-        "contract_type": "service",
-        "business_line": "ENT",
-        "scenario": "telecom_dedicated_line",
-    })
+    _, created = api.request(
+        "POST",
+        "/api/cases",
+        {
+            "title": scenario["title"],
+            "contract_type": "service",
+            "business_line": "ENT",
+            "scenario": "telecom_dedicated_line",
+        },
+    )
     case_id = created.get("id")
     if not case_id:
         raise SeedError("case creation returned no case id")
@@ -199,10 +222,15 @@ def ensure_generation(api: API, case_id: str, detail: dict, template_id: str, fi
         if not matches:
             raise SeedError(f"case {case_id} already has a generation from another template")
         return matches[-1]
-    _, generation = api.request("POST", f"/api/cases/{case_id}/generations", {
-        "template_id": template_id,
-        "fields": fields,
-    }, timeout=60)
+    _, generation = api.request(
+        "POST",
+        f"/api/cases/{case_id}/generations",
+        {
+            "template_id": template_id,
+            "fields": fields,
+        },
+        timeout=60,
+    )
     if not generation.get("document_id") or generation.get("template_id") != template_id:
         raise SeedError(f"template generation response is incomplete for case {case_id}")
     return generation
@@ -211,7 +239,9 @@ def ensure_generation(api: API, case_id: str, detail: dict, template_id: str, fi
 def ensure_material(api: API, case_id: str, detail: dict, material: dict) -> tuple[dict, bool]:
     digest = hashlib.sha256(material["text"].encode("utf-8")).hexdigest()
     current = [item for item in detail.get("documents", []) if not item.get("superseded")]
-    if any(item.get("role") == material["role"] and item.get("digest") == digest for item in current):
+    if any(
+        item.get("role") == material["role"] and item.get("digest") == digest for item in current
+    ):
         return detail, False
     api.upload(case_id, material)
     return get_case(api, case_id), True
@@ -239,7 +269,9 @@ def observed_relations(scenario: dict, workspace: dict) -> dict[str, str]:
             raise SeedError(f"review returned {len(matches)} evaluations for {rule_id}")
         relation = matches[0].get("relation")
         if relation != expected:
-            raise SeedError(f"scenario {scenario['id']} expected {rule_id}={expected}, got {relation}")
+            raise SeedError(
+                f"scenario {scenario['id']} expected {rule_id}={expected}, got {relation}"
+            )
         output[rule_id] = relation
     return output
 
@@ -248,13 +280,28 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", help="API base URL (or API_BASE_URL in the environment)")
     parser.add_argument("--username", help="login name (or DEMO_USERNAME; default demo-admin)")
-    parser.add_argument("--env-file", type=Path, default=Path(".env"), help="read literal KEY=value entries; no shell evaluation")
+    parser.add_argument(
+        "--env-file",
+        type=Path,
+        default=Path(".env"),
+        help="read literal KEY=value entries; no shell evaluation",
+    )
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
-    parser.add_argument("--template-id", help="template ID; defaults to the frozen dataset template")
-    parser.add_argument("--scenario", action="append", choices=("compatible", "conflict", "insufficient"), help="scenario to seed; repeat to select several; defaults to all")
+    parser.add_argument(
+        "--template-id", help="template ID; defaults to the frozen dataset template"
+    )
+    parser.add_argument(
+        "--scenario",
+        action="append",
+        choices=("compatible", "conflict", "insufficient"),
+        help="scenario to seed; repeat to select several; defaults to all",
+    )
     parser.add_argument("--review-timeout", type=float, default=150)
-    parser.add_argument("--business-at", default="2026-01-15T09:00:00+08:00",
-                        help="timezone-aware review business time for governed cases")
+    parser.add_argument(
+        "--business-at",
+        default="2026-01-15T09:00:00+08:00",
+        help="timezone-aware review business time for governed cases",
+    )
     parser.add_argument("--out", type=Path, help="optional JSON record of actual API responses")
     args = parser.parse_args()
 
@@ -268,28 +315,41 @@ def main() -> int:
         if not base.startswith(("http://", "https://")):
             raise SeedError("API base URL must use http or https")
         template_id = args.template_id or dataset["template_id"]
-        selected = list(dict.fromkeys(args.scenario or [item["id"] for item in dataset["scenarios"]]))
+        selected = list(
+            dict.fromkeys(args.scenario or [item["id"] for item in dataset["scenarios"]])
+        )
         by_id = {item["id"]: item for item in dataset["scenarios"]}
 
         api = API(base)
-        _, session = api.request("POST", "/api/session", {"username": username, "password": password})
+        _, session = api.request(
+            "POST", "/api/session", {"username": username, "password": password}
+        )
         if not session or not session.get("actor", {}).get("id"):
             raise SeedError("login response did not contain a trusted actor")
         active = session.get("active_context") or {}
         api.context_version = active.get("context_version", "")
         api.csrf = session.get("csrf_token", "")
         if not api.context_version or len(api.csrf) < 32:
-            raise SeedError("login response did not contain an original context version and CSRF token")
+            raise SeedError(
+                "login response did not contain an original context version and CSRF token"
+            )
         _, templates = api.request("GET", "/api/templates")
         matches = [item for item in templates.get("items", []) if item.get("id") == template_id]
         if len(matches) != 1:
             raise SeedError(f"template {template_id!r} is absent or ambiguous")
         template = matches[0]
-        if template_id == dataset["template_id"] and template.get("version") != dataset["template_version"]:
-            raise SeedError(f"template {template_id} version changed: expected {dataset['template_version']}, got {template.get('version')}")
+        if (
+            template_id == dataset["template_id"]
+            and template.get("version") != dataset["template_version"]
+        ):
+            raise SeedError(
+                f"template {template_id} version changed: expected {dataset['template_version']}, got {template.get('version')}"
+            )
         missing_fields = REQUIRED_FIELDS - field_keys(template)
         if missing_fields:
-            raise SeedError(f"template {template_id} lacks fields: {', '.join(sorted(missing_fields))}")
+            raise SeedError(
+                f"template {template_id} lacks fields: {', '.join(sorted(missing_fields))}"
+            )
         _, cases = api.request("GET", "/api/cases")
         existing_by_title = {item.get("title"): item for item in cases.get("items", [])}
 
@@ -306,16 +366,25 @@ def main() -> int:
                     uploads.append(material["filename"])
             override = scenario.get("draft_override")
             if override:
-                detail, created = ensure_material(api, case_id, detail, {
-                    "role": "draft_contract",
-                    "filename": override["filename"],
-                    "text": override["text"],
-                })
+                detail, created = ensure_material(
+                    api,
+                    case_id,
+                    detail,
+                    {
+                        "role": "draft_contract",
+                        "filename": override["filename"],
+                        "text": override["text"],
+                    },
+                )
                 if created:
                     uploads.append(override["filename"])
 
-            _, accepted = api.request("POST", f"/api/cases/{case_id}/reviews",
-                                      {"business_at": args.business_at}, timeout=60)
+            _, accepted = api.request(
+                "POST",
+                f"/api/cases/{case_id}/reviews",
+                {"business_at": args.business_at},
+                timeout=60,
+            )
             run_id = accepted.get("id")
             if not run_id:
                 raise SeedError(f"review request for {scenario_id} returned no run id")
@@ -324,22 +393,24 @@ def main() -> int:
             execution = workspace.get("execution") or {}
             attempt = execution.get("attempt") or {}
             attempt_id = accepted.get("attempt_id") or attempt.get("id")
-            results.append({
-                "scenario": scenario_id,
-                "case_id": case_id,
-                "generation_id": generation.get("id"),
-                "document_id": generation.get("document_id"),
-                "run_id": run_id,
-                "attempt_id": attempt_id,
-                "run_state": workspace.get("run", {}).get("state"),
-                "expected_relations": scenario["expected_relations"],
-                "observed_relations": actual_relations,
-                "observed_findings": [
-                    {key: finding.get(key) for key in ("id", "domain", "relation", "claim")}
-                    for finding in workspace.get("findings", [])
-                ],
-                "uploaded_this_run": uploads,
-            })
+            results.append(
+                {
+                    "scenario": scenario_id,
+                    "case_id": case_id,
+                    "generation_id": generation.get("id"),
+                    "document_id": generation.get("document_id"),
+                    "run_id": run_id,
+                    "attempt_id": attempt_id,
+                    "run_state": workspace.get("run", {}).get("state"),
+                    "expected_relations": scenario["expected_relations"],
+                    "observed_relations": actual_relations,
+                    "observed_findings": [
+                        {key: finding.get(key) for key in ("id", "domain", "relation", "claim")}
+                        for finding in workspace.get("findings", [])
+                    ],
+                    "uploaded_this_run": uploads,
+                }
+            )
 
         output = {
             "dataset_id": dataset["dataset_id"],
