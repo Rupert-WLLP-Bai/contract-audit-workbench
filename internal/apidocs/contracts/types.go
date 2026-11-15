@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-02
 // Updated: 2026-11-14
-// Revision: r14
+// Revision: r15
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -5213,5 +5213,11 @@ func Types() map[string]reflect.Type {
 	types["OperationsCostView"] = reflect.TypeFor[OperationsCostView]()
 	types["OperationsQuotaView"] = reflect.TypeFor[OperationsQuotaView]()
 	types["OperationsPoolView"] = reflect.TypeFor[OperationsPoolView]()
+	types["ClauseProposal"] = reflect.TypeFor[ClauseProposal]()
+	types["ClauseProposalCreate"] = reflect.TypeFor[ClauseProposalCreate]()
+	types["ClauseProposalDecision"] = reflect.TypeFor[ClauseProposalDecision]()
+	types["ClauseProposalList"] = reflect.TypeFor[ClauseProposalList]()
+	types["ClauseDerivedRequest"] = reflect.TypeFor[ClauseDerivedRequest]()
+	types["ClauseDerivedResponse"] = reflect.TypeFor[ClauseDerivedResponse]()
 	return types
 }

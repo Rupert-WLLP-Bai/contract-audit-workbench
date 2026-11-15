@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -45,6 +45,7 @@ import { businessDomainLabel } from "../domain/business-labels";
 import { findingPresentation, findingTitle } from "../domain/finding-presentation";
 import { FindingBatchControls } from "./finding-batch-controls";
 import { TechnicalDetail } from "./technical-detail";
+import { ClauseProposalPanel, type ClauseProposalPanelContext } from "./clause-proposal-panel";
 const FILTERS: { id: FindingFilter; label: string }[] = [
   { id: "all", label: "全部" },
   { id: "conflict", label: "冲突" },
@@ -732,6 +733,7 @@ function FindingDetail({
   showDiagnostics,
   onDecide,
   onSaved,
+  clauseProposalContext,
 }: {
   finding: Finding;
   documents: ReviewDocument[];
@@ -748,11 +750,15 @@ function FindingDetail({
     expectedVersion: number;
   }) => Promise<boolean>;
   onSaved: (findingId: string) => void;
+  clauseProposalContext?: ClauseProposalPanelContext;
 }) {
   return (
     <article className="finding-detail" aria-live="polite">
       <FindingDetailHeader finding={finding} showDiagnostics={showDiagnostics} />
       <EvidenceList finding={finding} documents={documents} showDiagnostics={showDiagnostics} />
+      {clauseProposalContext ? (
+        <ClauseProposalPanel {...clauseProposalContext} finding={finding} documents={documents} />
+      ) : null}
       <DecisionHistory decisions={finding.decisions} />
       <DecisionForm
         finding={finding}
@@ -784,6 +790,7 @@ export function FindingPanel({
   onBatchDecide,
   requestedFindingId = null,
   navigationSerial = 0,
+  clauseProposalContext,
 }: {
   findings: Finding[];
   evaluations?: ConstraintEvaluation[];
@@ -805,6 +812,7 @@ export function FindingPanel({
   onBatchDecide?: (input: FindingDecisionInput) => Promise<FindingDecisionOutcome>;
   requestedFindingId?: string | null;
   navigationSerial?: number;
+  clauseProposalContext?: ClauseProposalPanelContext;
 }) {
   const [filter, setFilter] = useState<FindingFilter>("all");
   const [panel, setPanel] = useState("风险审查");
@@ -1108,6 +1116,7 @@ export function FindingPanel({
               const next = nextUndecidedFindingId(visible, findingId);
               if (next !== null) onSelect(next);
             }}
+            clauseProposalContext={clauseProposalContext}
           />
         ) : null}
       </div>

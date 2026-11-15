@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -338,6 +338,13 @@ func wireRuntimeStore(ctx context.Context, st *store.Store, settings runtimeSett
 	st.UseModels(embeddedModelsFor(config, service, models))
 	if provider := configuredAdvisoryProvider(service, models); provider != nil {
 		st.UseAdvisory(provider)
+	}
+	if service == "core" {
+		reader, err := configuredClauseOriginalReader()
+		if err != nil {
+			return nil, 0, err
+		}
+		st.UseClauseOriginalReader(reader)
 	}
 	if service == "worker" {
 		if err := wireWorkerDependencies(st, settings.experienceAcceptor); err != nil {

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: 实现 `ProvisionOfflineMigrator`, `auditAndTransferOfflineObjects`, `object`, `verifyOfflineMigratorMemberships` 等 Store 数据结构与事务操作，按租户和组织范围读写或校验持久状态。
+// Purpose: Validates and provisions a non-superuser offline migrator for isolated schemas, including the reviewed relation, trigger, policy, function and role allowlists.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-15
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -213,6 +213,7 @@ func auditAndTransferOfflineObjects(ctx context.Context, tx pgx.Tx, database, sc
 	functions := map[string]bool{}
 	triggers := map[string]bool{
 		"subject_versions_append_only": true, "case_subject_role_versions_append_only": true, "subject_change_requests_append_only": true, "subject_change_decisions_append_only": true, "subject_write_idempotency_append_only": true, "subject_source_snapshots_append_only": true,
+		"clm_clause_proposals_append_only": true, "clm_clause_proposal_decisions_append_only": true, "clm_clause_proposal_receipts_append_only": true,
 	}
 	policies := map[string]bool{}
 	triggerRE := regexp.MustCompile(`(?i)CREATE\s+(?:CONSTRAINT\s+)?TRIGGER\s+([a-z_][a-z_0-9]*)`)

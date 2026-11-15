@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r12
+// Revision: r13
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1354,6 +1354,11 @@ export function ReviewPage() {
                 <ReviewWorkspaceView
                   surface={workspaceSurface}
                   workspace={workspace}
+                  caseDetail={
+                    caseDetail.isSuccess && !caseDetail.isFetching && caseDetail.data.id === caseId
+                      ? caseDetail.data
+                      : undefined
+                  }
                   layout={layout}
                   showDiagnostics={diagnosticData !== null}
                   quoteScope={quoteScope}

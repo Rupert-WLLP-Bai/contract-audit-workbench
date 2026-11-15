@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -50,15 +50,17 @@ const (
 
 // Options configures the HTTP surface.
 type Options struct {
-	SystemHealth                 systemhealth.Reader
-	CORSOrigins                  []string
-	Models                       *model.Client
-	OIDC                         *identity.Manager
-	Durable                      bool
-	SecureCookies                bool
-	ContextSwitchEnabled         bool
-	ExperienceWorkerCredential   string
-	DocumentIntakeCredential     string
+	SystemHealth               systemhealth.Reader
+	CORSOrigins                []string
+	Models                     *model.Client
+	OIDC                       *identity.Manager
+	Durable                    bool
+	SecureCookies              bool
+	ContextSwitchEnabled       bool
+	ExperienceWorkerCredential string
+	DocumentIntakeCredential   string
+	// ClauseOriginalCredential authorizes only Core's exact original-file GET.
+	ClauseOriginalCredential     string
 	ToolClaimAuthorityCredential string
 	ModelAuthorityCredential     string
 	PaymentReceiptSources        []PaymentReceiptSourceCredential
@@ -152,6 +154,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	registerContractCitationRoutes(mux, h)
 	registerEvidenceRoutes(mux, h)
 	registerManualFindingRoutes(mux, h)
+	registerClauseProposalRoutes(mux, h)
 	registerContractDraftRoutes(mux, h)
 	registerContractAuditRoutes(mux, h)
 	registerContractReferenceRoutes(mux, h)

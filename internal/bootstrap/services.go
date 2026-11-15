@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -292,4 +292,12 @@ func configureOperationAuthority(st *store.Store, service string) error {
 	}
 	st.UseOperationAuthority(client)
 	return nil
+}
+
+func configuredClauseOriginalReader() (store.ClauseOriginalReader, error) {
+	endpoint := strings.TrimSpace(os.Getenv("DOCUMENT_SERVICE_URL"))
+	if endpoint == "" {
+		return nil, nil
+	}
+	return documentclient.NewClauseOriginalReader(endpoint, strings.TrimSpace(os.Getenv("CORE_DOCUMENT_TOKEN")), 2*time.Minute)
 }

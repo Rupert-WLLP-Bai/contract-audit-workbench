@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-14
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -152,6 +152,11 @@ export const paths = {
   reparse: (caseId: string, documentId: string) =>
     `/api/cases/${id(caseId)}/documents/${id(documentId)}/parse`,
   reviews: (caseId: string) => `/api/cases/${id(caseId)}/reviews`,
+  clauseProposals: (caseId: string) => `/api/cases/${id(caseId)}/clause-proposals`,
+  clauseProposalDerivedText: (caseId: string, proposalId: string) =>
+    `/api/cases/${id(caseId)}/clause-proposals/${id(proposalId)}/derived-text`,
+  clauseProposalDecision: (caseId: string, proposalId: string) =>
+    `/api/cases/${id(caseId)}/clause-proposals/${id(proposalId)}/decisions`,
   casePlaybooks: (caseId: string) => `/api/cases/${id(caseId)}/playbooks`,
   review: (caseId: string, runId: string, attemptId?: string | null) => {
     const path = `/api/cases/${id(caseId)}/reviews/${id(runId)}`;

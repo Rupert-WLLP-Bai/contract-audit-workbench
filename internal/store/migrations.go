@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-14
-// Revision: r9
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -37,8 +37,8 @@ type clmRoleQueryer interface {
 // Later schema changes must be new numbered files; never edit an applied file.
 // The running application accepts only this explicitly reviewed version range.
 const (
-	schemaMinCompatibleVersion = 48
-	schemaMaxCompatibleVersion = 48
+	schemaMinCompatibleVersion = 49
+	schemaMaxCompatibleVersion = 49
 )
 
 //go:embed migrations/*.sql

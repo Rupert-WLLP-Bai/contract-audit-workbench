@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-14
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -81,7 +81,7 @@ func run() error {
 		return err
 	}
 	public, err := httpapi.ServiceHandler(app.Store, httpapi.Options{
-		CORSOrigins: origins(), Models: app.Models, Durable: app.Durable, SecureCookies: app.SecureCookies, SessionAuthorityResolver: sessionResolver,
+		CORSOrigins: origins(), Models: app.Models, Durable: app.Durable, SecureCookies: app.SecureCookies, SessionAuthorityResolver: sessionResolver, ClauseOriginalCredential: serviceConfig.IntakeCredential,
 	}, "document", strings.TrimSpace(os.Getenv("GATEWAY_ROLE_TOKEN")))
 	if err != nil {
 		return err
