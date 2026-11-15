@@ -78,10 +78,7 @@ beforeEach(() => {
   onRefresh.mockReset().mockResolvedValue(undefined);
 });
 
-function receipt(
-  sequence: number,
-  amount: string,
-): ContractPaymentSummary["receipts"][number] {
+function receipt(sequence: number, amount: string): ContractPaymentSummary["receipts"][number] {
   return {
     amount,
     contract_id: "contract-1",
@@ -205,9 +202,7 @@ it("renders frozen plans with trusted receipt states for the current revision", 
   ]);
   render(<ContractPaymentsPanel detail={detail()} actor={actor} canCheck onRefresh={onRefresh} />);
 
-  expect(
-    await screen.findByText("已登记可信净额：60.00 CNY（2 条回执）"),
-  ).toBeVisible();
+  expect(await screen.findByText("已登记可信净额：60.00 CNY（2 条回执）")).toBeVisible();
   expect(screen.getByText("账本记录部分付款")).toBeVisible();
   expect(screen.getByText("账本记录达到计划金额")).toBeVisible();
   expect(
@@ -300,11 +295,16 @@ it("keeps plan rows and eligibility buttons bounded when the revision or permiss
   expect(listContractPayments).not.toHaveBeenCalled();
 
   view.rerender(
-    <ContractPaymentsPanel detail={detail()} actor={actor} canCheck={false} onRefresh={onRefresh} />,
+    <ContractPaymentsPanel
+      detail={detail()}
+      actor={actor}
+      canCheck={false}
+      onRefresh={onRefresh}
+    />,
   );
-  expect(
-    await screen.findAllByText("当前修订没有可信回执状态记录，付款情况未核验"),
-  ).toHaveLength(2);
+  expect(await screen.findAllByText("当前修订没有可信回执状态记录，付款情况未核验")).toHaveLength(
+    2,
+  );
   expect(rowButton(1)).toBeDisabled();
 
   view.rerender(
@@ -331,9 +331,7 @@ it("shows the loading state, allows an empty payment plan, and surfaces read fai
   await waitFor(() =>
     expect(screen.queryByText("正在读取本修订的可信付款回执…")).not.toBeInTheDocument(),
   );
-  expect(
-    screen.getAllByText("当前修订没有可信回执状态记录，付款情况未核验"),
-  ).toHaveLength(2);
+  expect(screen.getAllByText("当前修订没有可信回执状态记录，付款情况未核验")).toHaveLength(2);
 
   vi.mocked(listContractPayments).mockRejectedValue(
     new ApiError("付款回执读取失败", 500, "internal", false, null),
@@ -464,9 +462,7 @@ it("keeps the recorded verification visible when the contract refresh fails", as
   render(<ContractPaymentsPanel detail={detail()} actor={actor} canCheck onRefresh={onRefresh} />);
 
   await clickCheck(1);
-  expect(
-    await screen.findByText("资格核验已记录，但合同版本刷新失败：刷新失败"),
-  ).toBeVisible();
+  expect(await screen.findByText("资格核验已记录，但合同版本刷新失败：刷新失败")).toBeVisible();
   expect(clearPendingMutationKey).toHaveBeenCalledWith("storage-1");
   expect(screen.queryByText("第 1 期：当前核验符合付款条件")).not.toBeInTheDocument();
   expect(screen.getAllByText("付款状态正在读取")).toHaveLength(2);

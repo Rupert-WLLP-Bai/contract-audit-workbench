@@ -63,7 +63,9 @@ it("submits the selected server-provided organization identity", async () => {
   await user.click(screen.getByRole("radio", { name: /采购部/ }));
   expect(submit).toBeEnabled();
   await user.click(submit);
-  await waitFor(() => expect(selectPendingMembership).toHaveBeenCalledWith("client", "membership-2"));
+  await waitFor(() =>
+    expect(selectPendingMembership).toHaveBeenCalledWith("client", "membership-2"),
+  );
   expect(replace).toHaveBeenCalledWith("/");
   expect(screen.getByRole("link", { name: "返回登录页面" })).toHaveAttribute("href", "/login");
 });
@@ -71,14 +73,15 @@ it("submits the selected server-provided organization identity", async () => {
 it("reports an expired challenge and links back to the audience login", async () => {
   vi.mocked(listPendingMemberships).mockResolvedValue({ memberships: [] });
   render(<PendingMembershipPage audience="admin" />);
-  expect(
-    await screen.findByText("本次组织登录已过期或没有可用身份，请重新登录。"),
-  ).toBeVisible();
+  expect(await screen.findByText("本次组织登录已过期或没有可用身份，请重新登录。")).toBeVisible();
   expect(screen.getByRole("link", { name: "重新登录" })).toHaveAttribute(
     "href",
     "/api/auth/oidc/login?audience=admin",
   );
-  expect(screen.getByRole("link", { name: "返回登录页面" })).toHaveAttribute("href", "/admin/login");
+  expect(screen.getByRole("link", { name: "返回登录页面" })).toHaveAttribute(
+    "href",
+    "/admin/login",
+  );
   expect(screen.queryByRole("radio")).not.toBeInTheDocument();
 });
 
@@ -99,7 +102,9 @@ it("keeps the page recoverable when the server rejects the selection", async () 
   vi.mocked(listPendingMemberships)
     .mockResolvedValueOnce({ memberships })
     .mockResolvedValueOnce({ memberships: [] });
-  vi.mocked(selectPendingMembership).mockRejectedValue(new ApiError("conflict", 409, "conflict", false, null));
+  vi.mocked(selectPendingMembership).mockRejectedValue(
+    new ApiError("conflict", 409, "conflict", false, null),
+  );
   render(<PendingMembershipPage audience="client" />);
   await user.click(await screen.findByRole("radio", { name: /合同部/ }));
   await user.click(screen.getByRole("button", { name: "进入工作台" }));
@@ -112,12 +117,12 @@ it("keeps the page recoverable when the server rejects the selection", async () 
 it("treats a forbidden selection as an expired challenge", async () => {
   const user = userEvent.setup();
   vi.mocked(listPendingMemberships).mockResolvedValue({ memberships });
-  vi.mocked(selectPendingMembership).mockRejectedValue(new ApiError("forbidden", 403, "forbidden", false, null));
+  vi.mocked(selectPendingMembership).mockRejectedValue(
+    new ApiError("forbidden", 403, "forbidden", false, null),
+  );
   render(<PendingMembershipPage audience="client" />);
   await user.click(await screen.findByRole("radio", { name: /合同部/ }));
   await user.click(screen.getByRole("button", { name: "进入工作台" }));
-  expect(
-    await screen.findByText("本次组织登录已过期或没有可用身份，请重新登录。"),
-  ).toBeVisible();
+  expect(await screen.findByText("本次组织登录已过期或没有可用身份，请重新登录。")).toBeVisible();
   expect(screen.queryByText("没有完成身份选择")).not.toBeInTheDocument();
 });
