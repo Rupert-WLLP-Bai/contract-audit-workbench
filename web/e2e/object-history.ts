@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-15
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -418,12 +418,18 @@ async function bind(
   await section
     .getByRole("checkbox", { name: "我已人工核对上述合同对象与外部对象的对应关系", exact: true })
     .check();
+  // After the first submission Ant Design can leave the exiting loading icon in
+  // the DOM, and its aria-label joins the button's accessible name. Match by
+  // substring so the second submission still resolves while that icon lingers;
+  // the click auto-waits for the button to leave its disabled/loading state.
+  const submit = section.getByRole("button", { name: /确认对象映射/ });
   const responsePromise = target.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
       new URL(response.url()).pathname === `/api/cases/${caseID}/object-bindings`,
+    { timeout: 60000 },
   );
-  await section.getByRole("button", { name: "确认对象映射", exact: true }).click();
+  await submit.click({ timeout: 30000 });
   const response = await responsePromise;
   assert.equal(response.status(), 201, `binding ${name} failed: ${await response.text()}`);
   const binding = (await response.json()) as {
