@@ -744,6 +744,7 @@
       "web/src/pages/support-grant-pages.tsx",
       "web/src/pages/support-grants.css",
       "web/src/pages/tenant-lifecycle-page.css",
+      "web/src/pages/tenant-lifecycle-page.test.tsx",
       "web/src/pages/tenant-lifecycle-page.tsx",
       "web/src/test/antd.test.tsx",
       "web/src/test/session.ts"
@@ -65811,7 +65812,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r80",
+      "revision": "r81",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -90499,6 +90500,54 @@
           "holder": "Bai Junhao",
           "notice": "See LICENSE",
           "source": "LICENSE identifies Bai Junhao as rights holder for project-owned materials; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/pages/tenant-lifecycle-page.test.tsx": {
+      "purpose": "Checks tenant-lifecycle operation listing, controlled creation with idempotency, step receipt validation, reconciliation, stale-context recovery, pagination and terminal states.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "e5705193ab5ed8efd1f3febef5a4b5983c34d354",
+          "path": "web/src/pages/tenant-lifecycle-page.test.tsx",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "e5705193ab5ed8efd1f3febef5a4b5983c34d354",
+          "path": "web/src/pages/tenant-lifecycle-page.test.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
           "verbatim": false
         }
       ],
