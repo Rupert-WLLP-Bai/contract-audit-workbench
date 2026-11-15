@@ -125,12 +125,16 @@ def check_links(files: list[Path]) -> list[str]:
                 else:
                     target = _resolve_target(source, path_text)
                 if target is None:
-                    errors.append(f"{source.relative_to(ROOT)}:{line_number}: missing target {raw!r}")
+                    errors.append(
+                        f"{source.relative_to(ROOT)}:{line_number}: missing target {raw!r}"
+                    )
                     continue
                 if url.fragment and target.suffix.lower() == ".md":
                     headings = heading_cache.setdefault(target, _headings(target))
                     if unquote(url.fragment) not in headings:
-                        errors.append(f"{source.relative_to(ROOT)}:{line_number}: missing anchor {url.fragment!r} in {target.relative_to(ROOT)}")
+                        errors.append(
+                            f"{source.relative_to(ROOT)}:{line_number}: missing anchor {url.fragment!r} in {target.relative_to(ROOT)}"
+                        )
     print(f"Markdown links: checked {checked} local targets across {len(files)} files")
     return errors
 
@@ -142,7 +146,8 @@ def main() -> int:
         return 1
     glossary = subprocess.run(
         [sys.executable, str(ROOT / "scripts/check_glossary.py")],
-        cwd=ROOT, check=False,
+        cwd=ROOT,
+        check=False,
     )
     errors = check_links(files)
     if glossary.returncode:

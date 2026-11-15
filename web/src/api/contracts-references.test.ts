@@ -13,7 +13,12 @@ import { getContractLifecycleOverview, parseContractReferenceCheck } from "./con
 
 const sha = "a".repeat(64);
 
-function referenceCheck(): any {
+type ReferenceCheckFixture = {
+  procurement_result: { material_role: string; [key: string]: unknown };
+  [key: string]: unknown;
+};
+
+function referenceCheck(): ReferenceCheckFixture {
   return {
     contract_id: "0f7d5c1e-4a2b-4c3d-8e9f-0123456789ab",
     source: "revision",
@@ -70,9 +75,7 @@ describe("parseContractReferenceCheck", () => {
     const parsed = parseContractReferenceCheck(referenceCheck());
     expect(parsed.source).toBe("revision");
     expect(parsed.subjects[0]?.binding_version).toBe(1);
-    expect(parsed.materials[0]?.original_path).toBe(
-      "/api/cases/case-1/documents/doc-1/original",
-    );
+    expect(parsed.materials[0]?.original_path).toBe("/api/cases/case-1/documents/doc-1/original");
     expect(parsed.procurement_result?.material_role).toBe("award");
   });
 
@@ -100,15 +103,26 @@ function lifecycleOverview(overrides: Record<string, unknown> = {}): Record<stri
     },
     observed_at: "2026-11-03T01:02:03Z",
     completeness: {
-      plans: "unknown", deliveries: "known", acceptances: "known", payments: "known",
-      assets: "known", disputes: "unknown", warranty: "unknown", other_obligations: "unknown",
+      plans: "unknown",
+      deliveries: "known",
+      acceptances: "known",
+      payments: "known",
+      assets: "known",
+      disputes: "unknown",
+      warranty: "unknown",
+      other_obligations: "unknown",
     },
     source_observed_at: { contract_recorded_at: null, finance: null, erp: null },
     plans: null,
     deliveries: { items: [], summary: [], row_version: 1 },
     acceptances: { items: [], summary: [], row_version: 1 },
     payments: null,
-    assets: { contract_id: lifecycleContractId, fixed_asset_status: "unknown", items: [], row_version: 1 },
+    assets: {
+      contract_id: lifecycleContractId,
+      fixed_asset_status: "unknown",
+      items: [],
+      row_version: 1,
+    },
     ...overrides,
   };
 }
@@ -116,23 +130,55 @@ function lifecycleOverview(overrides: Record<string, unknown> = {}): Record<stri
 afterEach(() => vi.unstubAllGlobals());
 
 describe("getContractLifecycleOverview response", () => {
-  it.each(["different_contract", "null_plan_item"])("rejects an inconsistent %s projection", async (variant) => {
-    const wrongId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
-    const body = variant === "different_contract"
-      ? lifecycleOverview({
-          contract: { contract_id: wrongId, current_revision_id: null, row_version: 1, authority_mode: "native" },
-          assets: { contract_id: wrongId, fixed_asset_status: "unknown", items: [], row_version: 1 },
-        })
-      : lifecycleOverview({ plans: { delivery_plans: [null], acceptance_plans: null, payments: null, assets: null } });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(body), {
-      status: 200, headers: { "Content-Type": "application/json" },
-    })));
-    await expect(getContractLifecycleOverview(lifecycleContractId)).rejects.toMatchObject({ code: "invalid_response" });
-  });
+  it.each(["different_contract", "null_plan_item"])(
+    "rejects an inconsistent %s projection",
+    async (variant) => {
+      const wrongId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+      const body =
+        variant === "different_contract"
+          ? lifecycleOverview({
+              contract: {
+                contract_id: wrongId,
+                current_revision_id: null,
+                row_version: 1,
+                authority_mode: "native",
+              },
+              assets: {
+                contract_id: wrongId,
+                fixed_asset_status: "unknown",
+                items: [],
+                row_version: 1,
+              },
+            })
+          : lifecycleOverview({
+              plans: {
+                delivery_plans: [null],
+                acceptance_plans: null,
+                payments: null,
+                assets: null,
+              },
+            });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+      );
+      await expect(getContractLifecycleOverview(lifecycleContractId)).rejects.toMatchObject({
+        code: "invalid_response",
+      });
+    },
+  );
   it("accepts a minimal response with null plans and payment facts and empty known lists", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(lifecycleOverview()), {
-      status: 200, headers: { "Content-Type": "application/json" },
-    }));
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(lifecycleOverview()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await getContractLifecycleOverview(lifecycleContractId);
@@ -140,21 +186,60 @@ describe("getContractLifecycleOverview response", () => {
     expect(result.payments).toBeNull();
     expect(result.deliveries.items).toEqual([]);
     expect(result.completeness.deliveries).toBe("known");
-    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(`/api/contracts/${lifecycleContractId}/lifecycle-overview`);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      `/api/contracts/${lifecycleContractId}/lifecycle-overview`,
+    );
   });
 
   it("rejects an invalid completeness value or malformed nullable plan shape", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(lifecycleOverview({
-      completeness: {
-        plans: "complete", deliveries: "known", acceptances: "known", payments: "known",
-        assets: "known", disputes: "unknown", warranty: "unknown", other_obligations: "unknown",
-      },
-    })), { status: 200, headers: { "Content-Type": "application/json" } })));
-    await expect(getContractLifecycleOverview(lifecycleContractId)).rejects.toMatchObject({ code: "invalid_response", status: 200 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify(
+            lifecycleOverview({
+              completeness: {
+                plans: "complete",
+                deliveries: "known",
+                acceptances: "known",
+                payments: "known",
+                assets: "known",
+                disputes: "unknown",
+                warranty: "unknown",
+                other_obligations: "unknown",
+              },
+            }),
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    await expect(getContractLifecycleOverview(lifecycleContractId)).rejects.toMatchObject({
+      code: "invalid_response",
+      status: 200,
+    });
 
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(lifecycleOverview({
-      plans: { delivery_plans: "empty", acceptance_plans: null, payments: null, assets: null },
-    })), { status: 200, headers: { "Content-Type": "application/json" } })));
-    await expect(getContractLifecycleOverview(lifecycleContractId)).rejects.toMatchObject({ code: "invalid_response", status: 200 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify(
+            lifecycleOverview({
+              plans: {
+                delivery_plans: "empty",
+                acceptance_plans: null,
+                payments: null,
+                assets: null,
+              },
+            }),
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    await expect(getContractLifecycleOverview(lifecycleContractId)).rejects.toMatchObject({
+      code: "invalid_response",
+      status: 200,
+    });
   });
 });

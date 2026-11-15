@@ -15,6 +15,7 @@ The application does not import this module. Passing these examples proves the
 specified admission/closure decisions only; enabling result reuse still requires
 C1-A and the PostgreSQL/authorization gates in PERFORMANCE-CACHE-SPEC.md.
 """
+
 from dataclasses import dataclass
 import hashlib
 import hmac
@@ -65,9 +66,14 @@ def inspect_reuse(identity, authorize, lookup, trusted_secret, *, immutable_gate
     authorize and lookup represent independent authoritative reads in examples.
     No result bytes are served and no origin work is dispatched by this function.
     """
+
     def permitted(current):
-        return (current.allowed and current.tenant == identity.tenant and
-                current.case == identity.case and current.epoch == identity.policy_epoch)
+        return (
+            current.allowed
+            and current.tenant == identity.tenant
+            and current.case == identity.case
+            and current.epoch == identity.policy_epoch
+        )
 
     current = authorize()
     if not permitted(current):
@@ -78,8 +84,12 @@ def inspect_reuse(identity, authorize, lookup, trusted_secret, *, immutable_gate
     entry = lookup(key)
     if entry is None:
         return "miss"
-    if (entry.identity != identity or entry.state != "ready" or
-            not entry.artifact_digest or entry.artifact_digest != entry.expected_digest):
+    if (
+        entry.identity != identity
+        or entry.state != "ready"
+        or not entry.artifact_digest
+        or entry.artifact_digest != entry.expected_digest
+    ):
         return "identity_mismatch"
     if not permitted(authorize()):
         return "denied"

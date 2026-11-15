@@ -9,6 +9,7 @@
 # End file metadata.
 
 """Image tag selection stays isolated across repeated packager invocations."""
+
 import unittest
 import importlib.util
 from pathlib import Path
@@ -46,13 +47,30 @@ class ComponentIdentityTests(unittest.TestCase):
         PACKAGER.ROOT = self.root
         self.addCleanup(setattr, PACKAGER, "ROOT", self.old_root)
         files = (
-            "go.mod", "go.sum", "quality-gates.json", "Makefile", "compose.yaml", ".env.example",
-            "compose.app.yaml", "compose.observe.yaml", "deploy/app/entrypoint.sh",
-            "web/package.json", "web/bun.lock", "web/index.html", "web/admin.html", "web/portal.html",
-            "web/vite.config.ts", "web/tsconfig.json", "web/tsconfig.test.json",
-            "deployments/scripts/package-app-images.py", "capability-packs/telecom.json",
-            "web/src/app.ts", "deploy/app/nginx/client.conf", "deploy/app/nginx/admin.conf",
-            "deploy/app/nginx/portal.conf", "deploy/app/nginx/backend-proxy.conf",
+            "go.mod",
+            "go.sum",
+            "quality-gates.json",
+            "Makefile",
+            "compose.yaml",
+            ".env.example",
+            "compose.app.yaml",
+            "compose.observe.yaml",
+            "deploy/app/entrypoint.sh",
+            "web/package.json",
+            "web/bun.lock",
+            "web/index.html",
+            "web/admin.html",
+            "web/portal.html",
+            "web/vite.config.ts",
+            "web/tsconfig.json",
+            "web/tsconfig.test.json",
+            "deployments/scripts/package-app-images.py",
+            "capability-packs/telecom.json",
+            "web/src/app.ts",
+            "deploy/app/nginx/client.conf",
+            "deploy/app/nginx/admin.conf",
+            "deploy/app/nginx/portal.conf",
+            "deploy/app/nginx/backend-proxy.conf",
             "deploy/app/nginx/proxy-headers.conf",
         )
         for name in files:
@@ -71,11 +89,13 @@ class ComponentIdentityTests(unittest.TestCase):
 
     def test_capability_pack_changes_backend_component_identity(self):
         before = PACKAGER.source_snapshot(PACKAGER.frontend_files())
-        self.write("capability-packs/telecom.json", "{\"rules\":[\"changed\"]}\n")
+        self.write("capability-packs/telecom.json", '{"rules":["changed"]}\n')
         after = PACKAGER.source_snapshot(PACKAGER.frontend_files())
         self.assertNotEqual(before["sha256"], after["sha256"])
-        self.assertNotEqual(before["component_identity_sha256"]["backend"],
-                            after["component_identity_sha256"]["backend"])
+        self.assertNotEqual(
+            before["component_identity_sha256"]["backend"],
+            after["component_identity_sha256"]["backend"],
+        )
 
 
 if __name__ == "__main__":

@@ -22,6 +22,7 @@ Isolation is mandatory and checked before any request: every service credential
 must target the selected isolated development or test database, and the operator
 must confirm its exact name. The journey refuses the default demo database.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,7 +41,14 @@ from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from deployments.local import DATABASE_TARGETS, DISTRIBUTED_ENV_PATH, ENV_PATH, compose_prefix, database_name, read_env  # noqa: E402
+from deployments.local import (  # noqa: E402
+    DATABASE_TARGETS,
+    DISTRIBUTED_ENV_PATH,
+    ENV_PATH,
+    compose_prefix,
+    database_name,
+    read_env,
+)  # noqa: E402
 
 TERMINAL_RUN_STATES = {"completed", "awaiting_human", "partial", "failed"}
 REQUIRED_DATABASES = (
@@ -106,15 +114,17 @@ class Journey:
 
     def upload(self, case_id: str, role: str, filename: str, media: str, text: str) -> str:
         boundary = "journey" + secrets.token_hex(12)
-        body = b"".join([
-            f"--{boundary}\r\n".encode(),
-            f'Content-Disposition: form-data; name="role"\r\n\r\n{role}\r\n'.encode(),
-            f"--{boundary}\r\n".encode(),
-            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'.encode(),
-            f"Content-Type: {media}\r\n\r\n".encode(),
-            text.encode("utf-8"),
-            f"\r\n--{boundary}--\r\n".encode(),
-        ])
+        body = b"".join(
+            [
+                f"--{boundary}\r\n".encode(),
+                f'Content-Disposition: form-data; name="role"\r\n\r\n{role}\r\n'.encode(),
+                f"--{boundary}\r\n".encode(),
+                f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'.encode(),
+                f"Content-Type: {media}\r\n\r\n".encode(),
+                text.encode("utf-8"),
+                f"\r\n--{boundary}--\r\n".encode(),
+            ]
+        )
         _, document, _ = self.call(
             "POST",
             f"/api/cases/{case_id}/documents",
@@ -141,33 +151,47 @@ class Journey:
             time.sleep(2)
 
 
-def require_isolated_stack(env_path: Path, confirmation: str,
-					   database_target: str) -> tuple[dict[str, str], dict[str, str]]:
-	"""Require every service credential to use the confirmed isolated database."""
-	if not confirmation:
-		raise Failure("Pass --confirm <database> naming the isolated database the journey may write to")
-	database_key = DATABASE_TARGETS.get(database_target)
-	if not database_key:
-		raise Failure("database target must be development or test")
-	infra = read_env(ENV_PATH)
-	if infra.get("APP_ENV", "").strip().lower() == "production":
-		raise Failure("refusing to run the journey with APP_ENV=production")
-	if not env_path.exists():
-		raise Failure(f"missing private distributed profile at {env_path}; pass --env after `make app-bootstrap`")
-	app = read_env(env_path)
-	configured_database = database_name(infra, database_key)
-	if confirmation != configured_database:
-		raise Failure(f"refusing to run: --confirm must match this private {database_target} database {configured_database!r}")
-	if confirmation in ("contract_audit_dev", "contract_audit_test", "contract_audit_prod", "postgres"):
-		raise Failure(f"refusing to run against {confirmation!r}")
-	for key in REQUIRED_DATABASES:
-		dsn = app.get(key, "")
-		if not dsn:
-			raise Failure(f"{key} is missing from {env_path}")
-		database = urlsplit(dsn).path.lstrip("/")
-		if database != configured_database:
-			raise Failure(f"refusing to run: {key} targets {database!r}, not the confirmed {configured_database!r}")
-	return infra, app
+def require_isolated_stack(
+    env_path: Path, confirmation: str, database_target: str
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Require every service credential to use the confirmed isolated database."""
+    if not confirmation:
+        raise Failure(
+            "Pass --confirm <database> naming the isolated database the journey may write to"
+        )
+    database_key = DATABASE_TARGETS.get(database_target)
+    if not database_key:
+        raise Failure("database target must be development or test")
+    infra = read_env(ENV_PATH)
+    if infra.get("APP_ENV", "").strip().lower() == "production":
+        raise Failure("refusing to run the journey with APP_ENV=production")
+    if not env_path.exists():
+        raise Failure(
+            f"missing private distributed profile at {env_path}; pass --env after `make app-bootstrap`"
+        )
+    app = read_env(env_path)
+    configured_database = database_name(infra, database_key)
+    if confirmation != configured_database:
+        raise Failure(
+            f"refusing to run: --confirm must match this private {database_target} database {configured_database!r}"
+        )
+    if confirmation in (
+        "contract_audit_dev",
+        "contract_audit_test",
+        "contract_audit_prod",
+        "postgres",
+    ):
+        raise Failure(f"refusing to run against {confirmation!r}")
+    for key in REQUIRED_DATABASES:
+        dsn = app.get(key, "")
+        if not dsn:
+            raise Failure(f"{key} is missing from {env_path}")
+        database = urlsplit(dsn).path.lstrip("/")
+        if database != configured_database:
+            raise Failure(
+                f"refusing to run: {key} targets {database!r}, not the confirmed {configured_database!r}"
+            )
+    return infra, app
 
 
 def require_running_stack() -> None:
@@ -178,19 +202,33 @@ def require_running_stack() -> None:
         compose_prefix() + ["ps", "-q", "gateway"], cwd=ROOT, text=True, capture_output=True
     )
     if output.returncode != 0 or not output.stdout.strip():
-        raise Failure("the gateway container is not running; start the stack with make apps-up-fixture")
+        raise Failure(
+            "the gateway container is not running; start the stack with make apps-up-fixture"
+        )
 
 
 def counts(app: dict[str, str], tables: tuple[str, ...]) -> dict[str, int]:
     dsn = urlsplit(app["MIGRATOR_DATABASE_URL"])
     database = dsn.path.lstrip("/")
     user = dsn.username or "contractaudit"
-    query = " UNION ALL ".join(
-        f"SELECT '{table}', count(*) FROM {table}" for table in tables
-    )
+    query = " UNION ALL ".join(f"SELECT '{table}', count(*) FROM {table}" for table in tables)
     command = compose_prefix() + [
-        "exec", "-T", "db", "psql", "-U", user, "-d", database, "-t", "-A", "-F", "|",
-        "-v", "ON_ERROR_STOP=1", "-c", query,
+        "exec",
+        "-T",
+        "db",
+        "psql",
+        "-U",
+        user,
+        "-d",
+        database,
+        "-t",
+        "-A",
+        "-F",
+        "|",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-c",
+        query,
     ]
     output = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
     if output.returncode != 0:
@@ -228,7 +266,9 @@ def run_journey(smoke: bool, env_path: Path, confirmation: str, database_target:
     )
     case_id = str(case["id"])  # type: ignore[index]
 
-    procurement = journey.upload(case_id, "procurement", "purchase.txt", "text/plain", PROCUREMENT_TEXT)
+    procurement = journey.upload(
+        case_id, "procurement", "purchase.txt", "text/plain", PROCUREMENT_TEXT
+    )
     draft = journey.upload(case_id, "draft_contract", "draft.txt", "text/plain", DRAFT_TEXT)
     for document in (procurement, draft):
         journey.call("POST", f"/api/cases/{case_id}/documents/{document}/parse", {}, expected={200})
@@ -247,13 +287,16 @@ def run_journey(smoke: bool, env_path: Path, confirmation: str, database_target:
         raise Failure(f"review failed: {run.get('failure_message')!r}")
     findings = workspace.get("findings") or []
     rule_conflicts = [
-        finding for finding in findings
+        finding
+        for finding in findings
         if finding.get("origin") == "rule" and finding.get("relation") == "conflict"
     ]
     if not rule_conflicts:
         raise Failure(f"deterministic rule findings are missing: {findings!r}")
     located = sum(
-        1 for finding in findings for anchor in finding.get("evidence") or []
+        1
+        for finding in findings
+        for anchor in finding.get("evidence") or []
         if anchor.get("status") == "located"
     )
     documents = workspace.get("documents") or []
@@ -264,7 +307,9 @@ def run_journey(smoke: bool, env_path: Path, confirmation: str, database_target:
         raise Failure("terminal review workspace has no persisted attempt identity")
     attempt_state = attempt.get("state")
     if attempt_state not in TERMINAL_RUN_STATES:
-        raise Failure(f"terminal review workspace has non-terminal attempt state: {attempt_state!r}")
+        raise Failure(
+            f"terminal review workspace has non-terminal attempt state: {attempt_state!r}"
+        )
     agent_review = execution.get("agent_review")
 
     backlog = counts(app, ("worker_jobs", "review_attempts", "outbox_events", "audit_events"))
@@ -289,7 +334,9 @@ def run_journey(smoke: bool, env_path: Path, confirmation: str, database_target:
 
     if not smoke:
         for document in (procurement, draft):
-            journey.call("POST", f"/api/cases/{case_id}/documents/{document}/parse", {}, expected={200})
+            journey.call(
+                "POST", f"/api/cases/{case_id}/documents/{document}/parse", {}, expected={200}
+            )
         status, retried, _ = journey.call(
             "POST", f"/api/cases/{case_id}/reviews/{run_id}/retry", {}, expected={200, 201, 202}
         )
@@ -309,13 +356,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--smoke", action="store_true", help="Fast path: no reparse/retry steps")
     parser.add_argument(
-        "--env", default=str(DISTRIBUTED_ENV_PATH),
+        "--env",
+        default=str(DISTRIBUTED_ENV_PATH),
         help="Private distributed profile to read (default: .env.distributed; a private path such as /tmp/... is allowed)",
     )
-    parser.add_argument("--database-target", choices=("development", "test"), default="development",
-                        help="Isolated database named by --confirm")
     parser.add_argument(
-        "--confirm", default="",
+        "--database-target",
+        choices=("development", "test"),
+        default="development",
+        help="Isolated database named by --confirm",
+    )
+    parser.add_argument(
+        "--confirm",
+        default="",
         help="The isolated database every service in --env must target; the journey refuses anything else",
     )
     args = parser.parse_args(argv)

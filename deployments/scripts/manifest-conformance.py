@@ -30,6 +30,7 @@ cluster behaviour stays NOT_RUN. `--self-test` mutates copies of the tree and
 requires the checker to fail on each injected defect, so the checks are proven
 to have teeth rather than hand-counted. Exits non-zero with every violation.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -54,28 +55,49 @@ class UniqueKeyLoader(yaml.SafeLoader):
     def construct_mapping(self, node, deep=False):
         seen = set()
         for key_node, _ in node.value:
-            key = "<<" if key_node.tag == "tag:yaml.org,2002:merge" else self.construct_object(key_node, deep=deep)
+            key = (
+                "<<"
+                if key_node.tag == "tag:yaml.org,2002:merge"
+                else self.construct_object(key_node, deep=deep)
+            )
             if key in seen:
                 raise yaml.constructor.ConstructorError(
-                    "while constructing a mapping", node.start_mark,
-                    f"duplicate YAML key {key!r}", key_node.start_mark,
+                    "while constructing a mapping",
+                    node.start_mark,
+                    f"duplicate YAML key {key!r}",
+                    key_node.start_mark,
                 )
             seen.add(key)
         self.flatten_mapping(node)
         return super().construct_mapping(node, deep=deep)
 
+
 # Secret names and the keys this release may reference. A reference outside this
 # contract is a typo or an undeclared dependency and must fail.
 SECRET_CONTRACT = {
     "contract-audit-db-urls": {
-        "CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL", "EXECUTION_DATABASE_URL",
-        "MODEL_DATABASE_URL", "TOOL_DATABASE_URL", "MIGRATOR_DATABASE_URL",
-        "AUTH_ADMIN_DATABASE_URL", "DEV_DATABASE_URL", "PROD_DATABASE_URL",
+        "CORE_DATABASE_URL",
+        "DOCUMENT_DATABASE_URL",
+        "EXECUTION_DATABASE_URL",
+        "MODEL_DATABASE_URL",
+        "TOOL_DATABASE_URL",
+        "MIGRATOR_DATABASE_URL",
+        "AUTH_ADMIN_DATABASE_URL",
+        "DEV_DATABASE_URL",
+        "PROD_DATABASE_URL",
     },
     "contract-audit-service-tokens": {
-        "GATEWAY_CORE_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_TOOL_TOKEN",
-        "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN",
-        "CORE_DOCUMENT_TOKEN", "DOCUMENT_MODEL_TOKEN", "TOOL_CORE_AUTHORITY_TOKEN",
+        "GATEWAY_CORE_TOKEN",
+        "GATEWAY_DOCUMENT_TOKEN",
+        "GATEWAY_EXECUTION_TOKEN",
+        "GATEWAY_TOOL_TOKEN",
+        "WORKER_DOCUMENT_TOKEN",
+        "WORKER_MODEL_TOKEN",
+        "WORKER_TOOL_TOKEN",
+        "WORKER_CORE_TOKEN",
+        "CORE_DOCUMENT_TOKEN",
+        "DOCUMENT_MODEL_TOKEN",
+        "TOOL_CORE_AUTHORITY_TOKEN",
         "CORE_MODEL_AUTHORITY_TOKEN",
     },
     "contract-audit-oidc": {"OIDC_CLIENT_SECRET", "OIDC_ADMIN_CLIENT_SECRET", "OIDC_STATE_KEY"},
@@ -85,39 +107,96 @@ SECRET_CONTRACT = {
 }
 
 REQUIRED = {
-    "core": ("CORE_DATABASE_URL", "GATEWAY_ROLE_TOKEN", "WORKER_CORE_TOKEN", "CORE_DOCUMENT_TOKEN", "TOOL_CORE_AUTHORITY_TOKEN", "MODEL_GATEWAY_URL"),
+    "core": (
+        "CORE_DATABASE_URL",
+        "GATEWAY_ROLE_TOKEN",
+        "WORKER_CORE_TOKEN",
+        "CORE_DOCUMENT_TOKEN",
+        "TOOL_CORE_AUTHORITY_TOKEN",
+        "MODEL_GATEWAY_URL",
+    ),
     "document": (
-        "DOCUMENT_DATABASE_URL", "GATEWAY_ROLE_TOKEN", "MODEL_GATEWAY_URL",
-        "DOCUMENT_MODEL_TOKEN", "WORKER_DOCUMENT_TOKEN", "CORE_DOCUMENT_TOKEN",
-        "S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY",
+        "DOCUMENT_DATABASE_URL",
+        "GATEWAY_ROLE_TOKEN",
+        "MODEL_GATEWAY_URL",
+        "DOCUMENT_MODEL_TOKEN",
+        "WORKER_DOCUMENT_TOKEN",
+        "CORE_DOCUMENT_TOKEN",
+        "S3_ENDPOINT",
+        "S3_BUCKET",
+        "S3_ACCESS_KEY",
+        "S3_SECRET_KEY",
     ),
     "execution": ("EXECUTION_DATABASE_URL", "GATEWAY_ROLE_TOKEN"),
     "worker": (
-        "EXECUTION_DATABASE_URL", "HEALTH_ADDR", "DOCUMENT_SERVICE_URL",
-        "WORKER_DOCUMENT_TOKEN", "MODEL_GATEWAY_URL", "WORKER_MODEL_TOKEN",
-        "TOOL_GATEWAY_URL", "WORKER_TOOL_TOKEN", "CORE_SERVICE_URL", "WORKER_CORE_TOKEN",
+        "EXECUTION_DATABASE_URL",
+        "HEALTH_ADDR",
+        "DOCUMENT_SERVICE_URL",
+        "WORKER_DOCUMENT_TOKEN",
+        "MODEL_GATEWAY_URL",
+        "WORKER_MODEL_TOKEN",
+        "TOOL_GATEWAY_URL",
+        "WORKER_TOOL_TOKEN",
+        "CORE_SERVICE_URL",
+        "WORKER_CORE_TOKEN",
     ),
     "model": ("MODEL_DATABASE_URL", "WORKER_MODEL_TOKEN", "DOCUMENT_MODEL_TOKEN", "LLM_API_KEY"),
-    "tool": ("TOOL_DATABASE_URL", "GATEWAY_ROLE_TOKEN", "WORKER_TOOL_TOKEN", "TOOL_CORE_AUTHORITY_TOKEN"),
+    "tool": (
+        "TOOL_DATABASE_URL",
+        "GATEWAY_ROLE_TOKEN",
+        "WORKER_TOOL_TOKEN",
+        "TOOL_CORE_AUTHORITY_TOKEN",
+    ),
 }
 GATEWAY_ENV = (
-    "CORE_URLS", "DOCUMENT_URL", "EXECUTION_URL", "TOOL_URLS",
-    "GATEWAY_HEALTH_INTERVAL", "GATEWAY_HEALTH_TIMEOUT",
-    "GATEWAY_HEALTH_FAILURE_THRESHOLD", "GATEWAY_HEALTH_RECOVERY_THRESHOLD",
-    "GATEWAY_CORE_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_TOOL_TOKEN",
+    "CORE_URLS",
+    "DOCUMENT_URL",
+    "EXECUTION_URL",
+    "TOOL_URLS",
+    "GATEWAY_HEALTH_INTERVAL",
+    "GATEWAY_HEALTH_TIMEOUT",
+    "GATEWAY_HEALTH_FAILURE_THRESHOLD",
+    "GATEWAY_HEALTH_RECOVERY_THRESHOLD",
+    "GATEWAY_CORE_TOKEN",
+    "GATEWAY_DOCUMENT_TOKEN",
+    "GATEWAY_EXECUTION_TOKEN",
+    "GATEWAY_TOOL_TOKEN",
 )
 IDENTITY_SERVICES = ("core", "document", "execution", "worker")
 IDENTITY_KEYS = ("LLM_BASE_URL", "LLM_MODEL", "OCR_MODEL")
-STRUCTURED_KEYS = ("CAW_STRUCTURED_OUTPUT_ENABLED", "CAW_STRUCTURED_OUTPUT_PROVIDER_URL", "CAW_STRUCTURED_OUTPUT_REVIEW_MODEL")
+STRUCTURED_KEYS = (
+    "CAW_STRUCTURED_OUTPUT_ENABLED",
+    "CAW_STRUCTURED_OUTPUT_PROVIDER_URL",
+    "CAW_STRUCTURED_OUTPUT_REVIEW_MODEL",
+)
 STRUCTURED_OFF = dict(zip(STRUCTURED_KEYS, ("false", "", "")))
 JEV_ADVISORY_KEYS = (
-    "TYPESAFE_JEV_MODE", "TYPESAFE_JEV_EGRESS", "TYPESAFE_JEV_FEATURES",
-    "TYPESAFE_JEV_MODEL", "TYPESAFE_JEV_PROVIDER",
+    "TYPESAFE_JEV_MODE",
+    "TYPESAFE_JEV_EGRESS",
+    "TYPESAFE_JEV_FEATURES",
+    "TYPESAFE_JEV_MODEL",
+    "TYPESAFE_JEV_PROVIDER",
 )
 JEV_MODEL_KEYS = JEV_ADVISORY_KEYS + ("TYPESAFE_JEV_BASE_URL",)
-INTERNAL_TOKEN_KEYS = ("WORKER_MODEL_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "CORE_DOCUMENT_TOKEN", "DOCUMENT_MODEL_TOKEN", "TOOL_CORE_AUTHORITY_TOKEN", "CORE_MODEL_AUTHORITY_TOKEN")
+INTERNAL_TOKEN_KEYS = (
+    "WORKER_MODEL_TOKEN",
+    "WORKER_DOCUMENT_TOKEN",
+    "WORKER_TOOL_TOKEN",
+    "WORKER_CORE_TOKEN",
+    "CORE_DOCUMENT_TOKEN",
+    "DOCUMENT_MODEL_TOKEN",
+    "TOOL_CORE_AUTHORITY_TOKEN",
+    "CORE_MODEL_AUTHORITY_TOKEN",
+)
 PROBES = ("startupProbe", "readinessProbe", "livenessProbe")
-HTTP_PORT_HINT = {"core": 8081, "document": 8082, "execution": 8083, "worker": 8086, "model": 8084, "tool": 8085}
+HTTP_PORT_HINT = {
+    "core": 8081,
+    "document": 8082,
+    "execution": 8083,
+    "worker": 8086,
+    "model": 8084,
+    "tool": 8085,
+}
 
 failures: list[str] = []
 notes: list[str] = []
@@ -129,7 +208,11 @@ def fail(message: str) -> None:
 
 def read_yaml_all(path: Path) -> list[dict]:
     try:
-        return [doc for doc in yaml.load_all(path.read_text(encoding="utf-8"), Loader=UniqueKeyLoader) if doc]
+        return [
+            doc
+            for doc in yaml.load_all(path.read_text(encoding="utf-8"), Loader=UniqueKeyLoader)
+            if doc
+        ]
     except (yaml.YAMLError, ValueError) as error:
         fail(f"invalid YAML in {path}: {error}")
         return []
@@ -178,11 +261,16 @@ def dockerfile_expectations(root: Path) -> tuple[set[str], set[str], dict[str, s
     for stage in re.findall(r"COPY --from=([A-Za-z0-9_.-]+)", text):
         if stage not in stages:
             fail(f"deploy/app/Dockerfile copies from undeclared stage {stage!r}")
-    backend = re.search(r"^FROM\s+\S+\s+AS\s+backend$(.*?)(?=^FROM\s|\Z)", text, re.MULTILINE | re.DOTALL)
+    backend = re.search(
+        r"^FROM\s+\S+\s+AS\s+backend$(.*?)(?=^FROM\s|\Z)", text, re.MULTILINE | re.DOTALL
+    )
     if not backend:
         fail("deploy/app/Dockerfile declares no backend stage")
         return set(), built, stages
-    copied = re.findall(r"COPY --from=go-build[^\n]*?/out/([A-Za-z0-9_.-]+)\s+/app/([A-Za-z0-9_.-]+)", backend.group(1))
+    copied = re.findall(
+        r"COPY --from=go-build[^\n]*?/out/([A-Za-z0-9_.-]+)\s+/app/([A-Za-z0-9_.-]+)",
+        backend.group(1),
+    )
     entrypoints = {f"/app/{target}" for source, target in copied if source == target}
     for source, target in copied:
         if source != target:
@@ -196,13 +284,22 @@ def dockerfile_expectations(root: Path) -> tuple[set[str], set[str], dict[str, s
 def source_expectations(root: Path) -> tuple[set[str], set[str], dict[str, str], set[str]]:
     services = (root / "internal/bootstrap/services.go").read_text(encoding="utf-8")
     accepted: set[str] = set()
-    open_service = re.search(r"func OpenService\([^)]*\).*?switch role\s*\{(.*?)\n\s*\}", services, re.DOTALL)
+    open_service = re.search(
+        r"func OpenService\([^)]*\).*?switch role\s*\{(.*?)\n\s*\}", services, re.DOTALL
+    )
     if open_service:
         for group in re.findall(r'case ("[^"]+"(?:, "[^"]+")*):', open_service.group(1)):
             accepted |= set(re.findall(r'"([^"]+)"', group))
     if not accepted:
         fail("internal/bootstrap/services.go declares no accepted service role")
-    dsn_line = next((line for line in services.splitlines() if "map[string]string{" in line and "_DATABASE_URL" in line), "")
+    dsn_line = next(
+        (
+            line
+            for line in services.splitlines()
+            if "map[string]string{" in line and "_DATABASE_URL" in line
+        ),
+        "",
+    )
     dsn_keys = dict(re.findall(r'"([a-z]+)":\s*"([A-Z_]+)"', dsn_line))
     if not dsn_keys:
         fail("internal/bootstrap/services.go declares no per-role database identity key")
@@ -225,10 +322,17 @@ def compose_environment(environment: object) -> dict[str, str]:
             values[key.strip()] = value.strip()
     return values
 
+
 def valid_service_url(value: object) -> bool:
     try:
         parsed = urlsplit(str(value or "").strip())
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username is not None or parsed.query or parsed.fragment:
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.query
+            or parsed.fragment
+        ):
             return False
         parsed.port
         return True
@@ -242,18 +346,28 @@ def is_operator_placeholder(value: object) -> bool:
     except ValueError:
         return True
     host = (parsed.hostname or "").lower().rstrip(".")
-    return (not host or host.startswith("replace-me") or host in {"example.com", "example.net", "example.org"} or
-            host.endswith((".example.com", ".example.net", ".example.org")) or ".example." in host)
+    return (
+        not host
+        or host.startswith("replace-me")
+        or host in {"example.com", "example.net", "example.org"}
+        or host.endswith((".example.com", ".example.net", ".example.org"))
+        or ".example." in host
+    )
 
 
 def check_core_authority_config(root: Path, mode: str) -> None:
     """Check the shared Core authority channel only at its actual consumers."""
     runtime_docs = read_yaml_all(root / "deployments/k8s/base/config.yaml")
-    runtime = next((doc.get("data", {}) for doc in runtime_docs
-                    if doc.get("kind") == "ConfigMap" and
-                    (doc.get("metadata", {}).get("name") == "contract-audit-runtime")), {})
-    required = ("CORE_AUTHORITY_URL", "CORE_AUTHORITY_CA_FILE",
-                "CORE_AUTHORITY_ALLOW_INSECURE_DEV")
+    runtime = next(
+        (
+            doc.get("data", {})
+            for doc in runtime_docs
+            if doc.get("kind") == "ConfigMap"
+            and (doc.get("metadata", {}).get("name") == "contract-audit-runtime")
+        ),
+        {},
+    )
+    required = ("CORE_AUTHORITY_URL", "CORE_AUTHORITY_CA_FILE", "CORE_AUTHORITY_ALLOW_INSECURE_DEV")
     for key in required:
         if key not in runtime:
             fail(f"production runtime ConfigMap is missing {key}")
@@ -265,34 +379,71 @@ def check_core_authority_config(root: Path, mode: str) -> None:
     endpoint = str(runtime.get("CORE_AUTHORITY_URL", "")).strip()
     if mode == "template":
         if endpoint != "https://REPLACE-ME-CORE-AUTH-ENDPOINT":
-            fail("production template must retain the explicit nondeployable HTTPS Core authority placeholder")
-        notes.append("Core authority callback template: HTTPS operator placeholder; production preflight NOT_RUN")
+            fail(
+                "production template must retain the explicit nondeployable HTTPS Core authority placeholder"
+            )
+        notes.append(
+            "Core authority callback template: HTTPS operator placeholder; production preflight NOT_RUN"
+        )
     else:
         if is_operator_placeholder(endpoint):
-            fail("production deployment preflight BLOCKED: replace CORE_AUTHORITY_URL with the trusted Core HTTPS route")
+            fail(
+                "production deployment preflight BLOCKED: replace CORE_AUTHORITY_URL with the trusted Core HTTPS route"
+            )
         if not valid_service_url(endpoint) or urlsplit(endpoint).scheme != "https":
-            fail("production deployment preflight requires an absolute HTTPS CORE_AUTHORITY_URL origin")
+            fail(
+                "production deployment preflight requires an absolute HTTPS CORE_AUTHORITY_URL origin"
+            )
         if urlsplit(endpoint).path not in {"", "/"}:
-            fail("production deployment preflight requires CORE_AUTHORITY_URL to be an origin without a path")
-        if not is_operator_placeholder(endpoint) and valid_service_url(endpoint) and urlsplit(endpoint).scheme == "https" and urlsplit(endpoint).path in {"", "/"}:
-            notes.append("Core authority callback URL is a configured HTTPS origin; TLS network verification NOT_RUN")
+            fail(
+                "production deployment preflight requires CORE_AUTHORITY_URL to be an origin without a path"
+            )
+        if (
+            not is_operator_placeholder(endpoint)
+            and valid_service_url(endpoint)
+            and urlsplit(endpoint).scheme == "https"
+            and urlsplit(endpoint).path in {"", "/"}
+        ):
+            notes.append(
+                "Core authority callback URL is a configured HTTPS origin; TLS network verification NOT_RUN"
+            )
 
     if runtime.get("CORE_AUTHORITY_CA_FILE", ""):
         ca_path = str(runtime["CORE_AUTHORITY_CA_FILE"]).strip()
         workloads = read_yaml_all(root / "deployments/k8s/base/workloads.yaml")
-        for name in ("document-service", "audit-worker", "tool-gateway", "audit-execution", "model-gateway"):
-            deployment = next((obj for obj in workloads if obj.get("kind") == "Deployment" and
-                               obj.get("metadata", {}).get("name") == name), None)
+        for name in (
+            "document-service",
+            "audit-worker",
+            "tool-gateway",
+            "audit-execution",
+            "model-gateway",
+        ):
+            deployment = next(
+                (
+                    obj
+                    for obj in workloads
+                    if obj.get("kind") == "Deployment"
+                    and obj.get("metadata", {}).get("name") == name
+                ),
+                None,
+            )
             template = (deployment or {}).get("spec", {}).get("template", {}).get("spec", {})
             containers = template.get("containers", [])
             volume_map = {v.get("name"): v for v in template.get("volumes", [])}
-            mounted = any((ca_path == mount.get("mountPath") or
-                           ca_path.startswith(str(mount.get("mountPath", "")).rstrip("/") + "/")) and
-                          volume_map.get(mount.get("name"), {}).get("configMap", {}).get("name") ==
-                          "contract-audit-core-authority-ca"
-                          for container in containers for mount in container.get("volumeMounts", []))
+            mounted = any(
+                (
+                    ca_path == mount.get("mountPath")
+                    or ca_path.startswith(str(mount.get("mountPath", "")).rstrip("/") + "/")
+                )
+                and volume_map.get(mount.get("name"), {}).get("configMap", {}).get("name")
+                == "contract-audit-core-authority-ca"
+                for container in containers
+                for mount in container.get("volumeMounts", [])
+            )
             if not mounted:
-                fail(f"CORE_AUTHORITY_CA_FILE must name a file under the mounted trust ConfigMap in the {name} workload")
+                fail(
+                    f"CORE_AUTHORITY_CA_FILE must name a file under the mounted trust ConfigMap in the {name} workload"
+                )
 
     compose = read_compose(root / "compose.app.yaml")
     expected_compose = {
@@ -308,7 +459,14 @@ def check_core_authority_config(root: Path, mode: str) -> None:
         "read_only": True,
         "bind": {"create_host_path": False},
     }
-    authority_clients = {"document-service", "audit-worker", "tool-gateway", "audit-execution", "model-gateway", "model-gateway-fixture"}
+    authority_clients = {
+        "document-service",
+        "audit-worker",
+        "tool-gateway",
+        "audit-execution",
+        "model-gateway",
+        "model-gateway-fixture",
+    }
     for name in sorted(authority_clients):
         service = services.get(name) or {}
         service_env = compose_environment(service.get("environment"))
@@ -316,7 +474,9 @@ def check_core_authority_config(root: Path, mode: str) -> None:
             if not re.fullmatch(pattern, service_env.get(key, "")):
                 fail(f"compose {name} must explicitly pass {key} from the private profile")
         if ca_mount not in service.get("volumes", []):
-            fail(f"compose {name} must mount the optional Core authority CA read-only at the configured path")
+            fail(
+                f"compose {name} must mount the optional Core authority CA read-only at the configured path"
+            )
     authority_names = set(expected_compose)
     for name, service in services.items():
         if name in authority_clients:
@@ -329,22 +489,47 @@ def check_core_authority_config(root: Path, mode: str) -> None:
 
     workloads = read_yaml_all(root / "deployments/k8s/base/workloads.yaml")
     for name in sorted(authority_clients - {"model-gateway-fixture"}):
-        deployment = next((obj for obj in workloads if obj.get("kind") == "Deployment" and
-                           obj.get("metadata", {}).get("name") == name), None)
-        containers = ((deployment or {}).get("spec", {}).get("template", {}).get("spec", {})
-                      .get("containers", []))
-        uses_runtime = any(any((source.get("configMapRef") or {}).get("name") == "contract-audit-runtime"
-                               for source in container.get("envFrom", [])) for container in containers)
+        deployment = next(
+            (
+                obj
+                for obj in workloads
+                if obj.get("kind") == "Deployment" and obj.get("metadata", {}).get("name") == name
+            ),
+            None,
+        )
+        containers = (
+            (deployment or {})
+            .get("spec", {})
+            .get("template", {})
+            .get("spec", {})
+            .get("containers", [])
+        )
+        uses_runtime = any(
+            any(
+                (source.get("configMapRef") or {}).get("name") == "contract-audit-runtime"
+                for source in container.get("envFrom", [])
+            )
+            for container in containers
+        )
         if not uses_runtime:
             fail(f"Kubernetes {name} must import the shared Core authority ConfigMap")
 
     k3d_docs = read_yaml_all(root / "deployments/k3d/config-patch.yaml")
-    k3d = next((obj.get("data", {}) for obj in k3d_docs if obj.get("kind") == "ConfigMap" and
-                obj.get("metadata", {}).get("name") == "contract-audit-runtime"), {})
-    if (k3d.get("APP_ENV") != "development" or
-            k3d.get("CORE_AUTHORITY_URL") != "http://core-api:8081" or
-            k3d.get("CORE_AUTHORITY_ALLOW_INSECURE_DEV") != "true" or
-            k3d.get("CORE_AUTHORITY_CA_FILE") != ""):
+    k3d = next(
+        (
+            obj.get("data", {})
+            for obj in k3d_docs
+            if obj.get("kind") == "ConfigMap"
+            and obj.get("metadata", {}).get("name") == "contract-audit-runtime"
+        ),
+        {},
+    )
+    if (
+        k3d.get("APP_ENV") != "development"
+        or k3d.get("CORE_AUTHORITY_URL") != "http://core-api:8081"
+        or k3d.get("CORE_AUTHORITY_ALLOW_INSECURE_DEV") != "true"
+        or k3d.get("CORE_AUTHORITY_CA_FILE") != ""
+    ):
         fail("k3d development profile must use the exact bounded Core authority HTTP exception")
 
 
@@ -356,35 +541,72 @@ def check_context_switch_config(root: Path) -> None:
         fail(".env.example must keep CONTEXT_SWITCH_ENABLED=false by default")
 
     config_docs = read_yaml_all(root / "deployments/k8s/base/config.yaml")
-    shared = next((doc.get("data", {}) for doc in config_docs if doc.get("kind") == "ConfigMap" and
-                   doc.get("metadata", {}).get("name") == "contract-audit-runtime"), {})
+    shared = next(
+        (
+            doc.get("data", {})
+            for doc in config_docs
+            if doc.get("kind") == "ConfigMap"
+            and doc.get("metadata", {}).get("name") == "contract-audit-runtime"
+        ),
+        {},
+    )
     if "CONTEXT_SWITCH_ENABLED" in shared:
         fail("CONTEXT_SWITCH_ENABLED must not be added to the shared runtime ConfigMap")
-    core_runtime = next((doc.get("data", {}) for doc in config_docs if doc.get("kind") == "ConfigMap" and
-                         doc.get("metadata", {}).get("name") == "contract-audit-core-runtime"), None)
-    if not isinstance(core_runtime, dict) or core_runtime.get("CONTEXT_SWITCH_ENABLED") != required_default:
+    core_runtime = next(
+        (
+            doc.get("data", {})
+            for doc in config_docs
+            if doc.get("kind") == "ConfigMap"
+            and doc.get("metadata", {}).get("name") == "contract-audit-core-runtime"
+        ),
+        None,
+    )
+    if (
+        not isinstance(core_runtime, dict)
+        or core_runtime.get("CONTEXT_SWITCH_ENABLED") != required_default
+    ):
         fail("Kubernetes Core runtime ConfigMap must default CONTEXT_SWITCH_ENABLED=false")
 
     workloads = read_yaml_all(root / "deployments/k8s/base/workloads.yaml")
-    core = next((obj for obj in workloads if obj.get("kind") == "Deployment" and
-                 obj.get("metadata", {}).get("name") == "core-api"), None)
-    core_containers = ((core or {}).get("spec", {}).get("template", {}).get("spec", {}).get("containers", []))
-    core_bindings = [entry for container in core_containers for entry in container.get("env", [])
-                     if entry.get("name") == "CONTEXT_SWITCH_ENABLED"]
+    core = next(
+        (
+            obj
+            for obj in workloads
+            if obj.get("kind") == "Deployment" and obj.get("metadata", {}).get("name") == "core-api"
+        ),
+        None,
+    )
+    core_containers = (
+        (core or {}).get("spec", {}).get("template", {}).get("spec", {}).get("containers", [])
+    )
+    core_bindings = [
+        entry
+        for container in core_containers
+        for entry in container.get("env", [])
+        if entry.get("name") == "CONTEXT_SWITCH_ENABLED"
+    ]
     if len(core_bindings) != 1:
         fail("Kubernetes Core must receive exactly one CONTEXT_SWITCH_ENABLED binding")
-    elif ((core_bindings[0].get("valueFrom", {}).get("configMapKeyRef", {}).get("name") !=
-           "contract-audit-core-runtime") or
-          (core_bindings[0].get("valueFrom", {}).get("configMapKeyRef", {}).get("key") !=
-           "CONTEXT_SWITCH_ENABLED")):
+    elif (
+        core_bindings[0].get("valueFrom", {}).get("configMapKeyRef", {}).get("name")
+        != "contract-audit-core-runtime"
+    ) or (
+        core_bindings[0].get("valueFrom", {}).get("configMapKeyRef", {}).get("key")
+        != "CONTEXT_SWITCH_ENABLED"
+    ):
         fail("Kubernetes Core must read CONTEXT_SWITCH_ENABLED from its dedicated ConfigMap")
     for obj in workloads:
         if obj.get("kind") != "Deployment" or obj.get("metadata", {}).get("name") == "core-api":
             continue
         containers = obj.get("spec", {}).get("template", {}).get("spec", {}).get("containers", [])
-        if any(entry.get("name") == "CONTEXT_SWITCH_ENABLED" for container in containers
-               for entry in container.get("env", [])):
-            fail(f"Kubernetes {obj.get('metadata', {}).get('name')} must not receive CONTEXT_SWITCH_ENABLED")
+        if any(
+            entry.get("name") == "CONTEXT_SWITCH_ENABLED"
+            for container in containers
+            for entry in container.get("env", [])
+        ):
+            fail(
+                f"Kubernetes {obj.get('metadata', {}).get('name')} must not receive CONTEXT_SWITCH_ENABLED"
+            )
 
     compose = read_compose(root / "compose.app.yaml").get("services", {})
     expected = "${CONTEXT_SWITCH_ENABLED:-false}"
@@ -398,52 +620,102 @@ def check_context_switch_config(root: Path) -> None:
             fail(f"Compose {name} must not receive CONTEXT_SWITCH_ENABLED")
 
     k3d_docs = read_yaml_all(root / "deployments/k3d/config-patch.yaml")
-    k3d_shared = next((doc.get("data", {}) for doc in k3d_docs if doc.get("kind") == "ConfigMap" and
-                       doc.get("metadata", {}).get("name") == "contract-audit-runtime"), {})
-    k3d_core = next((doc.get("data", {}) for doc in k3d_docs if doc.get("kind") == "ConfigMap" and
-                     doc.get("metadata", {}).get("name") == "contract-audit-core-runtime"), None)
+    k3d_shared = next(
+        (
+            doc.get("data", {})
+            for doc in k3d_docs
+            if doc.get("kind") == "ConfigMap"
+            and doc.get("metadata", {}).get("name") == "contract-audit-runtime"
+        ),
+        {},
+    )
+    k3d_core = next(
+        (
+            doc.get("data", {})
+            for doc in k3d_docs
+            if doc.get("kind") == "ConfigMap"
+            and doc.get("metadata", {}).get("name") == "contract-audit-core-runtime"
+        ),
+        None,
+    )
     if "CONTEXT_SWITCH_ENABLED" in k3d_shared:
         fail("k3d CONTEXT_SWITCH_ENABLED must not be added to the shared runtime ConfigMap")
     if not isinstance(k3d_core, dict) or k3d_core.get("CONTEXT_SWITCH_ENABLED") != required_default:
         fail("k3d Core runtime ConfigMap must default CONTEXT_SWITCH_ENABLED=false")
 
 
-def check_experience_kubernetes(name: str, role: str, container: dict, env: dict[str, object], runtime: dict[str, object]) -> None:
+def check_experience_kubernetes(
+    name: str, role: str, container: dict, env: dict[str, object], runtime: dict[str, object]
+) -> None:
     if role not in {"core", "worker"}:
         return
     source = env.get("WORKER_CORE_TOKEN")
     ref = source.get("secretKeyRef") if isinstance(source, dict) else None
-    if not isinstance(ref, dict) or ref.get("name") != "contract-audit-service-tokens" or ref.get("key") != "WORKER_CORE_TOKEN" or ref.get("optional", False):
-        fail(f"{name}: {role} must use the required WORKER_CORE_TOKEN secret key shared by core and worker")
-    other_keys = ("GATEWAY_ROLE_TOKEN",) if role == "core" else ("WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN")
+    if (
+        not isinstance(ref, dict)
+        or ref.get("name") != "contract-audit-service-tokens"
+        or ref.get("key") != "WORKER_CORE_TOKEN"
+        or ref.get("optional", False)
+    ):
+        fail(
+            f"{name}: {role} must use the required WORKER_CORE_TOKEN secret key shared by core and worker"
+        )
+    other_keys = (
+        ("GATEWAY_ROLE_TOKEN",)
+        if role == "core"
+        else ("WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN")
+    )
     for key in other_keys:
         other = env.get(key)
         other_ref = other.get("secretKeyRef") if isinstance(other, dict) else None
-        if isinstance(other_ref, dict) and other_ref.get("name") == "contract-audit-service-tokens" and other_ref.get("key") == "WORKER_CORE_TOKEN":
+        if (
+            isinstance(other_ref, dict)
+            and other_ref.get("name") == "contract-audit-service-tokens"
+            and other_ref.get("key") == "WORKER_CORE_TOKEN"
+        ):
             fail(f"{name}: WORKER_CORE_TOKEN must be distinct from {key}")
     if role != "worker":
         return
     if "CORE_SERVICE_URL" in env:
         source = env["CORE_SERVICE_URL"]
         ref = source.get("configMapKeyRef") if isinstance(source, dict) else None
-        if not isinstance(ref, dict) or ref.get("name") != "contract-audit-runtime" or ref.get("key") != "CORE_SERVICE_URL" or ref.get("optional", False):
+        if (
+            not isinstance(ref, dict)
+            or ref.get("name") != "contract-audit-runtime"
+            or ref.get("key") != "CORE_SERVICE_URL"
+            or ref.get("optional", False)
+        ):
             fail(f"{name}: worker CORE_SERVICE_URL must use the runtime ConfigMap key")
-    elif not any((item.get("configMapRef") or {}).get("name") == "contract-audit-runtime" and not (item.get("configMapRef") or {}).get("optional", False) for item in container.get("envFrom") or []):
+    elif not any(
+        (item.get("configMapRef") or {}).get("name") == "contract-audit-runtime"
+        and not (item.get("configMapRef") or {}).get("optional", False)
+        for item in container.get("envFrom") or []
+    ):
         fail(f"{name}: worker must import CORE_SERVICE_URL from the runtime ConfigMap")
     if not valid_service_url(runtime.get("CORE_SERVICE_URL")):
-        fail(f"{name}: runtime CORE_SERVICE_URL must be an HTTP(S) service URL without credentials, query, or fragment")
+        fail(
+            f"{name}: runtime CORE_SERVICE_URL must be an HTTP(S) service URL without credentials, query, or fragment"
+        )
 
 
 def check_experience_compose(name: str, role: str, environment: dict[str, str]) -> None:
     if role not in {"core", "worker"}:
         return
-    if not re.fullmatch(r"\$\{WORKER_CORE_TOKEN:\?[^}]*\}", environment.get("WORKER_CORE_TOKEN", "")):
+    if not re.fullmatch(
+        r"\$\{WORKER_CORE_TOKEN:\?[^}]*\}", environment.get("WORKER_CORE_TOKEN", "")
+    ):
         fail(f"compose {name}: {role} must require the shared WORKER_CORE_TOKEN variable")
-    other_keys = ("GATEWAY_ROLE_TOKEN",) if role == "core" else ("WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN")
+    other_keys = (
+        ("GATEWAY_ROLE_TOKEN",)
+        if role == "core"
+        else ("WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN")
+    )
     for key in other_keys:
         if re.match(r"\$\{WORKER_CORE_TOKEN(?=[:}])", environment.get(key, "")):
             fail(f"compose {name}: WORKER_CORE_TOKEN must be distinct from {key}")
-    if role == "worker" and not re.fullmatch(r"\$\{CORE_SERVICE_URL:\?[^}]*\}", environment.get("CORE_SERVICE_URL", "")):
+    if role == "worker" and not re.fullmatch(
+        r"\$\{CORE_SERVICE_URL:\?[^}]*\}", environment.get("CORE_SERVICE_URL", "")
+    ):
         fail(f"compose {name}: worker must require the CORE_SERVICE_URL variable")
 
 
@@ -462,8 +734,12 @@ def check_tool_authority_kubernetes(name: str, role: str | None, env: dict[str, 
     source = env.get("TOOL_CORE_AUTHORITY_TOKEN")
     ref = source.get("secretKeyRef") if isinstance(source, dict) else None
     if required:
-        if (not isinstance(ref, dict) or ref.get("name") != "contract-audit-service-tokens" or
-                ref.get("key") != "TOOL_CORE_AUTHORITY_TOKEN" or ref.get("optional", False)):
+        if (
+            not isinstance(ref, dict)
+            or ref.get("name") != "contract-audit-service-tokens"
+            or ref.get("key") != "TOOL_CORE_AUTHORITY_TOKEN"
+            or ref.get("optional", False)
+        ):
             fail(f"{name}: {role} must use the required TOOL_CORE_AUTHORITY_TOKEN service secret")
     elif source is not None:
         fail(f"{name}: {role or 'gateway'} must not receive TOOL_CORE_AUTHORITY_TOKEN")
@@ -474,7 +750,9 @@ def check_model_authority_compose(name: str, role: str | None, environment: dict
     allowed = required or role == "core"
     value = environment.get("CORE_MODEL_AUTHORITY_TOKEN", "")
     if required and not re.fullmatch(r"\$\{CORE_MODEL_AUTHORITY_TOKEN:\?[^}]*\}", value):
-        fail("compose model-gateway must require CORE_MODEL_AUTHORITY_TOKEN from the private profile")
+        fail(
+            "compose model-gateway must require CORE_MODEL_AUTHORITY_TOKEN from the private profile"
+        )
     elif role == "core" and not re.fullmatch(r"\$\{CORE_MODEL_AUTHORITY_TOKEN:\?[^}]*\}", value):
         fail("compose core must require CORE_MODEL_AUTHORITY_TOKEN for model authority mode")
     elif not allowed and value:
@@ -483,12 +761,15 @@ def check_model_authority_compose(name: str, role: str | None, environment: dict
 
 def check_model_authority_kubernetes(name: str, role: str | None, env: dict[str, object]) -> None:
     required = role == "model" and name == "model-gateway"
-    allowed = required or role == "core"
     source = env.get("CORE_MODEL_AUTHORITY_TOKEN")
     ref = source.get("secretKeyRef") if isinstance(source, dict) else None
     if required or role == "core":
-        if (not isinstance(ref, dict) or ref.get("name") != "contract-audit-service-tokens" or
-                ref.get("key") != "CORE_MODEL_AUTHORITY_TOKEN" or ref.get("optional", False)):
+        if (
+            not isinstance(ref, dict)
+            or ref.get("name") != "contract-audit-service-tokens"
+            or ref.get("key") != "CORE_MODEL_AUTHORITY_TOKEN"
+            or ref.get("optional", False)
+        ):
             fail(f"{name}: {role} must use the required CORE_MODEL_AUTHORITY_TOKEN service secret")
     elif source is not None:
         fail(f"{name}: {role or 'gateway'} must not receive CORE_MODEL_AUTHORITY_TOKEN")
@@ -502,10 +783,21 @@ def configmap_lookup(root: Path, objects: list[dict]) -> dict[str, set[str]]:
     return configs
 
 
-def check_container_env(name: str, container: dict, role: str | None, configs: dict[str, set[str]], probes: set[str], surface: bool) -> None:
-    env = {item["name"]: item.get("valueFrom", item.get("value")) for item in container.get("env", [])}
+def check_container_env(
+    name: str,
+    container: dict,
+    role: str | None,
+    configs: dict[str, set[str]],
+    probes: set[str],
+    surface: bool,
+) -> None:
+    env = {
+        item["name"]: item.get("valueFrom", item.get("value")) for item in container.get("env", [])
+    }
     if "AUTH_ADMIN_DATABASE_URL" in env:
-        fail(f"{name}: AUTH_ADMIN_DATABASE_URL is reserved for the one-shot AUTH_FENCE provisioning command")
+        fail(
+            f"{name}: AUTH_ADMIN_DATABASE_URL is reserved for the one-shot AUTH_FENCE provisioning command"
+        )
     config_from: set[str] = set()
     for source in container.get("envFrom") or []:
         reference = source.get("configMapRef") or source.get("secretRef") or {}
@@ -521,16 +813,25 @@ def check_container_env(name: str, container: dict, role: str | None, configs: d
             continue
         if "configMapKeyRef" in source:
             reference = source["configMapKeyRef"]
-            if reference.get("name") not in configs or reference.get("key") not in configs[reference["name"]]:
-                fail(f"{name}: env {key} references {reference.get('name')!r}/{reference.get('key')!r}, which no rendered ConfigMap declares")
+            if (
+                reference.get("name") not in configs
+                or reference.get("key") not in configs[reference["name"]]
+            ):
+                fail(
+                    f"{name}: env {key} references {reference.get('name')!r}/{reference.get('key')!r}, which no rendered ConfigMap declares"
+                )
         elif "secretKeyRef" in source:
             reference = source["secretKeyRef"]
             allowed = SECRET_CONTRACT.get(reference.get("name"), set())
             if reference.get("key") not in allowed:
-                fail(f"{name}: env {key} references {reference.get('name')!r}/{reference.get('key')!r}, outside the declared secret contract")
+                fail(
+                    f"{name}: env {key} references {reference.get('name')!r}/{reference.get('key')!r}, outside the declared secret contract"
+                )
     check_tool_authority_kubernetes(name, role, env)
     check_model_authority_kubernetes(name, role, env)
-    ports = {entry.get("name") for entry in container.get("ports", [])} | {entry.get("containerPort") for entry in container.get("ports", [])}
+    ports = {entry.get("name") for entry in container.get("ports", [])} | {
+        entry.get("containerPort") for entry in container.get("ports", [])
+    }
     if surface and (role or name.endswith("gateway")):
         for probe_key in PROBES:
             probe = container.get(probe_key)
@@ -539,17 +840,25 @@ def check_container_env(name: str, container: dict, role: str | None, configs: d
                 fail(f"{name}: role {role or 'gateway'} declares no {probe_key}")
                 continue
             if http_get.get("path") not in probes:
-                fail(f"{name}: {probe_key} path {http_get.get('path')} is outside the unified health surface")
+                fail(
+                    f"{name}: {probe_key} path {http_get.get('path')} is outside the unified health surface"
+                )
             if http_get.get("port") not in ports:
-                fail(f"{name}: {probe_key} port {http_get.get('port')!r} is not a declared container port")
+                fail(
+                    f"{name}: {probe_key} port {http_get.get('port')!r} is not a declared container port"
+                )
     elif surface:
         for key in PROBES:
             http_get = (container.get(key) or {}).get("httpGet")
             if http_get and http_get.get("port") not in ports:
-                fail(f"{name}: {key} port {http_get.get('port')!r} is not a declared container port")
+                fail(
+                    f"{name}: {key} port {http_get.get('port')!r} is not a declared container port"
+                )
 
 
-def check_gateway_env(name: str, env: dict[str, object], config_from: set[str], configs: dict[str, set[str]]) -> None:
+def check_gateway_env(
+    name: str, env: dict[str, object], config_from: set[str], configs: dict[str, set[str]]
+) -> None:
     for key in GATEWAY_ENV:
         if key in env:
             continue
@@ -558,7 +867,12 @@ def check_gateway_env(name: str, env: dict[str, object], config_from: set[str], 
         if key in config_from or key in configs.get("contract-audit-runtime", set()):
             continue
         fail(f"{name}: the edge is missing {key}")
-    for token in ("GATEWAY_CORE_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_TOOL_TOKEN"):
+    for token in (
+        "GATEWAY_CORE_TOKEN",
+        "GATEWAY_DOCUMENT_TOKEN",
+        "GATEWAY_EXECUTION_TOKEN",
+        "GATEWAY_TOOL_TOKEN",
+    ):
         source = env.get(token)
         if isinstance(source, dict):
             if source.get("secretKeyRef", {}).get("key") != token:
@@ -573,7 +887,9 @@ def check_gateway_env(name: str, env: dict[str, object], config_from: set[str], 
             fail(f"{name}: {key} is not part of the edge contract")
 
 
-def check_jev_kubernetes(name: str, role: str, env: dict[str, object], config_from: set[str]) -> None:
+def check_jev_kubernetes(
+    name: str, role: str, env: dict[str, object], config_from: set[str]
+) -> None:
     if role in {"core", "execution", "worker"}:
         for key in JEV_ADVISORY_KEYS:
             if key not in env and key not in config_from:
@@ -587,8 +903,12 @@ def check_jev_kubernetes(name: str, role: str, env: dict[str, object], config_fr
                 fail(f"{name}: role model is missing Jev configuration {key}")
         source = env.get("TYPESAFE_API_KEY")
         reference = source.get("secretKeyRef") if isinstance(source, dict) else None
-        if not isinstance(reference, dict) or reference.get("name") != "contract-audit-model" or \
-                reference.get("key") != "TYPESAFE_API_KEY" or not reference.get("optional", False):
+        if (
+            not isinstance(reference, dict)
+            or reference.get("name") != "contract-audit-model"
+            or reference.get("key") != "TYPESAFE_API_KEY"
+            or not reference.get("optional", False)
+        ):
             fail(f"{name}: model-gateway must read an optional TYPESAFE_API_KEY secret")
 
 
@@ -606,24 +926,47 @@ def check_jev_compose(name: str, role: str, environment: dict[str, str]) -> None
         fail(f"compose {name}: only the model gateway may hold TYPESAFE_API_KEY")
 
 
-def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: dict[str, str], probes: set[str]) -> None:
-    base_objects, base_files = resolve_kustomization(root, root / "deployments/k8s/base/kustomization.yaml")
+def check_kustomize(
+    root: Path, entrypoints: set[str], roles: set[str], dsn_keys: dict[str, str], probes: set[str]
+) -> None:
+    base_objects, base_files = resolve_kustomization(
+        root, root / "deployments/k8s/base/kustomization.yaml"
+    )
     configs = configmap_lookup(root, base_objects)
-    runtime = next((document.get("data") or {} for document in base_objects
-                    if document.get("kind") == "ConfigMap" and document.get("metadata", {}).get("name") == "contract-audit-runtime"), {})
+    runtime = next(
+        (
+            document.get("data") or {}
+            for document in base_objects
+            if document.get("kind") == "ConfigMap"
+            and document.get("metadata", {}).get("name") == "contract-audit-runtime"
+        ),
+        {},
+    )
     if "contract-audit-runtime" not in configs:
         fail("the rendered base does not include the contract-audit-runtime ConfigMap")
     if any(runtime.get(key) != value for key, value in STRUCTURED_OFF.items()):
         fail("Kubernetes base must default structured output to disabled and unbound")
     k3d_docs = read_yaml_all(root / "deployments/k3d/config-patch.yaml")
-    k3d_runtime = next((doc.get("data", {}) for doc in k3d_docs if doc.get("kind") == "ConfigMap" and doc.get("metadata", {}).get("name") == "contract-audit-runtime"), {})
+    k3d_runtime = next(
+        (
+            doc.get("data", {})
+            for doc in k3d_docs
+            if doc.get("kind") == "ConfigMap"
+            and doc.get("metadata", {}).get("name") == "contract-audit-runtime"
+        ),
+        {},
+    )
     if any(k3d_runtime.get(key) != value for key, value in STRUCTURED_OFF.items()):
         fail("k3d fixture must disable structured output and clear its binding")
     if str(runtime.get("APP_ENV", "")).strip() == "production":
         if str(runtime.get("TYPESAFE_JEV_MODE", "")).strip() != "off":
-            fail("production base must disable Jev; enable advisory only in an authorized deployment overlay")
-        if str(runtime.get("TYPESAFE_JEV_MODE", "")).strip() == "fixture" or \
-                str(runtime.get("TYPESAFE_JEV_MODEL", "")).strip() == "jev-fixture":
+            fail(
+                "production base must disable Jev; enable advisory only in an authorized deployment overlay"
+            )
+        if (
+            str(runtime.get("TYPESAFE_JEV_MODE", "")).strip() == "fixture"
+            or str(runtime.get("TYPESAFE_JEV_MODEL", "")).strip() == "jev-fixture"
+        ):
             fail("production runtime must not enable the Jev fixture")
         if "TYPESAFE_API_KEY" in runtime:
             fail("TYPESAFE_API_KEY must not be stored in the runtime ConfigMap")
@@ -633,16 +976,22 @@ def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys
     if "PodDisruptionBudget" not in kinds:
         fail("the rendered base declares no PodDisruptionBudget")
     if "Job" in kinds:
-        fail("the migration Job must be applied through deployments/k8s/migrate, not the base render")
+        fail(
+            "the migration Job must be applied through deployments/k8s/migrate, not the base render"
+        )
     optional_hpa = root / "deployments/k8s/optional/scaling-hpa.yaml"
     if not optional_hpa.exists():
-        fail("the unreferenced autoscaling spec file deployments/k8s/optional/scaling-hpa.yaml is missing")
+        fail(
+            "the unreferenced autoscaling spec file deployments/k8s/optional/scaling-hpa.yaml is missing"
+        )
     else:
         for document in read_yaml_all(optional_hpa):
             if document.get("kind") == "HorizontalPodAutoscaler":
                 for metric in document["spec"]["metrics"]:
                     if metric.get("type") == "External":
-                        fail(f"optional HPA {document['metadata']['name']} depends on an External metric with no producer")
+                        fail(
+                            f"optional HPA {document['metadata']['name']} depends on an External metric with no producer"
+                        )
 
     deployments = [document for document in base_objects if document.get("kind") == "Deployment"]
     if not deployments:
@@ -658,11 +1007,16 @@ def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys
             backend = "contract-audit-backend" in image
             for token in list(container.get("command") or []) + list(container.get("args") or []):
                 if token.startswith("/app/") and token not in entrypoints:
-                    fail(f"{name}: entrypoint {token} is not copied into the backend stage by deploy/app/Dockerfile")
-            env = {item["name"]: item.get("valueFrom", item.get("value")) for item in container.get("env", [])}
+                    fail(
+                        f"{name}: entrypoint {token} is not copied into the backend stage by deploy/app/Dockerfile"
+                    )
+            env = {
+                item["name"]: item.get("valueFrom", item.get("value"))
+                for item in container.get("env", [])
+            }
             config_from: set[str] = set()
             for source in container.get("envFrom") or []:
-                reference = (source.get("configMapRef") or {})
+                reference = source.get("configMapRef") or {}
                 config_from |= configs.get(reference.get("name"), set())
             role = env.get("SERVICE_ROLE")
             if name == "gateway":
@@ -679,26 +1033,38 @@ def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys
                 continue
             serving_roles.add(role)
             if role in (*IDENTITY_SERVICES, "model"):
-                shared = any((source.get("configMapRef") or {}).get("name") == "contract-audit-runtime" for source in container.get("envFrom") or [])
+                shared = any(
+                    (source.get("configMapRef") or {}).get("name") == "contract-audit-runtime"
+                    for source in container.get("envFrom") or []
+                )
                 if not shared or any(key in env or key not in runtime for key in STRUCTURED_KEYS):
-                    fail(f"{name}: structured output identity must come only from the shared runtime ConfigMap")
+                    fail(
+                        f"{name}: structured output identity must come only from the shared runtime ConfigMap"
+                    )
             check_jev_kubernetes(name, role, env, config_from)
             check_experience_kubernetes(name, role, container, env, runtime)
             dsn = dsn_keys.get(role)
             if dsn is None or dsn not in env:
-                fail(f"{name}: role {role} must declare its database identity key {dsn or '(unknown role)'}")
+                fail(
+                    f"{name}: role {role} must declare its database identity key {dsn or '(unknown role)'}"
+                )
                 continue
             for key in REQUIRED.get(role, ()):
                 if key in env or key in config_from:
                     continue
-                if key == "LLM_API_KEY" and str(env.get("MODEL_GATEWAY_MODE")).strip('"') == "fixture":
+                if (
+                    key == "LLM_API_KEY"
+                    and str(env.get("MODEL_GATEWAY_MODE")).strip('"') == "fixture"
+                ):
                     continue
                 fail(f"{name}: role {role} is missing required env {key}")
             for key in IDENTITY_KEYS:
                 if key not in env and key not in config_from:
                     fail(f"{name}: model identity key {key} is not declared for role {role}")
             hint = HTTP_PORT_HINT.get(role)
-            if hint and hint not in {entry.get("containerPort") for entry in container.get("ports", [])}:
+            if hint and hint not in {
+                entry.get("containerPort") for entry in container.get("ports", [])
+            }:
                 fail(f"{name}: role {role} does not expose its HTTP port {hint}")
 
     missing = roles - serving_roles
@@ -714,13 +1080,18 @@ def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys
         for port in document["spec"].get("ports", []):
             target = port.get("targetPort")
             if isinstance(target, str) and target not in {
-                entry.get("name") for deployment in deployments
+                entry.get("name")
+                for deployment in deployments
                 for container in deployment["spec"]["template"]["spec"]["containers"]
                 for entry in container.get("ports", [])
             }:
-                fail(f"Service {document['metadata']['name']} targets undefined port name {target!r}")
+                fail(
+                    f"Service {document['metadata']['name']} targets undefined port name {target!r}"
+                )
 
-    migration, migration_files = resolve_kustomization(root, root / "deployments/k8s/migrate/kustomization.yaml")
+    migration, migration_files = resolve_kustomization(
+        root, root / "deployments/k8s/migrate/kustomization.yaml"
+    )
     jobs = [document for document in migration if document.get("kind") == "Job"]
     if len(jobs) != 1:
         fail(f"deployments/k8s/migrate must render exactly one migration Job, rendered {len(jobs)}")
@@ -735,25 +1106,59 @@ def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys
         actual_init = []
         for item in init:
             argv = list(item.get("command") or []) + list(item.get("args") or [])
-            actual_init.append((item.get("name"), argv[-1] if len(argv) == 2 and argv[0] == "/app/migrate" else ""))
+            actual_init.append(
+                (item.get("name"), argv[-1] if len(argv) == 2 and argv[0] == "/app/migrate" else "")
+            )
         if actual_init != expected_init:
-            fail("migration Job must run offline migrator, CLM owner, then AUTH_FENCE owner provisioning")
+            fail(
+                "migration Job must run offline migrator, CLM owner, then AUTH_FENCE owner provisioning"
+            )
         else:
-            if len(init) == 3 and any(item.get("image") != (pod_spec.get("containers") or [{}])[0].get("image") for item in init):
-                fail("all migration provisioning steps must use the same backend image as ordinary migration")
+            if len(init) == 3 and any(
+                item.get("image") != (pod_spec.get("containers") or [{}])[0].get("image")
+                for item in init
+            ):
+                fail(
+                    "all migration provisioning steps must use the same backend image as ordinary migration"
+                )
             for item in init:
-                provision_env = {entry["name"]: entry.get("valueFrom", entry.get("value"))
-                                 for entry in item.get("env", [])}
-                admin_key = "CLM_ADMIN_DATABASE_URL" if item.get("name") == "clm-owner-provision" else "AUTH_ADMIN_DATABASE_URL"
+                provision_env = {
+                    entry["name"]: entry.get("valueFrom", entry.get("value"))
+                    for entry in item.get("env", [])
+                }
+                admin_key = (
+                    "CLM_ADMIN_DATABASE_URL"
+                    if item.get("name") == "clm-owner-provision"
+                    else "AUTH_ADMIN_DATABASE_URL"
+                )
                 for key in (admin_key, "MIGRATOR_DATABASE_URL"):
                     source = provision_env.get(key)
                     ref = source.get("secretKeyRef") if isinstance(source, dict) else None
-                    secret_key = "AUTH_ADMIN_DATABASE_URL" if key == "CLM_ADMIN_DATABASE_URL" else key
-                    if not isinstance(ref, dict) or ref.get("name") != "contract-audit-db-urls" or ref.get("key") != secret_key or ref.get("optional", False):
-                        fail(f"{item.get('name')} must receive required {key} only from the private database Secret")
-                for key in ("CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL", "EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL", "TOOL_DATABASE_URL"):
+                    secret_key = (
+                        "AUTH_ADMIN_DATABASE_URL" if key == "CLM_ADMIN_DATABASE_URL" else key
+                    )
+                    if (
+                        not isinstance(ref, dict)
+                        or ref.get("name") != "contract-audit-db-urls"
+                        or ref.get("key") != secret_key
+                        or ref.get("optional", False)
+                    ):
+                        fail(
+                            f"{item.get('name')} must receive required {key} only from the private database Secret"
+                        )
+                for key in (
+                    "CORE_DATABASE_URL",
+                    "DOCUMENT_DATABASE_URL",
+                    "EXECUTION_DATABASE_URL",
+                    "MODEL_DATABASE_URL",
+                    "TOOL_DATABASE_URL",
+                ):
                     ref = (provision_env.get(key) or {}).get("secretKeyRef", {})
-                    if ref.get("name") != "contract-audit-db-urls" or ref.get("key") != key or ref.get("optional", False):
+                    if (
+                        ref.get("name") != "contract-audit-db-urls"
+                        or ref.get("key") != key
+                        or ref.get("optional", False)
+                    ):
                         fail(f"{item.get('name')} must receive required runtime identity {key}")
         containers = pod_spec.get("containers", [])
         if len(containers) != 1 or containers[0].get("name") != "migrate":
@@ -764,24 +1169,47 @@ def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys
         argv = list(container.get("command") or []) + list(container.get("args") or [])
         if "/app/migrate" not in argv:
             fail("the migration Job must run /app/migrate")
-        env = {item["name"]: item.get("valueFrom", item.get("value")) for item in container.get("env", [])}
+        env = {
+            item["name"]: item.get("valueFrom", item.get("value"))
+            for item in container.get("env", [])
+        }
         for admin_key in ("AUTH_ADMIN_DATABASE_URL", "CLM_ADMIN_DATABASE_URL"):
             if admin_key in env:
                 fail(f"ordinary migration container must never receive {admin_key}")
         if env.get("SERVICE_DATABASE_ROLES") != "true":
             fail("the migration Job must set SERVICE_DATABASE_ROLES=true")
-        for key in ("CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL", "EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL", "TOOL_DATABASE_URL", "MIGRATOR_DATABASE_URL", "TEST_DATABASE_URL", "PROD_DATABASE_URL"):
+        for key in (
+            "CORE_DATABASE_URL",
+            "DOCUMENT_DATABASE_URL",
+            "EXECUTION_DATABASE_URL",
+            "MODEL_DATABASE_URL",
+            "TOOL_DATABASE_URL",
+            "MIGRATOR_DATABASE_URL",
+            "TEST_DATABASE_URL",
+            "PROD_DATABASE_URL",
+        ):
             if key not in env:
                 fail(f"the migration Job is missing {key}")
         prod_source = env.get("PROD_DATABASE_URL")
         prod_ref = prod_source.get("secretKeyRef") if isinstance(prod_source, dict) else None
-        if not isinstance(prod_ref, dict) or prod_ref.get("name") != "contract-audit-db-urls" or prod_ref.get("key") != "PROD_DATABASE_URL" or prod_ref.get("optional", False):
-            fail("ordinary migration must require PROD_DATABASE_URL from the private database Secret")
-        notes.append("release order: release-k8s.py bootstrap, migrate-k8s.sh <candidate-lock>, then release-k8s.py deploy <candidate-lock>")
+        if (
+            not isinstance(prod_ref, dict)
+            or prod_ref.get("name") != "contract-audit-db-urls"
+            or prod_ref.get("key") != "PROD_DATABASE_URL"
+            or prod_ref.get("optional", False)
+        ):
+            fail(
+                "ordinary migration must require PROD_DATABASE_URL from the private database Secret"
+            )
+        notes.append(
+            "release order: release-k8s.py bootstrap, migrate-k8s.sh <candidate-lock>, then release-k8s.py deploy <candidate-lock>"
+        )
     notes.append("cluster runtime: NOT_RUN (static manifest evidence only)")
 
 
-def check_compose(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: dict[str, str], probes: set[str]) -> None:
+def check_compose(
+    root: Path, entrypoints: set[str], roles: set[str], dsn_keys: dict[str, str], probes: set[str]
+) -> None:
     compose = read_compose(root / "compose.app.yaml")
     services = compose.get("services") or {}
     if not services:
@@ -796,12 +1224,19 @@ def check_compose(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: 
                     fail(f"compose gateway: the edge is missing {key}")
     for name, service in services.items():
         if service.get("deploy"):
-            fail(f"compose {name}: declares a deploy block; the local stack runs one replica per service")
+            fail(
+                f"compose {name}: declares a deploy block; the local stack runs one replica per service"
+            )
         for token in list(service.get("command") or []) + list(service.get("entrypoint") or []):
             if token.startswith("/app/") and token not in entrypoints:
-                fail(f"compose {name}: entrypoint {token} is not copied into the backend stage by deploy/app/Dockerfile")
+                fail(
+                    f"compose {name}: entrypoint {token} is not copied into the backend stage by deploy/app/Dockerfile"
+                )
         environment = compose_environment(service.get("environment"))
-        if name not in {"migrate-offline-migrator", "migrate-auth-owner"} and "AUTH_ADMIN_DATABASE_URL" in environment:
+        if (
+            name not in {"migrate-offline-migrator", "migrate-auth-owner"}
+            and "AUTH_ADMIN_DATABASE_URL" in environment
+        ):
             fail(f"compose {name} must not receive AUTH_ADMIN_DATABASE_URL")
         if name != "migrate-clm-owner" and "CLM_ADMIN_DATABASE_URL" in environment:
             fail(f"compose {name} must not receive CLM_ADMIN_DATABASE_URL")
@@ -819,7 +1254,9 @@ def check_compose(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: 
             for url in re.findall(r"http://[^\s\"']+", healthcheck):
                 path = "/" + url.split("/", 3)[-1] if url.count("/") >= 3 else "/"
                 if path not in probes:
-                    fail(f"compose {name}: healthcheck path {path} is outside the unified health surface")
+                    fail(
+                        f"compose {name}: healthcheck path {path} is outside the unified health surface"
+                    )
         if role is None:
             continue
         if role not in roles:
@@ -829,11 +1266,16 @@ def check_compose(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: 
         check_jev_compose(name, role, environment)
         dsn = dsn_keys.get(role)
         if dsn is None or dsn not in environment:
-            fail(f"compose {name}: role {role} must declare its database identity key {dsn or '(unknown role)'}")
+            fail(
+                f"compose {name}: role {role} must declare its database identity key {dsn or '(unknown role)'}"
+            )
         for key in REQUIRED.get(role, ()):
             if key in environment:
                 continue
-            if key == "LLM_API_KEY" and environment.get("MODEL_GATEWAY_MODE", "").strip() == "fixture":
+            if (
+                key == "LLM_API_KEY"
+                and environment.get("MODEL_GATEWAY_MODE", "").strip() == "fixture"
+            ):
                 continue
             fail(f"compose {name}: role {role} is missing required env {key}")
 
@@ -849,12 +1291,22 @@ def check_compose(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: 
         provision_envs[service_name] = environment
         if list(provision.get("command") or []) != ["/app/migrate", command_name]:
             fail(f"compose {service_name} must run /app/migrate {command_name}")
-        admin_key = "CLM_ADMIN_DATABASE_URL" if service_name == "migrate-clm-owner" else "AUTH_ADMIN_DATABASE_URL"
+        admin_key = (
+            "CLM_ADMIN_DATABASE_URL"
+            if service_name == "migrate-clm-owner"
+            else "AUTH_ADMIN_DATABASE_URL"
+        )
         for key in (admin_key, "MIGRATOR_DATABASE_URL"):
             source_name = "AUTH_ADMIN_DATABASE_URL" if key == "CLM_ADMIN_DATABASE_URL" else key
             if not re.fullmatch(rf"\$\{{{source_name}:\?[^}}]*\}}", environment.get(key, "")):
                 fail(f"compose {service_name} must require private {key}")
-        for key in ("CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL", "EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL", "TOOL_DATABASE_URL"):
+        for key in (
+            "CORE_DATABASE_URL",
+            "DOCUMENT_DATABASE_URL",
+            "EXECUTION_DATABASE_URL",
+            "MODEL_DATABASE_URL",
+            "TOOL_DATABASE_URL",
+        ):
             if not re.fullmatch(rf"\$\{{{key}:\?[^}}]*\}}", environment.get(key, "")):
                 fail(f"compose {service_name} must require runtime identity {key}")
     ordinary_migration = compose_environment((services.get("migrate") or {}).get("environment"))
@@ -864,7 +1316,9 @@ def check_compose(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: 
     for service_name, environment in (("migrate", ordinary_migration), *provision_envs.items()):
         for key in ("DEV_DATABASE_URL", "TEST_DATABASE_URL", "PROD_DATABASE_URL"):
             if environment.get(key) != f"${{{key}:-}}":
-                fail(f"compose {service_name} must pass only the private APP_ENV-selected {key} slot")
+                fail(
+                    f"compose {service_name} must pass only the private APP_ENV-selected {key} slot"
+                )
 
     identity: dict[str, str] = {}
     for role in IDENTITY_SERVICES:
@@ -881,11 +1335,19 @@ def check_compose(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: 
                 if previous != declared:
                     fail(f"compose: {key} differs between services ({previous!r} vs {declared!r})")
 
-    for name in ("core-api", "document-service", "audit-execution", "audit-worker", "model-gateway"):
+    for name in (
+        "core-api",
+        "document-service",
+        "audit-execution",
+        "audit-worker",
+        "model-gateway",
+    ):
         environment = compose_environment(services.get(name, {}).get("environment"))
         for key in STRUCTURED_KEYS:
             if environment.get(key) != f"${{{key}:-}}":
-                fail(f"compose {name}: structured output identity {key} must use the shared deployment value")
+                fail(
+                    f"compose {name}: structured output identity {key} must use the shared deployment value"
+                )
     fixture = compose_environment(services.get("model-gateway-fixture", {}).get("environment"))
     for key, value in STRUCTURED_OFF.items():
         if str(fixture.get(key, "missing")).strip('"') != value:
@@ -897,17 +1359,30 @@ def check_compose(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: 
 
 def source_evidence(root: Path) -> tuple[str, int]:
     inputs = (
-        ".env.example", "deployments/k8s", "deployments/k3d.py", "deployments/k3d/config-patch.yaml",
-        "deployments/local.py", "deployments/scripts/manifest-conformance.py",
-        "deploy/app/Dockerfile", "deploy/app/nginx", "compose.app.yaml", "compose.observe.yaml", "deployments/compose.identity.yaml", "Makefile",
-        "internal/bootstrap/services.go", "internal/bootstrap/runtime.go", "internal/httpapi/health.go",
+        ".env.example",
+        "deployments/k8s",
+        "deployments/k3d.py",
+        "deployments/k3d/config-patch.yaml",
+        "deployments/local.py",
+        "deployments/scripts/manifest-conformance.py",
+        "deploy/app/Dockerfile",
+        "deploy/app/nginx",
+        "compose.app.yaml",
+        "compose.observe.yaml",
+        "deployments/compose.identity.yaml",
+        "Makefile",
+        "internal/bootstrap/services.go",
+        "internal/bootstrap/runtime.go",
+        "internal/httpapi/health.go",
         "internal/apidocs/openapi.json",
     )
     digest = hashlib.sha256()
     files = 0
     for entry in inputs:
         path = root / entry
-        candidates = sorted(item for item in path.rglob("*") if item.is_file()) if path.is_dir() else [path]
+        candidates = (
+            sorted(item for item in path.rglob("*") if item.is_file()) if path.is_dir() else [path]
+        )
         for candidate in candidates:
             digest.update(str(candidate.relative_to(root)).encode("utf-8"))
             digest.update(b"\0")
@@ -930,7 +1405,9 @@ def run_checks(root: Path, mode: str = "template") -> int:
     check_context_switch_config(root)
     digest, files = source_evidence(root)
     print(f"evidence: source-digest sha256:{digest} over {files} deployment/source files")
-    notes.append("production prerequisite: an audited identity directory must be mounted before APP_ENV=production starts")
+    notes.append(
+        "production prerequisite: an audited identity directory must be mounted before APP_ENV=production starts"
+    )
     for note in notes:
         print(f"note: {note}")
     if failures:
@@ -945,14 +1422,25 @@ def run_checks(root: Path, mode: str = "template") -> int:
     if mode == "template":
         print("template PASS only; production deployment preflight NOT_RUN")
     else:
-        print("static production configuration preflight PASS; cluster, DNS, TLS handshake, and callback NOT_RUN")
+        print(
+            "static production configuration preflight PASS; cluster, DNS, TLS handshake, and callback NOT_RUN"
+        )
     return 0
 
 
 SUBTREE = (
-    ".env.example", "deployments", "deploy", "cmd", "internal/bootstrap", "internal/httpapi/health.go",
-    "internal/apidocs/openapi.json", "compose.app.yaml", "compose.observe.yaml", "Makefile",
+    ".env.example",
+    "deployments",
+    "deploy",
+    "cmd",
+    "internal/bootstrap",
+    "internal/httpapi/health.go",
+    "internal/apidocs/openapi.json",
+    "compose.app.yaml",
+    "compose.observe.yaml",
+    "Makefile",
 )
+
 
 def replace_mutation(tree: Path, relative: str, old: str, new: str, last: bool = False) -> None:
     path = tree / relative
@@ -971,13 +1459,24 @@ def remove_compose_service_merge(tree: Path, service: str) -> None:
     path = tree / "compose.app.yaml"
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
     start = next(index for index, line in enumerate(lines) if line == f"  {service}:\n")
-    end = next((index for index in range(start + 1, len(lines))
-                if re.fullmatch(r"  [A-Za-z0-9_-]+:\n", lines[index])), len(lines))
+    end = next(
+        (
+            index
+            for index in range(start + 1, len(lines))
+            if re.fullmatch(r"  [A-Za-z0-9_-]+:\n", lines[index])
+        ),
+        len(lines),
+    )
     block = "".join(lines[start:end])
     anchor = "      <<: [*jev-advisory, *core-authority-env]\n"
     if anchor not in block:
         raise ValueError(f"authority merge mutation anchor missing in Compose service {service}")
-    path.write_text("".join(lines[:start]) + block.replace(anchor, "      <<: *jev-advisory\n", 1) + "".join(lines[end:]), encoding="utf-8")
+    path.write_text(
+        "".join(lines[:start])
+        + block.replace(anchor, "      <<: *jev-advisory\n", 1)
+        + "".join(lines[end:]),
+        encoding="utf-8",
+    )
 
 
 def self_test(root: Path) -> int:
@@ -988,51 +1487,330 @@ def self_test(root: Path) -> int:
     config = "deployments/k8s/base/config.yaml"
     compose = "compose.app.yaml"
     compose_ca_mount = "      - *core-authority-ca-mount\n"
-    token_binding = ("            - name: WORKER_CORE_TOKEN\n"
-                     "              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_CORE_TOKEN}}\n")
-    tool_binding = ("            - name: WORKER_TOOL_TOKEN\n"
-                    "              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_TOOL_TOKEN}}\n")
-    tool_authority_binding = ("            - name: TOOL_CORE_AUTHORITY_TOKEN\n"
-                             "              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: TOOL_CORE_AUTHORITY_TOKEN}}\n")
-    compose_token = "${WORKER_CORE_TOKEN:?Add a distinct WORKER_CORE_TOKEN to the private distributed profile}"
+    token_binding = (
+        "            - name: WORKER_CORE_TOKEN\n"
+        "              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_CORE_TOKEN}}\n"
+    )
+    tool_binding = (
+        "            - name: WORKER_TOOL_TOKEN\n"
+        "              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_TOOL_TOKEN}}\n"
+    )
+    tool_authority_binding = (
+        "            - name: TOOL_CORE_AUTHORITY_TOKEN\n"
+        "              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: TOOL_CORE_AUTHORITY_TOKEN}}\n"
+    )
+    compose_token = (
+        "${WORKER_CORE_TOKEN:?Add a distinct WORKER_CORE_TOKEN to the private distributed profile}"
+    )
     compose_url = "${CORE_SERVICE_URL:?Add CORE_SERVICE_URL to the private distributed profile}"
     mutations = (
-        ("compose structured binding mismatch", lambda tree: replace_mutation(tree, compose, "      CAW_STRUCTURED_OUTPUT_REVIEW_MODEL: ${CAW_STRUCTURED_OUTPUT_REVIEW_MODEL:-}\n", "      CAW_STRUCTURED_OUTPUT_REVIEW_MODEL: other\n"), "structured output identity CAW_STRUCTURED_OUTPUT_REVIEW_MODEL must use the shared deployment value"),
-        ("fixture structured output enabled", lambda tree: replace_mutation(tree, "deployments/k3d/config-patch.yaml", 'CAW_STRUCTURED_OUTPUT_ENABLED: "false"', 'CAW_STRUCTURED_OUTPUT_ENABLED: "true"'), "k3d fixture must disable structured output"),
-        ("missing required env", lambda tree: replace_mutation(tree, workload, tool_binding, ""), "role worker is missing required env WORKER_TOOL_TOKEN"),
-        ("unapproved production Jev", lambda tree: replace_mutation(tree, config, 'TYPESAFE_JEV_MODE: "off"', "TYPESAFE_JEV_MODE: advisory"), "production base must disable Jev"),
-        ("missing probe", lambda tree: replace_mutation(tree, workload, "          livenessProbe:\n", "          livenessProbeDisabled:\n"), "declares no livenessProbe"),
-        ("HPA back in the render", lambda tree: replace_mutation(tree, "deployments/k8s/base/kustomization.yaml", "  - poddisruptionbudgets.yaml", "  - poddisruptionbudgets.yaml\n  - ../optional/scaling-hpa.yaml"), "must contain zero HorizontalPodAutoscaler"),
-        ("migration kustomization removed", lambda tree: tree.joinpath("deployments/k8s/migrate/kustomization.yaml").unlink(), "missing kustomization"),
-        ("core token missing", lambda tree: replace_mutation(tree, workload, token_binding, ""), "core must use the required WORKER_CORE_TOKEN"),
-        ("worker token missing", lambda tree: replace_mutation(tree, workload, token_binding, "", last=True), "worker must use the required WORKER_CORE_TOKEN"),
-        ("worker token references another secret", lambda tree: replace_mutation(tree, workload, token_binding, token_binding.replace("key: WORKER_CORE_TOKEN", "key: WORKER_TOOL_TOKEN"), last=True), "worker must use the required WORKER_CORE_TOKEN"),
-        ("core token optional", lambda tree: replace_mutation(tree, workload, token_binding, token_binding.replace("key: WORKER_CORE_TOKEN}", "key: WORKER_CORE_TOKEN, optional: true}")), "core must use the required WORKER_CORE_TOKEN"),
-        ("worker reuses core token", lambda tree: replace_mutation(tree, workload, tool_binding, tool_binding.replace("key: WORKER_TOOL_TOKEN", "key: WORKER_CORE_TOKEN")), "WORKER_CORE_TOKEN must be distinct from WORKER_TOOL_TOKEN"),
-        ("core authority token binding missing", lambda tree: replace_mutation(tree, workload, tool_authority_binding, ""), "core must use the required TOOL_CORE_AUTHORITY_TOKEN service secret"),
-        ("tool authority token binds worker credential", lambda tree: replace_mutation(tree, workload, tool_authority_binding, tool_authority_binding.replace("key: TOOL_CORE_AUTHORITY_TOKEN", "key: WORKER_CORE_TOKEN"), last=True), "tool must use the required TOOL_CORE_AUTHORITY_TOKEN service secret"),
-        ("worker receives tool-only authority credential", lambda tree: replace_mutation(tree, workload, tool_binding, tool_binding + tool_authority_binding), "audit-worker: worker must not receive TOOL_CORE_AUTHORITY_TOKEN"),
-        ("worker endpoint absent", lambda tree: replace_mutation(tree, config, "  CORE_SERVICE_URL: http://core-api:8081\n", ""), "runtime CORE_SERVICE_URL must be an HTTP(S) service URL"),
-        ("worker endpoint blank", lambda tree: replace_mutation(tree, config, "  CORE_SERVICE_URL: http://core-api:8081\n", '  CORE_SERVICE_URL: ""\n'), "runtime CORE_SERVICE_URL must be an HTTP(S) service URL"),
-        ("compose core token optional", lambda tree: replace_mutation(tree, compose, compose_token, "${WORKER_CORE_TOKEN:-}"), "core must require the shared WORKER_CORE_TOKEN"),
-        ("compose worker token mismatch", lambda tree: replace_mutation(tree, compose, compose_token, "${WORKER_TOOL_TOKEN:?missing}", last=True), "worker must require the shared WORKER_CORE_TOKEN"),
-        ("compose worker endpoint optional", lambda tree: replace_mutation(tree, compose, compose_url, "${CORE_SERVICE_URL:-}"), "worker must require the CORE_SERVICE_URL"),
-        ("compose core authority token missing", lambda tree: replace_mutation(tree, compose, "      TOOL_CORE_AUTHORITY_TOKEN: ${TOOL_CORE_AUTHORITY_TOKEN:?Run make app-bootstrap}\n", ""), "compose core-api must require TOOL_CORE_AUTHORITY_TOKEN from the private profile"),
-        ("compose tool binds worker credential", lambda tree: replace_mutation(tree, compose, "      TOOL_CORE_AUTHORITY_TOKEN: ${TOOL_CORE_AUTHORITY_TOKEN:?Run make app-bootstrap}\n", "      TOOL_CORE_AUTHORITY_TOKEN: ${WORKER_CORE_TOKEN:?Run make app-bootstrap}\n", last=True), "compose tool-gateway must require TOOL_CORE_AUTHORITY_TOKEN from the private profile"),
-        ("compose worker receives tool-only authority credential", lambda tree: replace_mutation(tree, compose, "      WORKER_CORE_TOKEN: ${WORKER_CORE_TOKEN:?Add a distinct WORKER_CORE_TOKEN to the private distributed profile}\n", "      WORKER_CORE_TOKEN: ${WORKER_CORE_TOKEN:?Add a distinct WORKER_CORE_TOKEN to the private distributed profile}\n      TOOL_CORE_AUTHORITY_TOKEN: ${TOOL_CORE_AUTHORITY_TOKEN:?Run make app-bootstrap}\n", last=True), "compose audit-worker must not receive the Core-to-Tool authority credential"),
-        ("production callback insecure flag", lambda tree: replace_mutation(tree, config, 'CORE_AUTHORITY_ALLOW_INSECURE_DEV: "false"', 'CORE_AUTHORITY_ALLOW_INSECURE_DEV: "true"'), "production Core authority clients must set CORE_AUTHORITY_ALLOW_INSECURE_DEV=false"),
-        ("production callback HTTP", lambda tree: replace_mutation(tree, config, "CORE_AUTHORITY_URL: https://REPLACE-ME-CORE-AUTH-ENDPOINT", "CORE_AUTHORITY_URL: http://core-api:8081"), "production template must retain the explicit nondeployable HTTPS Core authority placeholder"),
-        ("k3d callback outside local boundary", lambda tree: replace_mutation(tree, "deployments/k3d/config-patch.yaml", "CORE_AUTHORITY_URL: http://core-api:8081", "CORE_AUTHORITY_URL: http://core-api.evil:8081"), "k3d development profile must use the exact bounded Core authority HTTP exception"),
-        ("compose callback URL omitted", lambda tree: replace_mutation(tree, compose, "  CORE_AUTHORITY_URL: ${CORE_AUTHORITY_URL:?Run make app-bootstrap}\n", ""), "compose document-service must explicitly pass CORE_AUTHORITY_URL from the private profile"),
-        ("worker authority env omitted", lambda tree: remove_compose_service_merge(tree, "audit-worker"), "compose audit-worker must explicitly pass CORE_AUTHORITY_URL from the private profile"),
-        ("model gateway authority credential missing", lambda tree: replace_mutation(tree, compose, "      CORE_MODEL_AUTHORITY_TOKEN: ${CORE_MODEL_AUTHORITY_TOKEN:?Run make app-bootstrap}\n      OTEL_EXPORTER_OTLP_ENDPOINT", "      OTEL_EXPORTER_OTLP_ENDPOINT"), "compose model-gateway must require CORE_MODEL_AUTHORITY_TOKEN from the private profile"),
-        ("fixture gateway misses model authority credential", lambda tree: replace_mutation(tree, compose, "      MODEL_GATEWAY_MODE: fixture\n      SERVICE_ROLE: model\n      MODEL_DATABASE_URL: ${MODEL_DATABASE_URL:?Run make app-bootstrap}\n      CORE_MODEL_AUTHORITY_TOKEN: ${CORE_MODEL_AUTHORITY_TOKEN:?Run make app-bootstrap}\n", "      MODEL_GATEWAY_MODE: fixture\n      SERVICE_ROLE: model\n      MODEL_DATABASE_URL: ${MODEL_DATABASE_URL:?Run make app-bootstrap}\n"), "compose model-gateway must require CORE_MODEL_AUTHORITY_TOKEN from the private profile"),
-        ("migration lacks auth owner provision", lambda tree: replace_mutation(tree, "deployments/k8s/migrate/migration-job.yaml", "        - name: auth-owner-provision\n", "        - name: wrong-provision\n"), "migration Job must run offline migrator, CLM owner, then AUTH_FENCE owner provisioning"),
-        ("migration admin DSN leaks into long-lived container", lambda tree: replace_mutation(tree, "deployments/k8s/migrate/migration-job.yaml", "            - name: TEST_DATABASE_URL\n              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: TEST_DATABASE_URL, optional: true}}\n            - name: PROD_DATABASE_URL", "            - name: AUTH_ADMIN_DATABASE_URL\n              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: AUTH_ADMIN_DATABASE_URL}}\n            - name: TEST_DATABASE_URL\n              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: TEST_DATABASE_URL, optional: true}}\n            - name: PROD_DATABASE_URL", last=True), "ordinary migration container must never receive AUTH_ADMIN_DATABASE_URL"),
-        ("compose duplicate merge key", lambda tree: replace_mutation(tree, compose, "      <<: [*jev-advisory, *core-authority-env]\n", "      <<: *core-authority-env\n      <<: [*jev-advisory, *core-authority-env]\n", last=True), "duplicate YAML key '<<'"),
-        ("tool authority env omitted", lambda tree: replace_mutation(tree, compose, "      <<: *core-authority-env\n", "", last=True), "compose tool-gateway must explicitly pass CORE_AUTHORITY_URL from the private profile"),
-        ("transparent gateway receives authority config", lambda tree: replace_mutation(tree, compose, "      CORE_URLS: ${CORE_URLS:-http://core-api:8081}\n", "      CORE_URLS: ${CORE_URLS:-http://core-api:8081}\n      CORE_AUTHORITY_URL: ${CORE_AUTHORITY_URL:?Run make app-bootstrap}\n"), "compose gateway must not receive unused Core authority client configuration"),
-        ("compose callback CA mount omitted", lambda tree: replace_mutation(tree, compose, compose_ca_mount, ""), "compose document-service must mount the optional Core authority CA read-only at the configured path"),
+        (
+            "compose structured binding mismatch",
+            lambda tree: replace_mutation(
+                tree,
+                compose,
+                "      CAW_STRUCTURED_OUTPUT_REVIEW_MODEL: ${CAW_STRUCTURED_OUTPUT_REVIEW_MODEL:-}\n",
+                "      CAW_STRUCTURED_OUTPUT_REVIEW_MODEL: other\n",
+            ),
+            "structured output identity CAW_STRUCTURED_OUTPUT_REVIEW_MODEL must use the shared deployment value",
+        ),
+        (
+            "fixture structured output enabled",
+            lambda tree: replace_mutation(
+                tree,
+                "deployments/k3d/config-patch.yaml",
+                'CAW_STRUCTURED_OUTPUT_ENABLED: "false"',
+                'CAW_STRUCTURED_OUTPUT_ENABLED: "true"',
+            ),
+            "k3d fixture must disable structured output",
+        ),
+        (
+            "missing required env",
+            lambda tree: replace_mutation(tree, workload, tool_binding, ""),
+            "role worker is missing required env WORKER_TOOL_TOKEN",
+        ),
+        (
+            "unapproved production Jev",
+            lambda tree: replace_mutation(
+                tree, config, 'TYPESAFE_JEV_MODE: "off"', "TYPESAFE_JEV_MODE: advisory"
+            ),
+            "production base must disable Jev",
+        ),
+        (
+            "missing probe",
+            lambda tree: replace_mutation(
+                tree, workload, "          livenessProbe:\n", "          livenessProbeDisabled:\n"
+            ),
+            "declares no livenessProbe",
+        ),
+        (
+            "HPA back in the render",
+            lambda tree: replace_mutation(
+                tree,
+                "deployments/k8s/base/kustomization.yaml",
+                "  - poddisruptionbudgets.yaml",
+                "  - poddisruptionbudgets.yaml\n  - ../optional/scaling-hpa.yaml",
+            ),
+            "must contain zero HorizontalPodAutoscaler",
+        ),
+        (
+            "migration kustomization removed",
+            lambda tree: tree.joinpath("deployments/k8s/migrate/kustomization.yaml").unlink(),
+            "missing kustomization",
+        ),
+        (
+            "core token missing",
+            lambda tree: replace_mutation(tree, workload, token_binding, ""),
+            "core must use the required WORKER_CORE_TOKEN",
+        ),
+        (
+            "worker token missing",
+            lambda tree: replace_mutation(tree, workload, token_binding, "", last=True),
+            "worker must use the required WORKER_CORE_TOKEN",
+        ),
+        (
+            "worker token references another secret",
+            lambda tree: replace_mutation(
+                tree,
+                workload,
+                token_binding,
+                token_binding.replace("key: WORKER_CORE_TOKEN", "key: WORKER_TOOL_TOKEN"),
+                last=True,
+            ),
+            "worker must use the required WORKER_CORE_TOKEN",
+        ),
+        (
+            "core token optional",
+            lambda tree: replace_mutation(
+                tree,
+                workload,
+                token_binding,
+                token_binding.replace(
+                    "key: WORKER_CORE_TOKEN}", "key: WORKER_CORE_TOKEN, optional: true}"
+                ),
+            ),
+            "core must use the required WORKER_CORE_TOKEN",
+        ),
+        (
+            "worker reuses core token",
+            lambda tree: replace_mutation(
+                tree,
+                workload,
+                tool_binding,
+                tool_binding.replace("key: WORKER_TOOL_TOKEN", "key: WORKER_CORE_TOKEN"),
+            ),
+            "WORKER_CORE_TOKEN must be distinct from WORKER_TOOL_TOKEN",
+        ),
+        (
+            "core authority token binding missing",
+            lambda tree: replace_mutation(tree, workload, tool_authority_binding, ""),
+            "core must use the required TOOL_CORE_AUTHORITY_TOKEN service secret",
+        ),
+        (
+            "tool authority token binds worker credential",
+            lambda tree: replace_mutation(
+                tree,
+                workload,
+                tool_authority_binding,
+                tool_authority_binding.replace(
+                    "key: TOOL_CORE_AUTHORITY_TOKEN", "key: WORKER_CORE_TOKEN"
+                ),
+                last=True,
+            ),
+            "tool must use the required TOOL_CORE_AUTHORITY_TOKEN service secret",
+        ),
+        (
+            "worker receives tool-only authority credential",
+            lambda tree: replace_mutation(
+                tree, workload, tool_binding, tool_binding + tool_authority_binding
+            ),
+            "audit-worker: worker must not receive TOOL_CORE_AUTHORITY_TOKEN",
+        ),
+        (
+            "worker endpoint absent",
+            lambda tree: replace_mutation(
+                tree, config, "  CORE_SERVICE_URL: http://core-api:8081\n", ""
+            ),
+            "runtime CORE_SERVICE_URL must be an HTTP(S) service URL",
+        ),
+        (
+            "worker endpoint blank",
+            lambda tree: replace_mutation(
+                tree,
+                config,
+                "  CORE_SERVICE_URL: http://core-api:8081\n",
+                '  CORE_SERVICE_URL: ""\n',
+            ),
+            "runtime CORE_SERVICE_URL must be an HTTP(S) service URL",
+        ),
+        (
+            "compose core token optional",
+            lambda tree: replace_mutation(tree, compose, compose_token, "${WORKER_CORE_TOKEN:-}"),
+            "core must require the shared WORKER_CORE_TOKEN",
+        ),
+        (
+            "compose worker token mismatch",
+            lambda tree: replace_mutation(
+                tree, compose, compose_token, "${WORKER_TOOL_TOKEN:?missing}", last=True
+            ),
+            "worker must require the shared WORKER_CORE_TOKEN",
+        ),
+        (
+            "compose worker endpoint optional",
+            lambda tree: replace_mutation(tree, compose, compose_url, "${CORE_SERVICE_URL:-}"),
+            "worker must require the CORE_SERVICE_URL",
+        ),
+        (
+            "compose core authority token missing",
+            lambda tree: replace_mutation(
+                tree,
+                compose,
+                "      TOOL_CORE_AUTHORITY_TOKEN: ${TOOL_CORE_AUTHORITY_TOKEN:?Run make app-bootstrap}\n",
+                "",
+            ),
+            "compose core-api must require TOOL_CORE_AUTHORITY_TOKEN from the private profile",
+        ),
+        (
+            "compose tool binds worker credential",
+            lambda tree: replace_mutation(
+                tree,
+                compose,
+                "      TOOL_CORE_AUTHORITY_TOKEN: ${TOOL_CORE_AUTHORITY_TOKEN:?Run make app-bootstrap}\n",
+                "      TOOL_CORE_AUTHORITY_TOKEN: ${WORKER_CORE_TOKEN:?Run make app-bootstrap}\n",
+                last=True,
+            ),
+            "compose tool-gateway must require TOOL_CORE_AUTHORITY_TOKEN from the private profile",
+        ),
+        (
+            "compose worker receives tool-only authority credential",
+            lambda tree: replace_mutation(
+                tree,
+                compose,
+                "      WORKER_CORE_TOKEN: ${WORKER_CORE_TOKEN:?Add a distinct WORKER_CORE_TOKEN to the private distributed profile}\n",
+                "      WORKER_CORE_TOKEN: ${WORKER_CORE_TOKEN:?Add a distinct WORKER_CORE_TOKEN to the private distributed profile}\n      TOOL_CORE_AUTHORITY_TOKEN: ${TOOL_CORE_AUTHORITY_TOKEN:?Run make app-bootstrap}\n",
+                last=True,
+            ),
+            "compose audit-worker must not receive the Core-to-Tool authority credential",
+        ),
+        (
+            "production callback insecure flag",
+            lambda tree: replace_mutation(
+                tree,
+                config,
+                'CORE_AUTHORITY_ALLOW_INSECURE_DEV: "false"',
+                'CORE_AUTHORITY_ALLOW_INSECURE_DEV: "true"',
+            ),
+            "production Core authority clients must set CORE_AUTHORITY_ALLOW_INSECURE_DEV=false",
+        ),
+        (
+            "production callback HTTP",
+            lambda tree: replace_mutation(
+                tree,
+                config,
+                "CORE_AUTHORITY_URL: https://REPLACE-ME-CORE-AUTH-ENDPOINT",
+                "CORE_AUTHORITY_URL: http://core-api:8081",
+            ),
+            "production template must retain the explicit nondeployable HTTPS Core authority placeholder",
+        ),
+        (
+            "k3d callback outside local boundary",
+            lambda tree: replace_mutation(
+                tree,
+                "deployments/k3d/config-patch.yaml",
+                "CORE_AUTHORITY_URL: http://core-api:8081",
+                "CORE_AUTHORITY_URL: http://core-api.evil:8081",
+            ),
+            "k3d development profile must use the exact bounded Core authority HTTP exception",
+        ),
+        (
+            "compose callback URL omitted",
+            lambda tree: replace_mutation(
+                tree,
+                compose,
+                "  CORE_AUTHORITY_URL: ${CORE_AUTHORITY_URL:?Run make app-bootstrap}\n",
+                "",
+            ),
+            "compose document-service must explicitly pass CORE_AUTHORITY_URL from the private profile",
+        ),
+        (
+            "worker authority env omitted",
+            lambda tree: remove_compose_service_merge(tree, "audit-worker"),
+            "compose audit-worker must explicitly pass CORE_AUTHORITY_URL from the private profile",
+        ),
+        (
+            "model gateway authority credential missing",
+            lambda tree: replace_mutation(
+                tree,
+                compose,
+                "      CORE_MODEL_AUTHORITY_TOKEN: ${CORE_MODEL_AUTHORITY_TOKEN:?Run make app-bootstrap}\n      OTEL_EXPORTER_OTLP_ENDPOINT",
+                "      OTEL_EXPORTER_OTLP_ENDPOINT",
+            ),
+            "compose model-gateway must require CORE_MODEL_AUTHORITY_TOKEN from the private profile",
+        ),
+        (
+            "fixture gateway misses model authority credential",
+            lambda tree: replace_mutation(
+                tree,
+                compose,
+                "      MODEL_GATEWAY_MODE: fixture\n      SERVICE_ROLE: model\n      MODEL_DATABASE_URL: ${MODEL_DATABASE_URL:?Run make app-bootstrap}\n      CORE_MODEL_AUTHORITY_TOKEN: ${CORE_MODEL_AUTHORITY_TOKEN:?Run make app-bootstrap}\n",
+                "      MODEL_GATEWAY_MODE: fixture\n      SERVICE_ROLE: model\n      MODEL_DATABASE_URL: ${MODEL_DATABASE_URL:?Run make app-bootstrap}\n",
+            ),
+            "compose model-gateway must require CORE_MODEL_AUTHORITY_TOKEN from the private profile",
+        ),
+        (
+            "migration lacks auth owner provision",
+            lambda tree: replace_mutation(
+                tree,
+                "deployments/k8s/migrate/migration-job.yaml",
+                "        - name: auth-owner-provision\n",
+                "        - name: wrong-provision\n",
+            ),
+            "migration Job must run offline migrator, CLM owner, then AUTH_FENCE owner provisioning",
+        ),
+        (
+            "migration admin DSN leaks into long-lived container",
+            lambda tree: replace_mutation(
+                tree,
+                "deployments/k8s/migrate/migration-job.yaml",
+                "            - name: TEST_DATABASE_URL\n              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: TEST_DATABASE_URL, optional: true}}\n            - name: PROD_DATABASE_URL",
+                "            - name: AUTH_ADMIN_DATABASE_URL\n              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: AUTH_ADMIN_DATABASE_URL}}\n            - name: TEST_DATABASE_URL\n              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: TEST_DATABASE_URL, optional: true}}\n            - name: PROD_DATABASE_URL",
+                last=True,
+            ),
+            "ordinary migration container must never receive AUTH_ADMIN_DATABASE_URL",
+        ),
+        (
+            "compose duplicate merge key",
+            lambda tree: replace_mutation(
+                tree,
+                compose,
+                "      <<: [*jev-advisory, *core-authority-env]\n",
+                "      <<: *core-authority-env\n      <<: [*jev-advisory, *core-authority-env]\n",
+                last=True,
+            ),
+            "duplicate YAML key '<<'",
+        ),
+        (
+            "tool authority env omitted",
+            lambda tree: replace_mutation(
+                tree, compose, "      <<: *core-authority-env\n", "", last=True
+            ),
+            "compose tool-gateway must explicitly pass CORE_AUTHORITY_URL from the private profile",
+        ),
+        (
+            "transparent gateway receives authority config",
+            lambda tree: replace_mutation(
+                tree,
+                compose,
+                "      CORE_URLS: ${CORE_URLS:-http://core-api:8081}\n",
+                "      CORE_URLS: ${CORE_URLS:-http://core-api:8081}\n      CORE_AUTHORITY_URL: ${CORE_AUTHORITY_URL:?Run make app-bootstrap}\n",
+            ),
+            "compose gateway must not receive unused Core authority client configuration",
+        ),
+        (
+            "compose callback CA mount omitted",
+            lambda tree: replace_mutation(tree, compose, compose_ca_mount, ""),
+            "compose document-service must mount the optional Core authority CA read-only at the configured path",
+        ),
     )
     problems = 0
     with tempfile.TemporaryDirectory() as directory:
@@ -1046,11 +1824,22 @@ def self_test(root: Path) -> int:
             else:
                 shutil.copy2(source, target)
         baseline = subprocess.run(
-            [sys.executable, "-I", str(root / "deployments/scripts/manifest-conformance.py"), "--root", str(tree)],
-            capture_output=True, text=True, cwd=tree,
+            [
+                sys.executable,
+                "-I",
+                str(root / "deployments/scripts/manifest-conformance.py"),
+                "--root",
+                str(tree),
+            ],
+            capture_output=True,
+            text=True,
+            cwd=tree,
         )
         if baseline.returncode != 0:
-            print(f"FAIL: the unmutated baseline does not pass: {baseline.stderr.strip()[:400]}", file=sys.stderr)
+            print(
+                f"FAIL: the unmutated baseline does not pass: {baseline.stderr.strip()[:400]}",
+                file=sys.stderr,
+            )
             return 1
     for label, mutate, expected in mutations:
         with tempfile.TemporaryDirectory() as directory:
@@ -1065,11 +1854,26 @@ def self_test(root: Path) -> int:
                     shutil.copy2(source, target)
             mutate(tree)
             result = subprocess.run(
-                [sys.executable, "-I", str(root / "deployments/scripts/manifest-conformance.py"), "--root", str(tree)],
-                capture_output=True, text=True, cwd=tree,
+                [
+                    sys.executable,
+                    "-I",
+                    str(root / "deployments/scripts/manifest-conformance.py"),
+                    "--root",
+                    str(tree),
+                ],
+                capture_output=True,
+                text=True,
+                cwd=tree,
             )
-            if result.returncode == 0 or expected not in result.stderr or "Traceback" in result.stderr:
-                print(f"FAIL: self-test case {label!r} was not detected by a checker verdict", file=sys.stderr)
+            if (
+                result.returncode == 0
+                or expected not in result.stderr
+                or "Traceback" in result.stderr
+            ):
+                print(
+                    f"FAIL: self-test case {label!r} was not detected by a checker verdict",
+                    file=sys.stderr,
+                )
                 problems += 1
             else:
                 print(f"self-test: {label} -> refused")
@@ -1082,10 +1886,18 @@ def self_test(root: Path) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", default=str(Path(__file__).resolve().parents[2]), help="repository root to check")
-    parser.add_argument("--mode", choices=("template", "preflight"), default="template",
-                        help="template checks keep the production placeholder; preflight requires a configured HTTPS callback origin")
-    parser.add_argument("--self-test", action="store_true", help="prove the checks reject injected defects")
+    parser.add_argument(
+        "--root", default=str(Path(__file__).resolve().parents[2]), help="repository root to check"
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("template", "preflight"),
+        default="template",
+        help="template checks keep the production placeholder; preflight requires a configured HTTPS callback origin",
+    )
+    parser.add_argument(
+        "--self-test", action="store_true", help="prove the checks reject injected defects"
+    )
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
     if args.self_test:

@@ -28,6 +28,7 @@ PIDs and tested start commands. Three outputs are written into ``--out-dir``:
 
 Nothing is printed beyond paths and counts; no value is invented.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -46,8 +47,15 @@ SERVICES = {
     "audit-worker": ("worker", "worker", 18086, "/health/ready"),
 }
 EDGE_PORT = 18080
-S3_KEYS = ("S3_ENDPOINT", "S3_BUCKET", "S3_REGION", "S3_ACCESS_KEY", "S3_SECRET_KEY",
-           "RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY")
+S3_KEYS = (
+    "S3_ENDPOINT",
+    "S3_BUCKET",
+    "S3_REGION",
+    "S3_ACCESS_KEY",
+    "S3_SECRET_KEY",
+    "RUSTFS_ACCESS_KEY",
+    "RUSTFS_SECRET_KEY",
+)
 
 
 def read_pairs(path: Path) -> dict[str, str]:
@@ -61,7 +69,9 @@ def read_pairs(path: Path) -> dict[str, str]:
     return values
 
 
-def live_instance(pid: int | None, binary: Path, environment: dict[str, str]) -> tuple[int | None, Path, dict[str, str]]:
+def live_instance(
+    pid: int | None, binary: Path, environment: dict[str, str]
+) -> tuple[int | None, Path, dict[str, str]]:
     if not isinstance(pid, int) or not Path(f"/proc/{pid}").exists():
         return None, binary, environment
     process = Path(f"/proc/{pid}")
@@ -69,7 +79,9 @@ def live_instance(pid: int | None, binary: Path, environment: dict[str, str]) ->
     if actual_binary.name != binary.name:
         raise RuntimeError(f"PID {pid} is not the expected {binary.name} process")
     actual_environment = dict(
-        item.split("=", 1) for item in (process / "environ").read_bytes().decode().split("\0") if "=" in item
+        item.split("=", 1)
+        for item in (process / "environ").read_bytes().decode().split("\0")
+        if "=" in item
     )
     return pid, actual_binary, actual_environment
 
@@ -81,8 +93,14 @@ def write_private(path: Path, text: str) -> None:
     path.chmod(0o600)
 
 
-def start_command(binary: Path, role: str, environment: dict[str, str], worker_id: str | None, port: int,
-                  extra: tuple[str, ...] = ()) -> str:
+def start_command(
+    binary: Path,
+    role: str,
+    environment: dict[str, str],
+    worker_id: str | None,
+    port: int,
+    extra: tuple[str, ...] = (),
+) -> str:
     values = dict(environment)
     values.setdefault("APP_ENV", "test")
     values.setdefault("DATABASE_SCHEMA", "public")
@@ -94,30 +112,46 @@ def start_command(binary: Path, role: str, environment: dict[str, str], worker_i
             values["GATEWAY_ROLE_TOKEN"] = role_token
     values.update(item.split("=", 1) for item in extra)
     if role == "worker":
-        values.update(WORKER_LEASE_DURATION=environment.get("WORKER_LEASE_DURATION", "2m"),
-                      WORKER_HEARTBEAT_INTERVAL=environment.get("WORKER_HEARTBEAT_INTERVAL", "10s"),
-                      HEALTH_ADDR=f"127.0.0.1:{port}")
+        values.update(
+            WORKER_LEASE_DURATION=environment.get("WORKER_LEASE_DURATION", "2m"),
+            WORKER_HEARTBEAT_INTERVAL=environment.get("WORKER_HEARTBEAT_INTERVAL", "10s"),
+            HEALTH_ADDR=f"127.0.0.1:{port}",
+        )
     if role in ("worker", "execution") and environment.get("NATS_URL"):
         values["NATS_URL"] = environment["NATS_URL"]
     if role != "worker":
         values["ADDR"] = f"127.0.0.1:{port}"
     if worker_id:
         values["WORKER_ID"] = worker_id
-    return shlex.join(["env", "-i", *(f"{key}={value}" for key, value in values.items()), str(binary)])
+    return shlex.join(
+        ["env", "-i", *(f"{key}={value}" for key, value in values.items()), str(binary)]
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--private-env", required=True, help="dotenv or JSON environment used by the running stack")
+    parser.add_argument(
+        "--private-env", required=True, help="dotenv or JSON environment used by the running stack"
+    )
     parser.add_argument("--state", required=True, help="runtime state JSON holding the live pids")
-    parser.add_argument("--bin-dir", required=True, help="directory holding the host-built binaries")
-    parser.add_argument("--out-dir", required=True, help="directory to write the handoff files into")
-    parser.add_argument("--broker-json", default="",
-                        help="optional broker identity JSON (pid/binary/sha256/argv/ports) merged into control.json as `broker`")
+    parser.add_argument(
+        "--bin-dir", required=True, help="directory holding the host-built binaries"
+    )
+    parser.add_argument(
+        "--out-dir", required=True, help="directory to write the handoff files into"
+    )
+    parser.add_argument(
+        "--broker-json",
+        default="",
+        help="optional broker identity JSON (pid/binary/sha256/argv/ports) merged into control.json as `broker`",
+    )
     args = parser.parse_args(argv)
     private = Path(args.private_env)
-    environment = ({k: str(v) for k, v in json.loads(private.read_text(encoding="utf-8")).items()}
-                   if private.suffix == ".json" else read_pairs(private))
+    environment = (
+        {k: str(v) for k, v in json.loads(private.read_text(encoding="utf-8")).items()}
+        if private.suffix == ".json"
+        else read_pairs(private)
+    )
     state = json.loads(Path(args.state).read_text(encoding="utf-8"))
     pids = state.get("pids", {})
     bin_dir, out_dir = Path(args.bin_dir), Path(args.out_dir)
@@ -132,15 +166,25 @@ def main(argv: list[str] | None = None) -> int:
     }.items():
         environment.setdefault(key, default)
 
-    write_private(out_dir / "stack.env",
-                  "# Runtime handoff profile; tokens are the running stack's own values.\n"
-                  + "".join(f"{key}={environment[key]}\n" for key in sorted(environment)))
+    write_private(
+        out_dir / "stack.env",
+        "# Runtime handoff profile; tokens are the running stack's own values.\n"
+        + "".join(f"{key}={environment[key]}\n" for key in sorted(environment)),
+    )
 
     control: dict[str, object] = {}
     document_environment: dict[str, str] | None = None
     for service, (binary, role, port, health) in SERVICES.items():
-        pid = pids.get({"core-api": "core", "document-service": "document", "audit-execution": "execution",
-                        "model-gateway": "model", "tool-gateway": "tool", "audit-worker": "worker"}[service])
+        pid = pids.get(
+            {
+                "core-api": "core",
+                "document-service": "document",
+                "audit-execution": "execution",
+                "model-gateway": "model",
+                "tool-gateway": "tool",
+                "audit-worker": "worker",
+            }[service]
+        )
         pid, running_binary, running_environment = live_instance(pid, bin_dir / binary, environment)
         if service == "document-service" and pid is not None:
             document_environment = running_environment
@@ -153,13 +197,20 @@ def main(argv: list[str] | None = None) -> int:
             entry["pid"] = pid
         additional_port = port + 100
         additional = {
-            "start": start_command(running_binary, role, running_environment,
-                                   f"handoff-{role}-2" if role == "worker" else None, additional_port),
+            "start": start_command(
+                running_binary,
+                role,
+                running_environment,
+                f"handoff-{role}-2" if role == "worker" else None,
+                additional_port,
+            ),
             "log": f"{role}-2.log",
             "health": f"http://127.0.0.1:{additional_port}{health}",
         }
-        control[service] = {"instances": [entry] if "pid" in entry else [],
-                            "additional": [additional]}
+        control[service] = {
+            "instances": [entry] if "pid" in entry else [],
+            "additional": [additional],
+        }
 
     if document_environment is None:
         raise RuntimeError("Cannot capture restore source without a running Document service")
@@ -168,16 +219,27 @@ def main(argv: list[str] | None = None) -> int:
         restore.pop(key, None)
         if key in document_environment:
             restore[key] = document_environment[key]
-    write_private(out_dir / "restore-source.env",
-                  "# Restore-source profile: stack.env plus the document instance's S3 values and DATA_DIR.\n"
-                  + "".join(f"{key}={restore[key]}\n" for key in sorted(restore)))
+    write_private(
+        out_dir / "restore-source.env",
+        "# Restore-source profile: stack.env plus the document instance's S3 values and DATA_DIR.\n"
+        + "".join(f"{key}={restore[key]}\n" for key in sorted(restore)),
+    )
 
     # Preserve the live edge environment, including upstreams and browser origins.
-    upstream_defaults = {"CORE_URLS": "http://127.0.0.1:18081", "DOCUMENT_URL": "http://127.0.0.1:18082",
-                         "EXECUTION_URL": "http://127.0.0.1:18083", "TOOL_URLS": "http://127.0.0.1:18085"}
+    upstream_defaults = {
+        "CORE_URLS": "http://127.0.0.1:18081",
+        "DOCUMENT_URL": "http://127.0.0.1:18082",
+        "EXECUTION_URL": "http://127.0.0.1:18083",
+        "TOOL_URLS": "http://127.0.0.1:18085",
+    }
     edge_pid = pids.get("edge")
-    edge_pid, edge_binary, edge_environment = live_instance(edge_pid, bin_dir / "gateway", environment)
-    edge_extra = tuple(f"{key}={edge_environment.get(key) or default}" for key, default in upstream_defaults.items())
+    edge_pid, edge_binary, edge_environment = live_instance(
+        edge_pid, bin_dir / "gateway", environment
+    )
+    edge_extra = tuple(
+        f"{key}={edge_environment.get(key) or default}"
+        for key, default in upstream_defaults.items()
+    )
     edge_entry: dict[str, object] = {
         "start": start_command(edge_binary, "core", edge_environment, None, EDGE_PORT, edge_extra),
         "log": "edge.log",
@@ -188,14 +250,34 @@ def main(argv: list[str] | None = None) -> int:
     control["edge"] = {"instances": [edge_entry] if "pid" in edge_entry else [], "additional": []}
     if args.broker_json and Path(args.broker_json).exists():
         broker = json.loads(Path(args.broker_json).read_text(encoding="utf-8"))
-        control["broker"] = {k: broker[k] for k in ("pid", "binary", "sha256", "version", "argv", "client_url",
-                                                   "monitor_url", "data_dir", "log", "restart_argv", "stop")
-                             if k in broker}
-    write_private(out_dir / "control.json", json.dumps(control, ensure_ascii=False, indent=2) + "\n")
+        control["broker"] = {
+            k: broker[k]
+            for k in (
+                "pid",
+                "binary",
+                "sha256",
+                "version",
+                "argv",
+                "client_url",
+                "monitor_url",
+                "data_dir",
+                "log",
+                "restart_argv",
+                "stop",
+            )
+            if k in broker
+        }
+    write_private(
+        out_dir / "control.json", json.dumps(control, ensure_ascii=False, indent=2) + "\n"
+    )
 
-    live = sum(1 for entry in control.values() if isinstance(entry, dict) and entry.get("instances"))
-    print(f"wrote stack.env, control.json and restore-source.env into {out_dir} (0600; {live} live instances, "
-          f"{len(control)} entries)")
+    live = sum(
+        1 for entry in control.values() if isinstance(entry, dict) and entry.get("instances")
+    )
+    print(
+        f"wrote stack.env, control.json and restore-source.env into {out_dir} (0600; {live} live instances, "
+        f"{len(control)} entries)"
+    )
     return 0
 
 

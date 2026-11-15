@@ -30,6 +30,10 @@ interface SectionNavigation {
 
 const SectionNavigationContext = createContext<SectionNavigation | null>(null);
 
+// Navigation parameters and fragments must reject control characters.
+// eslint-disable-next-line no-control-regex -- the range is the explicit filter, not an accidental control character.
+const CONTROL_CHARACTERS = /[\u0000-\u001f]/;
+
 export function useSectionNavigationAvailable(): boolean {
   return useContext(SectionNavigationContext) !== null;
 }
@@ -47,22 +51,56 @@ export interface CaseListReturn {
 }
 
 /** Only the existing list URL and a position may cross back to that list. */
-export function readCaseListReturn(state: unknown, caseId: string, actorScope: string): CaseListReturn | null {
+export function readCaseListReturn(
+  state: unknown,
+  caseId: string,
+  actorScope: string,
+): CaseListReturn | null {
   if (!state || typeof state !== "object" || !actorScope) return null;
   const value = state as Partial<CaseListReturn>;
-  if (typeof value.returnTo !== "string" || !value.returnTo.startsWith("/cases?") ||
-      value.returnTo.includes("\\") || value.returnTo.length > 4096 || value.actorScope !== actorScope ||
-      value.selectedId !== caseId || typeof value.scrollY !== "number" || !Number.isFinite(value.scrollY) || value.scrollY < 0) return null;
+  if (
+    typeof value.returnTo !== "string" ||
+    !value.returnTo.startsWith("/cases?") ||
+    value.returnTo.includes("\\") ||
+    value.returnTo.length > 4096 ||
+    value.actorScope !== actorScope ||
+    value.selectedId !== caseId ||
+    typeof value.scrollY !== "number" ||
+    !Number.isFinite(value.scrollY) ||
+    value.scrollY < 0
+  )
+    return null;
   try {
     const url = new URL(value.returnTo, "https://navigation.invalid");
-    if (url.origin !== "https://navigation.invalid" || url.pathname !== "/cases" || url.hash || url.searchParams.get("selected") !== caseId) return null;
+    if (
+      url.origin !== "https://navigation.invalid" ||
+      url.pathname !== "/cases" ||
+      url.hash ||
+      url.searchParams.get("selected") !== caseId
+    )
+      return null;
     const safe = new URLSearchParams();
-    for (const key of ["q", "run", "business_status", "sort", "direction", "page", "page_size", "selected"]) {
+    for (const key of [
+      "q",
+      "run",
+      "business_status",
+      "sort",
+      "direction",
+      "page",
+      "page_size",
+      "selected",
+    ]) {
       const param = url.searchParams.get(key);
-      if (param !== null && param.length <= 512 && !/[\u0000-\u001f]/.test(param)) safe.set(key, param);
+      if (param !== null && param.length <= 512 && !CONTROL_CHARACTERS.test(param))
+        safe.set(key, param);
     }
     if (safe.get("selected") !== caseId) return null;
-    return { returnTo: `${url.pathname}?${safe}`, scrollY: value.scrollY, selectedId: caseId, actorScope };
+    return {
+      returnTo: `${url.pathname}?${safe}`,
+      scrollY: value.scrollY,
+      selectedId: caseId,
+      actorScope,
+    };
   } catch {
     return null;
   }
@@ -74,14 +112,31 @@ export interface CaseReadingPosition {
   scrollY: number;
 }
 
-export type CaseReturnState = Partial<CaseListReturn> & { caseReadingPosition?: CaseReadingPosition };
+export type CaseReturnState = Partial<CaseListReturn> & {
+  caseReadingPosition?: CaseReadingPosition;
+};
 
-export function readCaseReadingPosition(state: unknown, caseId: string, actorScope: string): CaseReadingPosition | null {
+export function readCaseReadingPosition(
+  state: unknown,
+  caseId: string,
+  actorScope: string,
+): CaseReadingPosition | null {
   if (!state || typeof state !== "object" || !("caseReadingPosition" in state)) return null;
   const value = state.caseReadingPosition;
-  if (!value || typeof value !== "object" || !("caseId" in value) || !("actorScope" in value) || !("scrollY" in value) ||
-      value.caseId !== caseId || !actorScope || value.actorScope !== actorScope ||
-      typeof value.scrollY !== "number" || !Number.isFinite(value.scrollY) || value.scrollY < 0) return null;
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("caseId" in value) ||
+    !("actorScope" in value) ||
+    !("scrollY" in value) ||
+    value.caseId !== caseId ||
+    !actorScope ||
+    value.actorScope !== actorScope ||
+    typeof value.scrollY !== "number" ||
+    !Number.isFinite(value.scrollY) ||
+    value.scrollY < 0
+  )
+    return null;
   return { caseId, actorScope, scrollY: value.scrollY };
 }
 
@@ -95,26 +150,63 @@ export interface ReviewReadingPosition {
   findingScroll: number;
 }
 
-export function readReviewReadingPosition(state: unknown, caseId: string, runId: string, attemptId: string | null, actorScope: string): ReviewReadingPosition | null {
+export function readReviewReadingPosition(
+  state: unknown,
+  caseId: string,
+  runId: string,
+  attemptId: string | null,
+  actorScope: string,
+): ReviewReadingPosition | null {
   if (!state || typeof state !== "object" || !("reviewReadingPosition" in state)) return null;
   const value = state.reviewReadingPosition;
   if (!value || typeof value !== "object") return null;
   const position = value as Partial<ReviewReadingPosition>;
-  if (!actorScope || position.actorScope !== actorScope || position.caseId !== caseId || position.runId !== runId || position.attemptId !== attemptId ||
-      ![position.scrollY, position.documentScroll, position.findingScroll].every((number) => typeof number === "number" && Number.isFinite(number) && number >= 0)) return null;
+  if (
+    !actorScope ||
+    position.actorScope !== actorScope ||
+    position.caseId !== caseId ||
+    position.runId !== runId ||
+    position.attemptId !== attemptId ||
+    ![position.scrollY, position.documentScroll, position.findingScroll].every(
+      (number) => typeof number === "number" && Number.isFinite(number) && number >= 0,
+    )
+  )
+    return null;
   return {
-    caseId, runId, attemptId, actorScope,
-    scrollY: position.scrollY!, documentScroll: position.documentScroll!, findingScroll: position.findingScroll!,
+    caseId,
+    runId,
+    attemptId,
+    actorScope,
+    scrollY: position.scrollY!,
+    documentScroll: position.documentScroll!,
+    findingScroll: position.findingScroll!,
   };
 }
 
-export function reviewPositionForPath(state: unknown, path: string, caseId: string, actorScope: string): ReviewReadingPosition | null {
+export function reviewPositionForPath(
+  state: unknown,
+  path: string,
+  caseId: string,
+  actorScope: string,
+): ReviewReadingPosition | null {
   try {
     const url = new URL(path, "https://navigation.invalid");
     const parts = url.pathname.split("/");
-    if (url.origin !== "https://navigation.invalid" || parts.length !== 5 || parts[1] !== "cases" ||
-        decodeURIComponent(parts[2] ?? "") !== caseId || parts[3] !== "reviews") return null;
-    return readReviewReadingPosition(state, caseId, decodeURIComponent(parts[4] ?? ""), url.searchParams.get("attempt_id"), actorScope);
+    if (
+      url.origin !== "https://navigation.invalid" ||
+      parts.length !== 5 ||
+      parts[1] !== "cases" ||
+      decodeURIComponent(parts[2] ?? "") !== caseId ||
+      parts[3] !== "reviews"
+    )
+      return null;
+    return readReviewReadingPosition(
+      state,
+      caseId,
+      decodeURIComponent(parts[4] ?? ""),
+      url.searchParams.get("attempt_id"),
+      actorScope,
+    );
   } catch {
     return null;
   }
@@ -133,7 +225,7 @@ function fragment(hash: string): string | null {
   if (!hash.startsWith("#") || hash.length === 1) return null;
   try {
     const id = decodeURIComponent(hash.slice(1));
-    return id && id.length <= 512 && !/[\u0000-\u001f]/.test(id) ? id : null;
+    return id && id.length <= 512 && !CONTROL_CHARACTERS.test(id) ? id : null;
   } catch {
     return null;
   }
@@ -144,14 +236,20 @@ function isHidden(target: HTMLElement): boolean {
 }
 
 function focusAndScroll(target: HTMLElement) {
-  const candidates = target instanceof HTMLDetailsElement
-    ? target.querySelectorAll<HTMLElement>(":scope > summary")
-    : target.matches("h1,h2,h3,h4,h5,h6,button,a,input,select,textarea,summary")
-      ? [target]
-      : target.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6,summary,button,a,input,select,textarea");
+  const candidates =
+    target instanceof HTMLDetailsElement
+      ? target.querySelectorAll<HTMLElement>(":scope > summary")
+      : target.matches("h1,h2,h3,h4,h5,h6,button,a,input,select,textarea,summary")
+        ? [target]
+        : target.querySelectorAll<HTMLElement>(
+            "h1,h2,h3,h4,h5,h6,summary,button,a,input,select,textarea",
+          );
   const focusTarget = Array.from(candidates).find((candidate) => !isHidden(candidate)) ?? target;
   if (isHidden(focusTarget)) return;
-  if (!focusTarget.hasAttribute("tabindex") && !focusTarget.matches("a[href],button,input,select,textarea,summary")) {
+  if (
+    !focusTarget.hasAttribute("tabindex") &&
+    !focusTarget.matches("a[href],button,input,select,textarea,summary")
+  ) {
     focusTarget.tabIndex = -1;
   }
   focusTarget.focus({ preventScroll: true });
@@ -195,7 +293,9 @@ export function SectionNavigationProvider({
   const [missing, setMissing] = useState(false);
   const register = useCallback((element: HTMLDetailsElement, open: OpenSection) => {
     sections.current.set(element, open);
-    return () => { sections.current.delete(element); };
+    return () => {
+      sections.current.delete(element);
+    };
   }, []);
   const context = useMemo(() => ({ register }), [register]);
   const requestId = useCallback((id: string | null) => {
@@ -203,11 +303,14 @@ export function SectionNavigationProvider({
     setMissing(false);
     setRequest(id ? { id, serial: serial.current } : null);
   }, []);
-  const requestHash = useCallback((hash: string) => {
-    const id = fragment(hash);
-    requestId(id);
-    if (hash.length > 1 && id === null) setMissing(true);
-  }, [requestId]);
+  const requestHash = useCallback(
+    (hash: string) => {
+      const id = fragment(hash);
+      requestId(id);
+      if (hash.length > 1 && id === null) setMissing(true);
+    },
+    [requestId],
+  );
 
   useEffect(() => {
     const changedScope = previousScope.current !== scope;
@@ -216,8 +319,16 @@ export function SectionNavigationProvider({
     previousScope.current = scope;
     previousActorScope.current = actorScope;
     const previous = previousLocation.current;
-    previousLocation.current = { hash: location.hash, pathname: location.pathname, search: location.search };
-    const changedLocation = previous !== null && (previous.pathname !== location.pathname || previous.search !== location.search || previous.hash !== location.hash);
+    previousLocation.current = {
+      hash: location.hash,
+      pathname: location.pathname,
+      search: location.search,
+    };
+    const changedLocation =
+      previous !== null &&
+      (previous.pathname !== location.pathname ||
+        previous.search !== location.search ||
+        previous.hash !== location.hash);
     if (changedActor && oldActorScope) {
       requestId(null);
       return;
@@ -229,10 +340,25 @@ export function SectionNavigationProvider({
       else requestId(null);
       return;
     }
-    if (!previous || previous.hash !== location.hash || previous.pathname !== location.pathname || navigationType === "POP") {
+    if (
+      !previous ||
+      previous.hash !== location.hash ||
+      previous.pathname !== location.pathname ||
+      navigationType === "POP"
+    ) {
       requestHash(location.hash);
     }
-  }, [actorScope, location.hash, location.key, location.pathname, location.search, navigationType, requestHash, requestId, scope]);
+  }, [
+    actorScope,
+    location.hash,
+    location.key,
+    location.pathname,
+    location.search,
+    navigationType,
+    requestHash,
+    requestId,
+    scope,
+  ]);
 
   useEffect(() => {
     if (!request || !scope) return;
@@ -263,8 +389,8 @@ export function SectionNavigationProvider({
       }
       if (isHidden(target)) return;
       running = true;
-      let ancestor: HTMLElement | null = target.firstElementChild instanceof HTMLDetailsElement
-        ? target.firstElementChild : target;
+      let ancestor: HTMLElement | null =
+        target.firstElementChild instanceof HTMLDetailsElement ? target.firstElementChild : target;
       while (ancestor && root.current?.contains(ancestor)) {
         if (ancestor instanceof HTMLDetailsElement && !ancestor.open) {
           const open = sections.current.get(ancestor);
@@ -295,7 +421,13 @@ export function SectionNavigationProvider({
       });
     };
     const observer = new MutationObserver(resolve);
-    if (root.current) observer.observe(root.current, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "aria-hidden", "inert", "open"] });
+    if (root.current)
+      observer.observe(root.current, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["hidden", "aria-hidden", "inert", "open"],
+      });
     resolve();
     return () => {
       cancelled = true;
@@ -309,14 +441,26 @@ export function SectionNavigationProvider({
   }, [ready, request, revealTarget, scope, targetPending]);
 
   function onClick(event: MouseEvent<HTMLDivElement>) {
-    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.shiftKey
+    )
+      return;
     const element = event.target instanceof Element ? event.target.closest("a[href]") : null;
     const href = element?.getAttribute("href");
     const id = href ? fragment(href) : null;
     if (!href || !id || element?.getAttribute("target")) return;
     event.preventDefault();
     if (href === location.hash) requestId(id);
-    else void navigate({ pathname: location.pathname, search: location.search, hash: href }, { state: location.state });
+    else
+      void navigate(
+        { pathname: location.pathname, search: location.search, hash: href },
+        { state: location.state },
+      );
   }
 
   return (

@@ -9,6 +9,7 @@
 # End file metadata.
 
 """The source tree must keep AGENTS.md and keep delivery material out."""
+
 import os
 import shutil
 import subprocess
@@ -55,9 +56,13 @@ class RepositoryPolicyTest(unittest.TestCase):
             "materials/sample.zip",
         ):
             self.assertTrue(repository_policy.is_ignored(ROOT, relative), relative)
-        self.assertFalse(repository_policy.is_ignored(ROOT, "internal/documentparse/testdata/pdf/gold.json"))
+        self.assertFalse(
+            repository_policy.is_ignored(ROOT, "internal/documentparse/testdata/pdf/gold.json")
+        )
         self.assertFalse(repository_policy.is_ignored(ROOT, "testdata/decision-zh-v1.json"))
-        self.assertFalse(repository_policy.is_ignored(ROOT, "web/public/huangjueshu-competition-logo.png"))
+        self.assertFalse(
+            repository_policy.is_ignored(ROOT, "web/public/huangjueshu-competition-logo.png")
+        )
         self.assertTrue(repository_policy.is_ignored(ROOT, "web/public/unapproved-design.png"))
 
     def test_matcher_agrees_with_git(self):
@@ -92,7 +97,9 @@ class RepositoryPolicyTest(unittest.TestCase):
                     capture_output=True,
                 )
                 self.assertIn(git.returncode, (0, 1), relative)
-                self.assertEqual(repository_policy.is_ignored(root, relative), git.returncode == 0, relative)
+                self.assertEqual(
+                    repository_policy.is_ignored(root, relative), git.returncode == 0, relative
+                )
 
     def test_runtime_logo_is_bounded_without_allowing_other_bulk_assets(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -103,7 +110,11 @@ class RepositoryPolicyTest(unittest.TestCase):
             logo.write_bytes(b"image")
             self.assertEqual(repository_policy.violations(root), [])
             logo.write_bytes(b"x" * (repository_policy.RUNTIME_ASSET_MAX_BYTES + 1))
-            self.assertTrue(any("runtime asset exceeds" in issue for issue in repository_policy.violations(root)))
+            self.assertTrue(
+                any(
+                    "runtime asset exceeds" in issue for issue in repository_policy.violations(root)
+                )
+            )
 
     def test_current_tree_has_no_policy_violations(self):
         self.assertEqual(repository_policy.violations(ROOT), [])
@@ -120,15 +131,20 @@ class RepositoryPolicyTest(unittest.TestCase):
         (handbook / "community-guide.md").write_text("curated handbook\n", encoding="utf-8")
         (root / "docs" / "index.md").write_text("handbook index\n", encoding="utf-8")
         (root / "node_modules").mkdir()
-        (root / "node_modules" / "dependency.md").write_text("ignored dependency\n", encoding="utf-8")
+        (root / "node_modules" / "dependency.md").write_text(
+            "ignored dependency\n", encoding="utf-8"
+        )
 
     def test_source_archive_runs_matcher_and_tree_policy_without_git_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
             archive_path = Path(tmp) / "source.zip"
             with zipfile.ZipFile(archive_path, "w") as archive:
                 for relative in (
-                    ".gitignore", "README.md", "AGENTS.md",
-                    "scripts/repository_policy.py", "scripts/test_repository_policy.py",
+                    ".gitignore",
+                    "README.md",
+                    "AGENTS.md",
+                    "scripts/repository_policy.py",
+                    "scripts/test_repository_policy.py",
                 ):
                     archive.write(ROOT / relative, relative)
                 archive.writestr("docs/design.md", "ignored delivery material\n")
@@ -136,10 +152,16 @@ class RepositoryPolicyTest(unittest.TestCase):
             with zipfile.ZipFile(archive_path) as archive:
                 archive.extractall(root)
             completed = subprocess.run(
-                [sys.executable, "-m", "unittest",
-                 "test_repository_policy.RepositoryPolicyTest.test_matcher_agrees_with_git",
-                 "test_repository_policy.RepositoryPolicyTest.test_current_tree_has_no_policy_violations"],
-                cwd=root / "scripts", capture_output=True, text=True,
+                [
+                    sys.executable,
+                    "-m",
+                    "unittest",
+                    "test_repository_policy.RepositoryPolicyTest.test_matcher_agrees_with_git",
+                    "test_repository_policy.RepositoryPolicyTest.test_current_tree_has_no_policy_violations",
+                ],
+                cwd=root / "scripts",
+                capture_output=True,
+                text=True,
             )
             self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
 
@@ -149,7 +171,9 @@ class RepositoryPolicyTest(unittest.TestCase):
             self._write_source_tree(root)
             with mock.patch.dict(os.environ, {"PATH": str(Path(tmp) / "no-git")}):
                 self.assertEqual(repository_policy.violations(root), [])
-                self.assertFalse(repository_policy.is_ignored(root, "docs/engineering/community-guide.md"))
+                self.assertFalse(
+                    repository_policy.is_ignored(root, "docs/engineering/community-guide.md")
+                )
                 self.assertFalse(repository_policy.is_ignored(root, "docs/index.md"))
                 self.assertTrue(repository_policy.is_ignored(root, "docs/design.md"))
 
@@ -178,7 +202,9 @@ class RepositoryPolicyTest(unittest.TestCase):
             self._write_source_tree(root)
             subprocess.run(
                 ["git", "add", "-f", "source/docs/design.md"],
-                cwd=parent, check=True, capture_output=True,
+                cwd=parent,
+                check=True,
+                capture_output=True,
             )
             self.assertEqual(repository_policy.violations(root), [])
 
@@ -208,11 +234,15 @@ class RepositoryPolicyTest(unittest.TestCase):
             self._write_source_tree(root)
             subprocess.run(
                 ["git", "init", "--separate-git-dir", str(parent / "metadata")],
-                cwd=root, check=True, capture_output=True,
+                cwd=root,
+                check=True,
+                capture_output=True,
             )
             subprocess.run(
                 ["git", "add", "-f", "docs/design.md"],
-                cwd=root, check=True, capture_output=True,
+                cwd=root,
+                check=True,
+                capture_output=True,
             )
             found = repository_policy.violations(root)
             self.assertTrue(any("docs/design.md" in item for item in found), found)
@@ -241,15 +271,27 @@ class RepositoryPolicyTest(unittest.TestCase):
             (fixture / "ok.pdf").write_bytes(b"%PDF-1.4\n")
             (fixture / "huge.pdf").write_bytes(b"x" * (repository_policy.FIXTURE_MAX_BYTES + 1))
             subprocess.run(
-                ["git", "add", "-f", "README.md", "AGENTS.md", "docs/design.md",
-                 "docs/engineering/community-guide.md", "docs/index.md",
-                 "internal/documentparse/testdata/pdf/ok.pdf",
-                 "internal/documentparse/testdata/pdf/huge.pdf"],
-                cwd=root, check=True, capture_output=True,
+                [
+                    "git",
+                    "add",
+                    "-f",
+                    "README.md",
+                    "AGENTS.md",
+                    "docs/design.md",
+                    "docs/engineering/community-guide.md",
+                    "docs/index.md",
+                    "internal/documentparse/testdata/pdf/ok.pdf",
+                    "internal/documentparse/testdata/pdf/huge.pdf",
+                ],
+                cwd=root,
+                check=True,
+                capture_output=True,
             )
             found = repository_policy.violations(root)
             self.assertTrue(any("docs/design.md" in item for item in found), found)
-            self.assertFalse(any("docs/engineering/community-guide.md" in item for item in found), found)
+            self.assertFalse(
+                any("docs/engineering/community-guide.md" in item for item in found), found
+            )
             self.assertFalse(any("docs/index.md" in item for item in found), found)
             self.assertTrue(any("public.md" in item for item in found), found)
             self.assertTrue(any("huge.pdf" in item and "exceeds" in item for item in found), found)

@@ -10,6 +10,7 @@
 # End file metadata.
 
 """Discover and run Go test packages safe for the database-free unit entrypoint."""
+
 from __future__ import annotations
 
 import argparse
@@ -22,8 +23,20 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP_DIRS = frozenset({".git", ".venv", "artifacts", "coverage", "dist", "node_modules",
-                      "testdata", "vendor", "web", "e2e"})
+SKIP_DIRS = frozenset(
+    {
+        ".git",
+        ".venv",
+        "artifacts",
+        "coverage",
+        "dist",
+        "node_modules",
+        "testdata",
+        "vendor",
+        "web",
+        "e2e",
+    }
+)
 EXCLUDED_UNIT_TAGS = frozenset({"existingDB", "browser", "distributed", "live"})
 DATABASE_URL = re.compile(r"\b(?:[A-Z][A-Z0-9_]*_)?DATABASE_URL\b")
 DATABASE_OPERATION = re.compile(
@@ -36,12 +49,44 @@ DATABASE_OPERATION = re.compile(
 FUNCTION = re.compile(r"(?m)^func\s+(?:\([^\n)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 CALL = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 BUILD_LINE = re.compile(r"^\s*//(?:go:build\s+|\s*\+build\s+)(.*)$")
-GOOS_TAGS = frozenset({"aix", "android", "darwin", "dragonfly", "freebsd", "illumos",
-                       "ios", "js", "linux", "netbsd", "openbsd", "plan9", "solaris",
-                       "wasip1", "windows"})
-GOARCH_TAGS = frozenset({"386", "amd64", "amd64p32", "arm", "arm64", "loong64", "mips",
-                         "mips64", "mips64le", "mipsle", "ppc64", "ppc64le", "riscv64",
-                         "s390x", "wasm"})
+GOOS_TAGS = frozenset(
+    {
+        "aix",
+        "android",
+        "darwin",
+        "dragonfly",
+        "freebsd",
+        "illumos",
+        "ios",
+        "js",
+        "linux",
+        "netbsd",
+        "openbsd",
+        "plan9",
+        "solaris",
+        "wasip1",
+        "windows",
+    }
+)
+GOARCH_TAGS = frozenset(
+    {
+        "386",
+        "amd64",
+        "amd64p32",
+        "arm",
+        "arm64",
+        "loong64",
+        "mips",
+        "mips64",
+        "mips64le",
+        "mipsle",
+        "ppc64",
+        "ppc64le",
+        "riscv64",
+        "s390x",
+        "wasm",
+    }
+)
 
 
 def _go_flags_tags() -> set[str]:
@@ -57,24 +102,43 @@ def _go_flags_tags() -> set[str]:
         elif token.startswith("-tags="):
             value = token.partition("=")[2]
         if value:
-            tags.update(tag for tag in re.split(r"[ ,]+", value)
-                        if tag and tag not in EXCLUDED_UNIT_TAGS)
+            tags.update(
+                tag for tag in re.split(r"[ ,]+", value) if tag and tag not in EXCLUDED_UNIT_TAGS
+            )
         index += 1
     return tags
 
 
 def _host_tags(root: Path, race: bool) -> set[str]:
     goos = os.environ.get("GOOS") or {
-        "linux": "linux", "darwin": "darwin", "win32": "windows",
+        "linux": "linux",
+        "darwin": "darwin",
+        "win32": "windows",
     }.get(sys.platform, sys.platform)
     machine = platform.machine().lower()
     goarch = os.environ.get("GOARCH") or {
-        "x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64",
-        "i386": "386", "i686": "386", "armv7l": "arm",
+        "x86_64": "amd64",
+        "amd64": "amd64",
+        "aarch64": "arm64",
+        "arm64": "arm64",
+        "i386": "386",
+        "i686": "386",
+        "armv7l": "arm",
     }.get(machine, machine)
     tags = {goos, goarch, *_go_flags_tags()}
-    if goos in {"aix", "android", "darwin", "dragonfly", "freebsd", "illumos",
-                "ios", "linux", "netbsd", "openbsd", "solaris"}:
+    if goos in {
+        "aix",
+        "android",
+        "darwin",
+        "dragonfly",
+        "freebsd",
+        "illumos",
+        "ios",
+        "linux",
+        "netbsd",
+        "openbsd",
+        "solaris",
+    }:
         tags.add("unix")
     if os.environ.get("CGO_ENABLED", "1") != "0":
         tags.add("cgo")
@@ -138,7 +202,11 @@ def _eval_build_expression(expression: str, tags: set[str]) -> bool:
 
 
 def _filename_enabled(path: Path, tags: set[str]) -> bool:
-    stem = path.name[:-len("_test.go")] if path.name.endswith("_test.go") else path.name.removesuffix(".go")
+    stem = (
+        path.name[: -len("_test.go")]
+        if path.name.endswith("_test.go")
+        else path.name.removesuffix(".go")
+    )
     parts = stem.split("_")
     if parts[-1] in GOARCH_TAGS:
         if parts[-1] not in tags:
@@ -165,8 +233,7 @@ def _go_file_enabled(path: Path, tags: set[str]) -> bool:
     if go_build is not None:
         return _filename_enabled(path, tags) and _eval_build_expression(go_build, tags)
     for expression in legacy:
-        alternatives = ["(" + " && ".join(group.split(",")) + ")"
-                        for group in expression.split()]
+        alternatives = ["(" + " && ".join(group.split(",")) + ")" for group in expression.split()]
         if not alternatives or not _eval_build_expression(" || ".join(alternatives), tags):
             return False
     return _filename_enabled(path, tags)
@@ -176,16 +243,25 @@ def _functions(sources: list[str]) -> list[tuple[str, str]]:
     functions: list[tuple[str, str]] = []
     for source in sources:
         headers = list(FUNCTION.finditer(source))
-        functions.extend((match.group(1), source[match.start():headers[index + 1].start()
-                                                if index + 1 < len(headers) else len(source)])
-                         for index, match in enumerate(headers))
+        functions.extend(
+            (
+                match.group(1),
+                source[
+                    match.start() : headers[index + 1].start()
+                    if index + 1 < len(headers)
+                    else len(source)
+                ],
+            )
+            for index, match in enumerate(headers)
+        )
     return functions
 
 
 def _database_events(body: str, database_functions: set[str]) -> list[int]:
     events = [match.start() for match in DATABASE_OPERATION.finditer(body)]
-    events.extend(match.start() for match in CALL.finditer(body)
-                  if match.group(1) in database_functions)
+    events.extend(
+        match.start() for match in CALL.finditer(body) if match.group(1) in database_functions
+    )
     return events
 
 
@@ -193,9 +269,10 @@ def _database_guard_position(body: str, database_functions: set[str]) -> int | N
     skip = re.search(r"\bt\.Skipf?\s*\(", body)
     if not skip:
         return None
-    prefix = body[:skip.start()]
-    url_bindings = set(re.findall(
-        r"\b([A-Za-z_]\w*)\s*:=\s*[^;\n]*\b[A-Z][A-Z0-9_]*_DATABASE_URL\b", prefix))
+    prefix = body[: skip.start()]
+    url_bindings = set(
+        re.findall(r"\b([A-Za-z_]\w*)\s*:=\s*[^;\n]*\b[A-Z][A-Z0-9_]*_DATABASE_URL\b", prefix)
+    )
     for block in re.finditer(r"\bif\s+([^\n{]+)\{([^{}]*)\}", body):
         condition, statements = block.group(1), block.group(2)
         if not block.start() <= skip.start() < block.end():
@@ -204,7 +281,8 @@ def _database_guard_position(body: str, database_functions: set[str]) -> int | N
             continue
         refers_to_database = bool(re.search(r"\b[A-Z][A-Z0-9_]*_DATABASE_URL\b", condition))
         refers_to_database = refers_to_database or any(
-            re.search(rf"\b{re.escape(name)}\b", condition) for name in url_bindings)
+            re.search(rf"\b{re.escape(name)}\b", condition) for name in url_bindings
+        )
         if not refers_to_database or not re.search(r"\bt\.Skipf?\s*\(", statements):
             continue
         if any(position < skip.start() for position in _database_events(body, database_functions)):
@@ -215,13 +293,16 @@ def _database_guard_position(body: str, database_functions: set[str]) -> int | N
 
 def _database_tests_are_guarded(sources: list[str]) -> bool:
     functions = _functions(sources)
-    direct_database_functions = {name for name, body in functions
-                                 if DATABASE_OPERATION.search(body)}
+    direct_database_functions = {
+        name for name, body in functions if DATABASE_OPERATION.search(body)
+    }
     database_functions = set(direct_database_functions)
     while True:
-        discovered = {name for name, body in functions
-                      if any(match.group(1) in database_functions
-                             for match in CALL.finditer(body))}
+        discovered = {
+            name
+            for name, body in functions
+            if any(match.group(1) in database_functions for match in CALL.finditer(body))
+        }
         expanded = database_functions | discovered
         if expanded == database_functions:
             break
@@ -235,9 +316,9 @@ def _database_tests_are_guarded(sources: list[str]) -> bool:
         if name in database_functions:
             bodies_by_name.setdefault(name, []).append(body)
     guarded_functions = {
-        name for name, bodies in bodies_by_name.items()
-        if all(_database_guard_position(body, database_functions) is not None
-               for body in bodies)
+        name
+        for name, bodies in bodies_by_name.items()
+        if all(_database_guard_position(body, database_functions) is not None for body in bodies)
     }
 
     for name, body in functions:
@@ -247,8 +328,9 @@ def _database_tests_are_guarded(sources: list[str]) -> bool:
         if not events:
             continue
         local_guard = _database_guard_position(body, database_functions)
-        guarded_calls = [match.start() for match in CALL.finditer(body)
-                         if match.group(1) in guarded_functions]
+        guarded_calls = [
+            match.start() for match in CALL.finditer(body) if match.group(1) in guarded_functions
+        ]
         for position in events:
             if position in guarded_calls:
                 continue
@@ -273,23 +355,31 @@ def discover_unit_test_packages(root: Path, *, race: bool = False) -> set[str]:
     for directory, child_dirs, filenames in os.walk(root):
         current = Path(directory)
         relative = current.relative_to(root)
-        child_dirs[:] = [name for name in child_dirs
-                         if name not in SKIP_DIRS and not name.startswith((".", "_"))]
+        child_dirs[:] = [
+            name for name in child_dirs if name not in SKIP_DIRS and not name.startswith((".", "_"))
+        ]
         if relative != Path(".") and (current / "go.mod").is_file():
             child_dirs[:] = []
             continue
         if relative == Path("e2e"):
             child_dirs[:] = []
             continue
-        go_paths = [current / name for name in filenames
-                    if name.endswith(".go") and _go_file_enabled(current / name, tags)]
+        go_paths = [
+            current / name
+            for name in filenames
+            if name.endswith(".go") and _go_file_enabled(current / name, tags)
+        ]
         test_paths = [path for path in go_paths if path.name.endswith("_test.go")]
         if not test_paths:
             continue
         sources = [path.read_text(encoding="utf-8") for path in go_paths]
-        test_source_functions = _functions([path.read_text(encoding="utf-8") for path in test_paths])
-        if not any(name.startswith(("Test", "Fuzz", "Example")) or name == "TestMain"
-                   for name, _ in test_source_functions):
+        test_source_functions = _functions(
+            [path.read_text(encoding="utf-8") for path in test_paths]
+        )
+        if not any(
+            name.startswith(("Test", "Fuzz", "Example")) or name == "TestMain"
+            for name, _ in test_source_functions
+        ):
             continue
         if not _database_tests_are_guarded(sources):
             continue
@@ -315,13 +405,19 @@ def unit_test_environment(source: dict[str, str] | None = None) -> dict[str, str
         token = tokens[index]
         if token == "-tags" and index + 1 < len(tokens):
             index += 1
-            remaining = [tag for tag in re.split(r"[ ,]+", tokens[index])
-                         if tag and tag not in EXCLUDED_UNIT_TAGS]
+            remaining = [
+                tag
+                for tag in re.split(r"[ ,]+", tokens[index])
+                if tag and tag not in EXCLUDED_UNIT_TAGS
+            ]
             if remaining:
                 filtered.extend(("-tags", ",".join(remaining)))
         elif token.startswith("-tags="):
-            remaining = [tag for tag in re.split(r"[ ,]+", token.partition("=")[2])
-                         if tag and tag not in EXCLUDED_UNIT_TAGS]
+            remaining = [
+                tag
+                for tag in re.split(r"[ ,]+", token.partition("=")[2])
+                if tag and tag not in EXCLUDED_UNIT_TAGS
+            ]
             if remaining:
                 filtered.append("-tags=" + ",".join(remaining))
         else:
@@ -337,7 +433,9 @@ def unit_test_environment(source: dict[str, str] | None = None) -> dict[str, str
 def run_unit_tests(root: Path, go: str) -> int:
     packages = sorted(discover_unit_test_packages(root, race=True))
     if not packages:
-        print("test-unit: no supported no-database Go test packages were discovered", file=sys.stderr)
+        print(
+            "test-unit: no supported no-database Go test packages were discovered", file=sys.stderr
+        )
         return 2
     command_prefix = shlex.split(go)
     if not command_prefix:
@@ -357,8 +455,11 @@ def run_unit_tests(root: Path, go: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--go", default=os.environ.get("GO", "go"),
-                        help="Go command (defaults to the GO environment variable or go)")
+    parser.add_argument(
+        "--go",
+        default=os.environ.get("GO", "go"),
+        help="Go command (defaults to the GO environment variable or go)",
+    )
     args = parser.parse_args(argv)
     return run_unit_tests(ROOT, args.go)
 

@@ -10,12 +10,12 @@
 # End file metadata.
 
 """Freeze a local P0 source candidate and probe its distributed release routes."""
+
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -28,13 +28,29 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from source_identity import source_identity  # noqa: E402
 
-IGNORED_DIRS = {".git", ".agents", "__pycache__", "node_modules", "dist", "coverage",
-                "artifacts", "outputs", "target", "build", "var"}
+IGNORED_DIRS = {
+    ".git",
+    ".agents",
+    "__pycache__",
+    "node_modules",
+    "dist",
+    "coverage",
+    "artifacts",
+    "outputs",
+    "target",
+    "build",
+    "var",
+}
 
 
 def source_paths(root: Path) -> list[Path]:
-    result = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-                            cwd=root, check=True, capture_output=True, timeout=30)
+    result = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
     paths = []
     for encoded in result.stdout.split(b"\0"):
         if not encoded:
@@ -65,7 +81,9 @@ def copy_source_files(source: Path, destination: Path, paths: list[Path]) -> Non
 
 def file_manifest(root: Path) -> list[dict[str, str]]:
     rows = []
-    for path in sorted(item for item in root.rglob("*") if item.is_file() and not item.is_symlink()):
+    for path in sorted(
+        item for item in root.rglob("*") if item.is_file() and not item.is_symlink()
+    ):
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         rows.append({"path": path.relative_to(root).as_posix(), "sha256": digest})
     return rows
@@ -95,12 +113,24 @@ def snapshot_source(destination: Path) -> dict[str, object]:
         shutil.rmtree(destination)
         raise
     rows = file_manifest(destination)
-    git_head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, check=True,
-                              capture_output=True, text=True, timeout=10).stdout.strip()
-    status = subprocess.run(["git", "status", "--porcelain=v1", "-z"], cwd=ROOT, check=True,
-                            capture_output=True, timeout=10).stdout
-    diff = subprocess.run(["git", "diff", "--binary", "HEAD"], cwd=ROOT, check=True,
-                          capture_output=True, timeout=30).stdout
+    git_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    ).stdout.strip()
+    status = subprocess.run(
+        ["git", "status", "--porcelain=v1", "-z"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        timeout=10,
+    ).stdout
+    diff = subprocess.run(
+        ["git", "diff", "--binary", "HEAD"], cwd=ROOT, check=True, capture_output=True, timeout=30
+    ).stdout
     return {
         "schema_version": "p0-source-snapshot/v1",
         "created_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -128,20 +158,32 @@ def fetch(url: str, marker: str | None = None) -> dict[str, object]:
     except HTTPError as error:
         with error:
             body = error.read(4 << 20)
-        return {"url": url, "status_code": error.code, "location": error.headers.get("Location"),
-                "body_sha256": hashlib.sha256(body).hexdigest(), "body_bytes": len(body),
-                "marker_present": marker.encode() in body if marker else None}
+        return {
+            "url": url,
+            "status_code": error.code,
+            "location": error.headers.get("Location"),
+            "body_sha256": hashlib.sha256(body).hexdigest(),
+            "body_bytes": len(body),
+            "marker_present": marker.encode() in body if marker else None,
+        }
     except (URLError, TimeoutError, OSError) as error:
         return {"url": url, "status_code": None, "error": type(error).__name__}
     with response:
         body = response.read(4 << 20)
-        return {"url": url, "status_code": response.status, "location": response.headers.get("Location"),
-                "body_sha256": hashlib.sha256(body).hexdigest(), "body_bytes": len(body),
-                "content_type": response.headers.get("Content-Type", ""),
-                "marker_present": marker.encode() in body if marker else None}
+        return {
+            "url": url,
+            "status_code": response.status,
+            "location": response.headers.get("Location"),
+            "body_sha256": hashlib.sha256(body).hexdigest(),
+            "body_bytes": len(body),
+            "content_type": response.headers.get("Content-Type", ""),
+            "marker_present": marker.encode() in body if marker else None,
+        }
 
 
-def route_checks(client: str, admin: str, portal: str, gateway: str) -> tuple[list[dict[str, object]], bool]:
+def route_checks(
+    client: str, admin: str, portal: str, gateway: str
+) -> tuple[list[dict[str, object]], bool]:
     probes = [
         ("client_entry", client.rstrip("/") + "/", 200, "/assets/"),
         ("admin_redirect", admin.rstrip("/") + "/", 308, "/admin/"),
@@ -155,9 +197,13 @@ def route_checks(client: str, admin: str, portal: str, gateway: str) -> tuple[li
     for name, url, expected, marker in probes:
         result = fetch(url, marker)
         actual = result.get("status_code")
-        observed_marker = (True if marker is None else
-                           str(result.get("location") or "").startswith(marker)
-                           if expected == 308 else result.get("marker_present") is True)
+        observed_marker = (
+            True
+            if marker is None
+            else str(result.get("location") or "").startswith(marker)
+            if expected == 308
+            else result.get("marker_present") is True
+        )
         ok = actual == expected and bool(observed_marker)
         result.update({"name": name, "expected_status": expected, "passed": bool(ok)})
         checks.append(result)
@@ -175,8 +221,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--gateway-url", default="")
     parser.add_argument("--report", default="")
     args = parser.parse_args(argv)
-    report: dict[str, object] = {"schema_version": "p0-runtime-check/v1", "command": args.command,
-                                 "started_at_unix_ns": time.time_ns(), "status": "FAIL"}
+    report: dict[str, object] = {
+        "schema_version": "p0-runtime-check/v1",
+        "command": args.command,
+        "started_at_unix_ns": time.time_ns(),
+        "status": "FAIL",
+    }
     try:
         if args.command == "snapshot":
             if not args.destination:
@@ -201,9 +251,17 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"status": report["status"], "source_identity_sha256": report.get("source_identity_sha256"),
-                      "snapshot_tree_sha256": report.get("snapshot_tree_sha256"),
-                      "report": args.report or None}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "status": report["status"],
+                "source_identity_sha256": report.get("source_identity_sha256"),
+                "snapshot_tree_sha256": report.get("snapshot_tree_sha256"),
+                "report": args.report or None,
+            },
+            ensure_ascii=False,
+        )
+    )
     return 0 if report["status"] == "PASS" else 1
 
 

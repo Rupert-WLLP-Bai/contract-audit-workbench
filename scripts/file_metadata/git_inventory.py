@@ -13,6 +13,7 @@
 This is an external #124/#125 draft module. It does not touch the repository or
 write a manifest. All Git commands use argv vectors and binary pipes.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -111,7 +112,9 @@ class GitRepo:
         try:
             self.run("merge-base", "--is-ancestor", baseline_sha, subject_sha)
         except GitInventoryError as exc:
-            raise GitInventoryError(f"manifest baseline {baseline_sha} is not a verified ancestor of subject {subject_sha}") from exc
+            raise GitInventoryError(
+                f"manifest baseline {baseline_sha} is not a verified ancestor of subject {subject_sha}"
+            ) from exc
         return subject_sha, subject_tree
 
     def tree_inventory(self, revision: str) -> dict[str, TreeEntry]:
@@ -142,7 +145,9 @@ class GitRepo:
             except (UnicodeDecodeError, ValueError) as exc:
                 raise GitInventoryError("malformed ls-files stage metadata") from exc
             if stage != "0":
-                raise GitInventoryError(f"unmerged index entry has stage {stage}; refusing ambiguous inventory")
+                raise GitInventoryError(
+                    f"unmerged index entry has stage {stage}; refusing ambiguous inventory"
+                )
             object_type = "commit" if mode == "160000" else "blob"
             _validate_object_fields(mode, object_type, oid)
             rows.append((path, mode, object_type, oid))
@@ -150,19 +155,36 @@ class GitRepo:
 
     def _materialize(self, rows: list[tuple[bytes, str, str, str]]) -> dict[str, TreeEntry]:
         raw_seen: set[bytes] = set()
-        blob_ids = list(dict.fromkeys(oid for _, mode, object_type, oid in rows if object_type == "blob" and mode != "160000"))
+        blob_ids = list(
+            dict.fromkeys(
+                oid
+                for _, mode, object_type, oid in rows
+                if object_type == "blob" and mode != "160000"
+            )
+        )
         blobs = self.cat_blobs(blob_ids)
         result: dict[str, TreeEntry] = {}
         for raw_path, mode, object_type, oid in rows:
             if raw_path in raw_seen:
-                raise GitInventoryError(f"duplicate tracked path record: {_path_diagnostic(raw_path)}")
+                raise GitInventoryError(
+                    f"duplicate tracked path record: {_path_diagnostic(raw_path)}"
+                )
             raw_seen.add(raw_path)
             try:
                 path = raw_path.decode("utf-8", "strict")
             except UnicodeDecodeError as exc:
-                raise GitInventoryError(f"tracked path cannot be represented losslessly in UTF-8 JSON: {_path_diagnostic(raw_path)}") from exc
-            if not path or path.startswith("/") or "\\" in path or any(part in {"", ".", ".."} for part in path.split("/")):
-                raise GitInventoryError(f"unsafe or non-canonical repository path: {_path_diagnostic(raw_path)}")
+                raise GitInventoryError(
+                    f"tracked path cannot be represented losslessly in UTF-8 JSON: {_path_diagnostic(raw_path)}"
+                ) from exc
+            if (
+                not path
+                or path.startswith("/")
+                or "\\" in path
+                or any(part in {"", ".", ".."} for part in path.split("/"))
+            ):
+                raise GitInventoryError(
+                    f"unsafe or non-canonical repository path: {_path_diagnostic(raw_path)}"
+                )
             content = blobs.get(oid) if object_type == "blob" and mode != "160000" else None
             result[path] = TreeEntry(path, raw_path, mode, object_type, oid, content)
         return result
@@ -173,7 +195,9 @@ class GitRepo:
         if missing:
             if any(not re.fullmatch(r"[0-9a-f]{40,64}", oid) for oid in missing):
                 raise GitInventoryError("refusing a malformed blob object id")
-            output = self.run("cat-file", "--batch", input=("\n".join(missing) + "\n").encode("ascii"))
+            output = self.run(
+                "cat-file", "--batch", input=("\n".join(missing) + "\n").encode("ascii")
+            )
             offset = 0
             for requested in missing:
                 line_end = output.find(b"\n", offset)
@@ -181,7 +205,11 @@ class GitRepo:
                     raise GitInventoryError("truncated cat-file batch header")
                 header = output[offset:line_end].split(b" ")
                 offset = line_end + 1
-                if len(header) != 3 or header[0].decode("ascii", "replace") != requested or header[1] != b"blob":
+                if (
+                    len(header) != 3
+                    or header[0].decode("ascii", "replace") != requested
+                    or header[1] != b"blob"
+                ):
                     raise GitInventoryError(f"Git object {requested} is not an available blob")
                 try:
                     size = int(header[2])
@@ -205,25 +233,51 @@ class GitRepo:
     def diff(self, old_revision: str, new_revision: str) -> list[RawChange]:
         old_sha, _ = self.commit_identity(old_revision)
         new_sha, _ = self.commit_identity(new_revision)
-        raw = self.run("diff-tree", "--no-commit-id", "-r", "--raw", "-z", "-M", "--no-abbrev", old_sha, new_sha, "--")
+        raw = self.run(
+            "diff-tree",
+            "--no-commit-id",
+            "-r",
+            "--raw",
+            "-z",
+            "-M",
+            "--no-abbrev",
+            old_sha,
+            new_sha,
+            "--",
+        )
         return parse_raw_changes(raw)
 
-    def path_provenance(self, path: str, *, subject: str, style: CommentStyle | None = None,
-                        handling: str = "manifest-only", file_kind: str | None = None) -> PathProvenance:
+    def path_provenance(
+        self,
+        path: str,
+        *,
+        subject: str,
+        style: CommentStyle | None = None,
+        handling: str = "manifest-only",
+        file_kind: str | None = None,
+    ) -> PathProvenance:
         raw_path = _encode_path(path)
         subject_sha, _ = self.commit_identity(subject)
         subject_entry = self._tree_entry_for_path(subject_sha, raw_path)
         if subject_entry is None:
-            unknown = unknown_evidence(f"Path {path!r} is absent from fixed subject {subject_sha}; uncommitted or later paths have no source date in this snapshot.")
+            unknown = unknown_evidence(
+                f"Path {path!r} is absent from fixed subject {subject_sha}; uncommitted or later paths have no source date in this snapshot."
+            )
             return PathProvenance(unknown, unknown, None, False)
         subject_mode, _, subject_oid = subject_entry
         self._verify_path_blob(subject_sha, raw_path, subject_oid, subject_mode)
-        log = self.run("log", "--follow", "--format=%H%x00%ct", subject_sha, "--", b":(literal)" + raw_path)
+        log = self.run(
+            "log", "--follow", "--format=%H%x00%ct", subject_sha, "--", b":(literal)" + raw_path
+        )
         commits = _parse_log(log)
         if not commits:
             return PathProvenance(
-                unknown_evidence("No committed Git introduction or content-change history is available for this path."),
-                unknown_evidence("No committed Git body-change history is available for this path."),
+                unknown_evidence(
+                    "No committed Git introduction or content-change history is available for this path."
+                ),
+                unknown_evidence(
+                    "No committed Git body-change history is available for this path."
+                ),
                 None,
                 False,
             )
@@ -239,9 +293,35 @@ class GitRepo:
                 raise GitInventoryError(f"cannot resolve parent list for {commit}")
             if len(parent_result) > 1:
                 parent = parent_result[1].decode("ascii")
-                changes = parse_raw_changes(self.run("diff-tree", "--no-commit-id", "-r", "--raw", "-z", "-M", "--no-abbrev", parent, commit, "--"))
+                changes = parse_raw_changes(
+                    self.run(
+                        "diff-tree",
+                        "--no-commit-id",
+                        "-r",
+                        "--raw",
+                        "-z",
+                        "-M",
+                        "--no-abbrev",
+                        parent,
+                        commit,
+                        "--",
+                    )
+                )
             else:
-                changes = parse_raw_changes(self.run("diff-tree", "--root", "--no-commit-id", "-r", "--raw", "-z", "-M", "--no-abbrev", commit, "--"))
+                changes = parse_raw_changes(
+                    self.run(
+                        "diff-tree",
+                        "--root",
+                        "--no-commit-id",
+                        "-r",
+                        "--raw",
+                        "-z",
+                        "-M",
+                        "--no-abbrev",
+                        commit,
+                        "--",
+                    )
+                )
             change = _change_for_current_path(changes, current_path)
             if change is None:
                 reason = f"Git history for {path!r} has a first-parent/rename gap at {commit}; provenance is unknown rather than inferred across it."
@@ -254,10 +334,22 @@ class GitRepo:
                 if after_path is None:
                     raise GitInventoryError("addition record is missing its new path")
                 self._verify_path_blob(commit, after_path, change.new_oid, change.new_mode)
-                evidence = _git_evidence(timestamp, commit, after_path, "git-first-introduction", "first available Git introduction")
+                evidence = _git_evidence(
+                    timestamp,
+                    commit,
+                    after_path,
+                    "git-first-introduction",
+                    "first available Git introduction",
+                )
                 created = evidence if not saw_rename else _rename_evidence(evidence, after_path)
                 if updated is None:
-                    updated = _git_evidence(timestamp, commit, after_path, "git-last-content-change", "file introduction created its initial content")
+                    updated = _git_evidence(
+                        timestamp,
+                        commit,
+                        after_path,
+                        "git-last-content-change",
+                        "file introduction created its initial content",
+                    )
                 origin_path = after_path
                 break
             if change.status == "D":
@@ -272,35 +364,58 @@ class GitRepo:
             # bodies cannot change that conclusion and can be ambiguous.
             if updated is None:
                 before_bytes = (
-                    change.old_oid.encode("ascii") if change.old_mode == "160000"
-                    else self.blob(change.old_oid) if change.old_mode != "000000"
+                    change.old_oid.encode("ascii")
+                    if change.old_mode == "160000"
+                    else self.blob(change.old_oid)
+                    if change.old_mode != "000000"
                     else b""
                 )
                 after_bytes = (
-                    change.new_oid.encode("ascii") if change.new_mode == "160000"
+                    change.new_oid.encode("ascii")
+                    if change.new_mode == "160000"
                     else self.blob(change.new_oid)
                 )
                 try:
-                    changed = _history_body_changed(before_bytes, after_bytes, change.old_mode, change.new_mode,
-                                                    style, handling, file_kind)
+                    changed = _history_body_changed(
+                        before_bytes,
+                        after_bytes,
+                        change.old_mode,
+                        change.new_mode,
+                        style,
+                        handling,
+                        file_kind,
+                    )
                 except MetadataError as exc:
                     updated = unknown_evidence(
                         f"Cannot verify the latest content change for {path!r}: metadata parsing is ambiguous "
-                        f"at commit {commit} and its first-parent comparison ({exc}).")
+                        f"at commit {commit} and its first-parent comparison ({exc})."
+                    )
                 else:
                     if changed:
-                        updated = _git_evidence(timestamp, commit, after_path, "git-last-content-change", "latest traceable body-changing commit")
+                        updated = _git_evidence(
+                            timestamp,
+                            commit,
+                            after_path,
+                            "git-last-content-change",
+                            "latest traceable body-changing commit",
+                        )
             if change.status.startswith("R"):
                 if change.old_path is None:
                     raise GitInventoryError("rename record is missing its old path")
                 current_path = change.old_path
         if created is None:
-            created = unknown_evidence("History did not provide a verifiable add event for this path identity; do not infer through a missing rename or truncated history.")
+            created = unknown_evidence(
+                "History did not provide a verifiable add event for this path identity; do not infer through a missing rename or truncated history."
+            )
         if updated is None:
-            updated = unknown_evidence("History did not provide a verifiable body-changing commit for this path.")
+            updated = unknown_evidence(
+                "History did not provide a verifiable body-changing commit for this path."
+            )
         if saw_rename and created.value != "unknown":
             created = FileEvidence(created.value, {**created.source, "kind": "rename-history"})
-        return PathProvenance(created, updated, _decode_path(origin_path) if origin_path else None, saw_rename)
+        return PathProvenance(
+            created, updated, _decode_path(origin_path) if origin_path else None, saw_rename
+        )
 
     def _tree_entry_for_path(self, commit: str, raw_path: bytes) -> tuple[str, str, str] | None:
         raw = self.run("ls-tree", "-r", "-z", "--full-tree", commit, "--", b":(literal)" + raw_path)
@@ -309,7 +424,9 @@ class GitRepo:
         for record in records:
             metadata, sep, found_path = record.partition(b"\t")
             if not sep or found_path != raw_path:
-                raise GitInventoryError("fixed-subject path lookup returned a different or malformed path")
+                raise GitInventoryError(
+                    "fixed-subject path lookup returned a different or malformed path"
+                )
             try:
                 mode, object_type, oid = metadata.decode("ascii").split(" ")
             except (UnicodeDecodeError, ValueError) as exc:
@@ -317,7 +434,9 @@ class GitRepo:
             _validate_object_fields(mode, object_type, oid)
             matches.append((mode, object_type, oid))
         if len(matches) > 1:
-            raise GitInventoryError(f"fixed subject contains duplicate path records: {_path_diagnostic(raw_path)}")
+            raise GitInventoryError(
+                f"fixed subject contains duplicate path records: {_path_diagnostic(raw_path)}"
+            )
         return matches[0] if matches else None
 
     def _verify_commit(self, sha: str) -> None:
@@ -330,7 +449,9 @@ class GitRepo:
             raise GitInventoryError("history record contains invalid object id")
         resolved = self.run("rev-parse", "--verify", commit.encode("ascii") + b":" + path).strip()
         if resolved != oid.encode("ascii"):
-            raise GitInventoryError(f"history source path/blob mismatch: {commit}:{_path_diagnostic(path)}")
+            raise GitInventoryError(
+                f"history source path/blob mismatch: {commit}:{_path_diagnostic(path)}"
+            )
         if mode == "160000":
             # The parent Git tree stores only a submodule commit pointer; the
             # referenced object may intentionally exist only in the submodule.
@@ -379,7 +500,9 @@ def parse_raw_changes(raw: bytes) -> list[RawChange]:
     return out
 
 
-def compare_manifest_coverage(tracked_paths: Iterable[str], manifest_paths: Iterable[str]) -> tuple[list[str], list[str]]:
+def compare_manifest_coverage(
+    tracked_paths: Iterable[str], manifest_paths: Iterable[str]
+) -> tuple[list[str], list[str]]:
     tracked, records = set(tracked_paths), set(manifest_paths)
     if not tracked:
         raise GitInventoryError("required tracked-file coverage scope is empty")
@@ -390,24 +513,42 @@ def compare_manifest_coverage(tracked_paths: Iterable[str], manifest_paths: Iter
     return missing, stale
 
 
-def revision_for_window(previous: str, before: TreeEntry | None, after: TreeEntry, *,
-                        style: CommentStyle, handling: str, file_kind: str,
-                        identity_relation: str = "same") -> str:
+def revision_for_window(
+    previous: str,
+    before: TreeEntry | None,
+    after: TreeEntry,
+    *,
+    style: CommentStyle,
+    handling: str,
+    file_kind: str,
+    identity_relation: str = "same",
+) -> str:
     if before is None or before.content is None and before.mode != "160000":
-        raise GitInventoryError("unknown prior body snapshot cannot prove unchanged revision; review or fail closed")
+        raise GitInventoryError(
+            "unknown prior body snapshot cannot prove unchanged revision; review or fail closed"
+        )
     if after.content is None and after.mode != "160000":
         raise GitInventoryError("candidate body snapshot is unavailable")
     if identity_relation not in {"same", "verified-rename"}:
         raise GitInventoryError(f"unsupported file identity relation {identity_relation!r}")
     if before.path != after.path and identity_relation != "verified-rename":
-        raise GitInventoryError("path identity changed without verified rename lineage; use r1 for a new path")
+        raise GitInventoryError(
+            "path identity changed without verified rename lineage; use r1 for a new path"
+        )
     match = REVISION_RE.fullmatch(previous)
     if not match:
         raise GitInventoryError(f"invalid file revision {previous!r}")
     before_bytes = before.content if before.content is not None else before.oid.encode("ascii")
     after_bytes = after.content if after.content is not None else after.oid.encode("ascii")
-    if content_changed(before_bytes, after_bytes, mode_before=before.mode, mode_after=after.mode,
-                       style=style, handling=handling, file_kind=file_kind):
+    if content_changed(
+        before_bytes,
+        after_bytes,
+        mode_before=before.mode,
+        mode_after=after.mode,
+        style=style,
+        handling=handling,
+        file_kind=file_kind,
+    ):
         return f"r{int(match.group(1)) + 1}"
     return previous
 
@@ -418,18 +559,33 @@ def new_path_revision() -> str:
 
 def manifest_self_updated(path: str = MANIFEST_SELF_PATH) -> FileEvidence:
     if path != MANIFEST_SELF_PATH:
-        raise GitInventoryError("the unknown self-reference exception is only valid for the canonical manifest path")
-    return unknown_evidence("The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception.")
+        raise GitInventoryError(
+            "the unknown self-reference exception is only valid for the canonical manifest path"
+        )
+    return unknown_evidence(
+        "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
+    )
 
 
 def unknown_evidence(reason: str) -> FileEvidence:
     return FileEvidence("unknown", {"kind": "unknown", "reason": reason})
 
 
-def _history_body_changed(before: bytes, after: bytes, old_mode: str, new_mode: str,
-                          style: CommentStyle | None, handling: str,
-                          file_kind: str | None) -> bool:
-    if style is None or file_kind is None or old_mode not in {"100644", "100755"} or new_mode not in {"100644", "100755"}:
+def _history_body_changed(
+    before: bytes,
+    after: bytes,
+    old_mode: str,
+    new_mode: str,
+    style: CommentStyle | None,
+    handling: str,
+    file_kind: str | None,
+) -> bool:
+    if (
+        style is None
+        or file_kind is None
+        or old_mode not in {"100644", "100755"}
+        or new_mode not in {"100644", "100755"}
+    ):
         return before != after
     old_body = metadata_body(before, style, handling, file_kind=file_kind, mode=old_mode)
     new_body = metadata_body(after, style, handling, file_kind=file_kind, mode=new_mode)
@@ -462,17 +618,25 @@ def _git_evidence(timestamp: int, commit: str, path: bytes, kind: str, reason: s
     try:
         date = datetime.fromtimestamp(timestamp, timezone.utc).date().isoformat()
     except (OverflowError, OSError, ValueError):
-        return unknown_evidence(f"Commit {commit} has an invalid committer timestamp; no date was invented.")
-    return FileEvidence(date, {
-        "kind": kind,
-        "commit": commit,
-        "path": _decode_path(path),
-        "reason": reason + "; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date.",
-    })
+        return unknown_evidence(
+            f"Commit {commit} has an invalid committer timestamp; no date was invented."
+        )
+    return FileEvidence(
+        date,
+        {
+            "kind": kind,
+            "commit": commit,
+            "path": _decode_path(path),
+            "reason": reason
+            + "; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date.",
+        },
+    )
 
 
 def _rename_evidence(evidence: FileEvidence, path: bytes) -> FileEvidence:
-    return FileEvidence(evidence.value, {**evidence.source, "kind": "rename-history", "path": _decode_path(path)})
+    return FileEvidence(
+        evidence.value, {**evidence.source, "kind": "rename-history", "path": _decode_path(path)}
+    )
 
 
 def _validate_object_fields(mode: str, object_type: str, oid: str) -> None:
@@ -500,7 +664,13 @@ def _nul_records(raw: bytes, source: str) -> list[bytes]:
 
 
 def _encode_path(path: str) -> bytes:
-    if not isinstance(path, str) or not path or "\x00" in path or path.startswith("/") or "\\" in path:
+    if (
+        not isinstance(path, str)
+        or not path
+        or "\x00" in path
+        or path.startswith("/")
+        or "\\" in path
+    ):
         raise GitInventoryError("path must be a non-empty repository-relative POSIX string")
     if any(part in {"", ".", ".."} for part in path.split("/")):
         raise GitInventoryError("path contains an unsafe component")
@@ -514,7 +684,9 @@ def _decode_path(raw: bytes) -> str:
     try:
         return raw.decode("utf-8", "strict")
     except UnicodeDecodeError as exc:
-        raise GitInventoryError(f"Git path cannot be represented losslessly in UTF-8 JSON: {_path_diagnostic(raw)}") from exc
+        raise GitInventoryError(
+            f"Git path cannot be represented losslessly in UTF-8 JSON: {_path_diagnostic(raw)}"
+        ) from exc
 
 
 def _path_diagnostic(raw: bytes) -> str:

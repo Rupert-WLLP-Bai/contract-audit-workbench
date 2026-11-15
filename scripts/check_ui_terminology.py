@@ -10,6 +10,7 @@
 # End file metadata.
 
 """Check the bounded Manual Findings UI terminology pilot against the glossary."""
+
 from __future__ import annotations
 
 import argparse
@@ -40,7 +41,12 @@ EXPECTED_RULES = {
         ],
     },
     "manual-finding-is-approval": {
-        "concepts": ["manual_finding", "machine_finding", "human_finding_decision", "approval_decision"],
+        "concepts": [
+            "manual_finding",
+            "machine_finding",
+            "human_finding_decision",
+            "approval_decision",
+        ],
         "mode": "must_not_equate",
         "patterns": [
             "人工发现(?:是|即|属于|代表|作为)合同批准",
@@ -92,7 +98,7 @@ def _code_without_comments(source: str) -> str:
             end = source.find("*/", i + 2)
             if end < 0:
                 raise GuardError("unterminated comment in pilot source")
-            out.extend("\n" for ch in source[i:end + 2] if ch == "\n")
+            out.extend("\n" for ch in source[i : end + 2] if ch == "\n")
             i = end + 2
             continue
         out.append(char)
@@ -138,13 +144,13 @@ def _component_and_render(source: str) -> tuple[str, str]:
     if body_open < 0:
         raise GuardError("ManualFindingsPanel function body is missing")
     body_close = _matching_delimiter(clean, body_open, "{", "}")
-    component = clean[signature.start():body_close + 1]
+    component = clean[signature.start() : body_close + 1]
     returns = list(re.finditer(r"\breturn\s*\(", component))
     if len(returns) != 1:
         raise GuardError("expected exactly one JSX return in ManualFindingsPanel")
     jsx_open = component.find("(", returns[0].start())
     jsx_close = _matching_delimiter(component, jsx_open, "(", ")")
-    return component, component[jsx_open + 1:jsx_close]
+    return component, component[jsx_open + 1 : jsx_close]
 
 
 def _jsx_copy(jsx: str) -> str:
@@ -153,11 +159,12 @@ def _jsx_copy(jsx: str) -> str:
     text_nodes = [re.sub(r"\s+", " ", item).strip() for item in text_nodes]
     text_nodes = [item for item in text_nodes if item]
     visible_attrs = re.findall(
-        r"\b(?:aria-label|title|placeholder|alt)\s*=\s*\{?([\"'])(.*?)\1\}?",
-        jsx, flags=re.S)
+        r"\b(?:aria-label|title|placeholder|alt)\s*=\s*\{?([\"'])(.*?)\1\}?", jsx, flags=re.S
+    )
     literals = re.findall(r"(['\"])(.*?)\1", jsx, flags=re.S)
-    return "\n".join(text_nodes + [value for _, value in visible_attrs] +
-                      [value for _, value in literals])
+    return "\n".join(
+        text_nodes + [value for _, value in visible_attrs] + [value for _, value in literals]
+    )
 
 
 def _manual_messages(component: str) -> str:
@@ -196,7 +203,7 @@ def _button_elements(jsx: str) -> list[tuple[str, str]]:
                 close = jsx.find("</Button>", end_open)
                 if close < 0:
                     raise GuardError("unterminated Button in ManualFindingsPanel")
-                elements.append((jsx[start_match.start():end_open], jsx[end_open:close]))
+                elements.append((jsx[start_match.start() : end_open], jsx[end_open:close]))
                 break
             i += 1
         else:
@@ -208,8 +215,13 @@ def validate_policy(policy: object) -> dict:
     """Reject policy omissions or edits that weaken this bounded pilot guard."""
     if not isinstance(policy, dict):
         raise GuardError("policy must be an object")
-    if set(policy) != {"schema_version", "scope", "canonical_concepts",
-                       "definite_confusions", "uncertain_advisories"}:
+    if set(policy) != {
+        "schema_version",
+        "scope",
+        "canonical_concepts",
+        "definite_confusions",
+        "uncertain_advisories",
+    }:
         raise GuardError("policy has missing or unknown top-level fields")
     if type(policy["schema_version"]) is not int or policy["schema_version"] != 1:
         raise GuardError("unsupported policy schema_version")
@@ -224,21 +236,29 @@ def validate_policy(policy: object) -> dict:
     seen: set[str] = set()
     for rule in rules:
         if not isinstance(rule, dict) or set(rule) != {"id", "concepts", "mode", "patterns"}:
-            raise GuardError("each confusion rule must include its id, concepts, mode, and patterns")
+            raise GuardError(
+                "each confusion rule must include its id, concepts, mode, and patterns"
+            )
         rule_id = rule["id"]
         if not isinstance(rule_id, str):
             raise GuardError("each confusion rule id must be a string")
         expected = EXPECTED_RULES.get(rule_id)
         if expected is None or rule_id in seen:
             raise GuardError(f"unknown or duplicate required rule: {rule_id!r}")
-        if (not isinstance(rule["concepts"], list) or
-                any(not isinstance(concept, str) for concept in rule["concepts"]) or
-                rule["concepts"] != expected["concepts"] or
-                not isinstance(rule["mode"], str) or rule["mode"] != expected["mode"]):
+        if (
+            not isinstance(rule["concepts"], list)
+            or any(not isinstance(concept, str) for concept in rule["concepts"])
+            or rule["concepts"] != expected["concepts"]
+            or not isinstance(rule["mode"], str)
+            or rule["mode"] != expected["mode"]
+        ):
             raise GuardError(f"rule {rule_id} concepts or enforcement mode was weakened")
         patterns = rule["patterns"]
-        if (not isinstance(patterns, list) or patterns != expected["patterns"] or
-                any(not isinstance(pattern, str) or not pattern.strip() for pattern in patterns)):
+        if (
+            not isinstance(patterns, list)
+            or patterns != expected["patterns"]
+            or any(not isinstance(pattern, str) or not pattern.strip() for pattern in patterns)
+        ):
             raise GuardError(f"rule {rule_id} patterns were removed or weakened")
         try:
             for pattern in patterns:
@@ -257,8 +277,9 @@ def validate_policy(policy: object) -> dict:
 def _canonical_terms(concepts_data: object, policy: dict) -> dict[str, str]:
     if not isinstance(concepts_data, dict) or not isinstance(concepts_data.get("concepts"), list):
         raise GuardError("canonical concepts source is malformed")
-    concepts = {item.get("id"): item for item in concepts_data["concepts"]
-                if isinstance(item, dict)}
+    concepts = {
+        item.get("id"): item for item in concepts_data["concepts"] if isinstance(item, dict)
+    }
     terms: dict[str, str] = {}
     for key, concept_id in policy["canonical_concepts"].items():
         concept = concepts.get(concept_id)
@@ -268,11 +289,16 @@ def _canonical_terms(concepts_data: object, policy: dict) -> dict[str, str]:
         if not isinstance(term, str) or not term.strip():
             raise GuardError(f"canonical concept {concept_id} lacks a user term")
         terms[key] = term
-    expected_terms = {"attempt": "执行尝试", "approval_round": "会签轮次",
-                      "manual_finding": "人工发现"}
+    expected_terms = {
+        "attempt": "执行尝试",
+        "approval_round": "会签轮次",
+        "manual_finding": "人工发现",
+    }
     for key, expected in expected_terms.items():
         if terms[key] != expected:
-            raise GuardError(f"canonical concept {policy['canonical_concepts'][key]} changed unexpectedly")
+            raise GuardError(
+                f"canonical concept {policy['canonical_concepts'][key]} changed unexpectedly"
+            )
     return terms
 
 
@@ -282,18 +308,22 @@ def inspect_copy(copy: str, policy: dict) -> tuple[list[str], list[str]]:
     for rule in policy["definite_confusions"]:
         if any(re.search(pattern, copy) for pattern in rule["patterns"]):
             violations.append(rule["id"])
-    advisories = [term for term in policy["uncertain_advisories"]
-                  if term in copy and not (term == "轮次" and "会签轮次" in copy)]
+    advisories = [
+        term
+        for term in policy["uncertain_advisories"]
+        if term in copy and not (term == "轮次" and "会签轮次" in copy)
+    ]
     return sorted(set(violations)), advisories
 
 
-def inspect_component(source: str, policy: dict, concepts_data: object) -> tuple[list[str], list[str]]:
+def inspect_component(
+    source: str, policy: dict, concepts_data: object
+) -> tuple[list[str], list[str]]:
     policy = validate_policy(policy)
     terms = _canonical_terms(concepts_data, policy)
     component, jsx = _component_and_render(source)
     copy = _jsx_copy(jsx) + "\n" + _manual_messages(component)
-    heading = re.findall(
-        r'<h2\s+id=["\']manual-findings-heading["\']\s*>([^<]*)</h2>', jsx)
+    heading = re.findall(r'<h2\s+id=["\']manual-findings-heading["\']\s*>([^<]*)</h2>', jsx)
     if heading != [terms["manual_finding"]]:
         raise GuardError("ManualFindingsPanel heading must use the T37 canonical term")
     empty_attempt = re.findall(r"!attemptId\s*\?\s*<p>([^<]*)</p>", jsx)
@@ -301,8 +331,11 @@ def inspect_component(source: str, policy: dict, concepts_data: object) -> tuple
         raise GuardError("missing-attempt UI slot must name the T08 execution attempt")
     if terms["approval_round"] in empty_attempt[0]:
         raise GuardError("missing-attempt UI slot must not call an attempt an approval round")
-    primary_save = [children.strip() for opening, children in _button_elements(jsx)
-                    if re.search(r'\bhtmlType="submit"', opening)]
+    primary_save = [
+        children.strip()
+        for opening, children in _button_elements(jsx)
+        if re.search(r'\bhtmlType="submit"', opening)
+    ]
     if primary_save != [f"保存{terms['manual_finding']}"]:
         raise GuardError("ManualFindingsPanel submit label must remain mapped to T37")
     if terms["attempt"] not in copy or terms["manual_finding"] not in copy:

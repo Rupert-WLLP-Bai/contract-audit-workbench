@@ -40,6 +40,7 @@ fresh database.
 Honest limits are recorded in the manifest: this proves local BACKUP_RESTORE
 only. It is not RPO/RTO, not quiesced-cluster backup, not multi-node HA/DR.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -78,26 +79,60 @@ RESERVED_DATABASES = {
 # Frozen identity and relationship tables of the current schema. Tables absent
 # from an environment are recorded as skipped, never assumed.
 TABLES = (
-    "sessions", "cases", "documents", "parsed_documents", "review_runs",
-    "review_attempts", "review_attempt_parse_selections", "review_attempt_inputs",
-    "execution_events", "findings", "constraint_evaluations", "decisions",
-    "run_events", "activity", "idempotency", "review_run_snapshots", "audit_events",
-    "worker_jobs", "outbox_events", "tool_call_ledger",
-    "business_generations", "business_remediations", "business_remediation_revisions",
-    "business_reports", "business_archives", "business_run_events",
-    "business_audit_events", "document_activity", "execution_activity",
-    "model_call_leases", "model_usage", "service_database_roles",
-    "execution_queue_policies", "execution_queue_cursor", "execution_queue_tenants",
+    "sessions",
+    "cases",
+    "documents",
+    "parsed_documents",
+    "review_runs",
+    "review_attempts",
+    "review_attempt_parse_selections",
+    "review_attempt_inputs",
+    "execution_events",
+    "findings",
+    "constraint_evaluations",
+    "decisions",
+    "run_events",
+    "activity",
+    "idempotency",
+    "review_run_snapshots",
+    "audit_events",
+    "worker_jobs",
+    "outbox_events",
+    "tool_call_ledger",
+    "business_generations",
+    "business_remediations",
+    "business_remediation_revisions",
+    "business_reports",
+    "business_archives",
+    "business_run_events",
+    "business_audit_events",
+    "document_activity",
+    "execution_activity",
+    "model_call_leases",
+    "model_usage",
+    "service_database_roles",
+    "execution_queue_policies",
+    "execution_queue_cursor",
+    "execution_queue_tenants",
 )
 
 # The representative source a restore may claim anything about. A journey that
 # only created a case is not enough: the frozen attempt, rule configuration,
 # decision, remediation, report, archive and original bytes must all exist.
 REQUIRED_NONEMPTY = (
-    "cases", "documents", "parsed_documents", "review_runs", "review_attempts",
-    "review_attempt_parse_selections", "review_attempt_inputs", "findings",
-    "constraint_evaluations", "decisions", "business_remediations",
-    "business_reports", "business_archives",
+    "cases",
+    "documents",
+    "parsed_documents",
+    "review_runs",
+    "review_attempts",
+    "review_attempt_parse_selections",
+    "review_attempt_inputs",
+    "findings",
+    "constraint_evaluations",
+    "decisions",
+    "business_remediations",
+    "business_reports",
+    "business_archives",
 )
 REQUIRED_QUERIES = {
     "frozen rule configuration": (
@@ -203,28 +238,49 @@ class Recorder:
             value = value.replace(secret, "<redacted>")
         return value
 
-    def record_raw(self, argv: list[str], code: int | None, seconds: float, stdout: str, stderr: str) -> None:
-        self.records.append({
-            "argv": self.redact(argv),
-            "exit": code,
-            "seconds": round(seconds, 3),
-            "stdout_tail": self.redact_text(stdout[-2000:]),
-            "stderr_tail": self.redact_text(stderr[-2000:]),
-        })
+    def record_raw(
+        self, argv: list[str], code: int | None, seconds: float, stdout: str, stderr: str
+    ) -> None:
+        self.records.append(
+            {
+                "argv": self.redact(argv),
+                "exit": code,
+                "seconds": round(seconds, 3),
+                "stdout_tail": self.redact_text(stdout[-2000:]),
+                "stderr_tail": self.redact_text(stderr[-2000:]),
+            }
+        )
 
-    def run(self, argv: list[str], *, stdout: object | None = None, stdin: object | None = None,
-            env: dict[str, str] | None = None, timeout: float = 900,
-            capture: bool = True) -> subprocess.CompletedProcess:
+    def run(
+        self,
+        argv: list[str],
+        *,
+        stdout: object | None = None,
+        stdin: object | None = None,
+        env: dict[str, str] | None = None,
+        timeout: float = 900,
+        capture: bool = True,
+    ) -> subprocess.CompletedProcess:
         started = time.monotonic()
         try:
             process = subprocess.run(
-                argv, cwd=ROOT,
-                stdout=stdout if stdout is not None else (subprocess.PIPE if capture else subprocess.DEVNULL),
-                stderr=subprocess.PIPE, stdin=stdin, env=env, timeout=timeout,
+                argv,
+                cwd=ROOT,
+                stdout=stdout
+                if stdout is not None
+                else (subprocess.PIPE if capture else subprocess.DEVNULL),
+                stderr=subprocess.PIPE,
+                stdin=stdin,
+                env=env,
+                timeout=timeout,
             )
         except subprocess.TimeoutExpired as error:
-            self.record_raw(argv, None, time.monotonic() - started, "", f"timeout after {timeout}s: {error}")
-            raise Failure(f"command timed out after {timeout}s: {shlex.join(self.redact(argv))}") from error
+            self.record_raw(
+                argv, None, time.monotonic() - started, "", f"timeout after {timeout}s: {error}"
+            )
+            raise Failure(
+                f"command timed out after {timeout}s: {shlex.join(self.redact(argv))}"
+            ) from error
         seconds = time.monotonic() - started
         stderr = (process.stderr or b"").decode("utf-8", "replace")
         stdout_text = ""
@@ -248,7 +304,9 @@ def load_private_env(path: Path) -> dict[str, str]:
         raise Failure(f"private source environment {path} does not exist")
     mode = stat.S_IMODE(path.stat().st_mode)
     if os.name == "posix" and mode & 0o077:
-        raise Failure(f"{path} is readable by group/other (mode {mode:04o}); keep the private environment at 0600")
+        raise Failure(
+            f"{path} is readable by group/other (mode {mode:04o}); keep the private environment at 0600"
+        )
     text = path.read_text(encoding="utf-8")
     if text.lstrip().startswith("{"):
         try:
@@ -303,7 +361,15 @@ def parse_identity(key: str, raw: str) -> tuple[urllib.parse.SplitResult, str, s
     except ValueError as error:
         raise Failure(f"{key} has an unparsable query string") from error
     for name in query:
-        if name.lower() in ("dbname", "database", "host", "hostaddr", "port", "service", "servicefile"):
+        if name.lower() in (
+            "dbname",
+            "database",
+            "host",
+            "hostaddr",
+            "port",
+            "service",
+            "servicefile",
+        ):
             raise Failure(f"{key} must not carry an identity override query parameter ({name})")
     name = url.path.strip("/")
     host = url.hostname or ""
@@ -316,14 +382,24 @@ def parse_identity(key: str, raw: str) -> tuple[urllib.parse.SplitResult, str, s
 def select_source(config: dict[str, str]) -> dict[str, object]:
     """Mirror internal/config.Select to derive the selected environment identity."""
     raw_mode = (config.get("APP_ENV") or "").strip().lower()
-    mode = {"": "development", "dev": "development", "development": "development",
-            "test": "test", "production": "production", "prod": "production"}.get(raw_mode)
+    mode = {
+        "": "development",
+        "dev": "development",
+        "development": "development",
+        "test": "test",
+        "production": "production",
+        "prod": "production",
+    }.get(raw_mode)
     if mode is None:
         raise Failure(f"APP_ENV={raw_mode!r} is not a known application environment")
     if mode == "production":
         raise Failure("refusing to run the local restore against APP_ENV=production")
     identities: dict[str, tuple[str, str, str]] = {}
-    for name, key in (("development", "DEV_DATABASE_URL"), ("test", "TEST_DATABASE_URL"), ("production", "PROD_DATABASE_URL")):
+    for name, key in (
+        ("development", "DEV_DATABASE_URL"),
+        ("test", "TEST_DATABASE_URL"),
+        ("production", "PROD_DATABASE_URL"),
+    ):
         raw = (config.get(key) or "").strip()
         if raw:
             _url, host, port, database = parse_identity(key, raw)
@@ -336,8 +412,13 @@ def select_source(config: dict[str, str]) -> dict[str, object]:
             raise Failure(f"selected database {selected_name!r} is reserved for {other}")
     if selected_name in ("postgres", "template0", "template1"):
         raise Failure(f"selected database {selected_name!r} is a system database")
-    dsn = (config.get("PROD_DATABASE_URL") if mode == "production" else
-           config.get("TEST_DATABASE_URL") if mode == "test" else config.get("DEV_DATABASE_URL")) or ""
+    dsn = (
+        config.get("PROD_DATABASE_URL")
+        if mode == "production"
+        else config.get("TEST_DATABASE_URL")
+        if mode == "test"
+        else config.get("DEV_DATABASE_URL")
+    ) or ""
     if mode != "production" and not dsn.strip():
         dsn = f"postgres://{DEFAULT_USER}:{DEFAULT_USER}@{selected_host}:{selected_port}/{selected_name}?sslmode=disable"
     return {
@@ -352,8 +433,14 @@ def select_source(config: dict[str, str]) -> dict[str, object]:
 
 def service_connections(config: dict[str, str], selected: dict[str, object]) -> dict[str, str]:
     """Every configured service/MIGRATOR DSN must select the same identity."""
-    service_keys = ("CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL", "EXECUTION_DATABASE_URL",
-                    "MODEL_DATABASE_URL", "TOOL_DATABASE_URL", "MIGRATOR_DATABASE_URL")
+    service_keys = (
+        "CORE_DATABASE_URL",
+        "DOCUMENT_DATABASE_URL",
+        "EXECUTION_DATABASE_URL",
+        "MODEL_DATABASE_URL",
+        "TOOL_DATABASE_URL",
+        "MIGRATOR_DATABASE_URL",
+    )
     checked: dict[str, str] = {}
     for key in service_keys:
         raw = (config.get(key) or "").strip()
@@ -381,15 +468,27 @@ def safe_schema(config: dict[str, str]) -> str:
 def docker_cli() -> str:
     docker = os.environ.get("DOCKER_BIN", "docker")
     if not shutil.which(docker):
-        raise Failure("Docker CLI is unavailable; the local restore needs Docker or local PostgreSQL clients")
+        raise Failure(
+            "Docker CLI is unavailable; the local restore needs Docker or local PostgreSQL clients"
+        )
     return docker
 
 
 class PgAccess:
     """psql/pg_dump/pg_restore access resolved without downloading anything."""
 
-    def __init__(self, recorder: Recorder, docker: str, container: str | None, image_runner: bool,
-                 image: str, host: str, port: str, user: str, password: str) -> None:
+    def __init__(
+        self,
+        recorder: Recorder,
+        docker: str,
+        container: str | None,
+        image_runner: bool,
+        image: str,
+        host: str,
+        port: str,
+        user: str,
+        password: str,
+    ) -> None:
         self.recorder = recorder
         self.docker = docker
         self.container = container
@@ -425,10 +524,16 @@ class PgAccess:
         return self._agent() + [program, *arguments, "--no-password", *self._connection(database)]
 
     def sql(self, database: str, query: str, timeout: float = 120) -> list[str]:
-        argv = self.argv("psql", ["-X", "-q", "-t", "-A", "-F", "|", "-v", "ON_ERROR_STOP=1", "-c", query], database)
+        argv = self.argv(
+            "psql",
+            ["-X", "-q", "-t", "-A", "-F", "|", "-v", "ON_ERROR_STOP=1", "-c", query],
+            database,
+        )
         process = self.recorder.run(argv, env=self.env, timeout=timeout)
         if process.returncode != 0:
-            raise Failure(f"psql failed on {database}: {(process.stderr or b'').decode('utf-8', 'replace').strip()[-400:]}")
+            raise Failure(
+                f"psql failed on {database}: {(process.stderr or b'').decode('utf-8', 'replace').strip()[-400:]}"
+            )
         return str(process.stdout_text or "").splitlines()
 
     def scalar(self, database: str, query: str, timeout: float = 120) -> str:
@@ -460,8 +565,9 @@ class PgAccess:
             return ""
         return value
 
-    def hash_rows(self, database: str, schema: str, table: str, snapshot: str | None,
-                  transaction: bool = True) -> tuple[int, str]:
+    def hash_rows(
+        self, database: str, schema: str, table: str, snapshot: str | None, transaction: bool = True
+    ) -> tuple[int, str]:
         """Stream canonical rows through SHA-256 without materialising the table."""
         order = self.primary_key(database, schema, table) or "to_jsonb(t)::text"
         copy_sql = (
@@ -476,12 +582,20 @@ class PgAccess:
             query = " ".join(prelude) + " " + copy_sql + "; COMMIT"
         else:
             query = f"BEGIN READ ONLY; SET LOCAL row_security = off; {copy_sql}; COMMIT"
-        argv = self.argv("psql", ["-X", "-q", "-t", "-A", "-v", "ON_ERROR_STOP=1", "-c", query], database)
+        argv = self.argv(
+            "psql", ["-X", "-q", "-t", "-A", "-v", "ON_ERROR_STOP=1", "-c", query], database
+        )
         started = time.monotonic()
         hasher = hashlib.sha256()
         count = 0
-        process = subprocess.Popen(argv, cwd=ROOT, env=self.env, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
+        process = subprocess.Popen(
+            argv,
+            cwd=ROOT,
+            env=self.env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+        )
         assert process.stdout is not None
         deadline = time.monotonic() + 600
         while True:
@@ -498,7 +612,9 @@ class PgAccess:
             count += chunk.count(b"\n")
         stderr = process.stderr.read() if process.stderr else b""
         code = process.wait(timeout=60)
-        self.recorder.record_raw(argv, code, time.monotonic() - started, "", stderr.decode("utf-8", "replace"))
+        self.recorder.record_raw(
+            argv, code, time.monotonic() - started, "", stderr.decode("utf-8", "replace")
+        )
         if code != 0:
             raise Failure(
                 f"row hashing failed for {schema}.{table}: {stderr.decode('utf-8', 'replace').strip()[-300:]}"
@@ -506,18 +622,24 @@ class PgAccess:
         return count, hasher.hexdigest()
 
     def dump(self, database: str, destination: Path, snapshot: str) -> None:
-        argv = self.argv("pg_dump", ["--format=custom", "--compress=6", "--snapshot", snapshot], database)
+        argv = self.argv(
+            "pg_dump", ["--format=custom", "--compress=6", "--snapshot", snapshot], database
+        )
         with destination.open("wb") as stream:
             process = self.recorder.run(argv, stdout=stream, env=self.env, timeout=1800)
         if process.returncode != 0:
-            raise Failure(f"pg_dump failed: {(process.stderr or b'').decode('utf-8', 'replace').strip()[-400:]}")
+            raise Failure(
+                f"pg_dump failed: {(process.stderr or b'').decode('utf-8', 'replace').strip()[-400:]}"
+            )
 
     def restore(self, database: str, source: Path) -> None:
         argv = self.argv("pg_restore", ["--exit-on-error", "--single-transaction"], database)
         with source.open("rb") as stream:
             process = self.recorder.run(argv, stdin=stream, env=self.env, timeout=1800)
         if process.returncode != 0:
-            raise Failure(f"pg_restore failed: {(process.stderr or b'').decode('utf-8', 'replace').strip()[-400:]}")
+            raise Failure(
+                f"pg_restore failed: {(process.stderr or b'').decode('utf-8', 'replace').strip()[-400:]}"
+            )
 
 
 class Snapshot:
@@ -530,9 +652,17 @@ class Snapshot:
         self.snapshot_id = ""
 
     def __enter__(self) -> "Snapshot":
-        argv = self.pg.argv("psql", ["-X", "-q", "-t", "-A", "-v", "ON_ERROR_STOP=1"], self.database)
-        self.process = subprocess.Popen(argv, cwd=ROOT, env=self.pg.env, stdin=subprocess.PIPE,
-                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        argv = self.pg.argv(
+            "psql", ["-X", "-q", "-t", "-A", "-v", "ON_ERROR_STOP=1"], self.database
+        )
+        self.process = subprocess.Popen(
+            argv,
+            cwd=ROOT,
+            env=self.pg.env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
         assert self.process.stdin and self.process.stdout
         script = (
             "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\n"
@@ -583,8 +713,14 @@ class LocalObjects:
     user directory is ever mounted, copied or deleted.
     """
 
-    def __init__(self, root: Path, recorder: Recorder | None = None, docker: str = "",
-                 container: str = "", container_root: str = "") -> None:
+    def __init__(
+        self,
+        root: Path,
+        recorder: Recorder | None = None,
+        docker: str = "",
+        container: str = "",
+        container_root: str = "",
+    ) -> None:
         self.root = root
         self.recorder = recorder
         self.docker = docker
@@ -600,20 +736,37 @@ class LocalObjects:
         if not re.fullmatch(r"[0-9a-f]{64}", digest):
             raise Failure(f"refusing to read a non content-addressed original name {digest!r}")
         if self.container:
-            argv = [self.docker, "exec", self.container, "cat", f"{self.container_root}/blobs/{digest}"]
+            argv = [
+                self.docker,
+                "exec",
+                self.container,
+                "cat",
+                f"{self.container_root}/blobs/{digest}",
+            ]
             started = time.monotonic()
-            process = subprocess.run(argv, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                     stdin=subprocess.DEVNULL, timeout=120)
+            process = subprocess.run(
+                argv,
+                cwd=ROOT,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,
+                timeout=120,
+            )
             if self.recorder is not None:
-                self.recorder.records.append({
-                    "argv": self.recorder.redact(argv), "exit": process.returncode,
-                    "seconds": round(time.monotonic() - started, 3), "stdout_tail": "<binary>",
-                    "stderr_tail": process.stderr.decode("utf-8", "replace")[-500:],
-                })
+                self.recorder.records.append(
+                    {
+                        "argv": self.recorder.redact(argv),
+                        "exit": process.returncode,
+                        "seconds": round(time.monotonic() - started, 3),
+                        "stdout_tail": "<binary>",
+                        "stderr_tail": process.stderr.decode("utf-8", "replace")[-500:],
+                    }
+                )
             if process.returncode != 0:
                 raise Failure(
                     f"could not read {digest} from {self.container}: "
-                    f"{process.stderr.decode('utf-8', 'replace').strip()[-200:]}")
+                    f"{process.stderr.decode('utf-8', 'replace').strip()[-200:]}"
+                )
             return process.stdout
         return (self.root / digest).read_bytes()
 
@@ -621,74 +774,140 @@ class LocalObjects:
 class S3Objects:
     """Private S3-compatible bucket reached through the pinned AWS CLI image."""
 
-    def __init__(self, recorder: Recorder, docker: str, image: str, endpoint: str, access_key: str,
-                 secret_key: str, region: str) -> None:
+    def __init__(
+        self,
+        recorder: Recorder,
+        docker: str,
+        image: str,
+        endpoint: str,
+        access_key: str,
+        secret_key: str,
+        region: str,
+    ) -> None:
         self.recorder = recorder
         self.docker = docker
         self.image = image
         self.endpoint = endpoint.rstrip("/")
         self.region = region
         self.env = dict(os.environ)
-        self.env.update({
-            "AWS_ACCESS_KEY_ID": access_key,
-            "AWS_SECRET_ACCESS_KEY": secret_key,
-            "AWS_DEFAULT_REGION": region,
-            "AWS_EC2_METADATA_DISABLED": "true",
-            "AWS_MAX_ATTEMPTS": "1",
-            "AWS_PAGER": "",
-        })
+        self.env.update(
+            {
+                "AWS_ACCESS_KEY_ID": access_key,
+                "AWS_SECRET_ACCESS_KEY": secret_key,
+                "AWS_DEFAULT_REGION": region,
+                "AWS_EC2_METADATA_DISABLED": "true",
+                "AWS_MAX_ATTEMPTS": "1",
+                "AWS_PAGER": "",
+            }
+        )
 
     def _aws(self, arguments: list[str]) -> list[str]:
         return [
-            self.docker, "run", "--rm", "--network", "host",
-            "-e", "AWS_ACCESS_KEY_ID", "-e", "AWS_SECRET_ACCESS_KEY", "-e", "AWS_DEFAULT_REGION",
-            "-e", "AWS_EC2_METADATA_DISABLED", "-e", "AWS_MAX_ATTEMPTS", "-e", "AWS_PAGER",
-            self.image, "--endpoint-url", self.endpoint,
-            "--cli-connect-timeout", "5", "--cli-read-timeout", "60", *arguments,
+            self.docker,
+            "run",
+            "--rm",
+            "--network",
+            "host",
+            "-e",
+            "AWS_ACCESS_KEY_ID",
+            "-e",
+            "AWS_SECRET_ACCESS_KEY",
+            "-e",
+            "AWS_DEFAULT_REGION",
+            "-e",
+            "AWS_EC2_METADATA_DISABLED",
+            "-e",
+            "AWS_MAX_ATTEMPTS",
+            "-e",
+            "AWS_PAGER",
+            self.image,
+            "--endpoint-url",
+            self.endpoint,
+            "--cli-connect-timeout",
+            "5",
+            "--cli-read-timeout",
+            "60",
+            *arguments,
         ]
 
     def bucket_exists(self, bucket: str) -> bool:
-        process = self.recorder.run(self._aws(["s3api", "head-bucket", "--bucket", bucket]),
-                                    env=self.env, timeout=120)
+        process = self.recorder.run(
+            self._aws(["s3api", "head-bucket", "--bucket", bucket]), env=self.env, timeout=120
+        )
         return process.returncode == 0
 
     def create_bucket(self, bucket: str) -> None:
-        process = self.recorder.run(self._aws(["s3api", "create-bucket", "--bucket", bucket]),
-                                    env=self.env, timeout=120)
+        process = self.recorder.run(
+            self._aws(["s3api", "create-bucket", "--bucket", bucket]), env=self.env, timeout=120
+        )
         if process.returncode != 0:
-            raise Failure(f"could not create destination bucket {bucket}: "
-                          f"{(process.stderr or b'').decode('utf-8', 'replace').strip()[-300:]}")
+            raise Failure(
+                f"could not create destination bucket {bucket}: "
+                f"{(process.stderr or b'').decode('utf-8', 'replace').strip()[-300:]}"
+            )
 
     def copy_key(self, source_bucket: str, destination_bucket: str, key: str) -> None:
         process = self.recorder.run(
-            self._aws(["s3", "cp", f"s3://{source_bucket}/{key}", f"s3://{destination_bucket}/{key}"]),
-            env=self.env, timeout=300,
+            self._aws(
+                ["s3", "cp", f"s3://{source_bucket}/{key}", f"s3://{destination_bucket}/{key}"]
+            ),
+            env=self.env,
+            timeout=300,
         )
         if process.returncode != 0:
-            raise Failure(f"could not copy {key} into {destination_bucket}: "
-                          f"{(process.stderr or b'').decode('utf-8', 'replace').strip()[-300:]}")
+            raise Failure(
+                f"could not copy {key} into {destination_bucket}: "
+                f"{(process.stderr or b'').decode('utf-8', 'replace').strip()[-300:]}"
+            )
 
     def list_keys(self, bucket: str) -> list[str]:
         process = self.recorder.run(
-            self._aws(["s3api", "list-objects-v2", "--bucket", bucket, "--query", "Contents[].Key",
-                       "--output", "text"]),
-            env=self.env, timeout=300,
+            self._aws(
+                [
+                    "s3api",
+                    "list-objects-v2",
+                    "--bucket",
+                    bucket,
+                    "--query",
+                    "Contents[].Key",
+                    "--output",
+                    "text",
+                ]
+            ),
+            env=self.env,
+            timeout=300,
         )
         if process.returncode != 0:
-            raise Failure(f"could not list bucket {bucket}: "
-                          f"{(process.stderr or b'').decode('utf-8', 'replace').strip()[-300:]}")
+            raise Failure(
+                f"could not list bucket {bucket}: "
+                f"{(process.stderr or b'').decode('utf-8', 'replace').strip()[-300:]}"
+            )
         return [key for key in str(process.stdout_text or "").split() if key]
 
     def read(self, bucket: str, key: str) -> bytes:
         argv = self._aws(["s3", "cp", f"s3://{bucket}/{key}", "-", "--only-show-errors"])
         started = time.monotonic()
-        process = subprocess.run(argv, cwd=ROOT, env=self.env, stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, timeout=300)
-        self.recorder.record_raw(argv, process.returncode, time.monotonic() - started, "",
-                                 process.stderr.decode("utf-8", "replace"))
+        process = subprocess.run(
+            argv,
+            cwd=ROOT,
+            env=self.env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            timeout=300,
+        )
+        self.recorder.record_raw(
+            argv,
+            process.returncode,
+            time.monotonic() - started,
+            "",
+            process.stderr.decode("utf-8", "replace"),
+        )
         if process.returncode != 0:
-            raise Failure(f"could not read s3://{bucket}/{key}: "
-                          f"{process.stderr.decode('utf-8', 'replace').strip()[-300:]}")
+            raise Failure(
+                f"could not read s3://{bucket}/{key}: "
+                f"{process.stderr.decode('utf-8', 'replace').strip()[-300:]}"
+            )
         return process.stdout
 
 
@@ -701,7 +920,9 @@ def report_digest(json_bytes: bytes, html_bytes: bytes) -> str:
     return hasher.hexdigest()
 
 
-def snapshot_documents(pg: PgAccess, database: str, schema: str, snapshot: str) -> list[tuple[str, str, str, int, str]]:
+def snapshot_documents(
+    pg: PgAccess, database: str, schema: str, snapshot: str
+) -> list[tuple[str, str, str, int, str]]:
     """Enumerate the referenced originals from the held snapshot itself."""
     query = (
         "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; "
@@ -723,7 +944,9 @@ def snapshot_documents(pg: PgAccess, database: str, schema: str, snapshot: str) 
     return rows
 
 
-def require_representative(pg: PgAccess, database: str, schema: str, snapshot: str) -> dict[str, int]:
+def require_representative(
+    pg: PgAccess, database: str, schema: str, snapshot: str
+) -> dict[str, int]:
     """Refuse an incomplete journey: the frozen attempt, rule config, decision,
     remediation, report, archive and originals must all exist in the snapshot."""
     counts: dict[str, int] = {}
@@ -732,25 +955,32 @@ def require_representative(pg: PgAccess, database: str, schema: str, snapshot: s
         if not pg.table_exists(database, schema, table):
             missing.append(f"{table} (table absent)")
             continue
-        count = int(pg.scalar(
-            database,
-            f"BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT '{snapshot}'; "
-            f"SET LOCAL row_security = off; SELECT count(*) FROM {schema}.{table}; COMMIT",
-        ))
+        count = int(
+            pg.scalar(
+                database,
+                f"BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT '{snapshot}'; "
+                f"SET LOCAL row_security = off; SELECT count(*) FROM {schema}.{table}; COMMIT",
+            )
+        )
         counts[table] = count
         if count == 0:
             missing.append(table)
     for label, template in REQUIRED_QUERIES.items():
-        value = int(pg.scalar(
-            database,
-            f"BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT '{snapshot}'; "
-            f"SET LOCAL row_security = off; {template.format(s=schema)}; COMMIT",
-        ))
+        value = int(
+            pg.scalar(
+                database,
+                f"BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT '{snapshot}'; "
+                f"SET LOCAL row_security = off; {template.format(s=schema)}; COMMIT",
+            )
+        )
         counts[label] = value
         if value == 0:
             missing.append(label)
     if missing:
-        raise Failure("refusing to count an incomplete journey as proof: the source has no " + ", ".join(missing))
+        raise Failure(
+            "refusing to count an incomplete journey as proof: the source has no "
+            + ", ".join(missing)
+        )
     return counts
 
 
@@ -774,7 +1004,9 @@ def probe_authority(pg: PgAccess, database: str, schema: str) -> None:
         ) from error
 
 
-def hash_table_set(pg: PgAccess, database: str, schema: str, snapshot: str | None) -> dict[str, object]:
+def hash_table_set(
+    pg: PgAccess, database: str, schema: str, snapshot: str | None
+) -> dict[str, object]:
     result: dict[str, object] = {}
     for table in TABLES:
         if not pg.table_exists(database, schema, table):
@@ -802,7 +1034,9 @@ def compare_identities(source: dict[str, object], destination: dict[str, object]
     return failures
 
 
-def compare_relationships(source_scalars: dict[str, int], destination_scalars: dict[str, int]) -> list[str]:
+def compare_relationships(
+    source_scalars: dict[str, int], destination_scalars: dict[str, int]
+) -> list[str]:
     failures: list[str] = []
     for name in sorted(set(source_scalars) | set(destination_scalars)):
         left = source_scalars.get(name, -1)
@@ -812,13 +1046,16 @@ def compare_relationships(source_scalars: dict[str, int], destination_scalars: d
     return failures
 
 
-def evaluate_relationships(pg: PgAccess, database: str, schema: str, snapshot: str | None,
-                           transaction: bool) -> dict[str, int]:
+def evaluate_relationships(
+    pg: PgAccess, database: str, schema: str, snapshot: str | None, transaction: bool
+) -> dict[str, int]:
     result: dict[str, int] = {}
     for name, template in ORPHAN_CHECKS.items():
         if snapshot and transaction:
-            query = (f"BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT '{snapshot}'; "
-                     f"SET LOCAL row_security = off; {template.format(s=schema)}; COMMIT")
+            query = (
+                f"BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT '{snapshot}'; "
+                f"SET LOCAL row_security = off; {template.format(s=schema)}; COMMIT"
+            )
         else:
             query = f"BEGIN READ ONLY; SET LOCAL row_security = off; {template.format(s=schema)}; COMMIT"
         result[name] = int(pg.scalar(database, query, timeout=300))
@@ -830,9 +1067,14 @@ def remote_object_key(tenant: str, case: str, digest: str) -> str:
     return f"{tenant}/{case}/{digest}"
 
 
-def copy_objects(referenced: list[tuple[str, str, str, int, str]], local_objects: LocalObjects | None,
-                 s3: S3Objects | None, source_bucket: str, destination_bucket: str,
-                 destination_root: Path) -> dict[str, object]:
+def copy_objects(
+    referenced: list[tuple[str, str, str, int, str]],
+    local_objects: LocalObjects | None,
+    s3: S3Objects | None,
+    source_bucket: str,
+    destination_bucket: str,
+    destination_root: Path,
+) -> dict[str, object]:
     """Copy exactly the snapshot's referenced originals under their frozen IDs."""
     local_report: dict[str, object] = {"copied": 0, "distinct": 0, "failures": []}
     remote_report: dict[str, object] = {"copied": 0, "distinct": 0, "failures": []}
@@ -860,7 +1102,9 @@ def copy_objects(referenced: list[tuple[str, str, str, int, str]], local_objects
             target.parent.mkdir(parents=True, exist_ok=True)
             if target.exists():
                 if hashlib.sha256(target.read_bytes()).hexdigest() != digest:
-                    local_failures.append(f"{digest}: destination copy already exists with different bytes")
+                    local_failures.append(
+                        f"{digest}: destination copy already exists with different bytes"
+                    )
                     continue
             else:
                 with target.open("xb") as stream:
@@ -889,36 +1133,74 @@ def copy_objects(referenced: list[tuple[str, str, str, int, str]], local_objects
     return {"local": local_report, "remote": remote_report}
 
 
-def verify_object_layout(referenced: list[tuple[str, str, str, int, str]], destination_root: Path | None,
-                         s3: S3Objects | None, destination_bucket: str) -> tuple[list[str], dict[str, object]]:
+def verify_object_layout(
+    referenced: list[tuple[str, str, str, int, str]],
+    destination_root: Path | None,
+    s3: S3Objects | None,
+    destination_bucket: str,
+) -> tuple[list[str], dict[str, object]]:
     """The destination object namespace must hold exactly the frozen references."""
     failures: list[str] = []
     report: dict[str, object] = {}
     expected_local = {digest for _t, _c, digest, _s, backend in referenced if backend == "local"}
-    expected_remote = {remote_object_key(tenant, case, digest) for tenant, case, digest, _s, backend in referenced
-                       if backend == "remote"}
+    expected_remote = {
+        remote_object_key(tenant, case, digest)
+        for tenant, case, digest, _s, backend in referenced
+        if backend == "remote"
+    }
     if expected_local:
         blobs = destination_root / "blobs" if destination_root else None
-        actual = {path.name for path in blobs.iterdir() if path.is_file()} if blobs and blobs.is_dir() else set()
-        report["local"] = {"expected": len(expected_local), "present": len(actual),
-                           "missing": sorted(expected_local - actual)[:10],
-                           "unexpected": sorted(actual - expected_local)[:10]}
-        failures += [f"local original {digest} missing under {blobs}" for digest in sorted(expected_local - actual)[:5]]
-        failures += [f"unexpected local object {name} under {blobs}" for name in sorted(actual - expected_local)[:5]]
+        actual = (
+            {path.name for path in blobs.iterdir() if path.is_file()}
+            if blobs and blobs.is_dir()
+            else set()
+        )
+        report["local"] = {
+            "expected": len(expected_local),
+            "present": len(actual),
+            "missing": sorted(expected_local - actual)[:10],
+            "unexpected": sorted(actual - expected_local)[:10],
+        }
+        failures += [
+            f"local original {digest} missing under {blobs}"
+            for digest in sorted(expected_local - actual)[:5]
+        ]
+        failures += [
+            f"unexpected local object {name} under {blobs}"
+            for name in sorted(actual - expected_local)[:5]
+        ]
     if expected_remote:
         actual_remote = set(s3.list_keys(destination_bucket)) if s3 else set()
-        report["remote"] = {"expected": len(expected_remote), "present": len(actual_remote),
-                            "missing": sorted(expected_remote - actual_remote)[:10],
-                            "unexpected": sorted(actual_remote - expected_remote)[:10]}
-        failures += [f"destination object {key} missing" for key in sorted(expected_remote - actual_remote)[:5]]
-        failures += [f"unexpected destination object {key}" for key in sorted(actual_remote - expected_remote)[:5]]
+        report["remote"] = {
+            "expected": len(expected_remote),
+            "present": len(actual_remote),
+            "missing": sorted(expected_remote - actual_remote)[:10],
+            "unexpected": sorted(actual_remote - expected_remote)[:10],
+        }
+        failures += [
+            f"destination object {key} missing"
+            for key in sorted(expected_remote - actual_remote)[:5]
+        ]
+        failures += [
+            f"unexpected destination object {key}"
+            for key in sorted(actual_remote - expected_remote)[:5]
+        ]
     return failures, report
 
 
-def verify_destination_bytes(pg: PgAccess, database: str, schema: str, destination_root: Path | None,
-                             s3: S3Objects | None, destination_bucket: str,
-                             limits: int = 500) -> tuple[list[str], dict[str, object]]:
-    rows = pg.sql(database, f"SELECT tenant_id, case_id, digest, size, storage_backend FROM {schema}.documents ORDER BY id")
+def verify_destination_bytes(
+    pg: PgAccess,
+    database: str,
+    schema: str,
+    destination_root: Path | None,
+    s3: S3Objects | None,
+    destination_bucket: str,
+    limits: int = 500,
+) -> tuple[list[str], dict[str, object]]:
+    rows = pg.sql(
+        database,
+        f"SELECT tenant_id, case_id, digest, size, storage_backend FROM {schema}.documents ORDER BY id",
+    )
     failures: list[str] = []
     checked = {"local": 0, "remote": 0}
     for line in rows:
@@ -983,15 +1265,24 @@ def verify_reports(pg: PgAccess, database: str, schema: str) -> tuple[list[str],
     return failures, {"rows": len(lines), "verified": verified}
 
 
-def psql_probe(pg: PgAccess, database: str, script: str, timeout: float = 120) -> tuple[int, str, str]:
+def psql_probe(
+    pg: PgAccess, database: str, script: str, timeout: float = 120
+) -> tuple[int, str, str]:
     process = pg.recorder.run(
         pg.argv("psql", ["-X", "-q", "-t", "-A", "-v", "ON_ERROR_STOP=0", "-c", script], database),
-        env=pg.env, timeout=timeout,
+        env=pg.env,
+        timeout=timeout,
     )
-    return process.returncode, str(process.stdout_text or ""), (process.stderr or b"").decode("utf-8", "replace")
+    return (
+        process.returncode,
+        str(process.stdout_text or ""),
+        (process.stderr or b"").decode("utf-8", "replace"),
+    )
 
 
-def exercise_permissions(pg: PgAccess, database: str, schema: str) -> tuple[list[str], dict[str, object]]:
+def exercise_permissions(
+    pg: PgAccess, database: str, schema: str
+) -> tuple[list[str], dict[str, object]]:
     """Read-only exercise of the restored grants and FORCE RLS with real roles.
 
     Everything runs inside BEGIN ... ROLLBACK: a denied statement must be denied,
@@ -999,8 +1290,14 @@ def exercise_permissions(pg: PgAccess, database: str, schema: str) -> tuple[list
     """
     failures: list[str] = []
     report: dict[str, object] = {}
-    roles = [line for line in pg.sql(
-        database, f"SELECT role_name || '|' || service FROM {schema}.service_database_roles ORDER BY role_name") if line]
+    roles = [
+        line
+        for line in pg.sql(
+            database,
+            f"SELECT role_name || '|' || service FROM {schema}.service_database_roles ORDER BY role_name",
+        )
+        if line
+    ]
     if len(roles) != 5:
         failures.append(f"expected the five service roles in the destination, found {len(roles)}")
     for line in roles:
@@ -1011,51 +1308,87 @@ def exercise_permissions(pg: PgAccess, database: str, schema: str) -> tuple[list
         tenant = pg.scalar(database, f"SELECT tenant_id FROM {schema}.cases ORDER BY seq LIMIT 1")
         org = pg.scalar(database, f"SELECT org_id FROM {schema}.cases ORDER BY seq LIMIT 1")
         total = int(pg.scalar(database, f"SELECT count(*) FROM {schema}.cases"))
-        scoped_expected = int(pg.scalar(
-            database, f"SELECT count(*) FROM {schema}.cases WHERE tenant_id = {quote(tenant)}"))
-        entry: dict[str, object] = {"service": service, "total_cases": total, "tenant_cases": scoped_expected}
+        scoped_expected = int(
+            pg.scalar(
+                database, f"SELECT count(*) FROM {schema}.cases WHERE tenant_id = {quote(tenant)}"
+            )
+        )
+        entry: dict[str, object] = {
+            "service": service,
+            "total_cases": total,
+            "tenant_cases": scoped_expected,
+        }
 
-        code, output, stderr = psql_probe(pg, database, (
-            "BEGIN; "
-            f"SET LOCAL ROLE {role}; "
-            f"SELECT 'UNSCOPED:' || count(*) FROM {schema}.cases; "
-            f"SELECT set_config('app.tenant_id','{tenant}',true), set_config('app.org_id','{org}',true); "
-            f"SELECT 'SCOPED:' || count(*) FROM {schema}.cases; "
-            "ROLLBACK"
-        ))
-        unscoped = next((int(row.split(":", 1)[1]) for row in output.splitlines() if row.startswith("UNSCOPED:")), -1)
-        scoped = next((int(row.split(":", 1)[1]) for row in output.splitlines() if row.startswith("SCOPED:")), -1)
+        code, output, stderr = psql_probe(
+            pg,
+            database,
+            (
+                "BEGIN; "
+                f"SET LOCAL ROLE {role}; "
+                f"SELECT 'UNSCOPED:' || count(*) FROM {schema}.cases; "
+                f"SELECT set_config('app.tenant_id','{tenant}',true), set_config('app.org_id','{org}',true); "
+                f"SELECT 'SCOPED:' || count(*) FROM {schema}.cases; "
+                "ROLLBACK"
+            ),
+        )
+        unscoped = next(
+            (
+                int(row.split(":", 1)[1])
+                for row in output.splitlines()
+                if row.startswith("UNSCOPED:")
+            ),
+            -1,
+        )
+        scoped = next(
+            (int(row.split(":", 1)[1]) for row in output.splitlines() if row.startswith("SCOPED:")),
+            -1,
+        )
         entry.update({"unscoped_visible": unscoped, "scoped_visible": scoped})
         if code != 0:
             failures.append(f"role {role} read probe failed: {stderr.strip()[-200:]}")
         if unscoped != 0:
-            failures.append(f"role {role} saw {unscoped} cases without a tenant scope; FORCE RLS is not enforced")
+            failures.append(
+                f"role {role} saw {unscoped} cases without a tenant scope; FORCE RLS is not enforced"
+            )
         if scoped != scoped_expected:
             failures.append(
                 f"role {role} saw {scoped} of {scoped_expected} cases for the tenant scope {tenant!r}"
             )
 
-        _, _, ddl_stderr = psql_probe(pg, database, (
-            "BEGIN; " f"SET LOCAL ROLE {role}; " "CREATE TABLE restore_probe_ddl (id text); " "ROLLBACK"
-        ))
+        _, _, ddl_stderr = psql_probe(
+            pg,
+            database,
+            (f"BEGIN; SET LOCAL ROLE {role}; CREATE TABLE restore_probe_ddl (id text); ROLLBACK"),
+        )
         entry["ddl_denied"] = "permission denied" in ddl_stderr
         if not entry["ddl_denied"]:
             failures.append(f"role {role} was able to run DDL in the destination")
 
-        candidates = pg.sql(database, (
-            "SELECT c.relname, (SELECT a.attname FROM pg_attribute a WHERE a.attrelid=c.oid "
-            "AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum LIMIT 1) "
-            "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
-            f"WHERE n.nspname='{schema}' AND c.relkind='r' "
-            f"AND NOT has_table_privilege('{role}', c.oid, 'UPDATE') ORDER BY c.relname LIMIT 1"
-        ))
+        candidates = pg.sql(
+            database,
+            (
+                "SELECT c.relname, (SELECT a.attname FROM pg_attribute a WHERE a.attrelid=c.oid "
+                "AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum LIMIT 1) "
+                "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+                f"WHERE n.nspname='{schema}' AND c.relkind='r' "
+                f"AND NOT has_table_privilege('{role}', c.oid, 'UPDATE') ORDER BY c.relname LIMIT 1"
+            ),
+        )
         if candidates and candidates[0]:
             table, column = candidates[0].split("|")
-            if re.fullmatch(r"[a-z_][a-z0-9_]*", table) and re.fullmatch(r"[a-z_][a-z0-9_]*", column):
-                _, _, write_stderr = psql_probe(pg, database, (
-                    "BEGIN; " f"SET LOCAL ROLE {role}; "
-                    f"UPDATE {schema}.{table} SET {column}={column} WHERE false; " "ROLLBACK"
-                ))
+            if re.fullmatch(r"[a-z_][a-z0-9_]*", table) and re.fullmatch(
+                r"[a-z_][a-z0-9_]*", column
+            ):
+                _, _, write_stderr = psql_probe(
+                    pg,
+                    database,
+                    (
+                        "BEGIN; "
+                        f"SET LOCAL ROLE {role}; "
+                        f"UPDATE {schema}.{table} SET {column}={column} WHERE false; "
+                        "ROLLBACK"
+                    ),
+                )
                 entry["foreign_write_denied"] = "permission denied" in write_stderr
                 entry["foreign_write_probe"] = f"{table}.{column}"
                 if not entry["foreign_write_denied"]:
@@ -1070,7 +1403,9 @@ def image_present(recorder: Recorder, docker: str, image: str) -> bool:
 
 
 def discover_pg_container(recorder: Recorder, docker: str, port: str) -> str | None:
-    process = recorder.run([docker, "ps", "--format", "{{.ID}}\t{{.Names}}\t{{.Ports}}"], timeout=60)
+    process = recorder.run(
+        [docker, "ps", "--format", "{{.ID}}\t{{.Names}}\t{{.Ports}}"], timeout=60
+    )
     if process.returncode != 0:
         return None
     matches: list[str] = []
@@ -1082,20 +1417,34 @@ def discover_pg_container(recorder: Recorder, docker: str, port: str) -> str | N
         if f":{port}->" in ports and "5432/tcp" in ports:
             matches.append(identifier)
     if len(matches) > 1:
-        raise Failure(f"several running containers publish port {port}; pass --pg-container explicitly")
+        raise Failure(
+            f"several running containers publish port {port}; pass --pg-container explicitly"
+        )
     return matches[0] if matches else None
 
 
-def resolve_pg(recorder: Recorder, host: str, port: str, user: str, password: str,
-               pg_container: str | None, postgres_image: str, docker: str) -> PgAccess:
+def resolve_pg(
+    recorder: Recorder,
+    host: str,
+    port: str,
+    user: str,
+    password: str,
+    pg_container: str | None,
+    postgres_image: str,
+    docker: str,
+) -> PgAccess:
     if not user:
         raise Failure("the migrator DSN has no database user")
     if pg_container:
-        return PgAccess(recorder, docker, pg_container, False, postgres_image, host, port, user, password)
+        return PgAccess(
+            recorder, docker, pg_container, False, postgres_image, host, port, user, password
+        )
     if host in ("127.0.0.1", "localhost", "::1"):
         container = discover_pg_container(recorder, docker, port)
         if container:
-            return PgAccess(recorder, docker, container, False, postgres_image, host, port, user, password)
+            return PgAccess(
+                recorder, docker, container, False, postgres_image, host, port, user, password
+            )
     if all(shutil.which(program) for program in ("psql", "pg_dump", "pg_restore")):
         return PgAccess(recorder, docker, None, False, postgres_image, host, port, user, password)
     if image_present(recorder, docker, postgres_image):
@@ -1109,9 +1458,19 @@ def resolve_pg(recorder: Recorder, host: str, port: str, user: str, password: st
 def container_env_value(container: str, key: str) -> str:
     """Read one environment value from a container without recording secrets."""
     process = subprocess.run(
-        [os.environ.get("DOCKER_BIN", "docker"), "inspect", "--format",
-         f"{{{{range .Config.Env}}}}{{{{println .}}}}{{{{end}}}}", container],
-        cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, timeout=60)
+        [
+            os.environ.get("DOCKER_BIN", "docker"),
+            "inspect",
+            "--format",
+            "{{range .Config.Env}}{{println .}}{{end}}",
+            container,
+        ],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        stdin=subprocess.DEVNULL,
+        timeout=60,
+    )
     if process.returncode != 0:
         return ""
     for line in process.stdout.decode("utf-8", "replace").splitlines():
@@ -1125,8 +1484,13 @@ def paths_overlap(left: Path, right: Path) -> bool:
     return left == right or left in right.parents or right in left.parents
 
 
-def ensure_destination_root_isolated(destination_root: Path, local_objects: LocalObjects | None,
-                                     data_dir: str, recorder: Recorder, docker: str) -> None:
+def ensure_destination_root_isolated(
+    destination_root: Path,
+    local_objects: LocalObjects | None,
+    data_dir: str,
+    recorder: Recorder,
+    docker: str,
+) -> None:
     """Refuse an object destination that shares the host source directory or volume."""
     if local_objects is None:
         return
@@ -1140,14 +1504,17 @@ def ensure_destination_root_isolated(destination_root: Path, local_objects: Loca
         return
 
     resolved = recorder.run(
-        [docker, "exec", local_objects.container, "realpath", "-e", local_objects.container_root], timeout=60)
+        [docker, "exec", local_objects.container, "realpath", "-e", local_objects.container_root],
+        timeout=60,
+    )
     if resolved.returncode != 0:
         raise Failure(f"cannot resolve the source DATA_DIR inside {local_objects.container}")
     container_root = Path(str(resolved.stdout_text or "").strip())
     if not container_root.is_absolute():
         raise Failure("the source container returned a non-absolute DATA_DIR path")
     inspected = recorder.run(
-        [docker, "inspect", "--format", "{{json .Mounts}}", local_objects.container], timeout=60)
+        [docker, "inspect", "--format", "{{json .Mounts}}", local_objects.container], timeout=60
+    )
     if inspected.returncode != 0:
         raise Failure(f"cannot inspect source volume mounts for {local_objects.container}")
     try:
@@ -1160,9 +1527,15 @@ def ensure_destination_root_isolated(destination_root: Path, local_objects: Loca
     for mount in mounts:
         destination = str(mount.get("Destination", ""))
         source = str(mount.get("Source", ""))
-        if (not destination.startswith("/") or not source.startswith("/")
-                or (container_root != Path(destination) and Path(destination) not in container_root.parents
-                    and container_root not in Path(destination).parents)):
+        if (
+            not destination.startswith("/")
+            or not source.startswith("/")
+            or (
+                container_root != Path(destination)
+                and Path(destination) not in container_root.parents
+                and container_root not in Path(destination).parents
+            )
+        ):
             continue
         source_volumes.append(Path(source).resolve())
     for source_volume in source_volumes:
@@ -1170,23 +1543,30 @@ def ensure_destination_root_isolated(destination_root: Path, local_objects: Loca
             raise Failure(f"the restore root overlaps source container volume {source_volume}")
 
 
-def build_local_objects(config: dict[str, str], args, recorder: Recorder, docker: str) -> tuple[LocalObjects | None, str]:
+def build_local_objects(
+    config: dict[str, str], args, recorder: Recorder, docker: str
+) -> tuple[LocalObjects | None, str]:
     container = (args.source_data_container or "").strip()
     data_dir = (args.source_data_dir or config.get("DATA_DIR") or "").strip()
     if container:
-        container_root = (args.source_data_path or container_env_value(container, "DATA_DIR") or "").strip()
+        container_root = (
+            args.source_data_path or container_env_value(container, "DATA_DIR") or ""
+        ).strip()
         if not container_root.startswith("/"):
             raise Failure(
                 f"cannot derive the DATA_DIR inside {container}; pass --source-data-path with the absolute path"
             )
-        return LocalObjects(Path(data_dir or "."), recorder, docker, container, container_root), \
-            f"docker:{container}:{container_root}"
+        return LocalObjects(
+            Path(data_dir or "."), recorder, docker, container, container_root
+        ), f"docker:{container}:{container_root}"
     if not data_dir:
         return None, ""
     return LocalObjects(Path(data_dir) / "blobs", recorder), data_dir
 
 
-def build_s3_client(recorder: Recorder, docker: str, config: dict[str, str], args) -> tuple[S3Objects | None, str]:
+def build_s3_client(
+    recorder: Recorder, docker: str, config: dict[str, str], args
+) -> tuple[S3Objects | None, str]:
     endpoint = (args.source_endpoint or config.get("S3_ENDPOINT") or "").strip()
     bucket = (args.source_bucket or config.get("S3_BUCKET") or "").strip()
     access = (config.get("S3_ACCESS_KEY") or config.get("RUSTFS_ACCESS_KEY") or "").strip()
@@ -1195,9 +1575,18 @@ def build_s3_client(recorder: Recorder, docker: str, config: dict[str, str], arg
     if not (endpoint and bucket and access and secret):
         return None, ""
     if not image_present(recorder, docker, image):
-        raise Failure(f"the pinned AWS CLI image {image} is not present locally; pull it explicitly first")
-    return S3Objects(recorder, docker, image, endpoint, access, secret,
-                     (config.get("S3_REGION") or "us-east-1").strip()), bucket
+        raise Failure(
+            f"the pinned AWS CLI image {image} is not present locally; pull it explicitly first"
+        )
+    return S3Objects(
+        recorder,
+        docker,
+        image,
+        endpoint,
+        access,
+        secret,
+        (config.get("S3_REGION") or "us-east-1").strip(),
+    ), bucket
 
 
 def sha256_file(path: Path) -> str:
@@ -1210,20 +1599,30 @@ def sha256_file(path: Path) -> str:
 
 def write_manifest(path: Path, manifest: dict[str, object]) -> None:
     temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     temporary.replace(path)
 
 
 def create_database(pg: PgAccess, destination_db: str) -> None:
-    existing = pg.scalar("postgres", f"SELECT count(*) FROM pg_database WHERE datname = {quote(destination_db)}")
+    existing = pg.scalar(
+        "postgres", f"SELECT count(*) FROM pg_database WHERE datname = {quote(destination_db)}"
+    )
     if existing != "0":
-        raise Failure(f"destination database {destination_db} already exists; refusing to overwrite")
+        raise Failure(
+            f"destination database {destination_db} already exists; refusing to overwrite"
+        )
     owner = pg.scalar("postgres", "SELECT current_user")
-    pg.sql("postgres", f'CREATE DATABASE {quote_identifier(destination_db)} OWNER {quote_identifier(owner)}')
+    pg.sql(
+        "postgres",
+        f"CREATE DATABASE {quote_identifier(destination_db)} OWNER {quote_identifier(owner)}",
+    )
 
 
 def quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
+
 
 def quote_identifier(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
@@ -1231,29 +1630,57 @@ def quote_identifier(value: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source-env", default="",
-                        help="private source environment (dotenv or flat/nested JSON, mode 0600)")
-    parser.add_argument("--source-db", default="", help="the named source database (must be the selected identity)")
+    parser.add_argument(
+        "--source-env",
+        default="",
+        help="private source environment (dotenv or flat/nested JSON, mode 0600)",
+    )
+    parser.add_argument(
+        "--source-db", default="", help="the named source database (must be the selected identity)"
+    )
     parser.add_argument("--confirm", default="", help="must repeat --source-db")
-    parser.add_argument("--source-bucket", default="", help="override S3_BUCKET from the source environment")
-    parser.add_argument("--source-data-dir", default="", help="override DATA_DIR from the source environment")
-    parser.add_argument("--source-data-container", default="",
-                        help="container that holds the source DATA_DIR volume; blobs are read through docker exec")
-    parser.add_argument("--source-data-path", default="",
-                        help="absolute DATA_DIR inside --source-data-container (default: its DATA_DIR env)")
-    parser.add_argument("--source-endpoint", default="", help="override S3_ENDPOINT for a host-network client")
+    parser.add_argument(
+        "--source-bucket", default="", help="override S3_BUCKET from the source environment"
+    )
+    parser.add_argument(
+        "--source-data-dir", default="", help="override DATA_DIR from the source environment"
+    )
+    parser.add_argument(
+        "--source-data-container",
+        default="",
+        help="container that holds the source DATA_DIR volume; blobs are read through docker exec",
+    )
+    parser.add_argument(
+        "--source-data-path",
+        default="",
+        help="absolute DATA_DIR inside --source-data-container (default: its DATA_DIR env)",
+    )
+    parser.add_argument(
+        "--source-endpoint", default="", help="override S3_ENDPOINT for a host-network client"
+    )
     parser.add_argument("--destination-db", default="", help="default: restore_<utcstamp>_<hex>")
-    parser.add_argument("--destination-bucket", default="", help="default: contract-audit-restore-<suffix>")
+    parser.add_argument(
+        "--destination-bucket", default="", help="default: contract-audit-restore-<suffix>"
+    )
     parser.add_argument("--destination-root", default="", help="default: <backup-dir>/originals")
-    parser.add_argument("--backup-dir", default="", help="default: artifacts/restore-local/<suffix>")
-    parser.add_argument("--pg-container", default="", help="explicit running PostgreSQL container id or name")
+    parser.add_argument(
+        "--backup-dir", default="", help="default: artifacts/restore-local/<suffix>"
+    )
+    parser.add_argument(
+        "--pg-container", default="", help="explicit running PostgreSQL container id or name"
+    )
     parser.add_argument("--postgres-image", default="", help="pinned image for a one-off client")
     parser.add_argument("--awscli-image", default="", help="pinned AWS CLI image")
-    parser.add_argument("--verify-only", default="", help="re-verify a previous destination against its manifest")
+    parser.add_argument(
+        "--verify-only", default="", help="re-verify a previous destination against its manifest"
+    )
     args = parser.parse_args(argv)
 
     if os.environ.get("RESTORE_LOCAL_CONFIRM") != CONFIRM_TOKEN:
-        print(f"REFUSED: set RESTORE_LOCAL_CONFIRM={CONFIRM_TOKEN} to run a local backup/restore", file=sys.stderr)
+        print(
+            f"REFUSED: set RESTORE_LOCAL_CONFIRM={CONFIRM_TOKEN} to run a local backup/restore",
+            file=sys.stderr,
+        )
         return 2
     if args.verify_only:
         return run_verify_only(Path(args.verify_only), args)
@@ -1261,7 +1688,10 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSED: --source-env and --source-db are required", file=sys.stderr)
         return 2
     if args.confirm != args.source_db:
-        print(f"REFUSED: --confirm must repeat the source database name {args.source_db!r}", file=sys.stderr)
+        print(
+            f"REFUSED: --confirm must repeat the source database name {args.source_db!r}",
+            file=sys.stderr,
+        )
         return 2
     return run_restore(args)
 
@@ -1276,12 +1706,21 @@ def run_verify_only(manifest_path: Path, args) -> int:
     destination = manifest.get("destination", {})
     snapshot = source.get("snapshot", {})
     objects = manifest.get("objects", {})
-    if not source.get("env") or not source.get("dsn") or not destination.get("db") or not snapshot.get("tables"):
+    if (
+        not source.get("env")
+        or not source.get("dsn")
+        or not destination.get("db")
+        or not snapshot.get("tables")
+    ):
         print("REFUSED: the manifest does not carry a complete capture", file=sys.stderr)
         return 2
 
     verify_dir = manifest_path.parent / (
-        "verify_" + dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d%H%M%S") + "_" + secrets.token_hex(3))
+        "verify_"
+        + dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d%H%M%S")
+        + "_"
+        + secrets.token_hex(3)
+    )
     recorder: Recorder | None = None
     failures: list[str] = []
     checked: dict[str, object] = {}
@@ -1293,9 +1732,15 @@ def run_verify_only(manifest_path: Path, args) -> int:
         config = load_private_env(Path(str(source["env"])))
         selected = select_source(config)
         expected = source.get("selected_identity", {})
-        if (not isinstance(expected, dict) or selected["host"] != expected.get("host")
-                or selected["port"] != str(expected.get("port")) or selected["name"] != expected.get("name")):
-            raise Failure("the current private source profile does not match the captured source identity")
+        if (
+            not isinstance(expected, dict)
+            or selected["host"] != expected.get("host")
+            or selected["port"] != str(expected.get("port"))
+            or selected["name"] != expected.get("name")
+        ):
+            raise Failure(
+                "the current private source profile does not match the captured source identity"
+            )
         recorded_dsn = source["dsn"]
         if isinstance(recorded_dsn, dict):
             recorded_host = str(recorded_dsn.get("host", ""))
@@ -1311,19 +1756,32 @@ def run_verify_only(manifest_path: Path, args) -> int:
                 raise Failure("the legacy captured source identity is malformed") from error
         else:
             raise Failure("the captured source identity is malformed")
-        if (recorded_host != selected["host"] or recorded_port != selected["port"]
-                or recorded_database != selected["name"]):
-            raise Failure("the captured DSN identity does not match the current private source profile")
-        if (not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", destination_db)
-                or destination_db in ("postgres", "template0", "template1", selected["name"])):
+        if (
+            recorded_host != selected["host"]
+            or recorded_port != selected["port"]
+            or recorded_database != selected["name"]
+        ):
+            raise Failure(
+                "the captured DSN identity does not match the current private source profile"
+            )
+        if not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", destination_db) or destination_db in (
+            "postgres",
+            "template0",
+            "template1",
+            selected["name"],
+        ):
             raise Failure("the captured destination database name is unsafe or equals the source")
 
         schema = safe_schema(config)
         recorder = Recorder(verify_dir / "commands.jsonl", set(config.values()))
         docker = docker_cli()
-        postgres_image = args.postgres_image or config.get("POSTGRES_IMAGE") or DEFAULT_POSTGRES_IMAGE
+        postgres_image = (
+            args.postgres_image or config.get("POSTGRES_IMAGE") or DEFAULT_POSTGRES_IMAGE
+        )
         _raw, host, port, user, password = dsn_parts(str(selected["dsn"]))
-        pg = resolve_pg(recorder, host, port, user, password, args.pg_container or None, postgres_image, docker)
+        pg = resolve_pg(
+            recorder, host, port, user, password, args.pg_container or None, postgres_image, docker
+        )
         tables = hash_table_set(pg, destination_db, schema, None)
         failures += compare_identities(dict(snapshot["tables"]), tables)
         relationships = evaluate_relationships(pg, destination_db, schema, None, False)
@@ -1332,11 +1790,14 @@ def run_verify_only(manifest_path: Path, args) -> int:
             if recorded != current:
                 failures.append(f"orphan count drifted for {name}: {recorded}->{current}")
         s3, _bucket = build_s3_client(recorder, docker, config, args)
-        destination_root = Path(str(destination.get("root", ""))) if destination.get("root") else None
+        destination_root = (
+            Path(str(destination.get("root", ""))) if destination.get("root") else None
+        )
         expected_local = set(objects.get("referenced", {}).get("local", []))
         expected_remote = set(objects.get("referenced", {}).get("remote", []))
-        byte_failures, byte_stats = verify_destination_bytes(pg, destination_db, schema, destination_root, s3,
-                                                             str(destination.get("bucket", "")))
+        byte_failures, byte_stats = verify_destination_bytes(
+            pg, destination_db, schema, destination_root, s3, str(destination.get("bucket", ""))
+        )
         failures += byte_failures
         expected_objects: list[tuple[str, str, str, int, str]] = []
         for key in sorted(expected_remote):
@@ -1346,8 +1807,9 @@ def run_verify_only(manifest_path: Path, args) -> int:
                 continue
             expected_objects.append((parts[0], parts[1], parts[2], 0, "remote"))
         expected_objects += [("", "", digest, 0, "local") for digest in sorted(expected_local)]
-        layout_failures, layout = verify_object_layout(expected_objects, destination_root, s3,
-                                                       str(destination.get("bucket", "")))
+        layout_failures, layout = verify_object_layout(
+            expected_objects, destination_root, s3, str(destination.get("bucket", ""))
+        )
         failures += layout_failures
         report_failures, reports = verify_reports(pg, destination_db, schema)
         failures += report_failures
@@ -1361,29 +1823,52 @@ def run_verify_only(manifest_path: Path, args) -> int:
         if recorder is not None:
             recorder.flush()
 
-    result = {"verify_only": True, "destination_db": destination_db, "checked": checked,
-              "reports": reports, "permissions": permissions,
-              "failures": failures, "status": "FAIL" if failures else "PASS"}
+    result = {
+        "verify_only": True,
+        "destination_db": destination_db,
+        "checked": checked,
+        "reports": reports,
+        "permissions": permissions,
+        "failures": failures,
+        "status": "FAIL" if failures else "PASS",
+    }
     try:
         verify_dir.mkdir(mode=0o700, exist_ok=True)
         (verify_dir / "verify-only.json").write_text(
-            json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     except OSError as error:
         failures.append(f"could not write verification evidence: {error}")
         result["failures"] = failures
         result["status"] = "FAIL"
     for failure in failures:
         print(f"FAIL: {failure}", file=sys.stderr)
-    print(json.dumps({"verify_only": True, "destination_db": destination_db,
-                      "failures": len(failures), "artifact_dir": str(verify_dir),
-                      "status": "FAIL" if failures else "PASS"}, ensure_ascii=False, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "verify_only": True,
+                "destination_db": destination_db,
+                "failures": len(failures),
+                "artifact_dir": str(verify_dir),
+                "status": "FAIL" if failures else "PASS",
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
     return 1 if failures else 0
 
 
 def dsn_parts(raw: str) -> tuple[str, str, str, str, str]:
     url = urlsplit(raw)
-    return (raw, url.hostname or DEFAULT_HOST, str(url.port or 5432),
-            urllib.parse.unquote(url.username or ""), urllib.parse.unquote(url.password or ""))
+    return (
+        raw,
+        url.hostname or DEFAULT_HOST,
+        str(url.port or 5432),
+        urllib.parse.unquote(url.username or ""),
+        urllib.parse.unquote(url.password or ""),
+    )
 
 
 def run_restore(args) -> int:
@@ -1403,17 +1888,30 @@ def run_restore(args) -> int:
     started = dt.datetime.now(dt.timezone.utc)
     suffix = started.strftime("%Y%m%d%H%M%S") + "_" + secrets.token_hex(3)
     destination_db = args.destination_db or f"restore_{suffix}"
-    destination_bucket = args.destination_bucket or f"contract-audit-restore-{suffix.replace('_', '-')}"
-    backup_dir = Path(args.backup_dir) if args.backup_dir else ROOT / "artifacts" / "restore-local" / suffix
-    destination_root = Path(args.destination_root) if args.destination_root else backup_dir / "originals"
-    if not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", destination_db) or destination_db in ("postgres", "template0", "template1"):
+    destination_bucket = (
+        args.destination_bucket or f"contract-audit-restore-{suffix.replace('_', '-')}"
+    )
+    backup_dir = (
+        Path(args.backup_dir) if args.backup_dir else ROOT / "artifacts" / "restore-local" / suffix
+    )
+    destination_root = (
+        Path(args.destination_root) if args.destination_root else backup_dir / "originals"
+    )
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", destination_db) or destination_db in (
+        "postgres",
+        "template0",
+        "template1",
+    ):
         print(f"REFUSED: unsafe destination database name {destination_db!r}", file=sys.stderr)
         return 2
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,61}[a-z0-9]", destination_bucket):
         print(f"REFUSED: unsafe destination bucket name {destination_bucket!r}", file=sys.stderr)
         return 2
     if backup_dir.exists():
-        print(f"REFUSED: backup directory {backup_dir} already exists; choose another --backup-dir", file=sys.stderr)
+        print(
+            f"REFUSED: backup directory {backup_dir} already exists; choose another --backup-dir",
+            file=sys.stderr,
+        )
         return 2
     if args.destination_root and Path(args.destination_root).exists():
         print(f"REFUSED: destination root {args.destination_root} already exists", file=sys.stderr)
@@ -1421,102 +1919,163 @@ def run_restore(args) -> int:
 
     recorder = Recorder(None, set(config.values()))
     failures: list[str] = []
-    manifest: dict[str, object] = {"schema_version": 3, "created_at_utc": started.isoformat(),
-                                  "failures": failures}
+    manifest: dict[str, object] = {
+        "schema_version": 3,
+        "created_at_utc": started.isoformat(),
+        "failures": failures,
+    }
     status: dict[str, object] = {}
     exit_code = 1
     try:
         backup_dir.mkdir(parents=True, mode=0o700)
         recorder = Recorder(backup_dir / "commands.jsonl", set(config.values()))
         docker = docker_cli()
-        postgres_image = args.postgres_image or config.get("POSTGRES_IMAGE") or DEFAULT_POSTGRES_IMAGE
+        postgres_image = (
+            args.postgres_image or config.get("POSTGRES_IMAGE") or DEFAULT_POSTGRES_IMAGE
+        )
         _raw, host, port, user, password = dsn_parts(str(selected["dsn"]))
-        pg = resolve_pg(recorder, host, port, user, password, args.pg_container or None, postgres_image, docker)
+        pg = resolve_pg(
+            recorder, host, port, user, password, args.pg_container or None, postgres_image, docker
+        )
         probe_authority(pg, selected["name"], schema)
 
-        role_facts = pg.sql("postgres", "SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")
+        role_facts = pg.sql(
+            "postgres",
+            "SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user",
+        )
         manifest["source"] = {
             "env": os.path.abspath(args.source_env),
             "app_env": config.get("APP_ENV", ""),
-            "selected_identity": {"host": selected["host"], "port": selected["port"], "name": selected["name"]},
+            "selected_identity": {
+                "host": selected["host"],
+                "port": selected["port"],
+                "name": selected["name"],
+            },
             "service_dsns_checked": sorted(connections),
             "schema": schema,
-            "dsn": {"host": selected["host"], "port": selected["port"], "database": selected["name"]},
+            "dsn": {
+                "host": selected["host"],
+                "port": selected["port"],
+                "database": selected["name"],
+            },
             "role": (role_facts[0].split("|") if role_facts else ["", "", ""]),
             "server_version": pg.scalar("postgres", "SHOW server_version"),
         }
 
         local_objects, data_dir = build_local_objects(config, args, recorder, docker)
         s3, source_bucket = build_s3_client(recorder, docker, config, args)
-        ensure_destination_root_isolated(destination_root, local_objects, data_dir, recorder, docker)
-        manifest["objects"] = {"source_data_dir": data_dir, "source_bucket": source_bucket,
-                               "destination_root": str(destination_root), "destination_bucket": destination_bucket,
-                               "runtime_mapping": {
-                                   "DATA_DIR": str(destination_root),
-                                   "S3_BUCKET": destination_bucket,
-                                   "note": "frozen object IDs are preserved; only the destination root/bucket changes",
-                               }}
+        ensure_destination_root_isolated(
+            destination_root, local_objects, data_dir, recorder, docker
+        )
+        manifest["objects"] = {
+            "source_data_dir": data_dir,
+            "source_bucket": source_bucket,
+            "destination_root": str(destination_root),
+            "destination_bucket": destination_bucket,
+            "runtime_mapping": {
+                "DATA_DIR": str(destination_root),
+                "S3_BUCKET": destination_bucket,
+                "note": "frozen object IDs are preserved; only the destination root/bucket changes",
+            },
+        }
 
         with Snapshot(pg, selected["name"]) as snapshot:
-            representative = require_representative(pg, selected["name"], schema, snapshot.snapshot_id)
+            representative = require_representative(
+                pg, selected["name"], schema, snapshot.snapshot_id
+            )
             referenced = snapshot_documents(pg, selected["name"], schema, snapshot.snapshot_id)
             if not referenced:
-                raise Failure("the snapshot references no originals; refusing to count an empty object set as proof")
+                raise Failure(
+                    "the snapshot references no originals; refusing to count an empty object set as proof"
+                )
             dump_path = backup_dir / "source.dump"
             pg.dump(selected["name"], dump_path, snapshot.snapshot_id)
             source_tables = hash_table_set(pg, selected["name"], schema, snapshot.snapshot_id)
-            source_relationships = evaluate_relationships(pg, selected["name"], schema, snapshot.snapshot_id, True)
+            source_relationships = evaluate_relationships(
+                pg, selected["name"], schema, snapshot.snapshot_id, True
+            )
             manifest["source"]["representative"] = representative
             manifest["source"]["snapshot"] = {
                 "id": snapshot.snapshot_id,
                 "tables": source_tables,
                 "relationships": source_relationships,
-                "dump": {"path": str(dump_path), "sha256": sha256_file(dump_path),
-                         "bytes": dump_path.stat().st_size},
+                "dump": {
+                    "path": str(dump_path),
+                    "sha256": sha256_file(dump_path),
+                    "bytes": dump_path.stat().st_size,
+                },
             }
             manifest["objects"]["referenced"] = {
-                "local": sorted({digest for _t, _c, digest, _s, backend in referenced if backend == "local"}),
-                "remote": sorted({f"{tenant}/{case}/{digest}" for tenant, case, digest, _s, backend in referenced
-                                  if backend == "remote"}),
+                "local": sorted(
+                    {digest for _t, _c, digest, _s, backend in referenced if backend == "local"}
+                ),
+                "remote": sorted(
+                    {
+                        f"{tenant}/{case}/{digest}"
+                        for tenant, case, digest, _s, backend in referenced
+                        if backend == "remote"
+                    }
+                ),
             }
 
         remote_references = [item for item in referenced if item[4] == "remote"]
         if remote_references:
             if s3 is None:
-                raise Failure("the snapshot references remote originals but no source/destination S3 client is configured")
+                raise Failure(
+                    "the snapshot references remote originals but no source/destination S3 client is configured"
+                )
             if source_bucket == destination_bucket:
                 raise Failure("the destination bucket must be different from the source bucket")
             if s3.bucket_exists(destination_bucket):
-                raise Failure(f"destination bucket {destination_bucket} already exists; refusing to overwrite it")
+                raise Failure(
+                    f"destination bucket {destination_bucket} already exists; refusing to overwrite it"
+                )
         create_database(pg, destination_db)
-        manifest["destination"] = {"db": destination_db, "bucket": destination_bucket, "root": str(destination_root),
-                                   "created_utc": dt.datetime.now(dt.timezone.utc).isoformat()}
+        manifest["destination"] = {
+            "db": destination_db,
+            "bucket": destination_bucket,
+            "root": str(destination_root),
+            "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        }
         if remote_references:
             s3.create_bucket(destination_bucket)
         pg.restore(destination_db, dump_path)
 
-        copy_report = copy_objects(referenced, local_objects, s3, source_bucket, destination_bucket, destination_root)
+        copy_report = copy_objects(
+            referenced, local_objects, s3, source_bucket, destination_bucket, destination_root
+        )
         manifest["objects"]["copy"] = copy_report
         local_failures = list(copy_report["local"]["failures"])  # type: ignore[index]
         remote_failures = list(copy_report["remote"]["failures"])  # type: ignore[index]
         if local_failures or remote_failures:
-            raise Failure("not every referenced original could be copied: " +
-                          "; ".join((local_failures + remote_failures)[:3]))
+            raise Failure(
+                "not every referenced original could be copied: "
+                + "; ".join((local_failures + remote_failures)[:3])
+            )
 
         destination_tables = hash_table_set(pg, destination_db, schema, None)
         destination_relationships = evaluate_relationships(pg, destination_db, schema, None, False)
         failures += compare_identities(source_tables, destination_tables)
         failures += compare_relationships(source_relationships, destination_relationships)
-        byte_failures, byte_stats = verify_destination_bytes(pg, destination_db, schema, destination_root, s3, destination_bucket)
+        byte_failures, byte_stats = verify_destination_bytes(
+            pg, destination_db, schema, destination_root, s3, destination_bucket
+        )
         failures += byte_failures
-        layout_failures, layout = verify_object_layout(referenced, destination_root, s3, destination_bucket)
+        layout_failures, layout = verify_object_layout(
+            referenced, destination_root, s3, destination_bucket
+        )
         failures += layout_failures
         report_failures, report_stats = verify_reports(pg, destination_db, schema)
         failures += report_failures
         permission_failures, permission_report = exercise_permissions(pg, destination_db, schema)
         failures += permission_failures
-        status = {"bytes": byte_stats, "layout": layout, "reports": report_stats,
-                  "permissions": permission_report, "tables_compared": len(destination_tables)}
+        status = {
+            "bytes": byte_stats,
+            "layout": layout,
+            "reports": report_stats,
+            "permissions": permission_report,
+            "tables_compared": len(destination_tables),
+        }
         manifest["objects"]["layout"] = layout
 
         manifest["verification"] = status
@@ -1542,9 +2101,19 @@ def run_restore(args) -> int:
         exit_code = 1 if failures else 0
         for failure in failures:
             print(f"FAIL: {failure}", file=sys.stderr)
-        print(json.dumps({"source_db": args.source_db, "destination_db": destination_db,
-                          "backup_dir": str(backup_dir), "failures": len(failures),
-                          "status": "FAIL" if failures else "PASS"}, ensure_ascii=False, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "source_db": args.source_db,
+                    "destination_db": destination_db,
+                    "backup_dir": str(backup_dir),
+                    "failures": len(failures),
+                    "status": "FAIL" if failures else "PASS",
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
     except (Failure, OSError, subprocess.SubprocessError, ValueError) as error:
         failures.append(str(error))
         manifest["failures"] = failures

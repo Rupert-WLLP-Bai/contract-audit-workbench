@@ -40,7 +40,7 @@ class UIStyleScanTests(unittest.TestCase):
                 ".x{color:#ff0000;font-size:13px;overflow:hidden !important}\n",
                 encoding="utf-8",
             )
-            (src / "demo.tsx").write_text("<button type=\"button\">Go</button>\n", encoding="utf-8")
+            (src / "demo.tsx").write_text('<button type="button">Go</button>\n', encoding="utf-8")
             report = scan(root)
             kinds = {c["kind"] for c in report["clues"]}
             self.assertIn("hardcoded-color", kinds)

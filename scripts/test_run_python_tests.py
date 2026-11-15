@@ -10,6 +10,7 @@
 # End file metadata.
 
 """Tests for the external Python unittest runner candidate."""
+
 from __future__ import annotations
 
 import json
@@ -45,16 +46,22 @@ class PythonTestRunnerTests(unittest.TestCase):
         root_a, root_b = self.base / "a", self.base / "b"
         write(root_a / "shared_helper.py", "VALUE = 'a'\n")
         write(root_b / "shared_helper.py", "VALUE = 'b'\n")
-        write(root_a / "nested" / "test_same.py",
-              "import unittest\nimport shared_helper\n"
-              "class NestedCase(unittest.TestCase):\n"
-              " def test_root_a_helper(self): self.assertEqual(shared_helper.VALUE, 'a')\n")
-        write(root_b / "deep" / "test_same.py",
-              "import unittest\nimport shared_helper\n"
-              "class NestedCase(unittest.TestCase):\n"
-              " def test_root_b_helper(self): self.assertEqual(shared_helper.VALUE, 'b')\n")
-        write(root_a / "node_modules" / "ignored" / "test_ignored.py",
-              "raise RuntimeError('excluded directory was imported')\n")
+        write(
+            root_a / "nested" / "test_same.py",
+            "import unittest\nimport shared_helper\n"
+            "class NestedCase(unittest.TestCase):\n"
+            " def test_root_a_helper(self): self.assertEqual(shared_helper.VALUE, 'a')\n",
+        )
+        write(
+            root_b / "deep" / "test_same.py",
+            "import unittest\nimport shared_helper\n"
+            "class NestedCase(unittest.TestCase):\n"
+            " def test_root_b_helper(self): self.assertEqual(shared_helper.VALUE, 'b')\n",
+        )
+        write(
+            root_a / "node_modules" / "ignored" / "test_ignored.py",
+            "raise RuntimeError('excluded directory was imported')\n",
+        )
 
         code, report = execute(root_a, root_b)
 
@@ -66,10 +73,12 @@ class PythonTestRunnerTests(unittest.TestCase):
 
     def test_skip_is_reported_as_failure_and_returns_nonzero(self):
         skipped = self.base / "skipped"
-        write(skipped / "test_skip.py",
-              "import unittest\nclass SkipCase(unittest.TestCase):\n"
-              " @unittest.skip('fixture skip')\n"
-              " def test_skip(self): pass\n")
+        write(
+            skipped / "test_skip.py",
+            "import unittest\nclass SkipCase(unittest.TestCase):\n"
+            " @unittest.skip('fixture skip')\n"
+            " def test_skip(self): pass\n",
+        )
 
         code, report = execute(skipped)
 
@@ -80,16 +89,20 @@ class PythonTestRunnerTests(unittest.TestCase):
 
     def test_failure_propagates_to_parent_exit_and_json(self):
         failing = self.base / "failing"
-        write(failing / "test_failure.py",
-              "import unittest\nclass FailureCase(unittest.TestCase):\n"
-              " def test_failure(self): self.fail('fixture failure marker')\n")
+        write(
+            failing / "test_failure.py",
+            "import unittest\nclass FailureCase(unittest.TestCase):\n"
+            " def test_failure(self): self.fail('fixture failure marker')\n",
+        )
 
         code, report = execute(failing)
 
         self.assertNotEqual(code, 0)
         self.assertEqual(report["status"], "FAIL")
         self.assertEqual(report["failures"], 1)
-        self.assertIn("fixture failure marker", report["files"][0]["failure_details"][0]["traceback"])
+        self.assertIn(
+            "fixture failure marker", report["files"][0]["failure_details"][0]["traceback"]
+        )
 
     def test_empty_scope_is_nonzero_and_not_run(self):
         empty = self.base / "empty"
@@ -103,26 +116,30 @@ class PythonTestRunnerTests(unittest.TestCase):
 
     def test_expected_failure_is_nonzero_and_keeps_its_reason(self):
         expected = self.base / "expected"
-        write(expected / "test_expected.py",
-              "import unittest\nclass ExpectedCase(unittest.TestCase):\n"
-              " @unittest.expectedFailure\n"
-              " def test_expected(self): self.fail('expected failure marker')\n")
+        write(
+            expected / "test_expected.py",
+            "import unittest\nclass ExpectedCase(unittest.TestCase):\n"
+            " @unittest.expectedFailure\n"
+            " def test_expected(self): self.fail('expected failure marker')\n",
+        )
 
         code, report = execute(expected)
 
         self.assertNotEqual(code, 0)
         self.assertEqual(report["status"], "FAIL")
         self.assertEqual(report["expected_failures"], 1)
-        self.assertIn("expected failure marker",
-                      report["files"][0]["expected_failure_details"][0]["traceback"])
+        self.assertIn(
+            "expected failure marker",
+            report["files"][0]["expected_failure_details"][0]["traceback"],
+        )
         self.assertEqual(report["files"][0]["failure_details"][0]["kind"], "expected_failure")
 
     def test_timeout_is_bounded_and_preserves_child_output(self):
         slow = self.base / "slow"
-        write(slow / "test_slow.py",
-              "import os\nimport time\n"
-              "os.write(2, b'fixture-before-timeout\\n')\n"
-              "time.sleep(2)\n")
+        write(
+            slow / "test_slow.py",
+            "import os\nimport time\nos.write(2, b'fixture-before-timeout\\n')\ntime.sleep(2)\n",
+        )
 
         code, report = execute(slow, timeout=0.2)
 

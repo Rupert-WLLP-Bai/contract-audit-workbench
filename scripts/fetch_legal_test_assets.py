@@ -61,11 +61,7 @@ def validate_config(config):
             parsed = urlsplit(url)
         except (TypeError, ValueError) as exc:
             raise AssetError("asset release URL must be a pinned GitHub HTTPS URL") from exc
-        if (
-            parsed.scheme != "https"
-            or parsed.netloc != "github.com"
-            or not parsed.path
-        ):
+        if parsed.scheme != "https" or parsed.netloc != "github.com" or not parsed.path:
             raise AssetError("asset release URL must be a pinned GitHub HTTPS URL")
     else:
         if not isinstance(source, dict) or source.get("kind") != "repository_variables":
@@ -267,7 +263,9 @@ def _extract_verified(archive, destination, config):
                 output.write(data)
 
 
-def prepare_assets(destination, config=CONFIG_PATH, downloader=None, archive_path=None, environ=None):
+def prepare_assets(
+    destination, config=CONFIG_PATH, downloader=None, archive_path=None, environ=None
+):
     config = load_config(config)
     destination = Path(destination)
     if destination.exists() or destination.is_symlink():
@@ -310,7 +308,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--destination",
-        default=str(Path(os.environ.get("RUNNER_TEMP", tempfile.gettempdir())) / "caw-legal-test-assets"),
+        default=str(
+            Path(os.environ.get("RUNNER_TEMP", tempfile.gettempdir())) / "caw-legal-test-assets"
+        ),
         help="directory under which the pinned legal-sources tree is installed",
     )
     parser.add_argument("--manifest", default=str(CONFIG_PATH), help=argparse.SUPPRESS)

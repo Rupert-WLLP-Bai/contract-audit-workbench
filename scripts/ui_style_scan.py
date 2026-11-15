@@ -92,7 +92,9 @@ def scan_file(root: Path, path: Path) -> list[Clue]:
         if path.suffix in {".tsx", ".ts"} and NATIVE_CONTROL.search(line):
             # Prefer antd controls; native tags are clues only.
             clues.append(Clue(rel, idx, "native-control", excerpt))
-        if OVERFLOW_CLIP.search(line) and (ROOTISH.search(line) or path.name in {"styles.css", "app-shell.css", "admin-shell.css"}):
+        if OVERFLOW_CLIP.search(line) and (
+            ROOTISH.search(line) or path.name in {"styles.css", "app-shell.css", "admin-shell.css"}
+        ):
             clues.append(Clue(rel, idx, "rootish-overflow-clip", excerpt))
     return clues
 
@@ -128,13 +130,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0
-    print(f"status={report['status']} mode={report['mode']} files={report['files_scanned']} clues={report['clue_total']}")
+    print(
+        f"status={report['status']} mode={report['mode']} files={report['files_scanned']} clues={report['clue_total']}"
+    )
     for kind, count in report["clue_counts"].items():
         print(f"  {kind}: {count}")
     for clue in report["clues"][: max(0, args.limit)]:
         print(f"{clue['path']}:{clue['line']}: {clue['kind']}: {clue['excerpt']}")
     if report["clue_total"] > args.limit:
-        print(f"... {report['clue_total'] - args.limit} more clues omitted; use --json for full output")
+        print(
+            f"... {report['clue_total'] - args.limit} more clues omitted; use --json for full output"
+        )
     return 0
 
 

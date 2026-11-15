@@ -10,7 +10,6 @@
 
 import hashlib
 import io
-import json
 from pathlib import Path
 import tarfile
 import tempfile
@@ -76,7 +75,9 @@ class LegalTestAssetFetchTest(unittest.TestCase):
         path = destination / "legal-sources/raw/sample.html"
         path.parent.mkdir(parents=True)
         path.write_bytes(self.payload)
-        fetcher.prepare_assets(destination, self.config, lambda url: self.fail("unexpected download"))
+        fetcher.prepare_assets(
+            destination, self.config, lambda url: self.fail("unexpected download")
+        )
         self.assertEqual(path.read_bytes(), self.payload)
 
     def test_corrupt_archive_digest_is_rejected(self):
@@ -87,17 +88,21 @@ class LegalTestAssetFetchTest(unittest.TestCase):
     def test_member_bytes_must_match_pinned_file_digest(self):
         altered = self.payload[:-1] + b"X"
         archive = self.make_archive([("legal-sources/raw/sample.html", altered)])
-        config = dict(self.config,
-                      archive_sha256=hashlib.sha256(archive).hexdigest(),
-                      archive_size_bytes=len(archive))
+        config = dict(
+            self.config,
+            archive_sha256=hashlib.sha256(archive).hexdigest(),
+            archive_size_bytes=len(archive),
+        )
         with self.assertRaises(fetcher.AssetError):
             fetcher.prepare_assets(self.root / "assets", config, lambda url: archive)
 
     def test_path_traversal_member_is_rejected_before_writing(self):
         malicious = self.make_archive([("../escape", b"no")])
-        config = dict(self.config,
-                      archive_sha256=hashlib.sha256(malicious).hexdigest(),
-                      archive_size_bytes=len(malicious))
+        config = dict(
+            self.config,
+            archive_sha256=hashlib.sha256(malicious).hexdigest(),
+            archive_size_bytes=len(malicious),
+        )
         destination = self.root / "assets"
         with self.assertRaises(fetcher.AssetError):
             fetcher.prepare_assets(destination, config, lambda url: malicious)
@@ -117,9 +122,11 @@ class LegalTestAssetFetchTest(unittest.TestCase):
             link.linkname = "../../outside"
             bundle.addfile(link)
         archive = output.getvalue()
-        config = dict(self.config,
-                      archive_sha256=hashlib.sha256(archive).hexdigest(),
-                      archive_size_bytes=len(archive))
+        config = dict(
+            self.config,
+            archive_sha256=hashlib.sha256(archive).hexdigest(),
+            archive_size_bytes=len(archive),
+        )
         with self.assertRaises(fetcher.AssetError):
             fetcher.prepare_assets(self.root / "assets", config, lambda url: archive)
         self.assertFalse((self.root / "outside").exists())
