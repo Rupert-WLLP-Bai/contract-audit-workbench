@@ -287,6 +287,7 @@
       "internal/legal/postgres/capture.go",
       "internal/legal/postgres/reference_capture.go",
       "internal/localocr/archive.go",
+      "internal/localocr/archive_live_test.go",
       "internal/localocr/archive_test.go",
       "internal/localocr/client.go",
       "internal/localocr/client_test.go",
@@ -65162,7 +65163,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r71",
+      "revision": "r72",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -70316,12 +70317,12 @@
         "value": "2026-11-15",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "f46de6767c51dac40465f99db0cd126d7f838ad6",
+          "commit": "4caab75e5909d5266127e3d009959b989af2fdb7",
           "path": "web/e2e/d3-subject-controlled-source.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -71332,12 +71333,12 @@
         "value": "2026-11-15",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "f46de6767c51dac40465f99db0cd126d7f838ad6",
+          "commit": "4caab75e5909d5266127e3d009959b989af2fdb7",
           "path": "web/e2e/object-history.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -91256,7 +91257,7 @@
       "header_state": "pending-header-application"
     },
     "internal/localocr/archive_test.go": {
-      "purpose": "Rejects invalid local OCR protocol identity and optionally checks an externally saved real OCR result.",
+      "purpose": "Rejects invalid local OCR protocol identity; the externally saved real OCR check lives behind the live build tag so the deterministic suite never skips.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -91283,11 +91284,59 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-15",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "10b7d37e71f50b44488f2e373d7eca70a6acd8b4",
+          "commit": "4caab75e5909d5266127e3d009959b989af2fdb7",
           "path": "internal/localocr/archive_test.go",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r2",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/localocr/archive_live_test.go": {
+      "purpose": "Checks an externally saved real MinerU OCR result through the local OCR extractor; opt-in with the live build tag and LOCAL_OCR_TEST_ARCHIVE/LOCAL_OCR_TEST_PYTHON so the deterministic suite never skips.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "4caab75e5909d5266127e3d009959b989af2fdb7",
+          "path": "internal/localocr/archive_live_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "4caab75e5909d5266127e3d009959b989af2fdb7",
+          "path": "internal/localocr/archive_live_test.go",
           "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
