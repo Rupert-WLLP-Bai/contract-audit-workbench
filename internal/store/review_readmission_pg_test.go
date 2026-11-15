@@ -155,6 +155,10 @@ func restoreReviewReceiptVersionForTest(t *testing.T, ctx context.Context, pool 
 	if _, err := tx.Exec(ctx, `DROP TABLE execution_agent_step_checkpoints; DROP FUNCTION guard_execution_agent_step_checkpoint()`); err != nil {
 		t.Fatal(err)
 	}
+	// Remove migration 49 objects before replaying the clause proposal schema.
+	if _, err := tx.Exec(ctx, `DROP TABLE clm_clause_proposal_receipts, clm_clause_proposal_decisions, clm_clause_proposals`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM schema_migrations WHERE version>$1`, version); err != nil {
 		t.Fatal(err)
 	}

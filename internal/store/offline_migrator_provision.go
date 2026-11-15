@@ -213,6 +213,7 @@ func auditAndTransferOfflineObjects(ctx context.Context, tx pgx.Tx, database, sc
 	functions := map[string]bool{}
 	triggers := map[string]bool{
 		"subject_versions_append_only": true, "case_subject_role_versions_append_only": true, "subject_change_requests_append_only": true, "subject_change_decisions_append_only": true, "subject_write_idempotency_append_only": true, "subject_source_snapshots_append_only": true,
+		"clm_clause_proposals_append_only": true, "clm_clause_proposal_decisions_append_only": true, "clm_clause_proposal_receipts_append_only": true,
 	}
 	policies := map[string]bool{}
 	triggerRE := regexp.MustCompile(`(?i)CREATE\s+(?:CONSTRAINT\s+)?TRIGGER\s+([a-z_][a-z_0-9]*)`)
