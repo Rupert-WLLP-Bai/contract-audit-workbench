@@ -638,6 +638,7 @@
       "web/src/components/clause-proposal-panel.tsx",
       "web/src/components/collapsible-section.tsx",
       "web/src/components/context-switcher.tsx",
+      "web/src/components/contract-assets-panel.test.tsx",
       "web/src/components/contract-assets-panel.tsx",
       "web/src/components/contract-facts-panel.test.tsx",
       "web/src/components/contract-facts-panel.tsx",
@@ -65809,7 +65810,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r78",
+      "revision": "r79",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -94601,6 +94602,54 @@
           "commit": "626248b787abf8e6b2e00329947178e7eb727ec0",
           "path": "web/src/pages/pending-membership-page.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/components/contract-assets-panel.test.tsx": {
+      "purpose": "Checks fixed-asset plan rendering, historical and redacted handover facts, version alignment guards, and the authorized manual handover flow that never writes back to ERP.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "e71fadab475b2d2643ec694edb66d44f1aa7559d",
+          "path": "web/src/components/contract-assets-panel.test.tsx",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-15",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "e71fadab475b2d2643ec694edb66d44f1aa7559d",
+          "path": "web/src/components/contract-assets-panel.test.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
