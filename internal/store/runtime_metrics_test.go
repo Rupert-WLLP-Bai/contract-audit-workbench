@@ -23,6 +23,10 @@ import (
 
 	"contractaudit/internal/fault"
 	"contractaudit/internal/telemetry"
+
+	collectormetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 // This exercises the actual worker role and the collector-facing counts, not a
@@ -33,6 +37,9 @@ func TestRuntimeMetricsWorkerScopeAndCommittedReclaim(t *testing.T) {
 		t.Skip("isolated database and migrator required")
 	}
 	users := queueTestActors(t)
+	for _, user := range users {
+		registerTestTenant(t, env, user.TenantID)
+	}
 	core, document := env.openRole(t, "core"), env.openRole(t, "document")
 	execution, worker := env.openRole(t, "execution"), env.openRole(t, "worker")
 	policy := DefaultQueuePolicy()
@@ -55,11 +62,27 @@ func TestRuntimeMetricsWorkerScopeAndCommittedReclaim(t *testing.T) {
 	}
 	payloads := make(chan []byte, 16)
 	collector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/metrics" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{}`)
+			return
+		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Error(err)
+			return
 		}
-		payloads <- body
+		var request collectormetricspb.ExportMetricsServiceRequest
+		if err := proto.Unmarshal(body, &request); err != nil {
+			t.Errorf("decode OTLP metrics export: %v", err)
+			return
+		}
+		decoded, err := protojson.MarshalOptions{UseEnumNumbers: true}.Marshal(&request)
+		if err != nil {
+			t.Errorf("project OTLP metrics export: %v", err)
+			return
+		}
+		payloads <- decoded
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{}`)
 	}))

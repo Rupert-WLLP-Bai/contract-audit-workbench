@@ -8,7 +8,8 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { bindTestIdempotency, clearTestSession, installTestSession } from "../test/session";
 import type { RulePackManifestInput } from "./rulepacks";
 import {
   approveRulePack,
@@ -29,7 +30,12 @@ import {
 
 const originalFetch = globalThis.fetch;
 
+beforeEach(() => {
+  installTestSession("admin");
+  bindTestIdempotency("publish-operation", "rollback-operation");
+});
 afterEach(() => {
+  clearTestSession();
   globalThis.fetch = originalFetch;
 });
 

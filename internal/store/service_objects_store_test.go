@@ -40,6 +40,18 @@ func TestServiceObjectFrozenAssociationLifecycleAndReceiptReplayInPostgres(t *te
 	}
 	ctx := context.Background()
 	core, document, execution := env.openRole(t, "core"), env.openRole(t, "document"), env.openRole(t, "execution")
+	sessionToken, err := core.EstablishSession(admin, "client")
+	if err != nil {
+		t.Fatalf("establish service-object admission session: %v", err)
+	}
+	admin, audience, err := core.AuthenticateSession(ctx, sessionToken)
+	if err != nil || audience != "client" || admin.ID != "demo-admin" {
+		t.Fatalf("authenticate service-object admission session: audience=%q err=%v", audience, err)
+	}
+	ctx = WithAdmissionSessionToken(ctx, sessionToken)
+	authority := durableTestOperationAuthority{core: core}
+	document.UseOperationAuthority(authority)
+	execution.UseOperationAuthority(authority)
 	pack := publishSyntheticAcceptancePack(t, core, admin)
 	publishSyntheticAcceptancePolicy(t, core, admin, pack)
 	caseID, err := core.CreateCaseWithBusiness(admin, "服务对象冻结关联生命周期", "service", "ENT", "telecom_dedicated_line")

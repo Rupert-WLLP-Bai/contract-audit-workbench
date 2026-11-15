@@ -72,6 +72,7 @@ func TestAttemptStartedEventIsFencedAndGenerationBound(t *testing.T) {
 
 	expireDurableClaim(t, fixture)
 	takeoverStore := fixture.environment.openRole(t, "execution")
+	takeoverStore.UseOperationAuthority(durableTestOperationAuthority{core: fixture.core})
 	takeover, err := takeoverStore.ClaimNextJob(ctx, "start-takeover", time.Minute)
 	if err != nil || takeover.JobID != fixture.jobID || takeover.Generation != fixture.claim.Generation+1 {
 		t.Fatalf("takeover claim: %+v %v", takeover, err)

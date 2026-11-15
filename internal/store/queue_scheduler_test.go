@@ -62,13 +62,13 @@ func queueTestAcceptance(t *testing.T, core, document, execution *Store, user ac
 	t.Helper()
 	caseID, err := core.CreateCaseWithBusiness(user, "队列公平调度", "service", "ENT", "telecom_dedicated_line")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("create queue case: %v", err)
 	}
 	if _, err := document.Generate(context.Background(), user, caseID, telecomTemplateID, validTelecomTemplateFields()); err != nil {
-		t.Fatal(err)
+		t.Fatalf("generate queue draft: %v", err)
 	}
 	if _, err := document.AddDocument(context.Background(), user, caseID, "procurement", "purchase.txt", "text/plain", []byte("采购文件缺少阈值，审查须明确缺证。")); err != nil {
-		t.Fatal(err)
+		t.Fatalf("add queue procurement material: %v", err)
 	}
 	accepted, err := execution.StartReviewAsyncAt(context.Background(), user, caseID, acceptanceBusinessTime)
 	return caseID, accepted, err
@@ -80,6 +80,9 @@ func TestTenantFairnessAcrossWorkers(t *testing.T) {
 		t.Skip("isolated database and migrator required")
 	}
 	users := queueTestActors(t)
+	for _, user := range users {
+		registerTestTenant(t, environment, user.TenantID)
+	}
 	core, document := environment.openRole(t, "core"), environment.openRole(t, "document")
 	workers := []*Store{environment.openRole(t, "execution"), environment.openRole(t, "execution")}
 	for _, user := range users {
@@ -132,6 +135,9 @@ func TestQueueTenantCapacitySkipsSaturatedTenant(t *testing.T) {
 		t.Skip("isolated database and migrator required")
 	}
 	users := queueTestActors(t)
+	for _, user := range users {
+		registerTestTenant(t, environment, user.TenantID)
+	}
 	core, document := environment.openRole(t, "core"), environment.openRole(t, "document")
 	workers := []*Store{environment.openRole(t, "execution"), environment.openRole(t, "execution")}
 	for _, user := range users {

@@ -10,7 +10,8 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { bindTestIdempotency, clearTestSession, installTestSession } from "../test/session";
 import {
   getCompanyPolicySourceStatus,
   getLegalKnowledgeForCase,
@@ -24,7 +25,6 @@ import {
   searchLegalKnowledgeForCase,
   type LegalCaptureInput,
 } from "./legal-knowledge";
-import { setSessionIdentity } from "./http";
 
 function fixture(name: string): unknown {
   return JSON.parse(
@@ -37,9 +37,13 @@ function json(value: unknown, status = 200): Response {
     headers: { "Content-Type": "application/json" },
   });
 }
+beforeEach(() => {
+  installTestSession("admin");
+  bindTestIdempotency("stable-import-key");
+});
 afterEach(() => {
   vi.unstubAllGlobals();
-  setSessionIdentity(null);
+  clearTestSession();
 });
 
 describe("legal knowledge API", () => {

@@ -91,12 +91,15 @@ func TestLegalReviewAcceptanceFreezesExactAuthorityAndReusesUnchangedCutoffInten
 		t.Fatal("TEST_DATABASE_URL and MIGRATOR_DATABASE_URL are required for legal review acceptance")
 	}
 	core, document, execution := env.openRole(t, "core"), env.openRole(t, "document"), env.openRole(t, "execution")
+	document.UseOperationAuthority(durableTestOperationAuthority{core: core})
+	execution.UseOperationAuthority(durableTestOperationAuthority{core: core})
 	execution.UseModels(&frozenOCRModel{})
 	execution.UseDocumentPreparer(document)
 	admin, ok := accounts.ByID("demo-admin")
 	if !ok {
 		t.Fatal("demo admin missing")
 	}
+	_, sessionToken := durableSessionUser(t, core, admin)
 	input := legalSourceImportFixture(t, assetDir, "S1_civil_code_contract")
 	input.IdempotencyKey = "legal-review-acceptance-import"
 	imported, err := core.ImportLegalSource(context.Background(), admin, input)
@@ -151,7 +154,7 @@ func TestLegalReviewAcceptanceFreezesExactAuthorityAndReusesUnchangedCutoffInten
 		t.Fatalf("record a genuine unknown applicability fact: %v", err)
 	}
 	businessAt := time.Now().UTC().Add(time.Second).Format(time.RFC3339Nano)
-	firstAcceptance, err := execution.StartReviewAsyncAtWithEvidenceCutoff(context.Background(), admin, caseID, businessAt, "")
+	firstAcceptance, err := execution.StartReviewAsyncAtWithEvidenceCutoff(WithAdmissionSessionToken(context.Background(), sessionToken), admin, caseID, businessAt, "")
 	if err != nil {
 		t.Fatalf("accept review with server-sampled evidence cutoff: %v", err)
 	}
@@ -231,12 +234,12 @@ func TestLegalReviewAcceptanceFreezesExactAuthorityAndReusesUnchangedCutoffInten
 			t.Fatalf("frozen normative dependency lost exact article, fact, or review state: %+v", authority)
 		}
 	}
-	defaultReplay, err := execution.StartReviewAsyncAtWithEvidenceCutoff(context.Background(), admin, caseID, businessAt, "")
+	defaultReplay, err := execution.StartReviewAsyncAtWithEvidenceCutoff(WithAdmissionSessionToken(context.Background(), sessionToken), admin, caseID, businessAt, "")
 	if err != nil || defaultReplay != firstAcceptance {
 		t.Fatalf("unchanged legal dependencies with a new acceptance-time sample did not reuse the run: first=%+v replay=%+v err=%v", firstAcceptance, defaultReplay, err)
 	}
 	explicitCutoff := "2025-01-01T00:00:00Z"
-	explicit, err := execution.StartReviewAsyncAtWithEvidenceCutoff(context.Background(), admin, caseID, businessAt, explicitCutoff)
+	explicit, err := execution.StartReviewAsyncAtWithEvidenceCutoff(WithAdmissionSessionToken(context.Background(), sessionToken), admin, caseID, businessAt, explicitCutoff)
 	if err != nil || explicit.RunID == firstAcceptance.RunID {
 		t.Fatalf("explicit evidence cutoff did not create a distinct frozen dependency set: first=%+v explicit=%+v err=%v", firstAcceptance, explicit, err)
 	}
@@ -244,7 +247,7 @@ func TestLegalReviewAcceptanceFreezesExactAuthorityAndReusesUnchangedCutoffInten
 	if explicitWorkspace.Snapshot.GovernedKnowledge.EvidenceCutoffMode != "explicit" || explicitWorkspace.Snapshot.GovernedKnowledge.ExplicitEvidenceCutoffAt != explicitCutoff {
 		t.Fatalf("explicit cutoff intent was not preserved in the frozen snapshot: %+v", explicitWorkspace.Snapshot.GovernedKnowledge)
 	}
-	explicitReplay, err := execution.StartReviewAsyncAtWithEvidenceCutoff(context.Background(), admin, caseID, businessAt, explicitCutoff)
+	explicitReplay, err := execution.StartReviewAsyncAtWithEvidenceCutoff(WithAdmissionSessionToken(context.Background(), sessionToken), admin, caseID, businessAt, explicitCutoff)
 	if err != nil || explicitReplay != explicit {
 		t.Fatalf("same explicit cutoff and dependencies did not reuse the accepted run: first=%+v replay=%+v err=%v", explicit, explicitReplay, err)
 	}

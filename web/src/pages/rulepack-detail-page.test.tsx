@@ -11,7 +11,7 @@
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { AdminApp } from "../admin-app";
 import { setSessionIdentity } from "../api/http";
@@ -25,6 +25,27 @@ import { RulePackDetailPage } from "./rulepack-detail-page";
 import { renderWithAntd as render } from "../test/antd";
 
 const clients: QueryClient[] = [];
+const adminSession = {
+  audience: "admin",
+  actor: {
+    id: "admin-test",
+    display_name: "测试管理员",
+    role: "admin",
+    tenant_id: "tenant-test",
+    org_id: "org-test",
+  },
+  principal_id: "principal-admin-test",
+  active_context: {
+    membership_id: "membership-test",
+    tenant_id: "tenant-test",
+    tenant_name: "测试租户",
+    org_id: "org-test",
+    org_name: "测试组织",
+    context_version: "1",
+  },
+  csrf_token: "test-csrf",
+  context_switch_enabled: false,
+};
 const contentHash = "a".repeat(64);
 const snapshotHash = "b".repeat(64);
 const summary: RulePackSummary = {
@@ -104,6 +125,16 @@ function json(value: unknown, status = 200): Response {
   });
 }
 
+beforeEach(() => {
+  setSessionIdentity({
+    ...adminSession.actor,
+    audience: "admin",
+    principal_id: adminSession.principal_id,
+    active_context: adminSession.active_context,
+    csrf_token: adminSession.csrf_token,
+  });
+});
+
 afterEach(() => {
   cleanup();
   for (const client of clients.splice(0)) client.clear();
@@ -117,18 +148,7 @@ describe("RulePack inactive published version rollback", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
       requests.push({ path, init });
-      if (path === "/api/session?audience=admin") {
-        return json({
-          audience: "admin",
-          actor: {
-            id: "admin-test",
-            display_name: "测试管理员",
-            role: "admin",
-            tenant_id: "tenant-test",
-            org_id: "org-test",
-          },
-        });
-      }
+      if (path === "/api/session?audience=admin") return json(adminSession);
       if (path === "/api/admin/rulepacks/telecom-core/versions/1") return json(detail);
       if (path === "/api/admin/rulepacks/telecom-core/history") return json(history);
       if (path === "/api/admin/rulepacks/telecom-core/rollback" && init?.method === "POST") {
@@ -276,17 +296,7 @@ function renderDetail(
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
       requests.push({ path, init });
-      if (path === "/api/session?audience=admin")
-        return json({
-          audience: "admin",
-          actor: {
-            id: "admin-test",
-            display_name: "测试管理员",
-            role: "admin",
-            tenant_id: "tenant-test",
-            org_id: "org-test",
-          },
-        });
+      if (path === "/api/session?audience=admin") return json(adminSession);
       if (path === "/api/admin/rulepacks/telecom-core/history") return json({ items: entries });
       if (init?.method === "POST" || init?.method === "PUT")
         return mutation(path, init, (next) => {

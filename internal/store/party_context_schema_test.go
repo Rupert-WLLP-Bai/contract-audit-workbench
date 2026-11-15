@@ -87,7 +87,17 @@ func TestPartyContextSnapshotPersistsAcrossStoreReopen(t *testing.T) {
 	}
 	var storedPayload []byte
 	var storedHash string
-	if err := reopened.pool.QueryRow(context.Background(), `SELECT party_context,party_context_hash FROM review_run_snapshots WHERE run_id=$1`, runID).Scan(&storedPayload, &storedHash); err != nil {
+	readTx, err := reopened.pool.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := setLocalScope(context.Background(), readTx, userScope(admin)); err != nil {
+		t.Fatalf("scope party context read: %v", err)
+	}
+	if err := readTx.QueryRow(context.Background(), `SELECT party_context,party_context_hash FROM review_run_snapshots WHERE run_id=$1`, runID).Scan(&storedPayload, &storedHash); err != nil {
+		t.Fatal(err)
+	}
+	if err := readTx.Rollback(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(storedPayload, contextBytes) || storedHash != contextHash {

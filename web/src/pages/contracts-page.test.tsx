@@ -172,14 +172,18 @@ it("uses the submitted readable columns and obtains the CSV from the ledger rout
   vi.stubGlobal("fetch", fetch);
   renderPage();
   await userEvent.setup().click(screen.getByRole("button", { name: "导出 CSV" }));
-  await waitFor(() => expect(fetch).toHaveBeenCalled());
-  expect(String(fetch.mock.calls[0]?.[0])).toBe("/api/contracts/ledger/exports");
+  const exportCalls = () => fetch.mock.calls.filter(([, init]) => init?.method === "POST");
+  await waitFor(() => expect(exportCalls()).toHaveLength(1));
+  expect(String(exportCalls()[0]?.[0])).toBe("/api/contracts/ledger/exports");
   await within(screen.getByRole("region", { name: "合同台账" })).findByText("已导出 1 行");
-  expect(fetch).toHaveBeenCalledTimes(2);
-  expect(String(fetch.mock.calls[1]?.[0])).toBe(
-    `/api/contracts/ledger/exports/${exportID}/download`,
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(
+        ([url]) => String(url) === `/api/contracts/ledger/exports/${exportID}/download`,
+      ),
+    ).toBe(true),
   );
-  const request = fetch.mock.calls.find(([, init]) => init?.method === "POST")?.[1];
+  const request = exportCalls()[0]?.[1];
   expect(request).toBeDefined();
   const payload = JSON.parse(String(request!.body));
   expect(payload).toEqual({

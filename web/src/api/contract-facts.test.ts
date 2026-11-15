@@ -8,8 +8,12 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { clearTestSession, installTestSession } from "../test/session";
 import { parseContractFacts } from "./contract-facts";
+
+beforeEach(() => installTestSession());
+afterEach(() => clearTestSession());
 
 const digest = "a".repeat(64);
 const source = {

@@ -8,7 +8,8 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { bindTestIdempotency, clearTestSession, installTestSession } from "../test/session";
 import {
   decideApprovalTask,
   listApprovalInbox,
@@ -123,7 +124,14 @@ function taskDetail(overrides: Partial<ApprovalTaskReadDetail> = {}): ApprovalTa
   };
 }
 
-afterEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  installTestSession();
+  bindTestIdempotency("idem-key-1", "idem-key-2");
+});
+afterEach(() => {
+  clearTestSession();
+  vi.restoreAllMocks();
+});
 
 describe("approval response parsers", () => {
   it("keeps the server view, decision and allowed actions explicit", () => {

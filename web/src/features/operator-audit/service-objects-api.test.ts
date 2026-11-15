@@ -10,7 +10,8 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { bindTestIdempotency, clearTestSession, installTestSession } from "../../test/session";
 import {
   confirmServiceObjectAssociation,
   createServiceObject,
@@ -36,7 +37,14 @@ function response(body: unknown, status = 200): Response {
   });
 }
 
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => {
+  installTestSession();
+  bindTestIdempotency("create-key", "confirm-key");
+});
+afterEach(() => {
+  clearTestSession();
+  vi.unstubAllGlobals();
+});
 
 describe("service object API", () => {
   it("parses Go-marshaled list, detail, preview, version, and association projections", () => {

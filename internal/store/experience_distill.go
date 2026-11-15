@@ -393,10 +393,11 @@ func (s *Store) RequestExperienceDistillation(ctx context.Context, user accounts
 	cfg := s.executionQueuePolicy()
 	function := pgx.Identifier{s.schema, "experience_distill_enqueue"}.Sanitize()
 	var accepted string
-	err = tx.QueryRow(ctx, `SELECT `+function+`($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+	err = tx.QueryRow(ctx, `SELECT `+function+`($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
 		jobID, outboxID, item.TenantID, item.OwnerOrgID, item.ID, current.ID, feedback.FeedbackID,
 		input.IdempotencyKey, sha256Bytes(requestBytes), sha256Bytes(frozenBytes), frozenBytes,
-		cfg.hash, cfg.encoded, cfg.GlobalPending, cfg.TenantPending, cfg.MaxClaims, cfg.MaxAgeSeconds).Scan(&accepted)
+		cfg.hash, cfg.encoded, cfg.GlobalPending, cfg.TenantPending, cfg.MaxClaims, cfg.MaxAgeSeconds,
+		s.sel.Mode != "production").Scan(&accepted)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
@@ -410,6 +411,11 @@ func (s *Store) RequestExperienceDistillation(ctx context.Context, user accounts
 				problem := fault.New(503, "execution_capacity", "经验提炼队列暂不可用，请稍后重试")
 				problem.Retryable = true
 				return ExperienceDistillReceipt{}, problem
+			case "42501":
+				if pgErr.Message == "experience tenant runtime is inactive" {
+					return ExperienceDistillReceipt{}, fault.New(409, "tenant_inactive", "租户已暂停，不能接收新任务")
+				}
+				return ExperienceDistillReceipt{}, err
 			case "55000":
 				problem := fault.New(503, "execution_capacity", "经验提炼队列暂不可用，请稍后重试")
 				problem.Retryable = true
@@ -426,7 +432,14 @@ func (s *Store) RequestExperienceDistillation(ctx context.Context, user accounts
 			return ExperienceDistillReceipt{}, err
 		}
 	} else {
-		if _, err := tx.Exec(ctx, `INSERT INTO worker_claim_identities(tenant_id,job_id,org_id,case_id,run_id,attempt_id,actor_id) VALUES($1,$2,$3,$4,'','',$5)`, item.TenantID, accepted, item.OwnerOrgID, item.ID, current.ID); err != nil {
+		// A locally issued demonstration session still binds the claim when the
+		// caller presents one, exactly like review admission. Callers without a
+		// session (older direct callers and fixtures) retain the unbound row.
+		if digest := admissionSessionDigest(ctx); digest != "" {
+			if _, err := tx.Exec(ctx, `SELECT tenant_identity_bind_admission($1,$2)`, digest, accepted); err != nil {
+				return ExperienceDistillReceipt{}, err
+			}
+		} else if _, err := tx.Exec(ctx, `INSERT INTO worker_claim_identities(tenant_id,job_id,org_id,case_id,run_id,attempt_id,actor_id) VALUES($1,$2,$3,$4,'','',$5)`, item.TenantID, accepted, item.OwnerOrgID, item.ID, current.ID); err != nil {
 			return ExperienceDistillReceipt{}, err
 		}
 	}

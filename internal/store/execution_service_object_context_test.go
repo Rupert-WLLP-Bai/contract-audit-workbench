@@ -168,6 +168,18 @@ func TestUngovernedCaseWithServiceObjectRequiresBusinessTimeAndFreezesContext(t 
 	core := env.openRole(t, "core")
 	document := env.openRole(t, "document")
 	execution := env.openRole(t, "execution")
+	sessionToken, err := core.EstablishSession(admin, "client")
+	if err != nil {
+		t.Fatalf("establish service-object admission session: %v", err)
+	}
+	admin, audience, err := core.AuthenticateSession(ctx, sessionToken)
+	if err != nil || audience != "client" || admin.ID != "demo-admin" {
+		t.Fatalf("authenticate service-object admission session: audience=%q err=%v", audience, err)
+	}
+	ctx = WithAdmissionSessionToken(ctx, sessionToken)
+	authority := durableTestOperationAuthority{core: core}
+	document.UseOperationAuthority(authority)
+	execution.UseOperationAuthority(authority)
 	caseID, err := core.CreateCaseWithBusiness(admin, "无治理服务对象冻结", "service", "", "")
 	if err != nil {
 		t.Fatalf("create ungoverned case: %v", err)
@@ -279,8 +291,18 @@ func TestUngovernedCaseWithServiceObjectRequiresBusinessTimeAndFreezesContext(t 
 	if err := core.AddMember(admin, caseID, reviewer.ID); err != nil {
 		t.Fatalf("authorize reviewer for case: %v", err)
 	}
-	if _, err := core.pool.Exec(ctx, `UPDATE cases SET member_ids='[]' WHERE tenant_id=$1 AND id=$2`, admin.TenantID, caseID); err != nil {
+	revokeTx, err := core.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := setLocalScope(ctx, revokeTx, userScope(admin)); err != nil {
+		t.Fatalf("scope membership revocation: %v", err)
+	}
+	if _, err := revokeTx.Exec(ctx, `UPDATE cases SET member_ids='[]' WHERE tenant_id=$1 AND id=$2`, admin.TenantID, caseID); err != nil {
 		t.Fatalf("revoke case membership: %v", err)
+	}
+	if err := revokeTx.Commit(ctx); err != nil {
+		t.Fatalf("commit membership revocation: %v", err)
 	}
 	if _, err := execution.RetryAsync(ctx, reviewer, caseID, accepted.RunID); !isForbiddenFault(err) && !isNotFoundFault(err) {
 		t.Fatalf("revoked actor retry was not rejected by authorization: %v", err)
@@ -313,6 +335,18 @@ func TestLegacyUngovernedRunWithoutServiceObjectsKeepsNilContextOnRetry(t *testi
 	core := env.openRole(t, "core")
 	document := env.openRole(t, "document")
 	execution := env.openRole(t, "execution")
+	sessionToken, err := core.EstablishSession(admin, "client")
+	if err != nil {
+		t.Fatalf("establish service-object admission session: %v", err)
+	}
+	admin, audience, err := core.AuthenticateSession(ctx, sessionToken)
+	if err != nil || audience != "client" || admin.ID != "demo-admin" {
+		t.Fatalf("authenticate service-object admission session: audience=%q err=%v", audience, err)
+	}
+	ctx = WithAdmissionSessionToken(ctx, sessionToken)
+	authority := durableTestOperationAuthority{core: core}
+	document.UseOperationAuthority(authority)
+	execution.UseOperationAuthority(authority)
 	caseID, err := core.CreateCaseWithBusiness(admin, "无对象历史审查", "service", "", "")
 	if err != nil {
 		t.Fatalf("create ungoverned case: %v", err)
@@ -391,6 +425,18 @@ func TestRetryRejectsLegitimateMappingVersionChangeAfterObjectContextFreeze(t *t
 	core := env.openRole(t, "core")
 	document := env.openRole(t, "document")
 	execution := env.openRole(t, "execution")
+	sessionToken, err := core.EstablishSession(admin, "client")
+	if err != nil {
+		t.Fatalf("establish service-object admission session: %v", err)
+	}
+	admin, audience, err := core.AuthenticateSession(ctx, sessionToken)
+	if err != nil || audience != "client" || admin.ID != "demo-admin" {
+		t.Fatalf("authenticate service-object admission session: audience=%q err=%v", audience, err)
+	}
+	ctx = WithAdmissionSessionToken(ctx, sessionToken)
+	authority := durableTestOperationAuthority{core: core}
+	document.UseOperationAuthority(authority)
+	execution.UseOperationAuthority(authority)
 	pack := publishSyntheticAcceptancePack(t, core, admin)
 	publishSyntheticAcceptancePolicy(t, core, admin, pack)
 	caseID, err := core.CreateCaseWithBusiness(admin, "服务对象映射变更重试", "service", "ENT", "telecom_dedicated_line")

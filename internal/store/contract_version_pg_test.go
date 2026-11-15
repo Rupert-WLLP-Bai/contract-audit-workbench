@@ -71,22 +71,18 @@ func TestContractVersionFreezeIsImmutableAndIdempotent(t *testing.T) {
 		t.Fatal("same idempotency key must replay the committed revision")
 	}
 	var revisions int
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT count(*) FROM clm_contract_revisions
-		WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, contractID).Scan(&revisions); err != nil {
-		t.Fatal(err)
-	}
+	fixture.scopedQueryRow(t, ctx, userScope(fixture.admin), `SELECT count(*) FROM clm_contract_revisions
+		WHERE tenant_id=$1 AND contract_id=$2`, []any{fixture.admin.TenantID, contractID}, &revisions)
 	if revisions != 1 {
 		t.Fatalf("replay inserted %d revisions", revisions)
 	}
 	var snapshot []byte
 	var digest, frozenBy string
 	var reconciled bool
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT snapshot,snapshot_digest,frozen_by,amounts_reconciled
+	fixture.scopedQueryRow(t, ctx, userScope(fixture.admin), `SELECT snapshot,snapshot_digest,frozen_by,amounts_reconciled
 		FROM clm_contract_revisions WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3`,
-		fixture.admin.TenantID, contractID, result.Version.ContractRevisionID).Scan(
-		&snapshot, &digest, &frozenBy, &reconciled); err != nil {
-		t.Fatal(err)
-	}
+		[]any{fixture.admin.TenantID, contractID, result.Version.ContractRevisionID},
+		&snapshot, &digest, &frozenBy, &reconciled)
 	sum := sha256.Sum256(snapshot)
 	if hex.EncodeToString(sum[:]) != digest || digest != result.Version.SnapshotDigest || !reconciled || frozenBy != fixture.admin.ID {
 		t.Fatalf("revision row mismatch: digest=%s reconciled=%v frozen_by=%s", digest, reconciled, frozenBy)
@@ -95,21 +91,19 @@ func TestContractVersionFreezeIsImmutableAndIdempotent(t *testing.T) {
 		t.Fatal("frozen revision snapshot contains restricted plaintext")
 	}
 	var sealCount, materialCount int
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT
+	fixture.scopedQueryRow(t, ctx, userScope(fixture.admin), `SELECT
 		(SELECT count(*) FROM clm_contract_version_seals WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3),
 		(SELECT count(*) FROM clm_contract_version_materials WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3)`,
-		fixture.admin.TenantID, contractID, result.Version.ContractRevisionID).Scan(&sealCount, &materialCount); err != nil {
-		t.Fatal(err)
-	}
+		[]any{fixture.admin.TenantID, contractID, result.Version.ContractRevisionID}, &sealCount, &materialCount)
 	if sealCount != 1 || materialCount != 0 {
 		t.Fatalf("seal=%d materials=%d", sealCount, materialCount)
 	}
-	if _, err := fixture.environment.harness.pool.Exec(ctx, `UPDATE clm_contract_revisions SET snapshot='{}'::jsonb
+	if err := fixture.harnessScopedExec(ctx, userScope(fixture.admin), `UPDATE clm_contract_revisions SET snapshot='{}'::jsonb
 		WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, contractID); err == nil ||
 		!strings.Contains(err.Error(), "append-only") {
 		t.Fatalf("revision update must be rejected by append-only trigger: %v", err)
 	}
-	if _, err := fixture.environment.harness.pool.Exec(ctx, `INSERT INTO clm_contract_version_seals
+	if err := fixture.harnessScopedExec(ctx, userScope(fixture.admin), `INSERT INTO clm_contract_version_seals
 		(tenant_id,contract_id,contract_revision_id,snapshot_digest,materials_digest,content_fingerprint,restricted_fingerprints)
 		VALUES ($1,$2,$3,$4,$4,$4,'{}'::jsonb)`,
 		fixture.admin.TenantID, contractID, result.Version.ContractRevisionID, digest); err == nil ||
@@ -138,7 +132,7 @@ func TestContractVersionFreezeIsImmutableAndIdempotent(t *testing.T) {
 	// A successful receipt must not replay to a caller who has since lost
 	// visibility. The actor/tenant scope still matches, so the visibility
 	// recheck is what refuses the replay.
-	if _, err := fixture.core.pool.Exec(ctx, `UPDATE clm_contracts SET created_by='demo-viewer'
+	if err := fixture.scopedExec(ctx, userScope(fixture.admin), `UPDATE clm_contracts SET created_by='demo-viewer'
 		WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, contractID); err != nil {
 		t.Fatal(err)
 	}
@@ -166,18 +160,14 @@ func TestFreezeRunsStageFinalWithoutLegacyGate(t *testing.T) {
 	})
 	assertFaultStatus(t, err, 422, "amount-unknown freeze must fail StageFinal")
 	var revisions int
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT count(*) FROM clm_contract_revisions
-		WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, detail.Summary.ContractID).Scan(&revisions); err != nil {
-		t.Fatal(err)
-	}
+	fixture.scopedQueryRow(t, ctx, userScope(fixture.admin), `SELECT count(*) FROM clm_contract_revisions
+		WHERE tenant_id=$1 AND contract_id=$2`, []any{fixture.admin.TenantID, detail.Summary.ContractID}, &revisions)
 	if revisions != 0 {
 		t.Fatalf("rejected freeze inserted %d revisions", revisions)
 	}
 	var rowVersion int64
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT row_version FROM clm_contracts
-		WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, detail.Summary.ContractID).Scan(&rowVersion); err != nil {
-		t.Fatal(err)
-	}
+	fixture.scopedQueryRow(t, ctx, userScope(fixture.admin), `SELECT row_version FROM clm_contracts
+		WHERE tenant_id=$1 AND contract_id=$2`, []any{fixture.admin.TenantID, detail.Summary.ContractID}, &rowVersion)
 	if rowVersion != 1 {
 		t.Fatalf("rejected freeze changed row_version to %d", rowVersion)
 	}
@@ -229,16 +219,14 @@ func TestFrozenMaterialSummarySurvivesSameNameReplacement(t *testing.T) {
 	}
 	var frozenDigest, filename string
 	var frozenVersion int
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT digest,filename,material_version
+	fixture.scopedQueryRow(t, ctx, userScope(fixture.admin), `SELECT digest,filename,material_version
 		FROM clm_contract_version_materials WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3 AND material_id=$4`,
-		fixture.admin.TenantID, contractID, first.Version.ContractRevisionID, upload.MaterialID).Scan(
-		&frozenDigest, &filename, &frozenVersion); err != nil {
-		t.Fatal(err)
-	}
+		[]any{fixture.admin.TenantID, contractID, first.Version.ContractRevisionID, upload.MaterialID},
+		&frozenDigest, &filename, &frozenVersion)
 	if frozenDigest != hex.EncodeToString(firstDigest[:]) || frozenVersion != 1 || filename != "same-name.txt" {
 		t.Fatalf("frozen material summary was rewritten: digest=%s version=%d file=%s", frozenDigest, frozenVersion, filename)
 	}
-	if _, err := fixture.environment.harness.pool.Exec(ctx, `UPDATE clm_contract_version_materials SET filename='overwritten.txt'
+	if err := fixture.harnessScopedExec(ctx, userScope(fixture.admin), `UPDATE clm_contract_version_materials SET filename='overwritten.txt'
 		WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3`,
 		fixture.admin.TenantID, contractID, first.Version.ContractRevisionID); err == nil ||
 		!strings.Contains(err.Error(), "append-only") {
@@ -306,6 +294,7 @@ func TestVersionDiffMasksRestrictedAndEnforcesVisibility(t *testing.T) {
 	}
 	changed := freezeCompleteDraft()
 	changed.Contract.Amount = "105000.00"
+	changed.Items[0].UnitPrice = "10500.0000"
 	changed.Items[0].LineAmount = "105000.00"
 	changed.Funding[0].Amount = "105000.00"
 	changed.Payments[0].Amount = "105000.00"
@@ -380,7 +369,7 @@ func TestVersionDiffMasksRestrictedAndEnforcesVisibility(t *testing.T) {
 
 	// The local demo binding binds an empty case grant to the creator. Reassign
 	// this test contract to the viewer only to exercise read-only vs manage.
-	if _, err := fixture.core.pool.Exec(ctx, `UPDATE clm_contracts SET created_by='demo-viewer'
+	if err := fixture.scopedExec(ctx, userScope(fixture.admin), `UPDATE clm_contracts SET created_by='demo-viewer'
 		WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, contractID); err != nil {
 		t.Fatal(err)
 	}

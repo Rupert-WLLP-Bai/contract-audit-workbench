@@ -15,6 +15,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import { App } from "../app";
 import ApiDocsPage from "./api-docs-page";
+import { setSessionIdentity } from "../api/http";
 import { queryKeys } from "../api/queries";
 
 const contract = {
@@ -116,29 +117,48 @@ const response = (body: unknown, status = 200) =>
 
 const clients: QueryClient[] = [];
 
+const activeContext = {
+  membership_id: "membership-test",
+  tenant_id: "tenant-test",
+  tenant_name: "测试租户",
+  org_id: "org-test",
+  org_name: "测试组织",
+  context_version: "1",
+};
+const sessionActor = {
+  id: "u1",
+  display_name: "测试审查员",
+  role: "clerk",
+  tenant_id: "tenant-test",
+  org_id: "org-test",
+  audience: "client" as const,
+  principal_id: "principal-u1",
+  active_context: activeContext,
+  csrf_token: "test-csrf",
+  context_switch_enabled: false,
+};
+
 function renderApiDocsPage() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  client.setQueryData(queryKeys.session, {
-    id: "u1",
-    display_name: "测试审查员",
-    role: "clerk",
-    tenant_id: "tenant-test",
-    org_id: "org-test",
-    audience: "client",
-  });
+  client.setQueryData(queryKeys.session, sessionActor);
   clients.push(client);
+  setSessionIdentity(sessionActor);
   return render(
     <QueryClientProvider client={client}>
       <ApiDocsPage />
     </QueryClientProvider>,
   );
 }
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  setSessionIdentity(sessionActor);
+});
 afterEach(() => {
   cleanup();
   for (const client of clients.splice(0)) client.clear();
+  setSessionIdentity(null);
   vi.unstubAllGlobals();
 });
 
@@ -333,6 +353,10 @@ test("API docs route stays session protected and loads the service contract", as
                 org_id: "org-test",
               },
               audience: "client",
+              principal_id: "principal-u1",
+              active_context: activeContext,
+              csrf_token: "test-csrf",
+              context_switch_enabled: false,
             }
           : contract,
       ),

@@ -2116,7 +2116,7 @@ describe("workbench public directory, templates and audit", () => {
     await expectTechnicalField(user, "角色编码", "reviewer");
     await expectTechnicalField(user, "组织 ID", "org-alpha");
     await detailTab(user, "案件授权");
-    expect(details().getByText(/不能据此推断该成员有权查看哪些案件/)).toBeInTheDocument();
+    expect(details().getByText(/成员信息不含每个案件的授权明细/)).toBeInTheDocument();
     expect(details().queryByText("专线采购案件")).not.toBeInTheDocument();
     await detailTab(user, "活动记录");
     await expectTechnicalField(user, "事件 1 操作编码", "knowledge.created");

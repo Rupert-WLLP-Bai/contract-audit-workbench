@@ -22,21 +22,32 @@ import (
 func seedAuditAttempt(t *testing.T, fixture durableCaseFixture, execution *Store, runID, attemptID, inputHash string) {
 	t.Helper()
 	ctx := context.Background()
-	if _, err := execution.pool.Exec(ctx, `INSERT INTO review_runs
+	tx, err := execution.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := setLocalScope(ctx, tx, userScope(fixture.admin)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO review_runs
 		(id,tenant_id,org_id,case_id,state,created_at,updated_at)
 		VALUES ($1,$2,$3,$4,'completed','2026-11-01T00:00:00Z','2026-11-01T00:00:00Z')`,
 		runID, fixture.admin.TenantID, fixture.admin.OrgID, fixture.caseID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := execution.pool.Exec(ctx, `INSERT INTO review_attempts
+	if _, err := tx.Exec(ctx, `INSERT INTO review_attempts
 		(id,tenant_id,org_id,run_id,ordinal,state,accepted_at,started_at,finished_at,history_kind,actor_id)
 		VALUES ($1,$2,$3,$4,1,'completed','2026-11-01T00:00:00Z','2026-11-01T00:00:00Z','2026-11-01T00:00:01Z','legacy_unfrozen',$5)`,
 		attemptID, fixture.admin.TenantID, fixture.admin.OrgID, runID, fixture.admin.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := execution.pool.Exec(ctx, `INSERT INTO review_attempt_inputs
+	if _, err := tx.Exec(ctx, `INSERT INTO review_attempt_inputs
 		(attempt_id,run_id,input_hash,frozen_at,documents)
 		VALUES ($1,$2,$3,'2026-11-01T00:00:00Z','[]')`, attemptID, runID, inputHash); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -45,16 +56,14 @@ func TestContractAuditBindingIsBlockedWithoutCitationsAndGoesStaleOnNewRevision(
 	fixture, _ := newContractDraftTestEnv(t)
 	ctx := context.Background()
 	var materialID, materialVersionID, materialDigest string
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT mv.material_id,d.id,d.digest
+	fixture.scopedQueryRow(t, ctx, userScope(fixture.admin), `SELECT mv.material_id,d.id,d.digest
 		FROM material_versions mv
 		JOIN documents d ON d.tenant_id=mv.tenant_id AND d.org_id=mv.org_id
 		  AND d.case_id=mv.case_id AND d.id=mv.document_id
 		WHERE mv.tenant_id=$1 AND mv.org_id=$2 AND mv.case_id=$3 AND d.role='draft_contract'
 		ORDER BY mv.version DESC LIMIT 1`,
-		fixture.admin.TenantID, fixture.admin.OrgID, fixture.caseID).
-		Scan(&materialID, &materialVersionID, &materialDigest); err != nil {
-		t.Fatal(err)
-	}
+		[]any{fixture.admin.TenantID, fixture.admin.OrgID, fixture.caseID},
+		&materialID, &materialVersionID, &materialDigest)
 	draft := freezeCompleteDraft()
 	draft.Materials = []MaterialRef{{
 		MaterialID: materialID, MaterialVersionID: materialVersionID,

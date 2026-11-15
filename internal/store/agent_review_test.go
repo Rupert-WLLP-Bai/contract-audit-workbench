@@ -85,7 +85,7 @@ func TestAgentReviewSyncAndReadBackPreservesExactBytes(t *testing.T) {
 	st, claim, caseID, inputHash := agentReviewFixture(t)
 	admin, _ := accounts.ByID("demo-admin")
 	// Deliberately non-canonical JSON: key order and spacing must survive.
-	payload := []byte(`{ "status" : "completed",  "domains" : [ {"domain":"technical"} ] }`)
+	payload := []byte(`{ "schema_version" : "five-domain-review/v1", "status" : "completed",  "domains" : [ {"domain":"technical"} ] }`)
 
 	if err := st.SyncAgentReviewRecord(context.Background(), claim, agentReviewRecord(claim, inputHash, claim.Generation, payload)); err != nil {
 		t.Fatalf("sync agent review: %v", err)
@@ -111,8 +111,8 @@ func TestAgentReviewSyncAndReadBackPreservesExactBytes(t *testing.T) {
 func TestAgentReviewGenerationFence(t *testing.T) {
 	st, claim, caseID, inputHash := agentReviewFixture(t)
 	admin, _ := accounts.ByID("demo-admin")
-	first := []byte(`{"round":1}`)
-	second := []byte(`{"round":2}`)
+	first := []byte(`{"schema_version":"five-domain-review/v1","round":1}`)
+	second := []byte(`{"schema_version":"five-domain-review/v1","round":2}`)
 
 	if err := st.SyncAgentReviewRecord(context.Background(), claim, agentReviewRecord(claim, inputHash, claim.Generation, first)); err != nil {
 		t.Fatal(err)
@@ -184,7 +184,7 @@ func TestAgentReviewRejectsWrongFrozenInputAndForeignIdentity(t *testing.T) {
 // see the row.
 func TestAgentReviewReadUsesTrustedEnterpriseScope(t *testing.T) {
 	st, claim, caseID, inputHash := agentReviewFixture(t)
-	payload := []byte(`{"status":"completed"}`)
+	payload := []byte(`{"schema_version":"five-domain-review/v1","status":"completed"}`)
 	if err := st.SyncAgentReviewRecord(context.Background(), claim, agentReviewRecord(claim, inputHash, claim.Generation, payload)); err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +208,7 @@ func TestAgentReviewReadUsesTrustedEnterpriseScope(t *testing.T) {
 func TestAgentReviewJoinsOutputHashAndRejectsAfterTerminal(t *testing.T) {
 	st, claim, caseID, inputHash := agentReviewFixture(t)
 	admin, _ := accounts.ByID("demo-admin")
-	payload := []byte(`{"status":"completed"}`)
+	payload := []byte(`{"schema_version":"five-domain-review/v1","status":"completed"}`)
 	if err := st.SyncAgentReviewRecord(context.Background(), claim, agentReviewRecord(claim, inputHash, claim.Generation, payload)); err != nil {
 		t.Fatal(err)
 	}

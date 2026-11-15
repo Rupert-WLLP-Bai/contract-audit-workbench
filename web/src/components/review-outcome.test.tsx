@@ -207,7 +207,7 @@ describe("selected review outcome", () => {
     expect(summary).toHaveTextContent("其他风险不在本次单合同预审范围，未执行");
     expect(summary).toHaveTextContent("1 项尚无人工判断");
     expect(summary).toHaveTextContent("智能审查阶段未执行");
-    expect(summary).toHaveTextContent("未检查的范围不能据此认定合规");
+    expect(summary).toHaveTextContent("未检查范围请继续办理");
     expect(within(summary).getByRole("link", { name: "查看完整审查准备" })).toHaveAttribute(
       "href",
       "/cases/case-1#review-readiness",

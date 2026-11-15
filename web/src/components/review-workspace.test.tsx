@@ -8,15 +8,61 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { useState, type ComponentProps } from "react";
-import { screen, within } from "@testing-library/react";
+import { useState, type ComponentProps, type PropsWithChildren, type ReactElement } from "react";
+import { screen, within, type RenderOptions } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { chooseOption, renderWithAntd as render } from "../test/antd";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { afterEach, beforeEach } from "vitest";
+import { chooseOption, renderWithAntd } from "../test/antd";
 import { MemoryRouter } from "react-router";
-import type { ReviewDocument, ReviewWorkspace } from "../api/types";
+import { setSessionIdentity } from "../api/http";
+import { queryKeys } from "../api/queries";
+import type { Actor, ReviewDocument, ReviewWorkspace } from "../api/types";
 import { ReviewWorkspaceView } from "./review-workspace";
 import { DocumentStage } from "./document-stage";
 import type { WorkTarget } from "../features/review/work-items";
+
+const clients: QueryClient[] = [];
+const sessionActor: Actor = {
+  id: "actor-1",
+  display_name: "审查员甲",
+  role: "reviewer",
+  tenant_id: "tenant-1",
+  org_id: "org-1",
+  audience: "client",
+  principal_id: "principal-1",
+  active_context: {
+    membership_id: "membership-1",
+    tenant_id: "tenant-1",
+    tenant_name: "租户甲",
+    org_id: "org-1",
+    org_name: "组织甲",
+    context_version: "1",
+  },
+  csrf_token: "test-csrf",
+  context_switch_enabled: false,
+};
+
+beforeEach(() => setSessionIdentity(sessionActor));
+
+afterEach(() => {
+  setSessionIdentity(null);
+  for (const client of clients.splice(0)) client.clear();
+});
+
+function render(ui: ReactElement, options?: Omit<RenderOptions, "wrapper">) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  client.setQueryData(queryKeys.session, sessionActor);
+  clients.push(client);
+  return renderWithAntd(ui, {
+    ...options,
+    wrapper: ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}
 
 const procurementText = "质保期为三十六个月，自验收合格之日起算。";
 const contractText = "质保期为二十四个月。";

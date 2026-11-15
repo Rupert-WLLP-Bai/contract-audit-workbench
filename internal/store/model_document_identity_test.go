@@ -26,6 +26,7 @@ func TestFrozenDocumentConfigurationUsesPersistedSelection(t *testing.T) {
 	}
 	st := environment.harness
 	admin := revisionAdmin(t)
+	admin, sessionToken := durableSessionUser(t, st, admin)
 	models := newParseConcurrencyModel()
 	t.Cleanup(models.unblockAll)
 	st.UseModels(models)
@@ -41,7 +42,7 @@ func TestFrozenDocumentConfigurationUsesPersistedSelection(t *testing.T) {
 	if _, err := st.AddDocument(ctx, admin, caseID, "draft_contract", "draft.txt", "text/plain", []byte("质保24个月")); err != nil {
 		t.Fatal(err)
 	}
-	accepted, err := st.StartReviewAsync(ctx, admin, caseID)
+	accepted, err := st.StartReviewAsync(WithAdmissionSessionToken(ctx, sessionToken), admin, caseID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +81,7 @@ func TestFrozenDocumentConfigurationUsesPersistedSelection(t *testing.T) {
 	if doc.ID == "" {
 		t.Fatal("missing document")
 	}
-	scope := model.DelegatedScope{Kind: "document", RunID: runID, AttemptID: selection.AttemptID, DocumentID: documentID, ParseSelectionID: selection.ParsedDocumentID, CaseID: caseID, TenantID: doc.TenantID, OrgID: doc.OrgID, ActorID: claim.ActorID, JobID: claim.JobID, WorkerID: claim.WorkerID, Generation: claim.Generation}
+	scope := model.DelegatedScope{Kind: "document", RunID: runID, AttemptID: selection.AttemptID, DocumentID: documentID, ParseSelectionID: selection.ParsedDocumentID, ParseSelectionSHA256: parseSelectionFingerprint(selection), CaseID: caseID, TenantID: doc.TenantID, OrgID: doc.OrgID, ActorID: claim.ActorID, JobID: claim.JobID, WorkerID: claim.WorkerID, Generation: claim.Generation}
 	modelPool, err := newPool(ctx, environment.roleDSNs["model"], st.schema)
 	if err != nil {
 		t.Fatal(err)
@@ -112,6 +113,7 @@ func TestFrozenDocumentConfigurationUsesPersistedSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	modelStore := &Store{pool: modelPool, schema: st.schema}
+	modelStore.UseOperationAuthority(durableTestOperationAuthority{core: st})
 	scope.ConfigurationID = models.ConfigurationID()
 	if _, err := modelStore.ReserveModelChatCall(ctx, "document", scope, "ocr", 1, 20, 20, modelBudgetTestLimits(), "other-provider"); !errors.Is(err, ErrModelConfigurationChanged) {
 		t.Fatalf("changed provider reservation: %v", err)
@@ -119,7 +121,13 @@ func TestFrozenDocumentConfigurationUsesPersistedSelection(t *testing.T) {
 	if _, err := modelStore.ReserveModelChatCall(ctx, "document", scope, "ocr", 1, 20, 20, modelBudgetTestLimits(), models.ConfigurationID()); err != nil {
 		t.Fatalf("frozen provider reservation: %v", err)
 	}
-	standalone := model.DelegatedScope{Kind: "document", TenantID: scope.TenantID, OrgID: scope.OrgID, CaseID: scope.CaseID, ActorID: scope.ActorID, DocumentID: scope.DocumentID}
+	standalone := model.DelegatedScope{Kind: "document", Action: "upload_parse", TenantID: scope.TenantID, OrgID: scope.OrgID, CaseID: scope.CaseID, ActorID: scope.ActorID, DocumentID: scope.DocumentID, InputSHA256: sha256Bytes([]byte("image"))}
+	core := environment.openRole(t, "core")
+	ticket, err := core.CreateOperationTicket(WithAdmissionSessionToken(ctx, sessionToken), admin, standalone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	standalone.OperationTicket = ticket
 	if _, err := modelStore.ReserveModelChatCall(ctx, "document", standalone, "ocr", 1, 20, 20, modelBudgetTestLimits(), "current-provider"); err != nil {
 		t.Fatalf("standalone current provider reservation: %v", err)
 	}

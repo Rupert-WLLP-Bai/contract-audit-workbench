@@ -31,8 +31,9 @@ func TestOutboxRelayClaimAckReleaseRecovery(t *testing.T) {
 	executionStore := setup.environment.openRole(t, "execution")
 	executionStore.UseModels(&frozenOCRModel{})
 	executionStore.UseDocumentPreparer(setup.document)
+	executionStore.UseOperationAuthority(durableTestOperationAuthority{core: setup.core})
 	drainTestOutbox(t, executionStore)
-	accepted, err := executionStore.StartReviewAsync(ctx, setup.admin, setup.caseID)
+	accepted, err := executionStore.StartReviewAsync(WithAdmissionSessionToken(ctx, setup.sessionToken), setup.admin, setup.caseID)
 	if err != nil {
 		t.Fatal(err)
 	}

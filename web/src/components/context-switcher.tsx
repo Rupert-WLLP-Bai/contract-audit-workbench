@@ -91,6 +91,9 @@ export function ContextSwitcher({
       <span className="organization-badge" title={actor.active_context.org_name}>
         <span className="organization-badge-label">租户：</span>
         <span className="organization-badge-value">{actor.active_context.tenant_name}</span>
+        <Typography.Text className="sr-only">
+          当前组织：{actor.active_context.org_name}
+        </Typography.Text>
       </span>
     );
   }

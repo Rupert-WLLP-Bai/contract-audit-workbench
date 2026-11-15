@@ -287,7 +287,7 @@ func TestBusinessGenerationChecksCaseTemplateBeforeTemplateFields(t *testing.T) 
 		t.Fatal(err)
 	}
 	_, err = st.Generate(context.Background(), admin, caseID, telecomTemplateID, nil)
-	if err == nil || err.Error() != "合同模板与案件业务场景不匹配" {
+	if err == nil || err.Error() != "合同模板与案件业务场景或版本不匹配" {
 		t.Fatalf("Generate error = %v, want scenario mismatch before field validation", err)
 	}
 }
@@ -448,7 +448,9 @@ func TestBusinessGenerationAndArchivedReportConsumers(t *testing.T) {
 		t.Fatal(err)
 	}
 	if detail.BusinessLine != "ENT" || detail.Scenario != "telecom_dedicated_line" ||
-		len(detail.Generations) != 1 || detail.Generations[0] != generation {
+		len(detail.Generations) != 1 || detail.Generations[0].ID != generation.ID ||
+		detail.Generations[0].DocumentID != generation.DocumentID ||
+		detail.Generations[0].TemplateID != generation.TemplateID {
 		t.Fatalf("generated business identity is missing from case detail: %+v", detail)
 	}
 	document, original, err := st.Original(admin, caseID, generation.DocumentID)

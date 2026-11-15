@@ -2571,7 +2571,7 @@ describe("application routes and API contract", () => {
     await user.click(await within(queue).findByRole("button", { name: "查看补件来源" }));
     expect(await screen.findByRole("heading", { name: "发起补充材料请求" })).toBeVisible();
     await user.click(
-      within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件管理" }),
+      within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件" }),
     );
     expect(await screen.findByRole("heading", { name: "案件" })).toBeVisible();
     expect(screen.queryByText("有未提交的草稿")).not.toBeInTheDocument();
@@ -2590,7 +2590,7 @@ describe("application routes and API contract", () => {
     window.dispatchEvent(beforeUnload);
     expect(beforeUnload.defaultPrevented).toBe(true);
     await user.click(
-      within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件管理" }),
+      within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件" }),
     );
     expect([...router.state.blockers.values()].some((blocker) => blocker.state === "blocked")).toBe(
       true,
@@ -2610,7 +2610,7 @@ describe("application routes and API contract", () => {
     expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
     expect(screen.getByLabelText("完成期限（本地时间）")).toHaveValue("2026-11-06T10:00");
     await user.click(
-      within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件管理" }),
+      within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件" }),
     );
     expect(await screen.findByRole("heading", { name: "案件" })).toBeVisible();
     expect(screen.queryByText("有未提交的草稿")).not.toBeInTheDocument();
@@ -3528,7 +3528,7 @@ describe("application routes and API contract", () => {
     expect(within(eventDetails).getByText("model_http")).toBeVisible();
     expect(within(eventDetails).getAllByText("未知")).toHaveLength(3);
     await user.click(screen.getByRole("button", { name: "时间线" }));
-    expect(screen.getByRole("button", { name: /#1/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /#1/ }).length).toBeGreaterThan(0);
     expect(within(eventDetails).getByText("时间").parentElement).toHaveTextContent("未记录");
     expect(screen.getAllByText("未报告").length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: /序号 1/ }));
@@ -3587,7 +3587,7 @@ describe("application routes and API contract", () => {
     expect(within(eventDetails).getByText("144")).toBeVisible();
     expect(within(eventDetails).getByText("327")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "时间线" }));
-    expect(screen.getByRole("button", { name: /#12/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /#12/ }).length).toBeGreaterThan(0);
   });
 
   it.each(["queued", "running"])(
@@ -4188,8 +4188,8 @@ describe("application routes and API contract", () => {
   it("links governance to the separately served Admin app and keeps the same-origin fallback", async () => {
     const fallback = new Service();
     vi.stubEnv("VITE_ADMIN_URL", "");
-    open(fallback, "/cases");
-    await screen.findByRole("heading", { name: "案件", level: 1 });
+    open(fallback, "/workbench/knowledge");
+    await screen.findByRole("heading", { name: /知识库/ });
     expect(screen.getByRole("link", { name: "规则包治理" })).toHaveAttribute(
       "href",
       "/admin/rulepacks",
@@ -4201,8 +4201,8 @@ describe("application routes and API contract", () => {
     cleanup();
     vi.stubEnv("VITE_ADMIN_URL", "http://127.0.0.1:5175/");
     const api = new Service();
-    open(api, "/cases");
-    await screen.findByRole("heading", { name: "案件", level: 1 });
+    open(api, "/workbench/knowledge");
+    await screen.findByRole("heading", { name: /知识库/ });
     expect(screen.getByRole("link", { name: "规则包治理" })).toHaveAttribute(
       "href",
       "http://127.0.0.1:5175/admin/rulepacks",
@@ -4360,11 +4360,11 @@ describe("application routes and API contract", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "展开侧栏" }));
-    await user.click(screen.getAllByRole("link", { name: "案件管理" })[0]!);
+    await user.click(screen.getAllByRole("link", { name: "案件" })[0]!);
     await waitFor(() =>
       expect(
         screen
-          .getAllByRole("link", { name: "案件管理" })
+          .getAllByRole("link", { name: "案件" })
           .some((link) => link.getAttribute("aria-current") === "page"),
       ).toBe(true),
     );

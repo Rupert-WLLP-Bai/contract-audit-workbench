@@ -27,6 +27,7 @@ import {
   verifySubjectAgainstSourceSnapshot,
 } from "./endpoints";
 import type { SubjectChangeProposalInput } from "./types";
+import { bindTestIdempotency, clearTestSession, installTestSession } from "../test/session";
 
 const principal = { user_id: "u-1", issuer: "https://id.example", subject: "principal-1" };
 const claim = {
@@ -73,7 +74,12 @@ function setResponse(body: unknown, status = 200) {
   return fetchMock;
 }
 
+beforeEach(() => {
+  installTestSession();
+  bindTestIdempotency("create-key-1", "bind-key-1", "role-key-1", "change-key-1", "decision-key-1", "snapshot-key-1", "verify-key-1");
+});
 afterEach(() => {
+  clearTestSession();
   vi.unstubAllGlobals();
 });
 

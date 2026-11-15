@@ -831,7 +831,7 @@ func TestExperienceBudgetFenceRolePrivileges(t *testing.T) {
 	}
 	// Exercise the fence against an actual live job using the provisioned model
 	// role. Its bounded definer lock must work without direct job privileges.
-	owner := revisionAdmin(t)
+	owner, sessionToken := durableSessionUser(t, st, revisionAdmin(t))
 	st.UseModels(&frozenOCRModel{})
 	pack := publishSyntheticAcceptancePack(t, st, owner)
 	publishSyntheticAcceptancePolicy(t, st, owner, pack)
@@ -865,7 +865,7 @@ func TestExperienceBudgetFenceRolePrivileges(t *testing.T) {
 		t.Fatal(err)
 	}
 	st.UseModels(&distillPolicyTestModel{frozenOCRModel: &frozenOCRModel{}})
-	receipt, err := st.RequestExperienceDistillation(ctx, owner, ExperienceDistillRequest{
+	receipt, err := st.RequestExperienceDistillation(WithAdmissionSessionToken(ctx, sessionToken), owner, ExperienceDistillRequest{
 		CaseID: source.CaseID, FeedbackID: feedback.FeedbackID, IdempotencyKey: "model-role-fence",
 	})
 	if err != nil {
@@ -883,6 +883,7 @@ func TestExperienceBudgetFenceRolePrivileges(t *testing.T) {
 		CaseID: claim.CaseID, ActorID: claim.ActorID, JobID: claim.JobID, WorkerID: claim.WorkerID,
 		Generation: claim.Generation, InputSHA256: work.InputSHA256}
 	modelStore := &Store{pool: modelPool, schema: st.schema}
+	modelStore.UseOperationAuthority(durableTestOperationAuthority{core: st})
 	// An omitted or forged caller declaration cannot affect the identity read
 	// from the immutable, digest-checked input under the dedicated model role.
 	scope.ConfigurationID = "forged-client-identity"

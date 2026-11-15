@@ -22,6 +22,9 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/model"
+
+	einomodel "github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 )
 
 type heldReviewModel struct {
@@ -55,6 +58,31 @@ func (*heldReviewModel) Transcribe(context.Context, string, []byte) (string, err
 }
 
 func (m *heldReviewModel) unblock() { m.once.Do(func() { close(m.release) }) }
+
+// heldPlannerModel blocks the frozen agent planner at the same point a live
+// planner chat model would call its provider. Its configuration identity must
+// match the frozen planner configuration written at acceptance.
+type heldPlannerModel struct {
+	heldReviewModel
+}
+
+func newHeldPlannerModel(capacity int) *heldPlannerModel {
+	return &heldPlannerModel{heldReviewModel: *newHeldReviewModel(capacity)}
+}
+
+func (m *heldPlannerModel) ConfigurationID() string { return "frozen-chat-model" }
+
+func (m *heldPlannerModel) Generate(ctx context.Context, _ []*schema.Message, _ ...einomodel.Option) (*schema.Message, error) {
+	m.calls.Add(1)
+	m.entered <- struct{}{}
+	select {
+	case <-m.release:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	m.returned <- struct{}{}
+	return nil, errors.New("held planner released after cancellation")
+}
 
 type frozenOCRModel struct {
 	transcriptMu sync.RWMutex
@@ -105,8 +133,17 @@ func TestRulesAreVisibleBeforeBlockedModelAndLateUsageCannotUndoCancel(t *testin
 	}
 
 	attemptID := workspace.Execution.Attempt.ID
-	recorder := attemptRecorder{store: st, attemptID: attemptID}
-	_, finish := recorder.StartModelCall(context.Background(), "held-model")
+	// The in-process execution scope is the same authority the executor
+	// attaches to its own recorder; a bare context is not authorized to append
+	// an attempt event.
+	st.claimMu.Lock()
+	executionScope, scoped := st.operationContexts[attemptID]
+	st.claimMu.Unlock()
+	if !scoped || executionScope.AttemptID != attemptID {
+		t.Fatalf("in-process execution scope is unavailable: %+v", executionScope)
+	}
+	recorder := attemptRecorder{store: st, attemptID: attemptID, failure: &recorderFailure{}}
+	_, finish := recorder.StartModelCall(model.WithDelegatedScope(context.Background(), executionScope), "held-model")
 	if err := st.CancelReview(context.Background(), admin, caseID, runID); err != nil {
 		t.Fatal(err)
 	}
@@ -115,6 +152,9 @@ func TestRulesAreVisibleBeforeBlockedModelAndLateUsageCannotUndoCancel(t *testin
 		ModelRef: "provider-checkpoint-r7", Status: "completed",
 		Usage: &model.TokenUsage{Source: "test-response.usage", InputTokens: &inputTokens, OutputTokens: &outputTokens, TotalTokens: &totalTokens},
 	})
+	if err := recorder.err(); err != nil {
+		t.Fatalf("record late model completion: %v", err)
+	}
 	cancelled := readWorkspace(t, st, admin, caseID, runID)
 	if cancelled.Execution.Attempt.State != "cancelled" || cancelled.View.State != "cancelled" {
 		t.Fatalf("late response overwrote cancellation: %+v", cancelled.Execution.Attempt)

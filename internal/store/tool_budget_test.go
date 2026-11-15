@@ -63,7 +63,11 @@ func createFrozenToolBudgetAttempt(t *testing.T, fixture durableFixture, index i
 	if _, err := fixture.document.AddDocument(context.Background(), fixture.admin, caseID, "procurement", "purchase.txt", "text/plain", []byte("采购文件未提供合同阈值或审批依据。")); err != nil {
 		t.Fatalf("add procurement document %d: %v", index, err)
 	}
-	accepted, err := fixture.execution.StartReviewAsyncAt(context.Background(), fixture.admin, caseID, acceptanceBusinessTime)
+	admissionCtx := fixture.admissionCtx
+	if admissionCtx == nil {
+		admissionCtx = context.Background()
+	}
+	accepted, err := fixture.execution.StartReviewAsyncAt(admissionCtx, fixture.admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatalf("accept telecom review %d: %v", index, err)
 	}
@@ -297,11 +301,15 @@ func TestToolCallSettlementIsTerminalAndRechecksScope(t *testing.T) {
 }
 
 func TestToolCallCancellationSettlesReservedCallAndRejectsStaleScope(t *testing.T) {
+	// Dedicated-line reviews use the frozen agent planner instead of the legacy
+	// warranty model. Freeze the model-fixture planner at acceptance so the
+	// planner call is the in-flight model boundary this cancellation crosses.
+	t.Setenv("AGENT_PLANNER_MODE", "fixture")
 	fixture, ok := newDurableTelecomFixture(t)
 	if !ok {
 		t.Skip("isolated database and migrator required")
 	}
-	gate := newHeldReviewModel(1)
+	gate := newHeldPlannerModel(1)
 	fixture.execution.UseModels(gate)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -318,7 +326,7 @@ func TestToolCallCancellationSettlesReservedCallAndRejectsStaleScope(t *testing.
 		defer close(workerDone)
 		_ = fixture.execution.RunClaimedJob(ctx, fixture.claim)
 	}()
-	waitSignal(t, gate.entered, "telecom model before cancellation")
+	waitSignal(t, gate.entered, "telecom planner before cancellation")
 
 	tool := fixture.environment.openRole(t, "tool")
 	scope := toolBudgetScopeFor(fixture)

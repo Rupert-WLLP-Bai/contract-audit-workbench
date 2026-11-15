@@ -8,7 +8,8 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { bindTestIdempotency, clearTestSession, installTestSession } from "../test/session";
 import { ApiError } from "./http";
 import {
   getExperienceCandidate,
@@ -62,7 +63,31 @@ const candidate = {
   },
 };
 
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => {
+  installTestSession();
+  bindTestIdempotency(
+    "feedback-key",
+    "key",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "zero",
+    "bad",
+    "no-evidence",
+    "empty-id",
+    "padded-id",
+    "trimmed",
+  );
+});
+afterEach(() => {
+  clearTestSession();
+  vi.unstubAllGlobals();
+});
 
 describe("experience feedback API", () => {
   it("sends exact source identities and code-point evidence with an idempotency key", async () => {
