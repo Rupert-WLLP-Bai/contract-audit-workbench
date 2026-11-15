@@ -128,6 +128,7 @@ async function run(): Promise<void> {
         "document.body.innerText.includes('采购质保核对') && document.querySelector('input[type=file]')",
       );
     }
+    await openCaseMaterials(page, session);
 
     await upload(page, session, procurement);
     await clickText(page, session, "button", "新增材料");
@@ -149,6 +150,7 @@ async function run(): Promise<void> {
     await clickText(page, session, "button", "开始审查");
     await loadDiagnostics(page, session);
     step("initial warranty review submitted");
+    await openReviewSection(page, session, "原文核对");
     await page.wait(
       session,
       `[...document.querySelectorAll('button')].some((item) => item.textContent.trim() === '重新执行未完成的审查' && !item.disabled)`,
@@ -156,12 +158,26 @@ async function run(): Promise<void> {
     await clickText(page, session, "button", "重新执行未完成的审查");
     await page.wait(
       session,
-      `(() => {
-    const row = document.querySelector('.execution-attempt-row');
-    return row?.getAttribute('data-attempt-count') === '2' &&
-      row.getAttribute('data-attempt-ordinal') === '2' &&
-      document.querySelector('.execution-inspector-summary p')?.innerText.includes('第 2 次执行');
-  })()`,
+      `performance.getEntriesByType('resource').some((item) => item.name.includes('/retry'))`,
+    );
+    const retryStatuses = await page.eval(
+      session,
+      `JSON.stringify(performance.getEntriesByType('resource').filter((item) => item.name.includes('/retry')).map((item) => item.responseStatus))`,
+    );
+    if (!/\[(200|202)\]/.test(retryStatuses))
+      throw new Error(`review retry was not accepted: ${retryStatuses}`);
+    await openReviewSection(page, session, "执行轨迹");
+    await page.wait(
+      session,
+      `document.querySelector('.execution-attempt-row')?.getAttribute('data-attempt-count') === '2'`,
+    );
+    // The retry response selects the accepted attempt, but a section switch that
+    // overlaps that navigation can restore the previous attempt id. Select the
+    // retried attempt explicitly so the rest of the journey is deterministic.
+    await selectAttemptNumber(page, session, 2);
+    await page.wait(
+      session,
+      "document.querySelector('.execution-inspector-summary p')?.innerText.includes('第 2 次执行')",
     );
     step("synthetic retry completed; attempt 2 selected");
     await selectAttemptNumber(page, session, 1);
@@ -169,18 +185,18 @@ async function run(): Promise<void> {
       session,
       "document.querySelector('.execution-inspector-summary p')?.innerText.includes('第 1 次执行')",
     );
+    await openReviewSection(page, session, "原文核对");
     const firstAttemptInputs = await readWorkspaceParseMetadata(page, session);
+    const firstAttemptTabs = await readWorkspaceSourceTabs(page, session);
+    await openReviewSection(page, session, "执行轨迹");
     const firstAttemptParsedIds = await readSelectedAttemptParseIds(page, session);
-    assertAttemptParseRefsMatchDisplayed(
-      firstAttemptParsedIds,
-      await readWorkspaceSourceTabs(page, session),
-      "attempt 1",
-    );
+    assertAttemptParseRefsMatchDisplayed(firstAttemptParsedIds, firstAttemptTabs, "attempt 1");
     await selectAttemptNumber(page, session, 2);
     await page.wait(
       session,
       "document.querySelector('.execution-inspector-summary p')?.innerText.includes('第 2 次执行')",
     );
+    await openReviewSection(page, session, "原文核对");
     await page.wait(
       session,
       "(() => { const text = document.body.innerText.replace(/\\s/g, ''); return text.includes('质保月数不一致') && text.includes('36个月') && text.includes('24个月'); })()",
@@ -200,12 +216,11 @@ async function run(): Promise<void> {
       "document.querySelector('.finding-detail h3')?.textContent.includes('质保月数不一致')",
     );
     const retryInputs = await readWorkspaceParseMetadata(page, session);
+    const retryTabs = await readWorkspaceSourceTabs(page, session);
+    await openReviewSection(page, session, "执行轨迹");
     const retryAttemptParsedIds = await readSelectedAttemptParseIds(page, session);
-    assertAttemptParseRefsMatchDisplayed(
-      retryAttemptParsedIds,
-      await readWorkspaceSourceTabs(page, session),
-      "attempt 2",
-    );
+    await openReviewSection(page, session, "原文核对");
+    assertAttemptParseRefsMatchDisplayed(retryAttemptParsedIds, retryTabs, "attempt 2");
     if (JSON.stringify(firstAttemptInputs) !== JSON.stringify(retryInputs)) {
       throw new Error(
         `retry did not retain the first attempt's frozen parse identities and digests: first=${JSON.stringify(firstAttemptInputs)} retry=${JSON.stringify(retryInputs)}`,
@@ -226,11 +241,15 @@ async function run(): Promise<void> {
         `evidence provenance does not match the displayed parse: ${JSON.stringify(evidenceSources)}`,
       );
     }
+    await openReviewSection(page, session, "执行轨迹");
+    // Reopening the section remounts the inspector with its default expanded
+    // disclosure, so collapse it again before asserting the compact state.
+    await setInspectorDisclosure(page, session, false);
     await page.wait(
       session,
       `(() => {
     const disclosure = document.querySelector('.execution-inspector .execution-inspector-disclosure');
-    return Boolean(disclosure && !disclosure.querySelector('.ant-collapse-item-active') && document.querySelectorAll('.workspace-grid mark.hit-evidence').length >= 2);
+    return Boolean(disclosure && !disclosure.querySelector('.ant-collapse-item-active'));
   })()`,
     );
     if (process.env.E2E_EXECUTION_SCREENSHOT) {
@@ -245,9 +264,13 @@ async function run(): Promise<void> {
       )) as { data: string };
       await Bun.write(process.env.E2E_EXECUTION_SCREENSHOT, Buffer.from(shot.data, "base64"));
     }
+    await openReviewSection(page, session, "原文核对");
+    // Re-entering the section remounts the reader in its single-source default;
+    // the two-document comparison is what renders one highlight per source.
+    await clickText(page, session, "button", "双来源对照");
     await page.wait(
       session,
-      "document.querySelector('input[type=radio][value=confirm_risk]')?.matches(':enabled') && document.querySelector('textarea')?.matches(':enabled')",
+      "document.querySelectorAll('.workspace-grid mark.hit-evidence').length >= 2 && document.querySelector('input[type=radio][value=confirm_risk]')?.matches(':enabled') && document.querySelector('textarea')?.matches(':enabled')",
     );
 
     const radio = await page.eval(
@@ -268,6 +291,7 @@ async function run(): Promise<void> {
     const oldRunURL = await page.eval(session, "location.href");
     await clickText(page, session, "a", "返回案件");
     await page.wait(session, "document.querySelector('input[type=file]')");
+    await openCaseMaterials(page, session);
     await selectAntOption(page, session, "材料角色", "拟签合同");
     const beforeReplacement = await readCaseDetail(page, session, oldRunURL);
     const primaryMaterial = beforeReplacement.materials?.find(
@@ -318,6 +342,7 @@ async function run(): Promise<void> {
     );
     await clickText(page, session, "button", "开始复审");
     await loadDiagnostics(page, session);
+    await openReviewSection(page, session, "来源与历史");
     await page.wait(
       session,
       "document.querySelector('.review-provenance')?.innerText.includes('修改稿对照')",
@@ -332,7 +357,9 @@ async function run(): Promise<void> {
   })()`,
     );
     const revisionRunURL = await page.eval(session, "location.href");
+    await openReviewSection(page, session, "执行轨迹");
     const revisionRunParsedIds = await readSelectedAttemptParseIds(page, session);
+    await openReviewSection(page, session, "原文核对");
     assertAttemptParseRefsMatchDisplayed(
       revisionRunParsedIds,
       await readWorkspaceSourceTabs(page, session),
@@ -340,6 +367,7 @@ async function run(): Promise<void> {
     );
     if ((await page.eval(session, "location.href")) === oldRunURL)
       throw new Error("revision overwrote original run");
+    await openReviewSection(page, session, "来源与历史");
     await clickText(page, session, "a", "查看上一轮审查");
     await page.wait(
       session,
@@ -350,6 +378,7 @@ async function run(): Promise<void> {
     }
     await clickText(page, session, "a", "返回案件");
     await page.wait(session, "document.querySelector('input[type=file]')");
+    await openCaseMaterials(page, session);
     const previousParse = await readDocumentMetadata(page, session, "draft-revised.txt");
     assertReadyParseMetadata(previousParse, "draft-revised.txt before explicit reparse");
     if (!revisionRunParsedIds.includes(previousParse.parsedDocumentId)) {
@@ -367,9 +396,15 @@ async function run(): Promise<void> {
       `(() => {
     const row = [...document.querySelectorAll('.material-current-set .document-list li[data-material-id]')].find((item) => item.innerText.includes('draft-revised.txt'));
     const summary = row?.querySelector('.parsed-document-summary');
-    return Boolean(summary && summary.dataset.parsedDocumentId !== ${JSON.stringify(previousParse.parsedDocumentId)} && document.body.innerText.includes('材料已更新'));
+    return Boolean(summary && summary.dataset.parsedDocumentId !== ${JSON.stringify(previousParse.parsedDocumentId)});
   })()`,
     );
+    // The overview banner lives in a hidden section while materials are open, so
+    // assert the same revision flag through the API the page renders from.
+    const afterReparse = await readCaseDetail(page, session, revisionRunURL);
+    if (afterReparse.revision_pending !== true) {
+      throw new Error("explicit reparse did not mark the case for review revision");
+    }
     const reparsedDocument = await readDocumentMetadata(page, session, "draft-revised.txt");
     assertReadyParseMetadata(reparsedDocument, "draft-revised.txt after explicit reparse");
     if (reparsedDocument.parsedDocumentId === previousParse.parsedDocumentId) {
@@ -403,9 +438,11 @@ async function run(): Promise<void> {
     await fillReviewBusinessTime(page, session);
     await clickText(page, session, "button", "开始复审");
     await loadDiagnostics(page, session);
+    await page.wait(session, "document.querySelector('.execution-inspector')");
+    await openReviewSection(page, session, "原文核对");
     await page.wait(
       session,
-      `document.querySelector('.execution-inspector') && [...document.querySelectorAll('.review-material-context [role=tab] [data-parsed-document-id]')].some((item) => item.dataset.parsedDocumentId === ${JSON.stringify(reparsedDocument.parsedDocumentId)})`,
+      `[...document.querySelectorAll('.review-material-context [role=tab] [data-parsed-document-id]')].some((item) => item.dataset.parsedDocumentId === ${JSON.stringify(reparsedDocument.parsedDocumentId)})`,
     );
     step("reparse review submitted and selected parse verified");
     await selectParsedDocumentTab(page, session, reparsedDocument.parsedDocumentId);
@@ -424,7 +461,9 @@ async function run(): Promise<void> {
       throw new Error("new review did not display the explicitly selected parsed document");
     }
     const documentTabs = await readWorkspaceSourceTabs(page, session);
+    await openReviewSection(page, session, "执行轨迹");
     const reparsedAttemptIds = await readSelectedAttemptParseIds(page, session);
+    await openReviewSection(page, session, "原文核对");
     if (!reparsedAttemptIds.includes(reparsedDocument.parsedDocumentId)) {
       throw new Error("post-reparse attempt did not pin the selected parsed document");
     }
@@ -483,6 +522,7 @@ async function run(): Promise<void> {
     if (previousParseIds.length > 0)
       await selectParsedDocumentTab(page, session, reparsedDocument.parsedDocumentId);
     await page.send("Page.navigate", { url: revisionRunURL }, session);
+    await openReviewSection(page, session, "来源与历史");
     await page.wait(
       session,
       "document.querySelector('.review-provenance')?.innerText.includes('修改稿对照')",
@@ -496,6 +536,7 @@ async function run(): Promise<void> {
       text.includes('消除') && text.includes('先前决定') && text.includes('确认风险');
   })()`,
     );
+    await openReviewSection(page, session, "原文核对");
     await selectParsedDocumentTab(page, session, previousParse.parsedDocumentId);
     const restoredRevisionInputs = await readWorkspaceParseMetadata(page, session);
     if (
@@ -929,6 +970,42 @@ async function fillReviewBusinessTime(page: Page, session: string): Promise<void
     );
 }
 
+// A pending command can remount the page and reset the section state, so keep
+// selecting until the requested section is the one actually rendered.
+async function openSection(
+  page: Page,
+  session: string,
+  navigation: string,
+  section: string,
+): Promise<void> {
+  const active = `document.querySelector('nav[aria-label=${JSON.stringify(navigation)}] button[aria-pressed="true"]')?.textContent.trim() === ${JSON.stringify(section)}`;
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    if ((await page.eval(session, active)) === "true") return;
+    try {
+      await clickText(page, session, "button", section);
+    } catch (error) {
+      // A pending command can replace the page between the wait and the
+      // click; re-check the freshly rendered section instead of failing.
+      if (!(error instanceof Error) || !error.message.includes(": missing")) throw error;
+    }
+    await Bun.sleep(200);
+  }
+  await page.wait(session, active);
+}
+
+// The review page renders one workspace surface at a time. Open the section
+// that owns the element under test before reading rendered text or controls.
+async function openReviewSection(page: Page, session: string, section: string): Promise<void> {
+  await openSection(page, session, "审查工作区分区", section);
+}
+
+// Case details keep only the selected section in the rendered text, so each
+// material assertion must first open the 材料与版本 section.
+async function openCaseMaterials(page: Page, session: string): Promise<void> {
+  await openSection(page, session, "案件详情分区", "材料与版本");
+}
+
 async function clickText(page: Page, session: string, tag: string, text: string): Promise<void> {
   await page.wait(
     session,
@@ -947,6 +1024,7 @@ async function clickText(page: Page, session: string, tag: string, text: string)
 }
 
 async function loadDiagnostics(page: Page, session: string): Promise<void> {
+  await openReviewSection(page, session, "执行轨迹");
   await page.wait(
     session,
     `document.body.innerText.includes("加载运行轨迹与诊断") || document.querySelector(".execution-inspector")`,
@@ -1112,6 +1190,7 @@ async function readCaseDetail(
   session: string,
   runURL: string,
 ): Promise<{
+  revision_pending?: boolean;
   materials?: Array<{
     material_id: string;
     purpose: string;
@@ -1129,6 +1208,7 @@ async function readCaseDetail(
   })`,
   );
   return JSON.parse(raw) as {
+    revision_pending?: boolean;
     materials?: Array<{
       material_id: string;
       purpose: string;

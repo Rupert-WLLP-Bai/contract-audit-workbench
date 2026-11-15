@@ -17,6 +17,15 @@ import { parseReviewWorkspace } from "../src/api/parse";
 import { formatDateTime } from "../src/domain/review";
 import { reviewChoiceKey, reviewChoiceLabel, reviewChoiceShortLabel } from "../src/domain/workflow";
 
+// The template selector labels each template by name and origin; the exact
+// version is pinned by the option value and shown in the form metadata.
+export function templateOptionLabel(template: {
+  name: string;
+  source?: "builtin" | "tenant";
+}): string {
+  return `${template.name}（${template.source === "tenant" ? "租户" : "平台内置"}）`;
+}
+
 function antSelectRoot(select: Locator): Locator {
   return select.locator(
     "xpath=ancestor-or-self::*[contains(concat(' ', normalize-space(@class), ' '), ' ant-select ')][1]",

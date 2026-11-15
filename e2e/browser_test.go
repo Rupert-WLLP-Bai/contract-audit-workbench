@@ -14,7 +14,6 @@ package e2e_test
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -141,7 +140,9 @@ func (m *browserModels) ConfigurationID() string { return m.Name() }
 func (m *browserModels) Warranty(_ context.Context, docs []model.Material) (model.Warranty, error) {
 	m.warrantyCalls++
 	if m.warrantyCalls == 1 {
-		return model.Warranty{}, errors.New("controlled synthetic first-attempt failure")
+		// A model timeout is the transient cause that exposes the retry action;
+		// other model failures stay non-retryable by design.
+		return model.Warranty{}, context.DeadlineExceeded
 	}
 	return warrantyOf(docs)
 }
