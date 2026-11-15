@@ -506,7 +506,7 @@ func (f *serviceFixture) publishGovernance(t *testing.T) {
 
 func (f *serviceFixture) startWorker(t *testing.T, caseID string) (*observingPreparer, <-chan error, context.CancelFunc) {
 	t.Helper()
-	if _, err := f.core.StartReviewAsyncAt(context.Background(), f.admin, caseID, testBusinessTime); err != nil {
+	if _, err := f.core.StartReviewAsyncAt(store.WithAdmissionSessionToken(context.Background(), f.token), f.admin, caseID, testBusinessTime); err != nil {
 		t.Fatalf("accept durable review: %v", err)
 	}
 	claim, err := f.worker.ClaimNextJob(context.Background(), "capacity-regression-worker", time.Minute)
@@ -593,6 +593,8 @@ func TestPublicAndDelegatedDocumentWorkShareQueueAndLeaveReadsAvailable(t *testi
 	defer cancelWorker()
 	select {
 	case <-preparer.started:
+	case err := <-workerDone:
+		t.Fatalf("worker exited before delegated document preparation: %v", err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("worker did not request delegated document preparation")
 	}
