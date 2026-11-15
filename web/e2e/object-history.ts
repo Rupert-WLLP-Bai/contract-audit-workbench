@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-15
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -18,6 +18,7 @@ import { chooseAntOption, clickAntOptionByAttribute, selectedAntLabel } from "./
 import { replacePrimaryMaterial, selectMaterialOption, uploadNewMaterial } from "./materials-ui";
 import { parseReviewWorkspace } from "../src/api/parse";
 import type { Finding, ReviewWorkspace } from "../src/api/types";
+import { findingTitle } from "../src/domain/finding-presentation";
 import {
   parseServiceObjectDetail,
   type ServiceObjectDetail,
@@ -166,6 +167,53 @@ async function signIn(target: Page, username: string, password: string): Promise
   assert.equal(response.status(), 200, `login failed: ${await response.text()}`);
   await target.waitForURL((url) => url.origin === new URL(web).origin && url.pathname !== "/login");
 }
+async function openSection(page: Page, navigation: string, section: string): Promise<void> {
+  const button = page
+    .getByRole("navigation", { name: navigation })
+    .getByRole("button", { name: section, exact: true });
+  await button.waitFor({ state: "visible" });
+  // A click can land before the router finishes the preceding navigation; the
+  // page then restores its default section. Re-select until the choice
+  // survives a render instead of trusting the first aria-pressed update.
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    if ((await button.getAttribute("aria-pressed")) !== "true")
+      await button.click().catch(() => {});
+    await page.waitForTimeout(200);
+    if ((await button.getAttribute("aria-pressed")) === "true") {
+      await page.waitForTimeout(400);
+      if ((await button.getAttribute("aria-pressed")) === "true") return;
+    }
+  }
+  assert.equal(
+    await button.getAttribute("aria-pressed"),
+    "true",
+    `${navigation} ${section} did not open`,
+  );
+}
+
+async function openCaseSection(page: Page, section: string): Promise<void> {
+  await openSection(page, "案件详情分区", section);
+}
+
+async function openReviewSection(page: Page, section: string): Promise<void> {
+  await openSection(page, "审查工作区分区", section);
+}
+
+async function openOperatorTab(page: Page, label: string): Promise<void> {
+  const tab = page.getByRole("tab", { name: label, exact: true });
+  await tab.waitFor({ state: "visible" });
+  if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+  await page.waitForFunction(
+    (label) =>
+      [...document.querySelectorAll('[role="tab"]')].some(
+        (item) =>
+          item.textContent?.trim() === label && item.getAttribute("aria-selected") === "true",
+      ),
+    label,
+  );
+}
+
 async function caseDetail(target: Page): Promise<CaseDetail> {
   const response = await target.request.get(`${web}/api/cases/${caseID}`);
   assert.equal(response.status(), 200, "case detail failed");
@@ -214,6 +262,7 @@ async function startReview(
   target: Page,
   button: "开始审查" | "开始复审",
 ): Promise<{ run: string; attempt: string; workspace: ReviewWorkspace }> {
+  await openCaseSection(target, "审查记录");
   const input = target.getByLabel("审查业务时间（北京时间）", { exact: true });
   const local = shanghaiInput(new Date()).slice(0, 16);
   await input.fill(local);
@@ -451,7 +500,11 @@ async function frozenFindingView(
     "historical view changed its attempt",
   );
   await target.getByRole("heading", { name: "审查工作区", exact: true }).waitFor();
-  const button = target.getByRole("button", { name: `选择线索：${finding.claim}`, exact: true });
+  await openReviewSection(target, "原文核对");
+  const button = target.getByRole("button", {
+    name: `选择线索：${findingTitle(finding)}`,
+    exact: true,
+  });
   await button.click();
   await button.and(target.locator('[aria-current="true"]')).waitFor();
   await target.getByRole("button", { name: "双来源对照", exact: true }).click();
@@ -473,6 +526,7 @@ async function frozenLegalView(
   expected: Record<string, unknown>,
   expectedBody: string,
 ): Promise<void> {
+  await openReviewSection(target, "来源与历史");
   const section = target.getByRole("region", { name: "本次审查法律依据" });
   const responsePromise = target.waitForResponse(
     (response) =>
@@ -572,6 +626,7 @@ async function run(): Promise<void> {
   await current.waitForURL(/\/cases\/[^/]+$/);
   caseID = new URL(current.url()).pathname.split("/").at(-1) ?? "";
   assert.ok(caseID);
+  await openCaseSection(current, "材料与版本");
   const memberHeaders = await browserSessionCommandHeaders(current.request, web);
   const member = await current.request.post(`${web}/api/cases/${caseID}/members`, {
     headers: { Origin: web, ...memberHeaders },
@@ -660,6 +715,7 @@ async function run(): Promise<void> {
   await current.goto(
     `${web}/cases/${caseID}/operator-audit?run_id=${encodeURIComponent(runA)}&attempt_id=${encodeURIComponent(attemptA)}`,
   );
+  await openOperatorTab(current, "服务对象");
   await current.getByRole("heading", { name: "服务对象与冻结事实", exact: true }).waitFor();
   const objectA = await createObject(current, "合成专线甲", "LINE-001");
   await associate(current, objectA, "合同-A.txt", "LINE-001", "50 Mbit/s");
@@ -669,6 +725,7 @@ async function run(): Promise<void> {
   const bindingA = await bind(current, "合成专线甲", "fixture-line-001");
   const bindingB = await bind(current, "合成专线乙", "fixture-line-002");
   assert.notEqual(bindingA.mapping, bindingB.mapping);
+  await openOperatorTab(current, "依据与差异");
   await chooseAntOption(current, current.getByLabel("选择对象映射", { exact: true }), (label) =>
     label.includes("fixture-line-001"),
   );
@@ -711,10 +768,8 @@ async function run(): Promise<void> {
     "时间未报告",
     "the browser hid the evidence observation time",
   );
-  await chooseAntOption(
-    current,
-    current.getByLabel("选择能力包", { exact: true }),
-    (label) => label === "专线配置核验（合成测试清单） @ 1.0.0",
+  await chooseAntOption(current, current.getByLabel("选择能力包", { exact: true }), (label) =>
+    label.startsWith("专线配置核验（合成测试清单） · 版本 1.0.0"),
   );
   assert.equal(
     await selectedAntLabel(current.getByLabel("核验范围", { exact: true })),
@@ -859,6 +914,7 @@ async function run(): Promise<void> {
     "the browser hid the snapshot acquisition time",
   );
   await current.reload();
+  await openOperatorTab(current, "依据与差异");
   await current
     .getByRole("region", { name: "逐对象核验结果" })
     .getByText(/覆盖不完整/)
@@ -873,10 +929,8 @@ async function run(): Promise<void> {
     { evaluation_id: evaluationID },
   );
 
-  await chooseAntOption(
-    current,
-    current.getByLabel("选择能力包", { exact: true }),
-    (label) => label === "专线配置核验（合成测试清单） @ 1.0.0",
+  await chooseAntOption(current, current.getByLabel("选择能力包", { exact: true }), (label) =>
+    label.startsWith("专线配置核验（合成测试清单） · 版本 1.0.0"),
   );
   await current.getByLabel("业务时间（北京时间）", { exact: true }).fill(businessLocal);
   await chooseAntOption(
@@ -980,6 +1034,7 @@ async function run(): Promise<void> {
   );
 
   await current.goto(`${web}/cases/${caseID}`);
+  await openCaseSection(current, "材料与版本");
   const detail = await caseDetail(current);
   const currentPrimary = detail.materials.find(
     (material) => material.material_id === primary.material_id,
@@ -1002,6 +1057,7 @@ async function run(): Promise<void> {
   await current.goto(
     `${web}/cases/${caseID}/operator-audit?run_id=${encodeURIComponent(second.run)}&attempt_id=${encodeURIComponent(second.attempt)}&service_object_id=${encodeURIComponent(objectA)}`,
   );
+  await openOperatorTab(current, "服务对象");
   await current.getByRole("heading", { name: "服务对象与冻结事实", exact: true }).waitFor();
   await chooseFrozenObject(current, "合同-B.txt", "LINE-001", "80 Mbit/s");
   await current.getByRole("button", { name: "预览关联更正", exact: true }).click();
@@ -1033,6 +1089,7 @@ async function run(): Promise<void> {
     const reviewer = await reviewerContext.newPage();
     await signIn(reviewer, "demo-reviewer", "reviewer-demo");
     await reviewer.goto(approvalURL);
+    await openOperatorTab(reviewer, "服务对象");
     const section = reviewer.getByRole("region", { name: "合同关联更正审批" });
     await section.getByText(/状态 pending_decision/).waitFor();
     await section
@@ -1107,6 +1164,7 @@ async function run(): Promise<void> {
     "approved association was not appended",
   );
   await current.goto(approvalURL);
+  await openOperatorTab(current, "服务对象");
   await current.getByText("冻结事实关联历史", { exact: true }).click();
   await current.getByText(new RegExp(`关联第 1 版.*${runA}/${attemptA}`)).waitFor();
   await current.getByText(new RegExp(`关联第 2 版.*${second.run}/${second.attempt}`)).waitFor();
@@ -1133,7 +1191,9 @@ async function run(): Promise<void> {
   await current.goto(retainedReviewURL);
   await frozenFindingView(current, finding, primary.id, anchor.quote, false);
   await frozenLegalView(current, frozenLegal, frozenArticle.canonical_full_article_body);
-  await current.goto(`${web}/cases/${caseID}/legal-knowledge`);
+  // The reader defaults to the applicability tab; the company-source catalog lives
+  // in the URL-backed references tab.
+  await current.goto(`${web}/cases/${caseID}/legal-knowledge?tab=references`);
   await current.getByRole("heading", { name: "公司制度资料", exact: true }).waitFor();
   await current
     .getByText("资料待提供；当前不可引用，也未满足必需依赖。", { exact: true })
@@ -1171,6 +1231,7 @@ async function run(): Promise<void> {
   await current.goto(
     `${web}/cases/${caseID}/operator-audit?run_id=${encodeURIComponent(runA)}&attempt_id=${encodeURIComponent(attemptA)}&evaluation_id=${encodeURIComponent(evaluationID)}`,
   );
+  await openOperatorTab(current, "依据与差异");
   await current
     .getByRole("region", { name: "逐对象核验结果" })
     .getByText(/覆盖不完整/)
