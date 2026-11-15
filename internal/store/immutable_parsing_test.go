@@ -416,6 +416,116 @@ func TestParsedArtifactRewriteIsRejectedAndCorruptionIsDetected(t *testing.T) {
 	}
 }
 
+// legacyAdditiveResetSQL removes the objects added after the legacy baseline
+// so a fixture can rewind the ledger and let the migration runner recreate
+// them. Both rewinds keep the legacy business tables and their rows: only the
+// additive identity, runtime, money, template and CLM objects are removed.
+const legacyAdditiveResetSQL = `
+ALTER TABLE sessions
+ DROP CONSTRAINT IF EXISTS sessions_membership_identity_fk,
+ DROP CONSTRAINT IF EXISTS sessions_membership_identity_check,
+ DROP COLUMN IF EXISTS principal_id,
+ DROP COLUMN IF EXISTS membership_id,
+ DROP COLUMN IF EXISTS context_version,
+ DROP COLUMN IF EXISTS csrf_token;
+ALTER TABLE worker_jobs DROP COLUMN IF EXISTS tenant_live_epoch;
+ALTER TABLE review_attempts DROP COLUMN IF EXISTS tenant_live_epoch;
+DROP TRIGGER IF EXISTS worker_job_epoch_immutable ON worker_jobs;
+DROP TRIGGER IF EXISTS review_attempt_epoch_immutable ON review_attempts;
+DROP TRIGGER IF EXISTS operation_ticket_epoch_immutable ON operation_authority_tickets;
+DROP TRIGGER IF EXISTS intake_ticket_epoch_immutable ON intake_authority_tickets;
+DROP INDEX IF EXISTS worker_jobs_tenant_live_claim;
+DROP FUNCTION IF EXISTS tenant_epoch_immutable();
+ALTER TABLE review_run_snapshots
+ DROP CONSTRAINT IF EXISTS review_run_snapshots_tenant_config_pair,
+ DROP COLUMN IF EXISTS adopted_tenant_config_version_id,
+ DROP COLUMN IF EXISTS adopted_tenant_config_digest,
+ DROP COLUMN IF EXISTS input_hash_version;
+ALTER TABLE model_call_leases
+ DROP COLUMN IF EXISTS money_reserved_minor,
+ DROP COLUMN IF EXISTS money_price_snapshot_id,
+ DROP COLUMN IF EXISTS money_provider_config_id,
+ DROP COLUMN IF EXISTS money_currency,
+ DROP COLUMN IF EXISTS money_minor_unit_scale,
+ DROP COLUMN IF EXISTS money_timezone,
+ DROP COLUMN IF EXISTS money_period_day,
+ DROP COLUMN IF EXISTS money_period_month,
+ DROP COLUMN IF EXISTS money_policy_revision;
+ALTER TABLE model_usage
+ DROP COLUMN IF EXISTS money_cost_minor,
+ DROP COLUMN IF EXISTS money_reserved_minor,
+ DROP COLUMN IF EXISTS money_price_snapshot_id,
+ DROP COLUMN IF EXISTS money_provider_config_id,
+ DROP COLUMN IF EXISTS money_currency,
+ DROP COLUMN IF EXISTS money_minor_unit_scale,
+ DROP COLUMN IF EXISTS money_timezone,
+ DROP COLUMN IF EXISTS money_period_day,
+ DROP COLUMN IF EXISTS money_period_month,
+ DROP COLUMN IF EXISTS money_cost_state;
+DROP TRIGGER IF EXISTS model_money_reserve ON model_call_leases;
+DROP TRIGGER IF EXISTS model_money_settle ON model_usage;
+DROP FUNCTION IF EXISTS model_money_price_known(text,text,text);
+DROP TRIGGER IF EXISTS command_receipt_context ON idempotency;
+DROP TRIGGER IF EXISTS command_receipt_context ON rule_pack_idempotency;
+DROP TRIGGER IF EXISTS command_receipt_context ON governed_knowledge_idempotency;
+DROP TRIGGER IF EXISTS command_receipt_context ON document_upload_idempotency;
+DROP TRIGGER IF EXISTS command_receipt_context ON subject_write_idempotency;
+DROP TRIGGER IF EXISTS command_receipt_context ON service_object_mutation_receipts;
+DROP TRIGGER IF EXISTS command_receipt_context ON clm_contract_write_receipts;
+DROP TRIGGER IF EXISTS command_receipt_context ON core_write_receipts;
+DROP TRIGGER IF EXISTS command_receipt_context ON execution_write_receipts;
+DROP TRIGGER IF EXISTS command_receipt_context ON case_intake_operations;
+DROP POLICY IF EXISTS command_receipt_context ON idempotency;
+DROP POLICY IF EXISTS command_receipt_context ON rule_pack_idempotency;
+DROP POLICY IF EXISTS command_receipt_context ON governed_knowledge_idempotency;
+DROP POLICY IF EXISTS command_receipt_context ON document_upload_idempotency;
+DROP POLICY IF EXISTS command_receipt_context ON subject_write_idempotency;
+DROP POLICY IF EXISTS command_receipt_context ON service_object_mutation_receipts;
+DROP POLICY IF EXISTS command_receipt_context ON case_intake_operations;
+ALTER TABLE idempotency DROP COLUMN IF EXISTS command_session, DROP COLUMN IF EXISTS command_version;
+ALTER TABLE rule_pack_idempotency DROP COLUMN IF EXISTS command_session, DROP COLUMN IF EXISTS command_version;
+ALTER TABLE governed_knowledge_idempotency DROP COLUMN IF EXISTS command_session, DROP COLUMN IF EXISTS command_version;
+ALTER TABLE document_upload_idempotency DROP COLUMN IF EXISTS command_session, DROP COLUMN IF EXISTS command_version;
+ALTER TABLE subject_write_idempotency DROP COLUMN IF EXISTS command_session, DROP COLUMN IF EXISTS command_version;
+ALTER TABLE service_object_mutation_receipts DROP COLUMN IF EXISTS command_session, DROP COLUMN IF EXISTS command_version;
+ALTER TABLE case_intake_operations DROP COLUMN IF EXISTS command_session, DROP COLUMN IF EXISTS command_version;
+DROP FUNCTION IF EXISTS stamp_command_receipt();
+DROP TRIGGER IF EXISTS execution_agent_step_checkpoint_guard ON execution_agent_step_checkpoints;
+DROP FUNCTION IF EXISTS guard_execution_agent_step_checkpoint();
+DROP FUNCTION IF EXISTS fulfillment_reminder_enqueue(text,uuid,uuid,text,text,text,bigint,text,text,integer,integer,integer,integer,boolean);
+DROP FUNCTION IF EXISTS fulfillment_reminder_cancel_job(text,uuid,uuid);
+DROP FUNCTION IF EXISTS fulfillment_reminder_lock_claim(text,text,text,text,bigint,boolean);
+DROP FUNCTION IF EXISTS fulfillment_reminder_finish_claim(text,text,text,text,bigint,boolean);
+DROP TRIGGER IF EXISTS clm_fulfillment_reminder_guard ON clm_fulfillment_reminders;
+DROP FUNCTION IF EXISTS guard_fulfillment_reminder();
+ALTER TABLE business_generations
+ DROP CONSTRAINT IF EXISTS business_generations_template_digest_check,
+ DROP COLUMN IF EXISTS template_digest;
+-- The identity owner owns only additive definer functions, their grants and
+-- the policies/triggers that call them. Dropping its owned objects cascades
+-- exactly those dependents back to the legacy baseline.
+DO $legacy_owner$
+DECLARE fence text := 'caw_auth_fence_' || md5(current_database() || ':' || current_schema());
+BEGIN
+ IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname=fence) THEN
+  EXECUTE format('DROP OWNED BY %I CASCADE', fence);
+ END IF;
+END
+$legacy_owner$;
+DROP TABLE IF EXISTS worker_claim_identities, intake_authority_tickets, operation_authority_tickets,
+ identity_support_events, identity_support_grants, identity_pending_auth,
+ tenant_config_versions, tenant_provision_operation_steps, tenant_provision_operations,
+ tenant_operations_projection_dirty, tenant_operations_projection_snapshots,
+ identity_memberships, identity_principals, identity_org_units, identity_tenants, identity_jurisdictions,
+ case_intake_completion_events,
+ clm_clause_proposal_decisions, clm_clause_proposal_receipts, clm_clause_proposals,
+ model_money_ledger, model_money_limits, model_price_snapshots, execution_agent_step_checkpoints;
+-- The CLM maintenance role keeps its schema USAGE grant, which its verifier
+-- requires, so only the functions owned by it are removed here.
+DROP FUNCTION IF EXISTS clm_outbox_claim(integer,bigint), clm_outbox_ack(text,uuid,bigint),
+ clm_outbox_release(text,uuid,bigint,bigint), clm_metrics_snapshot(bigint);
+`
+
 func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 	st, admin := openExecutionStore(t)
 	caseID := createExecutionCase(t, st, admin)
@@ -562,6 +672,10 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := legacyTx.Exec(context.Background(), legacyAdditiveResetSQL); err != nil {
+		_ = legacyTx.Rollback(context.Background())
+		t.Fatalf("reset additive legacy objects: %v", err)
+	}
 	legacyStatements := []string{
 		`DROP TRIGGER IF EXISTS clm_contract_revision_asset_plans_project ON clm_contract_revisions`,
 		`DROP TABLE clm_contract_asset_receipts, clm_contract_asset_handovers, clm_contract_revision_asset_plans`,
@@ -570,7 +684,7 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 		`DROP TABLE clm_contract_signing_registrations, clm_contract_supplements`,
 		`DROP TABLE clm_contract_audit_bindings, clm_approval_task_transfers, clm_approval_task_materials, clm_approval_decisions, clm_approval_task_assignments, clm_approval_tasks, clm_workflow_role_bindings, clm_workflow_roles, clm_workflow_template_pointers, clm_workflow_template_nodes, clm_workflow_templates`,
 		`DROP TABLE clm_contract_version_seals, clm_contract_version_materials, clm_contract_saved_views, clm_contract_exports`,
-		`DROP TABLE clm_contract_drafts, clm_contract_write_receipts, clm_legacy_imports, clm_contract_source_observations, clm_outbox_delivery, clm_business_events, clm_approval_rounds, clm_contract_cases, clm_contract_revisions, clm_contracts`,
+		`DROP TABLE clm_fulfillment_reminder_attempts, clm_fulfillment_reminder_deliveries, clm_fulfillment_reminder_history, clm_fulfillment_reminders, clm_contract_drafts, clm_contract_write_receipts, clm_legacy_imports, clm_contract_source_observations, clm_outbox_delivery, clm_business_events, clm_approval_rounds, clm_contract_cases, clm_contract_revisions, clm_contracts`,
 		`DROP TABLE case_intake_requests, case_intake_archives`,
 		`DROP INDEX case_intake_pending_owner`,
 		`DROP TABLE experience_finding_usage, rule_pack_shadow_reports, review_rulepack_inputs, manual_finding_records, execution_write_receipts, core_write_receipts`,

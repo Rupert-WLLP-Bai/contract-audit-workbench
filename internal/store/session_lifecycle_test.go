@@ -428,6 +428,11 @@ func TestSessionMigrationRemovesOnlyLegacyTokensAcrossTenants(t *testing.T) {
 			t.Fatalf("version-7 fixture requires an empty %s: count=%d err=%v", table, count, err)
 		}
 	}
+	// Shared legacy-baseline reset; it is defined beside the pre-parse rewind
+	// fixture in immutable_parsing_test.go.
+	if _, err := environment.harness.pool.Exec(ctx, legacyAdditiveResetSQL); err != nil {
+		t.Fatalf("reset additive legacy objects: %v", err)
+	}
 	if _, err := environment.harness.pool.Exec(ctx, `DROP TRIGGER IF EXISTS clm_contract_revision_asset_plans_project ON clm_contract_revisions;
 		DROP TABLE clm_contract_asset_receipts, clm_contract_asset_handovers, clm_contract_revision_asset_plans;
 		DROP TABLE clm_contract_payment_eligibility_checks, clm_contract_payment_receipts;
@@ -435,6 +440,7 @@ func TestSessionMigrationRemovesOnlyLegacyTokensAcrossTenants(t *testing.T) {
 		DROP TABLE clm_contract_signing_registrations, clm_contract_supplements;
 		DROP TABLE clm_contract_audit_bindings, clm_approval_task_transfers, clm_approval_task_materials, clm_approval_decisions, clm_approval_task_assignments, clm_approval_tasks, clm_workflow_role_bindings, clm_workflow_roles, clm_workflow_template_pointers, clm_workflow_template_nodes, clm_workflow_templates;
 		DROP TABLE clm_contract_version_seals, clm_contract_version_materials, clm_contract_saved_views, clm_contract_exports;
+		DROP TABLE clm_fulfillment_reminder_attempts, clm_fulfillment_reminder_deliveries, clm_fulfillment_reminder_history, clm_fulfillment_reminders;
 		DROP TABLE clm_contract_drafts, clm_contract_write_receipts, clm_legacy_imports, clm_contract_source_observations, clm_outbox_delivery, clm_business_events, clm_approval_rounds, clm_contract_cases, clm_contract_revisions, clm_contracts;
 		DROP TABLE case_intake_requests, case_intake_archives;
 		DROP INDEX case_intake_pending_owner;
@@ -447,6 +453,11 @@ func TestSessionMigrationRemovesOnlyLegacyTokensAcrossTenants(t *testing.T) {
 	}
 	if err := migrate(ctx, environment.harness.pool, environment.harness.schema); err != nil {
 		t.Fatalf("repeat legacy session migration: %v", err)
+	}
+	// The replay recreates the definer functions, so restore the service-role
+	// EXECUTE grants that the pre-replay provisioning had applied.
+	if err := MigrateServiceRoles(ctx); err != nil {
+		t.Fatalf("restore service role grants after legacy session migration: %v", err)
 	}
 	// A successful cleanup also leaves row security enabled and forced.
 	if err := environment.harness.pool.QueryRow(ctx, `SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE oid='sessions'::regclass`).Scan(&enabled, &forced); err != nil || !enabled || !forced {
