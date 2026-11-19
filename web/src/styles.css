@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
-/* Updated: 2026-11-12 */
-/* Revision: r6 */
+/* Updated: 2026-11-19 */
+/* Revision: r7 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -860,12 +860,12 @@
   .nav-label {
     min-width: 0;
   }
-  .nav-footer {
+  .admin-sidenav .nav-footer {
     margin-top: auto;
     padding: var(--space-3) var(--space-2);
     border: 1px solid var(--border-default);
     border-radius: 5px;
-    color: var(--text-secondary);
+    color: var(--text-inverse-secondary);
     font-size: 11px;
   }
   .app--nav-collapsed .nav-footer {
@@ -2867,7 +2867,7 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
   }
-  .sidenav a {
+  .admin-sidenav a {
     color: inherit;
   }
   .content-column {
@@ -4467,18 +4467,21 @@
   }
 }
 
+/* Keep the client rail trigger colors above Ant Design's button layer. */
+.nav-collapse-action {
+  color: var(--text-inverse-secondary);
+}
+.nav-collapse-action:not(:disabled):hover,
+.nav-collapse-action:focus-visible {
+  color: var(--text-inverse);
+  background: var(--surface-rail-line);
+}
+
 @layer components {
   .header-search-input:hover,
   .header-search-input:focus {
     border-color: var(--text-inverse-secondary);
     background: var(--surface-rail-raised);
-  }
-  .nav-collapse-action {
-    color: var(--text-inverse-secondary);
-  }
-  .nav-collapse-action:not(:disabled):hover {
-    color: var(--text-inverse);
-    background: var(--surface-rail-line);
   }
   .finding-button {
     text-align: left;

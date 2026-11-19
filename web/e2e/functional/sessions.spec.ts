@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -53,6 +53,84 @@ test(
     await expect(page.getByRole("heading", { name: "登录合同审查", exact: true })).toBeVisible();
   },
 );
+
+test("dark sidebars retain readable labels and controls across navigation states", async ({
+  page,
+}) => {
+  await uiLogin(page);
+  await page.goto(`${webURL}/cases`);
+  const tokens = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    document.body.append(probe);
+    const color = (token: string) => {
+      probe.style.color = `var(--${token})`;
+      return getComputedStyle(probe).color;
+    };
+    const palette = {
+      rail: color("surface-rail"),
+      raised: color("surface-rail-raised"),
+      primary: color("text-inverse"),
+      secondary: color("text-inverse-secondary"),
+      selected: color("nav-item-selected"),
+      selectedText: color("nav-item-selected-fg"),
+    };
+    probe.remove();
+    return palette;
+  });
+  const rail = page.locator(".sidenav");
+  const home = rail.getByRole("link", { name: "工作台", exact: true });
+  const cases = rail.getByRole("link", { name: "案件", exact: true });
+  const support = rail.getByRole("link", { name: "案件支援访问", exact: true });
+  const compare = rail.getByRole("link", { name: "版本对照", exact: true });
+  const tools = rail.getByRole("link", { name: "工具网关", exact: true });
+  const trigger = rail.locator(".nav-collapse-action");
+
+  await expect(rail).toHaveCSS("background-color", tokens.rail);
+  for (const [link, color] of [
+    [home, tokens.primary],
+    [support, tokens.secondary],
+    [tools, tokens.secondary],
+  ] as const) {
+    await expect(link.locator(".nav-label")).toHaveCSS("color", color);
+    await expect(link.locator("svg")).toHaveCSS("color", color);
+  }
+  await expect(rail.getByRole("heading", { name: "案件工作区" })).toHaveCSS(
+    "color",
+    tokens.secondary,
+  );
+  await expect(cases).toHaveAttribute("aria-current", "page");
+  await expect(cases).toHaveCSS("color", tokens.selectedText);
+  await expect(cases).toHaveCSS("background-color", tokens.selected);
+
+  await support.hover();
+  await expect(support).toHaveCSS("color", tokens.primary);
+  await expect(support).toHaveCSS("background-color", tokens.raised);
+  await page.mouse.move(0, 0);
+  await support.press("Tab");
+  await expect(compare).toBeFocused();
+  await expect(compare).toHaveCSS("outline-color", tokens.primary);
+
+  await expect(trigger.locator("svg")).toHaveCSS("color", tokens.secondary);
+  await trigger.press("Space");
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await expect(trigger.locator("svg")).toHaveCSS("color", tokens.primary);
+  await expect(tools.locator("svg")).toHaveCSS("color", tokens.secondary);
+  await trigger.press("Space");
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(trigger).toBeHidden();
+  await expect(home.locator(".nav-label")).toBeVisible();
+  await expect(home.locator(".nav-label")).toHaveCSS("color", tokens.primary);
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await uiLogin(page, "admin");
+  await expect(page.locator(".admin-sidenav")).toHaveCSS("background-color", tokens.rail);
+  await expect(page.getByText("规则版本与发布历史", { exact: false })).toHaveCSS(
+    "color",
+    tokens.secondary,
+  );
+});
 
 test(
   "client/admin audiences, anonymous reads, malformed requests and Origin guards stay isolated",
