@@ -957,7 +957,7 @@ export default function ApiDocsPage() {
   const clientBase = import.meta.env.VITE_CLIENT_URL;
   const adminBase = import.meta.env.VITE_ADMIN_URL;
   const loginHref = clientBase ? new URL("/login", clientBase).href : "/login";
-  const adminHref = adminBase ? new URL("/admin", adminBase).href : "/admin";
+  const adminHref = adminBase ? new URL("/admin/", adminBase).href : "/admin/";
   const [contract, setContract] = useState<OpenApiContract | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);

@@ -160,6 +160,7 @@ afterEach(() => {
   for (const client of clients.splice(0)) client.clear();
   setSessionIdentity(null);
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 test("loads the local OpenAPI contract and displays real route metadata", async () => {
@@ -178,6 +179,18 @@ test("loads the local OpenAPI contract and displays real route metadata", async 
     "/openapi.json",
     expect.objectContaining({ credentials: "same-origin", cache: "no-store" }),
   );
+});
+
+test.each([
+  ["", "/admin/"],
+  ["https://admin.example.test", "https://admin.example.test/admin/"],
+])("links to the deployed management entry for VITE_ADMIN_URL=%s", async (base, href) => {
+  vi.stubEnv("VITE_ADMIN_URL", base);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(contract)));
+  renderApiDocsPage();
+
+  expect(screen.getByRole("link", { name: "管理端", exact: true })).toHaveAttribute("href", href);
+  await screen.findByRole("heading", { name: "读取案件" });
 });
 
 test("states when the operation filter has no matches", async () => {
