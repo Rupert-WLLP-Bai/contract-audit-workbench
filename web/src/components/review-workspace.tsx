@@ -723,11 +723,9 @@ export function ReviewWorkspaceView({
     }
   }, [workspaceView]);
   useEffect(() => {
-    if (workTarget?.kind === "finding") setWorkspaceView("evidence");
-  }, [workTarget?.kind, workTarget?.id, navigationSerial]);
-  useEffect(() => {
-    if (explicitFindingId && explicitFindingId === selectedId) setWorkspaceView("evidence");
-  }, [explicitFindingId, selectedId]);
+    if (workTarget?.kind === "finding" || (explicitFindingId && explicitFindingId === selectedId))
+      setWorkspaceView("evidence");
+  }, [workTarget?.kind, workTarget?.id, navigationSerial, explicitFindingId, selectedId]);
   function selectFinding(findingId: string) {
     onSelect(findingId);
     if (workspaceView !== "evidence") {
