@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Runs the deterministic single-contract capability against the selected frozen source and stores coverage and evidence without turning observations into findings.
+// Purpose: Loads the selected frozen source, invokes the published single-contract precheck mapping and persists its evaluation, evidence and suggested findings.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
