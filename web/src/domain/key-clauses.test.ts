@@ -104,24 +104,16 @@ describe("key clause navigation", () => {
     });
   });
 
-  it("locates explicit contract and procurement amounts without marking background sentences", () => {
+  it("chooses one payment excerpt when several exact amounts match", () => {
     const source =
       "😀项目背景为网络建设。合同总价100万元。合同金额为100万元。采购金额为120万元。其他说明。";
-    const result = keyClauseNavigationFor(scope, documentOf({ text: source, clauses: [] }));
+    const document = documentOf({ text: source, clauses: [] });
+    const result = keyClauseNavigationFor(scope, document);
 
-    expect(result.candidates.map((candidate) => candidate.quote)).toEqual([
-      "合同总价100万元。",
-      "合同金额为100万元。",
-      "采购金额为120万元。",
-    ]);
-    expect(result.candidates.every((candidate) => candidate.categories.includes("payment"))).toBe(
-      true,
-    );
-    for (const candidate of result.candidates) {
-      expect(Array.from(source).slice(candidate.range.start, candidate.range.end).join("")).toBe(
-        candidate.quote,
-      );
-    }
+    expect(result.candidates).toHaveLength(1);
+    const [candidate] = result.candidates;
+    expect(candidate).toMatchObject({ quote: "合同总价100万元。", categories: ["payment"] });
+    expect(frozenQuoteMatchesDocument(candidate?.selection ?? null, scope, document)).toBe(true);
   });
 
   it("rejects a document parsed by a different attempt", () => {
@@ -223,8 +215,8 @@ describe("key clause navigation", () => {
     });
   });
 
-  it("keeps a keyword at the end of an overlong clause in a bounded, exact fragment", () => {
-    const text = `${"背景资料".repeat(1400)}乙方应支付尾款。`;
+  it("finds a whole short obligation inside a long structure without claiming its page", () => {
+    const text = `${"背景资料".repeat(1400)}。乙方应支付尾款。`;
     const document = documentOf({
       text,
       clauses: [
@@ -247,12 +239,50 @@ describe("key clause navigation", () => {
       page: null,
       range: { end: Array.from(text).length },
     });
-    expect(candidate?.quote.endsWith("乙方应支付尾款。")).toBe(true);
-    expect(Array.from(candidate?.quote ?? "").length).toBeLessThanOrEqual(4096);
+    expect(candidate?.quote).toBe("乙方应支付尾款。");
     expect(candidate?.range.start).toBeGreaterThan(0);
     expect(candidate?.quote).toBe(
       Array.from(text).slice(candidate?.range.start, candidate?.range.end).join(""),
     );
+  });
+
+  it("allows no suggestions for headings, form placeholders and deferred terms", () => {
+    const text =
+      "目录：付款条款、验收标准、保密数据。甲方应按【待填写】金额支付价款。" +
+      "双方同意付款期限另行约定。项目背景提到数据。";
+    expect(keyClauseNavigationFor(scope, documentOf({ text, clauses: [] })).candidates).toEqual([]);
+  });
+
+  it("keeps a following exception with its obligation and the original Unicode offsets", () => {
+    const text = "😀前言。甲方应在收票后三十日内支付价款。\n但通知后仍有争议的款项暂缓支付。";
+    const document = documentOf({ text, clauses: [] });
+    const [item] = keyClauseNavigationFor(scope, document).candidates;
+    expect(item?.quote).toBe("甲方应在收票后三十日内支付价款。\n但通知后仍有争议的款项暂缓支付。");
+    expect(item?.range.start).toBe(Array.from("😀前言。").length);
+    expect(frozenQuoteMatchesDocument(item?.selection ?? null, scope, document)).toBe(true);
+  });
+
+  it("covers explicit jurisdiction, warranties and disclosures alongside payment", () => {
+    const text =
+      "合同总价为人民币壹拾万元整。预付款金额为合同价款的30%。" +
+      "双方协商不成时，任一方可向约定的有管辖权的法院起诉。质保三年。" +
+      "未经甲方书面同意，乙方不得向第三方披露相关资料。";
+    const document = documentOf({ text, clauses: [] });
+    const { candidates } = keyClauseNavigationFor(scope, document);
+    expect(candidates.map((candidate) => candidate.categories[0])).toEqual([
+      "payment",
+      "dispute_resolution",
+      "warranty",
+      "confidentiality_data",
+    ]);
+    expect(
+      candidates.every(({ selection }) => frozenQuoteMatchesDocument(selection, scope, document)),
+    ).toBe(true);
+  });
+
+  it("does not cut an overlong continuous condition into a misleading fragment", () => {
+    const text = "甲方应支付预付款，" + "补充说明".repeat(80) + "，但仅限验收后。";
+    expect(keyClauseNavigationFor(scope, documentOf({ text, clauses: [] })).candidates).toEqual([]);
   });
 });
 
@@ -263,7 +293,10 @@ describe("frozen source proof", () => {
     const frozen = documentOf({ digest: "", parsed_document: null });
     const current = documentOf({
       digest,
-      parsed_document: { ...documentOf().parsed_document!, original_digest: digest },
+      parsed_document: {
+        ...documentOf().parsed_document!,
+        original_digest: digest,
+      },
     });
     const detail = {
       id: "case-1",
@@ -305,7 +338,10 @@ describe("frozen source proof", () => {
     const oldDetail = {
       ...detail,
       documents: [
-        { ...current, parsed_document: { ...current.parsed_document!, id: "parsed-new" } },
+        {
+          ...current,
+          parsed_document: { ...current.parsed_document!, id: "parsed-new" },
+        },
       ],
     };
     const history = {
@@ -327,7 +363,10 @@ describe("frozen source proof", () => {
     expect(frozenSourceProof(oldDetail, frozen, ["parsed-1"], undefined)).toBeNull();
     expect(frozenSourceProof(oldDetail, frozen, ["parsed-1"], history)).toEqual(proof);
     expect(
-      frozenSourceProof(oldDetail, frozen, ["parsed-1"], { ...history, document_id: "other" }),
+      frozenSourceProof(oldDetail, frozen, ["parsed-1"], {
+        ...history,
+        document_id: "other",
+      }),
     ).toBeNull();
     expect(
       frozenSourceProof(oldDetail, frozen, ["parsed-1"], {

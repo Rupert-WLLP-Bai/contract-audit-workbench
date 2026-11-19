@@ -17,7 +17,9 @@ import {
 } from "./frozen-quote";
 import { createTextIndex, sliceByCodePoints, type CodePointTextIndex } from "./text";
 
-const MAX_FROZEN_QUOTE_LENGTH = 4096;
+// Automatic reading highlights stay short. Longer text can still be searched and quoted.
+const MAX_READING_QUOTE_LENGTH = 180;
+const MIN_READING_QUOTE_LENGTH = 5;
 
 export const KEY_CLAUSE_CATEGORIES = [
   {
@@ -93,11 +95,13 @@ export interface KeyClauseNavigation {
   notice?: string;
 }
 
-interface FragmentPlan {
+interface RatedSentence {
   range: TextOffset;
-  clauseId: string | null;
-  heading: string | null;
-  sourceLabel: string;
+  categories: readonly KeyClauseCategory[];
+  primary: KeyClauseCategory;
+  score: number;
+  key: string;
+  source: ReviewDocument["clauses"][number] | undefined;
 }
 
 function parsedDocumentIdOf(document: ReviewDocument, scope: FrozenQuoteScope): string | null {
@@ -126,12 +130,6 @@ function parsedDocumentIdOf(document: ReviewDocument, scope: FrozenQuoteScope): 
 
 function unavailable(message: string): KeyClauseNavigation {
   return { candidates: [], message };
-}
-
-function categoryMatches(text: string): KeyClauseCategory[] {
-  return KEY_CLAUSE_CATEGORIES.flatMap((category) =>
-    category.keywords.some((keyword) => text.includes(keyword)) ? [category.id] : [],
-  );
 }
 
 function candidateId(
@@ -218,118 +216,217 @@ function sentenceRanges(textIndex: CodePointTextIndex): TextOffset[] | null {
   return ranges;
 }
 
-function intersectRange(left: TextOffset, right: TextOffset): TextOffset | null {
-  const start = Math.max(left.start, right.start);
-  const end = Math.min(left.end, right.end);
-  return start < end ? { start, end } : null;
+const PARTY =
+  /甲方|乙方|丙方|采购[方人]|供应[方商]|委托[方人]|受托[方人]|承包[人方]|发包[人方]|服务方|双方|各方|任一方|任何一方|违约方/u;
+const DIRECTION =
+  /(?:应当|应于|应在|应自|应按|应向|应由|应[交提支履保承负赔退返履防采通约完享对给将妥指配]|须|必须|有权|不得|不应|不承担|不予|禁止|同意|承诺|负责|仅限|无权|可以|均可|可向|可要求)/u;
+const QUANTIFIED_TERM =
+  /[０-９0-9]+(?:[.,．，][０-９0-9]+)*\s*(?:个?月|个?自然日|个?工作日|天|日|年|小时|分钟|兆|％|%|万?元|亿?元|MB|GB|TB)|[零〇一二两三四五六七八九十百千]+(?:个?月|个?自然日|个?工作日|天|日|年|小时|分钟)|[零〇一二两三四五六七八九十壹贰叁肆伍陆柒捌玖拾佰仟百千万亿]+[元圆]/u;
+const TRIGGER =
+  /之日起|之后|之前|收到|经.*确认|如遇|如果|若|未能|逾期|届满|提前|自.*起|期限内|[前后](?:的)?[０-９0-9一二两三四五六七八九十百]/u;
+const PLACEHOLDER =
+  /\[\s*(?:待填|填写|待定|可选)[^\]]*\]|【\s*(?:待填|填写|待定|可选)[^】]*】|_{2,}|(?:待填(?:写)?|待补充|尚无具体约定|不作具体约定|无具体约定|本条不适用|本项不适用|XX\s*(?:天|日|元|个月|年))|^(?:术语解释|示例|例如|参考模板|填写说明|目录|关键词)[：:\s]/u;
+const LEADING_EXCEPTION = /^(?:但是|但(?!愿)|除非|除.{0,24}外|惟|唯在)/u;
+const INCOMPLETE = /[：:、，,；;]$/u;
+// Numbering and list markers outside the parser's body offset can be dropped.
+const SECTION_PREFIX =
+  /^(?:(?:\p{Extended_Pictographic}|[•·▪])\s*|第[零〇一二两三四五六七八九十百０-９0-9]+[条章节][：:、]?\s*|[（(]?[０-９0-9]+[.．、)）]\s*)+$/u;
+const CONTRACT_REFERENCE = /本合同|本协议|合作方|本项目/u;
+
+const TOPIC_RULES: Record<KeyClauseCategory, { action: RegExp; specific: RegExp }> = {
+  payment: {
+    action: /支付|付款|付清|付讫|付至|结算|开具.*发票|退还.*[款费]|退还.*保证金|付款条件/u,
+    specific:
+      /(?:合同(?:总价|价款|金额)|采购金额|含税总价|结算总额|付款比例)[\s：:为计人民币]*(?:[０-９0-9]|[零〇一二两三四五六七八九十壹贰叁肆伍陆柒捌玖拾佰仟百千万亿]+(?:[万亿]?[元圆]))|(?:预付款|首付款|进度款|尾款|价款|款项)[^。！？]{0,20}(?:[０-９0-9]+[％%]|百分之[一二两三四五六七八九十百]+|[０-９0-9]+万?元)|(?:付款|价款|尾款|款项)[^。！？]{0,12}(?:[０-９0-9]+|[一二两三四五六七八九十百]+)(?:个?自然日|个?工作日|天|日|月)内[^。！？]{0,8}(?:支付|付款|付清)/u,
+  },
+  delivery_acceptance: {
+    action: /交付|交货|交接|签收|验收|上线|供货|提交|整改|验收.*视为/u,
+    specific:
+      /(?:(?:交付|交货|竣工|验收)[^。！？]{0,30}(?:不得超过|不超过|\d+(?:个)?(?:工作日|天|日|月)|逾期视为))|(?:验收合格(?:后|之日|率))|(?:付款|确认|批准|签收)后[^。！？]{0,12}(?:交付|交货|履行)/u,
+  },
+  term_termination: {
+    action: /终止|解除|续约|展期|生效|延长|失效|届满|到期/u,
+    specific:
+      /(?:签字|盖章|签订|签署).{0,20}(?:生效|起生效)|(?:有效期|期限).{0,12}(?:\d|[一二两三四五六七八九十]+(?:个?月|工作日|天|年))|(?:自\d{4}年)|(?:届满前[^。！？]{0,20}(?:自动续|书面通知))/u,
+  },
+  liability_compensation: {
+    action: /承担|赔偿|补偿|支付|免责|负责|责任限制|违约金|免除|赔付|承担连带责任/u,
+    specific:
+      /(?:违约金|赔偿|责任上限)[^。！？]{0,24}(?:上限|以[^。！？]{1,20}为限|[０-９0-9]+[％%]|[０-９0-9]+万?元|实际损失)|(?:不(?:再)?承担(?:任何|连带|间接|直接)责任)/u,
+  },
+  warranty: {
+    action: /保修|质保|保用|维修|修复|响应|更换|提供|保证|售后/u,
+    specific:
+      /(?:质保|保修|保用|售后|质量保证)[^。！？]{0,18}(?:[０-９0-9]+|[一二两三四五六七八九十]+)\s*(?:个?月|个?工作日|天|日|年|小时)/u,
+  },
+  dispute_resolution: {
+    action: /提交.*仲裁|提起诉讼|提起仲裁|向.*法院.*起诉|有管辖权|管辖法院|适用.*法律/u,
+    specific:
+      /(?:协商不成|调解不成|任何一方|均可|应|由|向|提交|提请|所在地).{0,38}(?:仲裁委|仲裁院|仲裁机构|人民法院|有管辖权的法院)|(?:适用[^。！？]{1,18}(?:法律|法律法规))|(?:争议|纠纷)[^。！？]{0,14}(?:提交|提请|申请)[^。！？]{0,14}仲裁/u,
+  },
+  confidentiality_data: {
+    action:
+      /披露|保守秘密|保护|泄露|泄漏|销毁|删除|脱敏|加密|出境|仅限|保密义务|转交|提供给|转让|传输|返还/u,
+    specific:
+      /(?:未经.{0,40}(?:同意|许可).{0,18}(?:不得|不应|不可).{0,24}(?:披露|转交|转让|共享|公开))|(?:不得|不应).{0,10}(?:泄露|泄漏|外传|出境|擅自披露)|(?:依法).{0,6}(?:删除|销毁).{0,12}(?:数据|个人信息)/u,
+  },
+};
+const ADDITIONAL_TOPIC: Partial<Record<KeyClauseCategory, RegExp>> = {
+  payment: /含税总价|付款比例|付款条件/u,
+  term_termination: /生效|签字.{0,12}盖章/u,
+  dispute_resolution: /法院|起诉|诉至/u,
+  confidentiality_data: /披露|泄露|泄漏|数据出境/u,
+};
+const SIMPLE_AMOUNT =
+  /^(合同(?:总价|价款|金额)|采购金额)[\s：:为计人民币]*([０-９0-9.．,，]+)(万?元|亿元)(?:整)?[。.]?$/u;
+const DEFERRED = /(?:另行|后续|届时)(?:商定|协商|确定|议定|约定)|(?:尚待|待双方)确定/u;
+
+function duplicateKey(text: string): string {
+  const normalized = text
+    .normalize("NFKC")
+    .replace(/\s+/gu, "")
+    .replace(/[。！？.!?]+$/gu, "");
+  const amount = SIMPLE_AMOUNT.exec(normalized);
+  if (!amount?.[1] || !amount[2] || !amount[3]) return normalized;
+  const kind = amount[1].startsWith("合同") ? "合同" : "采购";
+  return `${kind}金额${amount[2]}${amount[3]}`;
 }
 
-function fragmentRangesFor(sentences: readonly TextOffset[], plan: FragmentPlan): TextOffset[] {
-  return sentences.flatMap((sentence) => {
-    const intersection = intersectRange(sentence, plan.range);
-    return intersection ? [intersection] : [];
-  });
-}
+function rankSentence(
+  text: string,
+): Pick<RatedSentence, "categories" | "primary" | "score"> | null {
+  if (PLACEHOLDER.test(text) || INCOMPLETE.test(text) || LEADING_EXCEPTION.test(text)) return null;
+  const party = PARTY.test(text);
+  const directive = DIRECTION.test(text);
+  const hasNumber = QUANTIFIED_TERM.test(text);
+  const trigger = TRIGGER.test(text);
+  const contractRef = CONTRACT_REFERENCE.test(text);
 
-function keywordHits(textIndex: CodePointTextIndex, range: TextOffset): TextOffset[] {
-  const utf16Start = textIndex.utf16Offsets[range.start];
-  const utf16End = textIndex.utf16Offsets[range.end];
-  if (utf16Start === undefined || utf16End === undefined) return [];
-  const unique = new Map<string, TextOffset>();
-  for (const category of KEY_CLAUSE_CATEGORIES) {
-    for (const keyword of category.keywords) {
-      for (
-        let match = textIndex.text.indexOf(keyword, utf16Start);
-        match >= 0 && match < utf16End;
-        match = textIndex.text.indexOf(keyword, match + keyword.length)
-      ) {
-        const matchEnd = match + keyword.length;
-        if (matchEnd > utf16End) continue;
-        const start = codePointBoundaryAtUtf16(textIndex, match);
-        const end = codePointBoundaryAtUtf16(textIndex, matchEnd);
-        if (start === null || end === null || start < range.start || end > range.end) continue;
-        unique.set(`${start}:${end}`, { start, end });
-      }
-    }
-  }
-  return [...unique.values()].sort(
-    (left, right) => left.start - right.start || left.end - right.end,
-  );
-}
-
-function boundedContextRanges(textIndex: CodePointTextIndex, sentence: TextOffset): TextOffset[] {
-  const hits = keywordHits(textIndex, sentence);
-  const windows = hits.map((hit) => {
-    const maxLength = Math.min(MAX_FROZEN_QUOTE_LENGTH, sentence.end - sentence.start);
-    const centeredStart = hit.start - Math.floor((maxLength - (hit.end - hit.start)) / 2);
-    let start = Math.max(sentence.start, centeredStart);
-    const end = Math.min(sentence.end, start + maxLength);
-    if (end - start < maxLength) start = Math.max(sentence.start, end - maxLength);
-    return { start, end };
-  });
-  const merged: TextOffset[] = [];
-  for (const window of windows) {
-    const previous = merged.at(-1);
-    const mergedEnd = previous ? Math.max(previous.end, window.end) : window.end;
+  const ranked = KEY_CLAUSE_CATEGORIES.flatMap((category) => {
+    const rule = TOPIC_RULES[category.id];
     if (
-      previous &&
-      window.start <= previous.end &&
-      mergedEnd - previous.start <= MAX_FROZEN_QUOTE_LENGTH
-    ) {
-      previous.end = mergedEnd;
-    } else {
-      merged.push({ ...window });
-    }
-  }
-  return merged;
-}
-
-function fragmentCandidatesFor(
-  scope: FrozenQuoteScope,
-  document: ReviewDocument,
-  parsedDocumentId: string,
-  textIndex: CodePointTextIndex,
-  sentences: readonly TextOffset[],
-  plans: readonly FragmentPlan[],
-): KeyClauseCandidate[] {
-  const candidates: KeyClauseCandidate[] = [];
-  for (const plan of plans) {
-    const sentenceFragments = fragmentRangesFor(sentences, plan);
-    for (const sentence of sentenceFragments) {
-      const length = sentence.end - sentence.start;
-      const ranges =
-        length <= MAX_FROZEN_QUOTE_LENGTH ? [sentence] : boundedContextRanges(textIndex, sentence);
-      for (const range of ranges) {
-        const quote = sliceByCodePoints(document.text!, range.start, range.end, textIndex);
-        if (quote === null || quote.trim() === "") continue;
-        const categories = categoryMatches(quote);
-        if (categories.length === 0) continue;
-        const selection = createFrozenQuoteSelection(scope, document, range, textIndex);
-        if (
-          !selection ||
-          selection.quote !== quote ||
-          !frozenQuoteMatchesDocument(selection, scope, document, textIndex)
-        )
-          continue;
-        candidates.push(
-          candidateFromSelection(selection, parsedDocumentId, categories, {
-            clauseId: plan.clauseId,
-            heading: plan.heading ?? "正文片段/标题未识别",
-            sourceLabel: plan.sourceLabel,
-            kind: "fragment",
-            page: null,
-          }),
-        );
+      !category.keywords.some((word) => text.includes(word)) &&
+      !ADDITIONAL_TOPIC[category.id]?.test(text)
+    )
+      return [];
+    const specific = rule.specific.test(text);
+    const action = rule.action.test(text);
+    if (!specific && !(action && (directive || party || (hasNumber && trigger)))) return [];
+    if (!specific && !hasNumber && DEFERRED.test(text)) return [];
+    if (
+      !specific &&
+      category.id === "confidentiality_data" &&
+      text.includes("数据") &&
+      !/保密|披露|个人信息|泄露|泄漏|销毁|删除|脱敏|加密|出境|转交|提供给|传输|转让/u.test(text)
+    )
+      return [];
+    const score =
+      5 * Number(specific) +
+      2 * Number(action) +
+      2 * Number(directive) +
+      3 * Number(party) +
+      2 * Number(hasNumber) +
+      Number(trigger) +
+      Number(contractRef);
+    return [{ id: category.id, score }];
+  }).sort((left, right) => right.score - left.score);
+  const strongest = ranked[0];
+  return strongest && strongest.score >= 5
+    ? {
+        categories: ranked.map((item) => item.id),
+        primary: strongest.id,
+        score: strongest.score,
       }
-    }
-  }
-  return candidates;
+    : null;
 }
 
-/**
- * Finds navigation-only candidates in a selected attempt's frozen document.
- * Keyword matches are labels for finding text, never risk findings or evidence.
- */
+function includesRange(outer: TextOffset, inner: TextOffset): boolean {
+  return outer.start <= inner.start && outer.end >= inner.end;
+}
+
+function overlapsRange(left: TextOffset, right: TextOffset): boolean {
+  return left.start < right.end && right.start < left.end;
+}
+
+function rateSentences(
+  document: ReviewDocument,
+  index: CodePointTextIndex,
+  ranges: readonly TextOffset[],
+): RatedSentence[] {
+  // Intersections with a malformed or misaligned structure never become quotes.
+  const sources = document.clauses
+    .filter(
+      ({ text_offset }) =>
+        Number.isInteger(text_offset.start) &&
+        Number.isInteger(text_offset.end) &&
+        text_offset.start >= 0 &&
+        text_offset.end > text_offset.start &&
+        text_offset.end <= index.codePoints.length,
+    )
+    .sort((left, right) => {
+      const leftLength = left.text_offset.end - left.text_offset.start;
+      const rightLength = right.text_offset.end - right.text_offset.start;
+      return leftLength - rightLength || left.text_offset.start - right.text_offset.start;
+    });
+  const rated: RatedSentence[] = [];
+  for (let indexOfRange = 0; indexOfRange < ranges.length; indexOfRange += 1) {
+    const first = ranges[indexOfRange]!;
+    let range = first;
+    // A sentence that supplies an exception belongs with the preceding obligation.
+    for (let next = ranges[indexOfRange + 1]; next; next = ranges[indexOfRange + 1]) {
+      const text = sliceByCodePoints(index.text, next.start, next.end, index);
+      if (text === null || !LEADING_EXCEPTION.test(text)) break;
+      range = { start: first.start, end: next.end };
+      indexOfRange += 1;
+    }
+    let source = sources.find(({ text_offset }) => includesRange(text_offset, range));
+    if (document.clauses.length > 0 && !source) {
+      source = sources.find(({ text_offset: node }) => {
+        if (node.start <= range.start || node.start >= range.end || node.end < range.end) {
+          return false;
+        }
+        const prefix = sliceByCodePoints(index.text, range.start, node.start, index);
+        return prefix !== null && SECTION_PREFIX.test(prefix.trim());
+      });
+      if (!source) continue;
+      range = { start: source.text_offset.start, end: range.end };
+    }
+    const length = range.end - range.start;
+    if (length < MIN_READING_QUOTE_LENGTH || length > MAX_READING_QUOTE_LENGTH) continue;
+    const text = sliceByCodePoints(index.text, range.start, range.end, index);
+    if (text === null) continue;
+    const fit = rankSentence(text);
+    if (fit) rated.push({ ...fit, range, key: duplicateKey(text), source });
+  }
+  return rated;
+}
+
+function selectSentences(rated: RatedSentence[]): RatedSentence[] {
+  const candidates = rated.sort(
+    (left, right) =>
+      right.score - left.score ||
+      left.range.end - left.range.start - (right.range.end - right.range.start) ||
+      left.range.start - right.range.start,
+  );
+  const selected: RatedSentence[] = [];
+  const seenQuotes = new Set<string>();
+  const seenTopics = new Set<KeyClauseCategory>();
+
+  for (const candidate of candidates) {
+    if (
+      seenTopics.has(candidate.primary) ||
+      seenQuotes.has(candidate.key) ||
+      selected.some(({ range }) => overlapsRange(range, candidate.range))
+    )
+      continue;
+    selected.push(candidate);
+    seenQuotes.add(candidate.key);
+    seenTopics.add(candidate.primary);
+  }
+  return selected.sort((left, right) => left.range.start - right.range.start);
+}
+
+/** Selects navigation-only excerpts in the current frozen source. */
 export function keyClauseNavigationFor(
   scope: FrozenQuoteScope | null,
   document: ReviewDocument | null,
@@ -355,87 +452,42 @@ export function keyClauseNavigationFor(
     return unavailable("当前冻结材料没有可定位正文。");
   }
 
-  const textIndex = createTextIndex(document.text);
+  const index = createTextIndex(document.text);
+  const sentences = sentenceRanges(index);
+  if (sentences === null) {
+    return unavailable("当前浏览器不支持原生句段定位，因此没有可定位的关键条款。");
+  }
+  const picked = selectSentences(rateSentences(document, index, sentences));
   const candidates: KeyClauseCandidate[] = [];
-  const fragmentPlans: FragmentPlan[] = [];
-  for (const clause of document.clauses) {
-    const exactQuote = sliceByCodePoints(
-      document.text,
-      clause.text_offset.start,
-      clause.text_offset.end,
-      textIndex,
-    );
-    if (exactQuote === null || exactQuote.trim() === "") continue;
-    const heading = clause.heading.trim();
-    const exactRangeLength = clause.text_offset.end - clause.text_offset.start;
-    if (!heading || exactRangeLength > MAX_FROZEN_QUOTE_LENGTH) {
-      fragmentPlans.push({
-        range: clause.text_offset,
-        clauseId: clause.id || null,
-        heading: heading || null,
-        sourceLabel: heading ? "正文片段/非完整条款" : "正文片段/标题未识别",
-      });
-      continue;
-    }
-    const selection = createFrozenQuoteSelection(scope, document, clause.text_offset, textIndex);
-    if (
-      !selection ||
-      selection.quote !== exactQuote ||
-      !frozenQuoteMatchesDocument(selection, scope, document, textIndex)
-    )
-      continue;
-    const categories = categoryMatches(`${heading}\n${selection.quote}`);
-    if (categories.length === 0) continue;
+  for (const { range, categories, source } of picked) {
+    const selection = createFrozenQuoteSelection(scope, document, range, index);
+    if (!selection || !frozenQuoteMatchesDocument(selection, scope, document, index)) continue;
+
+    const heading = source?.heading.trim() || null;
+    const wholeNode = heading && source && includesRange(range, source.text_offset);
+    const originalPage = source?.page;
+    // The parser's page belongs to its original start. A later excerpt has no proven page.
+    const page =
+      wholeNode &&
+      typeof originalPage === "number" &&
+      Number.isInteger(originalPage) &&
+      originalPage > 0
+        ? originalPage
+        : null;
     candidates.push(
       candidateFromSelection(selection, parsedDocumentId, categories, {
-        clauseId: clause.id,
-        heading,
-        sourceLabel: "结构化条款",
-        kind: "structured",
-        page:
-          clause.page !== null && Number.isInteger(clause.page) && clause.page > 0
-            ? clause.page
-            : null,
+        clauseId: source?.id || null,
+        heading: heading ?? "正文片段/标题未识别",
+        sourceLabel: wholeNode
+          ? "结构化条款"
+          : heading
+            ? "正文片段/非完整条款"
+            : "正文片段/标题未识别",
+        kind: wholeNode ? "structured" : "fragment",
+        page,
       }),
     );
   }
-
-  if (document.clauses.length === 0) {
-    fragmentPlans.push({
-      range: { start: 0, end: textIndex.codePoints.length },
-      clauseId: null,
-      heading: null,
-      sourceLabel: "正文片段/标题未识别",
-    });
-  }
-
-  if (fragmentPlans.length > 0) {
-    const sentences = sentenceRanges(textIndex);
-    if (sentences === null) {
-      if (candidates.length === 0) {
-        return unavailable("当前浏览器不支持原生句段定位，因此没有可定位的关键条款。");
-      }
-      return {
-        candidates: candidates.sort((left, right) => left.range.start - right.range.start),
-        message: "",
-        notice: "当前浏览器不支持原生句段定位，未生成无标题或超长条款的正文片段。",
-      };
-    }
-    candidates.push(
-      ...fragmentCandidatesFor(
-        scope,
-        document,
-        parsedDocumentId,
-        textIndex,
-        sentences,
-        fragmentPlans,
-      ),
-    );
-  }
-
-  candidates.sort(
-    (left, right) => left.range.start - right.range.start || left.range.end - right.range.end,
-  );
   return candidates.length > 0
     ? { candidates, message: "" }
     : unavailable("当前材料中没有可定位的关键条款。");
