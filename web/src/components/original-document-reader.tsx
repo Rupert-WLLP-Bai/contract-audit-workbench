@@ -34,6 +34,7 @@ export function OriginalDocumentReader({
   digest,
   text,
   quotes,
+  hasKeyClauses = false,
   keyClause = null,
   focusRange = null,
   onClearKeyClause,
@@ -45,6 +46,7 @@ export function OriginalDocumentReader({
   digest: string;
   text: string;
   quotes: readonly SourceQuote[];
+  hasKeyClauses?: boolean;
   keyClause?: {
     id: string;
     heading: string;
@@ -58,8 +60,15 @@ export function OriginalDocumentReader({
 }) {
   const noPage = quotes.length > 0 && quotes.every((quote) => quote.page === null);
   const quoteIdentity = quotes.map((quote) => quote.id).join("\u0000");
-  const [mode, setMode] = useState<"original" | "text">(() => (noPage ? "text" : "original"));
+  const [mode, setMode] = useState<"original" | "text">(() =>
+    noPage || (hasKeyClauses && quotes.length === 0) ? "text" : "original",
+  );
   const reader = useRef<HTMLElement>(null);
+  const initialKeyClausesShown = useRef(hasKeyClauses);
+  useEffect(() => {
+    if (hasKeyClauses && !initialKeyClausesShown.current && quotes.length === 0) setMode("text");
+    if (hasKeyClauses) initialKeyClausesShown.current = true;
+  }, [hasKeyClauses, quotes.length]);
   const effectiveMode = keyClause ? "text" : mode;
   useEffect(() => {
     if (noPage) setMode("text");
@@ -74,7 +83,7 @@ export function OriginalDocumentReader({
           `[data-active-source='true'] [data-offset='${focusRange.start}']`,
         )
       : (reader.current?.querySelector<HTMLElement>(
-          "[data-active-source='true'] .hit-key-clause[data-selected-key-clause='true']",
+          "[data-active-source='true'] [data-selected-key-clause='true']",
         ) ??
         reader.current?.querySelector<HTMLElement>("[data-active-source='true'] .hit-evidence"));
     const pane = mark?.closest<HTMLElement>(".col-doc");

@@ -28,7 +28,7 @@ export function KeyClauseNavigator({
   return (
     <section className="key-clause-navigator" aria-label="关键条款导航">
       <h3>关键条款导航</h3>
-      <p className="meta">仅从当前冻结审查尝试的解析材料读取已保存条款。</p>
+
       {navigation.candidates.length === 0 ? (
         <p className="meta" role="status">
           {navigation.message}
@@ -81,7 +81,7 @@ export function KeyClauseNavigator({
         </p>
       ) : null}
       <p className="meta">
-        关键词分类只用于查找，不表示风险判断；正文片段不是结构化条款，覆盖有限，可能遗漏需要人工关注的条款。
+        虚线标出常查条款，实线框表示当前选择；搜索和证据使用各自颜色。点选可定位，是否存在风险由审查人员判断。
       </p>
     </section>
   );

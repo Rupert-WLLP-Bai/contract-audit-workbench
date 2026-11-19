@@ -651,6 +651,45 @@ function withTimeout(result: ReviewWorkspace, state: string) {
   result.review_attempts = { attempt: selected, attempts: [selected] };
 }
 
+describe("frozen workspace key clauses", () => {
+  it("shows all matched positions without findings using the page source proofs", async () => {
+    const user = userEvent.setup();
+    const result = workspace();
+    const text = "😀付款后交付。质保三年。争议提交仲裁。";
+    const doc = documentOf("d1", "draft_contract", "合同.txt", text);
+    doc.parsed_document_id = "parse-1";
+    doc.clauses = [];
+    result.documents = [doc];
+    result.findings = [];
+    const selected = { ...attempt("attempt-1", 1, "completed"), parsed_document_ids: ["parse-1"] };
+    result.review_attempts = { attempt: selected, attempts: [selected] };
+    const view = renderView({
+      workspace: result,
+      selectedId: null,
+      surface: "document",
+      quoteScope: {
+        caseId: "c1",
+        runId: "r1",
+        attemptId: "attempt-1",
+        isFrozenAttempt: true,
+        parsedDocumentIds: ["parse-1"],
+        sourceProofs: [
+          { documentId: "d1", parsedDocumentId: "parse-1", originalDigest: doc.digest },
+        ],
+      },
+    });
+    const marks = view.container.querySelectorAll(".doc-text .hit-key-clause");
+    expect(marks).toHaveLength(3);
+    expect(Array.from(marks, (mark) => mark.textContent).join("")).toContain("质保三年");
+    expect(Array.from(marks, (mark) => mark.textContent).join("")).toContain("争议提交仲裁");
+    expect(view.container.querySelector(".hit-evidence")).toBeNull();
+    await user.click(screen.getByRole("button", { name: /正文片段\/标题未识别.*争议解决/ }));
+    expect(
+      view.container.querySelector("[data-selected-key-clause='true']")?.textContent,
+    ).toContain("仲裁");
+  });
+});
+
 describe("review workspace lifecycle", () => {
   it.each([
     ["connecting", "正在连接运行状态"],

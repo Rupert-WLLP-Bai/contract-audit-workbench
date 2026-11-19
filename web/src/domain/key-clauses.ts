@@ -41,6 +41,16 @@ export const KEY_CLAUSE_CATEGORIES = [
     keywords: ["责任", "违约", "赔偿", "违约金", "损失", "免责", "责任限制"],
   },
   {
+    id: "warranty",
+    label: "质保售后",
+    keywords: ["质保", "保修", "质量保证", "售后", "维修", "缺陷责任"],
+  },
+  {
+    id: "dispute_resolution",
+    label: "争议解决",
+    keywords: ["争议解决", "争议", "仲裁", "诉讼", "管辖", "适用法律"],
+  },
+  {
     id: "confidentiality_data",
     label: "保密数据",
     keywords: ["保密", "商业秘密", "数据", "个人信息", "信息安全", "隐私", "网络安全"],
@@ -286,7 +296,7 @@ function fragmentCandidatesFor(
         if (
           !selection ||
           selection.quote !== quote ||
-          !frozenQuoteMatchesDocument(selection, scope, document)
+          !frozenQuoteMatchesDocument(selection, scope, document, textIndex)
         )
           continue;
         candidates.push(
@@ -359,7 +369,7 @@ export function keyClauseNavigationFor(
     if (
       !selection ||
       selection.quote !== exactQuote ||
-      !frozenQuoteMatchesDocument(selection, scope, document)
+      !frozenQuoteMatchesDocument(selection, scope, document, textIndex)
     )
       continue;
     const categories = categoryMatches(`${heading}\n${selection.quote}`);

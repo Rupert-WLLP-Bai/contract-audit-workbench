@@ -92,6 +92,7 @@ export function frozenQuoteMatchesDocument(
   selection: FrozenQuoteSelection | null,
   scope: FrozenQuoteScope | null,
   document: ReviewDocument | undefined,
+  textIndex?: CodePointTextIndex,
 ): document is ReviewDocument {
   if (selection === null || scope === null || document === undefined || document.text === null)
     return false;
@@ -105,6 +106,6 @@ export function frozenQuoteMatchesDocument(
     selection.parsedDocumentId === parsedDocumentId &&
     selection.digest === document.digest &&
     Array.from(selection.quote).length <= 4096 &&
-    sliceByCodePoints(document.text, selection.start, selection.end) === selection.quote
+    sliceByCodePoints(document.text, selection.start, selection.end, textIndex) === selection.quote
   );
 }
