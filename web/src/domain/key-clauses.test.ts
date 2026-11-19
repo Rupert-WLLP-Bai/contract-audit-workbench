@@ -104,6 +104,26 @@ describe("key clause navigation", () => {
     });
   });
 
+  it("locates explicit contract and procurement amounts without marking background sentences", () => {
+    const source =
+      "😀项目背景为网络建设。合同总价100万元。合同金额为100万元。采购金额为120万元。其他说明。";
+    const result = keyClauseNavigationFor(scope, documentOf({ text: source, clauses: [] }));
+
+    expect(result.candidates.map((candidate) => candidate.quote)).toEqual([
+      "合同总价100万元。",
+      "合同金额为100万元。",
+      "采购金额为120万元。",
+    ]);
+    expect(result.candidates.every((candidate) => candidate.categories.includes("payment"))).toBe(
+      true,
+    );
+    for (const candidate of result.candidates) {
+      expect(Array.from(source).slice(candidate.range.start, candidate.range.end).join("")).toBe(
+        candidate.quote,
+      );
+    }
+  });
+
   it("rejects a document parsed by a different attempt", () => {
     const result = keyClauseNavigationFor(
       { ...scope, parsedDocumentIds: ["parsed-other"] },

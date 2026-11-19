@@ -441,33 +441,37 @@ function SelectableDocText({
   segments: TextSegment[];
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
+  const { ranges } = useContext(ClauseContext);
   if (document.text === null) return <p>这份材料还没有可阅读的正文。</p>;
   return (
-    <div
-      className="doc-text"
-      tabIndex={0}
-      aria-label={`${document.filename}原文`}
-      onMouseUp={(event) =>
-        publishQuoteSelection(
-          event.currentTarget,
-          document,
-          scope,
-          textIndex,
-          onQuoteSelectionChange,
-        )
-      }
-      onKeyUp={(event) =>
-        publishQuoteSelection(
-          event.currentTarget,
-          document,
-          scope,
-          textIndex,
-          onQuoteSelectionChange,
-        )
-      }
-    >
-      <DocSegments segments={segments} />
-    </div>
+    <>
+      {ranges.length > 0 ? <p className="meta doc-key-clause-hint">虚线标出常查条款。</p> : null}
+      <div
+        className="doc-text"
+        tabIndex={0}
+        aria-label={`${document.filename}原文`}
+        onMouseUp={(event) =>
+          publishQuoteSelection(
+            event.currentTarget,
+            document,
+            scope,
+            textIndex,
+            onQuoteSelectionChange,
+          )
+        }
+        onKeyUp={(event) =>
+          publishQuoteSelection(
+            event.currentTarget,
+            document,
+            scope,
+            textIndex,
+            onQuoteSelectionChange,
+          )
+        }
+      >
+        <DocSegments segments={segments} />
+      </div>
+    </>
   );
 }
 

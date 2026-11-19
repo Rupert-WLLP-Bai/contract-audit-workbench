@@ -171,20 +171,27 @@
   padding: 0;
   list-style: none;
 }
-.key-clause-choice {
+.key-clause-choice.ant-btn {
   display: grid;
   width: 100%;
+  height: auto;
+  min-height: 32px;
   gap: var(--space-1);
+  padding-block: var(--space-2);
+  justify-content: start;
+  justify-items: start;
   text-align: start;
   white-space: normal;
+  overflow-wrap: anywhere;
+}
+.review-workspace-layout.workspace-view-context .doc-key-clause-hint {
+  display: none;
 }
 .key-clause-choice[aria-pressed="true"] {
   border-color: var(--state-progress);
   background: var(--state-progress-bg);
 }
-.key-clause-source,
-.key-clause-categories,
-.key-clause-page {
+.key-clause-categories {
   color: var(--state-neutral);
   font-size: var(--font-size-ui);
 }

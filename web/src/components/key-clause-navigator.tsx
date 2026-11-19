@@ -51,15 +51,10 @@ export function KeyClauseNavigator({
                 onClick={() => onSelect(candidate)}
               >
                 <span>{candidate.heading}</span>
-                <span className="key-clause-source">{candidate.sourceLabel}</span>
                 <span className="key-clause-categories">
                   {candidate.categories.map(keyClauseCategoryLabel).join(" · ")}
+                  {candidate.page === null ? null : ` · 起始页：第 ${candidate.page} 页`}
                 </span>
-                {candidate.page === null ? (
-                  <span className="key-clause-page">页码未记录</span>
-                ) : (
-                  <span className="key-clause-page">起始页：第 {candidate.page} 页</span>
-                )}
               </Button>
             </li>
           ))}

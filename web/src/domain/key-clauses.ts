@@ -23,7 +23,19 @@ export const KEY_CLAUSE_CATEGORIES = [
   {
     id: "payment",
     label: "付款",
-    keywords: ["付款", "支付", "价款", "结算", "预付款", "尾款", "账款", "发票"],
+    keywords: [
+      "付款",
+      "支付",
+      "价款",
+      "结算",
+      "预付款",
+      "尾款",
+      "账款",
+      "发票",
+      "合同总价",
+      "合同金额",
+      "采购金额",
+    ],
   },
   {
     id: "delivery_acceptance",
