@@ -1314,7 +1314,6 @@ async function fillSupplementSource(user: ReturnType<typeof userEvent.setup>, la
 }
 
 describe("application routes and API contract", () => {
-
   it("opens only the requested verified frozen material and explains a missing version", async () => {
     const api = new Service();
     const docs = ["d1", "d2"].map((id, i) => {
@@ -1340,11 +1339,22 @@ describe("application routes and API contract", () => {
     });
     api.cases.get("c1")!.documents = docs;
     api.addReview("completed");
-    const { container, router, user } = open(api, "/cases/c1/reviews/r1?attempt_id=attempt-r1-1&review_section=document&source_document=d2");
-    await waitFor(() => expect(container.querySelector('.doc-pane[data-document-version-id="d2"]')).toBeVisible());
+    const { container, router, user } = open(
+      api,
+      "/cases/c1/reviews/r1?attempt_id=attempt-r1-1&review_section=document&source_document=d2",
+    );
+    await waitFor(() =>
+      expect(container.querySelector('.doc-pane[data-document-version-id="d2"]')).toBeVisible(),
+    );
     expect(screen.getByRole("heading", { level: 1, name: "接入设备采购" })).toBeVisible();
-    await act(async () => { await router.navigate("/cases/c1/reviews/r1?attempt_id=attempt-r1-1&review_section=document&source_document=missing"); });
-    expect(await screen.findByRole("alert")).toHaveTextContent("所选材料不属于当前可核验的冻结版本");
+    await act(async () => {
+      await router.navigate(
+        "/cases/c1/reviews/r1?attempt_id=attempt-r1-1&review_section=document&source_document=missing",
+      );
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "所选材料不属于当前可核验的冻结版本",
+    );
     expect(container.querySelector(".doc-pane")).toBeNull();
     await user.click(screen.getByRole("button", { name: "查看本次材料" }));
     await waitFor(() => expect(container.querySelector(".doc-pane")).toBeVisible());
