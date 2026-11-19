@@ -87501,7 +87501,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/api-docs-page.test.tsx": {
-      "purpose": "Checks the web behavior for “loads the local OpenAPI contract and displays real route metadata”; representative assertions cover loads the local OpenAPI contract and displays real route metadata, states when the operation filter has no matches, sends a filled same-origin request and shows the unmodified response. It protects the rendered/API state expected by this component without starting the full browser journey.",
+      "purpose": "Checks OpenAPI loading, operation filtering and same-origin requests, and verifies the deployed management path for both shared and separate origins.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -87528,15 +87528,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-15",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "84902a10cf146694d2e967211e0da2f49d402c88",
+          "commit": "88f58f1a95cecb4278eb05f69ef720e8b8602753",
           "path": "web/src/pages/api-docs-page.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -87579,7 +87579,7 @@
         "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "af463f5aa7da15df8fecd3d91bcdcfc20d71086f",
+          "commit": "88f58f1a95cecb4278eb05f69ef720e8b8602753",
           "path": "web/src/pages/api-docs-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “loads the local OpenAPI contract and displays real route metadata”; representative assertions cover loads the local OpenAPI contract and displays real route metadata, states when the operation filter has no matches, sends a filled same-origin request and shows the unmodified response. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Checks OpenAPI loading, operation filtering and same-origin requests, and verifies the deployed management path for both shared and separate origins.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
