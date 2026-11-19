@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Provides shared strict response readers for counts, nullable text, arrays and domain values; malformed API shapes are rejected instead of silently coerced.
+// Purpose: Parses backend wire responses at the client boundary, checking the shape of review data and typed frozen payment-term observations.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r8
+// Updated: 2026-11-19
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -42,6 +42,7 @@ import type {
   LLMProbeResult,
   ModelCallTrace,
   ReviewDocument,
+  ReviewTableCell,
   ReviewRun,
   ReviewRunSummary,
   ReviewAttempts,
@@ -648,6 +649,9 @@ function parseAnchor(value: unknown): EvidenceAnchor {
     text_offset: parseOffset(record.text_offset),
     bbox: parseBox(record.bbox),
     mismatch_reason: optionalString(record, "mismatch_reason"),
+    ...(Array.isArray(record.observation_labels)
+      ? { observation_labels: stringList(record.observation_labels) }
+      : {}),
   };
 }
 
@@ -713,6 +717,7 @@ function parseClause(value: unknown): ClauseNode | null {
 
 function parseReviewDocument(value: unknown): ReviewDocument {
   const record = recordOf(value, "document");
+  const tableCells = parseReviewTableCells(record.table_cells);
   return {
     ...parseDocument(value),
     parsed_document_id: optionalString(record, "parsed_document_id"),
@@ -720,7 +725,24 @@ function parseReviewDocument(value: unknown): ReviewDocument {
     clauses: Array.isArray(record.clauses)
       ? record.clauses.map(parseClause).filter((item): item is ClauseNode => item !== null)
       : [],
+    ...(tableCells ? { table_cells: tableCells } : {}),
   };
+}
+
+function parseReviewTableCells(value: unknown): ReviewTableCell[] | undefined {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 4096) return undefined;
+  const cells: ReviewTableCell[] = [];
+  for (const cell of value) {
+    if (!isRecord(cell)) return undefined;
+    const tableId = optionalString(cell, "table_id");
+    const row = nonNegativeIntegerOrNull(cell.row);
+    const column = nonNegativeIntegerOrNull(cell.column);
+    const offset = parseOffset(cell.text_offset);
+    if (!tableId?.trim() || !row || !column || !offset || offset.start === offset.end)
+      return undefined;
+    cells.push({ table_id: tableId, row, column, text_offset: offset });
+  }
+  return cells;
 }
 
 function parseReviewRun(value: unknown): ReviewRun {
@@ -1000,6 +1022,7 @@ function parseEvaluation(value: unknown): ConstraintEvaluation {
     finding_id: optionalString(row, "finding_id"),
     reason_code: optionalString(row, "reason_code") ?? "",
     fact_ids: stringList(row.fact_ids),
+    ...(Array.isArray(row.evidence) ? { evidence: recordList(row.evidence, parseAnchor) } : {}),
   };
 }
 

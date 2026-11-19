@@ -1,0 +1,94 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles the contract desk source switch, filters, results table and original-reading controls with shared responsive page and surface tokens. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-19 */
+/* Updated: 2026-11-19 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+.contract-desk-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.contract-desk-sources > * {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-1);
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+}
+
+.contract-desk-sources [aria-current] {
+  border-color: var(--action-primary);
+  color: var(--action-primary-active);
+  font-weight: 600;
+}
+
+.contract-desk-open {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+.contract-desk-open {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-default);
+}
+
+.contract-desk-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 360px) minmax(0, 160px) auto auto;
+  justify-content: start;
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.contract-desk-mine {
+  align-self: center;
+}
+
+.contract-desk-cell {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.contract-desk-secondary {
+  color: var(--text-secondary);
+}
+
+.contract-desk-filter-popover {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 192px;
+}
+
+.contract-desk-filter-popover > button {
+  justify-self: start;
+}
+
+@media (max-width: 767px) {
+  .contract-desk .page-pattern-heading,
+  .contract-desk .page-pattern-summary,
+  .contract-desk .contract-desk-sources {
+    margin-bottom: var(--space-2);
+  }
+
+  .contract-desk .page-pattern-filters {
+    padding: var(--space-3);
+  }
+
+  .contract-desk-filters {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}

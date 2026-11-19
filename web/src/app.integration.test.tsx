@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “application routes and API contract”; representative assertions cover confirms the server-provided legacy material candidates before opening a new review, logs in, creates a case, uploads source versions, reviews, decides, and logs out, recovers admin settings through its isolated audience and API. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Checks authorized routes, exact frozen sources, lifecycle and API effects, including review drawer navigation and leave protection for unsaved supplements.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r8
+// Updated: 2026-11-19
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1257,6 +1257,14 @@ async function openReviewSection(
   if (button.getAttribute("aria-pressed") !== "true") await user.click(button);
 }
 
+async function navigateFromReviewToCases(user: ReturnType<typeof userEvent.setup>) {
+  const trigger = screen.getByRole("button", { name: "打开主导航" });
+  await user.click(trigger);
+  expect(trigger).toHaveAttribute("aria-expanded", "true");
+  const navigation = await screen.findByRole("navigation", { name: "主导航" });
+  await user.click(within(navigation).getByRole("link", { name: "案件与材料" }));
+}
+
 async function selectBusinessTime() {
   fireEvent.change(await screen.findByLabelText("审查业务时间（北京时间）"), {
     target: { value: "2026-10-21T08:00" },
@@ -1314,6 +1322,53 @@ async function fillSupplementSource(user: ReturnType<typeof userEvent.setup>, la
 }
 
 describe("application routes and API contract", () => {
+  it("opens only the requested verified frozen material and explains a missing version", async () => {
+    const api = new Service();
+    const docs = ["d1", "d2"].map((id, i) => {
+      const digest = (i ? "b" : "a").repeat(64);
+      return doc(id, i ? "draft_contract" : "procurement", {
+        digest,
+        parsed_document_id: `parsed-${id}`,
+        parsed_document: {
+          id: `parsed-${id}`,
+          document_id: id,
+          original_digest: digest,
+          parser_id: "parser",
+          parser_version: "1",
+          config_hash: "config",
+          normalization_version: "1",
+          normalized_digest: "normalized",
+          ir_digest: "ir",
+          artifact_digest: "artifact",
+          created_at: at,
+          status: "ready",
+        },
+      });
+    });
+    api.cases.get("c1")!.documents = docs;
+    api.addReview("completed");
+    const { container, router, user } = open(
+      api,
+      "/cases/c1/reviews/r1?attempt_id=attempt-r1-1&review_section=document&source_document=d2",
+    );
+    await waitFor(() =>
+      expect(container.querySelector('.doc-pane[data-document-version-id="d2"]')).toBeVisible(),
+    );
+    expect(screen.getByRole("heading", { level: 1, name: "接入设备采购" })).toBeVisible();
+    await act(async () => {
+      await router.navigate(
+        "/cases/c1/reviews/r1?attempt_id=attempt-r1-1&review_section=document&source_document=missing",
+      );
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "所选材料不属于当前可核验的送审版本",
+    );
+    expect(container.querySelector(".doc-pane")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "查看本次材料" }));
+    await waitFor(() => expect(container.querySelector(".doc-pane")).toBeVisible());
+    expect(router.state.location.search).not.toContain("source_document");
+  });
+
   it("shows server case identity and removes it when case access is revoked", async () => {
     const api = new Service();
     Object.assign(api.cases.get("c1")!, { case_number: "案-2026-001", owner_name: "经办人员" });
@@ -2570,7 +2625,7 @@ describe("application routes and API contract", () => {
     await user.click(await within(queue).findByRole("button", { name: /待补件/ }));
     await user.click(await within(queue).findByRole("button", { name: "查看补件来源" }));
     expect(await screen.findByRole("heading", { name: "发起补充材料请求" })).toBeVisible();
-    await user.click(within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件" }));
+    await navigateFromReviewToCases(user);
     expect(await screen.findByRole("heading", { name: "案件" })).toBeVisible();
     expect(screen.queryByText("有未提交的草稿")).not.toBeInTheDocument();
   });
@@ -2587,12 +2642,14 @@ describe("application routes and API contract", () => {
     const beforeUnload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(beforeUnload);
     expect(beforeUnload.defaultPrevented).toBe(true);
-    await user.click(within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件" }));
+    await navigateFromReviewToCases(user);
     expect([...router.state.blockers.values()].some((blocker) => blocker.state === "blocked")).toBe(
       true,
     );
-    expect(await screen.findByText("有未提交的草稿")).toBeVisible();
-    expect(screen.getByRole("dialog")).toContainElement(screen.getByText("有未提交的草稿"));
+    const title = await screen.findByText("有未提交的草稿");
+    expect(title).toBeVisible();
+    const guard = screen.getAllByRole("dialog").find((dialog) => dialog.contains(title));
+    expect(guard).toBeVisible();
     await user.click(screen.getByRole("button", { name: "留在本页" }));
     expect(screen.getByLabelText("需要补充的问题")).toHaveValue("请提供质保期限依据");
   });
@@ -2605,7 +2662,7 @@ describe("application routes and API contract", () => {
     await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
     expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
     expect(screen.getByLabelText("完成期限（本地时间）")).toHaveValue("2026-11-06T10:00");
-    await user.click(within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件" }));
+    await navigateFromReviewToCases(user);
     expect(await screen.findByRole("heading", { name: "案件" })).toBeVisible();
     expect(screen.queryByText("有未提交的草稿")).not.toBeInTheDocument();
   });
@@ -3456,6 +3513,7 @@ describe("application routes and API contract", () => {
         ),
       ).toBe(true),
     );
+    await user.click(screen.getByText(/^执行记录 · 第 /));
     await chooseOption(user, screen.getByLabelText("查看执行记录"), /第 2 次，\s*待人工，\s*最新/);
     await user.click(await screen.findByRole("radio", { name: "证据不足" }));
     expect(screen.getByRole("radio", { name: "证据不足" })).toBeEnabled();
@@ -3618,7 +3676,7 @@ describe("application routes and API contract", () => {
     api.addReview("running");
     const { user } = open(api, "/cases/c1/reviews/r1");
     await user.click(await screen.findByRole("button", { name: "取消本次执行" }));
-    expect(await screen.findByText(/冻结输入尚不能核对/)).toBeInTheDocument();
+    expect(await screen.findByText(/当次审查依据尚不能核对/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "重新发起已取消审查" })).not.toBeInTheDocument();
   });
 
@@ -3667,7 +3725,7 @@ describe("application routes and API contract", () => {
       retry_cause: "none",
     };
     open(api, "/cases/c1/reviews/r1");
-    expect(await screen.findByText(/该执行尚未冻结审查输入/)).toBeInTheDocument();
+    expect(await screen.findByText(/本次送审内容尚未确定/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "返回审查准备清单" })).toHaveAttribute(
       "href",
       "/cases/c1#review-readiness",
@@ -3817,6 +3875,7 @@ describe("application routes and API contract", () => {
     ];
     const { user } = open(api, "/cases/c1/reviews/r1");
     await screen.findByRole("heading", { name: "审查工作区" });
+    await user.click(screen.getByText(/^执行记录 · 第 /));
     await chooseOption(user, screen.getByLabelText("查看执行记录"), /第 1 次，\s*失败/);
     expect(
       await screen.findByText("当前选择的是之前的执行记录，只能查看，不能提交审查判断。"),

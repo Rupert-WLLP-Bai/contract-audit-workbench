@@ -1,0 +1,22 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles the integrated DOCX workspace, including responsive editor and document action controls aligned with the application surfaces. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-19 */
+/* Updated: 2026-11-19 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+.docx-workspace-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 8px 0;
+}
+.docx-workspace-editor {
+  height: min(70vh, 760px);
+  min-height: 320px;
+  border: 1px solid var(--line, #d9d9d9);
+  overflow: auto;
+}

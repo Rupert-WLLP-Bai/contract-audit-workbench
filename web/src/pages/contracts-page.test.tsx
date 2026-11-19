@@ -1,16 +1,17 @@
 // File metadata (manifest mirror):
-// Purpose: Checks readable ledger cells, saved-view mutations, frozen CSV export identity, technical state fallback, keyboard tab navigation, and preservation of unsaved contract drafts.
+// Purpose: Checks registration and ledger workflows, saved filters and exports, and return to the authorized contract material list without losing its filters.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-19
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   CONTRACT_LEDGER_COLUMNS,
@@ -106,7 +107,9 @@ function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <ContractsPage />
+      <MemoryRouter>
+        <ContractsPage />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Displays the read-only client and admin health workspaces. Top facts are derived only from services present in the health snapshot; missing observations stay 未报告 instead of being promoted to normal.
+// Purpose: Presents current system health, service and dependency views with explicit stale or unavailable states, refresh and drill-down controls.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-19
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -35,6 +35,7 @@ import {
 import type { SessionAudience } from "../api/types";
 import { errorMessage, isForbidden, isUnauthenticated } from "../api/http";
 import { PageStatus } from "../components/page-status";
+import { PageHeading } from "../components/page-patterns";
 import { CollapsibleSection } from "../components/collapsible-section";
 import { formatDateTime } from "../domain/review";
 import "./system-health-page.css";
@@ -1273,23 +1274,20 @@ export function SystemHealthPage({ audience = "client" }: { audience?: SessionAu
   );
   return (
     <section className="page health-page" style={pageStyle}>
-      <header className="page-head">
-        <div>
-          <h1>{audience === "admin" ? "基础设施" : "系统健康"}</h1>
-          <p>服务、中间件与容器的实际运行状态。每 30 秒自动刷新。</p>
-        </div>
-        <div className="health-refresh">
-          <span className="health-note">最近观测 {formatDateTime(data.observed_at)}</span>
+      <PageHeading
+        title={audience === "admin" ? "基础设施" : "系统健康"}
+        description={`最近观测 ${formatDateTime(data.observed_at)} · 每 30 秒刷新`}
+        actions={
           <Button
-            aria-label={"刷新状态"}
+            aria-label="刷新状态"
             type="primary"
             loading={query.isFetching}
             onClick={() => void query.refetch()}
           >
             刷新状态
           </Button>
-        </div>
-      </header>
+        }
+      />
       {query.isError ? (
         <Alert
           type="warning"

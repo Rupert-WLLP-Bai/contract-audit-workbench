@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Decode only the business fields. Unknown technical fields in a persisted agent record must never become part of the workspace response. Related `httpapi` operations include summaryJSON, detailJSON, documentJSON, parsedDocumentJSON.
+// Purpose: Projects authorized domain state into HTTP responses and verifies frozen-source identity and text before presenting payment observations.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r7
+// Updated: 2026-11-19
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,11 +12,15 @@ package httpapi
 
 import (
 	"encoding/json"
+	"slices"
+	"strconv"
 	"time"
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/agentflow"
+	"contractaudit/internal/apidocs/contracts"
 	"contractaudit/internal/docir"
+	"contractaudit/internal/engine"
 	"contractaudit/internal/reviewstatus"
 	"contractaudit/internal/store"
 )
@@ -188,6 +192,28 @@ func documentJSON(doc store.Interpreted, withText, superseded bool) map[string]a
 	return out
 }
 
+func reviewTableCells(doc store.Interpreted) []contracts.ReviewTableCell {
+	// The full IR stays with the frozen artifact. These spans let the reader
+	// extract only authentic table values from the text it already received.
+	if !doc.Ready || doc.IR.CoordinateSpace != docir.CoordinateSpace || doc.IR.NormalizedText != doc.Text ||
+		len(doc.IR.Cells) == 0 || len(doc.IR.Cells) > 4096 {
+		return nil
+	}
+	text := []rune(doc.Text)
+	out := make([]contracts.ReviewTableCell, 0, len(doc.IR.Cells))
+	for _, cell := range doc.IR.Cells {
+		if cell.TableID == "" || cell.Row < 1 || cell.Col < 1 || cell.Start < 0 ||
+			cell.End <= cell.Start || cell.End > len(text) || string(text[cell.Start:cell.End]) != cell.Text {
+			return nil
+		}
+		out = append(out, contracts.ReviewTableCell{
+			Table_id: cell.TableID, Row: int64(cell.Row), Column: int64(cell.Col),
+			Text_offset: contracts.TextOffset{Start: int64(cell.Start), End: int64(cell.End)},
+		})
+	}
+	return out
+}
+
 func parsedDocumentJSON(parsed *store.ParsedDocument) any {
 	if parsed == nil {
 		return nil
@@ -215,9 +241,20 @@ func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) ma
 	}
 	docs := make([]any, len(ws.Documents))
 	byID := map[string]store.Interpreted{}
+	var frozenParseIDs []string
+	if ws.Execution != nil && ws.Execution.Attempt != nil && ws.Execution.Attempt.HistoryKind == "frozen" {
+		frozenParseIDs = ws.Execution.Attempt.ParsedDocumentIDs
+	}
 	for i, doc := range ws.Documents {
 		replaced := len(inSnapshot) > 0 && !inSnapshot[doc.Document.ID]
-		docs[i] = documentJSON(doc, true, replaced)
+		projected := documentJSON(doc, true, replaced)
+		if inSnapshot[doc.Document.ID] && doc.ParsedDocument != nil &&
+			doc.ParsedDocument.DocumentID == doc.Document.ID && slices.Contains(frozenParseIDs, doc.ParsedDocument.ID) {
+			if cells := reviewTableCells(doc); len(cells) > 0 {
+				projected["table_cells"] = cells
+			}
+		}
+		docs[i] = projected
 		byID[doc.Document.ID] = doc
 		if doc.ParsedDocument != nil {
 			byID["parsed:"+doc.ParsedDocument.ID] = doc
@@ -262,11 +299,43 @@ func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) ma
 		if objectRefs == nil {
 			objectRefs = []string{}
 		}
-		evals[i] = map[string]any{
+		projected := map[string]any{
 			"id": ev.ID, "domain": ev.Domain, "relation": ev.Relation,
 			"rule_version": ev.RuleVersion, "reason": ev.Reason, "finding_id": findingID,
 			"rule_id": ev.RuleID, "capability_id": ev.CapabilityID, "reason_code": ev.ReasonCode, "fact_ids": factIDs, "object_refs": objectRefs,
 		}
+		if ev.RuleID == engine.SingleContractPaymentTermsRule && ev.RuleVersion == ev.RuleID &&
+			ev.CapabilityID == engine.SingleContractPaymentTermsCapability && ws.Execution != nil &&
+			ws.Execution.Attempt != nil && ws.Execution.Attempt.ID == ev.AttemptID {
+			var evidence []any
+			byRef := make(map[store.EvaluationEvidenceRef]map[string]any)
+			for index, entry := range ev.Evidence {
+				ref := entry.Ref
+				label := engine.PaymentTermLabel(entry.FactID)
+				if label == "" || !slices.Contains(frozenParseIDs, ref.ParsedDocumentID) || !inSnapshot[ref.DocumentID] {
+					continue
+				}
+				if item := byRef[ref]; item != nil {
+					labels, _ := item["observation_labels"].([]string)
+					if !slices.Contains(labels, label) {
+						item["observation_labels"] = append(labels, label)
+					}
+					continue
+				}
+				anchor := store.Anchor{ID: ev.ID + ":" + strconv.Itoa(index+1), DocumentID: ref.DocumentID,
+					ParsedDocumentID: ref.ParsedDocumentID, NormalizedDigest: ref.NormalizedDigest,
+					Quote: ref.Quote, Start: ref.Start, End: ref.End, Status: docir.StatusLocated}
+				if item := anchorJSON(anchor, anchorDocument(anchor, byID)); item["status"] == docir.StatusLocated {
+					item["observation_labels"] = []string{label}
+					byRef[ref] = item
+					evidence = append(evidence, item)
+				}
+			}
+			if len(evidence) > 0 {
+				projected["evidence"] = evidence
+			}
+		}
+		evals[i] = projected
 	}
 	var attempts, review any
 	if ws.Execution != nil {

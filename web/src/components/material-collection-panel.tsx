@@ -1,15 +1,15 @@
 // File metadata (manifest mirror):
-// Purpose: Renders MaterialCollectionPanel, the material collection panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.
+// Purpose: Renders current and historical material versions, locates authorized deep links and opens the DOCX workspace with permission enforcement.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r5
+// Updated: 2026-11-19
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Button, Checkbox, Select, Upload } from "antd";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ApiError,
   assertCommandContextCurrent,
@@ -24,6 +24,9 @@ import { formatDateTime, parseLabel, parseTone, roleLabel } from "../domain/revi
 import { ParsedDocumentSummary } from "./parsed-document-summary";
 import { StatusText } from "./status-text";
 import { TechnicalDetail } from "./technical-detail";
+import { DirtyLeaveGuard } from "./dirty-leave-guard";
+
+const DocxWorkspace = lazy(() => import("./docx-workspace"));
 
 const roles: Array<{ value: MaterialProjection["role"]; label: string }> = [
   { value: "procurement", label: "采购文件" },
@@ -55,7 +58,15 @@ interface Props {
   caseDetail: CaseDetail;
   canWrite: boolean;
   actorId: string;
+  source?: { documentId: string; visit: string };
 }
+
+type MaterialView = "current" | "history" | "parsing";
+const materialViews: { key: MaterialView; label: string }[] = [
+  { key: "current", label: "当前材料" },
+  { key: "history", label: "版本历史" },
+  { key: "parsing", label: "解析记录" },
+];
 
 function fixedPurpose(
   role: MaterialProjection["role"],
@@ -73,14 +84,43 @@ function legacyStatusLabel(material: MaterialProjection): string {
   return material.legacy_selected ? "旧系统兼容选择，待确认" : "旧材料待确认";
 }
 
-export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props) {
+export function MaterialCollectionPanel({ caseDetail, canWrite, actorId, source }: Props) {
+  const [editorSession, setEditorSession] = useState<{
+    document: CaseDetail["documents"][number];
+    material: MaterialProjection;
+  } | null>(null);
+  const [editorDirty, setEditorDirty] = useState(false);
+  const onEditorDirty = useCallback((dirty: boolean) => setEditorDirty(dirty), []);
   const upload = useUploadDocument(caseDetail.id);
   const reparse = useReparse(caseDetail.id);
   const confirmSelection = useConfirmLegacyMaterialSelection(caseDetail.id);
   const materials = caseDetail.materials;
   const versions = caseDetail.material_versions;
   const selection = caseDetail.material_selection;
-  const [activeMaterialView, setActiveMaterialView] = useState("current");
+  const hasProjection = Boolean(materials && versions && selection);
+  const sourceId = source?.documentId;
+  let sourceView: MaterialView | undefined;
+  if (
+    sourceId &&
+    caseDetail.documents.filter((document) => document.id === sourceId).length === 1
+  ) {
+    if (
+      !hasProjection ||
+      materials?.filter((item) => item.current_document_id === sourceId).length === 1
+    ) {
+      sourceView = "current";
+    } else if (versions?.filter((item) => item.document_id === sourceId).length === 1) {
+      sourceView = "history";
+    }
+  }
+  const [materialView, setMaterialView] = useState<{ key: MaterialView; visit?: string }>();
+  const activeMaterialView =
+    materialView?.visit === source?.visit && materialView
+      ? materialView.key
+      : (sourceView ?? "current");
+  const headingId = source && !sourceView ? "case-material-source" : "case-materials-title";
+  const anchorFor = (id: string, view: MaterialView) =>
+    id === sourceId && view === sourceView ? "case-material-source" : undefined;
   const [role, setRole] = useState<MaterialProjection["role"]>("procurement");
   const [attachmentPurpose, setAttachmentPurpose] = useState<MaterialPurpose>("supplement");
   const [intent, setIntent] = useState<"add" | "replace">("add");
@@ -110,13 +150,13 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
 
   if (!materials || !versions || !selection) {
     return (
-      <section id="case-materials" aria-labelledby="case-materials-title">
-        <h2 id="case-materials-title">材料</h2>
+      <section id="case-materials" aria-labelledby={headingId}>
+        <h2 id={headingId}>材料</h2>
         <p role="alert">材料信息暂不可用，请刷新重试或联系管理员。</p>
         <ul className="document-list">
           {caseDetail.documents.map((document) => (
             <li key={document.id} data-document-id={document.id}>
-              <strong>{document.filename}</strong>
+              <strong id={anchorFor(document.id, "current")}>{document.filename}</strong>
               <p className="meta">{roleLabel(document.role)}，等待材料版本信息</p>
             </li>
           ))}
@@ -253,15 +293,48 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
       { version: materialSelection.version, document_ids: documentIds },
       {
         onSuccess: () => {
-          setSelectionNote("材料集合已由你确认。新的审查会按此集合冻结输入，历史审查保持不变。");
+          setSelectionNote("材料集合已由你确认。新的审查会使用此材料集合，历史审查保持不变。");
         },
       },
     );
   }
 
   return (
-    <section id="case-materials" aria-labelledby="case-materials-title">
-      <h2 id="case-materials-title">材料</h2>
+    <section id="case-materials" aria-labelledby={headingId}>
+      {editorSession && (
+        <>
+          <DirtyLeaveGuard
+            dirty={editorDirty}
+            description="修改稿尚未保存。离开后将丢失本次修改。"
+          />
+          <Suspense fallback={<p role="status">正在加载编辑器…</p>}>
+            <DocxWorkspace
+              caseId={caseDetail.id}
+              documentId={editorSession.document.id}
+              filename={editorSession.document.filename}
+              digest={editorSession.document.digest}
+              material={editorSession.material}
+              canSave={
+                canWrite &&
+                materials.some(
+                  (material) =>
+                    material.material_id === editorSession.material.material_id &&
+                    material.current_document_id === editorSession.document.id,
+                ) &&
+                caseDetail.documents.some(
+                  (document) =>
+                    document.id === editorSession.document.id &&
+                    document.digest === editorSession.document.digest,
+                )
+              }
+              onDirty={onEditorDirty}
+              onClose={() => setEditorSession(null)}
+            />
+          </Suspense>
+        </>
+      )}
+
+      <h2 id={headingId}>材料</h2>
       {!canWrite ? <p>当前角色只能查看材料，不能上传或重新解析。</p> : null}
       {selection.status === "pending_confirmation" ? (
         <div className="callout" aria-labelledby="legacy-material-selection-title">
@@ -319,16 +392,12 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
         </div>
       ) : null}
       <div className="material-view-switch" role="group" aria-label="材料视图">
-        {[
-          { key: "current", label: "当前材料" },
-          { key: "history", label: "版本历史" },
-          { key: "parsing", label: "解析记录" },
-        ].map((view) => (
+        {materialViews.map((view) => (
           <button
             key={view.key}
             type="button"
             aria-pressed={activeMaterialView === view.key}
-            onClick={() => setActiveMaterialView(view.key)}
+            onClick={() => setMaterialView({ key: view.key, visit: source?.visit })}
           >
             {view.label}
           </button>
@@ -347,7 +416,9 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
             return (
               <li key={material.material_id} data-material-id={material.material_id}>
                 <div className="document-main">
-                  <strong>{document?.filename ?? "材料文件名暂不可用"}</strong>
+                  <strong id={anchorFor(material.current_document_id, "current")}>
+                    {document?.filename ?? "材料文件名暂不可用"}
+                  </strong>
                   <p className="meta">
                     {roleLabel(material.role)} · {purposeLabels[material.purpose]} · 当前版本 v
                     {material.current_version}
@@ -381,6 +452,13 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
                     <StatusText tone={parseTone(document.parse_status)}>
                       {parseLabel(document.parse_status)}
                     </StatusText>
+                    {canWrite &&
+                      /\.docx$/i.test(document.filename) &&
+                      /^[a-f0-9]{64}$/i.test(document.digest) && (
+                        <Button onClick={() => setEditorSession({ document, material })}>
+                          编辑修改稿
+                        </Button>
+                      )}
                     <Button
                       type="text"
                       htmlType="button"
@@ -430,7 +508,7 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
                       key={`${version.material_id}:${version.version}`}
                       data-document-id={version.document_id}
                     >
-                      <span>
+                      <span id={anchorFor(version.document_id, "history")}>
                         v{version.version} · {document?.filename ?? "文件名未提供"} ·{" "}
                         {current ? "当前版本" : "同一材料的历史版本"}
                       </span>
@@ -466,7 +544,7 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
         <div className="material-parsing">
           <h3>材料解析状态</h3>
           <p className="meta">
-            此处展示服务返回的各文件当前解析状态；历史审查使用其冻结的解析结果。
+            此处展示服务返回的各文件当前解析状态；历史审查使用当次留档的解析结果。
           </p>
           {caseDetail.documents.length === 0 ? (
             <p>当前没有材料解析记录。</p>

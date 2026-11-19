@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Starts the configured client or admin audience login and returns through the server-validated OIDC flow; credentials and callback state are not stored by the page.
+// Purpose: Presents focused client and admin sign-in with authorized return links, session boundaries and the contract desk default.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -40,7 +40,7 @@ export function LoginPage({ audience = "client" }: { audience?: SessionAudience 
       ? from
       : audience === "admin"
         ? "/admin/settings"
-        : "/cases";
+        : "/contract-desk";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
@@ -73,8 +73,8 @@ export function LoginPage({ audience = "client" }: { audience?: SessionAudience 
 
   return (
     <main className="login-screen" id="main">
-      <aside className="login-rail">
-        <div className="login-rail-brand competition-brand">
+      <form className="login-card" onSubmit={onSubmit}>
+        <div className="login-brand competition-brand">
           {audience === "client" ? (
             <CompetitionIdentity />
           ) : (
@@ -84,24 +84,10 @@ export function LoginPage({ audience = "client" }: { audience?: SessionAudience 
             </>
           )}
         </div>
-        <p className="login-rail-copy">
-          每次审查都会保存当时使用的材料、解析结果和规则。每项结论都需要有原文依据；审查人员修改判断时，之前的记录也会保留。
-        </p>
-        <ol className="login-rail-circuit" aria-label="审查链路示意">
-          <li>材料</li>
-          <li>解析</li>
-          <li>引用</li>
-          <li>决定</li>
-        </ol>
-      </aside>
-      <form className="login-card" onSubmit={onSubmit}>
-        {audience === "client" ? (
-          <div className="login-mobile-brand competition-brand">
-            <CompetitionIdentity />
-          </div>
-        ) : null}
-        <h1>{audience === "admin" ? "登录管理工作台" : "登录合同审查"}</h1>
-        <p>使用组织分配的账号。会话按当前工作区隔离；系统不在这里创建用户，也不会显示模型密钥。</p>
+        <header className="login-heading">
+          <h1>{audience === "admin" ? "登录管理工作台" : "登录合同审查"}</h1>
+          <p>使用组织分配的账号登录。</p>
+        </header>
         <label className="field">
           账号
           <Input
@@ -125,7 +111,11 @@ export function LoginPage({ audience = "client" }: { audience?: SessionAudience 
             required
           />
         </label>
-        {login.isError ? <p role="alert">{errorMessage(login.error)}</p> : null}
+        {login.isError ? (
+          <p className="login-error" role="alert">
+            {errorMessage(login.error)}
+          </p>
+        ) : null}
         <Button
           aria-label={String(login.isPending ? "正在登录" : "登录")}
           type="primary"

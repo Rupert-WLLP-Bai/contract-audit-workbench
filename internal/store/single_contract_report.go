@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: validateSingleContractReport preserves the ordinary input/output and object integrity checks when an ungoverned precheck has no governed RulePack. Related `store` operations include validateSingleContractReport.
+// Purpose: Builds the single-contract review report from saved execution evidence, distinguishing payment coverage from findings.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-19
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -31,7 +31,8 @@ func (s *Store) validateSingleContractReport(st state, item Case, runID, attempt
 	if !isSingleContractSnapshot(snapshot) {
 		return invalid()
 	}
-	if _, err := engine.PublishedSingleContractMapping(snapshot.RuleSetHash); err != nil {
+	mapping, err := engine.PublishedSingleContractMapping(snapshot.RuleSetHash)
+	if err != nil {
 		return invalid()
 	}
 	input, ok := st.attemptInput(attemptID)
@@ -46,7 +47,7 @@ func (s *Store) validateSingleContractReport(st state, item Case, runID, attempt
 		}
 	}
 	evaluations := st.evaluationsForAttempt(runID, attemptID)
-	if primaryCount != 1 || len(evaluations) != 1 || evaluations[0].RuleVersion != engine.SingleContractPrecheckRule || evaluations[0].Domain != "payment_sum" {
+	if primaryCount != 1 || len(evaluations) != 1 || evaluations[0].RuleVersion != mapping.Rules[0].ID || evaluations[0].Domain != mapping.Rules[0].Domain {
 		return invalid()
 	}
 	digest, err := s.agentReviewDigestFor(item.TenantID, item.OwnerOrgID, attemptID)

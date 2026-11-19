@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Provides admin list, draft creation and version-detail routes for governed knowledge lifecycle; scope, content revision and submit/approve/publish actions are checked by the governance API.
+// Purpose: Lists authorized knowledge versions and places text and lifecycle actions before supporting provenance while retaining version registration and governance commands.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-14
-// Revision: r8
+// Updated: 2026-11-19
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -252,7 +252,6 @@ export function GovernedKnowledgeListPage() {
     <ListPage
       className="page-rulepacks page-governed-list"
       title="受控知识"
-      description="管理政策、指引、例外和审查经验的精确版本及发布状态。列表只显示当前管理员可访问的版本。"
       actions={
         <Button type="primary" href={`${root}/new`}>
           登记依据版本
@@ -260,7 +259,7 @@ export function GovernedKnowledgeListPage() {
       }
       summary={
         <p className="governed-list-summary" role="status">
-          {filtered.length} / {rows.length} 个版本；治理状态与生效指针分别显示。
+          {filtered.length} / {rows.length} 个版本
         </p>
       }
       filters={
@@ -1905,12 +1904,7 @@ function GovernedKnowledgeDetail() {
           )}
         </div>
       }
-      facts={
-        <>
-          <DetailFacts content={content} version={version} />
-          <VersionIdentity version={version} content={content} />
-        </>
-      }
+      facts={<DetailFacts content={content} version={version} />}
     >
       <div className="governed-detail-layout">
         <div className="governed-detail-main">
@@ -1919,6 +1913,7 @@ function GovernedKnowledgeDetail() {
         <aside className="governed-detail-rail" aria-label="版本治理摘要">
           <LifecycleCard version={version} />
           <SourceBoundaryCard />
+          <VersionIdentity version={version} content={content} />
         </aside>
       </div>
       {content.kind === "experience" && <ExperienceMetricsPanel version={version} />}

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Mounts the web application into the root DOM element and configures its Ant Design theme/tokens and API session identity before React renders routes.
+// Purpose: Mounts each application audience with shared Ant Design controls, table spacing and semantic theme, and initializes the session context before rendering.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r6
+// Updated: 2026-11-19
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -20,7 +20,6 @@ import { clearIdentityQueries } from "./api/queries";
 import { installContextInvalidation } from "./api/context-sync";
 import { clearAllEvidenceDrafts } from "./features/review/evidence-request-drafts";
 import { ApplicationError } from "./components/application-error";
-import "./styles.css";
 
 const rootStyle = getComputedStyle(document.documentElement);
 const cssToken = (name: string) => rootStyle.getPropertyValue(name).trim();
@@ -45,41 +44,66 @@ const uiTheme: ThemeConfig = {
     colorBorderSecondary: cssToken("--border-default"),
     colorBgLayout: cssToken("--surface-page"),
     colorBgContainer: cssToken("--surface-raised"),
+    colorBgElevated: cssToken("--surface-raised"),
     borderRadius: Number.parseFloat(cssToken("--radius-control")),
     fontFamily: cssToken("--font-ui"),
     fontSize: Number.parseFloat(cssToken("--font-size-ui")),
-    controlHeight: 32,
+    controlHeight: Number.parseFloat(cssToken("--control-height")),
     motion: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   },
   components: {
     Button: {
       primaryColor: cssToken("--button-primary-fg"),
       primaryShadow: "none",
+      defaultShadow: "none",
+      textHoverBg: cssToken("--surface-hover"),
       fontWeight: 500,
     },
     Layout: {
       bodyBg: cssToken("--surface-page"),
       headerBg: cssToken("--surface-rail"),
-      headerColor: cssToken("--text-inverse"),
-      siderBg: cssToken("--surface-rail"),
-      triggerBg: cssToken("--surface-rail-raised"),
-      triggerColor: cssToken("--text-inverse-secondary"),
+      headerColor: cssToken("--text-primary"),
+      lightSiderBg: cssToken("--surface-rail"),
+      lightTriggerBg: cssToken("--surface-rail-raised"),
+      lightTriggerColor: cssToken("--text-secondary"),
     },
     Menu: {
-      darkItemBg: cssToken("--surface-rail"),
-      darkPopupBg: cssToken("--surface-rail"),
-      darkSubMenuItemBg: cssToken("--surface-rail"),
-      darkItemColor: cssToken("--text-inverse-secondary"),
-      darkGroupTitleColor: cssToken("--text-inverse-secondary"),
-      darkItemSelectedBg: cssToken("--nav-item-selected"),
-      darkItemSelectedColor: cssToken("--nav-item-selected-fg"),
-      darkItemHoverBg: cssToken("--surface-rail-raised"),
-      darkItemHoverColor: cssToken("--text-inverse"),
+      itemBg: cssToken("--surface-rail"),
+      collapsedWidth: 72,
+      itemHeight: 40,
+      popupBg: cssToken("--surface-raised"),
+      subMenuItemBg: cssToken("--surface-rail"),
+      itemColor: cssToken("--text-secondary"),
+      groupTitleColor: cssToken("--text-secondary"),
+      itemSelectedBg: cssToken("--nav-item-selected"),
+      itemSelectedColor: cssToken("--nav-item-selected-fg"),
+      itemHoverBg: cssToken("--surface-rail-raised"),
+      itemHoverColor: cssToken("--text-primary"),
       itemBorderRadius: Number.parseFloat(cssToken("--radius-control")),
-      groupTitleFontSize: 14,
+      groupTitleFontSize: 13,
+    },
+    Form: {
+      labelColor: cssToken("--text-primary"),
+      labelFontSize: Number.parseFloat(cssToken("--font-size-ui")),
+      itemMarginBottom: Number.parseFloat(cssToken("--space-4")),
+    },
+    Input: {
+      activeBorderColor: cssToken("--focus-ring"),
+    },
+    Select: {
+      activeBorderColor: cssToken("--focus-ring"),
+      optionActiveBg: cssToken("--surface-hover"),
+      optionSelectedBg: cssToken("--action-primary-soft"),
     },
     Table: {
       headerBg: cssToken("--surface-subtle"),
+      borderColor: cssToken("--border-default"),
+      cellPaddingBlock: Number.parseFloat(cssToken("--space-3")),
+      cellPaddingInline: Number.parseFloat(cssToken("--space-4")),
+      cellPaddingBlockMD: Number.parseFloat(cssToken("--space-3")),
+      cellPaddingInlineMD: Number.parseFloat(cssToken("--space-4")),
+      cellPaddingBlockSM: Number.parseFloat(cssToken("--space-2")),
+      cellPaddingInlineSM: Number.parseFloat(cssToken("--space-3")),
       headerColor: cssToken("--text-secondary"),
       rowHoverBg: cssToken("--surface-hover"),
       rowSelectedBg: cssToken("--table-row-selected"),

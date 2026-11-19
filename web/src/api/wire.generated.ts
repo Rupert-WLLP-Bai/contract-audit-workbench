@@ -1515,6 +1515,13 @@ export interface components {
              */
             scope: "full_review" | "single_contract_precheck";
         };
+        /** @description 冻结解析表格的单元格位置。行列从 1 开始，合并或空单元格可能留出间隔。内容以原冻结文本的 Unicode 码点区间为准。 */
+        ReviewTableCell: {
+            column: number;
+            row: number;
+            table_id: string;
+            text_offset: components["schemas"]["TextOffset"];
+        };
         RunSummary: {
             id: string;
             /** @description 持久任务受理后，审查状态为 accepted；任务在 worker_jobs 中以 queued 排队，Worker 领取后变为 running。随后状态反映执行结果：completed、awaiting_human、partial、failed、cancelled 或 interrupted。租约过期后，其他 Worker 可以用新代次接管，旧代次的结果会被拒绝；这不代表跨故障域高可用或灾难恢复。 */

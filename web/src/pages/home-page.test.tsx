@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “HomePage snapshot consumers, HomePage persistent task workflow”; representative assertions cover uses server metrics, mutually exclusive business states and explicit risk levels, fetches each selected period and updates the displayed snapshot, renders a zero risk denominator without claiming any risk percentage. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Checks the workbench title and contract entry, assigned tasks and permissions, evidence intake and server-reported metrics.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r10
+// Updated: 2026-11-19
+// Revision: r11
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -476,6 +476,10 @@ describe("HomePage snapshot consumers", () => {
     const progress = screen.getByRole("region", { name: "审查进展" });
     expect(tasks.compareDocumentPosition(cases) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(cases.compareDocumentPosition(progress) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("link", { name: "查看合同" })).toHaveAttribute(
+      "href",
+      "/contract-desk",
+    );
     expect(screen.getByRole("link", { name: "进入合同审查" })).toHaveAttribute("href", "/review");
     expect(within(tasks).getByRole("link", { name: "确认质保条款" })).toBeInTheDocument();
   });
@@ -483,7 +487,8 @@ describe("HomePage snapshot consumers", () => {
   it("uses server metrics, mutually exclusive business states and explicit risk levels", async () => {
     const service = new HomeService();
     open(service);
-    await screen.findByRole("heading", { name: "你好，周审查" });
+    await screen.findByRole("heading", { level: 1, name: "工作台" });
+    expect(screen.getByText("你好，周审查")).toBeVisible();
 
     const caseWork = screen.getByRole("region", { name: "按案件处理" });
     expect(within(caseWork).getByText(/确认质保条款.*处理中/)).toBeInTheDocument();
@@ -507,6 +512,10 @@ describe("HomePage snapshot consumers", () => {
       }),
     ).toHaveAttribute("href", "/cases");
     expect(screen.getByText("状态统计 7 项；可见案件 17 项。")).toBeInTheDocument();
+    const circuit = screen.getByRole("region", { name: "审查链路" });
+    expect(within(circuit).getByText("可见案件")).toBeVisible();
+    expect(within(circuit).getByText("17", { exact: true })).toBeVisible();
+
     expect(screen.getByText(/已完成审查 9 项；平均运行时长 1.2 秒/)).toBeInTheDocument();
     for (const label of [
       "高风险 4，占 40%",
@@ -903,7 +912,7 @@ describe("HomePage snapshot consumers", () => {
       average_duration_ms: 5000,
     };
     const { user } = open(service);
-    await screen.findByRole("heading", { name: "你好，周审查" });
+    await screen.findByRole("heading", { level: 1, name: "工作台" });
     await chooseOption(user, screen.getByRole("combobox", { name: "统计周期" }), "今日");
     expect(await screen.findByText(/已完成审查 1 项；平均运行时长 未知/)).toBeInTheDocument();
     expect(
@@ -945,7 +954,7 @@ describe("HomePage snapshot consumers", () => {
       service.data.remediations = [];
       service.data.audit = [];
       open(service);
-      await screen.findByRole("heading", { name: "你好，周审查" });
+      await screen.findByRole("heading", { level: 1, name: "工作台" });
       const progress = screen.getByRole("region", { name: "审查进展" });
       expect(
         within(progress).getByText(
@@ -992,7 +1001,7 @@ describe("HomePage snapshot consumers", () => {
     service.snapshotGate.resolve();
     expect(await screen.findByRole("alert")).toHaveTextContent("快照服务暂不可用");
     await user.click(screen.getByRole("button", { name: "重试" }));
-    expect(await screen.findByRole("heading", { name: "你好，周审查" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "工作台" })).toBeInTheDocument();
     expect(
       service.requests.filter(
         (request) => request.path === "/api/workbench?period=week&task_capabilities=1",
@@ -1003,7 +1012,7 @@ describe("HomePage snapshot consumers", () => {
   it("hides the cached workbench while the session is being revalidated", async () => {
     const service = new HomeService();
     const { client } = open(service);
-    await screen.findByRole("heading", { name: "你好，周审查" });
+    await screen.findByRole("heading", { level: 1, name: "工作台" });
     expect(screen.getByRole("region", { name: "按案件处理" })).toBeInTheDocument();
     expect(within(taskPanel()).getByRole("button", { name: "新建任务" })).toBeInTheDocument();
     expect(within(taskPanel()).getAllByRole("button", { name: "标记完成" }).length).toBeGreaterThan(
@@ -1022,13 +1031,13 @@ describe("HomePage snapshot consumers", () => {
     service.sessionGate.resolve();
     service.sessionGate = null;
     await revalidation;
-    expect(await screen.findByRole("heading", { name: "你好，周审查" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "工作台" })).toBeInTheDocument();
   });
 
   it("hides the cached workbench while its snapshot is being refreshed", async () => {
     const service = new HomeService();
     const { client } = open(service);
-    await screen.findByRole("heading", { name: "你好，周审查" });
+    await screen.findByRole("heading", { level: 1, name: "工作台" });
     expect(screen.getByRole("region", { name: "按案件处理" })).toBeInTheDocument();
     expect(within(taskPanel()).getAllByRole("button", { name: "标记完成" }).length).toBeGreaterThan(
       0,
@@ -1045,7 +1054,7 @@ describe("HomePage snapshot consumers", () => {
     service.snapshotGate.resolve();
     service.snapshotGate = null;
     await refresh;
-    expect(await screen.findByRole("heading", { name: "你好，周审查" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "工作台" })).toBeInTheDocument();
   });
 });
 
@@ -1068,7 +1077,7 @@ describe("HomePage persistent task workflow", () => {
         service.data.cases[0]!.can_create_task = true;
       }
       const { user } = open(service);
-      await screen.findByRole("heading", { name: "你好，周审查" });
+      await screen.findByRole("heading", { level: 1, name: "工作台" });
 
       if (!visible) {
         expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument();
@@ -1090,7 +1099,7 @@ describe("HomePage persistent task workflow", () => {
     service.createFailures = [403];
     service.revokeCreateCapabilityOnFailure = true;
     const { user } = open(service);
-    await screen.findByRole("heading", { name: "你好，周审查" });
+    await screen.findByRole("heading", { level: 1, name: "工作台" });
     await user.click(screen.getByRole("button", { name: "新建任务" }));
     await chooseOption(
       user,
@@ -1115,7 +1124,7 @@ describe("HomePage persistent task workflow", () => {
   it("clears the selected task case when the active identity context changes", async () => {
     const service = new HomeService();
     const { user, client } = open(service);
-    await screen.findByRole("heading", { name: "你好，周审查" });
+    await screen.findByRole("heading", { level: 1, name: "工作台" });
     await user.click(screen.getByRole("button", { name: "新建任务" }));
     await chooseOption(
       user,
@@ -1139,7 +1148,7 @@ describe("HomePage persistent task workflow", () => {
     expect(screen.queryByRole("combobox", { name: "关联案件" })).not.toBeInTheDocument();
     service.snapshotGate.resolve();
     service.snapshotGate = null;
-    await screen.findByRole("heading", { name: "你好，周审查" });
+    await screen.findByRole("heading", { level: 1, name: "工作台" });
     expect(screen.queryByRole("combobox", { name: "关联案件" })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "任务名称" })).not.toBeInTheDocument();
   });
@@ -1157,7 +1166,7 @@ describe("HomePage persistent task workflow", () => {
       if (canCreate === undefined) delete service.data.cases[0]!.can_create_task;
       else service.data.cases[0]!.can_create_task = canCreate;
       const { user } = open(service);
-      await screen.findByRole("heading", { name: "你好，周审查" });
+      await screen.findByRole("heading", { level: 1, name: "工作台" });
       if (visible) {
         expect(screen.getByRole("button", { name: "新建任务" })).toBeInTheDocument();
         await user.click(screen.getByRole("button", { name: "新建任务" }));
@@ -1179,7 +1188,7 @@ describe("HomePage persistent task workflow", () => {
     service.createFailures = [403];
     service.revokeCreateCapabilityOnFailure = true;
     const { user } = open(service);
-    await screen.findByRole("heading", { name: "你好，周审查" });
+    await screen.findByRole("heading", { level: 1, name: "工作台" });
     await user.click(screen.getByRole("button", { name: "新建任务" }));
     await chooseOption(
       user,
@@ -1218,7 +1227,7 @@ describe("HomePage persistent task workflow", () => {
       service.data.cases = [caseRecord()];
       service.data.members = [];
       open(service);
-      await screen.findByRole("heading", { name: "你好，周审查" });
+      await screen.findByRole("heading", { level: 1, name: "工作台" });
       const panel = within(taskPanel());
       expect(panel.getByRole("link", { name: "确认质保条款" })).toHaveAttribute(
         "href",
@@ -1238,7 +1247,7 @@ describe("HomePage persistent task workflow", () => {
     service.data.tasks = [task()];
     service.data.cases = [caseRecord()];
     const { user } = open(service);
-    await screen.findByRole("heading", { name: "你好，周审查" });
+    await screen.findByRole("heading", { level: 1, name: "工作台" });
     const workbenchReadsBeforeCompletion = service.requests.filter((request) =>
       request.path.startsWith("/api/workbench"),
     ).length;
@@ -1262,7 +1271,7 @@ describe("HomePage persistent task workflow", () => {
     service.data.tasks = [task()];
     service.data.cases = [caseRecord()];
     const { user } = open(service);
-    await screen.findByRole("heading", { name: "你好，周审查" });
+    await screen.findByRole("heading", { level: 1, name: "工作台" });
     service.snapshotFailures.push(503);
     await user.click(within(taskPanel()).getByRole("button", { name: "标记完成" }));
 
@@ -1275,7 +1284,7 @@ describe("HomePage persistent task workflow", () => {
     service.data.tasks = [task()];
     service.data.cases = [caseRecord()];
     const { client } = open(service);
-    await screen.findByRole("heading", { name: "你好，周审查" });
+    await screen.findByRole("heading", { level: 1, name: "工作台" });
     expect(within(taskPanel()).getByRole("button", { name: "标记完成" })).toBeInTheDocument();
 
     service.data.tasks[0]!.can_complete = false;
@@ -1294,13 +1303,13 @@ describe("HomePage persistent task workflow", () => {
     expect(screen.queryByRole("button", { name: "标记完成" })).not.toBeInTheDocument();
     service.snapshotGate.resolve();
     service.snapshotGate = null;
-    await screen.findByRole("heading", { name: "你好，周审查" });
+    await screen.findByRole("heading", { level: 1, name: "工作台" });
     expect(screen.queryByRole("button", { name: "标记完成" })).not.toBeInTheDocument();
   });
 
   it("filters by the signed-in assignee and completion, and orders deadlines before undated tasks", async () => {
     const { user } = open();
-    await screen.findByRole("heading", { name: "你好，周审查" });
+    await screen.findByRole("heading", { level: 1, name: "工作台" });
     const panel = within(taskPanel());
     expect(
       panel.getAllByRole("listitem").map((item) => within(item).getByRole("link").textContent),
@@ -1330,7 +1339,7 @@ describe("HomePage persistent task workflow", () => {
     "persists a trimmed task with deadline %j and refreshes the list",
     async (due) => {
       const { user, service } = open();
-      await screen.findByRole("heading", { name: "你好，周审查" });
+      await screen.findByRole("heading", { level: 1, name: "工作台" });
       await user.click(screen.getByRole("button", { name: "新建任务" }));
       expect(screen.getByRole("button", { name: "创建并保存任务" })).toBeDisabled();
       await chooseOption(
@@ -1386,7 +1395,7 @@ describe("HomePage persistent task workflow", () => {
     const service = new HomeService();
     service.createFailures.push(403);
     const { user } = open(service);
-    await screen.findByRole("heading", { name: "你好，周审查" });
+    await screen.findByRole("heading", { level: 1, name: "工作台" });
     await user.click(screen.getByRole("button", { name: "新建任务" }));
     await chooseOption(
       user,
@@ -1476,7 +1485,7 @@ describe("HomePage persistent task workflow", () => {
       }),
     );
     const { user } = open(service);
-    await screen.findByRole("heading", { name: "你好，周审查" });
+    await screen.findByRole("heading", { level: 1, name: "工作台" });
     await user.click(within(taskPanel()).getByRole("tab", { name: /全部未完成/ }));
     expect(within(taskPanel()).getAllByRole("listitem")).toHaveLength(8);
     expect(screen.getByRole("link", { name: "协作事项 0" })).toHaveAttribute(

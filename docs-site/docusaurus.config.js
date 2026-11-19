@@ -56,15 +56,14 @@ const config = {
       respectPrefersColorScheme: false,
     },
     navbar: {
-      title: '合同审计工作台',
+      title: '合同审计手册',
       items: [
-        { to: '/', label: '首页', position: 'left' },
         {
           type: 'docSidebar',
           sidebarId: 'handbook',
           docsPluginId: 'handbook',
           position: 'left',
-          label: '手册',
+          label: '手册目录',
         },
         {
           type: 'html',

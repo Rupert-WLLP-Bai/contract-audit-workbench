@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Presents server-derived case/workflow summaries and starts primary-contract intake through the explicit upload flow; displayed counts and risk summaries are not recalculated from hidden client data.
+// Purpose: Presents the contract-first workbench overview with shared heading and actions, assigned tasks and recent cases before secondary metrics.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r8
+// Updated: 2026-11-19
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -28,6 +28,7 @@ import {
 } from "../api/queries";
 import type { WorkbenchPeriod, WorkbenchSnapshot } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { PageHeading } from "../components/page-patterns";
 import { IntakePrimaryContract } from "../components/intake-primary-contract";
 import { IntakePendingList } from "../components/intake-pending-list";
 import type { IntakeContinuationSelection } from "../features/intake/intake-continuation";
@@ -408,7 +409,7 @@ export function HomePage() {
     right.updated_at.localeCompare(left.updated_at),
   );
   const circuitNodes = [
-    { label: "材料", count: dashboard.visible_cases, tone: "info" },
+    { label: "可见案件", count: dashboard.visible_cases, tone: "info" },
     { label: "待审查", count: dashboard.pending_review_cases, tone: "pending" },
     { label: "待办", count: dashboard.my_pending_tasks, tone: "pending" },
     { label: "整改", count: dashboard.remediation_cases, tone: "pending" },
@@ -555,282 +556,279 @@ export function HomePage() {
 
   return (
     <section className="page home-page">
-      <header className="home-page-head">
-        <div className="home-welcome">
-          <h1>你好，{session.data?.display_name ?? "当前用户"}</h1>
-          <p>这里展示你有权查看的案件、审查、整改和协作进度。</p>
-        </div>
-        <div className="home-head-actions">
-          <label className="home-period-select">
-            统计周期
-            <Select<string>
-              aria-label={"统计周期"}
-              value={String(period)}
-              onChange={(selectedValue) => {
-                const value = selectedValue;
-                setPeriod(value === "day" || value === "month" ? value : "week");
-              }}
-              options={[
-                { value: "day", label: "今日" },
-                { value: "week", label: "本周" },
-                { value: "month", label: "本月" },
-              ]}
-            />
-          </label>
-          <Link className="home-review-link" to="/review">
-            进入合同审查
-          </Link>
-          <Button aria-label={"打开案件中心"} className="home-case-link" href="/cases">
-            打开案件中心
-          </Button>
-        </div>
-      </header>
+      <PageHeading
+        title="工作台"
+        meta={`你好，${session.data?.display_name ?? "当前用户"}`}
+        actions={
+          <>
+            <Link to="/review">进入合同审查</Link>
+            <Button href="/cases">打开案件中心</Button>
+            <Button type="primary" href="/contract-desk">
+              查看合同
+            </Button>
+          </>
+        }
+      />
 
-      <dl className="home-metrics" aria-label="工作台摘要">
-        {metrics.map((metric) => (
-          <div className={`home-metric home-metric-${metric.tone}`} key={metric.key}>
-            <span className="home-metric-icon" aria-hidden="true">
-              {metric.icon}
-            </span>
-            <div>
-              <dt>{metric.label}</dt>
-              <dd>{metric.value}</dd>
-              <p>{metric.hint}</p>
+      <div className="home-focus-grid">
+        <section className="home-panel home-tasks" aria-labelledby="home-tasks-title">
+          <header className="home-panel-head">
+            <div className="home-section-title">
+              <span aria-hidden="true" />
+              <h2 id="home-tasks-title">任务与待办</h2>
             </div>
-          </div>
-        ))}
-      </dl>
-
-      <section className="home-panel home-tasks" aria-labelledby="home-tasks-title">
-        <header className="home-panel-head">
-          <div className="home-section-title">
-            <span aria-hidden="true" />
-            <h2 id="home-tasks-title">任务与待办</h2>
-            <strong className="home-figure-badge">{activeTaskCount}</strong>
-          </div>
-          {canCreateTasks ? (
-            <Button
-              aria-label={String(showTaskForm ? "收起" : "新建任务")}
-              type="text"
-              htmlType="button"
-              onClick={() => setShowTaskForm((current) => !current)}
-            >
-              {showTaskForm ? "收起" : "新建任务"}
-            </Button>
+            {canCreateTasks ? (
+              <Button
+                aria-label={String(showTaskForm ? "收起" : "新建任务")}
+                type="text"
+                htmlType="button"
+                onClick={() => setShowTaskForm((current) => !current)}
+              >
+                {showTaskForm ? "收起" : "新建任务"}
+              </Button>
+            ) : null}
+          </header>
+          <Tabs
+            activeKey={taskFilter}
+            onChange={(key) => {
+              if (key === "mine" || key === "all" || key === "completed") setTaskFilter(key);
+            }}
+            items={[
+              { key: "mine", label: `我的待办 ${dashboard.my_pending_tasks}` },
+              { key: "all", label: `全部未完成 ${activeTaskCount}` },
+              {
+                key: "completed",
+                label: `已完成 ${allTasks.length - activeTaskCount}`,
+              },
+            ]}
+          />
+          {showTaskForm && canCreateTasks ? (
+            <form className="home-task-form" onSubmit={submitTask}>
+              <label>
+                关联案件
+                <Select<string>
+                  {...caseSelectPresentation}
+                  showSearch={{ optionFilterProp: "label" }}
+                  aria-label={"关联案件"}
+                  value={String(taskCaseId)}
+                  onChange={(selectedValue) => setTaskCaseId(selectedValue)}
+                  options={[
+                    { value: "", label: "请选择" },
+                    ...creatableCases.map((item) => ({
+                      value: String(item.id),
+                      label: caseOptionLabel(item, snapshot.data?.members ?? []),
+                    })),
+                  ]}
+                />
+              </label>
+              <label>
+                任务名称
+                <Input
+                  required
+                  maxLength={240}
+                  value={taskTitle}
+                  onChange={(event) => setTaskTitle(event.target.value)}
+                />
+              </label>
+              <label>
+                责任人
+                <Select<string>
+                  aria-label={"责任人"}
+                  value={String(taskAssignee)}
+                  onChange={(selectedValue) => setTaskAssignee(selectedValue)}
+                  options={[
+                    { value: "", label: "请选择" },
+                    ...data.members.map((member) => ({
+                      value: String(member.id),
+                      label: (
+                        <>
+                          {member.display_name}，{member.role}
+                        </>
+                      ),
+                    })),
+                  ]}
+                />
+              </label>
+              <label>
+                截止日期
+                <Input
+                  type="date"
+                  value={taskDue}
+                  onChange={(event) => setTaskDue(event.target.value)}
+                />
+              </label>
+              <Button
+                aria-label={String(createTask.isPending ? "正在保存" : "创建并保存任务")}
+                type="primary"
+                htmlType="submit"
+                disabled={
+                  createTask.isPending ||
+                  !creatableCases.some((item) => item.id === taskCaseId) ||
+                  taskAssignee === ""
+                }
+              >
+                {createTask.isPending ? "正在保存" : "创建并保存任务"}
+              </Button>
+            </form>
           ) : null}
-        </header>
-        <Tabs
-          activeKey={taskFilter}
-          onChange={(key) => {
-            if (key === "mine" || key === "all" || key === "completed") setTaskFilter(key);
-          }}
-          items={[
-            { key: "mine", label: `我的待办 ${dashboard.my_pending_tasks}` },
-            { key: "all", label: `全部未完成 ${activeTaskCount}` },
-            {
-              key: "completed",
-              label: `已完成 ${allTasks.length - activeTaskCount}`,
-            },
-          ]}
-        />
-        {showTaskForm && canCreateTasks ? (
-          <form className="home-task-form" onSubmit={submitTask}>
-            <label>
-              关联案件
-              <Select<string>
-                {...caseSelectPresentation}
-                showSearch={{ optionFilterProp: "label" }}
-                aria-label={"关联案件"}
-                value={String(taskCaseId)}
-                onChange={(selectedValue) => setTaskCaseId(selectedValue)}
-                options={[
-                  { value: "", label: "请选择" },
-                  ...creatableCases.map((item) => ({
-                    value: String(item.id),
-                    label: caseOptionLabel(item, snapshot.data?.members ?? []),
-                  })),
-                ]}
-              />
-            </label>
-            <label>
-              任务名称
-              <Input
-                required
-                maxLength={240}
-                value={taskTitle}
-                onChange={(event) => setTaskTitle(event.target.value)}
-              />
-            </label>
-            <label>
-              责任人
-              <Select<string>
-                aria-label={"责任人"}
-                value={String(taskAssignee)}
-                onChange={(selectedValue) => setTaskAssignee(selectedValue)}
-                options={[
-                  { value: "", label: "请选择" },
-                  ...data.members.map((member) => ({
-                    value: String(member.id),
-                    label: (
-                      <>
-                        {member.display_name}，{member.role}
-                      </>
-                    ),
-                  })),
-                ]}
-              />
-            </label>
-            <label>
-              截止日期
-              <Input
-                type="date"
-                value={taskDue}
-                onChange={(event) => setTaskDue(event.target.value)}
-              />
-            </label>
-            <Button
-              aria-label={String(createTask.isPending ? "正在保存" : "创建并保存任务")}
-              type="primary"
-              htmlType="submit"
-              disabled={
-                createTask.isPending ||
-                !creatableCases.some((item) => item.id === taskCaseId) ||
-                taskAssignee === ""
-              }
-            >
-              {createTask.isPending ? "正在保存" : "创建并保存任务"}
-            </Button>
-          </form>
-        ) : null}
-        {createTask.isError ? (
-          <p className="home-inline-error" role="alert">
-            {errorMessage(createTask.error)}
-          </p>
-        ) : null}
-        {tasks.length === 0 ? (
-          <p className="home-empty" role="status">
-            {taskFilter === "mine" ? "当前身份没有未完成的分派任务。" : "没有符合条件的任务记录。"}
-          </p>
-        ) : (
-          <ul className="home-task-list">
-            {tasks.slice(0, 8).map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                caseTitle={caseTitles.get(task.case_id) ?? task.case_id}
-                assignee={members.get(task.assignee_id) ?? task.assignee_id}
-                canComplete={canCompleteTasks}
-                onComplete={() => completeTask(task)}
-                pending={updateTask.isPending && updateTask.variables?.taskId === task.id}
-              />
-            ))}
-          </ul>
-        )}
-        {updateTask.isError ? (
-          <p className="home-inline-error" role="alert">
-            {errorMessage(updateTask.error)}
-          </p>
-        ) : null}
-        {tasks.length > 8 ? (
+          {createTask.isError ? (
+            <p className="home-inline-error" role="alert">
+              {errorMessage(createTask.error)}
+            </p>
+          ) : null}
+          {tasks.length === 0 ? (
+            <p className="home-empty" role="status">
+              {taskFilter === "mine"
+                ? "当前身份没有未完成的分派任务。"
+                : "没有符合条件的任务记录。"}
+            </p>
+          ) : (
+            <ul className="home-task-list">
+              {tasks.slice(0, 8).map((task) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  caseTitle={caseTitles.get(task.case_id) ?? task.case_id}
+                  assignee={members.get(task.assignee_id) ?? task.assignee_id}
+                  canComplete={canCompleteTasks}
+                  onComplete={() => completeTask(task)}
+                  pending={updateTask.isPending && updateTask.variables?.taskId === task.id}
+                />
+              ))}
+            </ul>
+          )}
+          {updateTask.isError ? (
+            <p className="home-inline-error" role="alert">
+              {errorMessage(updateTask.error)}
+            </p>
+          ) : null}
           <Link className="home-view-all" to="/workbench/tasks">
             查看全部任务
           </Link>
-        ) : null}
-      </section>
+        </section>
 
-      <section className="home-panel home-case-work" aria-labelledby="home-case-work-title">
+        <section className="home-panel home-case-work" aria-labelledby="home-case-work-title">
+          <header className="home-panel-head">
+            <div className="home-section-title">
+              <span aria-hidden="true" />
+              <h2 id="home-case-work-title">按案件处理</h2>
+            </div>
+            <Link className="home-view-all" to="/cases">
+              全部案件
+            </Link>
+          </header>
+          {caseWork.length === 0 ? (
+            <p className="home-empty">当前无可见案件。</p>
+          ) : (
+            <ul className="home-case-work-list">
+              {caseWork.map(({ item, tasks: caseTasks, remediations: caseRemediations }) => (
+                <li key={item.id}>
+                  <div className="home-case-work-heading">
+                    <Link to={caseHref(item.id, null)}>{item.title}</Link>
+                    <TechnicalDetail value={item.id} label="案件标识" />
+                  </div>
+                  <div className="home-case-work-details">
+                    {item.severity ? (
+                      <StatusText
+                        tone={
+                          item.severity === "high" || item.severity === "critical"
+                            ? "bad"
+                            : item.severity === "medium"
+                              ? "attention"
+                              : "neutral"
+                        }
+                      >
+                        {item.severity === "high" || item.severity === "critical"
+                          ? "高风险"
+                          : item.severity === "medium"
+                            ? "中风险"
+                            : item.severity === "low"
+                              ? "低风险"
+                              : item.severity === "info"
+                                ? "提示"
+                                : item.severity === "unrated"
+                                  ? "未分级"
+                                  : "风险级别未知"}
+                      </StatusText>
+                    ) : null}
+                    {item.profile?.due_at ? (
+                      <span>案件期限 · {formatDateTime(item.profile.due_at)}</span>
+                    ) : null}
+                    {caseTasks.map((task) => (
+                      <Link key={task.id} to={caseHref(item.id, null)}>
+                        {task.title} · {taskStatusLabel(task.status)}
+                        {task.due_at ? ` · 截止 ${formatDateTime(task.due_at)}` : " · 未设期限"}
+                      </Link>
+                    ))}
+                    {caseRemediations.map((remediation) => (
+                      <Link key={remediation.id} to={caseHref(item.id, remediation.run_id)}>
+                        整改：{remediation.measure} · {remediationStatusLabel(remediation.status)} ·
+                        截止 {formatDateTime(remediation.due_at)}
+                      </Link>
+                    ))}
+                    {caseTasks.length === 0 &&
+                    caseRemediations.length === 0 &&
+                    (item.severity === "high" || item.severity === "critical") ? (
+                      <span>打开案件查看风险详情</span>
+                    ) : null}
+                  </div>
+                  <Button
+                    className="home-case-work-next-step"
+                    htmlType="button"
+                    aria-expanded={activeNextStepCaseId === item.id}
+                    onClick={() =>
+                      setSelectedNextStep((current) =>
+                        current?.actorScope === nextStepActorScope && current.caseId === item.id
+                          ? null
+                          : { actorScope: nextStepActorScope, caseId: item.id },
+                      )
+                    }
+                  >
+                    {activeNextStepCaseId === item.id ? "收起实际下一步" : "查看实际下一步"}
+                  </Button>
+                  {activeNextStepCaseId === item.id ? (
+                    <WorkbenchCaseNextStep
+                      key={`${nextStepActorScope}:${item.id}`}
+                      caseId={item.id}
+                    />
+                  ) : null}
+                  <Link className="home-case-work-open" to={caseHref(item.id, null)}>
+                    打开案件
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="home-case-work-note">
+            此处展示工作台快照中的任务、整改和风险级别；案件实际下一步及可执行动作以案件页服务端信息为准。
+          </p>
+        </section>
+      </div>
+
+      <section className="home-panel home-recent" aria-labelledby="home-recent-title">
         <header className="home-panel-head">
           <div className="home-section-title">
             <span aria-hidden="true" />
-            <h2 id="home-case-work-title">按案件处理</h2>
+            <h2 id="home-recent-title">最近审查与案件</h2>
           </div>
-          <span className="home-panel-meta">按案件更新时间排序，最多显示 8 个案件</span>
+          <Link className="home-view-all" to="/cases">
+            查看全部案件
+          </Link>
         </header>
-        {caseWork.length === 0 ? (
-          <p className="home-empty">当前无可见案件。</p>
+        {cases.length === 0 ? (
+          <p className="home-empty">当前身份没有可见案件。</p>
         ) : (
-          <ul className="home-case-work-list">
-            {caseWork.map(({ item, tasks: caseTasks, remediations: caseRemediations }) => (
-              <li key={item.id}>
-                <div className="home-case-work-heading">
-                  <Link to={caseHref(item.id, null)}>{item.title}</Link>
-                  <TechnicalDetail value={item.id} label="案件标识" />
-                </div>
-                <div className="home-case-work-details">
-                  {item.severity ? (
-                    <StatusText
-                      tone={
-                        item.severity === "high" || item.severity === "critical"
-                          ? "bad"
-                          : item.severity === "medium"
-                            ? "attention"
-                            : "neutral"
-                      }
-                    >
-                      {item.severity === "high" || item.severity === "critical"
-                        ? "高风险"
-                        : item.severity === "medium"
-                          ? "中风险"
-                          : item.severity === "low"
-                            ? "低风险"
-                            : item.severity === "info"
-                              ? "提示"
-                              : item.severity === "unrated"
-                                ? "未分级"
-                                : "风险级别未知"}
-                    </StatusText>
-                  ) : null}
-                  {item.profile?.due_at ? (
-                    <span>案件期限 · {formatDateTime(item.profile.due_at)}</span>
-                  ) : null}
-                  {caseTasks.map((task) => (
-                    <Link key={task.id} to={caseHref(item.id, null)}>
-                      {task.title} · {taskStatusLabel(task.status)}
-                      {task.due_at ? ` · 截止 ${formatDateTime(task.due_at)}` : " · 未设期限"}
-                    </Link>
-                  ))}
-                  {caseRemediations.map((remediation) => (
-                    <Link key={remediation.id} to={caseHref(item.id, remediation.run_id)}>
-                      整改：{remediation.measure} · {remediationStatusLabel(remediation.status)} ·
-                      截止 {formatDateTime(remediation.due_at)}
-                    </Link>
-                  ))}
-                  {caseTasks.length === 0 &&
-                  caseRemediations.length === 0 &&
-                  (item.severity === "high" || item.severity === "critical") ? (
-                    <span>打开案件查看风险详情</span>
-                  ) : null}
-                </div>
-                <Button
-                  className="home-case-work-next-step"
-                  htmlType="button"
-                  aria-expanded={activeNextStepCaseId === item.id}
-                  onClick={() =>
-                    setSelectedNextStep((current) =>
-                      current?.actorScope === nextStepActorScope && current.caseId === item.id
-                        ? null
-                        : { actorScope: nextStepActorScope, caseId: item.id },
-                    )
-                  }
-                >
-                  {activeNextStepCaseId === item.id ? "收起实际下一步" : "查看实际下一步"}
-                </Button>
-                {activeNextStepCaseId === item.id ? (
-                  <WorkbenchCaseNextStep
-                    key={`${nextStepActorScope}:${item.id}`}
-                    caseId={item.id}
-                  />
-                ) : null}
-                <Link className="home-case-work-open" to={caseHref(item.id, null)}>
-                  打开案件
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <div className="home-table-scroll">
+            <Table
+              className="data-table home-recent-table"
+              columns={recentCaseColumns}
+              dataSource={recentCases}
+              rowKey="id"
+              pagination={false}
+              scroll={{ x: "max-content" }}
+            />
+          </div>
         )}
-        <p className="home-case-work-note">
-          此处展示工作台快照中的任务、整改和风险级别；案件实际下一步及可执行动作以案件页服务端信息为准。
-        </p>
       </section>
 
       <CircuitStrip nodes={circuitNodes} />
@@ -854,6 +852,42 @@ export function HomePage() {
           );
         }}
       />
+
+      <section className="home-reporting" aria-labelledby="home-reporting-title">
+        <header className="home-reporting-head">
+          <h2 id="home-reporting-title">审查统计</h2>
+          <label className="home-period-select">
+            统计周期
+            <Select<string>
+              aria-label={"统计周期"}
+              value={String(period)}
+              onChange={(selectedValue) => {
+                const value = selectedValue;
+                setPeriod(value === "day" || value === "month" ? value : "week");
+              }}
+              options={[
+                { value: "day", label: "今日" },
+                { value: "week", label: "本周" },
+                { value: "month", label: "本月" },
+              ]}
+            />
+          </label>
+        </header>
+        <dl className="home-metrics" aria-label="工作台摘要">
+          {metrics.map((metric) => (
+            <div className={`home-metric home-metric-${metric.tone}`} key={metric.key}>
+              <span className="home-metric-icon" aria-hidden="true">
+                {metric.icon}
+              </span>
+              <div>
+                <dt>{metric.label}</dt>
+                <dd>{metric.value}</dd>
+                <p>{metric.hint}</p>
+              </div>
+            </div>
+          ))}
+        </dl>
+      </section>
 
       <div className="home-content-grid workbench-content-grid">
         <IntakePrimaryContract
@@ -914,38 +948,6 @@ export function HomePage() {
             </p>
           </section>
         </aside>
-
-        <section className="home-panel home-recent" aria-labelledby="home-recent-title">
-          <header className="home-panel-head">
-            <div className="home-section-title">
-              <span aria-hidden="true" />
-              <h2 id="home-recent-title">最近审查与案件</h2>
-            </div>
-            <Link className="home-view-all" to="/cases">
-              查看全部案件
-            </Link>
-          </header>
-          {cases.length === 0 ? (
-            <p className="home-empty">当前身份没有可见案件。</p>
-          ) : (
-            <CollapsibleSection
-              id="home-recent-reviews"
-              title="最近审查与案件"
-              summaryLabel="展开列表"
-              count={recentCases.length}
-            >
-              <div className="home-table-scroll">
-                <Table
-                  className="data-table home-recent-table"
-                  columns={recentCaseColumns}
-                  dataSource={recentCases}
-                  rowKey="id"
-                  pagination={false}
-                />
-              </div>
-            </CollapsibleSection>
-          )}
-        </section>
 
         <section className="home-panel home-recent" aria-labelledby="home-remediation-title">
           <header className="home-panel-head">

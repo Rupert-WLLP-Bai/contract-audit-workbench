@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Loads the repository OpenAPI contract, groups routes and schemas for browsing, and sends optional same-origin requests from the API explorer using the documented parameters and session.
+// Purpose: Loads the OpenAPI contract for the client and independent portal, exposes real sign-in paths and supports browsing and explicitly submitting same-origin requests.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -29,6 +29,7 @@ import {
 } from "../api/openapi-request";
 import { assertCommandContextCurrent, captureCommandContext } from "../api/http";
 import { useSession } from "../api/queries";
+import { actorRoleLabel } from "../domain/review";
 import { CircuitMark } from "../components/circuit-mark";
 import "./api-docs.css";
 
@@ -417,6 +418,7 @@ function ApiExplorer({
     setValidation("");
     referenceRef.current?.scrollTo?.({ top: 0 });
     requestPanelRef.current?.scrollTo?.({ top: 0 });
+    if (window.matchMedia("(max-width: 760px)").matches) referenceRef.current?.focus();
   }
 
   function updateParameter(key: string, value: string) {
@@ -549,7 +551,12 @@ function ApiExplorer({
       </aside>
       {operation ? (
         <>
-          <main ref={referenceRef} className="api-reference-content" aria-label="接口详细文档">
+          <main
+            ref={referenceRef}
+            tabIndex={-1}
+            className="api-reference-content"
+            aria-label="接口详细文档"
+          >
             <OperationReference
               key={operation.key}
               operation={operation}
@@ -565,26 +572,17 @@ function ApiExplorer({
               <MethodStamp method={operation.method} />
             </header>
             <p className="api-request-route">{operation.path}</p>
-            <section className="api-code-section">
-              <header>
-                <div>
-                  <h2>同源调用示例</h2>
-                  <p>示例随右侧真实请求参数更新，使用当前浏览器会话。</p>
-                </div>
-              </header>
-              <p className="api-request-auth">
-                使用当前登录会话。服务端按每次请求执行身份和案件权限检查。
-              </p>
+            <p className="api-request-auth">使用当前登录会话。服务端按每次请求检查身份及权限。</p>
+            <details className="api-code-section">
+              <summary>同源调用示例</summary>
               {code ? (
                 <pre>
                   <code>{code}</code>
                 </pre>
               ) : (
-                <p className="api-no-data">
-                  填写右侧必填参数和必要请求体后，这里显示当前操作的可执行调用代码。
-                </p>
+                <p className="api-no-data">填写必填参数后可查看调用代码。</p>
               )}
-            </section>
+            </details>
             <form onSubmit={(event) => void submitRequest(event)}>
               {hasCookieParameter ? (
                 <p className="api-request-auth">
@@ -956,6 +954,10 @@ function SectionContent({
 
 export default function ApiDocsPage() {
   const session = useSession();
+  const clientBase = import.meta.env.VITE_CLIENT_URL;
+  const adminBase = import.meta.env.VITE_ADMIN_URL;
+  const loginHref = clientBase ? new URL("/login", clientBase).href : "/login";
+  const adminHref = adminBase ? new URL("/admin/", adminBase).href : "/admin/";
   const [contract, setContract] = useState<OpenApiContract | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -975,16 +977,12 @@ export default function ApiDocsPage() {
     <div className="api-docs-page">
       <ContractLoader attempt={attempt} onLoad={onLoad} onError={onError} />
       <header className="api-docs-platform-header">
-        <a
-          className="api-docs-brand"
-          href={import.meta.env.VITE_CLIENT_URL || "/"}
-          aria-label="返回合同审查工作台"
-        >
+        <a className="api-docs-brand" href={clientBase || "/"} aria-label="返回合同审查工作台">
           <span className="api-brand-mark" aria-hidden="true">
             <CircuitMark size={20} />
           </span>
-          <strong>合同智能审计工作台</strong>
-          <span className="api-docs-platform-badge">API 开放平台</span>
+          <strong>API 开放平台</strong>
+          <span className="api-docs-platform-badge">合同智能审计工作台</span>
         </a>
         <nav className="api-docs-nav" aria-label="文档导航">
           <Tabs
@@ -999,9 +997,20 @@ export default function ApiDocsPage() {
             }))}
           />
         </nav>
-        <div className="api-docs-session">
-          {session.data ? `${session.data.display_name}，${session.data.role}` : "当前会话"}
-        </div>
+        <nav className="api-docs-access" aria-label="工作台登录与管理">
+          {session.data ? (
+            <span className="api-docs-session" title={actorRoleLabel(session.data.role)}>
+              {session.data.display_name}
+            </span>
+          ) : (
+            <Button size="small" href={loginHref}>
+              登录工作台
+            </Button>
+          )}
+          <Button size="small" type="link" href={adminHref}>
+            管理端
+          </Button>
+        </nav>
       </header>
       {error ? (
         <section className="api-docs-load-error" role="alert">

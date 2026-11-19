@@ -1,18 +1,19 @@
 // File metadata (manifest mirror):
-// Purpose: Provides admin-only model endpoint and system configuration views; credentials are never exposed in the client workbench and server authorization controls settings access.
+// Purpose: Surfaces administration, model and policy controls in settings while deferring the tenant configuration request until the user opens its section.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-19
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
 import { useState } from "react";
 import { errorMessage } from "../api/http";
-import { Button, Statistic, Table, type TableProps } from "antd";
+import { Button, Table, type TableProps } from "antd";
 import { useLLMEndpoint, useSession, useSettings } from "../api/queries";
 import { PageStatus } from "../components/page-status";
+import { PageHeading } from "../components/page-patterns";
 import { TenantOperationsPanel } from "../components/tenant-operations-panel";
 import { CollapsibleSection } from "../components/collapsible-section";
 import { TenantConfigPanel } from "../components/tenant-config-panel";
@@ -115,20 +116,7 @@ export function SettingsPage({ audience = "admin" }: { audience?: "client" | "ad
   ];
   return (
     <section className="page settings-page">
-      <header className="page-head">
-        <div>
-          <h1>设置</h1>
-          <p>
-            查看连通、队列、脱敏政策和角色。模型端点由管理员配置，密钥只在保存时提交并留在服务端。
-          </p>
-        </div>
-      </header>
-      <section className="settings-overview" aria-label="设置概览">
-        <Statistic title="模型连通" value={modelStatusLabel(data.model.status)} />
-        <Statistic title="等待任务" value={queueDepth} />
-        <Statistic title="最长等待" value={oldestWait} />
-        <Statistic title="用户" value={data.users.length} />
-      </section>
+      <PageHeading title="设置" description={isAdmin ? "管理租户、模型和访问策略。" : undefined} />
       {isAdmin && session.data ? (
         <>
           <CollapsibleSection
@@ -148,6 +136,7 @@ export function SettingsPage({ audience = "admin" }: { audience?: "client" | "ad
           <CollapsibleSection
             id="settings-tenant-config"
             title="租户配置采用与实时停发"
+            mountOnOpen
             summaryLabel="展开租户配置采用与实时停发"
           >
             <TenantConfigPanel actor={session.data} />
@@ -208,6 +197,20 @@ export function SettingsPage({ audience = "admin" }: { audience?: "client" | "ad
           {data.redaction_policy === "" ? "未提供脱敏政策说明。" : data.redaction_policy}
         </p>
       </section>
+      <section className="settings-panel" aria-labelledby="settings-users-title">
+        <h2 id="settings-users-title">用户与角色</h2>
+        {data.users.length === 0 ? <p>没有返回用户。</p> : null}
+        <Table
+          className="data-table"
+          columns={userColumns}
+          dataSource={data.users}
+          rowKey="id"
+          size="small"
+          tableLayout="fixed"
+          scroll={{ x: 470 }}
+          pagination={false}
+        />
+      </section>
       {session.data?.role === "admin" ? (
         <section className="settings-panel" aria-labelledby="execution-operations-title">
           <h2 id="execution-operations-title">执行运维统计</h2>
@@ -226,20 +229,6 @@ export function SettingsPage({ audience = "admin" }: { audience?: "client" | "ad
           )}
         </section>
       ) : null}
-      <section className="settings-panel" aria-labelledby="settings-users-title">
-        <h2 id="settings-users-title">用户与角色</h2>
-        <p className="meta">首版只读展示。账号的创建和停用不在这个页面里完成。</p>
-        {data.users.length === 0 ? <p>没有返回用户。</p> : null}
-        <Table
-          className="data-table"
-          columns={userColumns}
-          dataSource={data.users}
-          rowKey="id"
-          size="small"
-          tableLayout="fixed"
-          pagination={false}
-        />
-      </section>
     </section>
   );
 }

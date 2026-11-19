@@ -1,20 +1,25 @@
 // File metadata (manifest mirror):
-// Purpose: Composes client and admin route trees, session gates and shared application shells; route visibility follows the authenticated server audience and API session state.
+// Purpose: Defines the client and admin route entry points, lazy-loads the contract desk, and keeps the case, registration and overview routes behind their session boundaries.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-19
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
 import { lazy, Suspense } from "react";
-import { Route, Routes, useLocation, useSearchParams } from "react-router";
+import { Navigate, Route, Routes, useLocation, useSearchParams } from "react-router";
 import { AppShell } from "./components/app-shell";
 import { PageStatus } from "./components/page-status";
 import { SessionGate } from "./pages/session-gate";
 const AdminApp = lazy(() => import("./admin-app").then((module) => ({ default: module.AdminApp })));
 
+const ContractDeskPage = lazy(() =>
+  import("./pages/contract-desk-page").then((module) => ({
+    default: module.ContractDeskPage,
+  })),
+);
 const HomePage = lazy(() =>
   import("./pages/home-page").then((module) => ({ default: module.HomePage })),
 );
@@ -128,7 +133,7 @@ function CompareRoute() {
 }
 
 export function App() {
-  const pathname = useLocation().pathname;
+  const { pathname, search, hash } = useLocation();
   // Admin owns an absolute route tree; do not add a second /admin route base.
   if (pathname === "/admin" || pathname.startsWith("/admin/")) {
     return (
@@ -144,7 +149,12 @@ export function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route element={<SessionGate />}>
           <Route element={<AppShell />}>
-            <Route index element={<HomePage />} />
+            <Route
+              index
+              element={<Navigate to={{ pathname: "/contract-desk", search, hash }} replace />}
+            />
+            <Route path="/contract-desk" element={<ContractDeskPage />} />
+            <Route path="/workbench/home" element={<HomePage />} />
             <Route path="/review" element={<ReviewEntryPage />} />
             <Route path="/cases" element={<CasesPage />} />
             <Route path="/contracts" element={<ContractsPage />} />

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Preserves canonical review-scope resolution and legacy compatibility with the domain-owned scope identity value.
+// Purpose: Defines available review scopes and their fixed capabilities, including single-contract precheck versions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -29,7 +29,7 @@ func normalizeReviewScope(scope string) (string, error) {
 }
 
 func snapshotScope(snapshot RunSnapshot) *ReviewScopeIdentity {
-	if snapshot.RuleSetHash != engine.SingleContractRuleSetHash() || snapshot.PlaybookHash != engine.SingleContractPlaybookHash() {
+	if !engine.SingleContractPlaybookMatches(snapshot.RuleSetHash, snapshot.PlaybookHash) {
 		return nil
 	}
 	mapping, err := engine.PublishedSingleContractMapping(snapshot.RuleSetHash)
@@ -57,7 +57,7 @@ func isSingleContractSnapshot(snapshot RunSnapshot) bool {
 }
 
 func singleContractChecks(materials []ReviewReadinessMaterial, primaryID string) []ReviewReadinessCheck {
-	check := ReviewReadinessCheck{RuleID: engine.SingleContractPrecheckRule, Status: "ready", MissingDependencies: []string{}, NextAction: "start_review"}
+	check := ReviewReadinessCheck{RuleID: engine.SingleContractPaymentTermsRule, Status: "ready", MissingDependencies: []string{}, NextAction: "start_review"}
 	foundPrimary := false
 	for _, material := range materials {
 		if material.DocumentID != primaryID || !material.Selected {

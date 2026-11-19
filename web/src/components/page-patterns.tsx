@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Provides thin page compositions while feature pages retain data loading, authorization, forms and business decisions.
+// Purpose: Composes the common list, action-first detail, version-editor and inspection layouts while keeping authorization and business operations in their feature pages.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12
-// Updated: 2026-11-12
-// Revision: r1
+// Updated: 2026-11-19
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,7 +15,7 @@ function classNames(...values: (string | undefined)[]): string {
   return values.filter((value): value is string => Boolean(value)).join(" ");
 }
 
-function PageHeading({
+export function PageHeading({
   title,
   description,
   eyebrow,
@@ -41,8 +41,12 @@ function PageHeading({
         {eyebrow ? <div className="page-pattern-eyebrow">{eyebrow}</div> : null}
         <Heading>{title}</Heading>
         {description ? <p>{description}</p> : null}
-        {status ? <div className="page-pattern-status">{status}</div> : null}
-        {meta ? <div className="page-pattern-meta">{meta}</div> : null}
+        {status || meta ? (
+          <div className="page-pattern-metadata">
+            {status ? <div className="page-pattern-status">{status}</div> : null}
+            {meta ? <div className="page-pattern-meta">{meta}</div> : null}
+          </div>
+        ) : null}
       </div>
       {actions ? <div className="page-pattern-actions">{actions}</div> : null}
     </header>
@@ -67,6 +71,7 @@ export function ListPage({
   beforeSummary,
   beforeFilters,
   pagination,
+  standaloneSurface = true,
   headingClassName,
   className,
   contentRef,
@@ -77,6 +82,7 @@ export function ListPage({
   beforeSummary?: ReactNode;
   beforeFilters?: ReactNode;
   pagination?: ReactNode;
+  standaloneSurface?: boolean;
   headingClassName?: string;
 }) {
   return (
@@ -90,9 +96,16 @@ export function ListPage({
       {beforeSummary}
       {summary ? <div className="page-pattern-summary">{summary}</div> : null}
       {beforeFilters}
-      {filters ? <div className="page-pattern-filters">{filters}</div> : null}
-      {children}
-      {pagination}
+      <div
+        className={classNames(
+          "page-pattern-list-content",
+          standaloneSurface ? "page-pattern-surface" : undefined,
+        )}
+      >
+        {filters ? <div className="page-pattern-filters">{filters}</div> : null}
+        {children}
+        {pagination ? <footer className="page-pattern-pagination">{pagination}</footer> : null}
+      </div>
     </section>
   );
 }
@@ -135,8 +148,12 @@ export function ObjectDetailPage({
         actions={actions}
         status={status}
       />
-      {facts}
-      {nextStep}
+      {facts || nextStep ? (
+        <div className="page-pattern-overview page-pattern-surface">
+          {nextStep}
+          {facts}
+        </div>
+      ) : null}
       {navigation}
       {children ? <div className="page-pattern-object-content">{children}</div> : null}
     </section>

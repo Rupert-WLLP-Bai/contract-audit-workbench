@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “case UI creates, searches, filters, sorts and opens a real case”; representative assertions cover case UI creates, searches, filters, sorts and opens a real case, material UI uploads TXT and MD, exact originals, reparse and superseded versions. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Exercises the cases and materials entry and authorized case workflows through the client UI and API, including case creation, material handling and history.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,7 +16,7 @@ test(
   operations("createCase", "listCases", "getCase"),
   async ({ page }) => {
     await uiLogin(page);
-    await page.getByRole("link", { name: "案件", exact: true }).click();
+    await page.getByRole("link", { name: "案件与材料", exact: true }).click();
     await page.getByRole("button", { name: "新建案件", exact: true }).click();
     const dialog = page.getByRole("dialog");
     const title = `Playwright 案件 ${Date.now()}`;

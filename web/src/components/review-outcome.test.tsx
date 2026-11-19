@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-15
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -339,7 +339,7 @@ describe("selected review outcome", () => {
     value.documents[0]!.parse_status = "failed";
     render(<CaseNextStep {...props({ latestWorkspace: value })} />);
     expect(screen.getByRole("heading", { name: "先核对未完成解析的材料" })).toBeInTheDocument();
-    expect(screen.getByText(/冻结材料或当前条件尚需核对/)).toBeInTheDocument();
+    expect(screen.getByText(/送审材料或当前条件尚需核对/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看并处理材料" })).toHaveAttribute(
       "href",
       "#case-materials",
