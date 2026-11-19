@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Checks precise frozen-source excerpts, distinct commitments within a category, topic grouping, suppressed weak signals and correct Unicode offsets.
+// Purpose: Checks exact contract highlight excerpts and Unicode offsets, category separation, payment table data and decisions to suppress ambiguous observations.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14

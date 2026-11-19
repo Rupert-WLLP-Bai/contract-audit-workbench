@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Checks workbench overview actions and server-reported metrics, including visible case counts, assigned tasks, evidence intake and identity isolation.
+// Purpose: Checks the workbench title and contract entry, assigned tasks and permissions, evidence intake and server-reported metrics.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

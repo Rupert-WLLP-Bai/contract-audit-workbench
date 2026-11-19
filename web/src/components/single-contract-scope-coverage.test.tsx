@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “single contract coverage”; representative assertions cover lets a user move from the planned precheck to the server-blocked full review, does not advertise the v1 expressions when readiness returns an unknown identity, shows a persisted 100% observation as insufficient, with excluded work and a repair route. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Checks planned and actual single-contract coverage across legacy and current capabilities, evidence availability, invalid attempts and switching frozen versions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Routes the selected case workbench module to its task or knowledge panel, preserving actor assignment, case scope and task revision from the server API.
+// Purpose: Combines filtered workbench record lists and task actions with role-scoped previews, optional statistics and technical record details.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r8
+// Updated: 2026-11-19
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 

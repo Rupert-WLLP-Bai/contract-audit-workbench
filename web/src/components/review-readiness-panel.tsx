@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders ReviewReadinessPanel, the review readiness panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.
+// Purpose: Presents scope readiness and its source, rule and context prerequisites without authorizing review or reducing frozen-input checks.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r5
+// Updated: 2026-11-19
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 

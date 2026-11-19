@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Renders the administration shell with its own session audience, scope and status, and passes its routes to the shared responsive navigation.
+// Purpose: Provides the authorized admin frame, contextual breadcrumbs, identity and shared responsive navigation while keeping case permissions in the client workbench.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

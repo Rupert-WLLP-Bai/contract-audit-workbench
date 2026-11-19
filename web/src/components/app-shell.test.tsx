@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the contract-first client navigation, accessible workbench branding, contract search isolation, breadcrumbs and role-specific menu visibility.
+// Purpose: Checks contract-first navigation, role-specific routes, accessible branding, contract search isolation and the focused reader drawer with keyboard focus restoration.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30

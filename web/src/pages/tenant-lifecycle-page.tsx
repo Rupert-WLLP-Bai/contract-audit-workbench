@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: 实现 `ProvisionKind`, `ProvisionReconciliation`, `ProvisionStepName`, `TenantProvisionInput` 等界面组件或状态处理，呈现服务端返回的业务数据并提交受控用户操作。
+// Purpose: Lists tenant lifecycle operations and receipts with authorized actions, bounded table scrolling and visible handling for unknown results.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02

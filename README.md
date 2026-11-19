@@ -1,5 +1,5 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: 介绍合同智能审计工作台及本地运行入口，示范从案件上传材料、在合同清单找到冻结原文并核对质保约定。 -->
+<!-- Purpose: 介绍合同智能审计工作台和本地体验入口，示范从合同或案件找到冻结原文、核对条款并处理材料版本。 -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-10-25 -->

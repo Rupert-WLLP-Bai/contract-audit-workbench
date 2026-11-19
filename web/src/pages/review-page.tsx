@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Renders frozen-attempt review at the requested authorized document, validates the contract desk return context and keeps decisions tied to that attempt.
+// Purpose: Renders the chosen frozen review attempt, working with exact document selection, permitted DOCX workspace actions, immediate original reading and separately accessible decisions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

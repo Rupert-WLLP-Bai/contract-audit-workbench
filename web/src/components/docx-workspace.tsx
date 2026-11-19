@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Loads and verifies authorized DOCX bytes, supports editing and downloading the current copy, and submits edits only as a new permitted material version.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-19
+// Updated: 2026-11-19
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useEffect, useRef, useState } from "react";
 import { Button, Modal } from "antd";
 import { DocxEditor, type DocxEditorRef } from "@docx-editor.dev/react";

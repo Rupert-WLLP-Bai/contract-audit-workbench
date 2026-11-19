@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Renders contract registration, ledger, editing and lifecycle workflows and preserves authorized return to the contract desk.
+// Purpose: Presents the contract register with ledger filters, authorized draft actions and lifecycle workflows, retaining the link back to the filtered contract material list.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01

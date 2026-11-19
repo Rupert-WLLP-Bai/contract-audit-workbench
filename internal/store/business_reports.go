@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: CreateReport appends immutable JSON and escaped HTML for one exact terminal attempt. Later decisions produce a different report identity and never edit these bytes. Related `store` operations include CreateReport, CreateReportContext, CreateReportWithIdempotency, frozenLegalReportProjection.
+// Purpose: Builds business reports and presentation labels for authorized persisted review records, including single-contract payment-term coverage.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-12
-// Revision: r5
+// Updated: 2026-11-19
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 

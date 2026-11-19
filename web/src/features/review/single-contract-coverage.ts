@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Implements the web single contract coverage module used by its importing routes, transforming the named domain/API inputs into the module output while leaving persisted business state and access decisions to the server.
+// Purpose: Distinguishes legacy and current single-contract coverage and verifies recognized terms against the frozen parse identity and source text before display.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Derives identifiable table-backed contract values from frozen source text while retaining exact Unicode excerpt positions.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-19
+// Updated: 2026-11-19
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { ReviewTableCell, TextOffset } from "../api/types";
 import { sliceByCodePoints, type CodePointTextIndex } from "./text";
 

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Provides one shared disclosure/anchor pattern for long evidence pages so dense secondary sections do not flatten into an unreadable single scroll.
+// Purpose: Provides fragment-aware, accessible section disclosure, optionally postponing requests and form mounting until the first expansion.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Checks authorized client and admin routes and their API contracts, including case source links, frozen review, draft navigation guards and context isolation.
+// Purpose: Checks authorized routes, exact frozen sources, lifecycle and API effects, including review drawer navigation and leave protection for unsaved supplements.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

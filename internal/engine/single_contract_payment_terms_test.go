@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks exact frozen excerpts, explicit installment percentages, separate payment conditions and the historical single-contract rule mapping.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-19
+// Updated: 2026-11-19
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package engine
 
 import (

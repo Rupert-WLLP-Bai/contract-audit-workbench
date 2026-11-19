@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Renders the workbench overview with assigned tasks, recent cases, contract intake and server-reported case and review metrics.
+// Purpose: Presents the contract-first workbench overview with shared heading and actions, assigned tasks and recent cases before secondary metrics.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

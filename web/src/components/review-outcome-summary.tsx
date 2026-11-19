@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Presents execution results, actual review coverage and human decision progress with source-preserving preparation and material repair links.
+// Purpose: Displays deterministic review outcomes and payment-term coverage with faithful empty and unavailable states and source navigation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-19
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 

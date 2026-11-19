@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Observes explicit payment terms in frozen single-contract sources, preserving distinct installments, precise text anchors and the pass-through identities used in compatibility tests.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-19
+// Updated: 2026-11-19
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package engine
 
 import (

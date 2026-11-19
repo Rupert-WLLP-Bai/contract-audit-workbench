@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “RulePack inactive published version rollback, RulePackDetailPage draft concurrency”; representative assertions cover offers and posts the routed version when it is the only disabled publication, validates edits locally and saves literal content with the current row CAS, preserves a conflicting local draft until the user explicitly adopts the new CAS revision. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Checks rule edits and lifecycle commands, conflict recovery, provenance access and exact requests bound to their intended revisions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

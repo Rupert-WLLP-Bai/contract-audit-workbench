@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Preserves canonical review-scope resolution and legacy compatibility with the domain-owned scope identity value.
+// Purpose: Defines available review scopes and their fixed capabilities, including single-contract precheck versions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

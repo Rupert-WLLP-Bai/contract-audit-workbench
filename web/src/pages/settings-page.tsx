@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Provides admin-only model endpoint and system configuration views; credentials are never exposed in the client workbench and server authorization controls settings access.
+// Purpose: Surfaces administration, model and policy controls in settings while deferring the tenant configuration request until the user opens its section.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-19
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 

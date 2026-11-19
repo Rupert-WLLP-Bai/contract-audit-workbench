@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Lists rule-pack versions and lifecycle states for the admin audience, linking to drafts, published detail and creation flows without treating shadow results as active rules.
+// Purpose: Lists authorized rule versions with status tabs, search, details and the existing draft creation route.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-12
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

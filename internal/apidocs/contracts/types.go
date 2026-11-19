@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Maintains typed Go contract schemas for OpenAPI generation.
+// Purpose: Defines the HTTP contract schemas, including frozen-source payment-term observations and their exact evidence references.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-14
-// Revision: r15
+// Updated: 2026-11-19
+// Revision: r16
 // Copyright: See LICENSE
 // End file metadata.
 

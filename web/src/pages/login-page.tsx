@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Renders client and admin sign-in, preserving authorized return links and defaulting client sessions to the contract desk.
+// Purpose: Presents focused client and admin sign-in with authorized return links, session boundaries and the contract desk default.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

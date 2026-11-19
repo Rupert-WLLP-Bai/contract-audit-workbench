@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders SingleContractScopeCoverage, the single contract scope coverage workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.
+// Purpose: Displays single-contract recognition coverage and exact payment excerpts from frozen sources, keeping observations distinct from risk findings.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

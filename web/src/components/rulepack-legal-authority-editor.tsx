@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders RulePackLegalAuthorityEditor, the rulepack legal authority editor workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.
+// Purpose: Selects official evidence and applicability for rules, with keyboard-search controls that do not submit the surrounding draft form.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

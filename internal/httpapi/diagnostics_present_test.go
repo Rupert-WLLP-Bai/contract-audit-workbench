@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Exercises the `httpapi` package behavior through TestBusinessWorkspaceProjectsOnlyBusinessData, TestDiagnosticsPreservesFrozenGovernedKnowledge, TestDiagnosticsKeepKnowledgeAdvisoryOutOfTheBusinessProjection, TestBusinessWorkspaceNeverInfersSuccessFromMissingEvents; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include state=.
+// Purpose: Checks diagnostic response projection, including exact frozen payment observations and rejection of missing or mismatched evidence.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-12
-// Revision: r5
+// Updated: 2026-11-19
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 

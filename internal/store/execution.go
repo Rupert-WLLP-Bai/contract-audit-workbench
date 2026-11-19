@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Preserves authoritative review admission, retry and worker transactions while consuming domain-owned frozen values and compatible hash adapters.
+// Purpose: Persists execution plans and evaluations, including compatible single-contract rule identities and their frozen evidence attempts.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r8
+// Updated: 2026-11-19
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 

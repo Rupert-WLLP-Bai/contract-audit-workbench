@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Delegates OpenAPI schema compilation to locked openapi-typescript and its AST printer, retaining the WireSchemas alias, schema-derived runtime enums and compatibility CLI modes.
+// Purpose: Compiles the Go-owned OpenAPI schema through the locked TypeScript SDK, emitting wire types and runtime enums without changing domain evidence rules.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
 // Updated: 2026-11-19
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 

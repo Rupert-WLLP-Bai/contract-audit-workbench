@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Provides attempt-scoped original-reading identity and switches between original annotations and frozen text without changing evidence or decisions.
+// Purpose: Presents an authorized source file in its supported original view, preserving integrity verification and original-file controls within the review workspace.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04

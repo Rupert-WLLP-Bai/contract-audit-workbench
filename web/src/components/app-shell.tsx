@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Renders the contract-first client shell with the workbench brand, assigned work, case navigation, audience-appropriate tools and search scoped to the active page.
+// Purpose: Renders the contract-first client shell and authorized route groups, using a compact drawer and breadcrumb return path on the focused review reading route.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

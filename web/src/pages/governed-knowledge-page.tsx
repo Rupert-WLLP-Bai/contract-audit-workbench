@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Provides admin list, draft creation and version-detail routes for governed knowledge lifecycle; scope, content revision and submit/approve/publish actions are checked by the governance API.
+// Purpose: Lists authorized knowledge versions and places text and lifecycle actions before supporting provenance while retaining version registration and governance commands.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-14
-// Revision: r8
+// Updated: 2026-11-19
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 

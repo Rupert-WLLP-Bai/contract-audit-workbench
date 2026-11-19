@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Lists and searches the cases visible to the current session, with URL-backed all/mine/archived views plus filtering, sorting and pagination before opening a case workspace.
+// Purpose: Lists authorized cases with actionable search, status and view filters, permission-scoped creation and intact route state.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-12
-// Revision: r7
+// Updated: 2026-11-19
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 

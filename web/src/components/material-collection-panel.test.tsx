@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Checks material versions and actions in the case panel, including deep-link selection of a visible source and permission changes.
+// Purpose: Checks case material version navigation, authorized DOCX workspace actions and restoration of the requested source after permission changes.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31

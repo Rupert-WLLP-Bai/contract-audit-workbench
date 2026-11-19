@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: SingleContractPrecheckManifest is the published, versioned mapping shipped with this binary. Its exact bytes identify the implementation; older mappings must remain available when… Related `engine` operations include PublishedSingleContractMapping, SingleContractRuleSetHash, SingleContractPlaybookHash, EvaluateSingleContractPaymentSum.
+// Purpose: Defines deterministic single-contract precheck capabilities, supported rules and compatible identities for persisted review executions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-19
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 

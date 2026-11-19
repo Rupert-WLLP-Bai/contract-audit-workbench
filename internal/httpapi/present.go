@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Decode only the business fields. Unknown technical fields in a persisted agent record must never become part of the workspace response. Related `httpapi` operations include summaryJSON, detailJSON, documentJSON, parsedDocumentJSON.
+// Purpose: Projects authorized domain state into HTTP responses and verifies frozen-source identity and text before presenting payment observations.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r7
+// Updated: 2026-11-19
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Maps stable business scope and audit action identifiers to Chinese presentation labels without renaming API or stored identifiers.
+// Purpose: Maps service-provided business and capability identifiers to readable labels, including the current payment and settlement excerpt capability.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

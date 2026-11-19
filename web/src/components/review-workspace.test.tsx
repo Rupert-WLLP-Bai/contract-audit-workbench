@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks review workspace lifecycle and source evidence, including the visible positions of frozen key clauses before a finding is selected.
+// Purpose: Checks that the review workspace prioritizes the original document, presents supporting material on demand and preserves authorized reading and decision controls.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-19
-// Revision: r7
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 

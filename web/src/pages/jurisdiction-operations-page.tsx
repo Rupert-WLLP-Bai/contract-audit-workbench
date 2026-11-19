@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: 实现 `PROJECTION_LABEL`, `PROJECTION_TEXT_COLOR`, `TENANT_STATUS_LABEL`, `TENANT_STATUS_COLOR` 等界面组件或状态处理，呈现服务端返回的业务数据并提交受控用户操作。
+// Purpose: Displays authorized jurisdiction reports with an editable period filter, explicit freshness errors and optional projection diagnostics.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

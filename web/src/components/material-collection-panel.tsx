@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Renders the case material collection and version views, locating the requested visible source for review while keeping writes subject to case permissions.
+// Purpose: Renders current and historical material versions, locates authorized deep links and opens the DOCX workspace with permission enforcement.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31

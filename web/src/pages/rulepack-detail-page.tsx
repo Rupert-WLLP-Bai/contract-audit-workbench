@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Edits and publishes a selected rule-pack version using compare-and-swap revisions, displays validation errors and supports explicit lifecycle rollback without rewriting prior publications.
+// Purpose: Prioritizes rules and authorized editing while preserving version provenance, compare-and-swap revisions, rollout and rollback histories.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-12
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

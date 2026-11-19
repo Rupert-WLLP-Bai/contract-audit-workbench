@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Mounts the web application into the root DOM element and configures its Ant Design theme/tokens and API session identity before React renders routes.
+// Purpose: Mounts each application audience with shared Ant Design controls, table spacing and semantic theme, and initializes the session context before rendering.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

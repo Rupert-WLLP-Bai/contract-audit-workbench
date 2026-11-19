@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks that the current single-contract capability stores exact payment observations while preserving the findings boundary.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-19
+// Updated: 2026-11-19
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (
