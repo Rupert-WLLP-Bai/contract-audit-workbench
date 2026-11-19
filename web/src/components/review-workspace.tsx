@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders ReviewWorkspaceView, the review workspace workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.
+// Purpose: Composes the review workspace surfaces around the selected frozen attempt, routing between original text, findings, manual disposition, execution and history.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r12
+// Updated: 2026-11-19
+// Revision: r13
 // Copyright: See LICENSE
 // End file metadata.
 

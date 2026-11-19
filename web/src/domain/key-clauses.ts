@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Derives exact frozen key clauses or Intl.Segmenter source fragments, revalidating original quote and document identities.
+// Purpose: Selects one precise reading excerpt per qualifying topic in a frozen source, ranking contractual commitments while preserving source proof and Unicode coordinates.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
 // Updated: 2026-11-19
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

@@ -1,10 +1,10 @@
 /* File metadata (manifest mirror): */
-/* Purpose: Defines visual tokens and component/page rules, including Monochrome developer documentation. Paper ground,…, .api-docs-page *, .api-docs-page *::before,…, .api-docs-page ::selection, .api-docs-page :focus-visible; the stylesheet is imported by the web shell and carries no application state. */
+/* Purpose: Styles the API reference, operation navigation and response examples with the shared workbench surface, text and control tokens. */
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
-/* Updated: 2026-11-15 */
-/* Revision: r2 */
+/* Updated: 2026-11-19 */
+/* Revision: r3 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 

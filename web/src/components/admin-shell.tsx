@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders AdminShell, the admin shell workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.
+// Purpose: Renders the administration shell with its own session audience, scope and status, and passes its routes to the shared responsive navigation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

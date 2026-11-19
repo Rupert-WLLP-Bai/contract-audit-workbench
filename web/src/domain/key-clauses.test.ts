@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks frozen document and attempt binding, exact Unicode offsets, long-text fallback and non-risk key clause selection.
+// Purpose: Checks short, topic-specific contract excerpt selection, duplicate and weak-signal filtering, exceptions, page uncertainty and exact frozen proof across Unicode offsets.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
 // Updated: 2026-11-19
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

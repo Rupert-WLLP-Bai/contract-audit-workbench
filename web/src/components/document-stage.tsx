@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders case materials and frozen review sources, coordinating navigation and independently marking verified key clauses, search matches and located evidence.
+// Purpose: Renders case materials and frozen original text, moving through a small set of exact reading excerpts while keeping search matches and evidence locations independently navigable.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-19
-// Revision: r7
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Renders shared grouped navigation for the client and administration shells with current-route links, a collapsible desktop sidebar, a mobile drawer and focus restoration.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-19
+// Updated: 2026-11-19
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { MenuFoldOutlined, MenuOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
 import { Button, Drawer, Grid, Layout, Menu, type MenuProps } from "antd";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
