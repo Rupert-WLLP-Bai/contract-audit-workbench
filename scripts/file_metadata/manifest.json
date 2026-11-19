@@ -76050,7 +76050,7 @@
         "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6807917c67296eee34ebc23bf0c53e490411c244",
+          "commit": "40a62e6424f2ace95e609fd066afaf7168da25d8",
           "path": "web/src/app.integration.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
