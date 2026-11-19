@@ -90,6 +90,8 @@ export function ShellNavigation({
   drawerOnly = false,
   drawerContext,
   className = "",
+  compact = false,
+  drawerFooter,
 }: {
   title: string;
   groups: ShellNavGroup[];
@@ -97,6 +99,8 @@ export function ShellNavigation({
   drawerOnly?: boolean;
   drawerContext?: ReactNode;
   className?: string;
+  compact?: boolean;
+  drawerFooter?: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [openedAt, setOpenedAt] = useState<string | null>(null);
@@ -105,7 +109,7 @@ export function ShellNavigation({
   const drawerId = useId();
   const opener = useRef<HTMLButtonElement | HTMLAnchorElement>(null);
   const restoreFocus = useRef(false);
-  const drawerOpen = openedAt === key && (drawerOnly || !screens.lg);
+  const drawerOpen = openedAt === key && (drawerOnly || compact || !screens.lg);
   if (openedAt !== null && !drawerOpen) setOpenedAt(null);
 
   useEffect(() => {
@@ -121,9 +125,9 @@ export function ShellNavigation({
           className={`sidenav shell-sidenav ${className}`}
           theme="light"
           width={248}
-          collapsedWidth={72}
-          collapsed={collapsed}
-          collapsible
+          collapsedWidth={compact ? 56 : 72}
+          collapsed={compact || collapsed}
+          collapsible={!compact}
           onCollapse={setCollapsed}
           trigger={
             <Button
@@ -135,34 +139,70 @@ export function ShellNavigation({
             />
           }
         >
-          <NavigationMenu title={title} groups={groups} />
-          {collapsed ? null : footer}
+          {compact && (
+            <Button
+              ref={opener}
+              type="primary"
+              className="review-rail-opener"
+              icon={<MenuOutlined />}
+              aria-label={`打开${title}`}
+              aria-expanded={drawerOpen}
+              aria-haspopup="dialog"
+              onClick={() => {
+                restoreFocus.current = false;
+                setOpenedAt(key);
+              }}
+            />
+          )}
+          {compact ? (
+            <nav className="review-rail-navigation" aria-label={title}>
+              {groups
+                .filter((group) => group.key === "primary")
+                .flatMap((group) => group.links)
+                .map((link) => (
+                  <Link
+                    key={link.href}
+                    to={link.href}
+                    title={link.label}
+                    aria-label={link.label}
+                    aria-current={link.current ? "page" : undefined}
+                  >
+                    {link.icon}
+                  </Link>
+                ))}
+            </nav>
+          ) : (
+            <NavigationMenu title={title} groups={groups} />
+          )}
+          {compact || collapsed ? null : footer}
         </Layout.Sider>
       ) : null}
-      <div
-        className={
-          drawerOnly
-            ? "shell-mobile-navigation shell-mobile-navigation--always"
-            : "shell-mobile-navigation"
-        }
-      >
-        <Button
-          ref={opener}
-          type="text"
-          icon={<MenuOutlined />}
-          aria-label={`打开${title}`}
-          aria-haspopup="dialog"
-          aria-expanded={drawerOpen}
-          aria-controls={drawerOpen ? drawerId : undefined}
-          onClick={() => {
-            restoreFocus.current = false;
-            setOpenedAt(key);
-          }}
+      {!compact && (
+        <div
+          className={
+            drawerOnly
+              ? "shell-mobile-navigation shell-mobile-navigation--always"
+              : "shell-mobile-navigation"
+          }
         >
-          {title}
-        </Button>
-        {drawerContext}
-      </div>
+          <Button
+            ref={opener}
+            type="text"
+            icon={<MenuOutlined />}
+            aria-label={`打开${title}`}
+            aria-haspopup="dialog"
+            aria-expanded={drawerOpen}
+            aria-controls={drawerOpen ? drawerId : undefined}
+            onClick={() => {
+              restoreFocus.current = false;
+              setOpenedAt(key);
+            }}
+          >
+            {title}
+          </Button>
+          {drawerContext}
+        </div>
+      )}
       <Drawer
         id={drawerId}
         title={title}
@@ -176,6 +216,7 @@ export function ShellNavigation({
         size="min(344px, 100vw)"
         destroyOnHidden
         classNames={{ body: "shell-navigation-body" }}
+        footer={drawerFooter}
       >
         <NavigationMenu title={title} groups={groups} />
       </Drawer>

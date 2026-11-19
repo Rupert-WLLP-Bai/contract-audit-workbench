@@ -201,6 +201,7 @@ function WorkspaceHarness({
   showDiagnostics = false,
   workTarget = null,
   navigationSerial = 0,
+  immersive = false,
 }: {
   layout: "split" | "switch";
   onDecide: Decide;
@@ -208,12 +209,15 @@ function WorkspaceHarness({
   showDiagnostics?: boolean;
   workTarget?: WorkTarget | null;
   navigationSerial?: number;
+  immersive?: boolean;
 }) {
   const [selectedId, setSelectedId] = useState("f1");
   return (
     <ReviewWorkspaceView
       workspace={workspaceValue}
       layout={layout}
+      surface={immersive ? "document" : "full"}
+      immersive={immersive}
       selectedId={selectedId}
       streamStatus="live"
       showDiagnostics={showDiagnostics}
@@ -252,6 +256,72 @@ function renderWorkspace(
 }
 
 describe("review workspace", () => {
+  it("keeps the document reader and risks mounted and sends the selected finding to both document columns", async () => {
+    const user = userEvent.setup();
+    const value = workspace();
+    const attemptValue = attempt("attempt-1", 1, "awaiting_human");
+    Object.assign(attemptValue, {
+      parsed_document_ids: value.documents.map((doc) => `parse-${doc.id}`),
+    });
+    value.review_attempts = { attempt: attemptValue, attempts: [attemptValue] };
+    const setDocs = value.documents.map((document) => {
+      const parseId = `parse-${document.id}`;
+      return { ...document, parsed_document_id: parseId };
+    });
+    value.snapshot = {
+      document_ids: setDocs.map((doc) => doc.id),
+      rule_set_hash: "",
+      playbook_hash: "",
+      model_ref: null,
+      comparator_ref: null,
+    };
+    value.documents = [
+      ...setDocs,
+      {
+        ...documentOf("older", "draft_contract", "上一版合同.txt", "上一版内容"),
+        superseded: true,
+      },
+    ];
+    const finding = value.findings[0]!;
+    finding.evidence = finding.evidence.map((evidence) => ({
+      ...evidence,
+      parsed_document_id: `parse-${evidence.document_version_id}`,
+    }));
+    value.findings[1]!.decisions = [];
+    const { rerender } = render(
+      <MemoryRouter>
+        <WorkspaceHarness workspaceValue={value} layout="split" immersive onDecide={vi.fn()} />
+      </MemoryRouter>,
+    );
+    const reader = screen.getByRole("region", { name: "原文对照" });
+    const risks = screen.getByRole("region", { name: "风险线索" });
+    expect(within(reader).getAllByText("采购文件.txt").length).toBeGreaterThan(0);
+    expect(within(reader).getAllByText("拟签合同.txt").length).toBeGreaterThan(0);
+    expect(within(reader).queryByText("上一版合同.txt")).not.toBeInTheDocument();
+    expect(within(risks).getByRole("button", { name: /采购文件与拟签合同/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    await user.click(within(risks).getByRole("button", { name: /付款节点缺少可定位原文/ }));
+    expect(within(risks).getByRole("button", { name: /付款节点缺少可定位原文/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByRole("region", { name: "原文对照" })).toBe(reader);
+    expect(screen.getByRole("region", { name: "风险线索" })).toBe(risks);
+    expect(reader.querySelector("[data-relation]")).toHaveAttribute(
+      "data-relation",
+      "insufficient",
+    );
+    rerender(
+      <MemoryRouter>
+        <WorkspaceHarness workspaceValue={value} layout="switch" immersive onDecide={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("region", { name: "原文对照" })).toBe(reader);
+    expect(screen.getByRole("region", { name: "风险线索" })).toBe(risks);
+  });
+
   it("opens the existing judgment tab when a queue target is selected", async () => {
     const user = userEvent.setup();
     const value = workspace();

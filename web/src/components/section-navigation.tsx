@@ -147,6 +147,7 @@ export interface ReviewReadingPosition {
   actorScope: string;
   scrollY: number;
   documentScroll: number;
+  secondDocumentScroll?: number;
   findingScroll: number;
 }
 
@@ -179,6 +180,11 @@ export function readReviewReadingPosition(
     actorScope,
     scrollY: position.scrollY!,
     documentScroll: position.documentScroll!,
+    ...(typeof position.secondDocumentScroll === "number" &&
+    Number.isFinite(position.secondDocumentScroll) &&
+    position.secondDocumentScroll >= 0
+      ? { secondDocumentScroll: position.secondDocumentScroll }
+      : {}),
     findingScroll: position.findingScroll!,
   };
 }

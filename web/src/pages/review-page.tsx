@@ -8,8 +8,9 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { Button } from "antd";
+import { Button, Drawer, Tabs } from "antd";
 import {
+  cloneElement,
   lazy,
   Suspense,
   useCallback,
@@ -46,6 +47,7 @@ import {
   useCancelReview,
   useCaseDetail,
   useCreateCaseRelation,
+  useCreateReport,
   useDeleteCaseRelation,
   useRetryReview,
   useReview,
@@ -80,7 +82,7 @@ import {
   type ReviewReadingPosition,
 } from "../components/section-navigation";
 import { ReviewDiff } from "../components/review-diff";
-import type { ReviewCaseContext } from "../components/document-stage";
+import { ReviewCaseContextPanel, type ReviewCaseContext } from "../components/document-stage";
 import { RunProvenance } from "../components/run-provenance";
 import { FrozenLegalAuthorities } from "../components/frozen-legal-authorities";
 import { AuditProjection } from "../components/audit-projection";
@@ -102,9 +104,11 @@ import {
   isActiveAttemptState,
   isTerminalAttemptState,
   selectedFindingId,
+  decisionLabel,
   type FindingDecisionInput,
   type FindingDecisionOutcome,
 } from "../domain/review";
+import { formatDateTime } from "../domain/time";
 import { useReviewEvents, type ReviewEventBatch } from "../hooks/use-review-events";
 import {
   DecisionDraftScopeProvider,
@@ -113,6 +117,7 @@ import {
 } from "../hooks/decision-drafts";
 import { useReviewLayout } from "../hooks/use-viewport-layout";
 import { OriginalSourceContext } from "../components/original-document-reader";
+import { isLegacyPaymentCoverageFinding } from "../features/review/single-contract-coverage";
 import { canRestartUserCancelled, hasTransientRetryCause } from "../features/review/review-outcome";
 import {
   projectReviewWork,
@@ -121,6 +126,12 @@ import {
   type WorkFilter,
   type WorkTarget,
   type WorkTargetKind,
+  legacyReviewDrawer,
+  reviewRecordTabs,
+  workTargetDrawer,
+  writeReviewDrawer,
+  type ReviewDrawer,
+  type ReviewRecordTab,
 } from "../features/review/work-items";
 import "./review-page.css";
 
@@ -172,21 +183,30 @@ function readContractDeskReturn(
 const readingPositions = new Map<string, ReviewReadingPosition>();
 let previousReviewActor = "";
 
+function reviewDocumentPanes(): NodeListOf<HTMLElement> {
+  return document.querySelectorAll(".page-review [data-review-document-scroll]");
+}
+
+function findingQueue(): HTMLElement | null {
+  return document.querySelector(".page-review .review-finding-queue");
+}
+
 function captureReviewPosition(
   caseId: string,
   runId: string,
   attemptId: string | null,
   actorScope: string,
 ): ReviewReadingPosition {
+  const panes = reviewDocumentPanes();
   return {
     caseId,
     runId,
     attemptId,
     actorScope,
     scrollY: window.scrollY,
-    documentScroll: document.querySelector<HTMLElement>(".page-review .col-doc")?.scrollTop ?? 0,
-    findingScroll:
-      document.querySelector<HTMLElement>(".page-review .col-findings")?.scrollTop ?? 0,
+    documentScroll: panes[0]?.scrollTop ?? 0,
+    secondDocumentScroll: panes[1]?.scrollTop,
+    findingScroll: findingQueue()?.scrollTop ?? 0,
   };
 }
 
@@ -212,40 +232,20 @@ function sectionForHash(hash: string): ReviewSectionKey | null {
   return null;
 }
 
-const reviewSectionLabels: Record<ReviewSectionKey, string> = {
-  document: "原文核对",
-  work: "人工办理",
-  coverage: "覆盖范围",
-  trace: "执行轨迹",
-  diff: "复审对照",
-  history: "来源与历史",
+const reviewDecisionLabels: Partial<Record<DecisionAction, string>> = {
+  confirm_risk: "确认是风险",
+  false_positive: "不构成风险",
+  insufficient_evidence: "依据不够",
 };
 
-function ReviewSectionNav({
-  active,
-  onSelect,
-  compact = false,
-}: {
-  active: ReviewSectionKey;
-  onSelect: (key: ReviewSectionKey) => void;
-  compact?: boolean;
-}) {
+function isFindingCitationRejection(error: unknown): boolean {
   return (
-    <nav className="review-section-nav" aria-label="审查工作区分区">
-      {(Object.entries(reviewSectionLabels) as Array<[ReviewSectionKey, string]>)
-        .filter(([key]) => !compact || key !== "trace")
-        .map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            aria-pressed={active === key}
-            onClick={() => onSelect(key)}
-          >
-            {label}
-          </button>
-        ))}
-    </nav>
+    isConflict(error) && errorMessage(error).includes("模型建议的引用未全部对上本次审查留档原文")
   );
+}
+
+function drawerTargetPending(id: string) {
+  return sectionForHash(`#${id}`) !== null;
 }
 
 export function ReviewPage() {
@@ -254,25 +254,48 @@ export function ReviewPage() {
   const navigate = useNavigate();
   const navigationType = useNavigationType();
   const [params, setParams] = useSearchParams();
-  const requestedReviewSection = params.get("review_section");
-  const reviewSectionFromQuery: ReviewSectionKey | null =
-    requestedReviewSection !== null && Object.hasOwn(reviewSectionTargets, requestedReviewSection)
-      ? (requestedReviewSection as ReviewSectionKey)
-      : null;
-  const reviewSection = reviewSectionFromQuery ?? sectionForHash(location.hash) ?? "document";
-  const workspaceSurface =
-    reviewSection === "trace" ? "trace" : reviewSection === "coverage" ? "coverage" : "document";
-  const selectReviewSection = (key: ReviewSectionKey) => {
-    const next = new URLSearchParams(params);
-    if (key === "document") next.delete("review_section");
-    else next.set("review_section", key);
+  const requestedDrawer = params.get("drawer");
+  const requestedLegacySection =
+    params.get("review_section") ??
+    (requestedDrawer === null ? sectionForHash(location.hash) : null);
+  const requestedTab = params.get("tab");
+  const [legacyDrawer, legacyTab] = legacyReviewDrawer(requestedLegacySection);
+  const drawer =
+    requestedDrawer === "record" || requestedDrawer === "execution"
+      ? requestedDrawer
+      : legacyDrawer;
+  const recordTab = reviewRecordTabs.find((tab) => tab === requestedTab) ?? legacyTab ?? "finding";
+  function selectDrawer(nextDrawer: ReviewDrawer | null, tab?: ReviewRecordTab) {
+    setParams((current) => writeReviewDrawer(new URLSearchParams(current), nextDrawer, tab), {
+      state: location.state,
+    });
+  }
+  useEffect(() => {
+    if (requestedLegacySection === null) return;
+    const next = writeReviewDrawer(
+      new URLSearchParams(location.search),
+      drawer,
+      drawer === "record" ? recordTab : undefined,
+    );
     const search = next.toString();
     void navigate(
-      { pathname: location.pathname, search: search ? `?${search}` : "", hash: "" },
+      {
+        pathname: location.pathname,
+        search: search ? `?${search}` : "",
+        hash: drawer ? location.hash : "",
+      },
       { replace: true, state: location.state },
     );
-    window.scrollTo({ top: 0 });
-  };
+  }, [
+    drawer,
+    location.pathname,
+    location.search,
+    location.hash,
+    location.state,
+    navigate,
+    recordTab,
+    requestedLegacySection,
+  ]);
   const selectedAttemptId = params.get("attempt_id");
   const requestedSourceDocument = params.get("source_document");
   const hasRequestedSourceDocument = params.has("source_document");
@@ -281,6 +304,8 @@ export function ReviewPage() {
   const review = useReview(caseId, runId, selectedAttemptId, streamLive);
   const workbench = useWorkbench("week");
   const createRelation = useCreateCaseRelation(caseId);
+  const createReport = useCreateReport(caseId);
+  const [submittedReportScope, setSubmittedReportScope] = useState<string | null>(null);
   const deleteRelation = useDeleteCaseRelation(caseId);
   const caseDetail = useCaseDetail(caseId);
   const session = useSession();
@@ -295,8 +320,11 @@ export function ReviewPage() {
       !caseDetail.isFetching,
     retry: false,
   });
-  const [supplementOpen, setSupplementOpen] = useState(false);
+
   const [navigationSerial, setNavigationSerial] = useState(0);
+  const [copyStatus, setCopyStatus] = useState("");
+  const focusJudgmentOnClose = useRef(false);
+  const [coverageHost, setCoverageHost] = useState<HTMLDivElement | null>(null);
   const actorScope =
     session.isSuccess && !session.isFetching ? actorReadContextKey(session.data) : "";
   const navigationActorScope = session.data ? actorReadContextKey(session.data) : "";
@@ -345,7 +373,15 @@ export function ReviewPage() {
     setParams(
       (current) => {
         const next = new URLSearchParams(current);
-        for (const key of ["work_kind", "work_item", "work_filter", "finding", "citation"])
+        for (const key of [
+          "work_kind",
+          "work_item",
+          "work_filter",
+          "finding",
+          "citation",
+          "drawer",
+          "tab",
+        ])
           next.delete(key);
         return next;
       },
@@ -354,10 +390,6 @@ export function ReviewPage() {
   }, [scopeMismatch, setParams]);
   const requestedKind = scopeMismatch ? null : params.get("work_kind");
   const requestedItem = scopeMismatch ? null : params.get("work_item");
-  useEffect(() => {
-    if (requestedItem && ["request", "evaluation", "request-source"].includes(requestedKind ?? ""))
-      setSupplementOpen(true);
-  }, [requestedItem, requestedKind, navigationSerial]);
   const [diagnosticScope, setDiagnosticScope] = useState<string | null>(null);
   const currentDiagnosticScope =
     session.data?.role === "admin"
@@ -817,9 +849,11 @@ export function ReviewPage() {
         frame = requestAnimationFrame(() => {
           if (pendingReviewRestore.current !== restore) return;
           window.scrollTo(0, restore.position.scrollY);
-          const documentPane = document.querySelector<HTMLElement>(".page-review .col-doc");
-          const findingPane = document.querySelector<HTMLElement>(".page-review .col-findings");
+          const [documentPane, secondDocumentPane] = Array.from(reviewDocumentPanes());
+          const findingPane = findingQueue();
           if (documentPane) documentPane.scrollTop = restore.position.documentScroll;
+          if (secondDocumentPane && restore.position.secondDocumentScroll !== undefined)
+            secondDocumentPane.scrollTop = restore.position.secondDocumentScroll;
           if (findingPane) findingPane.scrollTop = restore.position.findingScroll;
         });
       });
@@ -828,7 +862,7 @@ export function ReviewPage() {
       cancelAnimationFrame(frame);
       if (savedBeforeNavigation.current.delete(location.key)) return;
       if (pendingReviewRestore.current?.visit === visit) return;
-      if (!document.querySelector(".page-review .col-doc")) return;
+      if (reviewDocumentPanes().length === 0) return;
       readingPositions.set(
         location.key,
         captureReviewPosition(caseId, runId, attemptId, actorScope),
@@ -940,10 +974,19 @@ export function ReviewPage() {
     audit_events: diagnosticData?.audit_events ?? review.data.audit_events,
   };
 
-  const selectedId = selectedFindingId(
-    review.data.findings,
+  const visibleFindings = workspace.findings.filter(
+    (item) => !isLegacyPaymentCoverageFinding(workspace, item),
+  );
+  const pendingFindings = visibleFindings.filter((item) => item.decisions.length === 0);
+  const requestedFinding =
     (scopeMismatch ? null : params.get("finding")) ??
-      (requestedKind === "finding" ? requestedItem : null),
+    (requestedKind === "finding" ? requestedItem : null);
+  const selectPending =
+    pendingFindings.length > 0 &&
+    !visibleFindings.some((finding) => finding.id === requestedFinding);
+  const selectedId = selectedFindingId(
+    selectPending ? pendingFindings : visibleFindings,
+    requestedFinding,
   );
   const workFilter: WorkFilter =
     params.get("work_filter") === "evidence"
@@ -1120,6 +1163,8 @@ export function ReviewPage() {
     next.set("work_kind", target.kind);
     next.set("work_item", target.id);
     if (target.kind === "finding") next.set("finding", target.id);
+    if (target.kind === "remediation") writeReviewDrawer(next, "record", "review");
+    else writeReviewDrawer(next, ...workTargetDrawer(target.kind));
     return {
       ...caseNavigationState,
       ...workReturnState(`${location.pathname}?${next}`, caseId, actorScope),
@@ -1149,35 +1194,21 @@ export function ReviewPage() {
         work_kind: target.kind,
         work_item: target.id,
       });
+      writeReviewDrawer(next, ...workTargetDrawer(target.kind));
       void navigate(
         `/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(target.runId)}?${next}`,
         { state: savedReturn(target) },
       );
       return;
     }
-    if (
-      target.kind === "request" ||
-      target.kind === "evaluation" ||
-      target.kind === "request-source"
-    )
-      setSupplementOpen(true);
     setNavigationSerial((value) => value + 1);
     setParams(
       (current) => {
         const next = new URLSearchParams(current);
         next.set("work_kind", target.kind);
         next.set("work_item", target.id);
-        if (target.kind === "finding") {
-          next.set("finding", target.id);
-          next.delete("review_section");
-        } else if (
-          target.kind === "gap" ||
-          target.kind === "request" ||
-          target.kind === "evaluation" ||
-          target.kind === "request-source"
-        ) {
-          next.set("review_section", "coverage");
-        }
+        if (target.kind === "finding") next.set("finding", target.id);
+        writeReviewDrawer(next, ...workTargetDrawer(target.kind));
         return next;
       },
       { state: navigationState },
@@ -1192,6 +1223,7 @@ export function ReviewPage() {
       work_kind: "request",
       work_item: target.id,
     });
+    writeReviewDrawer(next, ...workTargetDrawer(target.kind));
     void navigate(`${caseHref(caseId, latest.id)}?${next}`, { state: savedReturn(target) });
   }
   const snapshot = workbench.data;
@@ -1295,7 +1327,7 @@ export function ReviewPage() {
     } catch (error) {
       await review.refetch();
       setConflictFinding(input.findingId);
-      if (isConflict(error)) {
+      if (isConflict(error) && !isFindingCitationRejection(error)) {
         setConflictMessage("该事项已被他人更新，已载入最新内容，请重新确认。");
         setSaveError(null);
       } else {
@@ -1318,7 +1350,7 @@ export function ReviewPage() {
       } catch {
         refreshFailed = true;
       }
-      if (isConflict(error)) {
+      if (isConflict(error) && !isFindingCitationRejection(error)) {
         return {
           status: "conflict",
           message: refreshFailed
@@ -1335,10 +1367,385 @@ export function ReviewPage() {
     }
   }
 
+  const workspaceView = (
+    <ReviewWorkspaceView
+      sourceDocumentId={sourceVerified ? requestedSourceDocument : null}
+      surface="document"
+      immersive
+      coverageHost={coverageHost}
+      onReturnToReading={() => selectDrawer(null)}
+      workspace={workspace}
+      caseDetail={
+        caseDetail.isSuccess && !caseDetail.isFetching && caseDetail.data.id === caseId
+          ? caseDetail.data
+          : undefined
+      }
+      layout={layout}
+      showDiagnostics={diagnosticData !== null}
+      quoteScope={quoteScope}
+      onQuoteSelectionChange={setQuoteSelection}
+      selectedId={selectedId}
+      explicitFindingId={scopeMismatch ? null : params.get("finding")}
+      workTarget={workTarget}
+      navigationSerial={navigationSerial}
+      caseContext={caseContext}
+      caseReturnState={caseNavigationState}
+      canEditRelations={canEditRelations}
+      relationPending={relationPending}
+      relationError={relationError}
+      streamStatus={streamStatus}
+      pending={decide.isPending}
+      retrying={retry.isPending}
+      canDecide={canDecide}
+      decisionDisabledReason={decisionDisabledReason}
+      canRetry={canRetry}
+      canCancel={canCancel}
+      cancelling={cancel.isPending}
+      cancelError={cancel.isError ? errorMessage(cancel.error) : null}
+      conflictMessage={conflictFinding === selectedId ? conflictMessage : null}
+      saveError={conflictFinding === selectedId ? saveError : null}
+      onSelect={(findingId) => {
+        setParams(
+          (current) => {
+            const next = new URLSearchParams(current);
+            next.set("finding", findingId);
+            if (drawer === "execution") writeReviewDrawer(next, null);
+            next.delete("source_document");
+            if (next.get("work_kind") === "finding") next.set("work_item", findingId);
+            return next;
+          },
+          { state: navigationState },
+        );
+      }}
+      onSelectAttempt={(attemptId) => {
+        const next = new URLSearchParams(params);
+        next.set("attempt_id", attemptId);
+        // A citation belongs to its own attempt; never show the previous
+        // attempt's evidence after switching.
+        next.delete("citation");
+        next.delete("finding");
+        next.delete("work_kind");
+        next.delete("work_item");
+        setParams(next, { state: navigationState });
+      }}
+      selectedEvidenceId={selectedCitation}
+      onSelectEvidence={(evidenceId) => {
+        if (actorScope) {
+          readingPositions.set(
+            location.key,
+            captureReviewPosition(caseId, runId, selectedAttempt?.id ?? null, actorScope),
+          );
+          savedBeforeNavigation.current.add(location.key);
+        }
+        const next = new URLSearchParams(params);
+        if (selectedAttempt?.id) next.set("attempt_id", selectedAttempt.id);
+        if (evidenceId === null) {
+          next.delete("citation");
+        } else {
+          next.set("citation", evidenceId);
+        }
+        setParams(next, { state: navigationState });
+      }}
+      onDecide={onDecide}
+      onBatchDecide={onBatchDecide}
+      onRetry={() => {
+        if (!canRetry) return;
+        retry.mutate(undefined, {
+          onSuccess: (accepted) => {
+            const next = new URLSearchParams(params);
+            next.set("attempt_id", accepted.attempt_id);
+            next.delete("citation");
+            next.delete("work_kind");
+            next.delete("work_item");
+            setParams(next, { state: navigationState });
+          },
+        });
+      }}
+      onCancel={() => {
+        if (canCancel) cancel.mutate();
+      }}
+      onCreateRelation={saveRelation}
+      onDeleteRelation={(relationId) => deleteRelation.mutate(relationId)}
+      diagnosticsLoading={diagnostics.isFetching}
+      onLoadDiagnostics={
+        currentDiagnosticScope && diagnosticScope !== currentDiagnosticScope
+          ? () => setDiagnosticScope(currentDiagnosticScope)
+          : undefined
+      }
+    />
+  );
+  const activeFinding = workspace.findings.find((item) => item.id === selectedId);
+  const modelFinding = activeFinding?.origin === "model" || activeFinding?.origin === "ai";
+  const remaining = pendingFindings.length;
+  const canCreateReport = session.data?.role === "admin" || session.data?.role === "clerk";
+  const reportReady =
+    currentWorkContext &&
+    canCreateReport &&
+    (selectedAttempt?.state === "completed" || selectedAttempt?.state === "partial") &&
+    Boolean(selectedAttempt.finished_at) &&
+    selectedAttempt.frozen_result_available === true &&
+    Boolean(workspace.snapshot?.document_ids.length) &&
+    remaining === 0;
+  const reportCommandScope = JSON.stringify([
+    navigationActorScope,
+    caseId,
+    runId,
+    selectedAttempt?.id,
+  ]);
+  const reportResultVisible =
+    canCreateReport && !scopeMismatch && submittedReportScope === reportCommandScope;
+  const reportRecord =
+    reportResultVisible &&
+    createReport.data?.attempt_id === selectedAttempt?.id &&
+    createReport.data?.run_id === runId
+      ? createReport.data
+      : null;
+  const reportError =
+    reportResultVisible && createReport.isError ? errorMessage(createReport.error) : null;
+  function submitReport() {
+    if (!reportReady || !selectedAttempt || createReport.isPending) return;
+    setSubmittedReportScope(reportCommandScope);
+    createReport.mutate({ run_id: runId, attempt_id: selectedAttempt.id });
+  }
+
+  const casePath = `/cases/${encodeURIComponent(caseId)}`;
+  const agentReview = workspace.agent_review;
+  const agentRuleVersion =
+    agentReview && selectedAttempt && agentReview.attempt_id === selectedAttempt.id
+      ? agentReview.rulepack?.version
+      : null;
+  const reviewBasis = (
+    <section className="review-record-basis" aria-label="本次审查依据">
+      <h3>本次审查依据</h3>
+      <dl>
+        {(workspace.snapshot?.document_ids ?? []).map((documentId) => {
+          const doc = workspace.documents.find((item) => item.id === documentId);
+          const matches = (caseDetailReady ? (caseDetail.data.material_versions ?? []) : []).filter(
+            (item) => item.document_id === documentId,
+          );
+          return (
+            <div key={documentId}>
+              <dt>{doc?.filename ?? "材料名称未记录"}</dt>
+              <dd>{matches.length === 1 ? `第 ${matches[0]!.version} 版` : "版本未记录"}</dd>
+            </div>
+          );
+        })}
+        <div>
+          <dt>审查规则</dt>
+          <dd>
+            {selectedAttempt?.review_scope?.rule_set_version ??
+              agentRuleVersion ??
+              workspace.snapshot?.review_scope?.rule_set_version ??
+              workspace.snapshot?.governed_knowledge?.rulepack?.version ??
+              "版本未记录"}
+          </dd>
+        </div>
+        <div>
+          <dt>审查编号</dt>
+          <dd>
+            <Button
+              type="link"
+              onClick={() =>
+                void Promise.resolve()
+                  .then(() => navigator.clipboard.writeText(runId))
+                  .then(
+                    () => setCopyStatus("已复制审查编号"),
+                    () => setCopyStatus("无法复制审查编号"),
+                  )
+              }
+            >
+              复制编号
+            </Button>
+          </dd>
+        </div>
+      </dl>
+      <span role="status">{copyStatus}</span>
+    </section>
+  );
+  const findingRecord = (
+    <div className="review-record-content">
+      {activeFinding ? (
+        <>
+          <h3>{activeFinding.claim}</h3>
+          <ol className="review-decision-timeline">
+            <li className={modelFinding ? "review-timeline-model" : undefined}>
+              <strong>{modelFinding ? "AI 建议" : "规则线索"}</strong>
+              {activeFinding.evidence.map((anchor) => (
+                <blockquote key={anchor.id}>{anchor.quote}</blockquote>
+              ))}
+            </li>
+            {activeFinding.decisions.length === 0 && <li>还没有人工判断。</li>}
+            {activeFinding.decisions.map((decision) => (
+              <li key={decision.id}>
+                <strong>
+                  {decision.actor} ·{" "}
+                  {reviewDecisionLabels[decision.action as DecisionAction] ??
+                    decisionLabel(decision.action)}
+                </strong>
+                <time dateTime={decision.decided_at}>{formatDateTime(decision.decided_at)}</time>
+                <p>{decision.reason}</p>
+              </li>
+            ))}
+          </ol>
+        </>
+      ) : (
+        <p>请选择一条线索查看记录。</p>
+      )}
+      {reviewBasis}
+    </div>
+  );
+  const historyRecord =
+    session.isSuccess && !session.isFetching ? (
+      <div id="review-diff-section">
+        <RunProvenance workspace={workspace} showDiagnostics={diagnosticData !== null} />
+        <ReviewDiff
+          caseId={caseId}
+          latestRunId={caseDetail.data?.latest_run?.id ?? runId}
+          actorScope={JSON.stringify([
+            session.data.id,
+            session.data.active_context?.tenant_id,
+            session.data.active_context?.org_id,
+            session.data.role,
+            session.data.audience,
+            session.data.active_context?.context_version,
+          ])}
+        />
+      </div>
+    ) : null;
+  const supplementRecord = (
+    <div id="review-coverage-section">
+      <ManualFindingsPanel
+        key={`${caseId}:${runId}:${selectedAttempt?.id ?? "none"}:${session.data?.tenant_id ?? ""}:${session.data?.org_id ?? ""}:${session.data?.id ?? ""}:${session.data?.role ?? ""}`}
+        caseId={caseId}
+        runId={runId}
+        attemptId={selectedAttempt?.id ?? null}
+        isFrozenAttempt={selectedAttempt?.history_kind === "frozen"}
+        parsedDocumentIds={selectedAttempt?.parsed_document_ids ?? []}
+        selection={quoteSelection}
+        documents={review.data.documents}
+        actor={session.data ?? null}
+        canCreate={
+          currentWorkContext && roleCanDecide && selectedAttempt?.history_kind === "frozen"
+        }
+      />
+      <EvidenceSLADashboard
+        mode="reminder"
+        cases={[{ id: caseId, title: caseDetail.data?.title ?? caseId }]}
+      />
+      <EvidenceRequestPanel
+        caseId={caseId}
+        runId={runId}
+        attemptId={selectedAttempt?.id ?? null}
+        canManage={canPrepareRequest}
+        readOnly={!currentWorkContext}
+        selectedRequestId={workTarget?.kind === "request" ? workTarget.id : null}
+        selectedSource={
+          workTarget?.kind === "evaluation"
+            ? `evaluation:${workTarget.id}`
+            : workTarget?.kind === "request-source"
+              ? workTarget.id
+              : null
+        }
+        navigationSerial={navigationSerial}
+        expanded={drawer === "record" && recordTab === "supplement"}
+        evaluations={review.data.evaluations ?? []}
+        agentReview={review.data.agent_review ?? null}
+        documents={caseDetail.data?.documents ?? []}
+        quoteScope={quoteScope}
+        quoteSelection={quoteSelection}
+      />
+      <OperatorAuditEntry caseId={caseId} runId={runId} attemptId={selectedAttempt?.id ?? null} />
+    </div>
+  );
+  const reviewRecord = (
+    <div id="review-history-section">
+      {reviewBasis}
+      {cloneElement(workspaceView, { surface: "coverage", immersive: false })}
+      <div ref={setCoverageHost} />
+      {caseContext && (
+        <ReviewCaseContextPanel
+          context={caseContext}
+          caseReturnState={caseNavigationState}
+          canEditRelations={canEditRelations}
+          relationPending={relationPending}
+          relationError={relationError}
+          onCreateRelation={saveRelation}
+          onDeleteRelation={(relationId) => deleteRelation.mutate(relationId)}
+        />
+      )}
+      {session.isSuccess && !session.isFetching && !scopeMismatch && !deniedRequests ? (
+        <div id="review-work-section">
+          <ReviewWorkItems
+            projection={workProjection}
+            filter={workFilter}
+            onFilter={(filter) =>
+              setParams(
+                (current) => {
+                  const next = new URLSearchParams(current);
+                  next.set("work_filter", filter);
+                  return next;
+                },
+                { state: navigationState },
+              )
+            }
+            onOpen={openWork}
+            onContinueRequest={canContinueRequest ? continueRequest : undefined}
+            refreshing={requests.isFetching || caseDetail.isFetching || review.isFetching}
+            error={workError}
+            canPrepareRequest={canPrepareRequest}
+            currentRunId={runId}
+            currentAttemptId={selectedAttempt?.id ?? null}
+            currentOrdinal={selectedAttempt?.ordinal ?? null}
+            selectedKind={requestedKind}
+            selectedId={requestedItem}
+          />
+        </div>
+      ) : deniedRequests ? (
+        <p role="alert">无法读取补件请求，办理导航暂不可用。</p>
+      ) : null}
+      <ExperienceFeedbackPanel
+        caseId={caseId}
+        runId={runId}
+        attemptId={selectedAttempt?.id ?? null}
+        finding={review.data.findings.find((item) => item.id === selectedId) ?? null}
+        documents={review.data.documents}
+        canSubmit={
+          currentWorkContext && roleCanDecide && selectedAttempt?.history_kind === "frozen"
+        }
+        contextScope={streamCommandContext?.contextVersion}
+        quoteScope={quoteScope}
+        quoteSelection={quoteSelection}
+      />
+      <ExperienceUsagePanel
+        caseId={caseId}
+        runId={runId}
+        attemptId={selectedAttempt?.history_kind === "frozen" ? selectedAttempt.id : null}
+        findingId={selectedId}
+        canDecide={canDecide}
+      />
+      <RunProvenance
+        workspace={{ ...workspace, previous_run_id: null }}
+        showDiagnostics={diagnosticData !== null}
+      />
+      <FrozenLegalAuthorities
+        key={`${caseId}:${runId}:${selectedAttempt?.id ?? "none"}`}
+        caseId={caseId}
+        runId={runId}
+        attemptId={selectedAttempt?.id ?? null}
+        projection={review.data.legal_authorities}
+      />
+      <AuditProjection
+        runId={review.data.run.id}
+        events={diagnosticData?.audit_events ?? review.data.business_events ?? []}
+        showDiagnostics={diagnosticData !== null}
+      />
+    </div>
+  );
   return (
     <SectionNavigationProvider
       scope={`${caseId}:${runId}:${selectedAttempt?.id ?? selectedAttemptId ?? ""}:${navigationActorScope}`}
       actorScope={navigationActorScope}
+      targetPending={drawerTargetPending}
       ready={Boolean(
         actorScope &&
         review.isSuccess &&
@@ -1351,15 +1758,85 @@ export function ReviewPage() {
     >
       <section className="page page-review">
         {session.isFetching ? <p role="status">正在重新确认登录状态，办理暂不可用。</p> : null}
-        <div ref={readingContent} hidden={session.isFetching}>
+        <div className="review-reading-content" ref={readingContent} hidden={session.isFetching}>
           <div className="review-page-bar">
-            <header className="page-head">
-              <div>
-                <h1>{sourceVerified ? (caseDetail.data?.title ?? "合同原文") : "审查工作区"}</h1>
-                <p title={caseDetail.data?.title ?? "案件"}>
-                  {sourceVerified ? "合同原文" : (caseDetail.data?.title ?? "案件")}
-                </p>
+            <header className="review-topbar">
+              <div className="review-topbar-identity">
+                <Link to={casePath} state={caseNavigationState} aria-label="返回案件">
+                  ‹ 案件
+                </Link>
+                <h1 title={caseDetail.data?.title ?? "审查工作区"}>
+                  {caseDetail.data?.title ?? "审查工作区"}
+                </h1>
+                {selectedAttempt && (
+                  <span className="review-attempt-label">第 {selectedAttempt.ordinal} 次审查</span>
+                )}
               </div>
+              <ol className="review-progress" aria-label="审查进度">
+                <li data-stage={workspace.documents.length > 0 ? "done" : "active"}>材料</li>
+                <li data-stage={terminal ? "done" : "active"}>准备</li>
+                <li data-stage={terminal ? (remaining === 0 ? "done" : "active") : undefined}>
+                  原文审查
+                </li>
+                <li data-stage={terminal && remaining === 0 ? "active" : undefined}>整改与报告</li>
+              </ol>
+              <span className="review-finding-count">
+                {visibleFindings.length} 条线索 · 还有 {remaining} 条待判断
+              </span>
+              <nav className="review-topbar-actions" aria-label="审查操作">
+                <Button
+                  type="text"
+                  aria-haspopup="dialog"
+                  onClick={() => selectDrawer("record", "supplement")}
+                >
+                  补充材料
+                </Button>
+                <Button
+                  type="text"
+                  aria-haspopup="dialog"
+                  onClick={() => selectDrawer("record", "finding")}
+                >
+                  审查记录
+                </Button>
+                <Button
+                  type="text"
+                  aria-haspopup="dialog"
+                  onClick={() => selectDrawer("execution")}
+                >
+                  执行过程
+                </Button>
+                {reportRecord ? (
+                  <Button
+                    type="primary"
+                    href={paths.report(caseId, reportRecord.id, "html")}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    查看报告
+                  </Button>
+                ) : (
+                  <Button
+                    type="primary"
+                    disabled={!reportReady}
+                    loading={createReport.isPending}
+                    onClick={submitReport}
+                  >
+                    {remaining ? "判断完再出报告" : "出报告"}
+                  </Button>
+                )}
+              </nav>
+            </header>
+            {reportError && (
+              <p className="callout" role="alert">
+                {reportError}
+              </p>
+            )}
+            {reportRecord && (
+              <p role="status" className="sr-only">
+                报告已创建，版本 {reportRecord.version}。
+              </p>
+            )}
+            <div className="review-reading-returns">
               {contractDesk ? (
                 <nav className="contract-desk-return" aria-label="合同清单导航">
                   <Link to={contractDesk.returnTo}>返回合同清单</Link>
@@ -1380,52 +1857,7 @@ export function ReviewPage() {
               {directEditorTarget && (
                 <Button onClick={() => setDocxSession(directEditorTarget)}>编辑合同修改稿</Button>
               )}
-              <details className="review-more-tools">
-                <summary>更多工具</summary>
-                <Button
-                  aria-label={"Agent Studio"}
-                  href={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(runId)}/agent${
-                    selectedAttempt?.id
-                      ? `?attempt=${encodeURIComponent(selectedAttempt.id)}`
-                      : selectedAttemptId
-                        ? `?attempt=${encodeURIComponent(selectedAttemptId)}`
-                        : ""
-                  }`}
-                >
-                  Agent Studio
-                </Button>
-                {sourceVerified ? (
-                  <Button htmlType="button" onClick={() => selectReviewSection("trace")}>
-                    执行轨迹
-                  </Button>
-                ) : null}
-              </details>
-              <Button
-                aria-label={"返回案件"}
-                href={`/cases/${encodeURIComponent(caseId)}`}
-                onClick={(event) => {
-                  if (
-                    event.button !== 0 ||
-                    event.metaKey ||
-                    event.ctrlKey ||
-                    event.altKey ||
-                    event.shiftKey
-                  )
-                    return;
-                  event.preventDefault();
-                  void navigate(`/cases/${encodeURIComponent(caseId)}`, {
-                    state: caseNavigationState,
-                  });
-                }}
-              >
-                返回案件
-              </Button>
-            </header>
-            <ReviewSectionNav
-              active={reviewSection}
-              onSelect={selectReviewSection}
-              compact={sourceVerified && reviewSection !== "trace"}
-            />
+            </div>
           </div>
           {streamStatus === "closed" ? (
             <section className="callout" role="status" aria-live="polite">
@@ -1452,52 +1884,6 @@ export function ReviewPage() {
             </p>
           ) : caseArchived ? (
             <p className="callout">案件已归档，历史审查仅供查看。</p>
-          ) : null}
-          {session.isSuccess && !session.isFetching ? (
-            <div id="review-diff-section" hidden={reviewSection !== "diff"}>
-              <ReviewDiff
-                caseId={caseId}
-                latestRunId={caseDetail.data?.latest_run?.id ?? runId}
-                actorScope={JSON.stringify([
-                  session.data.id,
-                  session.data.active_context?.tenant_id,
-                  session.data.active_context?.org_id,
-                  session.data.role,
-                  session.data.audience,
-                  session.data.active_context?.context_version,
-                ])}
-              />
-            </div>
-          ) : null}
-          {session.isSuccess && !session.isFetching && !scopeMismatch && !deniedRequests ? (
-            <div id="review-work-section" hidden={reviewSection !== "work"}>
-              <ReviewWorkItems
-                projection={workProjection}
-                filter={workFilter}
-                onFilter={(filter) =>
-                  setParams(
-                    (current) => {
-                      const next = new URLSearchParams(current);
-                      next.set("work_filter", filter);
-                      return next;
-                    },
-                    { state: navigationState },
-                  )
-                }
-                onOpen={openWork}
-                onContinueRequest={canContinueRequest ? continueRequest : undefined}
-                refreshing={requests.isFetching || caseDetail.isFetching || review.isFetching}
-                error={workError}
-                canPrepareRequest={canPrepareRequest}
-                currentRunId={runId}
-                currentAttemptId={selectedAttempt?.id ?? null}
-                currentOrdinal={selectedAttempt?.ordinal ?? null}
-                selectedKind={requestedKind}
-                selectedId={requestedItem}
-              />
-            </div>
-          ) : deniedRequests ? (
-            <p role="alert">无法读取补件请求，办理导航暂不可用。</p>
           ) : null}
           {requestedItem &&
           targetKind &&
@@ -1534,15 +1920,8 @@ export function ReviewPage() {
                   : null
               }
             >
-              <div
-                id="review-document-section"
-                hidden={
-                  reviewSection !== "document" &&
-                  reviewSection !== "trace" &&
-                  reviewSection !== "coverage"
-                }
-              >
-                {reviewSection === "document" && hasRequestedSourceDocument && !sourceVerified ? (
+              <div id="review-document-section" role="region" aria-label="审查工作区">
+                {hasRequestedSourceDocument && !sourceVerified ? (
                   <section className="callout" role={sourcePending ? "status" : "alert"}>
                     <p>
                       {sourcePending
@@ -1567,114 +1946,7 @@ export function ReviewPage() {
                     ) : null}
                   </section>
                 ) : (
-                  <ReviewWorkspaceView
-                    sourceDocumentId={sourceVerified ? requestedSourceDocument : null}
-                    surface={workspaceSurface}
-                    workspace={workspace}
-                    caseDetail={
-                      caseDetail.isSuccess &&
-                      !caseDetail.isFetching &&
-                      caseDetail.data.id === caseId
-                        ? caseDetail.data
-                        : undefined
-                    }
-                    layout={layout}
-                    showDiagnostics={diagnosticData !== null}
-                    quoteScope={quoteScope}
-                    onQuoteSelectionChange={setQuoteSelection}
-                    selectedId={selectedId}
-                    explicitFindingId={scopeMismatch ? null : params.get("finding")}
-                    workTarget={workTarget}
-                    navigationSerial={navigationSerial}
-                    caseContext={caseContext}
-                    caseReturnState={caseNavigationState}
-                    canEditRelations={canEditRelations}
-                    relationPending={relationPending}
-                    relationError={relationError}
-                    streamStatus={streamStatus}
-                    pending={decide.isPending}
-                    retrying={retry.isPending}
-                    canDecide={canDecide}
-                    decisionDisabledReason={decisionDisabledReason}
-                    canRetry={canRetry}
-                    canCancel={canCancel}
-                    cancelling={cancel.isPending}
-                    cancelError={cancel.isError ? errorMessage(cancel.error) : null}
-                    conflictMessage={conflictFinding === selectedId ? conflictMessage : null}
-                    saveError={conflictFinding === selectedId ? saveError : null}
-                    onSelect={(findingId) => {
-                      setParams(
-                        (current) => {
-                          const next = new URLSearchParams(current);
-                          next.set("finding", findingId);
-                          next.delete("source_document");
-                          if (next.get("work_kind") === "finding") next.set("work_item", findingId);
-                          return next;
-                        },
-                        { state: navigationState },
-                      );
-                    }}
-                    onSelectAttempt={(attemptId) => {
-                      const next = new URLSearchParams(params);
-                      next.set("attempt_id", attemptId);
-                      // A citation belongs to its own attempt; never show the previous
-                      // attempt's evidence after switching.
-                      next.delete("citation");
-                      next.delete("finding");
-                      next.delete("work_kind");
-                      next.delete("work_item");
-                      setParams(next, { state: navigationState });
-                    }}
-                    selectedEvidenceId={selectedCitation}
-                    onSelectEvidence={(evidenceId) => {
-                      if (actorScope) {
-                        readingPositions.set(
-                          location.key,
-                          captureReviewPosition(
-                            caseId,
-                            runId,
-                            selectedAttempt?.id ?? null,
-                            actorScope,
-                          ),
-                        );
-                        savedBeforeNavigation.current.add(location.key);
-                      }
-                      const next = new URLSearchParams(params);
-                      if (selectedAttempt?.id) next.set("attempt_id", selectedAttempt.id);
-                      if (evidenceId === null) {
-                        next.delete("citation");
-                      } else {
-                        next.set("citation", evidenceId);
-                      }
-                      setParams(next, { state: navigationState });
-                    }}
-                    onDecide={onDecide}
-                    onBatchDecide={onBatchDecide}
-                    onRetry={() => {
-                      if (!canRetry) return;
-                      retry.mutate(undefined, {
-                        onSuccess: (accepted) => {
-                          const next = new URLSearchParams(params);
-                          next.set("attempt_id", accepted.attempt_id);
-                          next.delete("citation");
-                          next.delete("work_kind");
-                          next.delete("work_item");
-                          setParams(next, { state: navigationState });
-                        },
-                      });
-                    }}
-                    onCancel={() => {
-                      if (canCancel) cancel.mutate();
-                    }}
-                    onCreateRelation={saveRelation}
-                    onDeleteRelation={(relationId) => deleteRelation.mutate(relationId)}
-                    diagnosticsLoading={diagnostics.isFetching}
-                    onLoadDiagnostics={
-                      currentDiagnosticScope && diagnosticScope !== currentDiagnosticScope
-                        ? () => setDiagnosticScope(currentDiagnosticScope)
-                        : undefined
-                    }
-                  />
+                  workspaceView
                 )}
               </div>
             </OriginalSourceContext.Provider>
@@ -1699,101 +1971,67 @@ export function ReviewPage() {
               />
             </Suspense>
           )}
-          <details
-            id="review-coverage-section"
-            className="review-secondary-section"
-            hidden={reviewSection !== "coverage"}
-            open={reviewSection === "coverage"}
-            onToggle={(event) => setSupplementOpen(event.currentTarget.open)}
+          <Drawer
+            getContainer={false}
+            destroyOnHidden
+            title={drawer === "execution" ? "执行过程" : "审查记录"}
+            open={drawer !== null && session.isSuccess && !session.isFetching && !scopeMismatch}
+            size="min(520px, 100vw)"
+            onClose={() => selectDrawer(null)}
+            afterOpenChange={(open) => {
+              if (open || !focusJudgmentOnClose.current) return;
+              focusJudgmentOnClose.current = false;
+              readingContent.current
+                ?.querySelector<HTMLTextAreaElement>(".review-decision-form textarea")
+                ?.focus();
+            }}
+            footer={
+              drawer === "record" && recordTab === "finding" ? (
+                <div className="review-record-actions">
+                  <Button onClick={() => selectDrawer("execution")}>查看执行过程</Button>
+                  <Button
+                    type="primary"
+                    disabled={!canDecide || !activeFinding}
+                    onClick={() => {
+                      focusJudgmentOnClose.current = true;
+                      selectDrawer(null);
+                    }}
+                  >
+                    追加意见
+                  </Button>
+                </div>
+              ) : undefined
+            }
           >
-            <summary>补充材料</summary>
-            <ManualFindingsPanel
-              key={`${caseId}:${runId}:${selectedAttempt?.id ?? "none"}:${session.data?.tenant_id ?? ""}:${session.data?.org_id ?? ""}:${session.data?.id ?? ""}:${session.data?.role ?? ""}`}
-              caseId={caseId}
-              runId={runId}
-              attemptId={selectedAttempt?.id ?? null}
-              isFrozenAttempt={selectedAttempt?.history_kind === "frozen"}
-              parsedDocumentIds={selectedAttempt?.parsed_document_ids ?? []}
-              selection={quoteSelection}
-              documents={review.data.documents}
-              actor={session.data ?? null}
-              canCreate={
-                currentWorkContext && roleCanDecide && selectedAttempt?.history_kind === "frozen"
-              }
-            />
-            <EvidenceSLADashboard
-              mode="reminder"
-              cases={[{ id: caseId, title: caseDetail.data?.title ?? caseId }]}
-            />
-            <EvidenceRequestPanel
-              caseId={caseId}
-              runId={runId}
-              attemptId={selectedAttempt?.id ?? null}
-              canManage={canPrepareRequest}
-              readOnly={!currentWorkContext}
-              selectedRequestId={workTarget?.kind === "request" ? workTarget.id : null}
-              selectedSource={
-                workTarget?.kind === "evaluation"
-                  ? `evaluation:${workTarget.id}`
-                  : workTarget?.kind === "request-source"
-                    ? workTarget.id
-                    : null
-              }
-              navigationSerial={navigationSerial}
-              expanded={supplementOpen}
-              evaluations={review.data.evaluations ?? []}
-              agentReview={review.data.agent_review ?? null}
-              documents={caseDetail.data?.documents ?? []}
-              quoteScope={quoteScope}
-              quoteSelection={quoteSelection}
-            />
-            <OperatorAuditEntry
-              caseId={caseId}
-              runId={runId}
-              attemptId={selectedAttempt?.id ?? null}
-            />
-          </details>
-          <details
-            id="review-history-section"
-            className="review-secondary-section"
-            hidden={reviewSection !== "history"}
-            open={reviewSection === "history"}
-          >
-            <summary>依据与历史</summary>
-            <ExperienceFeedbackPanel
-              caseId={caseId}
-              runId={runId}
-              attemptId={selectedAttempt?.id ?? null}
-              finding={review.data.findings.find((item) => item.id === selectedId) ?? null}
-              documents={review.data.documents}
-              canSubmit={
-                currentWorkContext && roleCanDecide && selectedAttempt?.history_kind === "frozen"
-              }
-              contextScope={streamCommandContext?.contextVersion}
-              quoteScope={quoteScope}
-              quoteSelection={quoteSelection}
-            />
-            <ExperienceUsagePanel
-              caseId={caseId}
-              runId={runId}
-              attemptId={selectedAttempt?.history_kind === "frozen" ? selectedAttempt.id : null}
-              findingId={selectedId}
-              canDecide={canDecide}
-            />
-            <RunProvenance workspace={workspace} showDiagnostics={diagnosticData !== null} />
-            <FrozenLegalAuthorities
-              key={`${caseId}:${runId}:${selectedAttempt?.id ?? "none"}`}
-              caseId={caseId}
-              runId={runId}
-              attemptId={selectedAttempt?.id ?? null}
-              projection={review.data.legal_authorities}
-            />
-            <AuditProjection
-              runId={review.data.run.id}
-              events={diagnosticData?.audit_events ?? review.data.business_events ?? []}
-              showDiagnostics={diagnosticData !== null}
-            />
-          </details>
+            {!session.isSuccess || session.isFetching || scopeMismatch ? null : drawer ===
+              "execution" ? (
+              <>
+                {cloneElement(workspaceView, {
+                  surface: "trace",
+                  immersive: false,
+                })}
+                <Link
+                  to={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(runId)}/agent${selectedAttempt ? `?attempt=${encodeURIComponent(selectedAttempt.id)}` : ""}`}
+                >
+                  Agent Studio
+                </Link>
+              </>
+            ) : (
+              <Tabs
+                activeKey={recordTab}
+                onChange={(tab) => {
+                  const selectedTab = reviewRecordTabs.find((value) => value === tab);
+                  if (selectedTab) selectDrawer("record", selectedTab);
+                }}
+                items={[
+                  { key: "finding", label: "这条线索", children: findingRecord },
+                  { key: "review", label: "本次审查", children: reviewRecord },
+                  { key: "history", label: "历次审查", children: historyRecord },
+                  { key: "supplement", label: "补充材料", children: supplementRecord },
+                ]}
+              />
+            )}
+          </Drawer>
           {currentDiagnosticScope !== null &&
           diagnosticScope === currentDiagnosticScope &&
           diagnostics.isError ? (
