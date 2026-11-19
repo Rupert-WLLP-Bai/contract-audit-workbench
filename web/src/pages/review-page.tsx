@@ -108,6 +108,51 @@ import {
 } from "../features/review/work-items";
 import "./review-page.css";
 
+interface ContractDeskReturn {
+  actorScope: string;
+  returnTo: string;
+  documentId: string;
+  previousHref: string | null;
+  nextHref: string | null;
+}
+function safeContractDeskHref(value: unknown): string | null {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) return null;
+  try {
+    const target = new URL(value, "https://local.invalid");
+    return target.origin === "https://local.invalid" && target.pathname === "/contract-desk"
+      ? `${target.pathname}${target.search}${target.hash}`
+      : null;
+  } catch {
+    return null;
+  }
+}
+function readContractDeskReturn(
+  state: unknown,
+  actorScope: string,
+  sourceDocument: string | null,
+): ContractDeskReturn | null {
+  if (!state || typeof state !== "object" || !("contractDesk" in state)) return null;
+  const value = (state as { contractDesk?: unknown }).contractDesk;
+  if (!value || typeof value !== "object") return null;
+  const entry = value as Record<string, unknown>;
+  const returnTo = safeContractDeskHref(entry.returnTo);
+  if (
+    !actorScope ||
+    entry.actorScope !== actorScope ||
+    !sourceDocument ||
+    entry.documentId !== sourceDocument ||
+    !returnTo
+  )
+    return null;
+  return {
+    actorScope,
+    returnTo,
+    documentId: sourceDocument,
+    previousHref: safeContractDeskHref(entry.previousHref),
+    nextHref: safeContractDeskHref(entry.nextHref),
+  };
+}
+
 const readingPositions = new Map<string, ReviewReadingPosition>();
 let previousReviewActor = "";
 
@@ -163,14 +208,17 @@ const reviewSectionLabels: Record<ReviewSectionKey, string> = {
 function ReviewSectionNav({
   active,
   onSelect,
+  compact = false,
 }: {
   active: ReviewSectionKey;
   onSelect: (key: ReviewSectionKey) => void;
+  compact?: boolean;
 }) {
   return (
     <nav className="review-section-nav" aria-label="审查工作区分区">
-      {(Object.entries(reviewSectionLabels) as Array<[ReviewSectionKey, string]>).map(
-        ([key, label]) => (
+      {(Object.entries(reviewSectionLabels) as Array<[ReviewSectionKey, string]>)
+        .filter(([key]) => !compact || key !== "trace")
+        .map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -179,8 +227,7 @@ function ReviewSectionNav({
           >
             {label}
           </button>
-        ),
-      )}
+        ))}
     </nav>
   );
 }
@@ -211,6 +258,8 @@ export function ReviewPage() {
     window.scrollTo({ top: 0 });
   };
   const selectedAttemptId = params.get("attempt_id");
+  const requestedSourceDocument = params.get("source_document");
+  const hasRequestedSourceDocument = params.has("source_document");
   const [streamLive, setStreamLive] = useState(false);
   const [streamReconnectKey, setStreamReconnectKey] = useState(0);
   const review = useReview(caseId, runId, selectedAttemptId, streamLive);
@@ -874,6 +923,47 @@ export function ReviewPage() {
         ? "remediation"
         : "judgment";
   const deniedRequests = isForbidden(requests.error) || isUnauthenticated(requests.error);
+  const stateDocument =
+    location.state &&
+    typeof location.state === "object" &&
+    "contractDesk" in location.state &&
+    location.state.contractDesk &&
+    typeof location.state.contractDesk === "object" &&
+    "documentId" in location.state.contractDesk &&
+    typeof location.state.contractDesk.documentId === "string"
+      ? location.state.contractDesk.documentId
+      : null;
+  const retainedDocument =
+    !hasRequestedSourceDocument &&
+    proofEligible &&
+    stateDocument &&
+    sourceProofs.some((proof) => proof.documentId === stateDocument)
+      ? stateDocument
+      : null;
+  const contractDesk = readContractDeskReturn(
+    location.state,
+    actorScope,
+    requestedSourceDocument ?? retainedDocument,
+  );
+  const sourceMatches = requestedSourceDocument
+    ? workspace.documents.filter((document) => document.id === requestedSourceDocument)
+    : [];
+  const sourceVerified = Boolean(
+    requestedSourceDocument &&
+    proofEligible &&
+    sourceMatches.length === 1 &&
+    sourceProofs.some(
+      (proof) =>
+        proof.documentId === requestedSourceDocument &&
+        proof.parsedDocumentId === sourceMatches[0]?.parsed_document_id,
+    ),
+  );
+  const sourcePending = Boolean(
+    requestedSourceDocument &&
+    (review.isFetching ||
+      caseDetail.isFetching ||
+      historyQueries.some((query) => query.isPending || query.isFetching)),
+  );
   const activeReturn = readWorkReturn(location.state, caseId, actorScope);
   const activeReturnPosition = activeReturn
     ? reviewPositionForPath(location.state, activeReturn, caseId, actorScope)
@@ -894,6 +984,7 @@ export function ReviewPage() {
     ...(activeReturn ? workReturnState(activeReturn, caseId, actorScope) : null),
     ...(activeReturnPosition ? { reviewReadingPosition: activeReturnPosition } : null),
     workActorScope: actorScope,
+    ...(contractDesk ? { contractDesk } : null),
   };
   const selectedFrozen = Boolean(
     caseId &&
@@ -1205,9 +1296,20 @@ export function ReviewPage() {
           <div className="review-page-bar">
             <header className="page-head">
               <div>
-                <h1>审查工作区</h1>
-                <p title={caseDetail.data?.title ?? "案件"}>{caseDetail.data?.title ?? "案件"}</p>
+                <h1>{sourceVerified ? (caseDetail.data?.title ?? "合同原文") : "审查工作区"}</h1>
+                <p title={caseDetail.data?.title ?? "案件"}>
+                  {sourceVerified ? "合同原文" : (caseDetail.data?.title ?? "案件")}
+                </p>
               </div>
+              {contractDesk ? (
+                <nav className="contract-desk-return" aria-label="合同清单导航">
+                  <Link to={contractDesk.returnTo}>返回合同清单</Link>
+                  {contractDesk.previousHref ? (
+                    <Link to={contractDesk.previousHref}>上一份</Link>
+                  ) : null}
+                  {contractDesk.nextHref ? <Link to={contractDesk.nextHref}>下一份</Link> : null}
+                </nav>
+              ) : null}
               {activeReturn ? (
                 <Link
                   to={activeReturn}
@@ -1216,18 +1318,26 @@ export function ReviewPage() {
                   返回人工办理
                 </Link>
               ) : null}
-              <Button
-                aria-label={"Agent Studio"}
-                href={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(runId)}/agent${
-                  selectedAttempt?.id
-                    ? `?attempt=${encodeURIComponent(selectedAttempt.id)}`
-                    : selectedAttemptId
-                      ? `?attempt=${encodeURIComponent(selectedAttemptId)}`
-                      : ""
-                }`}
-              >
-                Agent Studio
-              </Button>
+              <details className="review-more-tools">
+                <summary>更多工具</summary>
+                <Button
+                  aria-label={"Agent Studio"}
+                  href={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(runId)}/agent${
+                    selectedAttempt?.id
+                      ? `?attempt=${encodeURIComponent(selectedAttempt.id)}`
+                      : selectedAttemptId
+                        ? `?attempt=${encodeURIComponent(selectedAttemptId)}`
+                        : ""
+                  }`}
+                >
+                  Agent Studio
+                </Button>
+                {sourceVerified ? (
+                  <Button htmlType="button" onClick={() => selectReviewSection("trace")}>
+                    执行轨迹
+                  </Button>
+                ) : null}
+              </details>
               <Button
                 aria-label={"返回案件"}
                 href={`/cases/${encodeURIComponent(caseId)}`}
@@ -1249,7 +1359,11 @@ export function ReviewPage() {
                 返回案件
               </Button>
             </header>
-            <ReviewSectionNav active={reviewSection} onSelect={selectReviewSection} />
+            <ReviewSectionNav
+              active={reviewSection}
+              onSelect={selectReviewSection}
+              compact={sourceVerified && reviewSection !== "trace"}
+            />
           </div>
           {streamStatus === "closed" ? (
             <section className="callout" role="status" aria-live="polite">
@@ -1353,109 +1467,139 @@ export function ReviewPage() {
                   reviewSection !== "coverage"
                 }
               >
-                <ReviewWorkspaceView
-                  surface={workspaceSurface}
-                  workspace={workspace}
-                  caseDetail={
-                    caseDetail.isSuccess && !caseDetail.isFetching && caseDetail.data.id === caseId
-                      ? caseDetail.data
-                      : undefined
-                  }
-                  layout={layout}
-                  showDiagnostics={diagnosticData !== null}
-                  quoteScope={quoteScope}
-                  onQuoteSelectionChange={setQuoteSelection}
-                  selectedId={selectedId}
-                  workTarget={workTarget}
-                  navigationSerial={navigationSerial}
-                  caseContext={caseContext}
-                  caseReturnState={caseNavigationState}
-                  canEditRelations={canEditRelations}
-                  relationPending={relationPending}
-                  relationError={relationError}
-                  streamStatus={streamStatus}
-                  pending={decide.isPending}
-                  retrying={retry.isPending}
-                  canDecide={canDecide}
-                  decisionDisabledReason={decisionDisabledReason}
-                  canRetry={canRetry}
-                  canCancel={canCancel}
-                  cancelling={cancel.isPending}
-                  cancelError={cancel.isError ? errorMessage(cancel.error) : null}
-                  conflictMessage={conflictFinding === selectedId ? conflictMessage : null}
-                  saveError={conflictFinding === selectedId ? saveError : null}
-                  onSelect={(findingId) => {
-                    setParams(
-                      (current) => {
-                        const next = new URLSearchParams(current);
-                        next.set("finding", findingId);
-                        if (next.get("work_kind") === "finding") next.set("work_item", findingId);
-                        return next;
-                      },
-                      { state: navigationState },
-                    );
-                  }}
-                  onSelectAttempt={(attemptId) => {
-                    const next = new URLSearchParams(params);
-                    next.set("attempt_id", attemptId);
-                    // A citation belongs to its own attempt; never show the previous
-                    // attempt's evidence after switching.
-                    next.delete("citation");
-                    next.delete("finding");
-                    next.delete("work_kind");
-                    next.delete("work_item");
-                    setParams(next, { state: navigationState });
-                  }}
-                  selectedEvidenceId={selectedCitation}
-                  onSelectEvidence={(evidenceId) => {
-                    if (actorScope) {
-                      readingPositions.set(
-                        location.key,
-                        captureReviewPosition(
-                          caseId,
-                          runId,
-                          selectedAttempt?.id ?? null,
-                          actorScope,
-                        ),
+                {reviewSection === "document" && hasRequestedSourceDocument && !sourceVerified ? (
+                  <section className="callout" role={sourcePending ? "status" : "alert"}>
+                    <p>
+                      {sourcePending
+                        ? "正在核验所选材料的冻结版本。"
+                        : "所选材料不属于当前可核验的冻结版本。"}
+                    </p>
+                    {!sourcePending ? (
+                      <Button
+                        onClick={() =>
+                          setParams(
+                            (current) => {
+                              const next = new URLSearchParams(current);
+                              next.delete("source_document");
+                              return next;
+                            },
+                            { state: navigationState },
+                          )
+                        }
+                      >
+                        查看本次材料
+                      </Button>
+                    ) : null}
+                  </section>
+                ) : (
+                  <ReviewWorkspaceView
+                    sourceDocumentId={sourceVerified ? requestedSourceDocument : null}
+                    surface={workspaceSurface}
+                    workspace={workspace}
+                    caseDetail={
+                      caseDetail.isSuccess &&
+                      !caseDetail.isFetching &&
+                      caseDetail.data.id === caseId
+                        ? caseDetail.data
+                        : undefined
+                    }
+                    layout={layout}
+                    showDiagnostics={diagnosticData !== null}
+                    quoteScope={quoteScope}
+                    onQuoteSelectionChange={setQuoteSelection}
+                    selectedId={selectedId}
+                    workTarget={workTarget}
+                    navigationSerial={navigationSerial}
+                    caseContext={caseContext}
+                    caseReturnState={caseNavigationState}
+                    canEditRelations={canEditRelations}
+                    relationPending={relationPending}
+                    relationError={relationError}
+                    streamStatus={streamStatus}
+                    pending={decide.isPending}
+                    retrying={retry.isPending}
+                    canDecide={canDecide}
+                    decisionDisabledReason={decisionDisabledReason}
+                    canRetry={canRetry}
+                    canCancel={canCancel}
+                    cancelling={cancel.isPending}
+                    cancelError={cancel.isError ? errorMessage(cancel.error) : null}
+                    conflictMessage={conflictFinding === selectedId ? conflictMessage : null}
+                    saveError={conflictFinding === selectedId ? saveError : null}
+                    onSelect={(findingId) => {
+                      setParams(
+                        (current) => {
+                          const next = new URLSearchParams(current);
+                          next.set("finding", findingId);
+                          next.delete("source_document");
+                          if (next.get("work_kind") === "finding") next.set("work_item", findingId);
+                          return next;
+                        },
+                        { state: navigationState },
                       );
-                      savedBeforeNavigation.current.add(location.key);
-                    }
-                    const next = new URLSearchParams(params);
-                    if (selectedAttempt?.id) next.set("attempt_id", selectedAttempt.id);
-                    if (evidenceId === null) {
+                    }}
+                    onSelectAttempt={(attemptId) => {
+                      const next = new URLSearchParams(params);
+                      next.set("attempt_id", attemptId);
+                      // A citation belongs to its own attempt; never show the previous
+                      // attempt's evidence after switching.
                       next.delete("citation");
-                    } else {
-                      next.set("citation", evidenceId);
-                    }
-                    setParams(next, { state: navigationState });
-                  }}
-                  onDecide={onDecide}
-                  onBatchDecide={onBatchDecide}
-                  onRetry={() => {
-                    if (!canRetry) return;
-                    retry.mutate(undefined, {
-                      onSuccess: (accepted) => {
-                        const next = new URLSearchParams(params);
-                        next.set("attempt_id", accepted.attempt_id);
+                      next.delete("finding");
+                      next.delete("work_kind");
+                      next.delete("work_item");
+                      setParams(next, { state: navigationState });
+                    }}
+                    selectedEvidenceId={selectedCitation}
+                    onSelectEvidence={(evidenceId) => {
+                      if (actorScope) {
+                        readingPositions.set(
+                          location.key,
+                          captureReviewPosition(
+                            caseId,
+                            runId,
+                            selectedAttempt?.id ?? null,
+                            actorScope,
+                          ),
+                        );
+                        savedBeforeNavigation.current.add(location.key);
+                      }
+                      const next = new URLSearchParams(params);
+                      if (selectedAttempt?.id) next.set("attempt_id", selectedAttempt.id);
+                      if (evidenceId === null) {
                         next.delete("citation");
-                        next.delete("work_kind");
-                        next.delete("work_item");
-                        setParams(next, { state: navigationState });
-                      },
-                    });
-                  }}
-                  onCancel={() => {
-                    if (canCancel) cancel.mutate();
-                  }}
-                  onCreateRelation={saveRelation}
-                  onDeleteRelation={(relationId) => deleteRelation.mutate(relationId)}
-                  diagnosticsLoading={diagnostics.isFetching}
-                  onLoadDiagnostics={
-                    currentDiagnosticScope && diagnosticScope !== currentDiagnosticScope
-                      ? () => setDiagnosticScope(currentDiagnosticScope)
-                      : undefined
-                  }
-                />
+                      } else {
+                        next.set("citation", evidenceId);
+                      }
+                      setParams(next, { state: navigationState });
+                    }}
+                    onDecide={onDecide}
+                    onBatchDecide={onBatchDecide}
+                    onRetry={() => {
+                      if (!canRetry) return;
+                      retry.mutate(undefined, {
+                        onSuccess: (accepted) => {
+                          const next = new URLSearchParams(params);
+                          next.set("attempt_id", accepted.attempt_id);
+                          next.delete("citation");
+                          next.delete("work_kind");
+                          next.delete("work_item");
+                          setParams(next, { state: navigationState });
+                        },
+                      });
+                    }}
+                    onCancel={() => {
+                      if (canCancel) cancel.mutate();
+                    }}
+                    onCreateRelation={saveRelation}
+                    onDeleteRelation={(relationId) => deleteRelation.mutate(relationId)}
+                    diagnosticsLoading={diagnostics.isFetching}
+                    onLoadDiagnostics={
+                      currentDiagnosticScope && diagnosticScope !== currentDiagnosticScope
+                        ? () => setDiagnosticScope(currentDiagnosticScope)
+                        : undefined
+                    }
+                  />
+                )}
               </div>
             </OriginalSourceContext.Provider>
           </DecisionDraftScopeProvider>

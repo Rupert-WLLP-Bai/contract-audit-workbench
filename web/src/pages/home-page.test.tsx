@@ -507,6 +507,10 @@ describe("HomePage snapshot consumers", () => {
       }),
     ).toHaveAttribute("href", "/cases");
     expect(screen.getByText("状态统计 7 项；可见案件 17 项。")).toBeInTheDocument();
+    const circuit = screen.getByRole("region", { name: "审查链路" });
+    expect(within(circuit).getByText("可见案件")).toBeVisible();
+    expect(within(circuit).getByText("17", { exact: true })).toBeVisible();
+
     expect(screen.getByText(/已完成审查 9 项；平均运行时长 1.2 秒/)).toBeInTheDocument();
     for (const label of [
       "高风险 4，占 40%",

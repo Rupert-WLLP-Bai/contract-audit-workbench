@@ -1314,6 +1314,43 @@ async function fillSupplementSource(user: ReturnType<typeof userEvent.setup>, la
 }
 
 describe("application routes and API contract", () => {
+
+  it("opens only the requested verified frozen material and explains a missing version", async () => {
+    const api = new Service();
+    const docs = ["d1", "d2"].map((id, i) => {
+      const digest = (i ? "b" : "a").repeat(64);
+      return doc(id, i ? "draft_contract" : "procurement", {
+        digest,
+        parsed_document_id: `parsed-${id}`,
+        parsed_document: {
+          id: `parsed-${id}`,
+          document_id: id,
+          original_digest: digest,
+          parser_id: "parser",
+          parser_version: "1",
+          config_hash: "config",
+          normalization_version: "1",
+          normalized_digest: "normalized",
+          ir_digest: "ir",
+          artifact_digest: "artifact",
+          created_at: at,
+          status: "ready",
+        },
+      });
+    });
+    api.cases.get("c1")!.documents = docs;
+    api.addReview("completed");
+    const { container, router, user } = open(api, "/cases/c1/reviews/r1?attempt_id=attempt-r1-1&review_section=document&source_document=d2");
+    await waitFor(() => expect(container.querySelector('.doc-pane[data-document-version-id="d2"]')).toBeVisible());
+    expect(screen.getByRole("heading", { level: 1, name: "接入设备采购" })).toBeVisible();
+    await act(async () => { await router.navigate("/cases/c1/reviews/r1?attempt_id=attempt-r1-1&review_section=document&source_document=missing"); });
+    expect(await screen.findByRole("alert")).toHaveTextContent("所选材料不属于当前可核验的冻结版本");
+    expect(container.querySelector(".doc-pane")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "查看本次材料" }));
+    await waitFor(() => expect(container.querySelector(".doc-pane")).toBeVisible());
+    expect(router.state.location.search).not.toContain("source_document");
+  });
+
   it("shows server case identity and removes it when case access is revoked", async () => {
     const api = new Service();
     Object.assign(api.cases.get("c1")!, { case_number: "案-2026-001", owner_name: "经办人员" });
@@ -2570,7 +2607,9 @@ describe("application routes and API contract", () => {
     await user.click(await within(queue).findByRole("button", { name: /待补件/ }));
     await user.click(await within(queue).findByRole("button", { name: "查看补件来源" }));
     expect(await screen.findByRole("heading", { name: "发起补充材料请求" })).toBeVisible();
-    await user.click(within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件" }));
+    await user.click(
+      within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件与材料" }),
+    );
     expect(await screen.findByRole("heading", { name: "案件" })).toBeVisible();
     expect(screen.queryByText("有未提交的草稿")).not.toBeInTheDocument();
   });
@@ -2587,7 +2626,9 @@ describe("application routes and API contract", () => {
     const beforeUnload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(beforeUnload);
     expect(beforeUnload.defaultPrevented).toBe(true);
-    await user.click(within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件" }));
+    await user.click(
+      within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件与材料" }),
+    );
     expect([...router.state.blockers.values()].some((blocker) => blocker.state === "blocked")).toBe(
       true,
     );
@@ -2605,7 +2646,9 @@ describe("application routes and API contract", () => {
     await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
     expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
     expect(screen.getByLabelText("完成期限（本地时间）")).toHaveValue("2026-11-06T10:00");
-    await user.click(within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件" }));
+    await user.click(
+      within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件与材料" }),
+    );
     expect(await screen.findByRole("heading", { name: "案件" })).toBeVisible();
     expect(screen.queryByText("有未提交的草稿")).not.toBeInTheDocument();
   });

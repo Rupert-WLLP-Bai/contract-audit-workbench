@@ -55,7 +55,15 @@ interface Props {
   caseDetail: CaseDetail;
   canWrite: boolean;
   actorId: string;
+  source?: { documentId: string; visit: string };
 }
+
+type MaterialView = "current" | "history" | "parsing";
+const materialViews: { key: MaterialView; label: string }[] = [
+  { key: "current", label: "当前材料" },
+  { key: "history", label: "版本历史" },
+  { key: "parsing", label: "解析记录" },
+];
 
 function fixedPurpose(
   role: MaterialProjection["role"],
@@ -73,14 +81,37 @@ function legacyStatusLabel(material: MaterialProjection): string {
   return material.legacy_selected ? "旧系统兼容选择，待确认" : "旧材料待确认";
 }
 
-export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props) {
+export function MaterialCollectionPanel({ caseDetail, canWrite, actorId, source }: Props) {
   const upload = useUploadDocument(caseDetail.id);
   const reparse = useReparse(caseDetail.id);
   const confirmSelection = useConfirmLegacyMaterialSelection(caseDetail.id);
   const materials = caseDetail.materials;
   const versions = caseDetail.material_versions;
   const selection = caseDetail.material_selection;
-  const [activeMaterialView, setActiveMaterialView] = useState("current");
+  const hasProjection = Boolean(materials && versions && selection);
+  const sourceId = source?.documentId;
+  let sourceView: MaterialView | undefined;
+  if (
+    sourceId &&
+    caseDetail.documents.filter((document) => document.id === sourceId).length === 1
+  ) {
+    if (
+      !hasProjection ||
+      materials?.filter((item) => item.current_document_id === sourceId).length === 1
+    ) {
+      sourceView = "current";
+    } else if (versions?.filter((item) => item.document_id === sourceId).length === 1) {
+      sourceView = "history";
+    }
+  }
+  const [materialView, setMaterialView] = useState<{ key: MaterialView; visit?: string }>();
+  const activeMaterialView =
+    materialView?.visit === source?.visit && materialView
+      ? materialView.key
+      : (sourceView ?? "current");
+  const headingId = source && !sourceView ? "case-material-source" : "case-materials-title";
+  const anchorFor = (id: string, view: MaterialView) =>
+    id === sourceId && view === sourceView ? "case-material-source" : undefined;
   const [role, setRole] = useState<MaterialProjection["role"]>("procurement");
   const [attachmentPurpose, setAttachmentPurpose] = useState<MaterialPurpose>("supplement");
   const [intent, setIntent] = useState<"add" | "replace">("add");
@@ -110,13 +141,13 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
 
   if (!materials || !versions || !selection) {
     return (
-      <section id="case-materials" aria-labelledby="case-materials-title">
-        <h2 id="case-materials-title">材料</h2>
+      <section id="case-materials" aria-labelledby={headingId}>
+        <h2 id={headingId}>材料</h2>
         <p role="alert">材料信息暂不可用，请刷新重试或联系管理员。</p>
         <ul className="document-list">
           {caseDetail.documents.map((document) => (
             <li key={document.id} data-document-id={document.id}>
-              <strong>{document.filename}</strong>
+              <strong id={anchorFor(document.id, "current")}>{document.filename}</strong>
               <p className="meta">{roleLabel(document.role)}，等待材料版本信息</p>
             </li>
           ))}
@@ -260,8 +291,8 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
   }
 
   return (
-    <section id="case-materials" aria-labelledby="case-materials-title">
-      <h2 id="case-materials-title">材料</h2>
+    <section id="case-materials" aria-labelledby={headingId}>
+      <h2 id={headingId}>材料</h2>
       {!canWrite ? <p>当前角色只能查看材料，不能上传或重新解析。</p> : null}
       {selection.status === "pending_confirmation" ? (
         <div className="callout" aria-labelledby="legacy-material-selection-title">
@@ -319,16 +350,12 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
         </div>
       ) : null}
       <div className="material-view-switch" role="group" aria-label="材料视图">
-        {[
-          { key: "current", label: "当前材料" },
-          { key: "history", label: "版本历史" },
-          { key: "parsing", label: "解析记录" },
-        ].map((view) => (
+        {materialViews.map((view) => (
           <button
             key={view.key}
             type="button"
             aria-pressed={activeMaterialView === view.key}
-            onClick={() => setActiveMaterialView(view.key)}
+            onClick={() => setMaterialView({ key: view.key, visit: source?.visit })}
           >
             {view.label}
           </button>
@@ -347,7 +374,9 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
             return (
               <li key={material.material_id} data-material-id={material.material_id}>
                 <div className="document-main">
-                  <strong>{document?.filename ?? "材料文件名暂不可用"}</strong>
+                  <strong id={anchorFor(material.current_document_id, "current")}>
+                    {document?.filename ?? "材料文件名暂不可用"}
+                  </strong>
                   <p className="meta">
                     {roleLabel(material.role)} · {purposeLabels[material.purpose]} · 当前版本 v
                     {material.current_version}
@@ -430,7 +459,7 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
                       key={`${version.material_id}:${version.version}`}
                       data-document-id={version.document_id}
                     >
-                      <span>
+                      <span id={anchorFor(version.document_id, "history")}>
                         v{version.version} · {document?.filename ?? "文件名未提供"} ·{" "}
                         {current ? "当前版本" : "同一材料的历史版本"}
                       </span>

@@ -408,7 +408,7 @@ export function HomePage() {
     right.updated_at.localeCompare(left.updated_at),
   );
   const circuitNodes = [
-    { label: "材料", count: dashboard.visible_cases, tone: "info" },
+    { label: "可见案件", count: dashboard.visible_cases, tone: "info" },
     { label: "待审查", count: dashboard.pending_review_cases, tone: "pending" },
     { label: "待办", count: dashboard.my_pending_tasks, tone: "pending" },
     { label: "整改", count: dashboard.remediation_cases, tone: "pending" },

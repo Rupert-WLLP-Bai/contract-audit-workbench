@@ -11,6 +11,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   CONTRACT_LEDGER_COLUMNS,
@@ -106,7 +107,9 @@ function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <ContractsPage />
+      <MemoryRouter>
+        <ContractsPage />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }

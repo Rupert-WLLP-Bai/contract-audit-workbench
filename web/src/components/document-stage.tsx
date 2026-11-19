@@ -59,6 +59,9 @@ import {
 } from "../domain/frozen-quote";
 import {
   keyClauseNavigationFor,
+  readingGroupFor,
+  READING_GROUPS,
+  type ReadingGroup,
   type KeyClauseCandidate,
   type KeyClauseNavigation,
 } from "../domain/key-clauses";
@@ -305,12 +308,25 @@ function DiagnosticsCollapse({
 const ClauseContext = createContext<{
   document: ReviewDocument | null;
   navigation: KeyClauseNavigation | null;
-  ranges: readonly { start: number; end: number }[];
+  ranges: readonly { start: number; end: number; group: ReadingGroup }[];
+  group: ReadingGroup | "all";
+  showAll: boolean;
   findRange: { start: number; end: number } | null;
   selected: KeyClauseCandidate | null;
-}>({ document: null, navigation: null, ranges: [], findRange: null, selected: null });
+}>({
+  document: null,
+  navigation: null,
+  ranges: [],
+  group: "all",
+  showAll: false,
+  findRange: null,
+  selected: null,
+});
 
-function keyRangeAt(ranges: readonly { start: number; end: number }[], offset: number) {
+function keyRangeAt(
+  ranges: readonly { start: number; end: number; group: ReadingGroup }[],
+  offset: number,
+) {
   let lower = 0;
   let upper = ranges.length;
   while (lower < upper) {
@@ -354,7 +370,7 @@ const DocSegments = memo(function DocSegments({ segments }: { segments: TextSegm
               key={segment.start}
               data-offset={segment.start}
               {...selectedAttribute}
-              className={`hit-key-clause${segment.highlighted === "find" ? " hit-find" : ""}${selected ? " key-clause-selected" : ""}`}
+              className={`hit-key-clause reading-${range!.group}${segment.highlighted === "find" ? " hit-find" : ""}${selected ? " key-clause-selected" : ""}`}
             >
               {segment.text}
             </mark>
@@ -812,20 +828,37 @@ const DocumentBody = memo(function DocumentBody(props: ComponentProps<typeof Tex
   );
   const parentClauses = useContext(ClauseContext);
   const keyClause = parentClauses.document === document ? parentClauses.selected : null;
-  const navigation = useMemo(
-    () =>
-      parentClauses.document === document && parentClauses.navigation
-        ? parentClauses.navigation
-        : keyClauseNavigationFor(props.quoteScope, document),
-    [parentClauses.document, parentClauses.navigation, props.quoteScope, document],
-  );
+  const navigation = useMemo(() => {
+    if (parentClauses.document === document && parentClauses.navigation)
+      return parentClauses.navigation;
+    const all = keyClauseNavigationFor(props.quoteScope, document);
+    const available = parentClauses.showAll
+      ? (all.allCandidates ?? all.candidates)
+      : all.candidates;
+    const candidates =
+      parentClauses.group === "all"
+        ? available
+        : available.filter((candidate) => readingGroupFor(candidate) === parentClauses.group);
+    return {
+      ...all,
+      candidates,
+      message: candidates.length ? "" : all.message || "当前分类没有匹配位置。",
+    };
+  }, [
+    parentClauses.document,
+    parentClauses.navigation,
+    parentClauses.group,
+    parentClauses.showAll,
+    props.quoteScope,
+    document,
+  ]);
   const keyRanges = useMemo(() => {
-    const ranges: { start: number; end: number }[] = [];
+    const ranges: { start: number; end: number; group: ReadingGroup }[] = [];
     for (const candidate of navigation.candidates) {
       const previous = ranges.at(-1);
       if (previous && candidate.range.start < previous.end)
         previous.end = Math.max(previous.end, candidate.range.end);
-      else ranges.push({ ...candidate.range });
+      else ranges.push({ ...candidate.range, group: readingGroupFor(candidate) });
     }
     return ranges;
   }, [navigation]);
@@ -835,6 +868,8 @@ const DocumentBody = memo(function DocumentBody(props: ComponentProps<typeof Tex
         document,
         navigation,
         ranges: keyRanges,
+        group: parentClauses.group,
+        showAll: parentClauses.showAll,
         findRange: props.findRange,
         selected: keyClause,
       }}
@@ -1677,14 +1712,20 @@ function EvidenceAside({
 
 function KeyClauseQuickNavigation({
   onSelect,
+  onGroup,
+  onToggleAll,
+  hasMore,
 }: {
   onSelect: (candidate: KeyClauseCandidate) => void;
+  onGroup: (group: ReadingGroup | "all") => void;
+  onToggleAll: () => void;
+  hasMore: boolean;
 }) {
-  const { navigation, selected } = useContext(ClauseContext);
+  const { navigation, selected, group, showAll } = useContext(ClauseContext);
   const candidates = navigation?.candidates ?? [];
-  if (candidates.length === 0) return null;
   const selectedIndex = candidates.findIndex((candidate) => candidate.id === selected?.id);
   function move(direction: -1 | 1) {
+    if (!candidates.length) return;
     const index =
       selectedIndex < 0
         ? direction === 1
@@ -1696,13 +1737,37 @@ function KeyClauseQuickNavigation({
   }
   return (
     <div className="key-clause-quick-nav" role="group" aria-label="重点位置导航">
+      <div className="reading-category-filters" role="group" aria-label="阅读分类">
+        <button type="button" aria-pressed={group === "all"} onClick={() => onGroup("all")}>
+          全部
+        </button>
+        {READING_GROUPS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`reading-filter-${item.id}`}
+            aria-pressed={group === item.id}
+            onClick={() => onGroup(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      {hasMore ? (
+        <Button htmlType="button" aria-pressed={showAll} onClick={onToggleAll}>
+          {showAll ? "只看重点" : "显示更多条款"}
+        </Button>
+      ) : null}
       <span role="status">
-        {selectedIndex < 0
-          ? `阅读重点 · ${candidates.length} 处`
-          : `第 ${selectedIndex + 1} / ${candidates.length} 处`}
+        {candidates.length === 0
+          ? navigation?.message || "当前分类没有匹配位置。"
+          : selectedIndex < 0
+            ? `阅读重点 · ${candidates.length} 处`
+            : `第 ${selectedIndex + 1} / ${candidates.length} 处`}
       </span>
       <Button
         htmlType="button"
+        disabled={!candidates.length}
         onClick={() => {
           const first = candidates[0];
           if (first) onSelect(first);
@@ -1710,10 +1775,20 @@ function KeyClauseQuickNavigation({
       >
         查看重点
       </Button>
-      <Button aria-label="上一个重点" htmlType="button" onClick={() => move(-1)}>
+      <Button
+        disabled={!candidates.length}
+        aria-label="上一个重点"
+        htmlType="button"
+        onClick={() => move(-1)}
+      >
         上一处
       </Button>
-      <Button aria-label="下一个重点" htmlType="button" onClick={() => move(1)}>
+      <Button
+        disabled={!candidates.length}
+        aria-label="下一个重点"
+        htmlType="button"
+        onClick={() => move(1)}
+      >
         下一处
       </Button>
     </div>
@@ -1738,6 +1813,9 @@ function DocumentColumn({
   focusRange,
   onClearKeyClause,
   onSelectKeyClause,
+  onReadingGroup,
+  onToggleAll,
+  hasMoreCandidates,
   onQuoteSelectionChange,
 }: {
   documents: ReviewDocument[];
@@ -1757,6 +1835,9 @@ function DocumentColumn({
   focusRange: { start: number; end: number } | null;
   onClearKeyClause?: () => void;
   onSelectKeyClause: (candidate: KeyClauseCandidate) => void;
+  onReadingGroup: (group: ReadingGroup | "all") => void;
+  onToggleAll: () => void;
+  hasMoreCandidates: boolean;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   return (
@@ -1769,7 +1850,12 @@ function DocumentColumn({
           compareSources={compareSources}
           onCompare={onCompare}
         />
-        <KeyClauseQuickNavigation onSelect={onSelectKeyClause} />
+        <KeyClauseQuickNavigation
+          onSelect={onSelectKeyClause}
+          onGroup={onReadingGroup}
+          onToggleAll={onToggleAll}
+          hasMore={hasMoreCandidates}
+        />
       </div>
       {!split && evidenceDocs.length >= 2 ? (
         <SourceSwitch
@@ -1813,6 +1899,7 @@ export function DocumentStage({
   onCreateRelation,
   onDeleteRelation,
   quoteScope = null,
+  sourceDocumentId = null,
   contractFactsCitation = null,
   contractFactsLocationScope = null,
   onQuoteSelectionChange,
@@ -1832,23 +1919,35 @@ export function DocumentStage({
   onCreateRelation?: (input: CaseRelationInput) => Promise<void>;
   onDeleteRelation?: (relationId: string) => void;
   quoteScope?: FrozenQuoteScope | null;
+  sourceDocumentId?: string | null;
   contractFactsCitation?: ContractFactsCitation | null;
   contractFactsLocationScope?: ContractFactsLocationScope | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
-  const initialDocument = initialDocumentOf(finding, documents);
+  const initialDocument =
+    (sourceDocumentId ? documents.find((document) => document.id === sourceDocumentId) : null) ??
+    initialDocumentOf(finding, documents);
   const [activeKey, setActiveKey] = useState(() =>
     initialDocument ? documentKey(initialDocument) : "",
   );
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [matchIndex, setMatchIndex] = useState(0);
+  const [showAllCandidates, setShowAllCandidates] = useState(false);
+  const [readingGroup, setReadingGroup] = useState<ReadingGroup | "all">("all");
   const [selectedKeyClauseId, setSelectedKeyClauseId] = useState<string | null>(null);
   const [compareSources, setCompareSources] = useState(false);
   const [leftTab, setLeftTab] = useState<"材料" | "审查成员" | "相关案件">("材料");
   const [relatedCaseId, setRelatedCaseId] = useState("");
   const [relationReason, setRelationReason] = useState("");
   const active = activeDocumentOf(documents, activeKey);
+  const requestedSource = sourceDocumentId
+    ? documents.find((document) => document.id === sourceDocumentId)
+    : null;
+  const requestedSourceKey = requestedSource ? documentKey(requestedSource) : "";
+  useEffect(() => {
+    if (requestedSourceKey) setActiveKey(requestedSourceKey);
+  }, [requestedSourceKey]);
   const factSource = useMemo(
     () =>
       documentForContractFactsCitation(
@@ -1904,7 +2003,13 @@ export function DocumentStage({
     setSelectedKeyClauseId(null);
     setCompareSources(false);
   }, [factSource]);
-  useEvidenceAutoSwitch(finding, active, documents, setActiveKey, factSource !== null);
+  useEvidenceAutoSwitch(
+    finding,
+    active,
+    documents,
+    setActiveKey,
+    factSource !== null || Boolean(sourceDocumentId),
+  );
   const relatedFindings = useMemo(() => relatedFindingsOf(active, findings), [active, findings]);
   const activeIsEvidence = isActiveEvidence(active, evidenceDocs);
   const split = shouldSplit(compareSources, layout, evidenceDocs.length, activeIsEvidence);
@@ -1939,10 +2044,28 @@ export function DocumentStage({
     () => visibleClausesOf(active, deferredQuery),
     [active, deferredQuery],
   );
-  const keyClauseNavigation = useMemo(
+  const allKeyClauseNavigation = useMemo(
     () => keyClauseNavigationFor(quoteScope, active),
     [active, quoteScope],
   );
+  const keyClauseNavigation = useMemo(() => {
+    const available = showAllCandidates
+      ? (allKeyClauseNavigation.allCandidates ?? allKeyClauseNavigation.candidates)
+      : allKeyClauseNavigation.candidates;
+    const candidates =
+      readingGroup === "all"
+        ? available
+        : available.filter((candidate) => readingGroupFor(candidate) === readingGroup);
+    return {
+      ...allKeyClauseNavigation,
+      candidates,
+      message: candidates.length
+        ? ""
+        : readingGroup === "all"
+          ? allKeyClauseNavigation.message
+          : "当前分类没有匹配位置。",
+    };
+  }, [allKeyClauseNavigation, readingGroup, showAllCandidates]);
   const selectedKeyClause =
     keyClauseNavigation.candidates.find(
       (candidate) =>
@@ -2049,6 +2172,8 @@ export function DocumentStage({
           document: active,
           navigation: keyClauseNavigation,
           ranges: [],
+          group: readingGroup,
+          showAll: showAllCandidates,
           findRange: null,
           selected: selectedKeyClause,
         }}
@@ -2077,6 +2202,22 @@ export function DocumentStage({
               : null
           }
           onSelectKeyClause={selectKeyClause}
+          hasMoreCandidates={
+            (allKeyClauseNavigation.allCandidates ?? allKeyClauseNavigation.candidates).filter(
+              (candidate) => readingGroup === "all" || readingGroupFor(candidate) === readingGroup,
+            ).length >
+            allKeyClauseNavigation.candidates.filter(
+              (candidate) => readingGroup === "all" || readingGroupFor(candidate) === readingGroup,
+            ).length
+          }
+          onToggleAll={() => {
+            setShowAllCandidates((value) => !value);
+            setSelectedKeyClauseId(null);
+          }}
+          onReadingGroup={(group) => {
+            setReadingGroup(group);
+            setSelectedKeyClauseId(null);
+          }}
           onClearKeyClause={() => setSelectedKeyClauseId(null)}
           onQuoteSelectionChange={onQuoteSelectionChange}
         />

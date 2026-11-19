@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import type { ReviewDocument, TextOffset } from "../api/types";
 import { frozenQuoteMatchesDocument } from "./frozen-quote";
-import { keyClauseNavigationFor } from "./key-clauses";
+import { keyClauseNavigationFor, readingGroupFor } from "./key-clauses";
 
 const text = "😀第一条 付款条款：甲方支付预付款。第二条 保密数据条款：双方保护个人信息。";
 const codePoints = Array.from(text);
@@ -81,21 +81,21 @@ describe("key clause navigation", () => {
   it("extracts only exact, selected-attempt clause spans and labels common categories", () => {
     const result = keyClauseNavigationFor(scope, documentOf());
 
-    expect(result.candidates).toHaveLength(2);
-    expect(result.candidates[0]).toMatchObject({
+    expect(result.allCandidates!).toHaveLength(2);
+    expect(result.allCandidates![0]).toMatchObject({
       heading: "付款条款",
       quote: "付款条款：甲方支付预付款。",
       page: 3,
       categories: ["payment"],
       parsedDocumentId: "parsed-1",
     });
-    expect(result.candidates[1]).toMatchObject({
+    expect(result.allCandidates![1]).toMatchObject({
       heading: "保密数据条款",
       quote: "保密数据条款：双方保护个人信息。",
       page: null,
       categories: ["confidentiality_data"],
     });
-    expect(result.candidates[0]?.selection).toMatchObject({
+    expect(result.allCandidates![0]?.selection).toMatchObject({
       caseId: "case-1",
       runId: "run-1",
       attemptId: "attempt-1",
@@ -104,16 +104,41 @@ describe("key clause navigation", () => {
     });
   });
 
-  it("chooses one payment excerpt when several exact amounts match", () => {
+  it("keeps distinct amounts and removes an equivalent duplicate", () => {
     const source =
       "😀项目背景为网络建设。合同总价100万元。合同金额为100万元。采购金额为120万元。其他说明。";
     const document = documentOf({ text: source, clauses: [] });
     const result = keyClauseNavigationFor(scope, document);
 
-    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates.map((candidate) => candidate.quote)).toEqual([
+      "合同总价100万元。",
+      "采购金额为120万元。",
+    ]);
     const [candidate] = result.candidates;
     expect(candidate).toMatchObject({ quote: "合同总价100万元。", categories: ["payment"] });
     expect(frozenQuoteMatchesDocument(candidate?.selection ?? null, scope, document)).toBe(true);
+  });
+
+  it("keeps independent payment milestones while removing exact repeats", () => {
+    const source =
+      "验收通过并收到发票后10个工作日内支付首期款。年度服务期满并完成交接后15个工作日内支付尾款。验收通过并收到发票后10个工作日内支付首期款。";
+    const result = keyClauseNavigationFor(scope, documentOf({ text: source, clauses: [] }));
+    expect(result.candidates.map((candidate) => candidate.quote)).toEqual([
+      "验收通过并收到发票后10个工作日内支付首期款。",
+      "年度服务期满并完成交接后15个工作日内支付尾款。",
+    ]);
+  });
+
+  it("maps payment milestones, obligations and termination to the requested reading groups", () => {
+    const source =
+      "验收通过并收到发票后10个工作日内支付首期款。年度服务期满并完成交接后15个工作日内支付尾款。乙方应在10个工作日内交付服务成果。逾期超过15日，甲方有权解除合同。";
+    const result = keyClauseNavigationFor(scope, documentOf({ text: source, clauses: [] }));
+    expect(result.candidates.map((candidate) => readingGroupFor(candidate))).toEqual([
+      "money",
+      "money",
+      "performance",
+      "rights",
+    ]);
   });
 
   it("rejects a document parsed by a different attempt", () => {
@@ -172,7 +197,7 @@ describe("key clause navigation", () => {
     const expectedStart = Array.from(fragmentText.slice(0, fragmentText.indexOf("甲方"))).length;
     const document = documentOf({ text: fragmentText, clauses: [] });
     const result = keyClauseNavigationFor(scope, document);
-    const candidate = result.candidates[0];
+    const candidate = result.allCandidates![0];
 
     expect(candidate).toBeDefined();
     expect(candidate).toMatchObject({
@@ -204,8 +229,8 @@ describe("key clause navigation", () => {
     });
     const result = keyClauseNavigationFor(scope, document);
 
-    expect(result.candidates).toHaveLength(1);
-    expect(result.candidates[0]).toMatchObject({
+    expect(result.allCandidates!).toHaveLength(1);
+    expect(result.allCandidates![0]).toMatchObject({
       kind: "fragment",
       heading: "正文片段/标题未识别",
       sourceLabel: "正文片段/标题未识别",
@@ -229,7 +254,7 @@ describe("key clause navigation", () => {
       ],
     });
     const result = keyClauseNavigationFor(scope, document);
-    const candidate = result.candidates[0];
+    const candidate = result.allCandidates![0];
 
     expect(candidate).toBeDefined();
     expect(candidate).toMatchObject({
@@ -271,6 +296,7 @@ describe("key clause navigation", () => {
     const { candidates } = keyClauseNavigationFor(scope, document);
     expect(candidates.map((candidate) => candidate.categories[0])).toEqual([
       "payment",
+      "payment",
       "dispute_resolution",
       "warranty",
       "confidentiality_data",
@@ -311,7 +337,7 @@ describe("frozen source proof", () => {
     });
     const provedDocument = { ...frozen, digest };
     expect(
-      keyClauseNavigationFor({ ...scope, sourceProofs: [proof!] }, provedDocument).candidates,
+      keyClauseNavigationFor({ ...scope, sourceProofs: [proof!] }, provedDocument).allCandidates,
     ).toHaveLength(2);
     expect(
       keyClauseNavigationFor({ ...scope, sourceProofs: [] }, provedDocument).candidates,

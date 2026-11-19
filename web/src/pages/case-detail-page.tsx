@@ -55,6 +55,7 @@ import {
   runLabel,
   runTone,
 } from "../domain/review";
+import { contractDeskReturnHref } from "./contract-desk-page";
 
 const navigationStores = new WeakMap<
   object,
@@ -482,6 +483,9 @@ export function CaseDetailPage() {
         className="case-detail-page"
         before={
           <nav className="page-back" aria-label="案件导航">
+            {location.hash === "#case-material-source" ? (
+              <Link to={contractDeskReturnHref(location.state, workActorScope)}>返回合同清单</Link>
+            ) : null}
             {workReturn ? (
               <Link
                 to={workReturn}
@@ -712,6 +716,11 @@ export function CaseDetailPage() {
             caseDetail={item}
             canWrite={canUpload}
             actorId={session.data?.id ?? ""}
+            source={
+              location.hash === "#case-material-source"
+                ? { documentId: searchParams.get("source_document") ?? "", visit: location.key }
+                : undefined
+            }
           />
           <CollapsibleSection
             id="case-template-generation"

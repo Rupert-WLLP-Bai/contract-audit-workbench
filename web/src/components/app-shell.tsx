@@ -16,6 +16,7 @@ import { actorRoleLabel } from "../domain/review";
 import { Avatar, Breadcrumb, Button, Input, Layout } from "antd";
 import {
   ApiOutlined,
+  AppstoreOutlined,
   AuditOutlined,
   BookOutlined,
   CheckSquareOutlined,
@@ -45,76 +46,63 @@ type NavLinkItem = {
   adminRoleOnly?: boolean;
 };
 
-type MainNavKey = "workbench" | "cases" | "contracts" | "knowledge" | "agent-studio";
-
 const NAV_GROUPS: {
-  key: MainNavKey;
-  label: string;
-  to: string;
-  icon: string;
+  key: string;
+  title: string;
+  icon?: ReactNode;
   links: NavLinkItem[];
 }[] = [
   {
-    key: "workbench",
-    label: "工作台",
-    to: "/",
-    icon: "home",
+    key: "primary",
+    title: "合同业务",
     links: [
-      { to: "/review", label: "合同审查", icon: "review" },
-      { to: "/workbench/tasks", label: "审查任务", icon: "tasks" },
-      { to: "/workbench/remediation", label: "整改中心", icon: "remediation" },
-      { to: "/workbench/reports", label: "报告中心", icon: "reports" },
-      { to: "/workbench/evidence", label: "证据中心", icon: "evidence" },
-      { to: "/workbench/evidence-sla", label: "补证时效", icon: "evidence-sla" },
+      { to: "/contract-desk", label: "合同", icon: "contracts" },
+      { to: "/workbench/tasks", label: "我的待办", icon: "tasks" },
+      { to: "/cases", label: "案件与材料", icon: "case" },
     ],
   },
   {
-    key: "cases",
-    label: "案件",
-    to: "/cases",
-    icon: "case",
-    links: [
-      { to: "/support", label: "案件支援访问", icon: "support" },
-      { to: "/compare", label: "版本对照", icon: "compare" },
-    ],
-  },
-  {
-    key: "contracts",
-    label: "合同台账",
-    to: "/contracts",
-    icon: "contracts",
+    key: "business",
+    title: "办理",
     links: [
       { to: "/workbench/approvals", label: "合同会签", icon: "contracts" },
-      { to: "/subjects", label: "主体台账", icon: "subjects" },
+      { to: "/contracts", label: "合同登记与履约", icon: "contracts" },
+      { to: "/workbench/reports", label: "报告中心", icon: "reports" },
     ],
   },
   {
-    key: "knowledge",
-    label: "知识与规则",
-    to: "/workbench/knowledge",
-    icon: "knowledge",
+    key: "more-business",
+    title: "更多业务",
+    icon: <AppstoreOutlined aria-hidden="true" />,
     links: [
-      { to: "rules", label: "规则包治理", icon: "rules", external: true, adminRoleOnly: true },
+      { to: "/workbench/home", label: "工作台概览", icon: "home" },
+      { to: "/review", label: "案件审查入口", icon: "review" },
+      { to: "/workbench/remediation", label: "整改中心", icon: "remediation" },
+      { to: "/workbench/evidence", label: "证据中心", icon: "evidence" },
+      { to: "/workbench/evidence-sla", label: "补证时效", icon: "evidence-sla" },
+      { to: "/support", label: "案件支援访问", icon: "support" },
+      { to: "/compare", label: "版本对照", icon: "compare" },
+      { to: "/subjects", label: "主体台账", icon: "subjects" },
+      { to: "/workbench/knowledge", label: "知识库", icon: "knowledge" },
       { to: "/workbench/templates", label: "模板管理", icon: "templates" },
     ],
   },
   {
-    key: "agent-studio",
-    label: "Agent Studio",
-    to: "/workbench/executions",
-    icon: "executions",
-    links: [],
+    key: "management-tools",
+    title: "管理与工具",
+    icon: <ToolOutlined aria-hidden="true" />,
+    links: [
+      { to: "/workbench/organization", label: "组织与权限", icon: "organization" },
+      { to: "/workbench/executions", label: "Agent Studio", icon: "executions" },
+      { to: "/workbench/tools", label: "工具网关", icon: "tools" },
+      { to: "/api-docs", label: "API 文档", icon: "api" },
+      { to: "/workbench/settings", label: "系统设置", icon: "settings", adminRoleOnly: true },
+      { to: "/workbench/health", label: "系统健康", icon: "health", adminRoleOnly: true },
+      { to: "/workbench/audit", label: "审计日志", icon: "audit", adminRoleOnly: true },
+      { to: "rules", label: "规则包治理", icon: "rules", external: true, adminRoleOnly: true },
+      { to: "/docs/", label: "使用手册", icon: "knowledge", external: true, href: "/docs/" },
+    ],
   },
-];
-
-const UTILITY_LINKS: NavLinkItem[] = [
-  { to: "/workbench/organization", label: "组织与权限", icon: "organization" },
-  { to: "/workbench/tools", label: "工具网关", icon: "tools" },
-  { to: "/workbench/settings", label: "系统设置", icon: "settings", adminRoleOnly: true },
-  { to: "/workbench/health", label: "系统健康", icon: "health", adminRoleOnly: true },
-  { to: "/workbench/audit", label: "审计日志", icon: "audit", adminRoleOnly: true },
-  { to: "/docs/", label: "使用手册", icon: "knowledge", external: true, href: "/docs/" },
-  { to: "/api-docs", label: "API 文档", icon: "api" },
 ];
 
 const NAV_ICONS: Record<string, ReactNode> = {
@@ -165,40 +153,41 @@ interface Crumb {
 }
 
 function staticBreadcrumb(pathname: string): Crumb[] | null {
-  if (pathname === "/") return [{ label: "工作台", to: null }];
+  if (pathname === "/" || pathname === "/contract-desk") return [];
+  if (pathname === "/workbench/home") return [{ label: "工作台概览", to: null }];
   if (pathname === "/review")
     return [
-      { label: "工作台", to: "/" },
+      { label: "工作台", to: "/workbench/home" },
       { label: "合同审查", to: null },
     ];
   if (pathname === "/compare")
     return [
-      { label: "工作台", to: "/" },
+      { label: "工作台", to: "/workbench/home" },
       { label: "版本对照", to: null },
     ];
   if (pathname === "/cases")
     return [
-      { label: "工作台", to: "/" },
+      { label: "工作台", to: "/workbench/home" },
       { label: "案件管理", to: null },
     ];
   if (pathname === "/contracts")
     return [
-      { label: "工作台", to: "/" },
+      { label: "工作台", to: "/workbench/home" },
       { label: "合同登记", to: null },
     ];
   if (pathname === "/workbench/approvals")
     return [
-      { label: "工作台", to: "/" },
+      { label: "工作台", to: "/workbench/home" },
       { label: "合同会签", to: null },
     ];
   if (pathname === "/subjects")
     return [
-      { label: "工作台", to: "/" },
+      { label: "工作台", to: "/workbench/home" },
       { label: "主体台账", to: null },
     ];
   if (pathname.startsWith("/subjects/"))
     return [
-      { label: "工作台", to: "/" },
+      { label: "工作台", to: "/workbench/home" },
       { label: "主体台账", to: "/subjects" },
       { label: "主体详情", to: null },
     ];
@@ -207,7 +196,7 @@ function staticBreadcrumb(pathname: string): Crumb[] | null {
 
 function caseBreadcrumbs(caseId: string, caseTitle: string, inReview: boolean): Crumb[] {
   return [
-    { label: "工作台", to: "/" },
+    { label: "工作台", to: "/workbench/home" },
     { label: "案件", to: "/cases" },
     {
       label: caseTitle,
@@ -224,7 +213,7 @@ function moduleTitle(moduleKey: string): string {
 function workbenchBreadcrumbs(pathname: string): Crumb[] {
   const moduleKey = pathname.slice("/workbench/".length).split("/")[0]!;
   return [
-    { label: "工作台", to: "/" },
+    { label: "工作台", to: "/workbench/home" },
     { label: "业务管理", to: null },
     { label: moduleTitle(moduleKey), to: null },
   ];
@@ -254,52 +243,11 @@ function breadcrumbsFor(
   ];
 }
 
-function selectedPrimaryKey(pathname: string): MainNavKey | null {
-  if (pathname === "/") return "workbench";
-  if (
-    pathname === "/workbench/executions" ||
-    pathname.startsWith("/workbench/executions/") ||
-    /^\/cases\/[^/]+\/reviews\/[^/]+\/agent$/.test(pathname)
-  )
-    return "agent-studio";
-  if (
-    pathname === "/review" ||
-    [
-      "/workbench/tasks",
-      "/workbench/remediation",
-      "/workbench/reports",
-      "/workbench/evidence",
-      "/workbench/evidence-sla",
-    ].some((path) => pathname === path || pathname.startsWith(`${path}/`))
-  )
-    return "workbench";
-  if (
-    pathname === "/cases" ||
-    pathname.startsWith("/cases/") ||
-    pathname === "/compare" ||
-    pathname === "/support" ||
-    pathname === "/support-grants" ||
-    pathname.startsWith("/support-grants/")
-  )
-    return "cases";
-  if (
-    pathname === "/contracts" ||
-    pathname.startsWith("/contracts/") ||
-    pathname === "/subjects" ||
-    pathname.startsWith("/subjects/") ||
-    pathname === "/workbench/approvals"
-  )
-    return "contracts";
-  if (
-    pathname === "/workbench/knowledge" ||
-    pathname.startsWith("/workbench/knowledge/") ||
-    pathname === "/workbench/templates" ||
-    pathname.startsWith("/workbench/templates/") ||
-    pathname === "/admin/rulepacks" ||
-    pathname.startsWith("/admin/rulepacks/")
-  )
-    return "knowledge";
-  return null;
+function navigationPath(pathname: string): string {
+  if (pathname === "/") return "/contract-desk";
+  if (/^\/cases\/[^/]+\/reviews\/[^/]+\/agent$/.test(pathname)) return "/workbench/executions";
+  if (pathname === "/support-grants" || pathname.startsWith("/support-grants/")) return "/support";
+  return pathname;
 }
 
 function searchFromLocation(search: string): string {
@@ -353,6 +301,7 @@ function BreadcrumbItems({ crumbs }: { crumbs: Crumb[] }) {
 function AppTopbar({
   actor,
   search,
+  showCaseSearch,
   logoutPending,
   onSearchChange,
   onSearchSubmit,
@@ -361,6 +310,7 @@ function AppTopbar({
 }: {
   actor: Actor | undefined;
   search: string;
+  showCaseSearch: boolean;
   logoutPending: boolean;
   onSearchChange: (value: string) => void;
   onSearchSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -368,31 +318,37 @@ function AppTopbar({
   onContextTransition: (pending: boolean) => void;
 }) {
   return (
-    <Layout.Header className="topbar">
+    <Layout.Header
+      className={
+        showCaseSearch ? "topbar client-topbar" : "topbar client-topbar topbar--without-search"
+      }
+    >
       <Link
         className="brand competition-brand"
-        to="/"
-        aria-label="第一届黄桷树AI智能体开发大赛，合同智能审计工作台首页"
+        to="/contract-desk"
+        aria-label="合同智能审计工作台首页，第一届黄桷树AI智能体开发大赛"
       >
         <CompetitionIdentity />
       </Link>
       <ContextSwitcher actor={actor} audience="client" onTransition={onContextTransition} />
-      <form className="global-search" role="search" onSubmit={onSearchSubmit}>
-        <label className="sr-only" htmlFor="global-case-search">
-          全局搜索案件
-        </label>
-        <Input
-          className="header-search-input"
-          id="global-case-search"
-          type="search"
-          value={search}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="搜索案件标题或编号"
-        />
-        <Button className="header-action" aria-label={"搜索"} htmlType="submit" ghost>
-          搜索
-        </Button>
-      </form>
+      {showCaseSearch ? (
+        <form className="global-search" role="search" onSubmit={onSearchSubmit}>
+          <label className="sr-only" htmlFor="global-case-search">
+            全局搜索案件
+          </label>
+          <Input
+            className="header-search-input"
+            id="global-case-search"
+            type="search"
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="搜索案件标题或编号"
+          />
+          <Button className="header-action" aria-label={"搜索"} htmlType="submit" ghost>
+            搜索
+          </Button>
+        </form>
+      ) : null}
       <div className="who" aria-label="当前身份">
         {actor ? (
           <>
@@ -415,7 +371,7 @@ function AppTopbar({
           disabled={logoutPending}
           onClick={onLogout}
         >
-          退出
+          <span className="header-logout-label">退出</span>
         </Button>
       </div>
     </Layout.Header>
@@ -432,48 +388,24 @@ function AppSidebar({
   adminRulePacksUrl: string;
 }) {
   const canSeeManagementLinks = actor?.role === "admin";
-  const activeKey = selectedPrimaryKey(pathname);
-
-  function visibleLinks(items: NavLinkItem[]): ShellNavLink[] {
-    return items
+  const selectedPath = navigationPath(pathname);
+  const groups: ShellNavGroup[] = NAV_GROUPS.map(({ key, title, icon, links }) => ({
+    key,
+    title,
+    disclosureIcon: icon,
+    links: links
       .filter((item) => !item.adminRoleOnly || canSeeManagementLinks)
-      .map((item) => ({
+      .map((item): ShellNavLink => ({
         href: item.external ? (item.href ?? adminRulePacksUrl) : item.to,
         label: item.label,
         icon: NAV_ICONS[item.icon],
         external: item.external,
-        current: !item.external && (pathname === item.to || pathname.startsWith(`${item.to}/`)),
-      }));
-  }
+        current:
+          !item.external && (selectedPath === item.to || selectedPath.startsWith(`${item.to}/`)),
+      })),
+  }));
 
-  const primary: ShellNavGroup = {
-    key: "primary",
-    title: "工作区",
-    links: NAV_GROUPS.map((group) => ({
-      href: group.to,
-      label: group.label,
-      icon: NAV_ICONS[group.icon],
-      current: group.key === activeKey,
-    })),
-  };
-  const sections = NAV_GROUPS.map((group) => ({
-    key: group.key,
-    title: `${group.label}工作区`,
-    links: visibleLinks(group.links),
-  })).filter((group) => group.links.length > 0);
-  const utility: ShellNavGroup = {
-    key: "utility",
-    title: canSeeManagementLinks ? "管理与文档" : "只读目录与文档",
-    links: visibleLinks(UTILITY_LINKS),
-  };
-
-  return (
-    <ShellNavigation
-      title="主导航"
-      groups={[primary, ...sections.filter((section) => section.key === activeKey), utility]}
-      drawerGroups={[primary, ...sections, utility]}
-    />
-  );
+  return <ShellNavigation title="主导航" groups={groups} />;
 }
 
 export function AppShell() {
@@ -505,6 +437,7 @@ export function AppShell() {
       <AppTopbar
         actor={actor}
         search={search}
+        showCaseSearch={location.pathname !== "/" && location.pathname !== "/contract-desk"}
         logoutPending={logout.isPending}
         onSearchChange={setSearch}
         onSearchSubmit={(event) => {
@@ -528,7 +461,7 @@ export function AppShell() {
           adminRulePacksUrl={adminRulePacksUrl}
         />
         <Layout.Content className="content-column">
-          <BreadcrumbItems crumbs={breadcrumbs} />
+          {breadcrumbs.length > 0 ? <BreadcrumbItems crumbs={breadcrumbs} /> : null}
           <main id="main" tabIndex={-1}>
             {contextTransition ? (
               <PageStatus kind="loading" title="正在确认新的工作上下文" />

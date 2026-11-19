@@ -213,16 +213,64 @@
   background: var(--surface-raised);
   font-size: var(--font-size-ui);
 }
+.review-workspace-layout {
+  --reading-performance-highlight: #c8e3ff;
+  --reading-rights-highlight: #ead7fa;
+}
+.reading-category-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.reading-category-filters button {
+  border: 1px solid var(--border-control);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  border-radius: var(--radius-control);
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.reading-category-filters button[aria-pressed="true"] {
+  border-color: var(--action-primary);
+  box-shadow: inset 0 -2px var(--action-primary);
+  font-weight: 600;
+}
+.reading-category-filters button:focus-visible {
+  outline: 3px solid var(--action-primary);
+  outline-offset: 2px;
+}
+.reading-category-filters button:not(:first-child)::before {
+  content: "";
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-inline-end: 5px;
+  border: 1px solid var(--border-control);
+  border-radius: 2px;
+}
+.reading-filter-money::before {
+  background: var(--reading-highlight, var(--search-mark));
+}
+.reading-filter-performance::before {
+  background: var(--reading-performance-highlight);
+}
+.reading-filter-rights::before {
+  background: var(--reading-rights-highlight);
+}
 .review-workspace-layout .hit-key-clause {
   color: var(--text-primary);
-  background: linear-gradient(
-    transparent 30%,
-    var(--reading-highlight, var(--search-mark)) 30%,
-    var(--reading-highlight, var(--search-mark)) 85%,
-    transparent 85%
-  );
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
+}
+.review-workspace-layout .hit-key-clause.reading-money {
+  background: var(--reading-highlight, var(--search-mark));
+}
+.review-workspace-layout .hit-key-clause.reading-performance {
+  background: var(--reading-performance-highlight);
+}
+.review-workspace-layout .hit-key-clause.reading-rights {
+  background: var(--reading-rights-highlight);
 }
 .review-workspace-layout .doc-text .hit-find {
   background: var(--action-primary-soft);

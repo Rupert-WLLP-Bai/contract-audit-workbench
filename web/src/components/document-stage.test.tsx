@@ -171,6 +171,45 @@ it("distinguishes a selected clause, a search match, and overlapping evidence", 
   expect(mark).toHaveAttribute("data-selected-key-clause", "true");
 });
 
+it("filters the three reading categories without changing the frozen text", async () => {
+  const user = userEvent.setup();
+  const text =
+    "甲方应在验收后10个工作日内支付首期款。乙方应在10个工作日内交付服务成果。甲方有权要求乙方赔偿实际损失。";
+  const document = documentOf("doc-groups", "draft_contract", "合同.txt", text, {
+    parsed_document_id: "parse-groups",
+    clauses: [],
+  });
+  const scope = {
+    caseId: "case-1",
+    runId: "run-1",
+    attemptId: "attempt-1",
+    isFrozenAttempt: true,
+    parsedDocumentIds: ["parse-groups"],
+    sourceProofs: [
+      {
+        documentId: document.id,
+        parsedDocumentId: "parse-groups",
+        originalDigest: document.digest,
+      },
+    ],
+  };
+  const { container } = renderStage({ documents: [document], quoteScope: scope });
+  const textNode = container.querySelector(".doc-text");
+  expect(textNode?.textContent).toBe(text);
+  expect(container.querySelectorAll(".reading-money")).toHaveLength(1);
+  expect(container.querySelectorAll(".reading-performance")).toHaveLength(1);
+  expect(container.querySelectorAll(".reading-rights")).toHaveLength(1);
+  const filters = screen.getByRole("group", { name: "阅读分类" });
+  await user.click(within(filters).getByRole("button", { name: "金额与付款" }));
+  expect(textNode?.textContent).toBe(text);
+  expect(container.querySelectorAll(".reading-money")).toHaveLength(1);
+  expect(container.querySelectorAll(".reading-performance, .reading-rights")).toHaveLength(0);
+  await user.click(within(filters).getByRole("button", { name: "权利与责任" }));
+  expect(container.querySelectorAll(".reading-rights")).toHaveLength(1);
+  await user.click(within(filters).getByRole("button", { name: "全部" }));
+  expect(container.querySelectorAll(".hit-key-clause")).toHaveLength(3);
+});
+
 function documentOf(
   id: string,
   role: string,
@@ -572,6 +611,7 @@ describe("document stage materials and search", () => {
       },
     });
 
+    await user.click(screen.getByRole("button", { name: "显示更多条款" }));
     expect(screen.getByRole("heading", { name: "阅读重点" })).toBeInTheDocument();
     expect(screen.getByText(/选择后跳到原文/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /付款约定.*页码未记录/ }));
@@ -614,6 +654,7 @@ describe("document stage materials and search", () => {
         parsedDocumentIds: ["parsed-body"],
       },
     });
+    await user.click(screen.getByRole("button", { name: "显示更多条款" }));
     const choice = screen.getByRole("button", {
       name: /正文片段\/标题未识别.*付款.*页码未记录/,
     });
@@ -684,12 +725,13 @@ describe("document stage materials and search", () => {
         parsedDocumentIds: ["parsed-key", "parsed-plain"],
       },
     });
+    await user.click(screen.getByRole("button", { name: "显示更多条款" }));
     await user.click(screen.getByRole("button", { name: /付款约定.*第 1 页/ }));
     expect(container.querySelector(".hit-key-clause")).not.toBeNull();
 
     await user.click(screen.getByRole("tab", { name: "技术附件" }));
     expect(container.querySelector(".hit-key-clause")).toBeNull();
-    expect(screen.getByText("当前材料中没有可定位的关键条款。")).toBeInTheDocument();
+    expect(screen.getAllByText("当前材料中没有可定位的关键条款。")[0]).toBeInTheDocument();
   });
 
   it("labels duplicate material versions and linked findings", async () => {

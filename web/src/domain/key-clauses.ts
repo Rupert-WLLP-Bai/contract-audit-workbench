@@ -42,7 +42,7 @@ export const KEY_CLAUSE_CATEGORIES = [
   {
     id: "delivery_acceptance",
     label: "交付验收",
-    keywords: ["交付", "交货", "验收", "签收", "交付物", "验收标准", "里程碑"],
+    keywords: ["交付", "交货", "验收", "签收", "交付物", "验收标准", "里程碑", "巡检"],
   },
   {
     id: "term_termination",
@@ -74,6 +74,30 @@ export const KEY_CLAUSE_CATEGORIES = [
 export type KeyClauseCategory = (typeof KEY_CLAUSE_CATEGORIES)[number]["id"];
 export type KeyClauseKind = "structured" | "fragment";
 
+export type ReadingGroup = "money" | "performance" | "rights";
+export const READING_GROUPS: readonly { id: ReadingGroup; label: string }[] = [
+  { id: "money", label: "金额与付款" },
+  { id: "performance", label: "履约与期限" },
+  { id: "rights", label: "权利与责任" },
+];
+export function readingGroupFor(
+  candidate: Pick<KeyClauseCandidate, "categories" | "quote">,
+): ReadingGroup {
+  switch (candidate.categories[0]) {
+    case "payment":
+      return "money";
+    case "term_termination":
+      return /解除|终止/u.test(candidate.quote) ? "rights" : "performance";
+    case "delivery_acceptance":
+      // An acceptance condition attached to a payment is still a payment milestone.
+      return candidate.categories.includes("payment") ? "money" : "performance";
+    case "warranty":
+      return "performance";
+    default:
+      return "rights";
+  }
+}
+
 export interface KeyClauseCandidate {
   id: string;
   clauseId: string | null;
@@ -91,6 +115,7 @@ export interface KeyClauseCandidate {
 
 export interface KeyClauseNavigation {
   candidates: KeyClauseCandidate[];
+  allCandidates?: KeyClauseCandidate[];
   message: string;
   notice?: string;
 }
@@ -100,6 +125,7 @@ interface RatedSentence {
   categories: readonly KeyClauseCategory[];
   primary: KeyClauseCategory;
   score: number;
+  emphasized: boolean;
   key: string;
   source: ReviewDocument["clauses"][number] | undefined;
 }
@@ -222,8 +248,9 @@ const DIRECTION =
   /(?:应当|应于|应在|应自|应按|应向|应由|应[交提支履保承负赔退返履防采通约完享对给将妥指配]|须|必须|有权|不得|不应|不承担|不予|禁止|同意|承诺|负责|仅限|无权|可以|均可|可向|可要求)/u;
 const QUANTIFIED_TERM =
   /[０-９0-9]+(?:[.,．，][０-９0-9]+)*\s*(?:个?月|个?自然日|个?工作日|天|日|年|小时|分钟|兆|％|%|万?元|亿?元|MB|GB|TB)|[零〇一二两三四五六七八九十百千]+(?:个?月|个?自然日|个?工作日|天|日|年|小时|分钟)|[零〇一二两三四五六七八九十壹贰叁肆伍陆柒捌玖拾佰仟百千万亿]+[元圆]/u;
+const RECURRING_DUTY = /每(?:季度|月|年|周|日).{0,20}(?:提交|提供|巡检|检查|报告|履行)/u;
 const TRIGGER =
-  /之日起|之后|之前|收到|经.*确认|如遇|如果|若|未能|逾期|届满|提前|自.*起|期限内|[前后](?:的)?[０-９0-9一二两三四五六七八九十百]/u;
+  /之日起|之后|之前|收到|经.*确认|如遇|如果|若|未能|逾期|届满|期满|提前|自.*起|期限内|[前后](?:的)?[０-９0-9一二两三四五六七八九十百]/u;
 const PLACEHOLDER =
   /\[\s*(?:待填|填写|待定|可选)[^\]]*\]|【\s*(?:待填|填写|待定|可选)[^】]*】|_{2,}|(?:待填(?:写)?|待补充|尚无具体约定|不作具体约定|无具体约定|本条不适用|本项不适用|XX\s*(?:天|日|元|个月|年))|^(?:术语解释|示例|例如|参考模板|填写说明|目录|关键词)[：:\s]/u;
 const LEADING_EXCEPTION = /^(?:但是|但(?!愿)|除非|除.{0,24}外|惟|唯在)/u;
@@ -240,7 +267,7 @@ const TOPIC_RULES: Record<KeyClauseCategory, { action: RegExp; specific: RegExp 
       /(?:合同(?:总价|价款|金额)|采购金额|含税总价|结算总额|付款比例)[\s：:为计人民币]*(?:[０-９0-9]|[零〇一二两三四五六七八九十壹贰叁肆伍陆柒捌玖拾佰仟百千万亿]+(?:[万亿]?[元圆]))|(?:预付款|首付款|进度款|尾款|价款|款项)[^。！？]{0,20}(?:[０-９0-9]+[％%]|百分之[一二两三四五六七八九十百]+|[０-９0-9]+万?元)|(?:付款|价款|尾款|款项)[^。！？]{0,12}(?:[０-９0-9]+|[一二两三四五六七八九十百]+)(?:个?自然日|个?工作日|天|日|月)内[^。！？]{0,8}(?:支付|付款|付清)/u,
   },
   delivery_acceptance: {
-    action: /交付|交货|交接|签收|验收|上线|供货|提交|整改|验收.*视为/u,
+    action: /交付|交货|交接|签收|验收|上线|供货|提交|巡检|整改|验收.*视为/u,
     specific:
       /(?:(?:交付|交货|竣工|验收)[^。！？]{0,30}(?:不得超过|不超过|\d+(?:个)?(?:工作日|天|日|月)|逾期视为))|(?:验收合格(?:后|之日|率))|(?:付款|确认|批准|签收)后[^。！？]{0,12}(?:交付|交货|履行)/u,
   },
@@ -396,7 +423,19 @@ function rateSentences(
     const text = sliceByCodePoints(index.text, range.start, range.end, index);
     if (text === null) continue;
     const fit = rankSentence(text);
-    if (fit) rated.push({ ...fit, range, key: duplicateKey(text), source });
+    if (fit) {
+      const specific = TOPIC_RULES[fit.primary].specific.test(text);
+      const quantified =
+        QUANTIFIED_TERM.test(text) &&
+        (TRIGGER.test(text) || PARTY.test(text) || DIRECTION.test(text));
+      rated.push({
+        ...fit,
+        emphasized: specific || quantified || RECURRING_DUTY.test(text),
+        range,
+        key: duplicateKey(text),
+        source,
+      });
+    }
   }
   return rated;
 }
@@ -410,18 +449,15 @@ function selectSentences(rated: RatedSentence[]): RatedSentence[] {
   );
   const selected: RatedSentence[] = [];
   const seenQuotes = new Set<string>();
-  const seenTopics = new Set<KeyClauseCategory>();
 
   for (const candidate of candidates) {
     if (
-      seenTopics.has(candidate.primary) ||
       seenQuotes.has(candidate.key) ||
       selected.some(({ range }) => overlapsRange(range, candidate.range))
     )
       continue;
     selected.push(candidate);
     seenQuotes.add(candidate.key);
-    seenTopics.add(candidate.primary);
   }
   return selected.sort((left, right) => left.range.start - right.range.start);
 }
@@ -459,7 +495,8 @@ export function keyClauseNavigationFor(
   }
   const picked = selectSentences(rateSentences(document, index, sentences));
   const candidates: KeyClauseCandidate[] = [];
-  for (const { range, categories, source } of picked) {
+  const allCandidates: KeyClauseCandidate[] = [];
+  for (const { range, categories, source, emphasized } of picked) {
     const selection = createFrozenQuoteSelection(scope, document, range, index);
     if (!selection || !frozenQuoteMatchesDocument(selection, scope, document, index)) continue;
 
@@ -474,22 +511,26 @@ export function keyClauseNavigationFor(
       originalPage > 0
         ? originalPage
         : null;
-    candidates.push(
-      candidateFromSelection(selection, parsedDocumentId, categories, {
-        clauseId: source?.id || null,
-        heading: heading ?? "正文片段/标题未识别",
-        sourceLabel: wholeNode
-          ? "结构化条款"
-          : heading
-            ? "正文片段/非完整条款"
-            : "正文片段/标题未识别",
-        kind: wholeNode ? "structured" : "fragment",
-        page,
-      }),
-    );
+    const candidate = candidateFromSelection(selection, parsedDocumentId, categories, {
+      clauseId: source?.id || null,
+      heading: heading ?? "正文片段/标题未识别",
+      sourceLabel: wholeNode
+        ? "结构化条款"
+        : heading
+          ? "正文片段/非完整条款"
+          : "正文片段/标题未识别",
+      kind: wholeNode ? "structured" : "fragment",
+      page,
+    });
+    allCandidates.push(candidate);
+    if (emphasized) candidates.push(candidate);
   }
-  return candidates.length > 0
-    ? { candidates, message: "" }
+  return allCandidates.length > 0
+    ? {
+        candidates,
+        allCandidates,
+        message: candidates.length ? "" : "当前没有重点，可显示更多条款。",
+      }
     : unavailable("当前材料中没有可定位的关键条款。");
 }
 

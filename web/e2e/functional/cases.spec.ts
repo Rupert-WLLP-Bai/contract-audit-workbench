@@ -16,7 +16,7 @@ test(
   operations("createCase", "listCases", "getCase"),
   async ({ page }) => {
     await uiLogin(page);
-    await page.getByRole("link", { name: "案件", exact: true }).click();
+    await page.getByRole("link", { name: "案件与材料", exact: true }).click();
     await page.getByRole("button", { name: "新建案件", exact: true }).click();
     const dialog = page.getByRole("dialog");
     const title = `Playwright 案件 ${Date.now()}`;

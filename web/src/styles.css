@@ -731,6 +731,9 @@
     background: var(--surface-raised);
     border-bottom: 1px solid var(--border-default);
   }
+  .topbar--without-search {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
   .brand {
     display: inline-flex;
     min-width: 0;
@@ -2719,6 +2722,18 @@
   .brand-copy span {
     color: var(--text-secondary);
   }
+  .client-topbar .brand-copy > span {
+    order: -1;
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 650;
+  }
+  .client-topbar .brand-copy > strong {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 400;
+  }
   .organization-badge,
   .topbar .disclaimer {
     color: var(--text-secondary);
@@ -4487,6 +4502,56 @@
     }
     .topbar {
       gap: var(--space-2);
+    }
+  }
+
+  @media (max-width: 760px) {
+    .client-topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: var(--space-2);
+    }
+    .client-topbar > .brand {
+      grid-column: 1;
+      grid-row: 1;
+      order: 0;
+    }
+    .client-topbar .competition-logo {
+      flex-basis: 32px;
+      width: 32px;
+      height: 32px;
+    }
+    .client-topbar .brand-copy > span {
+      display: block;
+    }
+    .client-topbar .brand-copy > strong {
+      display: none;
+    }
+    .client-topbar > .who {
+      grid-column: 2;
+      grid-row: 1;
+      justify-self: end;
+      order: 0;
+      gap: var(--space-1);
+      margin: 0;
+    }
+    .client-topbar .who .identity-copy {
+      display: grid;
+    }
+    .client-topbar .who .identity-copy strong {
+      max-width: min(14vw, 7ch);
+    }
+    .client-topbar .header-logout-label {
+      display: none;
+    }
+    .client-topbar > .global-search {
+      grid-column: 1 / -1;
+      grid-row: auto;
+      order: 2;
+    }
+    .client-topbar > :not(.brand, .who, .global-search) {
+      grid-column: 1 / -1;
+      min-width: 0;
     }
   }
 }

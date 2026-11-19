@@ -12,6 +12,7 @@ import { Alert, Button, Empty, Input, InputNumber, Modal, Select, Table, Tabs, T
 import { actorReadContextKey } from "../domain/actor-read-context";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "react-router";
 import {
   ApiError,
   assertCommandContextCurrent,
@@ -73,6 +74,7 @@ import { ContractLifecycleOverviewPanel } from "../components/contract-lifecycle
 import { ContractSourceCapabilityPanel } from "../components/contract-source-capability-panel";
 import { formatDateTime } from "../domain/review";
 import { caseOptionLabel } from "../domain/case-identity";
+import { ContractDeskSources, contractDeskReturnHref } from "./contract-desk-page";
 import "./contracts-page.css";
 
 const DRAFTING_PARTIES = [
@@ -255,6 +257,7 @@ function saveDownload(blob: Blob, filename: string): void {
 
 export function ContractsPage() {
   const queryClient = useQueryClient();
+  const location = useLocation();
   const session = useSession();
   const actor = session.data ?? null;
   const scope = actorScope(actor);
@@ -677,6 +680,12 @@ export function ContractsPage() {
       standaloneSurface={false}
       title="合同登记"
       description="草稿可以先不写全，保存后继续填。收款账号一类敏感字段只对有管理权限的人显示。"
+      beforeSummary={
+        <ContractDeskSources
+          active="registered"
+          materialsHref={contractDeskReturnHref(location.state, scope)}
+        />
+      }
       actions={
         <div className="contracts-page-actions">
           <Button type="text" onClick={() => setImportOpen(true)} disabled={actor === null}>

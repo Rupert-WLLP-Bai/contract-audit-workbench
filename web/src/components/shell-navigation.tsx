@@ -24,6 +24,7 @@ export type ShellNavLink = {
 export type ShellNavGroup = {
   key: string;
   title: string;
+  disclosureIcon?: ReactNode;
   links: ShellNavLink[];
 };
 
@@ -31,7 +32,7 @@ function NavigationMenu({ title, groups }: { title: string; groups: ShellNavGrou
   const navigate = useNavigate();
   const links = groups.flatMap((group) => group.links);
   const items: MenuProps["items"] = groups.map((group) => ({
-    type: "group",
+    ...(group.disclosureIcon ? { icon: group.disclosureIcon } : { type: "group" as const }),
     key: group.key,
     label: group.title,
     children: group.links.map((link) => {
@@ -63,6 +64,10 @@ function NavigationMenu({ title, groups }: { title: string; groups: ShellNavGrou
       <Menu
         mode="inline"
         items={items}
+        triggerSubMenuAction="click"
+        defaultOpenKeys={groups
+          .filter((group) => group.disclosureIcon && group.links.some((link) => link.current))
+          .map((group) => group.key)}
         selectedKeys={links.filter((link) => link.current).map((link) => link.href)}
         onClick={({ key, domEvent }) => {
           // Anchors keep native browser gestures and React Router blockers. The
@@ -81,13 +86,11 @@ function NavigationMenu({ title, groups }: { title: string; groups: ShellNavGrou
 export function ShellNavigation({
   title,
   groups,
-  drawerGroups = groups,
   footer,
   className = "",
 }: {
   title: string;
   groups: ShellNavGroup[];
-  drawerGroups?: ShellNavGroup[];
   footer?: ReactNode;
   className?: string;
 }) {
@@ -161,7 +164,7 @@ export function ShellNavigation({
         destroyOnHidden
         classNames={{ body: "shell-navigation-body" }}
       >
-        <NavigationMenu title={title} groups={drawerGroups} />
+        <NavigationMenu title={title} groups={groups} />
       </Drawer>
     </>
   );

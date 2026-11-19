@@ -91,3 +91,27 @@
 .review-page-bar {
   margin-bottom: var(--space-1);
 }
+
+.contract-desk-return {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.review-more-tools {
+  position: relative;
+}
+.review-more-tools summary {
+  cursor: pointer;
+  color: var(--action-primary);
+  white-space: nowrap;
+}
+.review-more-tools summary:focus-visible {
+  outline: 2px solid var(--action-primary);
+  outline-offset: 2px;
+}
+.review-more-tools[open] {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}

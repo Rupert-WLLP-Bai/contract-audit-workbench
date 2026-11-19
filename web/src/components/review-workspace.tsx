@@ -568,6 +568,7 @@ export function ReviewWorkspaceView({
   onCreateRelation,
   onDeleteRelation,
   quoteScope,
+  sourceDocumentId,
   onQuoteSelectionChange,
   selectedEvidenceId = null,
   onSelectEvidence,
@@ -612,6 +613,7 @@ export function ReviewWorkspaceView({
   onCreateRelation?: (input: CaseRelationInput) => Promise<void>;
   onDeleteRelation?: (relationId: string) => void;
   quoteScope?: FrozenQuoteScope | null;
+  sourceDocumentId?: string | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
   selectedEvidenceId?: string | null;
   onSelectEvidence?: (evidenceId: string | null) => void;
@@ -826,6 +828,7 @@ export function ReviewWorkspaceView({
               onCreateRelation={onCreateRelation}
               onDeleteRelation={onDeleteRelation}
               quoteScope={stageQuoteScope}
+              sourceDocumentId={sourceDocumentId}
               contractFactsCitation={factCitation}
               contractFactsLocationScope={contractFactsLocationScope}
               onQuoteSelectionChange={onQuoteSelectionChange}

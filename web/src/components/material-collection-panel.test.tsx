@@ -594,6 +594,76 @@ describe("material collection behavior", () => {
     expect(screen.getByText("草稿.txt")).toBeInTheDocument();
   });
 
+  it("targets the exact current or historical file and falls back to the material heading", () => {
+    const detail: CaseDetail = {
+      ...emptyDetail,
+      documents: [
+        doc("old", "旧版合同.docx", "draft_contract"),
+        doc("current", "本版合同.docx", "draft_contract"),
+      ],
+      materials: [
+        material({
+          material_id: "chain",
+          role: "draft_contract",
+          purpose: "primary_contract",
+          current_document_id: "current",
+          current_version: 2,
+        }),
+      ],
+      material_versions: [
+        {
+          material_id: "chain",
+          version: 1,
+          document_id: "old",
+          previous_document_id: null,
+          created_at: at,
+        },
+        {
+          material_id: "chain",
+          version: 2,
+          document_id: "current",
+          previous_document_id: "old",
+          created_at: at,
+        },
+      ],
+    };
+    const panel = (documentId: string) => (
+      <MaterialCollectionPanel
+        caseDetail={detail}
+        canWrite={false}
+        actorId="actor-1"
+        source={{ documentId, visit: documentId }}
+      />
+    );
+    const view = render(panel("current"));
+    expect(screen.getByText("本版合同.docx", { exact: true })).toHaveAttribute(
+      "id",
+      "case-material-source",
+    );
+    expect(screen.getByRole("button", { name: "当前材料" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    view.rerender(panel("old"));
+    expect(screen.getByText("v1 · 旧版合同.docx · 同一材料的历史版本")).toHaveAttribute(
+      "id",
+      "case-material-source",
+    );
+    expect(screen.getByRole("button", { name: "版本历史" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    view.rerender(panel("missing"));
+    expect(screen.getByRole("heading", { name: "材料" })).toHaveAttribute(
+      "id",
+      "case-material-source",
+    );
+    expect(screen.getByRole("button", { name: "当前材料" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
   it("does not allow legacy confirmation when the service omits its candidate projection", () => {
     const detail: CaseDetail = {
       ...emptyDetail,
