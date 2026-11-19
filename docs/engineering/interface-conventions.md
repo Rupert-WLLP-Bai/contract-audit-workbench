@@ -36,6 +36,10 @@
 
 **已有：** [案件列表](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/blob/main/web/src/pages/cases-page.tsx) 对已加载案件先筛选、排序再分页；[待处理命令的幂等键](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/blob/main/web/src/api/idempotency.ts) 绑定操作、当前身份上下文、目标和请求内容。
 
+调整合同台账筛选的公开字段时，先改 OpenAPI 源声明，再运行 `make generate-openapi` 更新 Web 类型。业务校验由 Go 领域层维护，Web 请求和已保存视图共用筛选字段清单。 [OpenAPI 源](../../internal/apidocs/route_contract.go) · [台账领域校验](../../internal/contract/ledger/ledger.go) · [Web 契约测试](../../web/src/api/contracts-ledger-paths.test.ts)
+
+修改个人保存视图的查询后，把 sqlc v1.31.1 放入 `PATH`，运行 `go generate ./internal/contract/postgres`。 [SQL 输入](../../internal/contract/postgres/internal/savedviewquery/saved_views.sql) · [数据库角色测试](../../internal/store/contract_ledger_saved_views_pg_test.go)
+
 **增量：** 查找需说明范围：本地筛选只覆盖当前授权且已加载的数据；只有确实完整加载相应授权集合，或由服务端对相应授权集合执行查询，才能称覆盖该范围的全部结果。服务端分页时，不能把对当前页的筛选称为全量查找；数量应与实际查找范围和当前筛选一致。展示聚合只合并同一底层事项的重复投影并保留来源及入口，不按同标题、条款或相近时间吞掉不同来源、执行和独立决定。命令幂等按现有服务端契约和幂等键处理重试与新意图，不能用显示聚合代替。待判断、补件和整改导航的聚合与状态刷新由 [#225](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/issues/225) 验收；执行泳道搜索、数量和图/列表反馈的一致性由 [#234](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/issues/234) 验收。
 
 ## 对照、原文与人工决定

@@ -10,51 +10,45 @@
 
 # 合同智能审计工作台
 
-基于 Go 和 React 的合同审计工作台，用于组织合同材料、执行规则核对、查看带原文引用的模型建议，并记录人工复核、整改与复审。业务工作台当前展示“第一届黄桷树 AI 智能体开发大赛”标题及赛事 Logo。
+这是一个基于 Go 和 React 的合同审计工作台。经办和审查人员可以整理材料、按冻结原文核对条款、记录判断，再跟进整改、复审与报告。合同台账还可管理草稿、版本、会签与履约记录。
 
-## 能力与边界
+## 单机体验
 
-系统支持案件材料准备、冻结审查尝试、版本化规则和知识、人工决定、整改复核与报告。模型输出只是建议；引用必须与本次尝试冻结原文相匹配。租户、组织、角色和案件范围由服务端校验。工具网关只读，外部系统写回须经人工授权。
-
-合同、冻结审查、人工决定、规则治理和履约事实已有相应源码实现。功能状态以对应源码为准；迁移目录与兼容范围由 [`internal/store/migrations.go`](internal/store/migrations.go) 管理。应用连接会校验迁移账本，启动不自动迁移。Schema 是存储兼容边界，不是产品版本。目标环境部署、真实身份/外部系统接入、生产恢复和完整候选验收按实际证据记为 `NOT_RUN` 或 `BLOCKED`；源码能力不代表已部署或验收。
-
-## 最短本地启动
-
-需要 Go 1.26.7+、Bun 1.4.3、Node.js 22.12+、Python 3.10+、Docker Engine/Desktop 与 Compose v2。PDF 解析还需要 Poppler 和 CJK mappings。
+安装本机工具后，在仓库根目录执行以下命令。 [本地开发手册](docs/engineering/local-development.md#环境)
 
 ```bash
 make setup
 make app-bootstrap
 make app-config
 make infra-up
-make infra-smoke
+make apps-up-fixture
 ```
 
-完整功能在同一主机启动各应用服务和 Worker：
+打开默认业务工作台 `http://127.0.0.1:18080`，用开发账号 `demo-admin` 和密码 `admin-demo` 登录。本例用合成材料和本机容器提供的确定性模型。真实模型、OCR 和目标环境有单独的验收方法。 [检查与验收](docs/engineering/verification.md)
 
-```bash
-make apps-up
-```
+### 审查一份合成合同
 
-启动前在私有 `.env` 填写实际文本/OCR模型及凭据；前端访问地址以命令输出为准。只验证确定性业务流程时可使用 `make apps-up-fixture`，不计为真实模型验收。履约提醒需要同机 Core 与 Worker 正常运行。
+1. 在「案件」中新建「采购 / ICT」案件，把表中的两句话分别存为 UTF-8 TXT。在「材料与版本」按对应角色上传，等待解析完成。
 
-仅开发前端和离线规则时，可分别用 `make dev` 与 `make web` 启动单进程 API 和 Vite，默认地址为 `http://127.0.0.1:8080` 与 `http://127.0.0.1:5173`。完整配置和演示账号见[本地开发手册](docs/engineering/local-development.md)。
+   | 材料角色 | TXT 内容 |
+   | --- | --- |
+   | 采购文件 | 采购文件要求质保36个月。 |
+   | 拟签合同 | 拟签合同约定质保24个月。 |
 
-单进程离线启动不要求模型网关。真实模型审查需要现有预算网关、独立的模型数据库角色 `MODEL_DATABASE_URL`，以及 `MODEL_GATEWAY_URL`、`WORKER_MODEL_TOKEN`、`DOCUMENT_MODEL_TOKEN` 和 `CORE_MODEL_AUTHORITY_TOKEN`；凭据必须彼此不同。模型网关以 `CORE_AUTHORITY_URL` 回连单进程 API 的私有授权接口；开发环境使用回环 HTTP 时须显式设置 `CORE_AUTHORITY_ALLOW_INSECURE_DEV=true`。缺少网关配置或只设置直连模型端点时，启动会给出错误。
+2. 在「审查记录」打开「审查准备清单」，选择「完整审查」。按提示补齐必填项，清单就绪后开始审查。
+3. 在「原文核对」选择材料。「文字原文」会自动标出匹配的付款、质保、争议解决等条款，即使没有审查发现也可查阅。点「关键条款导航」中的条目可跳到冻结正文。PDF、PNG 和 JPEG 还可切到「原件标注」核对版面，本例的 TXT 直接显示文字。
+4. 对照两份冻结原文中的 36 个月与 24 个月，在「人工办理」记录「确认风险」及理由。引用无法核对时，保留为待核对或记录「证据不足」。
 
 ## 文档
 
-- [文档入口](docs/index.md)：产品、工程、运维、架构与术语
-- [能力与边界](docs/product/capabilities.md)
 - [案件审查工作流](docs/product/workflow.md)
+- [能力与边界](docs/product/capabilities.md)
 - [架构概览](docs/architecture/overview.md)
 - [部署模式](docs/operations/deployment.md)
 - [检查与验收](docs/engineering/verification.md)
-- [贡献与协作](docs/engineering/contributing.md)
-- [许可与贡献](docs/engineering/licensing.md)
+- [贡献与协作](docs/engineering/contributing.md) · [仓库约定](AGENTS.md)
+- [完整文档索引](docs/index.md)
 
-根目录 `LICENSE` 文件标识为 `LicenseRef-CAW-NC-1.0.0`，版权标记为 Bai Junhao © 2026，文件注明日期 2026-11-01。文件所述许可仅覆盖约定的非商业用途；组织运营、商业部署、托管服务、独立发布或分发衍生版本须另行取得书面许可。文件允许公开 GitHub Fork 用于修改、测试并向上游提交 PR，该例外不授予商业使用、生产部署或站外分发权。第三方材料保留各自许可；本项目不宣称为 OSI 开源。许可及贡献条款以根目录 [LICENSE](LICENSE) 为准。详见[许可与贡献说明](docs/engineering/licensing.md)。
+## 许可
 
-## 源码边界
-
-仓库保存运行源码、配置、锁文件、接口契约、测试、小型 fixture 和精选长期手册。真实合同、批量样本、模型权重、密钥、运行日志与完整验收报告存放在仓库外的 `contract-audit-delivery/` 或 `CAW_DELIVERY_DIR`。`docs/` 是长期手册唯一事实源；`docs/glossary/concepts.json` 是中英文术语的机器可读概念源。
+根目录许可文件 `LicenseRef-CAW-NC-1.0.0` 适用于约定的非商业用途。 [LICENSE](LICENSE) · [许可与贡献说明](docs/engineering/licensing.md)
