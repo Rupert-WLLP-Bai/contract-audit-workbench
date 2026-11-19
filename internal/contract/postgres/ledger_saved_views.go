@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Persists personal Contract saved views in the caller transaction, enforcing tenant/owner SQL predicates, unique names and row-version mutations.
+// Purpose: Persists personal contract saved views in the caller transaction, using the generated tenant- and owner-scoped read and preserving row-version checks for writes.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-13
-// Updated: 2026-11-13
-// Revision: r1
+// Updated: 2026-11-19
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 

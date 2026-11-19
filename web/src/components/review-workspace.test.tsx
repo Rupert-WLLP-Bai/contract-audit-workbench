@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “review workspace, review workspace lifecycle”; representative assertions cover reports absent execution without inventing stages or proof, shows both sources on request and does not treat the model claim as verified, keeps citation identities hidden and does not claim the finding was verified. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Checks review workspace lifecycle and source evidence, including the visible positions of frozen key clauses before a finding is selected.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r6
+// Updated: 2026-11-19
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 

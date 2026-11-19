@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Runs the pinned sqlc version against the saved-view configuration and restores manifest mirrors on generated Go files so regeneration stays reproducible.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-19
+# Updated: 2026-11-19
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Regenerate the Contract saved-view query and its repository metadata mirrors."""
 
 import json

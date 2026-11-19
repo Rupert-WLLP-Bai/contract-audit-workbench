@@ -1,10 +1,10 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: Explains the product’s service boundaries, local setup, operating profiles, API/runtime behavior, and phase-based verification contract; the tables and commands are the operator-facing index into the current source tree. -->
+<!-- Purpose: Introduces the contract audit workbench and its single-machine experience, then guides readers through a synthetic 36- versus 24-month warranty review, frozen text and a human decision. -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-10-25 -->
-<!-- Updated: 2026-11-14 -->
-<!-- Revision: r4 -->
+<!-- Updated: 2026-11-19 -->
+<!-- Revision: r5 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 

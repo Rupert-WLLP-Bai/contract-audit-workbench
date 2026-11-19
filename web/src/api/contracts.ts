@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Defines and parses contract lifecycle and reminder APIs using generated wire schemas, scoped mutations and server-authoritative revisions.
+// Purpose: Sends scoped contract API requests and validates lifecycle, reminders and ledger responses, using generated wire shapes with compatibility for historical ledger states.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-14
-// Revision: r6
+// Updated: 2026-11-19
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 

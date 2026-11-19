@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Drives a real Chromium review using configured procurement, draft and revised documents, captures parsing/failure evidence and waits for the persisted review result.
+// Purpose: Drives the Chromium warranty conflict journey across frozen source highlights, historical attempts, human confirmation, replacement, reparse and authenticated API documentation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

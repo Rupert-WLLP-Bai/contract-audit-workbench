@@ -1,10 +1,10 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: 说明“案件审查工作流”的操作或技术边界：案件页的审查准备清单列出材料版本、解析状态、规则检查和缺失依据，并提供补齐入口。开始动作以服务端清单为准；受理时还会重新校验权限与材料。身份、准备清单或运行状态未确认时，先不要提交。 -->
+<!-- Purpose: 说明案件审查流程中的材料、准备清单、冻结原文、关键条款导航、人工办理与复审，以及每一步的操作和判断边界。 -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
-<!-- Updated: 2026-11-14 -->
-<!-- Revision: r9 -->
+<!-- Updated: 2026-11-19 -->
+<!-- Revision: r10 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 

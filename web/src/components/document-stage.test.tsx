@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “document stage case context, document stage materials and search”; representative assertions cover shows the case summary with fallbacks for optional fields, falls back for unset or unreported context values, shows collaborators and their responsibilities. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Checks material navigation, case and search behavior, and frozen key-clause highlighting alongside evidence and independently across compared sources.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-14
-// Revision: r4
+// Updated: 2026-11-19
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
