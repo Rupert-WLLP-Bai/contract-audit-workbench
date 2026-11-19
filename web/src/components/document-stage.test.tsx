@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Checks material navigation, case and search behavior, and frozen key-clause highlighting alongside evidence and independently across compared sources.
+// Purpose: Checks frozen text and original preview navigation, reading category selection, search and citations, and scroll behavior when switching source documents.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30

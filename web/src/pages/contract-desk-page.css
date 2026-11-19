@@ -1,3 +1,13 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles the contract desk source switch, filters, results table and original-reading controls with shared responsive page and surface tokens. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-19 */
+/* Updated: 2026-11-19 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
 .contract-desk-sources {
   display: flex;
   flex-wrap: wrap;

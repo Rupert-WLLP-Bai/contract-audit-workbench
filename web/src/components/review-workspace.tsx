@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Composes the review workspace surfaces around the selected frozen attempt, routing between original text, findings, manual disposition, execution and history.
+// Purpose: Composes the selected frozen attempt's document, source controls, findings, manual decisions, execution and history into the review workspace.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Renders case materials and frozen original text, moving through a small set of exact reading excerpts while keeping search matches and evidence locations independently navigable.
+// Purpose: Renders case materials and frozen originals, with category-filtered clause highlights, document switching, search and separately navigable evidence locations.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

@@ -1,10 +1,10 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: Documents membership-bound tenant operations, support grants, versioned configuration, model budget settlement and operator prerequisites while preserving server authority and recovery state distinctions. -->
+<!-- Purpose: 说明多企业部署的身份、授权和运行边界，记录业务导航、管理员工具入口及目标环境核验方式。 -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-02 -->
-<!-- Updated: 2026-11-12 -->
-<!-- Revision: r2 -->
+<!-- Updated: 2026-11-19 -->
+<!-- Revision: r3 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 

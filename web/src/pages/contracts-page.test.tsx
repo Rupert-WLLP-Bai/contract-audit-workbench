@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks readable ledger cells, saved-view mutations, frozen CSV export identity, technical state fallback, keyboard tab navigation, and preservation of unsaved contract drafts.
+// Purpose: Checks registration and ledger workflows, saved filters and exports, and return to the authorized contract material list without losing its filters.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-19
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 

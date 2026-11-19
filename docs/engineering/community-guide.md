@@ -1,10 +1,10 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: Explains the current case review workflow and supported extension points, connecting user permissions, verifiable citations and contribution rules without claiming environment acceptance. -->
+<!-- Purpose: 说明社区版工作台的业务入口、本地运行方式，以及受当前权限约束的案件审查、材料续办和使用边界。 -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-02 -->
-<!-- Updated: 2026-11-12 -->
-<!-- Revision: r2 -->
+<!-- Updated: 2026-11-19 -->
+<!-- Revision: r3 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 

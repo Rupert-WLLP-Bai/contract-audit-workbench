@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Selects one precise reading excerpt per qualifying topic in a frozen source, ranking contractual commitments while preserving source proof and Unicode coordinates.
+// Purpose: Selects precise excerpts from frozen sources, groups contractual commitments for reading and preserves exact text proof and Unicode coordinates.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14

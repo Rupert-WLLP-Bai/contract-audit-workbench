@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Checks short, topic-specific contract excerpt selection, duplicate and weak-signal filtering, exceptions, page uncertainty and exact frozen proof across Unicode offsets.
+// Purpose: Checks precise frozen-source excerpts, distinct commitments within a category, topic grouping, suppressed weak signals and correct Unicode offsets.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14

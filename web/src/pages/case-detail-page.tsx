@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Composes one case workspace from the case profile, material versions, review readiness, pending work and review history; all mutations remain routed through case-scoped API commands.
+// Purpose: Renders the authorized case detail and current next steps, including deep-link navigation to a specific accessible material version.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r12
+// Updated: 2026-11-19
+// Revision: r13
 // Copyright: See LICENSE
 // End file metadata.
 

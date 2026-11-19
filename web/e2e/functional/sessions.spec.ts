@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Checks client and admin sessions, responsive navigation, context isolation, case access and session cleanup through the configured preview and API.
+// Purpose: Checks client and admin sessions, the contract landing and deep-link return, responsive keyboard navigation, authorized case access and session cleanup.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

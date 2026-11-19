@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Renders shared grouped navigation for the client and administration shells with current-route links, a collapsible desktop sidebar, a mobile drawer and focus restoration.
+// Purpose: Shares grouped navigation across client and admin shells with active routes, keyboard-expandable sections, a collapsible desktop sidebar and mobile drawer focus restoration.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-19

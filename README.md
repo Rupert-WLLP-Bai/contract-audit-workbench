@@ -1,5 +1,5 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: Introduces the contract audit workbench and its single-machine experience, then guides readers through a synthetic 36- versus 24-month warranty review, frozen text and a human decision. -->
+<!-- Purpose: 介绍合同智能审计工作台及本地运行入口，示范从案件上传材料、在合同清单找到冻结原文并核对质保约定。 -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-10-25 -->

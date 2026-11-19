@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks contract desk filtering, distinct source versions, authorized frozen-document matches, case-material fallback and return through ordered results.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-19
+// Updated: 2026-11-19
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

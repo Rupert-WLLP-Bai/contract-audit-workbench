@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Lists authorized proposed contract materials with search and status filters, opens exact frozen originals or case materials, and retains the filtered reading order.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-19
+// Updated: 2026-11-19
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button, Checkbox, Grid, Input, Popover, Select, Table, type TableColumnsType } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";

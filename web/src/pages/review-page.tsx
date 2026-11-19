@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Loads the selected run and immutable attempt into the review workspace, including findings, evidence citations, event stream and manual decisions; client rendering does not turn model advice into confirmed findings.
+// Purpose: Renders frozen-attempt review at the requested authorized document, validates the contract desk return context and keeps decisions tied to that attempt.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

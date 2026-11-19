@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Creates and edits contract registrations and resumable drafts; separates the ledger, preserved draft editor and current-session export result into accessible tabs. Restricted party fields remain masked by server projections and writes use the server’s current draft revision.
+// Purpose: Renders contract registration, ledger, editing and lifecycle workflows and preserves authorized return to the contract desk.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01

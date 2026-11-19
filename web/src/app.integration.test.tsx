@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “application routes and API contract”; representative assertions cover confirms the server-provided legacy material candidates before opening a new review, logs in, creates a case, uploads source versions, reviews, decides, and logs out, recovers admin settings through its isolated audience and API. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Checks authorized client and admin routes and their API contracts, including case source links, frozen review, draft navigation guards and context isolation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

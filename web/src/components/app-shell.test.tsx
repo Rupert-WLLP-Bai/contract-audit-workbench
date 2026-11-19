@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Checks current identity, breadcrumbs, deep links and ordinary versus admin navigation visibility without treating UI visibility as authorization.
+// Purpose: Checks the contract-first client navigation, accessible workbench branding, contract search isolation, breadcrumbs and role-specific menu visibility.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30

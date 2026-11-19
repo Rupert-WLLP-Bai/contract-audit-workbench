@@ -1,5 +1,5 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: 说明案件审查流程中的材料、准备清单、冻结原文、关键条款导航、人工办理与复审，以及每一步的操作和判断边界。 -->
+<!-- Purpose: 说明从合同清单与案件材料进入审查的流程，以及冻结输入、三类原文标注、人工判断、补件、整改和报告的办理边界。 -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->

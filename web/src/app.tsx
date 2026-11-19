@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Composes client and admin route trees, session gates and shared application shells; route visibility follows the authenticated server audience and API session state.
+// Purpose: Defines the client and admin route entry points, lazy-loads the contract desk, and keeps the case, registration and overview routes behind their session boundaries.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-19
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 

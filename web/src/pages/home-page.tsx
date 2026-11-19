@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Presents server-derived case/workflow summaries and starts primary-contract intake through the explicit upload flow; displayed counts and risk summaries are not recalculated from hidden client data.
+// Purpose: Renders the workbench overview with assigned tasks, recent cases, contract intake and server-reported case and review metrics.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25

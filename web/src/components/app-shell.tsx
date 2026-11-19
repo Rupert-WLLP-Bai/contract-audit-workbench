@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Renders the client shell with case and module breadcrumbs, actor and tenant context, and business and management links supplied to shared responsive navigation.
+// Purpose: Renders the contract-first client shell with the workbench brand, assigned work, case navigation, audience-appropriate tools and search scoped to the active page.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
