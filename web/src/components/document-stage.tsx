@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders DocumentStage, the document stage workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.
+// Purpose: Renders case materials and frozen review sources, coordinating navigation and independently marking verified key clauses, search matches and located evidence.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r6
+// Updated: 2026-11-19
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,6 +14,7 @@ import { Collapse } from "antd";
 import { Button, Input, Select } from "antd";
 import {
   memo,
+  createContext,
   useContext,
   useDeferredValue,
   useEffect,
@@ -301,29 +302,47 @@ function DiagnosticsCollapse({
   );
 }
 
-const DocSegments = memo(function DocSegments({
-  segments,
-  keyClause,
-}: {
-  segments: TextSegment[];
-  keyClause: KeyClauseCandidate | null;
-}) {
+const ClauseContext = createContext<{
+  document: ReviewDocument | null;
+  navigation: KeyClauseNavigation | null;
+  ranges: readonly { start: number; end: number }[];
+  findRange: { start: number; end: number } | null;
+  selected: KeyClauseCandidate | null;
+}>({ document: null, navigation: null, ranges: [], findRange: null, selected: null });
+
+function keyRangeAt(ranges: readonly { start: number; end: number }[], offset: number) {
+  let lower = 0;
+  let upper = ranges.length;
+  while (lower < upper) {
+    const middle = Math.floor((lower + upper) / 2);
+    if (ranges[middle]!.end <= offset) lower = middle + 1;
+    else upper = middle;
+  }
+  return ranges[lower];
+}
+
+const DocSegments = memo(function DocSegments({ segments }: { segments: TextSegment[] }) {
+  const { findRange, selected: keyClause, ranges: keyRanges } = useContext(ClauseContext);
   return (
     <>
       {segments.map((segment) => {
         const segmentEnd = segment.start + Array.from(segment.text).length;
-        const inKeyClause =
+        const range = keyRangeAt(keyRanges, segment.start);
+        const inKeyClause = Boolean(
+          range && segment.start >= range.start && segmentEnd <= range.end,
+        );
+        const selected =
           keyClause !== null &&
           segment.start >= keyClause.range.start &&
           segmentEnd <= keyClause.range.end;
-        const selectedAttribute = inKeyClause ? { "data-selected-key-clause": "true" } : {};
+        const selectedAttribute = selected ? { "data-selected-key-clause": "true" } : {};
         if (segment.highlighted === "evidence") {
           return (
             <mark
               key={segment.start}
               data-offset={segment.start}
               {...selectedAttribute}
-              className={`hit-evidence${inKeyClause ? " key-clause-overlap" : ""}`}
+              className={`hit-evidence${inKeyClause ? " key-clause-overlap" : ""}${selected ? " key-clause-selected" : ""}${findRange && segment.start >= findRange.start && segmentEnd <= findRange.end ? " evidence-find" : ""}`}
             >
               {segment.text}
             </mark>
@@ -335,7 +354,7 @@ const DocSegments = memo(function DocSegments({
               key={segment.start}
               data-offset={segment.start}
               {...selectedAttribute}
-              className={`hit-key-clause${segment.highlighted === "find" ? " hit-find" : ""}`}
+              className={`hit-key-clause${segment.highlighted === "find" ? " hit-find" : ""}${selected ? " key-clause-selected" : ""}`}
             >
               {segment.text}
             </mark>
@@ -414,43 +433,45 @@ function SelectableDocText({
   scope,
   textIndex,
   segments,
-  keyClause,
   onQuoteSelectionChange,
 }: {
   document: ReviewDocument;
   scope: FrozenQuoteScope | null;
   textIndex: CodePointTextIndex | null;
   segments: TextSegment[];
-  keyClause: KeyClauseCandidate | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
+  const { ranges } = useContext(ClauseContext);
   if (document.text === null) return <p>这份材料还没有可阅读的正文。</p>;
   return (
-    <div
-      className="doc-text"
-      tabIndex={0}
-      aria-label={`${document.filename}原文`}
-      onMouseUp={(event) =>
-        publishQuoteSelection(
-          event.currentTarget,
-          document,
-          scope,
-          textIndex,
-          onQuoteSelectionChange,
-        )
-      }
-      onKeyUp={(event) =>
-        publishQuoteSelection(
-          event.currentTarget,
-          document,
-          scope,
-          textIndex,
-          onQuoteSelectionChange,
-        )
-      }
-    >
-      <DocSegments segments={segments} keyClause={keyClause} />
-    </div>
+    <>
+      {ranges.length > 0 ? <p className="meta doc-key-clause-hint">虚线标出常查条款。</p> : null}
+      <div
+        className="doc-text"
+        tabIndex={0}
+        aria-label={`${document.filename}原文`}
+        onMouseUp={(event) =>
+          publishQuoteSelection(
+            event.currentTarget,
+            document,
+            scope,
+            textIndex,
+            onQuoteSelectionChange,
+          )
+        }
+        onKeyUp={(event) =>
+          publishQuoteSelection(
+            event.currentTarget,
+            document,
+            scope,
+            textIndex,
+            onQuoteSelectionChange,
+          )
+        }
+      >
+        <DocSegments segments={segments} />
+      </div>
+    </>
   );
 }
 
@@ -495,7 +516,6 @@ function HighlightBody({
   activeSource,
   scope,
   textIndex,
-  keyClause,
   onQuoteSelectionChange,
 }: {
   document: ReviewDocument;
@@ -509,7 +529,6 @@ function HighlightBody({
   activeSource: boolean;
   scope: FrozenQuoteScope | null;
   textIndex: CodePointTextIndex | null;
-  keyClause: KeyClauseCandidate | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   const pages = [...new Set(resolved.flatMap((item) => (item.page === null ? [] : [item.page])))];
@@ -540,7 +559,6 @@ function HighlightBody({
         scope={scope}
         textIndex={textIndex}
         segments={segments}
-        keyClause={keyClause}
         onQuoteSelectionChange={onQuoteSelectionChange}
       />
     </DocPane>
@@ -567,7 +585,6 @@ function EmptyOrText({
   scope,
   textIndex,
   segments,
-  keyClause,
   onQuoteSelectionChange,
 }: {
   hasResolved: boolean;
@@ -575,17 +592,15 @@ function EmptyOrText({
   scope: FrozenQuoteScope | null;
   textIndex: CodePointTextIndex | null;
   segments: TextSegment[];
-  keyClause: KeyClauseCandidate | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
-  if (hasResolved) return null;
+  if (hasResolved && document.text === null) return null;
   return (
     <SelectableDocText
       document={document}
       scope={scope}
       textIndex={textIndex}
       segments={segments}
-      keyClause={keyClause}
       onQuoteSelectionChange={onQuoteSelectionChange}
     />
   );
@@ -599,7 +614,6 @@ function PlainBody({
   activeSource,
   scope,
   textIndex,
-  keyClause,
   onQuoteSelectionChange,
 }: {
   document: ReviewDocument;
@@ -609,7 +623,6 @@ function PlainBody({
   activeSource: boolean;
   scope: FrozenQuoteScope | null;
   textIndex: CodePointTextIndex | null;
-  keyClause: KeyClauseCandidate | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   return (
@@ -633,7 +646,6 @@ function PlainBody({
         scope={scope}
         textIndex={textIndex}
         segments={segments}
-        keyClause={keyClause}
         onQuoteSelectionChange={onQuoteSelectionChange}
       />
     </DocPane>
@@ -648,7 +660,6 @@ const TextDocumentBody = memo(function TextDocumentBody({
   showDiagnostics,
   textIndex: providedTextIndex,
   quoteScope,
-  keyClause,
   onQuoteSelectionChange,
 }: {
   document: ReviewDocument;
@@ -658,7 +669,6 @@ const TextDocumentBody = memo(function TextDocumentBody({
   showDiagnostics: boolean;
   textIndex: CodePointTextIndex | null;
   quoteScope: FrozenQuoteScope | null;
-  keyClause: KeyClauseCandidate | null;
   focusRange?: { start: number; end: number } | null;
   onClearKeyClause?: () => void;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
@@ -673,6 +683,7 @@ const TextDocumentBody = memo(function TextDocumentBody({
       providedTextIndex,
     ],
   );
+  const { ranges: keyRanges, selected: keyClause } = useContext(ClauseContext);
   const anchors = useMemo(() => anchorsFor(document, finding), [document, finding]);
   const resolved = useMemo(
     () =>
@@ -711,9 +722,10 @@ const TextDocumentBody = memo(function TextDocumentBody({
       start: item.start,
       end: item.end,
     }));
-    const clauseOffsets = keyClause
-      ? clauseStarts.concat(keyClause.range.start, keyClause.range.end)
-      : clauseStarts;
+    const clauseOffsets = clauseStarts.concat(
+      keyRanges.flatMap((range) => [range.start, range.end]),
+    );
+    if (keyClause) clauseOffsets.push(keyClause.range.start, keyClause.range.end);
     return segmentText(
       document.text,
       highlights,
@@ -723,7 +735,7 @@ const TextDocumentBody = memo(function TextDocumentBody({
       findRange,
       textIndex ?? undefined,
     );
-  }, [clauseStarts, document, findRange, keyClause, locatedAnchors, textIndex]);
+  }, [clauseStarts, document, findRange, keyClause, keyRanges, locatedAnchors, textIndex]);
   function selectAnchor(anchor: LocatedEvidenceAnchor) {
     setSelectedAnchorId(anchor.anchor.id);
     focusAnchorOffset(document, anchor.resolved.start);
@@ -754,7 +766,6 @@ const TextDocumentBody = memo(function TextDocumentBody({
         activeSource={activeSource}
         scope={quoteScope}
         textIndex={textIndex}
-        keyClause={keyClause}
         onQuoteSelectionChange={onQuoteSelectionChange}
       />
     );
@@ -769,7 +780,6 @@ const TextDocumentBody = memo(function TextDocumentBody({
       activeSource={activeSource}
       scope={quoteScope}
       textIndex={textIndex}
-      keyClause={keyClause}
       onQuoteSelectionChange={onQuoteSelectionChange}
     />
   );
@@ -802,7 +812,38 @@ const DocumentBody = memo(function DocumentBody(props: ComponentProps<typeof Tex
       }),
     [document, props.finding, props.textIndex],
   );
-  const textBody = <TextDocumentBody {...props} />;
+  const parentClauses = useContext(ClauseContext);
+  const keyClause = parentClauses.document === document ? parentClauses.selected : null;
+  const navigation = useMemo(
+    () =>
+      parentClauses.document === document && parentClauses.navigation
+        ? parentClauses.navigation
+        : keyClauseNavigationFor(props.quoteScope, document),
+    [parentClauses.document, parentClauses.navigation, props.quoteScope, document],
+  );
+  const keyRanges = useMemo(() => {
+    const ranges: { start: number; end: number }[] = [];
+    for (const candidate of navigation.candidates) {
+      const previous = ranges.at(-1);
+      if (previous && candidate.range.start < previous.end)
+        previous.end = Math.max(previous.end, candidate.range.end);
+      else ranges.push({ ...candidate.range });
+    }
+    return ranges;
+  }, [navigation]);
+  const textBody = (
+    <ClauseContext.Provider
+      value={{
+        document,
+        navigation,
+        ranges: keyRanges,
+        findRange: props.findRange,
+        selected: keyClause,
+      }}
+    >
+      <TextDocumentBody {...props} />
+    </ClauseContext.Provider>
+  );
   const digest = scope?.digests.get(document.id);
   if (
     !scope ||
@@ -825,18 +866,19 @@ const DocumentBody = memo(function DocumentBody(props: ComponentProps<typeof Tex
       digest={digest}
       text={document.text ?? ""}
       quotes={quotes}
+      hasKeyClauses={keyRanges.length > 0}
       keyClause={
-        props.keyClause
+        keyClause
           ? {
-              id: props.keyClause.id,
-              heading: props.keyClause.heading,
-              sourceLabel: props.keyClause.sourceLabel,
-              quote: props.keyClause.quote,
-              page: props.keyClause.page,
+              id: keyClause.id,
+              heading: keyClause.heading,
+              sourceLabel: keyClause.sourceLabel,
+              quote: keyClause.quote,
+              page: keyClause.page,
             }
           : null
       }
-      focusRange={props.focusRange ?? null}
+      focusRange={props.focusRange ?? props.findRange ?? null}
       onClearKeyClause={props.onClearKeyClause}
     >
       {textBody}
@@ -1404,7 +1446,6 @@ function DocumentView({
   evidenceDocs,
   quoteScope,
   focusRange,
-  keyClause,
   onClearKeyClause,
   onQuoteSelectionChange,
 }: {
@@ -1418,7 +1459,6 @@ function DocumentView({
   evidenceDocs: ReviewDocument[];
   quoteScope: FrozenQuoteScope | null;
   focusRange: { start: number; end: number } | null;
-  keyClause: KeyClauseCandidate | null;
   onClearKeyClause?: () => void;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
@@ -1437,12 +1477,6 @@ function DocumentView({
             activeSource={item === active}
             quoteScope={quoteScope}
             focusRange={item === active ? focusRange : null}
-            keyClause={
-              keyClause?.documentId === item.id &&
-              keyClause.parsedDocumentId === item.parsed_document_id
-                ? keyClause
-                : null
-            }
             onClearKeyClause={onClearKeyClause}
             onQuoteSelectionChange={onQuoteSelectionChange}
           />
@@ -1460,7 +1494,6 @@ function DocumentView({
       activeSource
       quoteScope={quoteScope}
       focusRange={focusRange}
-      keyClause={keyClause}
       onClearKeyClause={onClearKeyClause}
       onQuoteSelectionChange={onQuoteSelectionChange}
     />
@@ -1660,7 +1693,6 @@ function DocumentColumn({
   onActiveKey,
   quoteScope,
   focusRange,
-  keyClause,
   onClearKeyClause,
   onQuoteSelectionChange,
 }: {
@@ -1679,7 +1711,6 @@ function DocumentColumn({
   onActiveKey: (key: string) => void;
   quoteScope: FrozenQuoteScope | null;
   focusRange: { start: number; end: number } | null;
-  keyClause: KeyClauseCandidate | null;
   onClearKeyClause?: () => void;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
@@ -1711,7 +1742,6 @@ function DocumentColumn({
         evidenceDocs={evidenceDocs}
         quoteScope={quoteScope}
         focusRange={focusRange}
-        keyClause={keyClause}
         onClearKeyClause={onClearKeyClause}
         onQuoteSelectionChange={onQuoteSelectionChange}
       />
@@ -1966,33 +1996,42 @@ export function DocumentStage({
           />
         }
       />
-      <DocumentColumn
-        documents={documents}
-        finding={finding}
-        textIndex={activeTextIndex}
-        active={active}
-        currentMatch={currentMatch}
-        showDiagnostics={showDiagnostics}
-        split={split}
-        evidenceDocs={evidenceDocs}
-        layout={layout}
-        activeIsEvidence={activeIsEvidence}
-        compareSources={compareSources}
-        onCompare={setCompareSources}
-        onActiveKey={setActiveKey}
-        quoteScope={quoteScope}
-        focusRange={
-          factRange &&
-          active !== null &&
-          factSource !== null &&
-          documentKey(active) === documentKey(factSource)
-            ? factRange
-            : null
-        }
-        keyClause={selectedKeyClause}
-        onClearKeyClause={() => setSelectedKeyClauseId(null)}
-        onQuoteSelectionChange={onQuoteSelectionChange}
-      />
+      <ClauseContext.Provider
+        value={{
+          document: active,
+          navigation: keyClauseNavigation,
+          ranges: [],
+          findRange: null,
+          selected: selectedKeyClause,
+        }}
+      >
+        <DocumentColumn
+          documents={documents}
+          finding={finding}
+          textIndex={activeTextIndex}
+          active={active}
+          currentMatch={currentMatch}
+          showDiagnostics={showDiagnostics}
+          split={split}
+          evidenceDocs={evidenceDocs}
+          layout={layout}
+          activeIsEvidence={activeIsEvidence}
+          compareSources={compareSources}
+          onCompare={setCompareSources}
+          onActiveKey={setActiveKey}
+          quoteScope={quoteScope}
+          focusRange={
+            factRange &&
+            active !== null &&
+            factSource !== null &&
+            documentKey(active) === documentKey(factSource)
+              ? factRange
+              : null
+          }
+          onClearKeyClause={() => setSelectedKeyClauseId(null)}
+          onQuoteSelectionChange={onQuoteSelectionChange}
+        />
+      </ClauseContext.Provider>
     </>
   );
 }

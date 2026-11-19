@@ -34729,7 +34729,8 @@
                 "registered",
                 "performing",
                 "closed",
-                "terminated"
+                "terminated",
+                "external_observed"
               ]
             }
           },
@@ -34748,7 +34749,8 @@
               "type": "string",
               "enum": [
                 "not_started",
-                "in_review"
+                "in_review",
+                "external_observed"
               ]
             }
           },

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Drives a real Chromium review using configured procurement, draft and revised documents, captures parsing/failure evidence and waits for the persisted review result.
+// Purpose: Drives the Chromium warranty conflict journey across frozen source highlights, historical attempts, human confirmation, replacement, reparse and authenticated API documentation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -175,16 +175,8 @@ async function run(): Promise<void> {
     // overlaps that navigation can restore the previous attempt id. Select the
     // retried attempt explicitly so the rest of the journey is deterministic.
     await selectAttemptNumber(page, session, 2);
-    await page.wait(
-      session,
-      "document.querySelector('.execution-inspector-summary p')?.innerText.includes('第 2 次执行')",
-    );
     step("synthetic retry completed; attempt 2 selected");
     await selectAttemptNumber(page, session, 1);
-    await page.wait(
-      session,
-      "document.querySelector('.execution-inspector-summary p')?.innerText.includes('第 1 次执行')",
-    );
     await openReviewSection(page, session, "原文核对");
     const firstAttemptInputs = await readWorkspaceParseMetadata(page, session);
     const firstAttemptTabs = await readWorkspaceSourceTabs(page, session);
@@ -192,15 +184,29 @@ async function run(): Promise<void> {
     const firstAttemptParsedIds = await readSelectedAttemptParseIds(page, session);
     assertAttemptParseRefsMatchDisplayed(firstAttemptParsedIds, firstAttemptTabs, "attempt 1");
     await selectAttemptNumber(page, session, 2);
-    await page.wait(
-      session,
-      "document.querySelector('.execution-inspector-summary p')?.innerText.includes('第 2 次执行')",
-    );
     await openReviewSection(page, session, "原文核对");
     await page.wait(
       session,
       "(() => { const text = document.body.innerText.replace(/\\s/g, ''); return text.includes('质保月数不一致') && text.includes('36个月') && text.includes('24个月'); })()",
     );
+    for (const [parsedId, text] of [
+      [initialProcurementParse.parsedDocumentId, "采购文件要求质保36个月。"],
+      [initialDraftParse.parsedDocumentId, "拟签合同约定质保24个月。"],
+    ] as const) {
+      await selectParsedDocumentTab(page, session, parsedId);
+      await page.wait(
+        session,
+        `(() => {
+          const pane = document.querySelector('.doc-pane[data-active-source="true"]');
+          if (pane?.dataset.parsedDocumentId !== ${JSON.stringify(parsedId)}) return false;
+          const marks = [...pane.querySelectorAll('.doc-text mark.hit-key-clause, .doc-text mark.key-clause-overlap')];
+          return marks.filter((mark) => mark.checkVisibility({ visibilityProperty: true }) &&
+            !mark.hasAttribute('data-selected-key-clause'))
+            .map((mark) => mark.textContent).join('').includes(${JSON.stringify(text)});
+        })()`,
+      );
+    }
+    step("automatic warranty highlights verified in both frozen source texts");
     const selectedFinding = await page.eval(
       session,
       `(() => {
@@ -1460,108 +1466,57 @@ async function setInspectorDisclosure(
   session: string,
   expanded: boolean,
 ): Promise<void> {
-  await page.eval(
-    session,
-    `(() => {
-    const collapse = document.querySelector('.execution-inspector .execution-inspector-disclosure');
-    const header = collapse?.querySelector('.ant-collapse-header');
-    const open = header?.getAttribute('aria-expanded') === 'true' ||
-      Boolean(collapse?.querySelector('.ant-collapse-item-active'));
-    if (header && open !== ${expanded}) header.click();
-    return 'ok';
-  })()`,
-  );
-  await Bun.sleep(100);
+  const disclosure = `document.querySelector('#execution-inspector-title')?.closest('[role="button"][aria-expanded]')`;
+  await page.wait(session, `(${disclosure})?.checkVisibility({ visibilityProperty: true })`);
+  const state = `(${disclosure})?.getAttribute('aria-expanded')`;
+  if ((await page.eval(session, state)) !== String(expanded)) {
+    const clicked = await clickExpression(page, session, disclosure);
+    if (clicked !== "ok") throw new Error(`click 执行检查器: ${clicked}`);
+  }
+  await page.wait(session, `${state} === ${JSON.stringify(String(expanded))}`);
 }
 
 async function selectAttemptNumber(page: Page, session: string, ordinal: number): Promise<void> {
-  const optionPrefix = JSON.stringify(`第 ${ordinal} 次`);
+  const row = `document.querySelector('section[aria-labelledby="execution-inspector-title"] .execution-attempt-row')`;
   const target = JSON.stringify(String(ordinal));
-  await page.wait(
-    session,
-    `document.querySelector('.execution-attempt-row')?.dataset.attemptOrdinal !== undefined`,
-  );
-  const current = await page.eval(
-    session,
-    `document.querySelector('.execution-attempt-row')?.dataset.attemptOrdinal ?? ''`,
-  );
-  if (current !== String(ordinal)) {
+  const selected = `(${row})?.dataset.attemptOrdinal === ${target} &&
+    document.querySelector('.execution-inspector-summary p')?.innerText.includes(${JSON.stringify(`第 ${ordinal} 次执行`)})`;
+  await page.wait(session, `(${row})?.dataset.attemptOrdinal !== undefined`);
+  if ((await page.eval(session, `(${row})?.dataset.attemptOrdinal`)) !== String(ordinal)) {
     await setInspectorDisclosure(page, session, true);
-    const optionExpression = `[...document.querySelectorAll(".ant-select-dropdown .ant-select-item-option")].find(
-      (item) => (item.getAttribute("title") ?? item.textContent?.trim() ?? "").startsWith(${optionPrefix}) &&
-        item.getBoundingClientRect().height > 0,
-    )`;
-    let state = "";
-    let selected = false;
-    for (let round = 0; round < 5 && !selected; round++) {
-      if ((await page.eval(session, `Boolean(${optionExpression})`)) !== "true") {
-        const opened = await clickExpression(
-          page,
-          session,
-          `document.querySelector('.execution-attempt-row input[role=combobox]')`,
-        );
-        if (opened !== "ok") {
-          state =
-            `open=${opened} ` +
-            (await page.eval(
-              session,
-              `JSON.stringify({
-            rows: [...document.querySelectorAll('.execution-attempt-row')].map((item) => item.outerHTML.slice(0, 500)),
-            body: document.body?.innerText.slice(0, 800) ?? '',
-          })`,
-            ));
-          await Bun.sleep(200);
-          continue;
-        }
-      }
-      const deadline = Date.now() + 5000;
-      while (Date.now() < deadline) {
-        if ((await page.eval(session, `Boolean(${optionExpression})`)) === "true") break;
-        await Bun.sleep(100);
-      }
-      const picked = await clickExpression(page, session, optionExpression);
-      if (picked === "ok") {
-        try {
-          await page.wait(
-            session,
-            `document.querySelector('.execution-attempt-row')?.dataset.attemptOrdinal === ${target} &&
-              document.querySelector('.execution-inspector-summary p')?.innerText.includes(${JSON.stringify(`第 ${ordinal} 次执行`)})`,
-          );
-          selected = true;
-          continue;
-        } catch (error) {
-          state = `not reflected: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`;
-        }
-      } else {
-        state = `click=${picked}`;
-      }
-      state +=
-        " " +
-        (await page.eval(
-          session,
-          `JSON.stringify({
-        current: document.querySelector('.execution-attempt-row')?.dataset.attemptOrdinal,
-        dropdowns: [...document.querySelectorAll('.ant-select-dropdown')].map((item) => ({
-          visible: item.getBoundingClientRect().height > 0,
-          options: [...item.querySelectorAll('.ant-select-item-option')].map((option) => ({
-            title: option.getAttribute('title'),
-            text: option.textContent?.trim(),
-            height: option.getBoundingClientRect().height,
-          })),
-        })),
-        body: document.body?.innerText.slice(0, 500) ?? '',
-      })`,
-        ));
-      await Bun.sleep(200);
-    }
-    if (!selected) throw new Error(`attempt ${ordinal} could not be selected: ${state}`);
+    const combobox = `(${row})?.querySelector('[role="combobox"][aria-label="查看执行记录"]')`;
+    const trigger = `(${combobox})?.closest('.ant-select')`;
+    await page.wait(session, `(${trigger})?.checkVisibility({ visibilityProperty: true })`);
+    const opened = await clickExpression(page, session, trigger);
+    if (opened !== "ok") throw new Error(`open 查看执行记录: ${opened}`);
+
+    const option = `(() => {
+      const listboxId = (${combobox})?.getAttribute('aria-controls');
+      const popup = listboxId && document.getElementById(listboxId)?.closest('.ant-select-dropdown');
+      if (!popup) return undefined;
+      return [...popup.querySelectorAll('.ant-select-item-option')].find((item) =>
+        (item.getAttribute('title') ?? item.textContent.trim()).startsWith(${JSON.stringify(`第 ${ordinal} 次，`)}) &&
+        item.checkVisibility({ visibilityProperty: true }));
+    })()`;
+    await page.wait(session, `Boolean(${option})`);
+    // Scroll the combobox before opening it, then leave the anchored popup in place.
+    const clicked = await page.eval(
+      session,
+      `(() => {
+        const item = ${option};
+        if (!item) return false;
+        item.click();
+        return true;
+      })()`,
+    );
+    if (clicked !== "true") throw new Error(`attempt ${ordinal} option is no longer visible`);
+    await page.wait(
+      session,
+      `${selected} && new URLSearchParams(location.search).get('attempt_id') === (${row})?.dataset.attemptId`,
+    );
+    return;
   }
-  await page.wait(
-    session,
-    `document.querySelector('.execution-attempt-row')?.dataset.attemptOrdinal === ${target} &&
-      document.querySelector('.execution-inspector-summary p')?.innerText.includes(${JSON.stringify(`第 ${ordinal} 次执行`)})`,
-  );
-  await setInspectorDisclosure(page, session, false);
+  await page.wait(session, selected);
 }
 
 async function readSelectedAttemptParseIds(page: Page, session: string): Promise<string[]> {

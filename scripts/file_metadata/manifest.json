@@ -162,11 +162,16 @@
       "internal/contract/postgres/draft_queries.go",
       "internal/contract/postgres/events.go",
       "internal/contract/postgres/fulfillment.go",
+      "internal/contract/postgres/internal/savedviewquery/db.go",
+      "internal/contract/postgres/internal/savedviewquery/models.go",
+      "internal/contract/postgres/internal/savedviewquery/saved_views.sql",
+      "internal/contract/postgres/internal/savedviewquery/saved_views.sql.go",
       "internal/contract/postgres/ledger.go",
       "internal/contract/postgres/ledger_exports.go",
       "internal/contract/postgres/ledger_saved_views.go",
       "internal/contract/postgres/lifecycle_facts.go",
       "internal/contract/postgres/source_observations.go",
+      "internal/contract/postgres/sqlc.json",
       "internal/contract/postgres/versions.go",
       "internal/contracttemplate/template.go",
       "internal/contracttemplate/template_test.go",
@@ -594,6 +599,7 @@
       "scripts/file_metadata/test_manifest_tool.py",
       "scripts/file_metadata/test_metadata_core.py",
       "scripts/file_metadata/testdata/anchor-policy.json",
+      "scripts/generate_saved_view_query.py",
       "scripts/run_python_tests.py",
       "scripts/test_ci_workflows.py",
       "scripts/test_generate_openapi_types.py",
@@ -1520,7 +1526,7 @@
       "header_state": "pending-header-application"
     },
     "README.md": {
-      "purpose": "Explains the product’s service boundaries, local setup, operating profiles, API/runtime behavior, and phase-based verification contract; the tables and commands are the operator-facing index into the current source tree.",
+      "purpose": "Introduces the contract audit workbench and its single-machine experience, then guides readers through a synthetic 36- versus 24-month warranty review, frozen text and a human decision.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -1547,15 +1553,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "3f1a01d8872bdc7fc530daa498c73a457f05806e",
+          "commit": "254aa178bb053448e0cd130d012d4bd124d7431a",
           "path": "README.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -8261,15 +8267,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-05",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "cd96895e5ca1e1d11f25f9c2e4ec9ba289365769",
+          "commit": "d75f7e4812d775fecfb0ea3adbe17139b4e123bc",
           "path": "docs/engineering/interface-conventions.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -8602,15 +8608,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "1fc1b4fff6d105f670c4a9344ce5bb767bca30cf",
+          "commit": "d75f7e4812d775fecfb0ea3adbe17139b4e123bc",
           "path": "docs/glossary/concepts.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -8655,15 +8661,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "1fc1b4fff6d105f670c4a9344ce5bb767bca30cf",
+          "commit": "d75f7e4812d775fecfb0ea3adbe17139b4e123bc",
           "path": "docs/glossary/system-terms.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -8714,15 +8720,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "1fc1b4fff6d105f670c4a9344ce5bb767bca30cf",
+          "commit": "d75f7e4812d775fecfb0ea3adbe17139b4e123bc",
           "path": "docs/glossary/user-terms.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -9226,7 +9232,7 @@
       "header_state": "pending-header-application"
     },
     "docs/product/workflow.md": {
-      "purpose": "说明“案件审查工作流”的操作或技术边界：案件页的审查准备清单列出材料版本、解析状态、规则检查和缺失依据，并提供补齐入口。开始动作以服务端清单为准；受理时还会重新校验权限与材料。身份、准备清单或运行状态未确认时，先不要提交。",
+      "purpose": "说明案件审查流程中的材料、准备清单、冻结原文、关键条款导航、人工办理与复审，以及每一步的操作和判断边界。",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -9253,15 +9259,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "aa845f99e0f9a4e4884901755739c74ebe532091",
+          "commit": "254aa178bb053448e0cd130d012d4bd124d7431a",
           "path": "docs/product/workflow.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r9",
+      "revision": "r10",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -12739,15 +12745,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "aa845f99e0f9a4e4884901755739c74ebe532091",
+          "commit": "ab729a6edf66b80b98852c0d36fabc37861df92a",
           "path": "internal/apidocs/openapi.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r17",
+      "revision": "r18",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -12840,15 +12846,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "acd9b0003a282efe637449334ea4ef07f286e7e4",
+          "commit": "ab729a6edf66b80b98852c0d36fabc37861df92a",
           "path": "internal/apidocs/route_contract.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r10",
+      "revision": "r11",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -19130,7 +19136,7 @@
       "header_state": "pending-header-application"
     },
     "internal/contract/postgres/ledger_saved_views.go": {
-      "purpose": "Persists personal Contract saved views in the caller transaction, enforcing tenant/owner SQL predicates, unique names and row-version mutations.",
+      "purpose": "Persists personal contract saved views in the caller transaction, using the generated tenant- and owner-scoped read and preserving row-version checks for writes.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -19157,15 +19163,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-13",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "7135fdf8565d6e53bd3ce0672e51164a5c8271be",
+          "commit": "806eb11a30df6c500a30a1e7317c40d40ba12179",
           "path": "internal/contract/postgres/ledger_saved_views.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -45621,7 +45627,7 @@
       "header_state": "pending-header-application"
     },
     "internal/store/contract_ledger.go": {
-      "purpose": "Contract ledger reads the existing aggregate and its sealed content without adding a second projection table. Every row is authorized through the same case-scope policy as the… Related `store` operations include normalizeLedgerText, ledgerAmountScaled, normalizeLedgerAmount, normalizeLedgerDate.",
+      "purpose": "Binds contract ledger reads and personal saved-view commands to trusted actor transactions, keyset pagination and per-contract authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -45648,15 +45654,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-13",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "8d37e7b693e90b87b8b3c1bacc9741ddfdb1afe7",
+          "commit": "ab729a6edf66b80b98852c0d36fabc37861df92a",
           "path": "internal/store/contract_ledger.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -65812,7 +65818,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r81",
+      "revision": "r82",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -65958,15 +65964,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-15",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "84902a10cf146694d2e967211e0da2f49d402c88",
+          "commit": "806eb11a30df6c500a30a1e7317c40d40ba12179",
           "path": "scripts/file_metadata/policy.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r13",
+      "revision": "r14",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -72000,7 +72006,7 @@
       "header_state": "pending-header-application"
     },
     "web/e2e/review.ts": {
-      "purpose": "Drives a real Chromium review using configured procurement, draft and revised documents, captures parsing/failure evidence and waits for the persisted review result.",
+      "purpose": "Drives the Chromium warranty conflict journey across frozen source highlights, historical attempts, human confirmation, replacement, reparse and authenticated API documentation.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -72027,15 +72033,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-15",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "479fa44a67f8173c5ebdbf77b151546bd80140d0",
+          "commit": "2be77ffd02d7345f0785a6580214d15c500b8925",
           "path": "web/e2e/review.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -72571,15 +72577,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "89837eab5e6f636e4551d696464a841445da06eb",
+          "commit": "ab729a6edf66b80b98852c0d36fabc37861df92a",
           "path": "web/scripts/generate-openapi-types.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -73263,7 +73269,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/contracts-ledger-paths.test.ts": {
-      "purpose": "Checks saved-view and export client requests against the registered ledger route contract, including methods, encoded identities, payloads and valid command contexts.",
+      "purpose": "Checks ledger, saved-view and export API requests, scoped command context, route encoding, and compatibility with legacy response states and nullable fields.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -73290,15 +73296,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-15",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "f46de6767c51dac40465f99db0cd126d7f838ad6",
+          "commit": "ab729a6edf66b80b98852c0d36fabc37861df92a",
           "path": "web/src/api/contracts-ledger-paths.test.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -73359,7 +73365,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/contracts.ts": {
-      "purpose": "Defines and parses contract lifecycle and reminder APIs using generated wire schemas, scoped mutations and server-authoritative revisions.",
+      "purpose": "Sends scoped contract API requests and validates lifecycle, reminders and ledger responses, using generated wire shapes with compatibility for historical ledger states.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -73386,15 +73392,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "5eab848fe92eaa28372e567889fd9fb2b3d54e53",
+          "commit": "ab729a6edf66b80b98852c0d36fabc37861df92a",
           "path": "web/src/api/contracts.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -75881,15 +75887,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "89837eab5e6f636e4551d696464a841445da06eb",
+          "commit": "ab729a6edf66b80b98852c0d36fabc37861df92a",
           "path": "web/src/api/wire.generated.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r9",
+      "revision": "r10",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -78260,7 +78266,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/document-stage.test.tsx": {
-      "purpose": "Checks the web behavior for “document stage case context, document stage materials and search”; representative assertions cover shows the case summary with fallbacks for optional fields, falls back for unset or unreported context values, shows collaborators and their responsibilities. It protects the rendered/API state expected by this component without starting the full browser journey.",
+      "purpose": "Checks material navigation, case and search behavior, and frozen key-clause highlighting alongside evidence and independently across compared sources.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -78287,15 +78293,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ab8d12f6d98514f92276ee2f4bbcaa13d9613fc9",
+          "commit": "aa3ede938f8e11bbf06b157caa76005425e5369a",
           "path": "web/src/components/document-stage.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -78308,7 +78314,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/document-stage.tsx": {
-      "purpose": "Renders DocumentStage, the document stage workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
+      "purpose": "Renders case materials and frozen review sources, coordinating navigation and independently marking verified key clauses, search matches and located evidence.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -78335,15 +78341,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "3c618a4d48339d5326cc0656aab82955a20fc74b",
+          "commit": "494ce9c0a857bfdd4dfcdf27d793f0d6f2f7d31a",
           "path": "web/src/components/document-stage.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -79725,15 +79731,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4cdcba63d160612edb25a2f45694afedfd550685",
+          "commit": "494ce9c0a857bfdd4dfcdf27d793f0d6f2f7d31a",
           "path": "web/src/components/key-clause-navigator.tsx",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -80155,15 +80161,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "2994db6770d6fce11c0ebf3f0b5f09cde41d09c9",
+          "commit": "aa3ede938f8e11bbf06b157caa76005425e5369a",
           "path": "web/src/components/original-document-reader.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -81402,15 +81408,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "4cdcba63d160612edb25a2f45694afedfd550685",
+          "commit": "494ce9c0a857bfdd4dfcdf27d793f0d6f2f7d31a",
           "path": "web/src/components/review-workspace-layout.css",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -81423,7 +81429,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/review-workspace.test.tsx": {
-      "purpose": "Checks the web behavior for “review workspace, review workspace lifecycle”; representative assertions cover reports absent execution without inventing stages or proof, shows both sources on request and does not treat the model claim as verified, keeps citation identities hidden and does not claim the finding was verified. It protects the rendered/API state expected by this component without starting the full browser journey.",
+      "purpose": "Checks review workspace lifecycle and source evidence, including the visible positions of frozen key clauses before a finding is selected.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -81450,15 +81456,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-15",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "84902a10cf146694d2e967211e0da2f49d402c88",
+          "commit": "aa3ede938f8e11bbf06b157caa76005425e5369a",
           "path": "web/src/components/review-workspace.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -83762,15 +83768,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ab8d12f6d98514f92276ee2f4bbcaa13d9613fc9",
+          "commit": "aa3ede938f8e11bbf06b157caa76005425e5369a",
           "path": "web/src/domain/frozen-quote.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -83810,15 +83816,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ab8d12f6d98514f92276ee2f4bbcaa13d9613fc9",
+          "commit": "494ce9c0a857bfdd4dfcdf27d793f0d6f2f7d31a",
           "path": "web/src/domain/key-clauses.test.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -83858,15 +83864,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ab8d12f6d98514f92276ee2f4bbcaa13d9613fc9",
+          "commit": "494ce9c0a857bfdd4dfcdf27d793f0d6f2f7d31a",
           "path": "web/src/domain/key-clauses.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -94747,6 +94753,328 @@
           "kind": "git-last-content-change",
           "commit": "a53e5326cb73ada234183f6382e8b9eb275c9244",
           "path": "web/src/components/contract-signing-panel.test.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/contract/postgres/internal/savedviewquery/db.go": {
+      "purpose": "Generated sqlc query binding accepts the caller-owned pgx transaction executor so saved-view reads use the same database role and RLS scope.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-19",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "806eb11a30df6c500a30a1e7317c40d40ba12179",
+          "path": "internal/contract/postgres/internal/savedviewquery/db.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-19",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "806eb11a30df6c500a30a1e7317c40d40ba12179",
+          "path": "internal/contract/postgres/internal/savedviewquery/db.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application",
+      "generator": {
+        "tool": "scripts/generate_saved_view_query.py",
+        "inputs": [
+          "internal/contract/postgres/sqlc.json",
+          "internal/contract/postgres/internal/savedviewquery/saved_views.sql",
+          "internal/store/migrations/0021_contract_ledger.sql"
+        ]
+      }
+    },
+    "internal/contract/postgres/internal/savedviewquery/models.go": {
+      "purpose": "Generated sqlc package models output for the saved-view read; unused table models are omitted because the query scanner uses its own selected row shape.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-19",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "806eb11a30df6c500a30a1e7317c40d40ba12179",
+          "path": "internal/contract/postgres/internal/savedviewquery/models.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-19",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "806eb11a30df6c500a30a1e7317c40d40ba12179",
+          "path": "internal/contract/postgres/internal/savedviewquery/models.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application",
+      "generator": {
+        "tool": "scripts/generate_saved_view_query.py",
+        "inputs": [
+          "internal/contract/postgres/sqlc.json",
+          "internal/contract/postgres/internal/savedviewquery/saved_views.sql",
+          "internal/store/migrations/0021_contract_ledger.sql"
+        ]
+      }
+    },
+    "internal/contract/postgres/internal/savedviewquery/saved_views.sql": {
+      "purpose": "Defines the sqlc ListSavedViews read with explicit tenant and owner predicates, stable order, and the saved-view fields used by the ledger adapter.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-19",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "806eb11a30df6c500a30a1e7317c40d40ba12179",
+          "path": "internal/contract/postgres/internal/savedviewquery/saved_views.sql",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-19",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "806eb11a30df6c500a30a1e7317c40d40ba12179",
+          "path": "internal/contract/postgres/internal/savedviewquery/saved_views.sql",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "manifest-only",
+      "header_state": "manifest-only",
+      "exception": {
+        "rule_id": "contract-saved-views-sqlc-input",
+        "source": "internal/contract/postgres/internal/savedviewquery/saved_views.sql",
+        "reason": "internal/contract/postgres/internal/savedviewquery/saved_views.sql: Direct sqlc input with named-query directives; keep source bytes and directive positions independent of metadata changes."
+      }
+    },
+    "internal/contract/postgres/internal/savedviewquery/saved_views.sql.go": {
+      "purpose": "Generated pgx read binds tenant and owner parameters, scans selected saved-view fields, closes result rows, and propagates database errors to the adapter.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-19",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "806eb11a30df6c500a30a1e7317c40d40ba12179",
+          "path": "internal/contract/postgres/internal/savedviewquery/saved_views.sql.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-19",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "806eb11a30df6c500a30a1e7317c40d40ba12179",
+          "path": "internal/contract/postgres/internal/savedviewquery/saved_views.sql.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application",
+      "generator": {
+        "tool": "scripts/generate_saved_view_query.py",
+        "inputs": [
+          "internal/contract/postgres/sqlc.json",
+          "internal/contract/postgres/internal/savedviewquery/saved_views.sql",
+          "internal/store/migrations/0021_contract_ledger.sql"
+        ]
+      }
+    },
+    "internal/contract/postgres/sqlc.json": {
+      "purpose": "Configures PostgreSQL sqlc generation for the saved-view read, with the existing ledger schema migration, scoped internal package, and pgx data types.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-19",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "806eb11a30df6c500a30a1e7317c40d40ba12179",
+          "path": "internal/contract/postgres/sqlc.json",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-19",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "806eb11a30df6c500a30a1e7317c40d40ba12179",
+          "path": "internal/contract/postgres/sqlc.json",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "manifest-only",
+      "header_state": "manifest-only",
+      "exception": {
+        "rule_id": "strict-json",
+        "source": "internal/contract/postgres/sqlc.json",
+        "reason": "internal/contract/postgres/sqlc.json: Strict JSON is the sqlc configuration format; keep annotations in the canonical manifest."
+      }
+    },
+    "scripts/generate_saved_view_query.py": {
+      "purpose": "Runs the pinned sqlc version against the saved-view configuration and restores manifest mirrors on generated Go files so regeneration stays reproducible.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-19",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "806eb11a30df6c500a30a1e7317c40d40ba12179",
+          "path": "scripts/generate_saved_view_query.py",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-19",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "806eb11a30df6c500a30a1e7317c40d40ba12179",
+          "path": "scripts/generate_saved_view_query.py",
           "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },

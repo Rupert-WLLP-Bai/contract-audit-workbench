@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Contract ledger reads the existing aggregate and its sealed content without adding a second projection table. Every row is authorized through the same case-scope policy as the… Related `store` operations include normalizeLedgerText, ledgerAmountScaled, normalizeLedgerAmount, normalizeLedgerDate.
+// Purpose: Binds contract ledger reads and personal saved-view commands to trusted actor transactions, keyset pagination and per-contract authorization.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-13
-// Revision: r5
+// Updated: 2026-11-19
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -61,11 +61,6 @@ func validateContractLedgerFilter(filter *ContractLedgerFilter) error {
 	return ledger.ValidateFilter(filter)
 }
 
-func normalizeContractLedgerColumns(columns []string) ([]string, error) {
-	return ledger.NormalizeSavedViewColumns(columns)
-}
-
-func validateContractLedgerSort(sort string) (string, error) { return ledger.ValidateSort(sort) }
 func contractLedgerFilterDigest(filter ContractLedgerFilter, sort string) (string, error) {
 	return ledger.FilterDigest(filter, sort)
 }
@@ -94,10 +89,6 @@ func (s *Store) beginContractLedgerRead(ctx context.Context, user accounts.User)
 		return nil, accounts.User{}, err
 	}
 	return tx, current, nil
-}
-
-func contractLedgerItemFrom(record clmContractRecord, content []byte, inReview bool) (ContractLedgerItem, error) {
-	return ledger.ItemFromAggregate(record, content, inReview)
 }
 
 // ListContractLedger returns one authorized keyset page. SQL narrows by the

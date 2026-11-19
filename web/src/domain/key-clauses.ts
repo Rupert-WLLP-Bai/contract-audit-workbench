@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -23,7 +23,19 @@ export const KEY_CLAUSE_CATEGORIES = [
   {
     id: "payment",
     label: "付款",
-    keywords: ["付款", "支付", "价款", "结算", "预付款", "尾款", "账款", "发票"],
+    keywords: [
+      "付款",
+      "支付",
+      "价款",
+      "结算",
+      "预付款",
+      "尾款",
+      "账款",
+      "发票",
+      "合同总价",
+      "合同金额",
+      "采购金额",
+    ],
   },
   {
     id: "delivery_acceptance",
@@ -39,6 +51,16 @@ export const KEY_CLAUSE_CATEGORIES = [
     id: "liability_compensation",
     label: "责任赔偿",
     keywords: ["责任", "违约", "赔偿", "违约金", "损失", "免责", "责任限制"],
+  },
+  {
+    id: "warranty",
+    label: "质保售后",
+    keywords: ["质保", "保修", "质量保证", "售后", "维修", "缺陷责任"],
+  },
+  {
+    id: "dispute_resolution",
+    label: "争议解决",
+    keywords: ["争议解决", "争议", "仲裁", "诉讼", "管辖", "适用法律"],
   },
   {
     id: "confidentiality_data",
@@ -286,7 +308,7 @@ function fragmentCandidatesFor(
         if (
           !selection ||
           selection.quote !== quote ||
-          !frozenQuoteMatchesDocument(selection, scope, document)
+          !frozenQuoteMatchesDocument(selection, scope, document, textIndex)
         )
           continue;
         candidates.push(
@@ -359,7 +381,7 @@ export function keyClauseNavigationFor(
     if (
       !selection ||
       selection.quote !== exactQuote ||
-      !frozenQuoteMatchesDocument(selection, scope, document)
+      !frozenQuoteMatchesDocument(selection, scope, document, textIndex)
     )
       continue;
     const categories = categoryMatches(`${heading}\n${selection.quote}`);

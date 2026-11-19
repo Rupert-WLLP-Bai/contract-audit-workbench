@@ -1942,11 +1942,11 @@
       "id": "T29",
       "slug": "term-t29",
       "user_term": "验收记录",
-      "system_term": "AcceptanceRecord（计划概念）",
-      "definition": "记录实际交付范围、验收结论、合格或不合格数量和依据的业务事实。",
+      "system_term": "ContractAcceptance",
+      "definition": "实际履约的验收记录，关联合同修订、交付批次和标的，保存验收范围、实际时间、合格与不合格数量、结论及依据。",
       "boundaries": [
-        "当前 DraftAcceptancePlan 是验收计划，不是实际验收记录。",
-        "预计交货时间不等于实际验收时间，部分合格不能代表全部验收。"
+        "验收计划用于安排后续验收。以实际记录判断哪些交付范围完成验收。",
+        "部分合格只覆盖本次验收的合格数量。复验关联原验收记录，原结论仍可查阅。"
       ],
       "misuse_examples": [
         {
@@ -1956,24 +1956,36 @@
         }
       ],
       "implementation": {
-        "status": "PLANNED_NOT_CODE_VERIFIED",
-        "note": "当前仅有验收/付款计划结构；计划不是实际验收或支付回执。本概念未定位到实际记录实现。",
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "源码已有验收登记、读取和复验关联。合同详情的履约区域显示验收记录。",
         "assessment": "SOURCE_READ_ONLY",
         "application_test_status": "NOT_RUN"
       },
       "ui_scope": {
         "business": [
-          "拟实现的实际验收详情",
-          "当前草稿只展示验收计划"
+          "合同详情的交付、验收与整改事实",
+          "合同草稿的验收计划"
         ],
         "engineering": [
-          "未来 AcceptanceRecord；现有 DraftAcceptancePlan 仅作计划锚点"
+          "ContractAcceptance、AcceptanceFact 和验收登记服务"
         ],
         "avoid": [
           "以计划字段声明验收成功"
         ]
       },
       "code_anchors": [
+        {
+          "path": "internal/fulfillment/app/types.go",
+          "symbol": "ContractAcceptance",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/fulfillment/app/commands.go",
+          "symbol": "CreateContractAcceptance",
+          "relation": "references_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
         {
           "path": "internal/store/contract_draft_types.go",
           "symbol": "store.DraftAcceptancePlan",
@@ -1984,6 +1996,7 @@
       "compatibility": {
         "rename_existing_identifiers": false,
         "preserved_identifiers": [
+          "ContractAcceptance",
           "DraftAcceptancePlan",
           "planned_date",
           "Criteria"
@@ -1999,11 +2012,12 @@
       "id": "T30",
       "slug": "term-t30",
       "user_term": "实际支付回执",
-      "system_term": "PaymentReceipt（计划概念）",
-      "definition": "来自可信来源、用于证明实际支付事实及其金额和关联的回执记录。",
+      "system_term": "ContractPaymentReceipt",
+      "definition": "系统从已配置的可信来源登记的付款或冲正事件，记录金额、币种和发生时间，并关联已登记签署的冻结合同修订及付款期次。",
       "boundaries": [
-        "付款计划、付款条件满足和付款申请都不是实际支付。",
-        "预付款与尾款各有约定条件，不能用一种条件概括全部付款。"
+        "付款计划安排期次，付款申请提出支付请求，付款资格核验该期条件。预付款与尾款按各自约定判断。",
+        "冲正回执关联原付款并影响已登记净额。没有可信回执时，付款状态保持未核验。",
+        "回执反映系统已登记的来源记录。确认实际到账仍须核对授权来源和对账结果。"
       ],
       "misuse_examples": [
         {
@@ -2013,24 +2027,42 @@
         }
       ],
       "implementation": {
-        "status": "PLANNED_NOT_CODE_VERIFIED",
-        "note": "当前仅有验收/付款计划结构；计划不是实际验收或支付回执。本概念未定位到实际记录实现。",
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "源码已有可信来源验签、付款或冲正登记及回执读取。实际接入取决于部署是否配置并核验来源。",
         "assessment": "SOURCE_READ_ONLY",
         "application_test_status": "NOT_RUN"
       },
       "ui_scope": {
         "business": [
-          "拟实现的实际支付记录",
-          "当前草稿的付款计划明确标计划"
+          "合同付款面板的可信回执状态",
+          "合同草稿的付款计划与独立的付款资格核验"
         ],
         "engineering": [
-          "未来 PaymentReceipt；现有 DraftPaymentPlan 和 PaymentCondition 仅作计划锚点"
+          "ContractPaymentReceipt、来源事件登记与按期次读取回执"
         ],
         "avoid": [
           "将本系统登记直接宣称银行完成支付"
         ]
       },
       "code_anchors": [
+        {
+          "path": "internal/payment/app/types.go",
+          "symbol": "ContractPaymentReceipt",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/payment/app/receipt.go",
+          "symbol": "RecordReceipt",
+          "relation": "references_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/httpapi/contract_payments.go",
+          "symbol": "paymentReceiptHandler",
+          "relation": "references_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
         {
           "path": "internal/store/contract_draft_types.go",
           "symbol": "store.DraftPaymentPlan",
@@ -2047,6 +2079,7 @@
       "compatibility": {
         "rename_existing_identifiers": false,
         "preserved_identifiers": [
+          "ContractPaymentReceipt",
           "DraftPaymentPlan",
           "PaymentCondition",
           "amount",

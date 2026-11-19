@@ -32,8 +32,8 @@
 | T26 | 重复操作识别 | `IdempotencyKey / writeReceipt` |
 | T27 | 执行租约与接管代次 | `JobClaim / Worker Lease / Generation` |
 | T28 | 业务事件与通知投递 | `Core Domain Event / Outbox Delivery` |
-| T29 | 验收记录 | `AcceptanceRecord（计划概念）` |
-| T30 | 实际支付回执 | `PaymentReceipt（计划概念）` |
+| T29 | 验收记录 | `ContractAcceptance` |
+| T30 | 实际支付回执 | `ContractPaymentReceipt` |
 | T31 | 身份主体 | `Principal / (issuer, subject)` |
 | T32 | 租户成员资格 | `TenantMembership / membership (proposed)` |
 | T33 | 当前租户上下文 | `ActiveTenantContext / active context (proposed)` |
@@ -803,13 +803,13 @@ Core 领域事件和投递表已有锚点；本轮不证明全部扫描、通知
 
 ## T29 · 验收记录
 
-**系统映射：** `AcceptanceRecord（计划概念）`
+**系统映射：** `ContractAcceptance`
 
-记录实际交付范围、验收结论、合格或不合格数量和依据的业务事实。
+实际履约的验收记录，关联合同修订、交付批次和标的，保存验收范围、实际时间、合格与不合格数量、结论及依据。
 
 边界：
-- 当前 DraftAcceptancePlan 是验收计划，不是实际验收记录。
-- 预计交货时间不等于实际验收时间，部分合格不能代表全部验收。
+- 验收计划用于安排后续验收。以实际记录判断哪些交付范围完成验收。
+- 部分合格只覆盖本次验收的合格数量。复验关联原验收记录，原结论仍可查阅。
 
 **误用：** 把验收计划的 planned_date 显示成‘已验收日期’并放行全部尾款。
 
@@ -817,11 +817,13 @@ Core 领域事件和投递表已有锚点；本轮不证明全部扫描、通知
 
 **建议：** 分别显示验收计划与实际验收；只按已确认范围判断后续条件。
 
-**实现状态：** `PLANNED_NOT_CODE_VERIFIED` — 提案或需求概念；当前源码没有完整实现。若保留源码锚点，只用于说明现状边界或计划上下文。
+**实现状态：** `CODE_ANCHORED_NOT_RUNTIME_VERIFIED` — 当前源码可定位对应概念或行为；本次未运行应用验证。
 
-当前仅有验收/付款计划结构；计划不是实际验收或支付回执。本概念未定位到实际记录实现。
+源码已有验收登记、读取和复验关联。合同详情的履约区域显示验收记录。
 
 源码锚点：
+- `ContractAcceptance` — [`internal/fulfillment/app/types.go`](../../internal/fulfillment/app/types.go)
+- `CreateContractAcceptance` — [`internal/fulfillment/app/commands.go`](../../internal/fulfillment/app/commands.go)
 - `store.DraftAcceptancePlan` — [`internal/store/contract_draft_types.go`](../../internal/store/contract_draft_types.go)
 
 相关概念：`T04`, `T30`
@@ -829,13 +831,14 @@ Core 领域事件和投递表已有锚点；本轮不证明全部扫描、通知
 
 ## T30 · 实际支付回执
 
-**系统映射：** `PaymentReceipt（计划概念）`
+**系统映射：** `ContractPaymentReceipt`
 
-来自可信来源、用于证明实际支付事实及其金额和关联的回执记录。
+系统从已配置的可信来源登记的付款或冲正事件，记录金额、币种和发生时间，并关联已登记签署的冻结合同修订及付款期次。
 
 边界：
-- 付款计划、付款条件满足和付款申请都不是实际支付。
-- 预付款与尾款各有约定条件，不能用一种条件概括全部付款。
+- 付款计划安排期次，付款申请提出支付请求，付款资格核验该期条件。预付款与尾款按各自约定判断。
+- 冲正回执关联原付款并影响已登记净额。没有可信回执时，付款状态保持未核验。
+- 回执反映系统已登记的来源记录。确认实际到账仍须核对授权来源和对账结果。
 
 **误用：** DraftPaymentPlan 的 amount 有值，就显示银行已支付成功。
 
@@ -843,11 +846,14 @@ Core 领域事件和投递表已有锚点；本轮不证明全部扫描、通知
 
 **建议：** 计划与实际回执分栏；未取得可信事实时保持未确认。
 
-**实现状态：** `PLANNED_NOT_CODE_VERIFIED` — 提案或需求概念；当前源码没有完整实现。若保留源码锚点，只用于说明现状边界或计划上下文。
+**实现状态：** `CODE_ANCHORED_NOT_RUNTIME_VERIFIED` — 当前源码可定位对应概念或行为；本次未运行应用验证。
 
-当前仅有验收/付款计划结构；计划不是实际验收或支付回执。本概念未定位到实际记录实现。
+源码已有可信来源验签、付款或冲正登记及回执读取。实际接入取决于部署是否配置并核验来源。
 
 源码锚点：
+- `ContractPaymentReceipt` — [`internal/payment/app/types.go`](../../internal/payment/app/types.go)
+- `RecordReceipt` — [`internal/payment/app/receipt.go`](../../internal/payment/app/receipt.go)
+- `paymentReceiptHandler` — [`internal/httpapi/contract_payments.go`](../../internal/httpapi/contract_payments.go)
 - `store.DraftPaymentPlan` — [`internal/store/contract_draft_types.go`](../../internal/store/contract_draft_types.go)
 - `store.PaymentCondition` — [`internal/store/contract_draft_types.go`](../../internal/store/contract_draft_types.go)
 

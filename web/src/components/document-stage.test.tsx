@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “document stage case context, document stage materials and search”; representative assertions cover shows the case summary with fallbacks for optional fields, falls back for unset or unreported context values, shows collaborators and their responsibilities. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Checks material navigation, case and search behavior, and frozen key-clause highlighting alongside evidence and independently across compared sources.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-14
-// Revision: r4
+// Updated: 2026-11-19
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -66,6 +66,96 @@ it("connects a frozen finding to original-page annotations and keeps unfrozen hi
   expect(view.container.querySelector("mark.hit-evidence")?.textContent).toBe("100万元");
   view.rerender(element(false));
   expect(screen.queryByRole("button", { name: "原件标注" })).not.toBeInTheDocument();
+});
+
+it("opens all verified PDF positions as frozen text before any finding is selected", async () => {
+  const user = userEvent.setup();
+  const text = "😀付款后交付。质保三年。争议提交仲裁。";
+  const document = documentOf("doc-pdf", "draft_contract", "合同.pdf", text, {
+    parsed_document_id: "parsed-pdf",
+    media_type: "application/pdf",
+    clauses: [],
+  });
+  const scope = {
+    caseId: "case-1",
+    contextKey: "attempt-1",
+    digests: new Map([[document.id, document.digest]]),
+  };
+  const quoteScope = {
+    caseId: "case-1",
+    runId: "run-1",
+    attemptId: "attempt-1",
+    isFrozenAttempt: true,
+    parsedDocumentIds: ["parsed-pdf"],
+    sourceProofs: [
+      { documentId: document.id, parsedDocumentId: "parsed-pdf", originalDigest: document.digest },
+    ],
+  };
+  const view = render(
+    <MemoryRouter>
+      <OriginalSourceContext.Provider value={scope}>
+        <DocumentStage
+          documents={[document]}
+          finding={null}
+          findings={[]}
+          selectedFindingId={null}
+          onSelectFinding={vi.fn()}
+          layout="switch"
+          quoteScope={quoteScope}
+        />
+      </OriginalSourceContext.Provider>
+    </MemoryRouter>,
+  );
+  expect(view.container.querySelectorAll(".doc-text .hit-key-clause")).toHaveLength(3);
+  expect(screen.getByRole("button", { name: "文字原文" })).toHaveAttribute("aria-pressed", "true");
+  await user.click(screen.getByRole("button", { name: "原件标注" }));
+  expect(await screen.findByTestId("original-page-quotes")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: /正文片段\/标题未识别.*争议解决/ }));
+  expect(view.container.querySelector("[data-selected-key-clause='true']")?.textContent).toContain(
+    "仲裁",
+  );
+});
+
+it("distinguishes a selected clause, a search match, and overlapping evidence", async () => {
+  const user = userEvent.setup();
+  const text = "付款三十日内支付。";
+  const document = documentOf("doc-overlap", "draft_contract", "合同.txt", text, {
+    parsed_document_id: "parse-overlap",
+    clauses: [
+      {
+        id: "payment",
+        heading: "付款",
+        text_offset: { start: 0, end: Array.from(text).length },
+        page: 1,
+      },
+    ],
+  });
+  const finding = findingWith([locatedAnchor(document.id, "三十日", 2, 5)]);
+  const { container } = renderStage({
+    documents: [document],
+    finding,
+    findings: [finding],
+    selectedFindingId: finding.id,
+    quoteScope: {
+      caseId: "case-1",
+      runId: "run-1",
+      attemptId: "attempt-1",
+      isFrozenAttempt: true,
+      parsedDocumentIds: ["parse-overlap"],
+      sourceProofs: [
+        {
+          documentId: document.id,
+          parsedDocumentId: "parse-overlap",
+          originalDigest: document.digest,
+        },
+      ],
+    },
+  });
+  await user.click(screen.getByRole("button", { name: /付款.*起始页第 1 页/ }));
+  await user.type(screen.getByRole("textbox", { name: "文内搜索" }), "三十日");
+  const mark = container.querySelector(".hit-evidence");
+  expect(mark).toHaveClass("key-clause-overlap", "key-clause-selected", "evidence-find");
+  expect(mark).toHaveAttribute("data-selected-key-clause", "true");
 });
 
 function documentOf(
@@ -470,7 +560,7 @@ describe("document stage materials and search", () => {
     });
 
     expect(screen.getByRole("heading", { name: "关键条款导航" })).toBeInTheDocument();
-    expect(screen.getByText(/关键词分类只用于查找，不表示风险判断/)).toBeInTheDocument();
+    expect(screen.getByText(/是否存在风险由审查人员判断/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /付款约定.*页码未记录/ }));
 
     const mark = container.querySelector("mark.hit-key-clause[data-selected-key-clause='true']");
@@ -774,10 +864,43 @@ describe("document stage comparison modes", () => {
     await user.click(screen.getByRole("button", { name: "双来源对照" }));
     expect(screen.getAllByText("合同与证据原文").length).toBeGreaterThan(0);
     expect(container.querySelectorAll(".doc-pane")).toHaveLength(2);
-    expect(screen.getByText("质保三十六个月")).toBeInTheDocument();
+    expect(screen.getAllByText("质保三十六个月").length).toBeGreaterThan(0);
     expect(screen.getByText("质保二十四个月")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "单篇阅读" }));
     expect(container.querySelectorAll(".doc-pane")).toHaveLength(1);
+  });
+
+  it("independently highlights both frozen sources in comparison", async () => {
+    const user = userEvent.setup();
+    const firstDoc = { ...first, parsed_document_id: "parse-1", clauses: [] };
+    const secondDoc = { ...second, parsed_document_id: "parse-2", clauses: [] };
+    const finding = findingWith([
+      locatedAnchor("doc-1", "质保三十六个月", 0, 7),
+      locatedAnchor("doc-2", "质保二十四个月", 0, 7),
+    ]);
+    const { container } = renderStage({
+      documents: [firstDoc, secondDoc],
+      finding,
+      findings: [finding],
+      layout: "split",
+      quoteScope: {
+        caseId: "case-1",
+        runId: "run-1",
+        attemptId: "attempt-1",
+        isFrozenAttempt: true,
+        parsedDocumentIds: ["parse-1", "parse-2"],
+        sourceProofs: [firstDoc, secondDoc].map((doc) => ({
+          documentId: doc.id,
+          parsedDocumentId: doc.parsed_document_id!,
+          originalDigest: doc.digest,
+        })),
+      },
+    });
+    await user.click(screen.getByRole("button", { name: "双来源对照" }));
+    const panes = container.querySelectorAll(".doc-pane");
+    expect(panes).toHaveLength(2);
+    expect(panes[0]?.querySelector(".key-clause-overlap")).not.toBeNull();
+    expect(panes[1]?.querySelector(".key-clause-overlap")).not.toBeNull();
   });
 
   it("switches evidence sources in switch layout", async () => {

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12
-// Updated: 2026-11-12
-// Revision: r1
+// Updated: 2026-11-19
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -28,7 +28,7 @@ export function KeyClauseNavigator({
   return (
     <section className="key-clause-navigator" aria-label="关键条款导航">
       <h3>关键条款导航</h3>
-      <p className="meta">仅从当前冻结审查尝试的解析材料读取已保存条款。</p>
+
       {navigation.candidates.length === 0 ? (
         <p className="meta" role="status">
           {navigation.message}
@@ -51,15 +51,10 @@ export function KeyClauseNavigator({
                 onClick={() => onSelect(candidate)}
               >
                 <span>{candidate.heading}</span>
-                <span className="key-clause-source">{candidate.sourceLabel}</span>
                 <span className="key-clause-categories">
                   {candidate.categories.map(keyClauseCategoryLabel).join(" · ")}
+                  {candidate.page === null ? null : ` · 起始页：第 ${candidate.page} 页`}
                 </span>
-                {candidate.page === null ? (
-                  <span className="key-clause-page">页码未记录</span>
-                ) : (
-                  <span className="key-clause-page">起始页：第 {candidate.page} 页</span>
-                )}
               </Button>
             </li>
           ))}
@@ -81,7 +76,7 @@ export function KeyClauseNavigator({
         </p>
       ) : null}
       <p className="meta">
-        关键词分类只用于查找，不表示风险判断；正文片段不是结构化条款，覆盖有限，可能遗漏需要人工关注的条款。
+        虚线标出常查条款，实线框表示当前选择；搜索和证据使用各自颜色。点选可定位，是否存在风险由审查人员判断。
       </p>
     </section>
   );

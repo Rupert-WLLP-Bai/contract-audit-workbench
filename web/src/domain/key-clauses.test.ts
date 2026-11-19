@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -102,6 +102,26 @@ describe("key clause navigation", () => {
       documentId: "doc-1",
       parsedDocumentId: "parsed-1",
     });
+  });
+
+  it("locates explicit contract and procurement amounts without marking background sentences", () => {
+    const source =
+      "😀项目背景为网络建设。合同总价100万元。合同金额为100万元。采购金额为120万元。其他说明。";
+    const result = keyClauseNavigationFor(scope, documentOf({ text: source, clauses: [] }));
+
+    expect(result.candidates.map((candidate) => candidate.quote)).toEqual([
+      "合同总价100万元。",
+      "合同金额为100万元。",
+      "采购金额为120万元。",
+    ]);
+    expect(result.candidates.every((candidate) => candidate.categories.includes("payment"))).toBe(
+      true,
+    );
+    for (const candidate of result.candidates) {
+      expect(Array.from(source).slice(candidate.range.start, candidate.range.end).join("")).toBe(
+        candidate.quote,
+      );
+    }
   });
 
   it("rejects a document parsed by a different attempt", () => {

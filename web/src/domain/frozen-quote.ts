@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -92,6 +92,7 @@ export function frozenQuoteMatchesDocument(
   selection: FrozenQuoteSelection | null,
   scope: FrozenQuoteScope | null,
   document: ReviewDocument | undefined,
+  textIndex?: CodePointTextIndex,
 ): document is ReviewDocument {
   if (selection === null || scope === null || document === undefined || document.text === null)
     return false;
@@ -105,6 +106,6 @@ export function frozenQuoteMatchesDocument(
     selection.parsedDocumentId === parsedDocumentId &&
     selection.digest === document.digest &&
     Array.from(selection.quote).length <= 4096 &&
-    sliceByCodePoints(document.text, selection.start, selection.end) === selection.quote
+    sliceByCodePoints(document.text, selection.start, selection.end, textIndex) === selection.quote
   );
 }
