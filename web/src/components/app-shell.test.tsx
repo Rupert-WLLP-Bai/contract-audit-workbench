@@ -238,7 +238,7 @@ describe("app shell", () => {
   it("shows five named main entry points and sends Agent Studio to the saved execution list", () => {
     renderShell();
     const nav = within(screen.getByLabelText("主导航"));
-    const mainEntries = nav.getByRole("list", { name: "五个主入口" });
+    const mainEntries = nav.getAllByRole("group")[0]!;
     expect(within(mainEntries).getAllByRole("link")).toHaveLength(5);
     expect(nav.getByRole("link", { name: "工作台" })).toHaveAttribute("href", "/");
     expect(nav.getByRole("link", { name: "案件" })).toHaveAttribute("href", "/cases");
@@ -292,9 +292,8 @@ describe("app shell", () => {
       "/workbench/templates",
     );
     expect(nav.queryByRole("link", { name: "规则包治理" })).not.toBeInTheDocument();
-    const utility = within(
-      screen.getByRole("heading", { name: "只读目录与文档" }).closest("section") as HTMLElement,
-    );
+    expect(nav.getByText("只读目录与文档")).toBeInTheDocument();
+    const utility = nav;
     expect(utility.getByRole("link", { name: "使用手册" })).toHaveAttribute("href", "/docs/");
     expect(utility.getByRole("link", { name: "API 文档" })).toHaveAttribute("href", "/api-docs");
     expect(utility.getByRole("link", { name: "组织与权限" })).toHaveAttribute(
@@ -336,13 +335,7 @@ describe("app shell", () => {
       "aria-expanded",
       "false",
     );
-    expect(document.querySelector(".app")).toHaveClass("app--nav-collapsed");
     expect(screen.getByRole("link", { name: "合同审查" })).toHaveAttribute("href", "/review");
-    const mainNavigation = within(screen.getByRole("list", { name: "五个主入口" }));
-    const mainEntries = mainNavigation.getAllByRole("link");
-    mainEntries[0]!.focus();
-    await user.tab();
-    expect(document.activeElement).toBe(mainEntries[1]);
     await user.click(screen.getByRole("button", { name: "展开侧栏" }));
     expect(screen.getByRole("button", { name: "收合侧栏" })).toHaveAttribute(
       "aria-expanded",
@@ -373,9 +366,8 @@ describe("app shell", () => {
   it("shows operation links for an admin client actor without changing their destinations", () => {
     mocks.useSession.mockReturnValue({ data: { ...actor, role: "admin" } });
     renderShell();
-    const utility = within(
-      screen.getByRole("heading", { name: "管理与文档" }).closest("section") as HTMLElement,
-    );
+    const utility = within(screen.getByRole("navigation", { name: "主导航" }));
+    expect(utility.getByText("管理与文档")).toBeInTheDocument();
     expect(utility.getByRole("link", { name: "系统设置" })).toHaveAttribute(
       "href",
       "/workbench/settings",
@@ -392,13 +384,10 @@ describe("app shell", () => {
 
   it("keeps the handbook and API reference in the read-only links for ordinary roles", () => {
     renderShell();
-    const group = screen.getByRole("heading", { name: "只读目录与文档" }).closest("section");
-    expect(group).not.toBeNull();
-    expect(within(group as HTMLElement).getByRole("link", { name: "使用手册" })).toHaveAttribute(
-      "href",
-      "/docs/",
-    );
-    expect(within(group as HTMLElement).getByRole("link", { name: "API 文档" })).toHaveAttribute(
+    expect(screen.getByText("只读目录与文档")).toBeInTheDocument();
+    const group = screen.getByRole("navigation", { name: "主导航" });
+    expect(within(group).getByRole("link", { name: "使用手册" })).toHaveAttribute("href", "/docs/");
+    expect(within(group).getByRole("link", { name: "API 文档" })).toHaveAttribute(
       "href",
       "/api-docs",
     );

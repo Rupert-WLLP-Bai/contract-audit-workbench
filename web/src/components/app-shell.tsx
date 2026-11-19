@@ -8,16 +8,8 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import {
-  Link,
-  NavLink,
-  Outlet,
-  useLocation,
-  useNavigate,
-  type NavigateFunction,
-} from "react-router";
+import { Link, Outlet, useLocation, useNavigate, type NavigateFunction } from "react-router";
 import { useCaseDetail, useLogout, useSession } from "../api/queries";
 import { presentedPersonName } from "../domain/organization";
 import { actorRoleLabel } from "../domain/review";
@@ -43,11 +35,11 @@ import type { Actor } from "../api/types";
 import { CompetitionIdentity } from "./competition-identity";
 import { ContextSwitcher } from "./context-switcher";
 import { PageStatus } from "./page-status";
+import { ShellNavigation, type ShellNavGroup, type ShellNavLink } from "./shell-navigation";
 type NavLinkItem = {
   to: string;
   label: string;
   icon: string;
-  end?: boolean;
   external?: boolean;
   href?: string;
   adminRoleOnly?: boolean;
@@ -339,9 +331,8 @@ function caseIdOf(pathname: string): string {
   return match?.[1] ? decodeURIComponent(match[1]) : "";
 }
 
-function layoutClassName(collapsed: boolean, inReview: boolean, pathname: string): string {
+function layoutClassName(inReview: boolean, pathname: string): string {
   const classes = ["app"];
-  if (collapsed) classes.push("app--nav-collapsed");
   if (inReview) classes.push("app--review");
   if (pathname === "/compare") classes.push("app--compare");
   if (pathname === "/api-docs") classes.push("app--api-docs");
@@ -435,113 +426,53 @@ function AppSidebar({
   actor,
   pathname,
   adminRulePacksUrl,
-  collapsed,
-  onCollapse,
 }: {
   actor: Actor | undefined;
   pathname: string;
   adminRulePacksUrl: string;
-  collapsed: boolean;
-  onCollapse: (collapsed: boolean) => void;
 }) {
   const canSeeManagementLinks = actor?.role === "admin";
-  const activeGroup = NAV_GROUPS.find((group) => group.key === selectedPrimaryKey(pathname));
-  const visibleGroupLinks =
-    activeGroup?.links.filter((item) => !item.adminRoleOnly || canSeeManagementLinks) ?? [];
-  const visibleUtilityLinks = UTILITY_LINKS.filter(
-    (item) => !item.adminRoleOnly || canSeeManagementLinks,
-  );
+  const activeKey = selectedPrimaryKey(pathname);
 
-  function renderLink(item: NavLinkItem) {
-    const icon = NAV_ICONS[item.icon];
-    const content = (
-      <>
-        <span className="client-nav-icon" aria-hidden="true">
-          {icon}
-        </span>
-        <span className="nav-label">{item.label}</span>
-      </>
-    );
-    if (item.external) {
-      return (
-        <a href={item.href ?? adminRulePacksUrl} aria-label={item.label} title={item.label}>
-          {content}
-        </a>
-      );
-    }
-    return (
-      <NavLink to={item.to} end={item.end} aria-label={item.label} title={item.label}>
-        {content}
-      </NavLink>
-    );
+  function visibleLinks(items: NavLinkItem[]): ShellNavLink[] {
+    return items
+      .filter((item) => !item.adminRoleOnly || canSeeManagementLinks)
+      .map((item) => ({
+        href: item.external ? (item.href ?? adminRulePacksUrl) : item.to,
+        label: item.label,
+        icon: NAV_ICONS[item.icon],
+        external: item.external,
+        current: !item.external && (pathname === item.to || pathname.startsWith(`${item.to}/`)),
+      }));
   }
 
+  const primary: ShellNavGroup = {
+    key: "primary",
+    title: "工作区",
+    links: NAV_GROUPS.map((group) => ({
+      href: group.to,
+      label: group.label,
+      icon: NAV_ICONS[group.icon],
+      current: group.key === activeKey,
+    })),
+  };
+  const sections = NAV_GROUPS.map((group) => ({
+    key: group.key,
+    title: `${group.label}工作区`,
+    links: visibleLinks(group.links),
+  })).filter((group) => group.links.length > 0);
+  const utility: ShellNavGroup = {
+    key: "utility",
+    title: canSeeManagementLinks ? "管理与文档" : "只读目录与文档",
+    links: visibleLinks(UTILITY_LINKS),
+  };
+
   return (
-    <Layout.Sider
-      trigger={
-        <Button
-          type="text"
-          className="nav-collapse-action"
-          aria-label={collapsed ? "展开侧栏" : "收合侧栏"}
-          aria-expanded={!collapsed}
-          icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-        />
-      }
-      theme="dark"
-      id="primary-navigation"
-      className="sidenav"
-      width={248}
-      collapsedWidth={72}
-      collapsed={collapsed}
-      collapsible
-      onCollapse={onCollapse}
-    >
-      <nav className="client-navigation" aria-label="主导航">
-        <ul className="primary-navigation" aria-label="五个主入口">
-          {NAV_GROUPS.map((group) => {
-            const selected = group.key === selectedPrimaryKey(pathname);
-            return (
-              <li key={group.key}>
-                <Link
-                  className={
-                    selected ? "primary-navigation-link is-current" : "primary-navigation-link"
-                  }
-                  to={group.to}
-                  aria-label={group.label}
-                  aria-current={selected ? "page" : undefined}
-                  title={group.label}
-                >
-                  <span className="client-nav-icon" aria-hidden="true">
-                    {NAV_ICONS[group.icon]}
-                  </span>
-                  <span className="nav-label">{group.label}</span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-        {activeGroup && visibleGroupLinks.length > 0 ? (
-          <section className="secondary-navigation" aria-labelledby="secondary-navigation-title">
-            <h2 id="secondary-navigation-title">{activeGroup.label}工作区</h2>
-            <ul>
-              {visibleGroupLinks.map((item) => (
-                <li key={item.to}>{renderLink(item)}</li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-        <section className="utility-navigation" aria-labelledby="utility-navigation-title">
-          <h2 id="utility-navigation-title">
-            {canSeeManagementLinks ? "管理与文档" : "只读目录与文档"}
-          </h2>
-          <ul>
-            {visibleUtilityLinks.map((item) => (
-              <li key={item.to}>{renderLink(item)}</li>
-            ))}
-          </ul>
-        </section>
-      </nav>
-    </Layout.Sider>
+    <ShellNavigation
+      title="主导航"
+      groups={[primary, ...sections.filter((section) => section.key === activeKey), utility]}
+      drawerGroups={[primary, ...sections, utility]}
+    />
   );
 }
 
@@ -555,7 +486,6 @@ export function AppShell() {
     const base = import.meta.env.VITE_ADMIN_URL;
     return base ? new URL("/admin/rulepacks", base).href : "/admin/rulepacks";
   }, []);
-  const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState("");
   const [contextTransition, setContextTransition] = useState(false);
   const caseId = caseIdOf(location.pathname);
@@ -568,7 +498,7 @@ export function AppShell() {
   const breadcrumbs = breadcrumbsFor(location.pathname, caseId, caseTitle, reviewMatch !== null);
 
   return (
-    <Layout className={layoutClassName(collapsed, reviewMatch !== null, location.pathname)}>
+    <Layout className={layoutClassName(reviewMatch !== null, location.pathname)}>
       <a className="skip" href="#main">
         跳到主要内容
       </a>
@@ -596,8 +526,6 @@ export function AppShell() {
           actor={actor}
           pathname={location.pathname}
           adminRulePacksUrl={adminRulePacksUrl}
-          collapsed={collapsed}
-          onCollapse={setCollapsed}
         />
         <Layout.Content className="content-column">
           <BreadcrumbItems crumbs={breadcrumbs} />

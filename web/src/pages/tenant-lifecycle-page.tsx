@@ -712,6 +712,7 @@ export function TenantLifecyclePage() {
   return (
     <ListPage
       className="tenant-lifecycle-page"
+      standaloneSurface={false}
       title="租户生命周期管理"
       description="平台控制操作与租户自助运维分别授权。页面记录幂等操作、步骤回执和外部结果核对；未知结果不得盲目重试。"
       actions={<Button onClick={() => void pageQuery.refetch()}>刷新操作</Button>}

@@ -41,8 +41,12 @@ function PageHeading({
         {eyebrow ? <div className="page-pattern-eyebrow">{eyebrow}</div> : null}
         <Heading>{title}</Heading>
         {description ? <p>{description}</p> : null}
-        {status ? <div className="page-pattern-status">{status}</div> : null}
-        {meta ? <div className="page-pattern-meta">{meta}</div> : null}
+        {status || meta ? (
+          <div className="page-pattern-metadata">
+            {status ? <div className="page-pattern-status">{status}</div> : null}
+            {meta ? <div className="page-pattern-meta">{meta}</div> : null}
+          </div>
+        ) : null}
       </div>
       {actions ? <div className="page-pattern-actions">{actions}</div> : null}
     </header>
@@ -67,6 +71,7 @@ export function ListPage({
   beforeSummary,
   beforeFilters,
   pagination,
+  standaloneSurface = true,
   headingClassName,
   className,
   contentRef,
@@ -77,6 +82,7 @@ export function ListPage({
   beforeSummary?: ReactNode;
   beforeFilters?: ReactNode;
   pagination?: ReactNode;
+  standaloneSurface?: boolean;
   headingClassName?: string;
 }) {
   return (
@@ -90,9 +96,16 @@ export function ListPage({
       {beforeSummary}
       {summary ? <div className="page-pattern-summary">{summary}</div> : null}
       {beforeFilters}
-      {filters ? <div className="page-pattern-filters">{filters}</div> : null}
-      {children}
-      {pagination}
+      <div
+        className={classNames(
+          "page-pattern-list-content",
+          standaloneSurface ? "page-pattern-surface" : undefined,
+        )}
+      >
+        {filters ? <div className="page-pattern-filters">{filters}</div> : null}
+        {children}
+        {pagination ? <footer className="page-pattern-pagination">{pagination}</footer> : null}
+      </div>
     </section>
   );
 }
@@ -135,8 +148,12 @@ export function ObjectDetailPage({
         actions={actions}
         status={status}
       />
-      {facts}
-      {nextStep}
+      {facts || nextStep ? (
+        <div className="page-pattern-overview page-pattern-surface">
+          {facts}
+          {nextStep}
+        </div>
+      ) : null}
       {navigation}
       {children ? <div className="page-pattern-object-content">{children}</div> : null}
     </section>

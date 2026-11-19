@@ -134,7 +134,7 @@ describe("admin shell", () => {
       "/admin/infrastructure",
     );
     expect(screen.getByText("管理内容")).toBeInTheDocument();
-    expect(screen.getByText(/按当前管理身份授权/)).toBeInTheDocument();
+    expect(screen.getByText("规则版本与发布历史")).toBeInTheDocument();
   });
 
   it("shows an unknown identity while the session is still loading", () => {

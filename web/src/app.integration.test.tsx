@@ -3456,6 +3456,7 @@ describe("application routes and API contract", () => {
         ),
       ).toBe(true),
     );
+    await user.click(screen.getByText(/^执行记录 · 第 /));
     await chooseOption(user, screen.getByLabelText("查看执行记录"), /第 2 次，\s*待人工，\s*最新/);
     await user.click(await screen.findByRole("radio", { name: "证据不足" }));
     expect(screen.getByRole("radio", { name: "证据不足" })).toBeEnabled();
@@ -3817,6 +3818,7 @@ describe("application routes and API contract", () => {
     ];
     const { user } = open(api, "/cases/c1/reviews/r1");
     await screen.findByRole("heading", { name: "审查工作区" });
+    await user.click(screen.getByText(/^执行记录 · 第 /));
     await chooseOption(user, screen.getByLabelText("查看执行记录"), /第 1 次，\s*失败/);
     expect(
       await screen.findByText("当前选择的是之前的执行记录，只能查看，不能提交审查判断。"),

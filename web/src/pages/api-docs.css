@@ -8,30 +8,23 @@
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
-/* Monochrome developer documentation. Paper ground, ink hairlines, one black accent. */
 .api-docs-page {
-  --api-paper: #f4f3ef;
-  --api-paper-raised: #fbfaf7;
-  --api-surface: #ffffff;
-  --api-ink: #111110;
-  --api-ink-soft: #3b3b37;
-  --api-muted: #62625c;
-  --api-faint: #6f6f68;
-  --api-rule: #e3e1da;
-  --api-rule-strong: #c9c7bf;
-  --api-wash: #ebeae4;
-  --api-code: #151513;
-  --api-code-ink: #f2f1ec;
-  --api-code-muted: #a5a49d;
-  --api-dot: rgba(17, 17, 16, 0.05);
-  --api-font:
-    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "PingFang SC",
-    "HarmonyOS Sans SC", "MiSans", "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei",
-    sans-serif;
-  --api-mono:
-    ui-monospace, "SFMono-Regular", "Cascadia Code", "Cascadia Mono", "JetBrains Mono",
-    "Roboto Mono", "Noto Sans Mono", Consolas, monospace;
-  --api-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --api-paper: var(--surface-page);
+  --api-paper-raised: var(--surface-subtle);
+  --api-surface: var(--surface-raised);
+  --api-ink: var(--text-primary);
+  --api-ink-soft: var(--text-primary);
+  --api-muted: var(--text-secondary);
+  --api-faint: var(--text-placeholder);
+  --api-rule: var(--border-default);
+  --api-rule-strong: var(--border-control);
+  --api-wash: var(--surface-hover);
+  --api-code: var(--text-primary);
+  --api-code-ink: var(--text-inverse);
+  --api-code-muted: var(--text-inverse-secondary);
+  --api-font: var(--font-ui);
+  --api-mono: var(--font-mono);
+  --api-ease: var(--ease-out);
 
   display: flex;
   width: 100%;
@@ -40,8 +33,6 @@
   flex-direction: column;
   overflow: hidden;
   background-color: var(--api-paper);
-  background-image: radial-gradient(var(--api-dot) 1px, transparent 1px);
-  background-size: 24px 24px;
   color: var(--api-ink);
   font-family: var(--api-font);
   font-size: 14px;
@@ -64,7 +55,7 @@
 }
 
 .api-docs-page :focus-visible {
-  outline: 2px solid var(--api-ink);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -107,6 +98,7 @@
 /* The portal owns the whole viewport; the embedded app route hides its shell. */
 .app--api-docs .topbar,
 .app--api-docs .sidenav,
+.app--api-docs .shell-mobile-navigation,
 .app--api-docs .breadcrumbs {
   display: none;
 }
@@ -1054,31 +1046,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-}
-
-.api-docs-page .ant-btn {
-  border-radius: 7px;
-  box-shadow: none;
-  font-family: var(--api-font);
-  font-weight: 600;
-}
-
-.api-docs-page .ant-btn-primary {
-  border-color: var(--api-ink);
-  background: var(--api-ink);
-  color: var(--api-paper-raised);
-}
-
-.api-docs-page .ant-btn-primary:not(:disabled):hover {
-  border-color: #30302c;
-  background: #30302c;
-  color: var(--api-paper-raised);
-}
-
-.api-docs-page .ant-btn-primary:disabled {
-  border-color: var(--api-rule);
-  background: var(--api-wash);
-  color: var(--api-faint);
 }
 
 .api-request-actions .ant-btn {

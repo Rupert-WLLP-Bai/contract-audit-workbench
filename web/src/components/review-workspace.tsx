@@ -483,38 +483,43 @@ function DocumentRunStatus({
   const casePath = `/cases/${encodeURIComponent(workspace.run.case_id)}`;
   return (
     <>
-      <div className="review-run-controls">
-        <span className="meta">{STREAM_LABEL[streamStatus]}</span>
-        {preparing ? <p>该执行尚未冻结审查输入，检查范围与人工进度待冻结后确认。</p> : null}
-        {preparing &&
-        outcome?.reason === "cancelled_by_user" &&
-        canReadmitCancelledPreparation(workspace) ? (
-          <p>
-            <a href={`${casePath}#review-readiness`}>返回审查准备清单</a>
-          </p>
-        ) : null}
-        {outcome?.reason === "authorization_revoked" ? (
-          <p>本次执行因授权变化而取消，请联系案件管理员核对权限。</p>
-        ) : null}
-        {outcome?.reason === "cancelled_by_user" &&
-        !canReadmitCancelledPreparation(workspace) &&
-        !canRestartUserCancelled(workspace) ? (
-          <p>审查由用户主动取消；冻结输入尚不能核对，请查看审查准备。</p>
-        ) : null}
-        {selected ? (
-          <label className="field">
-            查看执行记录
-            <Select
-              aria-label="查看执行记录"
-              value={selected.id}
-              onChange={onSelectAttempt}
-              options={attemptOptions(attempts)}
-            />
-          </label>
-        ) : (
-          <p>没有获取到本次审查的执行记录。未记录的阶段、耗时和用量不会显示为已知。</p>
-        )}
-      </div>
+      <details className="review-run-details">
+        <summary>
+          执行记录{selected ? ` · 第 ${selected.ordinal} 次 · ${runLabel(selected.state)}` : ""}
+        </summary>
+        <div className="review-run-controls">
+          <span className="meta">{STREAM_LABEL[streamStatus]}</span>
+          {preparing ? <p>该执行尚未冻结审查输入，检查范围与人工进度待冻结后确认。</p> : null}
+          {preparing &&
+          outcome?.reason === "cancelled_by_user" &&
+          canReadmitCancelledPreparation(workspace) ? (
+            <p>
+              <a href={`${casePath}#review-readiness`}>返回审查准备清单</a>
+            </p>
+          ) : null}
+          {outcome?.reason === "authorization_revoked" ? (
+            <p>本次执行因授权变化而取消，请联系案件管理员核对权限。</p>
+          ) : null}
+          {outcome?.reason === "cancelled_by_user" &&
+          !canReadmitCancelledPreparation(workspace) &&
+          !canRestartUserCancelled(workspace) ? (
+            <p>审查由用户主动取消；冻结输入尚不能核对，请查看审查准备。</p>
+          ) : null}
+          {selected ? (
+            <label className="field">
+              查看执行记录
+              <Select
+                aria-label="查看执行记录"
+                value={selected.id}
+                onChange={onSelectAttempt}
+                options={attemptOptions(attempts)}
+              />
+            </label>
+          ) : (
+            <p>没有获取到本次审查的执行记录。未记录的阶段、耗时和用量不会显示为已知。</p>
+          )}
+        </div>
+      </details>
       {selected?.history_kind === "legacy_unfrozen" ? (
         <p className="callout">
           较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。
@@ -728,22 +733,50 @@ export function ReviewWorkspaceView({
           onLoadDiagnostics={onLoadDiagnostics}
         />
       ) : null}
-      {surface === "document" ? (
-        <>
-          <DocumentRunStatus
-            workspace={workspace}
-            streamStatus={streamStatus}
-            selected={selected}
-            attempts={attempts}
-            onSelectAttempt={onSelectAttempt}
-            canCancel={canCancel}
-            cancelling={cancelling}
-            cancelError={cancelError}
-            onCancel={onCancel}
-          />
-        </>
+      <div className="review-reading-controls">
+        {surface === "document" ? (
+          <>
+            <DocumentRunStatus
+              workspace={workspace}
+              streamStatus={streamStatus}
+              selected={selected}
+              attempts={attempts}
+              onSelectAttempt={onSelectAttempt}
+              canCancel={canCancel}
+              cancelling={cancelling}
+              cancelError={cancelError}
+              onCancel={onCancel}
+            />
+          </>
+        ) : null}
+        {showDocument ? (
+          <div className="review-workspace-view-switch" role="group" aria-label="工作区视图">
+            <Button
+              htmlType="button"
+              aria-pressed={workspaceView === "context"}
+              onClick={() => setWorkspaceView("context")}
+            >
+              案件与材料
+            </Button>
+            <Button
+              ref={evidenceViewButton}
+              htmlType="button"
+              aria-pressed={workspaceView === "evidence"}
+              onClick={() => setWorkspaceView("evidence")}
+            >
+              原文与风险发现
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      {surface === "document" && workspace.snapshot?.adopted_playbook ? (
+        <details className="review-playbook-details">
+          <summary>本次审查手册</summary>
+          <FrozenPlaybookPanel adoption={workspace.snapshot.adopted_playbook} />
+        </details>
+      ) : surface !== "document" ? (
+        <FrozenPlaybookPanel adoption={workspace.snapshot?.adopted_playbook} />
       ) : null}
-      <FrozenPlaybookPanel adoption={workspace.snapshot?.adopted_playbook} />
       {showCoverage ? (
         <>
           <ReviewOutcomeSummary workspace={workspace} />
@@ -772,23 +805,6 @@ export function ReviewWorkspaceView({
               }}
             />
           ) : null}
-          <div className="review-workspace-view-switch" role="group" aria-label="工作区视图">
-            <Button
-              htmlType="button"
-              aria-pressed={workspaceView === "context"}
-              onClick={() => setWorkspaceView("context")}
-            >
-              案件与材料
-            </Button>
-            <Button
-              ref={evidenceViewButton}
-              htmlType="button"
-              aria-pressed={workspaceView === "evidence"}
-              onClick={() => setWorkspaceView("evidence")}
-            >
-              原文与风险发现
-            </Button>
-          </div>
           <div
             className={`workspace-grid review-workspace-layout workspace-view-${workspaceView} layout-${layout}`}
             style={gridStyle}

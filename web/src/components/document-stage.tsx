@@ -441,11 +441,9 @@ function SelectableDocText({
   segments: TextSegment[];
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
-  const { ranges } = useContext(ClauseContext);
   if (document.text === null) return <p>这份材料还没有可阅读的正文。</p>;
   return (
     <>
-      {ranges.length > 0 ? <p className="meta doc-key-clause-hint">虚线标出常查条款。</p> : null}
       <div
         className="doc-text"
         tabIndex={0}
@@ -489,13 +487,13 @@ function FailedParseBody({
   return (
     <DocPane document={document} activeSource={activeSource}>
       <header className="doc-pane-head">
-        <strong>{document.filename}</strong>
+        <strong title={document.filename}>{document.filename}</strong>
         <StatusText tone="bad">解析失败</StatusText>
+        <TechnicalDetail
+          label="材料状态技术详情"
+          value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
+        />
       </header>
-      <TechnicalDetail
-        label="材料状态技术详情"
-        value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
-      />
       <DiagnosticsCollapse document={document} showDiagnostics={showDiagnostics} />
       <p className="callout">这份材料解析失败，请先处理解析问题再继续审查。</p>
       {document.parse_error ? <p>{document.parse_error}</p> : null}
@@ -535,16 +533,16 @@ function HighlightBody({
   return (
     <DocPane document={document} activeSource={activeSource}>
       <header className="doc-pane-head">
-        <strong>{document.filename}</strong>
+        <strong title={document.filename}>{document.filename}</strong>
         <span>{roleLabel(document.role)}</span>
         {pages.map((page) => (
           <span key={page}>第 {page} 页</span>
         ))}
+        <TechnicalDetail
+          label="材料状态技术详情"
+          value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
+        />
       </header>
-      <TechnicalDetail
-        label="材料状态技术详情"
-        value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
-      />
       <DiagnosticsCollapse document={document} showDiagnostics={showDiagnostics} />
       {activeSource ? (
         <EvidenceAnchorSwitch
@@ -628,16 +626,16 @@ function PlainBody({
   return (
     <DocPane document={document} activeSource={activeSource}>
       <header className="doc-pane-head">
-        <strong>{document.filename}</strong>
+        <strong title={document.filename}>{document.filename}</strong>
         <span>{roleLabel(document.role)}</span>
         <StatusText tone={parseTone(document.parse_status)}>
           {parseLabel(document.parse_status)}
         </StatusText>
+        <TechnicalDetail
+          label="材料状态技术详情"
+          value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
+        />
       </header>
-      <TechnicalDetail
-        label="材料状态技术详情"
-        value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
-      />
       <DiagnosticsCollapse document={document} showDiagnostics={showDiagnostics} />
       <EvidenceNotes resolved={resolved} />
       <EmptyOrText
@@ -1677,6 +1675,51 @@ function EvidenceAside({
   );
 }
 
+function KeyClauseQuickNavigation({
+  onSelect,
+}: {
+  onSelect: (candidate: KeyClauseCandidate) => void;
+}) {
+  const { navigation, selected } = useContext(ClauseContext);
+  const candidates = navigation?.candidates ?? [];
+  if (candidates.length === 0) return null;
+  const selectedIndex = candidates.findIndex((candidate) => candidate.id === selected?.id);
+  function move(direction: -1 | 1) {
+    const index =
+      selectedIndex < 0
+        ? direction === 1
+          ? 0
+          : candidates.length - 1
+        : (selectedIndex + direction + candidates.length) % candidates.length;
+    const candidate = candidates[index];
+    if (candidate) onSelect(candidate);
+  }
+  return (
+    <div className="key-clause-quick-nav" role="group" aria-label="重点位置导航">
+      <span role="status">
+        {selectedIndex < 0
+          ? `阅读重点 · ${candidates.length} 处`
+          : `第 ${selectedIndex + 1} / ${candidates.length} 处`}
+      </span>
+      <Button
+        htmlType="button"
+        onClick={() => {
+          const first = candidates[0];
+          if (first) onSelect(first);
+        }}
+      >
+        查看重点
+      </Button>
+      <Button aria-label="上一个重点" htmlType="button" onClick={() => move(-1)}>
+        上一处
+      </Button>
+      <Button aria-label="下一个重点" htmlType="button" onClick={() => move(1)}>
+        下一处
+      </Button>
+    </div>
+  );
+}
+
 function DocumentColumn({
   documents,
   finding,
@@ -1694,6 +1737,7 @@ function DocumentColumn({
   quoteScope,
   focusRange,
   onClearKeyClause,
+  onSelectKeyClause,
   onQuoteSelectionChange,
 }: {
   documents: ReviewDocument[];
@@ -1712,17 +1756,21 @@ function DocumentColumn({
   quoteScope: FrozenQuoteScope | null;
   focusRange: { start: number; end: number } | null;
   onClearKeyClause?: () => void;
+  onSelectKeyClause: (candidate: KeyClauseCandidate) => void;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   return (
     <section className="col-doc" aria-label="原文">
-      <DocumentToolbar
-        layout={layout}
-        evidenceCount={evidenceDocs.length}
-        activeIsEvidence={activeIsEvidence}
-        compareSources={compareSources}
-        onCompare={onCompare}
-      />
+      <div className="reader-toolbar">
+        <DocumentToolbar
+          layout={layout}
+          evidenceCount={evidenceDocs.length}
+          activeIsEvidence={activeIsEvidence}
+          compareSources={compareSources}
+          onCompare={onCompare}
+        />
+        <KeyClauseQuickNavigation onSelect={onSelectKeyClause} />
+      </div>
       {!split && evidenceDocs.length >= 2 ? (
         <SourceSwitch
           evidenceDocs={evidenceDocs}
@@ -2028,6 +2076,7 @@ export function DocumentStage({
               ? factRange
               : null
           }
+          onSelectKeyClause={selectKeyClause}
           onClearKeyClause={() => setSelectedKeyClauseId(null)}
           onQuoteSelectionChange={onQuoteSelectionChange}
         />

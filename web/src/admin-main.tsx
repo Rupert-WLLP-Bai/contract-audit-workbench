@@ -8,6 +8,7 @@
 // Copyright: See LICENSE
 // End file metadata.
 
+import "./styles.css";
 import { AdminApp } from "./admin-app";
 import { mountApplication } from "./bootstrap";
 

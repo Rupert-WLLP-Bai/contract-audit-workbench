@@ -84,9 +84,7 @@ export function LoginPage({ audience = "client" }: { audience?: SessionAudience 
             </>
           )}
         </div>
-        <p className="login-rail-copy">
-          每次审查都会保存当时使用的材料、解析结果和规则。每项结论都需要有原文依据；审查人员修改判断时，之前的记录也会保留。
-        </p>
+        <p className="login-rail-copy">查看审查当时的合同原文，核对发现并记录处理决定。</p>
         <ol className="login-rail-circuit" aria-label="审查链路示意">
           <li>材料</li>
           <li>解析</li>
@@ -101,7 +99,7 @@ export function LoginPage({ audience = "client" }: { audience?: SessionAudience 
           </div>
         ) : null}
         <h1>{audience === "admin" ? "登录管理工作台" : "登录合同审查"}</h1>
-        <p>使用组织分配的账号。会话按当前工作区隔离；系统不在这里创建用户，也不会显示模型密钥。</p>
+        <p>使用组织分配的账号登录。</p>
         <label className="field">
           账号
           <Input

@@ -107,6 +107,19 @@ it("opens all verified PDF positions as frozen text before any finding is select
     </MemoryRouter>,
   );
   expect(view.container.querySelectorAll(".doc-text .hit-key-clause")).toHaveLength(3);
+  expect(view.container.querySelector("[data-selected-key-clause='true']")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "查看重点" }));
+  expect(view.container.querySelector("[data-selected-key-clause='true']")?.textContent).toContain(
+    "付款",
+  );
+  await user.click(screen.getByRole("button", { name: "下一个重点" }));
+  expect(view.container.querySelector("[data-selected-key-clause='true']")?.textContent).toContain(
+    "质保",
+  );
+  await user.click(screen.getByRole("button", { name: "上一个重点" }));
+  expect(view.container.querySelector("[data-selected-key-clause='true']")?.textContent).toContain(
+    "付款",
+  );
   expect(screen.getByRole("button", { name: "文字原文" })).toHaveAttribute("aria-pressed", "true");
   await user.click(screen.getByRole("button", { name: "原件标注" }));
   expect(await screen.findByTestId("original-page-quotes")).toBeVisible();
@@ -559,14 +572,14 @@ describe("document stage materials and search", () => {
       },
     });
 
-    expect(screen.getByRole("heading", { name: "关键条款导航" })).toBeInTheDocument();
-    expect(screen.getByText(/是否存在风险由审查人员判断/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "阅读重点" })).toBeInTheDocument();
+    expect(screen.getByText(/选择后跳到原文/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /付款约定.*页码未记录/ }));
 
     const mark = container.querySelector("mark.hit-key-clause[data-selected-key-clause='true']");
     expect(mark?.textContent).toBe(quote);
     expect(mark).not.toHaveClass("hit-evidence");
-    expect(screen.getByText(/原件页码未记录，只定位冻结文字/)).toBeInTheDocument();
+    expect(screen.getByText(/未记录页码/)).toBeInTheDocument();
     expect(onSelectFinding).not.toHaveBeenCalled();
   });
 
@@ -611,8 +624,7 @@ describe("document stage materials and search", () => {
     const mark = container.querySelector("mark.hit-key-clause[data-selected-key-clause='true']");
     expect(mark?.textContent).toContain("支付预付款");
     expect(mark).not.toHaveClass("hit-evidence");
-    expect(screen.getByText(/正文片段，不是已解析的完整结构化条款/)).toBeInTheDocument();
-    expect(screen.getByText(/原件页码未记录，只定位冻结文字/)).toBeInTheDocument();
+    expect(screen.getByText(/未记录页码/)).toBeInTheDocument();
   });
 
   it("clears an auxiliary clause highlight when the selected material changes", async () => {

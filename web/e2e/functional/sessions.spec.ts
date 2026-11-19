@@ -54,7 +54,7 @@ test(
   },
 );
 
-test("dark sidebars retain readable labels and controls across navigation states", async ({
+test("sidebars retain readable labels, keyboard controls and contained narrow layout", async ({
   page,
 }) => {
   await uiLogin(page);
@@ -69,66 +69,85 @@ test("dark sidebars retain readable labels and controls across navigation states
     const palette = {
       rail: color("surface-rail"),
       raised: color("surface-rail-raised"),
-      primary: color("text-inverse"),
-      secondary: color("text-inverse-secondary"),
+      primary: color("text-primary"),
+      secondary: color("text-secondary"),
       selected: color("nav-item-selected"),
       selectedText: color("nav-item-selected-fg"),
     };
     probe.remove();
     return palette;
   });
-  const rail = page.locator(".sidenav");
-  const home = rail.getByRole("link", { name: "工作台", exact: true });
-  const cases = rail.getByRole("link", { name: "案件", exact: true });
-  const support = rail.getByRole("link", { name: "案件支援访问", exact: true });
-  const compare = rail.getByRole("link", { name: "版本对照", exact: true });
-  const tools = rail.getByRole("link", { name: "工具网关", exact: true });
-  const trigger = rail.locator(".nav-collapse-action");
+  const rail = page.locator(".shell-sidenav");
+  const nav = rail.getByRole("navigation", { name: "主导航" });
+  const home = nav.getByRole("link", { name: "工作台", exact: true });
+  const cases = nav.getByRole("link", { name: "案件", exact: true });
+  const support = nav.getByRole("link", { name: "案件支援访问", exact: true });
+  const supportItem = support.locator("xpath=ancestor::*[@role='menuitem']");
+  const trigger = rail.getByRole("button", { name: "收合侧栏" });
 
   await expect(rail).toHaveCSS("background-color", tokens.rail);
-  for (const [link, color] of [
-    [home, tokens.primary],
-    [support, tokens.secondary],
-    [tools, tokens.secondary],
-  ] as const) {
-    await expect(link.locator(".nav-label")).toHaveCSS("color", color);
-    await expect(link.locator("svg")).toHaveCSS("color", color);
-  }
-  await expect(rail.getByRole("heading", { name: "案件工作区" })).toHaveCSS(
-    "color",
-    tokens.secondary,
-  );
+  await expect(home).toHaveCSS("color", tokens.secondary);
+  await expect(support).toHaveCSS("color", tokens.secondary);
+  await expect(nav.getByText("案件工作区", { exact: true })).toBeVisible();
   await expect(cases).toHaveAttribute("aria-current", "page");
   await expect(cases).toHaveCSS("color", tokens.selectedText);
-  await expect(cases).toHaveCSS("background-color", tokens.selected);
+  await expect(cases.locator("xpath=ancestor::*[@role='menuitem']")).toHaveCSS(
+    "background-color",
+    tokens.selected,
+  );
 
   await support.hover();
   await expect(support).toHaveCSS("color", tokens.primary);
-  await expect(support).toHaveCSS("background-color", tokens.raised);
-  await page.mouse.move(0, 0);
-  await support.press("Tab");
-  await expect(compare).toBeFocused();
-  await expect(compare).toHaveCSS("outline-color", tokens.primary);
+  await expect(supportItem).toHaveCSS("background-color", tokens.raised);
+  await supportItem.press("ArrowDown");
+  await expect(nav.getByRole("link", { name: "版本对照", exact: true })).toBeFocused();
 
-  await expect(trigger.locator("svg")).toHaveCSS("color", tokens.secondary);
   await trigger.press("Space");
-  await expect(trigger).toHaveAttribute("aria-expanded", "false");
-  await expect(trigger.locator("svg")).toHaveCSS("color", tokens.primary);
-  await expect(tools.locator("svg")).toHaveCSS("color", tokens.secondary);
-  await trigger.press("Space");
+  await expect(rail.getByRole("button", { name: "展开侧栏" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await rail.getByRole("button", { name: "展开侧栏" }).press("Space");
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(trigger).toBeHidden();
-  await expect(home.locator(".nav-label")).toBeVisible();
-  await expect(home.locator(".nav-label")).toHaveCSS("color", tokens.primary);
+  await expect(rail).toBeHidden();
+  const mobileTrigger = page.getByRole("button", { name: "打开主导航" });
+  await mobileTrigger.press("Enter");
+  const menu = page.getByRole("dialog", { name: "主导航" });
+  await expect(menu.getByRole("link", { name: "审查任务" })).toBeVisible();
+  await expect(menu.getByRole("link", { name: "主体台账" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(mobileTrigger).toBeFocused();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+
+  await mobileTrigger.press("Enter");
+  await menu.getByRole("menuitem", { name: "合同台账" }).press("Enter");
+  await expect(page).toHaveURL(`${webURL}/contracts`);
+  await expect(menu).toBeHidden();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await page.goBack();
+  await expect(page).toHaveURL(`${webURL}/cases`);
+  await expect(menu).toBeHidden();
+
+  await expect(page.locator(".cases-page .page-pattern-surface")).toHaveCSS(
+    "background-color",
+    tokens.rail,
+  );
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await uiLogin(page, "admin");
-  await expect(page.locator(".admin-sidenav")).toHaveCSS("background-color", tokens.rail);
-  await expect(page.getByText("规则版本与发布历史", { exact: false })).toHaveCSS(
+  const adminRail = page.locator(".admin-sidenav");
+  await expect(adminRail).toHaveCSS("background-color", tokens.rail);
+  await expect(adminRail.getByText("规则版本与发布历史", { exact: true })).toHaveCSS(
     "color",
     tokens.secondary,
+  );
+  await adminRail.getByRole("link", { name: "规则库" }).click();
+  await expect(page.locator(".page-rulepacks .page-pattern-surface")).toHaveCSS(
+    "background-color",
+    tokens.rail,
   );
 });
 

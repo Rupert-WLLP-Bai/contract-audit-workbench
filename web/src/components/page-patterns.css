@@ -8,8 +8,20 @@
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
-.page-pattern-heading-main {
-  min-width: 0;
+.page-pattern-list,
+.page-pattern-list-content,
+.page-pattern-heading-main,
+.page-pattern-object-content,
+.page-pattern-run-content {
+  min-inline-size: 0;
+}
+
+.page-pattern-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-4);
+  margin-block-end: var(--space-6);
 }
 
 .page-pattern-heading h2 {
@@ -17,8 +29,11 @@
 }
 
 .page-pattern-eyebrow,
+.page-pattern-metadata,
 .page-pattern-status,
-.page-pattern-meta {
+.page-pattern-meta,
+.page-pattern-actions,
+.page-pattern-form-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -29,21 +44,28 @@
   margin-bottom: var(--space-2);
 }
 
-.page-pattern-status,
-.page-pattern-meta {
+.page-pattern-metadata {
   margin-top: var(--space-2);
 }
 
 .page-pattern-actions,
 .page-pattern-form-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.page-pattern-surface {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
 }
 
 .page-pattern-filters {
-  min-width: 0;
+  min-inline-size: 0;
+  padding: var(--space-4);
+}
+
+.page-pattern-surface > .page-pattern-filters {
+  border-bottom: 1px solid var(--border-default);
 }
 
 .page-pattern-summary {
@@ -57,21 +79,28 @@
   font-variant-numeric: tabular-nums;
 }
 
-.page-pattern-object-content,
-.page-pattern-run-content {
-  min-width: 0;
+.page-pattern-pagination {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-default);
+  padding: var(--space-3) var(--space-4);
 }
 
-.page-pattern-form-actions {
-  justify-content: flex-end;
+.page-pattern-overview {
+  display: grid;
+  min-inline-size: 0;
+  gap: var(--space-4);
+  margin-block-end: var(--space-6);
+  padding: var(--space-4);
 }
 
 @media (max-width: 575px) {
   .page-pattern-heading {
-    align-items: flex-start;
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .page-pattern-actions {
-    width: 100%;
+  .page-pattern-actions,
+  .page-pattern-pagination {
+    justify-content: flex-start;
   }
 }

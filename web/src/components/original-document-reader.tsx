@@ -69,6 +69,7 @@ export function OriginalDocumentReader({
     if (hasKeyClauses && !initialKeyClausesShown.current && quotes.length === 0) setMode("text");
     if (hasKeyClauses) initialKeyClausesShown.current = true;
   }, [hasKeyClauses, quotes.length]);
+  const keyClauseId = keyClause?.id;
   const effectiveMode = keyClause ? "text" : mode;
   useEffect(() => {
     if (noPage) setMode("text");
@@ -90,8 +91,10 @@ export function OriginalDocumentReader({
     if (mark && pane && pane.scrollHeight > pane.clientHeight) {
       pane.scrollTop +=
         mark.getBoundingClientRect().top - pane.getBoundingClientRect().top - pane.clientHeight / 2;
+    } else if (mark && (keyClauseId || focusRange) && typeof mark.scrollIntoView === "function") {
+      mark.scrollIntoView({ block: "center" });
     }
-  }, [effectiveMode, focusRange?.start, keyClause?.id, quoteIdentity]);
+  }, [effectiveMode, focusRange?.start, keyClauseId, quoteIdentity]);
   return (
     <section
       ref={reader}
@@ -116,10 +119,8 @@ export function OriginalDocumentReader({
       {keyClause ? (
         <div className="original-reader-key-clause" aria-label="关键条款冻结文字位置">
           <p role="status">
-            关键条款“{keyClause.heading}”已在冻结文字中定位（{keyClause.sourceLabel}）；
-            {keyClause.page === null
-              ? "原件页码未记录，只定位冻结文字。"
-              : `ClauseNode 记录的起始页为第 ${keyClause.page} 页。`}
+            已定位“{keyClause.heading}”的冻结文字。
+            {keyClause.page === null ? "未记录页码。" : `起始页：第 ${keyClause.page} 页。`}
           </p>
           <blockquote>{keyClause.quote}</blockquote>
         </div>

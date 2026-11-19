@@ -14,7 +14,7 @@ import { useLogout, useSession } from "../api/queries";
 import { actorRoleLabel } from "../domain/review";
 import { PageStatus } from "./page-status";
 import { CircuitMark } from "./circuit-mark";
-import { Avatar, Breadcrumb, Button, Layout, Menu } from "antd";
+import { Avatar, Breadcrumb, Button, Layout } from "antd";
 import {
   ApiOutlined,
   BookOutlined,
@@ -25,6 +25,7 @@ import {
 } from "@ant-design/icons";
 import type { Actor } from "../api/types";
 import { ContextSwitcher } from "./context-switcher";
+import { ShellNavigation, type ShellNavGroup } from "./shell-navigation";
 
 type VersionedRouteTitles = {
   create: string;
@@ -66,48 +67,46 @@ function adminMenuKey(pathname: string): string {
   return "/admin/settings";
 }
 
-const ADMIN_MENU_ITEMS = [
+const ADMIN_MENU_GROUPS: ShellNavGroup[] = [
   {
     key: "organization",
-    type: "group" as const,
-    label: "组织管理",
-    children: [
+    title: "组织管理",
+    links: [
       {
-        key: "/admin/settings",
+        href: "/admin/settings",
         icon: <SettingOutlined />,
-        label: <NavLink to="/admin/settings">设置与运行状态</NavLink>,
+        label: "设置与运行状态",
       },
       {
-        key: "/admin/rulepacks",
+        href: "/admin/rulepacks",
         icon: <SafetyCertificateOutlined />,
-        label: <NavLink to="/admin/rulepacks">规则库</NavLink>,
+        label: "规则库",
       },
       {
-        key: "/admin/governed-knowledge",
+        href: "/admin/governed-knowledge",
         icon: <BookOutlined />,
-        label: <NavLink to="/admin/governed-knowledge">知识治理</NavLink>,
+        label: "知识治理",
       },
       {
-        key: "/admin/infrastructure",
+        href: "/admin/infrastructure",
         icon: <ApiOutlined />,
-        label: <NavLink to="/admin/infrastructure">基础设施与中间件</NavLink>,
+        label: "基础设施与中间件",
       },
     ],
   },
   {
     key: "tenant-operations",
-    type: "group" as const,
-    label: "租户运营",
-    children: [
+    title: "租户运营",
+    links: [
       {
-        key: "/admin/tenant-lifecycle",
+        href: "/admin/tenant-lifecycle",
         icon: <TeamOutlined />,
-        label: <NavLink to="/admin/tenant-lifecycle">租户生命周期</NavLink>,
+        label: "租户生命周期",
       },
       {
-        key: "/admin/jurisdiction-operations",
+        href: "/admin/jurisdiction-operations",
         icon: <ApiOutlined />,
-        label: <NavLink to="/admin/jurisdiction-operations">辖区运营统计</NavLink>,
+        label: "辖区运营统计",
       },
     ],
   },
@@ -164,27 +163,17 @@ function AdminTopbar({
 }
 
 function AdminSidebar({ pathname }: { pathname: string }) {
+  const selected = adminMenuKey(pathname);
   return (
-    <Layout.Sider
-      theme="dark"
-      className="sidenav admin-sidenav"
-      aria-label="管理导航"
-      width={248}
-      collapsedWidth={72}
-      collapsible
-    >
-      <Menu
-        mode="inline"
-        theme="dark"
-        selectedKeys={[adminMenuKey(pathname)]}
-        items={ADMIN_MENU_ITEMS}
-      />
-      <div className="nav-footer">
-        规则版本与发布历史
-        <br />
-        按当前管理身份授权
-      </div>
-    </Layout.Sider>
+    <ShellNavigation
+      title="管理导航"
+      className="admin-sidenav"
+      groups={ADMIN_MENU_GROUPS.map((group) => ({
+        ...group,
+        links: group.links.map((link) => ({ ...link, current: link.href === selected })),
+      }))}
+      footer={<div className="nav-footer">规则版本与发布历史</div>}
+    />
   );
 }
 

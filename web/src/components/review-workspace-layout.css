@@ -200,27 +200,40 @@
   border-inline-start: 2px solid var(--state-progress);
   color: var(--text-primary);
 }
-.review-workspace-layout .hit-key-clause {
-  background: var(--state-progress-bg);
-  border-bottom: 2px dashed var(--state-progress);
-  color: var(--text-primary);
+.key-clause-quick-nav {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  font-size: var(--font-size-ui);
 }
-.review-workspace-layout .hit-key-clause.hit-find {
-  background: var(--search-mark);
+.review-workspace-layout .hit-key-clause {
+  color: var(--text-primary);
+  background: linear-gradient(
+    transparent 30%,
+    var(--reading-highlight, var(--search-mark)) 30%,
+    var(--reading-highlight, var(--search-mark)) 85%,
+    transparent 85%
+  );
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.review-workspace-layout .doc-text .hit-find {
+  background: var(--action-primary-soft);
+  border-bottom: 2px solid var(--action-primary);
 }
 .review-workspace-layout .key-clause-selected {
   outline: 2px solid var(--state-progress);
   outline-offset: 1px;
 }
 .review-workspace-layout .hit-evidence.evidence-find {
-  box-shadow: inset 0 -0.45em var(--search-mark);
-}
-.review-workspace-layout .hit-evidence.key-clause-overlap {
-  outline: 2px dashed var(--state-progress);
-  outline-offset: 1px;
-}
-.review-workspace-layout .hit-evidence.key-clause-overlap.key-clause-selected {
-  outline-style: solid;
+  box-shadow: inset 0 -0.35em var(--action-primary-soft);
 }
 .review-workspace-layout .finding-severity-counts {
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -236,4 +249,104 @@
   .review-workspace-layout .finding-severity-counts {
     grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
   }
+}
+
+/* Keep review controls close to the document while preserving disclosures. */
+.review-reading-controls {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.review-reading-controls .review-workspace-view-switch {
+  margin: 0;
+}
+.review-run-details,
+.review-playbook-details {
+  color: var(--text-secondary);
+}
+.review-run-details > summary,
+.review-playbook-details > summary {
+  cursor: pointer;
+  min-height: 32px;
+  padding: 5px var(--space-2);
+}
+.review-run-details[open] {
+  flex-basis: 100%;
+}
+.review-run-details[open] .review-run-controls {
+  padding: var(--space-2);
+}
+.reader-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--surface-raised);
+}
+.reader-toolbar .document-toolbar {
+  flex: 1 1 auto;
+}
+.reader-toolbar .key-clause-quick-nav {
+  position: static;
+  padding-block: 0;
+}
+.review-workspace-layout .doc-pane {
+  padding: var(--space-3) var(--space-4);
+}
+.review-workspace-layout .doc-pane-head {
+  align-items: center;
+  flex-wrap: nowrap;
+}
+.review-workspace-layout .doc-pane-head strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 15px;
+}
+.review-workspace-layout .doc-pane-head > span,
+.review-workspace-layout .doc-pane-head > details {
+  flex: 0 0 auto;
+}
+@media (max-width: 700px) {
+  .review-workspace-layout.workspace-view-context .col-doc,
+  .review-workspace-layout.workspace-view-evidence .col-doc {
+    overflow: visible;
+  }
+  .reader-toolbar .document-toolbar {
+    flex: 0 0 auto;
+    padding: 0;
+  }
+  .reader-toolbar .document-toolbar h2 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  .reader-toolbar .key-clause-quick-nav {
+    gap: var(--space-1);
+    padding-inline: var(--space-1);
+  }
+  .reader-toolbar .key-clause-quick-nav .ant-btn {
+    padding-inline: var(--space-2);
+  }
+  .review-workspace-layout .doc-pane-head {
+    flex-wrap: wrap;
+  }
+  .review-workspace-layout .doc-pane-head strong {
+    flex-basis: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+.review-workspace-layout .original-reader-modes {
+  margin-block: var(--space-1);
 }

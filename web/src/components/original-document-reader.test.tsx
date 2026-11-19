@@ -43,6 +43,35 @@ describe("original document reader", () => {
     expect(screen.getByRole("button", { name: "原件标注" })).toBeEnabled();
   });
 
+  it("scrolls the page to a selected clause when the document pane does not scroll", () => {
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
+    render(
+      <div className="col-doc">
+        <OriginalDocumentReader
+          scope={{ caseId: "case", contextKey: "actor", digests: new Map() }}
+          documentId="doc"
+          filename="contract.pdf"
+          digest="digest"
+          text="付款条款。"
+          quotes={[]}
+          keyClause={{
+            id: "key",
+            heading: "付款",
+            sourceLabel: "正文片段",
+            quote: "付款条款。",
+            page: null,
+          }}
+        >
+          <div data-active-source="true">
+            <mark data-selected-key-clause="true">付款条款。</mark>
+          </div>
+        </OriginalDocumentReader>
+      </div>,
+    );
+    expect(scroll).toHaveBeenCalledWith({ block: "center" });
+    scroll.mockRestore();
+  });
+
   it("keeps an unpaged selected key clause on frozen text until the selection is cleared", async () => {
     const user = userEvent.setup();
     const onClearKeyClause = vi.fn();
@@ -72,7 +101,7 @@ describe("original document reader", () => {
       </OriginalDocumentReader>,
     );
 
-    expect(screen.getByText(/原件页码未记录，只定位冻结文字/)).toBeInTheDocument();
+    expect(screen.getByText(/未记录页码/)).toBeInTheDocument();
     expect(view.container.querySelector("mark.hit-key-clause")).toBeVisible();
     expect(screen.queryByTestId("mock-original-page-view")).not.toBeInTheDocument();
 

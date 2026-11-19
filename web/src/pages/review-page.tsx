@@ -1202,53 +1202,55 @@ export function ReviewPage() {
       <section className="page page-review">
         {session.isFetching ? <p role="status">正在重新确认登录状态，办理暂不可用。</p> : null}
         <div ref={readingContent} hidden={session.isFetching}>
-          <header className="page-head">
-            <div>
-              <h1>审查工作区</h1>
-              <p>{caseDetail.data?.title ?? "案件"}</p>
-            </div>
-            {activeReturn ? (
-              <Link
-                to={activeReturn}
-                state={{ ...caseNavigationState, reviewReadingPosition: activeReturnPosition }}
+          <div className="review-page-bar">
+            <header className="page-head">
+              <div>
+                <h1>审查工作区</h1>
+                <p title={caseDetail.data?.title ?? "案件"}>{caseDetail.data?.title ?? "案件"}</p>
+              </div>
+              {activeReturn ? (
+                <Link
+                  to={activeReturn}
+                  state={{ ...caseNavigationState, reviewReadingPosition: activeReturnPosition }}
+                >
+                  返回人工办理
+                </Link>
+              ) : null}
+              <Button
+                aria-label={"Agent Studio"}
+                href={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(runId)}/agent${
+                  selectedAttempt?.id
+                    ? `?attempt=${encodeURIComponent(selectedAttempt.id)}`
+                    : selectedAttemptId
+                      ? `?attempt=${encodeURIComponent(selectedAttemptId)}`
+                      : ""
+                }`}
               >
-                返回人工办理
-              </Link>
-            ) : null}
-            <Button
-              aria-label={"Agent Studio"}
-              href={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(runId)}/agent${
-                selectedAttempt?.id
-                  ? `?attempt=${encodeURIComponent(selectedAttempt.id)}`
-                  : selectedAttemptId
-                    ? `?attempt=${encodeURIComponent(selectedAttemptId)}`
-                    : ""
-              }`}
-            >
-              Agent Studio
-            </Button>
-            <Button
-              aria-label={"返回案件"}
-              href={`/cases/${encodeURIComponent(caseId)}`}
-              onClick={(event) => {
-                if (
-                  event.button !== 0 ||
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.altKey ||
-                  event.shiftKey
-                )
-                  return;
-                event.preventDefault();
-                void navigate(`/cases/${encodeURIComponent(caseId)}`, {
-                  state: caseNavigationState,
-                });
-              }}
-            >
-              返回案件
-            </Button>
-          </header>
-          <ReviewSectionNav active={reviewSection} onSelect={selectReviewSection} />
+                Agent Studio
+              </Button>
+              <Button
+                aria-label={"返回案件"}
+                href={`/cases/${encodeURIComponent(caseId)}`}
+                onClick={(event) => {
+                  if (
+                    event.button !== 0 ||
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.altKey ||
+                    event.shiftKey
+                  )
+                    return;
+                  event.preventDefault();
+                  void navigate(`/cases/${encodeURIComponent(caseId)}`, {
+                    state: caseNavigationState,
+                  });
+                }}
+              >
+                返回案件
+              </Button>
+            </header>
+            <ReviewSectionNav active={reviewSection} onSelect={selectReviewSection} />
+          </div>
           {streamStatus === "closed" ? (
             <section className="callout" role="status" aria-live="polite">
               <span>运行状态流已关闭，不会自动重连；请刷新页面或重新登录后再试。</span>
