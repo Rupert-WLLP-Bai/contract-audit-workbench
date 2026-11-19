@@ -174,9 +174,7 @@ describe("key clause navigation", () => {
       expect(frozenQuoteMatchesDocument(item.selection, scope, document)).toBe(true);
     }
     const older = keyClauseNavigationFor(scope, documentOf({ text, clauses: [] }));
-    expect(older.allCandidates?.some((item) => item.sourceLabel === "表格单元格")).not.toBe(
-      true,
-    );
+    expect(older.allCandidates?.some((item) => item.sourceLabel === "表格单元格")).not.toBe(true);
   });
 
   it("uses explicit deadline labels and units without assuming a bare number is a date or duration", () => {

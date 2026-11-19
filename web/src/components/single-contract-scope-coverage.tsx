@@ -165,7 +165,9 @@ function WorkspaceCoverage({ workspace }: Extract<Props, { mode: "workspace" }>)
           </div>
           <p>{descriptions[payment.status]}</p>
           {payment.reason ? (
-            <p>{payment.reason.replace("主合同没有可读取的冻结文本", "主合同没有可读取的送审文本")}</p>
+            <p>
+              {payment.reason.replace("主合同没有可读取的冻结文本", "主合同没有可读取的送审文本")}
+            </p>
           ) : null}
           {version === "1" ? <PaymentExpressions /> : null}
         </li>

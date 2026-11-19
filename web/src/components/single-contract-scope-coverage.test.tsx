@@ -236,7 +236,9 @@ describe("single contract coverage", () => {
       reason: "主合同没有可读取的冻结文本，付款与结算原文核对未执行。",
     });
     render(<SingleContractScopeCoverage mode="workspace" workspace={result} />);
-    expect(screen.getByText("主合同没有可读取的送审文本，付款与结算原文核对未执行。")).toBeInTheDocument();
+    expect(
+      screen.getByText("主合同没有可读取的送审文本，付款与结算原文核对未执行。"),
+    ).toBeInTheDocument();
   });
 
   it("does not report identification as executed when the frozen contract was not parsed", () => {
