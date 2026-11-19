@@ -188,6 +188,7 @@ test("list, review, citation and return retain selection and actual reading posi
   const caseScroll = await page.evaluate(() => scrollY);
   await next.click();
   await expect(page).toHaveURL(new RegExp(`/cases/${caseId}/reviews/${runId}`));
+  await expect(page.getByText("运行状态流已关闭", { exact: false })).toBeVisible();
   if (!(await page.getByRole("dialog", { name: "审查记录" }).isVisible())) {
     await page.getByRole("button", { name: "审查记录", exact: true }).click();
   }
@@ -209,6 +210,7 @@ test("list, review, citation and return retain selection and actual reading posi
   const findingScroll = await findingsPane.evaluate((element) => element.scrollTop);
   expect(documentScroll).toBeGreaterThan(0);
   // A short queue may not need scrolling; still verify its actual position is restored.
+  await expect(page.getByText("运行状态流已关闭", { exact: false })).toBeVisible();
   if (!(await page.getByRole("dialog", { name: "审查记录" }).isVisible())) {
     await page.getByRole("button", { name: "审查记录", exact: true }).click();
   }
@@ -272,6 +274,7 @@ test("a tenant switch discards the former citation and list return state", async
   );
   await page.getByRole("link", { name: "导航样本 37", exact: true }).click();
   await page.getByRole("link", { name: "核对原文并处理决定" }).click();
+  await expect(page.getByText("运行状态流已关闭", { exact: false })).toBeVisible();
   if (!(await page.getByRole("dialog", { name: "审查记录" }).isVisible())) {
     await page.getByRole("button", { name: "审查记录", exact: true }).click();
   }
@@ -279,8 +282,14 @@ test("a tenant switch discards the former citation and list return state", async
   await page.getByRole("button", { name: "读取本次原文" }).first().click();
   await expect(page.locator(".frozen-citation-reader").first()).toBeVisible();
   fixture.tenant = "tenant-b";
+  const switchedSessionResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" && new URL(response.url()).pathname === "/api/session",
+  );
   await page.reload();
-  await expect(page.getByText("合成审查员")).toBeVisible();
+  const switchedSession = await (await switchedSessionResponse).json();
+  await expect(page.getByRole("region", { name: "审查工作区" })).toBeVisible();
+  expect(switchedSession.actor.tenant_id).toBe("tenant-b");
   await expect.poll(() => new URL(page.url()).searchParams.has("citation")).toBe(false);
   await expect(page.locator(".frozen-citation-reader")).toHaveCount(0);
   await page.getByRole("link", { name: "返回案件", exact: true }).click();
