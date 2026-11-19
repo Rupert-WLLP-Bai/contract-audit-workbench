@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r5
+// Updated: 2026-11-19
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -61,7 +61,7 @@ const labels: Record<ReviewDiffKind, string> = {
 function choiceProblem(choice: ReviewChoice): string | null {
   const attempt = choice.attempt;
   if (attempt.run_id !== choice.runId || !attempt.id) return "执行身份无效，不可比较";
-  if (attempt.history_kind !== "frozen") return "无冻结记录，不可比较";
+  if (attempt.history_kind !== "frozen") return "无留档记录，不可比较";
   if (
     !attempt.finished_at ||
     (attempt.state !== "completed" &&
@@ -69,7 +69,7 @@ function choiceProblem(choice: ReviewChoice): string | null {
       attempt.state !== "partial")
   )
     return "尚未结束，不可比较";
-  if (attempt.frozen_result_available !== true) return "冻结输入或结果不可用，不可比较";
+  if (attempt.frozen_result_available !== true) return "当次送审内容或结果不可用，不可比较";
   return null;
 }
 
@@ -169,7 +169,7 @@ function SnapshotSide({ title, workspace }: { title: string; workspace: ReviewWo
         <dd>{scope || agent?.rulepack ? "已返回规则身份，详见技术详情" : "规则包身份未返回"}</dd>
         <dt>已返回的规则检查</dt>
         <dd>{rules.length ? rules.join("；") : "未返回，不能推断已检查"}</dd>
-        <dt>冻结材料与解析版本</dt>
+        <dt>留档材料与解析版本</dt>
         <dd>
           {(snapshot?.document_ids ?? []).map((id) => {
             const doc = workspace.documents.find(
@@ -182,7 +182,7 @@ function SnapshotSide({ title, workspace }: { title: string; workspace: ReviewWo
               <div key={id}>
                 {doc?.filename ?? "材料未返回"}
                 <TechnicalDetail
-                  label="冻结材料技术详情"
+                  label="留档材料技术详情"
                   value={JSON.stringify({
                     document_id: id,
                     parsed_document_id: doc?.parsed_document_id ?? null,
@@ -268,8 +268,8 @@ function ContextComparison({
           规则：
           {stateText(
             rules,
-            "冻结规则摘要一致或属于同一审查",
-            "冻结规则摘要不同",
+            "适用规则摘要一致或属于同一审查",
+            "适用规则摘要不同",
             "规则摘要未完整返回，不能确认规则集一致",
           )}
         </li>
@@ -288,7 +288,7 @@ function ContextComparison({
         </li>
         <li>
           解析：
-          {sameIds(sourceParses, targetParses) ? "冻结解析版本集合一致" : "冻结解析版本集合不同"}
+          {sameIds(sourceParses, targetParses) ? "留档解析版本集合一致" : "留档解析版本集合不同"}
           ；缺少的解析器、配置或正文摘要标记为未返回。
         </li>
       </ul>
@@ -312,7 +312,7 @@ function Citation({ workspace, anchor }: { workspace: ReviewWorkspace; anchor: E
     const reason =
       resolved?.kind === "snapshot" || resolved?.kind === "unavailable"
         ? resolved.reason
-        : "未找到与本次执行一致的冻结材料和解析身份。";
+        : "未找到与本次执行一致的留档材料和解析身份。";
     return (
       <li>
         <p>引用未能定位：{reason}</p>
@@ -403,7 +403,7 @@ function DiffSide({ label, side }: { label: string; side: ReviewDiffSide | null 
       {finding?.unverified_reason ? (
         <p className="callout">尚未核验：{finding.unverified_reason}</p>
       ) : null}
-      <Link to={href}>打开{label}的冻结执行记录</Link>
+      <Link to={href}>打开{label}的审查记录</Link>
       {anchors.length ? (
         <ul className="review-diff-citations">
           {anchors.map((anchor, index) => (
@@ -558,7 +558,7 @@ function ReviewDiffBody({ caseId, latestRunId, actorScope }: ReviewDiffProps) {
   return (
     <>
       <p>
-        选择同一案件中两条已结束、保存了冻结输入和结果的执行记录。部分审查可核对已返回的结果，缺失检查保留待核对；来源和目标均按所选身份重新读取。
+        选择同一案件中两条已结束、保存了送审内容和结果的执行记录。部分审查可核对已返回的结果，缺失检查保留待核对；来源和目标均按所选身份重新读取。
       </p>
       <p className="meta">
         默认先读取最新审查记录；更早记录按需读取，未读取的旧记录不会出现在选择中。
@@ -608,7 +608,7 @@ function ReviewDiffBody({ caseId, latestRunId, actorScope }: ReviewDiffProps) {
         </div>
       )}
       {sameSelection ? <p className="callout">请选择两条不同的执行记录。</p> : null}
-      {source.isFetching || target.isFetching ? <p role="status">正在读取所选冻结记录…</p> : null}
+      {source.isFetching || target.isFetching ? <p role="status">正在读取所选留档记录…</p> : null}
       {source.isError ? (
         <div role="alert">
           <p>来源记录不可读取：{errorMessage(source.error)}</p>
@@ -656,7 +656,7 @@ export function ReviewDiff(props: ReviewDiffProps) {
         items={[
           {
             key: "diff",
-            label: "复审差异：选择两个冻结执行记录",
+            label: "复审差异：选择两个审查记录",
             children: open ? (
               <ReviewDiffBody
                 key={`${props.caseId}:${props.latestRunId}:${props.actorScope}`}

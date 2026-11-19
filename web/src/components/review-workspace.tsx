@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Composes the frozen attempt, document reading controls and supporting findings, decisions and execution views without displacing the original.
+// Purpose: Composes the selected review attempt’s documents and risk findings and coordinates exact citation navigation, scope changes and the existing review commands.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-19
-// Revision: r13
+// Revision: r14
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -17,6 +17,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { Button, Select } from "antd";
 import type { ContractFactsCitation } from "../api/contract-facts";
 import type {
@@ -472,6 +473,7 @@ function DocumentRunStatus({
   cancelling,
   cancelError,
   onCancel,
+  showAttemptControls = true,
 }: {
   workspace: ReviewWorkspace;
   streamStatus: StreamStatus;
@@ -482,6 +484,7 @@ function DocumentRunStatus({
   cancelling: boolean;
   cancelError: string | null;
   onCancel: () => void;
+  showAttemptControls?: boolean;
 }) {
   const outcome = selectedOutcome(workspace);
   const preparing = workspace.review_attempts?.attempt.history_kind === "preparing";
@@ -510,27 +513,28 @@ function DocumentRunStatus({
           !canRestartUserCancelled(workspace) ? (
             <p>审查由用户主动取消；当次审查依据尚不能核对，请查看审查准备。</p>
           ) : null}
-          {selected ? (
-            <label className="field">
-              查看执行记录
-              <Select
-                aria-label="查看执行记录"
-                value={selected.id}
-                onChange={onSelectAttempt}
-                options={attemptOptions(attempts)}
-              />
-            </label>
-          ) : (
-            <p>没有获取到本次审查的执行记录。未记录的阶段、耗时和用量不会显示为已知。</p>
-          )}
+          {showAttemptControls &&
+            (selected ? (
+              <label className="field">
+                查看执行记录
+                <Select
+                  aria-label="查看执行记录"
+                  value={selected.id}
+                  onChange={onSelectAttempt}
+                  options={attemptOptions(attempts)}
+                />
+              </label>
+            ) : (
+              <p>没有获取到本次审查的执行记录。未记录的阶段、耗时和用量不会显示为已知。</p>
+            ))}
         </div>
       </details>
-      {selected?.history_kind === "legacy_unfrozen" ? (
+      {showAttemptControls && selected?.history_kind === "legacy_unfrozen" ? (
         <p className="callout">
           较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。
         </p>
       ) : null}
-      {canCancel ? (
+      {showAttemptControls && canCancel ? (
         <Button type="text" disabled={cancelling} onClick={onCancel}>
           {cancelling ? "正在取消" : "取消本次执行"}
         </Button>
@@ -581,6 +585,9 @@ export function ReviewWorkspaceView({
   explicitFindingId = null,
   navigationSerial = 0,
   surface = "full",
+  immersive = false,
+  coverageHost,
+  onReturnToReading,
 }: {
   workspace: ReviewWorkspace;
   caseDetail?: CaseDetail;
@@ -627,12 +634,39 @@ export function ReviewWorkspaceView({
   workTarget?: WorkTarget | null;
   navigationSerial?: number;
   surface?: "full" | "document" | "trace" | "coverage";
+  immersive?: boolean;
+  coverageHost?: HTMLElement | null;
+  onReturnToReading?: () => void;
 }) {
   const { run } = workspace;
   const { selected, attempts } = attemptsOf(workspace);
   const matchingCaseDetail = caseDetail?.id === run.case_id ? caseDetail : undefined;
   const frozenAttempt =
     selected?.history_kind === "frozen" && selected.run_id === run.id ? selected : null;
+  const readingDocuments = useMemo(() => {
+    if (!immersive) return workspace.documents;
+    const submittedIds = new Set(workspace.snapshot?.document_ids ?? []);
+    const parsedIds = new Set(frozenAttempt?.parsed_document_ids ?? []);
+    return workspace.documents
+      .filter((document) => !document.superseded && submittedIds.has(document.id))
+      .map((document) => {
+        if (document.parsed_document_id && parsedIds.has(document.parsed_document_id))
+          return document;
+        return {
+          ...document,
+          parsed_document: null,
+          parsed_document_id: null,
+          text: null,
+          clauses: [],
+          table_cells: undefined,
+        };
+      });
+  }, [
+    immersive,
+    workspace.documents,
+    workspace.snapshot?.document_ids,
+    frozenAttempt?.parsed_document_ids,
+  ]);
   const stageQuoteScope = useMemo<FrozenQuoteScope | null>(() => {
     if (
       !quoteScope ||
@@ -727,7 +761,10 @@ export function ReviewWorkspaceView({
       setWorkspaceView("evidence");
   }, [workTarget?.kind, workTarget?.id, navigationSerial, explicitFindingId, selectedId]);
   function selectFinding(findingId: string) {
+    setCoverageLocation(null);
+    setFactLocation(null);
     onSelect(findingId);
+    if (immersive) return;
     if (workspaceView !== "evidence") {
       focusEvidenceAfterSwitch.current = true;
       setWorkspaceView("evidence");
@@ -740,6 +777,78 @@ export function ReviewWorkspaceView({
   const showCoverage = surface === "full" || surface === "coverage";
   const showTrace = surface === "full" || surface === "trace";
   const showRetry = hasTransientRetryCause(workspace) || canRestartUserCancelled(workspace);
+  const reviewReferences = (
+    <>
+      {coverage.kind === "known" &&
+        coverage.version === "2" &&
+        coverage.payment.status === "observed" && (
+          <section className="reading-payment-evidence" aria-label="付款与结算">
+            <strong>付款与结算</strong>
+            <div>
+              {coverage.payment.evidence?.map((anchor) => (
+                <Button
+                  key={anchor.id}
+                  title={anchor.quote}
+                  disabled={
+                    !stageQuoteScope?.sourceProofs?.some(
+                      (proof) =>
+                        proof.documentId === anchor.document_version_id &&
+                        proof.parsedDocumentId === anchor.parsed_document_id,
+                    )
+                  }
+                  onClick={() => {
+                    setFactLocation(null);
+                    setCoverageLocation({ attemptId: selected!.id, anchor: { ...anchor } });
+                    setWorkspaceView("reading");
+                    onReturnToReading?.();
+                  }}
+                >
+                  {anchor.observation_labels?.length
+                    ? `${anchor.observation_labels.join("、")}：`
+                    : ""}
+                  {anchor.quote}
+                </Button>
+              ))}
+            </div>
+          </section>
+        )}
+      {coverage.kind === "known" &&
+        coverage.version === "2" &&
+        coverage.payment.status === "insufficient" && (
+          <p className="reading-payment-evidence">
+            <strong>付款与结算</strong>
+            <span>本次未定位支持的原文，请结合全文核对。</span>
+          </p>
+        )}
+      {coverage.kind === "known" &&
+        !workspace.documents.some((document) => document.role === "procurement") && (
+          <details className="review-secondary-section">
+            <summary>条款比对</summary>
+            <p>本次未包含采购文件，尚不能进行采购条款比对。</p>
+            <a href={`/cases/${encodeURIComponent(run.case_id)}#case-materials`}>查看案件材料</a>
+          </details>
+        )}
+      {oldCoverageFindings.length > 0 && (
+        <details className="review-secondary-section">
+          <summary>历史规则记录</summary>
+          {oldCoverageFindings.map((finding) => (
+            <p key={finding.id}>{finding.claim}</p>
+          ))}
+        </details>
+      )}
+      {workspace.contract_facts ? (
+        <ContractFactsPanel
+          facts={workspace.contract_facts}
+          onLocate={(citation) => {
+            setCoverageLocation(null);
+            setWorkspaceView("reading");
+            onReturnToReading?.();
+            setFactLocation({ attemptId: workspace.contract_facts!.attempt_id, citation });
+          }}
+        />
+      ) : null}
+    </>
+  );
   return (
     <div className="workspace">
       {surface === "full" ? (
@@ -759,11 +868,12 @@ export function ReviewWorkspaceView({
         />
       ) : null}
       <div className="review-reading-controls">
-        {surface === "document" ? (
+        {(surface === "document" && !immersive) || surface === "trace" ? (
           <>
             <DocumentRunStatus
               workspace={workspace}
               streamStatus={streamStatus}
+              showAttemptControls={surface !== "trace"}
               selected={selected}
               attempts={attempts}
               onSelectAttempt={onSelectAttempt}
@@ -774,7 +884,7 @@ export function ReviewWorkspaceView({
             />
           </>
         ) : null}
-        {showDocument ? (
+        {showDocument && !immersive ? (
           <div className="review-workspace-view-switch" role="group" aria-label="工作区视图">
             <Button
               htmlType="button"
@@ -801,7 +911,7 @@ export function ReviewWorkspaceView({
           </div>
         ) : null}
       </div>
-      {surface === "document" && workspace.snapshot?.adopted_playbook ? (
+      {surface === "document" && !immersive && workspace.snapshot?.adopted_playbook ? (
         <details className="review-playbook-details">
           <summary>本次审查手册</summary>
           <FrozenPlaybookPanel adoption={workspace.snapshot.adopted_playbook} />
@@ -826,62 +936,26 @@ export function ReviewWorkspaceView({
           restartCancelled={canRestartUserCancelled(workspace)}
         />
       ) : null}
+      {showDocument && immersive && coverageHost && createPortal(reviewReferences, coverageHost)}
       {showDocument ? (
         <>
-          {coverage.kind === "known" &&
-            coverage.version === "2" &&
-            coverage.payment.status === "observed" && (
-              <section className="reading-payment-evidence" aria-label="付款与结算">
-                <strong>付款与结算</strong>
-                <div>
-                  {coverage.payment.evidence?.map((anchor) => (
-                    <Button
-                      key={anchor.id}
-                      title={anchor.quote}
-                      disabled={
-                        !stageQuoteScope?.sourceProofs?.some(
-                          (proof) =>
-                            proof.documentId === anchor.document_version_id &&
-                            proof.parsedDocumentId === anchor.parsed_document_id,
-                        )
-                      }
-                      onClick={() => {
-                        setFactLocation(null);
-                        setCoverageLocation({ attemptId: selected!.id, anchor: { ...anchor } });
-                        setWorkspaceView("reading");
-                      }}
-                    >
-                      {anchor.observation_labels?.length
-                        ? `${anchor.observation_labels.join("、")}：`
-                        : ""}
-                      {anchor.quote}
-                    </Button>
-                  ))}
-                </div>
-              </section>
-            )}
-          {coverage.kind === "known" &&
-            coverage.version === "2" &&
-            coverage.payment.status === "insufficient" && (
-              <p className="reading-payment-evidence">
-                <strong>付款与结算</strong>
-                <span>本次未定位支持的原文，请结合全文核对。</span>
-              </p>
-            )}
+          {!immersive && reviewReferences}
           <div
-            className={`workspace-grid review-workspace-layout workspace-view-${workspaceView} layout-${layout}${activeCoverageEvidence ? " coverage-quote-selected" : ""}`}
+            className={`workspace-grid review-workspace-layout workspace-view-${immersive ? "immersive" : workspaceView} layout-${layout}${activeCoverageEvidence ? " coverage-quote-selected" : ""}`}
             style={gridStyle}
           >
             <DocumentStage
               key={`${run.id}:${workspace.review_attempts?.attempt.id ?? "legacy"}`}
-              documents={workspace.documents}
+              documents={readingDocuments}
+              immersive={immersive}
+              materialVersions={matchingCaseDetail?.material_versions}
               finding={
-                workspaceView === "evidence"
+                immersive || workspaceView === "evidence"
                   ? (reviewFindings.find((item) => item.id === selectedId) ?? null)
                   : null
               }
               findings={reviewFindings}
-              selectedFindingId={workspaceView === "evidence" ? selectedId : null}
+              selectedFindingId={immersive || workspaceView === "evidence" ? selectedId : null}
               onSelectFinding={selectFinding}
               layout={layout}
               showDiagnostics={showDiagnostics}
@@ -899,13 +973,21 @@ export function ReviewWorkspaceView({
               contractFactsLocationScope={contractFactsLocationScope}
               onQuoteSelectionChange={onQuoteSelectionChange}
             />
-            <WorkspaceResizeHandle value={findingColumnWidth} onChange={setFindingColumnWidth} />
+            {!immersive && (
+              <WorkspaceResizeHandle value={findingColumnWidth} onChange={setFindingColumnWidth} />
+            )}
             <FindingPanel
+              immersive={immersive}
               findings={reviewFindings}
               evaluations={workspace.evaluations ?? []}
-              documents={workspace.documents}
+              documents={readingDocuments}
               selectedId={selectedId}
               onSelect={selectFinding}
+              onSelectCitation={(findingId, anchor) => {
+                selectFinding(findingId);
+                if (selected)
+                  setCoverageLocation({ attemptId: selected.id, anchor: { ...anchor } });
+              }}
               showDiagnostics={showDiagnostics}
               pending={pending}
               canDecide={canDecide}
@@ -914,7 +996,9 @@ export function ReviewWorkspaceView({
               saveError={saveError}
               onDecide={onDecide}
               onBatchDecide={onBatchDecide}
-              requestedFindingId={workTarget?.kind === "finding" ? workTarget.id : null}
+              requestedFindingId={
+                workTarget?.kind === "finding" ? workTarget.id : explicitFindingId
+              }
               navigationSerial={navigationSerial}
               clauseProposalContext={{
                 caseId: run.case_id,
@@ -930,34 +1014,6 @@ export function ReviewWorkspaceView({
               }}
             />
           </div>
-          {coverage.kind === "known" &&
-            !workspace.documents.some((document) => document.role === "procurement") && (
-              <details className="review-secondary-section">
-                <summary>条款比对</summary>
-                <p>本次未包含采购文件，尚不能进行采购条款比对。</p>
-                <a href={`/cases/${encodeURIComponent(run.case_id)}#case-materials`}>
-                  查看案件材料
-                </a>
-              </details>
-            )}
-          {oldCoverageFindings.length > 0 && (
-            <details className="review-secondary-section">
-              <summary>历史规则记录</summary>
-              {oldCoverageFindings.map((finding) => (
-                <p key={finding.id}>{finding.claim}</p>
-              ))}
-            </details>
-          )}
-          {workspace.contract_facts ? (
-            <ContractFactsPanel
-              facts={workspace.contract_facts}
-              onLocate={(citation) => {
-                setCoverageLocation(null);
-                setWorkspaceView("reading");
-                setFactLocation({ attemptId: workspace.contract_facts!.attempt_id, citation });
-              }}
-            />
-          ) : null}
         </>
       ) : null}
       {showCoverage ? (

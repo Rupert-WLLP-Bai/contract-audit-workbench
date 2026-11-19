@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Presents frozen clause candidates and human decisions, previews derived text, and resumes uploaded material separately from atomic contract acceptance.
+// Purpose: Displays scoped clause suggestions and history, verifies the source for the workspace diff, and uses existing commands to create proposals and accept or reject them with append-only records.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-19
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -23,7 +23,14 @@ import {
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { errorMessage, isConflict, isForbidden, isUnauthenticated } from "../api/http";
+import {
+  assertCommandContextCurrent,
+  captureCommandContext,
+  errorMessage,
+  isConflict,
+  isForbidden,
+  isUnauthenticated,
+} from "../api/http";
 import {
   useCaseClauseProposals,
   useContractLedger,
@@ -49,7 +56,7 @@ import type {
   ReviewDocument,
 } from "../api/types";
 import { actorReadContextKey } from "../domain/actor-read-context";
-import { resolveAnchor } from "../domain/text";
+import { resolveAnchor, sliceByCodePoints } from "../domain/text";
 import {
   clearPendingMutationKey,
   fileSha256,
@@ -73,6 +80,7 @@ export interface ClauseProposalPanelContext {
 interface ClauseProposalContext extends ClauseProposalPanelContext {
   finding: Finding;
   documents: ReviewDocument[];
+  immersive?: boolean;
 }
 
 type DecisionMode = "accept" | "accept_edited" | "reject";
@@ -369,8 +377,35 @@ function ClauseProposalCard({
   const linkedRemediation = context.remediations.find(
     (item) => item.id === proposal.remediation_id && item.case_id === context.caseId,
   );
-  const sourceTitle = proposal.evidence_verified
-    ? (proposal.original_text ?? proposal.evidence?.quote ?? "冻结原文未返回")
+  const evidence = proposal.evidence;
+  const sourceDocuments = evidence
+    ? context.documents.filter(
+        (document) =>
+          document.id === evidence.document_id &&
+          document.parsed_document_id === evidence.parsed_document_id &&
+          document.parse_status === "ready" &&
+          document.text !== null &&
+          (!document.parsed_document ||
+            (document.parsed_document.id === evidence.parsed_document_id &&
+              document.parsed_document.document_id === evidence.document_id &&
+              document.parsed_document.status === "ready" &&
+              document.parsed_document.normalized_digest === evidence.normalized_digest)) &&
+          sliceByCodePoints(document.text, evidence.start, evidence.end) === evidence.quote,
+      )
+    : [];
+  const sourceDocument = sourceDocuments.length === 1 ? sourceDocuments[0] : undefined;
+  const evidenceVerified =
+    proposal.evidence_verified &&
+    (!context.immersive ||
+      Boolean(
+        evidence &&
+        sourceDocument &&
+        context.frozenParsedDocumentIds.includes(evidence.parsed_document_id) &&
+        evidence.quote.trim() !== "" &&
+        (!proposal.original_text || proposal.original_text === evidence.quote),
+      ));
+  const sourceTitle = evidenceVerified
+    ? proposal.original_text || proposal.evidence?.quote || "审查留档的原文未返回"
     : (proposal.unavailable_reason ?? "原文位置未能核验");
   const decisionReasonValid =
     decisionReason.trim().length > 0 && utf8Length(decisionReason.trim()) <= 4000;
@@ -396,7 +431,7 @@ function ClauseProposalCard({
   async function deriveText() {
     if (
       !pending ||
-      !proposal.evidence_verified ||
+      !evidenceVerified ||
       activeMode === null ||
       activeMode === "reject" ||
       !acceptedTextValid ||
@@ -423,13 +458,14 @@ function ClauseProposalCard({
       !selectedContract ||
       activeMode === null ||
       activeMode === "reject" ||
-      !proposal.evidence_verified ||
+      !evidenceVerified ||
       !acceptedTextValid ||
       savedUpload
     )
       return;
     setResubmitError(null);
     try {
+      const commandContext = captureCommandContext(actor);
       const file = new File([derivedText], "条款修订稿.txt", { type: "text/plain;charset=utf-8" });
       const sha256 = await fileSha256(file);
       const value = {
@@ -448,7 +484,9 @@ function ClauseProposalCard({
         idempotencyActorScope(actor),
         `${context.caseId}:${proposal.id}`,
         value,
+        commandContext,
       );
+      assertCommandContextCurrent(commandContext);
       const result = await upload.mutateAsync({
         file,
         role: "draft_contract",
@@ -482,7 +520,7 @@ function ClauseProposalCard({
     if (!actor || !pending || !context.canWrite || !confirmed || !decisionReasonValid) return;
     if (
       action !== "reject" &&
-      (!proposal.evidence_verified || !selectedContract || !uploadedMatches || !savedUpload)
+      (!evidenceVerified || !selectedContract || !uploadedMatches || !savedUpload)
     )
       return;
     setResubmitError(null);
@@ -507,12 +545,15 @@ function ClauseProposalCard({
             sha256: savedUpload!.sha256,
           };
     try {
+      const commandContext = captureCommandContext(actor);
       const pendingKey = await pendingMutationKey(
         "contract.clause-proposal.decision",
         idempotencyActorScope(actor),
         `${context.caseId}:${proposal.id}`,
         input,
+        commandContext,
       );
+      assertCommandContextCurrent(commandContext);
       const result = await decide.mutateAsync({ value: input, idempotencyKey: pendingKey.key });
       clearPendingMutationKey(pendingKey.storageKey);
       if (result.status === "accept" || result.status === "accept_edited") {
@@ -547,64 +588,93 @@ function ClauseProposalCard({
         </Space>
       }
     >
-      <dl>
-        <dt>来源审查</dt>
-        <dd>
-          run {proposal.run_id} · attempt {proposal.attempt_id}
-        </dd>
-        <dt>原条款</dt>
-        <dd>
-          {proposal.evidence_verified ? (
-            <blockquote>
-              {proposal.before_context}
-              <mark>{sourceTitle}</mark>
-              {proposal.after_context}
-            </blockquote>
+      {context.immersive ? (
+        <div className="review-clause-proposal">
+          {sourceDocument ? <p className="meta">{sourceDocument.filename}</p> : null}
+          {evidenceVerified ? (
+            <div className="review-clause-diff">
+              <p aria-label="原条款">
+                <del>
+                  <span aria-hidden="true">− </span>
+                  {sourceTitle}
+                </del>
+              </p>
+              <p aria-label="建议修改">
+                <ins>
+                  <span aria-hidden="true">+ </span>
+                  {proposal.proposed_text}
+                </ins>
+              </p>
+            </div>
           ) : (
-            <p>{sourceTitle}</p>
+            <blockquote>{proposal.proposed_text}</blockquote>
           )}
-        </dd>
-        <dt>建议文本</dt>
-        <dd>
-          <blockquote>{proposal.proposed_text}</blockquote>
-        </dd>
-        <dt>建议理由</dt>
-        <dd>{proposal.reason}</dd>
-        {proposal.remediation_id ? (
-          <>
-            <dt>关联整改</dt>
-            <dd>
-              {linkedRemediation ? (
-                <Link
-                  to={`/cases/${encodeURIComponent(context.caseId)}?work_kind=remediation&work_item=${encodeURIComponent(linkedRemediation.id)}#case-remediation`}
-                >
-                  打开关联整改：{linkedRemediation.measure.slice(0, 80)}
-                </Link>
-              ) : (
-                "已记录整改身份；当前授权案件列表未返回此记录。"
-              )}
-            </dd>
-          </>
-        ) : null}
-      </dl>
-      <TechnicalDetail
-        label="条款建议来源技术详情"
-        value={JSON.stringify({
-          input_hash: proposal.input_hash,
-          evidence: proposal.evidence,
-          rule_pack: proposal.rule_pack,
-          playbook: proposal.playbook,
-          remediation_id: proposal.remediation_id,
-        })}
-      />
-      <ProposalHistory proposal={proposal} />
-      {!proposal.evidence_verified ? (
+          <p className="meta">{proposal.reason}</p>
+        </div>
+      ) : (
+        <dl>
+          <dt>来源审查</dt>
+          <dd>
+            run {proposal.run_id} · attempt {proposal.attempt_id}
+          </dd>
+          <dt>原条款</dt>
+          <dd>
+            {evidenceVerified ? (
+              <blockquote>
+                {proposal.before_context}
+                <mark>{sourceTitle}</mark>
+                {proposal.after_context}
+              </blockquote>
+            ) : (
+              <p>{sourceTitle}</p>
+            )}
+          </dd>
+          <dt>建议文本</dt>
+          <dd>
+            <blockquote>{proposal.proposed_text}</blockquote>
+          </dd>
+          <dt>建议理由</dt>
+          <dd>{proposal.reason}</dd>
+          {proposal.remediation_id ? (
+            <>
+              <dt>关联整改</dt>
+              <dd>
+                {linkedRemediation ? (
+                  <Link
+                    to={`/cases/${encodeURIComponent(context.caseId)}?work_kind=remediation&work_item=${encodeURIComponent(linkedRemediation.id)}#case-remediation`}
+                  >
+                    打开关联整改：{linkedRemediation.measure.slice(0, 80)}
+                  </Link>
+                ) : (
+                  "已记录整改身份；当前授权案件列表未返回此记录。"
+                )}
+              </dd>
+            </>
+          ) : null}
+        </dl>
+      )}
+      {!context.immersive ? (
+        <TechnicalDetail
+          label="条款建议来源技术详情"
+          value={JSON.stringify({
+            input_hash: proposal.input_hash,
+            evidence: proposal.evidence,
+            rule_pack: proposal.rule_pack,
+            playbook: proposal.playbook,
+            remediation_id: proposal.remediation_id,
+          })}
+        />
+      ) : null}
+      {!context.immersive || proposal.history.length > 0 ? (
+        <ProposalHistory proposal={proposal} />
+      ) : null}
+      {!evidenceVerified ? (
         <Alert
           type="warning"
           title="引用未核验：不能接受为合同修改。"
           description={
             proposal.unavailable_reason ??
-            "服务端无法确认该建议与冻结原文的位置一致；可以查看或拒绝此候选。"
+            "服务端无法确认该建议与本次审查留档的原文位置一致；可以查看或拒绝此候选。"
           }
         />
       ) : null}
@@ -614,7 +684,7 @@ function ClauseProposalCard({
           title="已追加合同修订；旧材料、旧审查和本条处理历史均保留。"
           description={
             <>
-              <p>要复核修改后的材料，请创建一轮新审查。旧审查的重试继续使用原冻结输入。</p>
+              <p>要复核修改后的材料，请创建一轮新审查。旧审查的重试继续使用原留档材料。</p>
               <Link to={`/cases/${encodeURIComponent(context.caseId)}`}>
                 返回案件页，选择审查范围和业务时点并发起新审查
               </Link>
@@ -631,25 +701,23 @@ function ClauseProposalCard({
       ) : null}
       {pending && context.canWrite ? (
         <section aria-label="条款建议处理">
-          <h5>人工处理</h5>
+          {!context.immersive ? <h5>人工处理</h5> : null}
           <Space wrap>
             <Button
               disabled={
-                !proposal.evidence_verified ||
-                Boolean(savedUpload && savedUpload.action !== "accept")
+                !evidenceVerified || Boolean(savedUpload && savedUpload.action !== "accept")
               }
               onClick={() => startDecision("accept")}
             >
-              按原建议生成修改稿
+              {context.immersive ? "采纳这条修改" : "按原建议生成修改稿"}
             </Button>
             <Button
               disabled={
-                !proposal.evidence_verified ||
-                Boolean(savedUpload && savedUpload.action !== "accept_edited")
+                !evidenceVerified || Boolean(savedUpload && savedUpload.action !== "accept_edited")
               }
               onClick={() => startDecision("accept_edited")}
             >
-              编辑后生成修改稿
+              {context.immersive ? "改一下再采纳" : "编辑后生成修改稿"}
             </Button>
             <Button danger onClick={() => startDecision("reject")}>
               拒绝建议
@@ -712,7 +780,7 @@ function ClauseProposalCard({
                     <>
                       <label htmlFor={`clause-material-${proposal.id}`}>替换当前草稿材料</label>
                       <p className="meta">
-                        这里只能替换与本次冻结引用相同的现行材料；若它已变化，需重新核对来源，不能跨材料生成修订。
+                        这里只能替换与本次留档引用相同的现行材料；若它已变化，需重新核对来源，不能跨材料生成修订。
                       </p>
                       <Select
                         id={`clause-material-${proposal.id}`}
@@ -730,8 +798,8 @@ function ClauseProposalCard({
                   ) : (
                     <Alert
                       type="warning"
-                      title="没有与本次冻结引用直接对应的现行合同草稿材料。"
-                      description="只能替换当前仍以该冻结原件为直接前一版本的草稿材料；材料已变化时请重新核对案件来源。"
+                      title="没有与本次留档引用直接对应的现行合同草稿材料。"
+                      description="只能替换当前仍以该留档原件为直接前一版本的草稿材料；材料已变化时请重新核对案件来源。"
                     />
                   )}
                   <label htmlFor={`clause-decision-reason-${proposal.id}`}>本次处理理由</label>
@@ -749,7 +817,7 @@ function ClauseProposalCard({
                       onClick={() => void deriveText()}
                       loading={derive.isPending}
                       disabled={
-                        !proposal.evidence_verified ||
+                        !evidenceVerified ||
                         !selectedContract ||
                         !selectedMaterial ||
                         !acceptedTextValid
@@ -765,7 +833,7 @@ function ClauseProposalCard({
                     <>
                       <Alert
                         type="info"
-                        title="这是从冻结原文派生的纯文本修改稿，不会保留原 DOCX/PDF 排版、签章或页码。"
+                        title="这是从审查留档原文派生的纯文本修改稿，不会保留原 DOCX/PDF 排版、签章或页码。"
                       />
                       <pre style={{ maxHeight: 320, overflow: "auto", whiteSpace: "pre-wrap" }}>
                         {derivedText}
@@ -828,7 +896,7 @@ function ClauseProposalCard({
                     disabled={
                       !confirmed ||
                       !decisionReasonValid ||
-                      !proposal.evidence_verified ||
+                      !evidenceVerified ||
                       !selectedContract ||
                       !uploadedParseReady
                     }
@@ -901,7 +969,7 @@ function ClauseProposalCard({
       ) : null}
       {history?.revision_id ? (
         <Typography.Text type="secondary">
-          新审查会创建独立 run；旧 run 的“重试”仍使用原冻结输入。
+          新审查会另建记录。重试旧审查仍使用原留档材料。
         </Typography.Text>
       ) : null}
     </Card>
@@ -918,6 +986,7 @@ export function ClauseProposalPanel({
   remediations,
   caseDetail,
   canWrite,
+  immersive = false,
 }: ClauseProposalContext) {
   const session = useSession();
   const actor = session.isSuccess && !session.isFetching ? session.data : null;
@@ -979,12 +1048,15 @@ export function ClauseProposalPanel({
       ...(remediationId ? { remediation_id: remediationId } : {}),
     };
     try {
+      const commandContext = captureCommandContext(actor);
       const pending = await pendingMutationKey(
         "contract.clause-proposal.create",
         idempotencyActorScope(actor),
         `${caseId}:${finding.id}`,
         input,
+        commandContext,
       );
+      assertCommandContextCurrent(commandContext);
       const created = await create.mutateAsync({ value: input, idempotencyKey: pending.key });
       clearPendingMutationKey(pending.storageKey);
       setCreatedId(created.id);
@@ -997,6 +1069,29 @@ export function ClauseProposalPanel({
     }
   }
 
+  const proposalCards = proposals.map((proposal) => (
+    <ClauseProposalCard
+      key={`${actorScope}:${proposal.id}`}
+      context={{
+        caseId,
+        runId,
+        attemptId,
+        frozenParsedDocumentIds,
+        finding,
+        documents,
+        remediations,
+        caseDetail,
+        canWrite: canWrite && proposalsQuery.isSuccess && !proposalsQuery.isFetching,
+        immersive,
+      }}
+      proposal={proposal}
+      actor={actor}
+      actorScope={actorScope}
+    />
+  ));
+  const showProposalTools =
+    !immersive || !proposalsQuery.isSuccess || (canWrite && validAnchors.length > 0);
+  if (!showProposalTools && proposalCards.length === 0) return null;
   const panelContent = (
     <div className="workflow-form">
       {session.isLoading || session.isFetching ? <p>正在确认当前登录权限…</p> : null}
@@ -1007,34 +1102,19 @@ export function ClauseProposalPanel({
       {proposalsQuery.isError ? (
         <Alert type="error" title={responseError(proposalsQuery.error, "读取条款建议")} />
       ) : null}
-      {proposals.map((proposal) => (
-        <ClauseProposalCard
-          key={proposal.id}
-          context={{
-            caseId,
-            runId,
-            attemptId,
-            frozenParsedDocumentIds,
-            finding,
-            documents,
-            remediations,
-            caseDetail,
-            canWrite,
-          }}
-          proposal={proposal}
-          actor={actor}
-          actorScope={actorScope}
-        />
-      ))}
+      {!immersive ? proposalCards : null}
       {proposalsQuery.isSuccess && proposals.length === 0 ? (
         <p className="meta">本条线索尚无条款建议。</p>
       ) : null}
       {attemptId === "" ? (
-        <Alert type="warning" title="当前选中的是历史或未冻结记录，不能从这里创建条款修改候选。" />
+        <Alert
+          type="warning"
+          title="当前选中的是历史记录或缺少留档的审查记录，不能从这里创建条款修改候选。"
+        />
       ) : validAnchors.length === 0 ? (
         <Alert
           type="warning"
-          title="本条线索没有可核验的本次冻结引用。"
+          title="本条线索没有可核验的本次留档引用。"
           description="引用不完整、无法定位或与本次解析摘要不符时，只能查看候选，不能接受为合同修改。"
         />
       ) : null}
@@ -1115,9 +1195,18 @@ export function ClauseProposalPanel({
 
   return (
     <section aria-label="条款建议与修订">
-      <Collapse
-        items={[{ key: "clause-proposals", label: "条款建议与修订", children: panelContent }]}
-      />
+      {immersive ? proposalCards : null}
+      {showProposalTools ? (
+        <Collapse
+          items={[
+            {
+              key: "clause-proposals",
+              label: immersive ? "新建或查看条款建议" : "条款建议与修订",
+              children: panelContent,
+            },
+          ]}
+        />
+      ) : null}
     </section>
   );
 }

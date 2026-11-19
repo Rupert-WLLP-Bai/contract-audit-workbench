@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-15
-// Revision: r5
+// Updated: 2026-11-19
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -839,7 +839,7 @@ function FeedbackProgressChain({
       <p className="meta">只读状态来自已保存记录；候选生成后仍需审批才能发布。</p>
       <ol>
         <li>
-          <strong>人工决定与冻结证据</strong>
+          <strong>人工决定与留档证据</strong>
           <span>
             {decisionLabel(feedback.decision_action)} · {feedback.evidence_refs.length} 条证据
           </span>

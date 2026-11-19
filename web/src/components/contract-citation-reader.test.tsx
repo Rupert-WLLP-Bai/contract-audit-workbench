@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -147,7 +147,7 @@ describe("frozen contract citation reader", () => {
       ),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "收起本次冻结原文" }));
+    fireEvent.click(screen.getByRole("button", { name: "收起本次原文" }));
     expect(onSelect).toHaveBeenCalledWith(null);
   });
 
@@ -158,7 +158,7 @@ describe("frozen contract citation reader", () => {
         <BusinessAgentReviewView review={review()} />
       </QueryClientProvider>,
     );
-    expect(screen.queryByRole("button", { name: "读取本次冻结原文" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "读取本次原文" })).not.toBeInTheDocument();
   });
 
   it("refuses a payload that answers a different frozen document", async () => {

@@ -1,117 +1,238 @@
 /* File metadata (manifest mirror): */
-/* Purpose: Styles review navigation, the contract return and adjacent material links, and responsive reading and work surfaces. */
+/* Purpose: Styles the focused audit workspace, its progress and report controls, and its review history, supplement and execution drawers. */
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-08 */
 /* Updated: 2026-11-19 */
-/* Revision: r2 */
+/* Revision: r3 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
-
-.review-section-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin: var(--space-4) 0;
-}
-
-.review-section-nav button {
-  min-height: 34px;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border-control);
-  border-radius: var(--radius-control);
-  background: var(--surface-raised);
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.review-section-nav button[aria-pressed="true"] {
-  border-color: var(--action-primary);
-  color: var(--action-primary);
-  font-weight: 600;
-}
-
-.review-section-nav button:focus-visible {
-  outline: 2px solid var(--action-primary);
-  outline-offset: 2px;
-}
-
-.review-page-bar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-3);
-  margin-bottom: var(--space-2);
-}
-.page-review .review-page-bar .page-head {
-  flex: 1 1 280px;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  gap: var(--space-2);
-}
-.page-review .review-page-bar .page-head > div {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  min-width: 0;
-}
-.page-review .review-page-bar .page-head h1 {
-  flex: none;
-  margin: 0;
-  font-size: 18px;
-}
-.page-review .review-page-bar .page-head p {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin: 0;
-}
-.review-page-bar .review-section-nav {
-  margin: 0;
-  gap: var(--space-1);
-}
-.review-page-bar .review-section-nav button {
-  padding-inline: var(--space-2);
-}
-@media (max-width: 900px) {
-  .review-page-bar .review-section-nav {
-    width: 100%;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-  }
-  .review-page-bar .review-section-nav button {
-    flex: 0 0 auto;
-  }
-}
-.page.page-review {
-  padding-top: var(--space-3);
-}
-.review-page-bar {
-  margin-bottom: var(--space-1);
-}
 
 .contract-desk-return {
   display: flex;
   gap: var(--space-2);
   flex-wrap: wrap;
 }
-.review-more-tools {
-  position: relative;
+.app--focused-review .frame {
+  width: 100%;
+  max-width: none;
+  min-height: 100dvh;
+  flex-direction: row;
+  margin: 0;
+  gap: 0;
 }
-.review-more-tools summary {
-  cursor: pointer;
+.app--focused-review .shell-sidenav {
+  display: block;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100dvh;
+  overflow-y: auto;
+  border-inline-end: 1px solid var(--border-control);
+}
+.review-rail-navigation {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+}
+.review-rail-navigation a {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: var(--text-secondary);
+  background: var(--surface-subtle);
+  border-radius: var(--radius-control);
+}
+.review-rail-navigation a[aria-current="page"],
+.review-rail-navigation a:hover {
   color: var(--action-primary);
-  white-space: nowrap;
+  background: var(--state-progress-bg);
 }
-.review-more-tools summary:focus-visible {
-  outline: 2px solid var(--action-primary);
+.review-rail-navigation a:focus-visible {
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
-.review-more-tools[open] {
+.review-rail-opener {
+  display: flex;
+  margin: 12px auto 8px;
+}
+.app--focused-review .content-column,
+.app--focused-review .content-column > main,
+.app--focused-review .page-review {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+.review-page-bar {
+  display: block;
+  margin: 0;
+}
+.review-topbar {
+  min-height: 56px;
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-control);
+}
+.review-topbar-identity,
+.review-topbar-actions,
+.review-reading-returns,
+.review-progress {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.review-topbar-identity {
+  min-width: 0;
+}
+.review-topbar-identity h1 {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+}
+.review-topbar-identity > a,
+.review-attempt-label,
+.review-progress li,
+.review-finding-count {
+  white-space: nowrap;
+}
+.review-attempt-label {
+  color: var(--text-secondary);
+}
+.review-progress {
+  padding: 0;
+  margin: 0 auto 0 var(--space-3);
+  font-size: 12px;
+  color: var(--text-secondary);
+  list-style: none;
+}
+.review-progress li + li::before {
+  content: "—";
+  margin-inline-end: var(--space-2);
+  color: var(--border-control);
+}
+.review-progress [data-stage="done"] {
+  color: var(--state-compatible);
+}
+.review-progress [data-stage="active"] {
+  color: var(--action-primary);
+  font-weight: 600;
+}
+.review-topbar-actions {
+  margin-inline-start: auto;
   flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.review-topbar-actions .ant-btn {
+  padding-inline: var(--space-2);
+}
+.review-reading-returns:not(:empty) {
+  padding: var(--space-2) var(--space-3);
+}
+.review-record-basis dl,
+.review-decision-timeline {
+  padding: 0;
+  margin: 0 0 var(--space-3);
+}
+.review-record-basis dl {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+}
+.review-record-basis dl > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+.review-record-basis dl > div + div {
+  border-top: 1px solid var(--border-control);
+}
+.review-record-basis dd,
+.review-decision-timeline p {
+  margin: 0;
+}
+.review-decision-timeline {
+  list-style: none;
+}
+.review-decision-timeline li {
+  margin-block: var(--space-2);
+  padding: var(--space-2);
+  border-inline-start: 2px solid var(--border-control);
+}
+.review-decision-timeline time {
+  float: inline-end;
+  color: var(--text-secondary);
+}
+.review-timeline-model {
+  border: 1px dashed var(--action-primary);
+}
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .review-topbar {
+    gap: var(--space-2);
+  }
+  .review-topbar-identity {
+    flex: 1 1 0;
+  }
+  .review-progress {
+    margin-inline-start: 0;
+    gap: var(--space-1);
+  }
+  .review-progress li + li::before {
+    margin-inline-end: var(--space-1);
+  }
+  .review-topbar-actions {
+    flex-wrap: nowrap;
+    gap: var(--space-1);
+  }
+}
+@media (max-width: 1023px) {
+  .review-topbar {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 760px) {
+  .review-topbar {
+    align-items: flex-start;
+  }
+  .review-progress {
+    order: 1;
+    margin: 0;
+  }
+  .review-topbar-actions {
+    justify-content: flex-start;
+    margin: 0;
+  }
+}
+
+.review-record-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+@media (min-width: 1024px) {
+  .review-reading-content:not([hidden]),
+  #review-document-section > .workspace {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .review-reading-content:not([hidden]) {
+    height: 100dvh;
+  }
+  #review-document-section {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  #review-document-section > .workspace {
+    height: 100%;
+  }
 }

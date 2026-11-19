@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -102,7 +102,7 @@ async function uiReview(page: Page, api: APIRequestContext, caseID: string, rech
   await page.goto(
     `${webURL}/cases/${caseID}/reviews/${accepted.id}?attempt_id=${accepted.attempt_id}`,
   );
-  await expect(page.getByRole("heading", { name: "审查工作区", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "审查工作区" })).toBeVisible();
   return { accepted, ws };
 }
 

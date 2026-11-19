@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-19
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -20,7 +20,7 @@ const unavailableReason = (reason: string | undefined): string => {
 
 export function FrozenPlaybookPanel({
   adoption,
-  heading = "本次冻结的审查手册",
+  heading = "本次适用的审查手册",
 }: {
   adoption: FrozenPlaybookAdoption | null | undefined;
   heading?: string;
@@ -30,14 +30,14 @@ export function FrozenPlaybookPanel({
   return (
     <section className="workflow-panel" aria-label={heading}>
       <h3>{heading}</h3>
-      <p>本轮已冻结采用一个精确版本的审查手册。该引用不可由后续发布版本替换。</p>
+      <p>本轮已采用一个精确版本的审查手册。该引用不可由后续发布版本替换。</p>
       <Alert
         type="info"
         showIcon
         title="手册正文需要来源授权后读取"
         description={unavailableReason(adoption.content_unavailable_reason)}
       />
-      <TechnicalDetail label="冻结手册精确身份" value={JSON.stringify(adoption.ref)} />
+      <TechnicalDetail label="审查手册版本身份" value={JSON.stringify(adoption.ref)} />
     </section>
   );
 }

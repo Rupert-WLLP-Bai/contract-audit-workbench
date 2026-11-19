@@ -1,0 +1,177 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles the responsive comparison of the procurement document and draft contract, including clause topics, original and text views, and matched citation markers. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-19 */
+/* Updated: 2026-11-19 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+.immersive-document-stage {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-page);
+}
+.immersive-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-default);
+}
+.immersive-topics .ant-btn {
+  border-radius: 999px;
+}
+.immersive-topics .ant-btn[aria-pressed="true"] {
+  color: var(--action-primary);
+  border-color: var(--action-primary);
+  background: var(--action-primary-soft);
+}
+.immersive-link-switch {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.immersive-role-switch {
+  display: none;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+.immersive-source-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+.immersive-document-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex: 1;
+  min-height: 0;
+}
+.immersive-document-columns:has(> :only-child) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.immersive-document-column {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-default);
+}
+.immersive-document-column > header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--space-2) 102px var(--space-2) var(--space-4);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-default);
+}
+.immersive-document-column > header strong {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.immersive-document-column > header span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.immersive-document-column > header span:last-child {
+  white-space: nowrap;
+}
+.immersive-document-scroll {
+  overflow: auto;
+  padding: var(--space-4);
+  flex: 1;
+  min-height: 0;
+}
+.immersive-document-scroll .doc-pane {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  min-height: 100%;
+  padding: var(--space-4);
+}
+.immersive-document-scroll .doc-pane-head {
+  display: none;
+}
+.immersive-document-scroll .original-document-reader {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.immersive-document-scroll .original-document-reader > .doc-pane {
+  flex: 1;
+}
+.immersive-document-scroll .original-reader-modes {
+  position: absolute;
+  top: 4px;
+  right: var(--space-2);
+  z-index: 1;
+  gap: 0;
+}
+.immersive-document-scroll .original-reader-modes .ant-btn {
+  height: 28px;
+  padding-inline: var(--space-2);
+  font-size: 12px;
+}
+.immersive-document-scroll .original-reader-modes .ant-btn:nth-last-child(1) {
+  order: -1;
+}
+.immersive-document-column .hit-evidence[role="button"] {
+  cursor: pointer;
+}
+.immersive-document-column .hit-evidence[data-finding-number]::before {
+  content: attr(data-finding-number);
+  display: inline-grid;
+  place-items: center;
+  width: 1.35em;
+  height: 1.35em;
+  margin-inline-end: 0.3em;
+  border-radius: 50%;
+  background: var(--state-conflict);
+  color: var(--text-inverse);
+  font-size: 0.8em;
+}
+.review-workspace-layout .immersive-document-column .doc-text .hit-key-clause {
+  background: transparent;
+}
+.review-workspace-layout
+  .immersive-document-column[data-role="procurement"]
+  .doc-text
+  .hit-evidence {
+  background: color-mix(in srgb, var(--signal-warning) 22%, var(--surface-raised));
+  text-decoration: none;
+}
+.review-workspace-layout
+  .immersive-document-column[data-role="draft_contract"]
+  .doc-text
+  .hit-evidence[data-finding-relation="conflict"] {
+  background: var(--state-conflict-bg);
+  text-decoration: underline;
+  text-decoration-color: var(--state-conflict);
+}
+.immersive-other-sources {
+  padding: var(--space-2) var(--space-4);
+}
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .immersive-role-switch {
+    display: flex;
+  }
+  .immersive-document-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .immersive-document-column:not(.is-mobile-active) {
+    display: none;
+  }
+}
+@media (max-width: 1023px) {
+  .immersive-document-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

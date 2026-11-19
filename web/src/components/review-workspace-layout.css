@@ -1,10 +1,10 @@
 /* File metadata (manifest mirror): */
-/* Purpose: Styles the responsive document-first workspace and separate clause, evidence, reading and outcome controls. */
+/* Purpose: Styles review-workspace layouts, including responsive document and finding panes, comparison controls, source navigation and the focused review surface. */
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-03 */
 /* Updated: 2026-11-19 */
-/* Revision: r4 */
+/* Revision: r5 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -449,4 +449,48 @@
 .review-workspace-layout.coverage-quote-selected .doc-text .hit-find {
   background: var(--evidence-mark);
   border-bottom: 2px solid var(--state-progress);
+}
+
+.review-workspace-layout.workspace-view-immersive {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 408px);
+  gap: 0;
+  align-items: stretch;
+}
+.workspace-view-immersive > .col-doc {
+  min-width: 0;
+  border-radius: 0;
+}
+.workspace-view-immersive > .col-findings {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: auto;
+  background: var(--surface-raised);
+  border-inline-start: 1px solid var(--border-control);
+}
+@media (min-width: 1024px) {
+  .workspace-view-immersive {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .page-review .workspace-view-immersive > :is(.col-doc, .col-findings, .immersive-document-stage) {
+    height: 100%;
+    min-height: 0;
+  }
+}
+@media (max-width: 1023px) {
+  .review-workspace-layout.workspace-view-immersive {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .workspace-view-immersive > .col-findings {
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--border-control);
+  }
+}
+
+.page-review .workspace-view-immersive [data-review-document-scroll] {
+  height: auto;
+  min-height: 0;
 }

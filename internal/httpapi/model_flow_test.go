@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Exercises the `httpapi_test` package behavior through TestMalformedModelOutputRetainsRulesAsPartialRun, TestImageOCRFeedsReview, TestSettingsReportsConfiguredModels; these checks pin observable state, error handling, or wire/database compatibility for this module.
+// Purpose: Verifies model and OCR integration and the decision endpoint behavior for model suggestions with missing or exact frozen citations, including append-only history and idempotent replay.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-19
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"contractaudit/internal/model"
@@ -84,9 +85,23 @@ func TestMalformedModelOutputRetainsRulesAsPartialRun(t *testing.T) {
 }
 
 func TestInsufficientModelOutputWithoutQuotesRemainsUnverified(t *testing.T) {
+	testModelRiskDecision(t, false)
+}
+
+func TestModelRiskConfirmationWithExactCitationAppendsDecision(t *testing.T) {
+	testModelRiskDecision(t, true)
+}
+
+func testModelRiskDecision(t *testing.T, withCitation bool) {
+	t.Helper()
+	var originalID atomic.Value
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		content := `{"claim":"未发现质保期限","relation":"insufficient","disposition":"insufficient_evidence","quotes":[]}`
-		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": content}}}})
+		quotes := []map[string]any{}
+		if withCitation {
+			quotes = append(quotes, map[string]any{"document_id": originalID.Load(), "quote": "采购设备"})
+		}
+		content, _ := json.Marshal(map[string]any{"claim": "未发现质保期限", "relation": "insufficient", "disposition": "insufficient_evidence", "quotes": quotes})
+		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": string(content)}}}})
 	}))
 	defer upstream.Close()
 	client := model.New(model.Config{BaseURL: upstream.URL + "/v1", ChatModel: model.DefaultChatModel, OCRModel: model.DefaultOCRModel, Gateway: true, APIKey: "test-gateway-credential"})
@@ -94,13 +109,14 @@ func TestInsufficientModelOutputWithoutQuotesRemainsUnverified(t *testing.T) {
 	api.login(t, "demo-admin", "admin-demo")
 	_, created := api.do(t, http.MethodPost, "/api/cases", map[string]any{"title": "质保缺证", "contract_type": "procurement_ict"})
 	caseID := created["id"].(string)
-	api.upload(t, caseID, "procurement", "a.txt", "text/plain", []byte("采购设备。"))
+	originalID.Store(api.upload(t, caseID, "procurement", "a.txt", "text/plain", []byte("😀采购设备。")))
 	api.upload(t, caseID, "draft_contract", "b.txt", "text/plain", []byte("设备验收。"))
 	status, review := api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews", map[string]any{})
 	if status != http.StatusCreated {
 		t.Fatalf("start %d %v", status, review)
 	}
-	_, ws := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+review["id"].(string), nil)
+	reviewPath := "/api/cases/" + caseID + "/reviews/" + review["id"].(string)
+	_, ws := api.do(t, http.MethodGet, reviewPath, nil)
 	run := ws["run"].(map[string]any)
 	if run["state"] != "awaiting_human" {
 		t.Fatalf("run %+v", run)
@@ -112,8 +128,62 @@ func TestInsufficientModelOutputWithoutQuotesRemainsUnverified(t *testing.T) {
 	finding := findings[0].(map[string]any)
 	evidence, _ := finding["evidence"].([]any)
 	reason, _ := finding["unverified_reason"].(string)
-	if finding["origin"] != "model" || finding["relation"] != "insufficient" || finding["disposition_suggestion"] != "insufficient_evidence" || reason == "" || len(evidence) != 0 {
+	if finding["origin"] != "model" || finding["relation"] != "insufficient" || finding["disposition_suggestion"] != "insufficient_evidence" || reason == "" {
 		t.Fatalf("finding %+v", finding)
+	}
+	decisionPath := reviewPath + "/findings/" + finding["id"].(string) + "/decisions"
+	version := finding["version"]
+	if withCitation {
+		if len(evidence) != 1 || evidence[0].(map[string]any)["status"] != "located" {
+			t.Fatalf("expected native frozen citation: %+v", evidence)
+		}
+		status, _ = api.send(t, http.MethodPost, decisionPath, map[string]any{
+			"action": "insufficient_evidence", "reason": "初次阅读时待核对原文", "expected_version": version,
+		}, "model-risk-prior")
+		if status != http.StatusNoContent {
+			t.Fatalf("initial decision returned %d", status)
+		}
+		_, ws = api.do(t, http.MethodGet, reviewPath, nil)
+		finding = ws["findings"].([]any)[0].(map[string]any)
+		confirmation := map[string]any{"action": "confirm_risk", "reason": "复核留档原文并确认风险", "expected_version": finding["version"]}
+		for range 2 {
+			status, reply := api.send(t, http.MethodPost, decisionPath, confirmation, "model-risk-confirmed")
+			if status != http.StatusNoContent {
+				t.Fatalf("confirmation or replay returned %d: %v", status, reply)
+			}
+		}
+		_, ws = api.do(t, http.MethodGet, reviewPath, nil)
+		finding = ws["findings"].([]any)[0].(map[string]any)
+		decisions := finding["decisions"].([]any)
+		if len(decisions) != 2 || decisions[0].(map[string]any)["action"] != "insufficient_evidence" || decisions[1].(map[string]any)["action"] != "confirm_risk" {
+			t.Fatalf("confirmation did not append exactly one new decision: %+v", decisions)
+		}
+		return
+	}
+	if len(evidence) != 0 {
+		t.Fatalf("unexpected quotes: %+v", evidence)
+	}
+	input := map[string]any{"action": "confirm_risk", "reason": "人工复核模型建议", "expected_version": version}
+	status, _ = api.send(t, http.MethodPost, decisionPath, input, "model-risk-review")
+	if status != http.StatusConflict {
+		t.Fatalf("confirmation without a citation returned %d", status)
+	}
+	_, ws = api.do(t, http.MethodGet, reviewPath, nil)
+	finding = ws["findings"].([]any)[0].(map[string]any)
+	if len(finding["decisions"].([]any)) != 0 || finding["version"] != version {
+		t.Fatalf("rejected confirmation changed finding: %+v", finding)
+	}
+	input["action"] = "insufficient_evidence"
+	for range 2 {
+		status, _ = api.send(t, http.MethodPost, decisionPath, input, "model-risk-review")
+		if status != http.StatusNoContent {
+			t.Fatalf("valid decision or replay returned %d", status)
+		}
+	}
+	_, ws = api.do(t, http.MethodGet, reviewPath, nil)
+	finding = ws["findings"].([]any)[0].(map[string]any)
+	if decisions := finding["decisions"].([]any); len(decisions) != 1 || decisions[0].(map[string]any)["action"] != "insufficient_evidence" {
+		t.Fatalf("unexpected decision history: %+v", decisions)
 	}
 }
 

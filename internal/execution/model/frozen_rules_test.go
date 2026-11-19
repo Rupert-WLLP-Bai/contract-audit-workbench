@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Pins terminal and frozen rule-pack failure ordering, historical baseline compatibility and tenant or business-scope rejection.
+// Purpose: Tests terminal attempt and frozen rule-pack boundaries and requires exact document, parse, digest and Unicode-span matches for every citation on a model risk.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-19
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,8 +14,39 @@ import (
 	"strings"
 	"testing"
 
+	"contractaudit/internal/docir"
 	"contractaudit/internal/rulepack"
 )
+
+func TestFrozenDecisionEvidenceRequiresEveryExactCitation(t *testing.T) {
+	ir := docir.Build("😀采购文件。")
+	digest := ir.NormalizedDigest
+	docs := []FrozenDocument[hashTestOriginal]{{Document: hashTestOriginal{ID: "procurement"},
+		ParsedDocumentID: "saved-parse", Ready: true, Text: ir.NormalizedText, NormalizedHash: &digest, IR: ir}}
+	anchor := Anchor{DocumentID: "procurement", ParsedDocumentID: "saved-parse", NormalizedDigest: digest,
+		Status: docir.StatusLocated, Quote: "采购", Start: 1, End: 3}
+	if !FrozenDecisionEvidenceMatches([]Anchor{anchor}, docs) || FrozenDecisionEvidenceMatches(nil, docs) {
+		t.Fatal("expected an exact nonempty Unicode citation")
+	}
+	for name, change := range map[string]func(*Anchor){
+		"unselected document": func(a *Anchor) { a.DocumentID = "different-document" },
+		"unselected parse":    func(a *Anchor) { a.ParsedDocumentID = "different-parse" },
+		"missing parse":       func(a *Anchor) { a.ParsedDocumentID = "" },
+		"different digest":    func(a *Anchor) { a.NormalizedDigest = "different-digest" },
+		"missing digest":      func(a *Anchor) { a.NormalizedDigest = "" },
+		"wrong text":          func(a *Anchor) { a.Quote = "合同" },
+		"out of range":        func(a *Anchor) { a.End = 100 },
+		"unlocated":           func(a *Anchor) { a.Status = docir.StatusUnlocatable },
+	} {
+		t.Run(name, func(t *testing.T) {
+			invalid := anchor
+			change(&invalid)
+			if FrozenDecisionEvidenceMatches([]Anchor{anchor, invalid}, docs) {
+				t.Fatal("a second invalid citation was accepted")
+			}
+		})
+	}
+}
 
 func TestFrozenTerminalPredicates(t *testing.T) {
 	stamp, hash := "finished", "saved"

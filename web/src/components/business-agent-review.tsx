@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-15
-// Revision: r7
+// Updated: 2026-11-19
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -100,7 +100,7 @@ const REASON_NEXT_STEPS: Record<string, string> = {
   multiple_source_values_require_review: "人工比对多个来源值并记录采用哪一个值。",
   max_calls_reached: "规划调用预算已用尽；提高预算或缩小审查范围后重新执行。",
   capability_not_registered: "当前版本没有注册这项能力，不能把“未检查”当作“已通过”。",
-  claim_requires_semantic_verification: "回到冻结原文核对语义后再判断。",
+  claim_requires_semantic_verification: "回到原文核对语义后再判断。",
   approval_period_dates_unverified: "核对审批日期后再判断。",
   stable_party_role_linkage_missing: "核对主体与角色的对应关系。",
   source_fact_only_not_a_decision: "这仍是来源事实，需要审查人员给出判断。",
@@ -199,7 +199,7 @@ function Citation({ item }: { item: BusinessAgentEvidence | undefined }) {
           aria-expanded={reading}
           onClick={() => target.onSelectEvidence(reading ? null : item.evidence_id)}
         >
-          {reading ? "收起本次冻结原文" : "读取本次冻结原文"}
+          {reading ? "收起本次原文" : "读取本次原文"}
         </Button>
       )}
       {target !== null && reading ? (
@@ -418,7 +418,7 @@ function ObservationsSection({
     <section className="agent-review-section" aria-label="工具返回记录">
       <h4>工具返回记录</h4>
       <p className="meta">
-        工具返回是待核验的记录，不是已确认结论；只有引用能对上冻结原文时才可能进入核验。
+        工具返回是待核验的记录，不是已确认结论；只有引用能对上原文时才可能进入核验。
       </p>
       <ul className="agent-review-list">
         {observations.map((observation, index) => (

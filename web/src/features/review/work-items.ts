@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Projects selected frozen-review findings and case evidence/remediation workflows into readable navigation items, preserving stable source identities, uncertain states and same-context return paths without creating task authority.
+// Purpose: Builds review work items and scoped return paths, preserving legacy review-section links and allowing valid workspace drawer and tab combinations.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -58,6 +58,8 @@ const returnParams = [
   "work_filter",
   "work_kind",
   "work_item",
+  "drawer",
+  "tab",
   "review_section",
 ] as const;
 const reviewSections = new Set(["document", "work", "coverage", "trace", "diff", "history"]);
@@ -91,6 +93,17 @@ export function reviewReturnPath(path: string, caseId: string): string | null {
       if (key === "review_section" && !reviewSections.has(value)) continue;
       params.set(key, value);
     }
+    if (params.has("review_section")) {
+      const legacy = legacyReviewDrawer(params.get("review_section"));
+      if (!params.has("drawer")) writeReviewDrawer(params, ...legacy);
+      else params.delete("review_section");
+    }
+    if (!["record", "execution"].includes(params.get("drawer") ?? "")) params.delete("drawer");
+    if (
+      params.get("drawer") !== "record" ||
+      !reviewRecordTabs.some((tab) => tab === params.get("tab"))
+    )
+      params.delete("tab");
     const query = params.toString();
     return `${url.pathname}${query ? `?${query}` : ""}`;
   } catch {
@@ -303,7 +316,7 @@ export function projectReviewWork(
           title: `${businessDomainLabel(gap.domain)}：${businessCapabilityLabel(gap.capability_id)}`,
           origin: "审查缺口",
           status: unique ? "待核对，尚无关联请求" : "来源身份待核对",
-          verification: `冻结缺口状态：${gap.status === "insufficient" ? "证据不足" : gap.status === "unsupported" ? "暂不支持" : "待核对"}；${gapReasons[gap.reason_code] ?? "原因待核对"}；${gap.evidence_ids?.length ? `${gap.evidence_ids.length} 处关联引用` : "未提供引用"}`,
+          verification: `证据缺口状态：${gap.status === "insufficient" ? "证据不足" : gap.status === "unsupported" ? "暂不支持" : "待核对"}；${gapReasons[gap.reason_code] ?? "原因待核对"}；${gap.evidence_ids?.length ? `${gap.evidence_ids.length} 处关联引用` : "未提供引用"}`,
           sourceRunId: runId,
           sourceAttemptId: attemptId,
           target: unique ? { kind: "gap", id: gap.gap_id, runId, attemptId } : null,
@@ -470,4 +483,53 @@ export function projectReviewWork(
       validDetail !== undefined &&
       validDetail.remediations.every((item) => item.case_id === caseId),
   };
+}
+
+export const reviewRecordTabs = ["finding", "review", "history", "supplement"] as const;
+export type ReviewRecordTab = (typeof reviewRecordTabs)[number];
+export type ReviewDrawer = "record" | "execution";
+
+export function writeReviewDrawer(
+  params: URLSearchParams,
+  drawer: ReviewDrawer | null,
+  tab?: ReviewRecordTab,
+) {
+  params.delete("review_section");
+  if (drawer) params.set("drawer", drawer);
+  else params.delete("drawer");
+  if (drawer === "record" && tab) params.set("tab", tab);
+  else params.delete("tab");
+  return params;
+}
+
+export function legacyReviewDrawer(
+  section: string | null,
+): [ReviewDrawer | null, ReviewRecordTab?] {
+  switch (section) {
+    case "trace":
+      return ["execution"];
+    case "coverage":
+      return ["record", "review"];
+    case "diff":
+      return ["record", "history"];
+    case "history":
+      return ["record", "finding"];
+    default:
+      return [null];
+  }
+}
+
+export function workTargetDrawer(
+  kind: WorkTarget["kind"],
+): [ReviewDrawer | null, ReviewRecordTab?] {
+  switch (kind) {
+    case "gap":
+      return ["record", "review"];
+    case "request":
+    case "evaluation":
+    case "request-source":
+      return ["record", "supplement"];
+    default:
+      return [null];
+  }
 }

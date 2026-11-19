@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -147,6 +147,7 @@ export interface ReviewReadingPosition {
   actorScope: string;
   scrollY: number;
   documentScroll: number;
+  secondDocumentScroll?: number;
   findingScroll: number;
 }
 
@@ -179,6 +180,11 @@ export function readReviewReadingPosition(
     actorScope,
     scrollY: position.scrollY!,
     documentScroll: position.documentScroll!,
+    ...(typeof position.secondDocumentScroll === "number" &&
+    Number.isFinite(position.secondDocumentScroll) &&
+    position.secondDocumentScroll >= 0
+      ? { secondDocumentScroll: position.secondDocumentScroll }
+      : {}),
     findingScroll: position.findingScroll!,
   };
 }

@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-19
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -413,8 +413,8 @@ function AppSidebar({
     <ShellNavigation
       title="主导航"
       groups={groups}
-      drawerOnly={focusedReading}
-      drawerContext={context}
+      compact={focusedReading}
+      drawerFooter={context}
     />
   );
 }
@@ -442,40 +442,45 @@ export function AppShell() {
   const breadcrumbs = breadcrumbsFor(location.pathname, caseId, caseTitle, reviewMatch !== null);
   const breadcrumbNav = breadcrumbs.length > 0 ? <BreadcrumbItems crumbs={breadcrumbs} /> : null;
 
+  const topbar = (
+    <AppTopbar
+      actor={actor}
+      search={search}
+      showCaseSearch={
+        !focusedReading && location.pathname !== "/" && location.pathname !== "/contract-desk"
+      }
+      logoutPending={logout.isPending}
+      onSearchChange={setSearch}
+      onSearchSubmit={(event) => {
+        event.preventDefault();
+        navigateSearch(navigate, location, search);
+      }}
+      onLogout={() => {
+        void logout.mutateAsync().finally(() => {
+          void navigate("/login", {
+            replace: true,
+            state: { from: location.pathname + location.search + location.hash },
+          });
+        });
+      }}
+      onContextTransition={setContextTransition}
+    />
+  );
   return (
-    <Layout className={layoutClassName(reviewMatch !== null, location.pathname)}>
+    <Layout
+      className={`${layoutClassName(reviewMatch !== null, location.pathname)}${focusedReading ? " app--focused-review" : ""}`}
+    >
       <a className="skip" href="#main">
         跳到主要内容
       </a>
-      <AppTopbar
-        actor={actor}
-        search={search}
-        showCaseSearch={
-          !focusedReading && location.pathname !== "/" && location.pathname !== "/contract-desk"
-        }
-        logoutPending={logout.isPending}
-        onSearchChange={setSearch}
-        onSearchSubmit={(event) => {
-          event.preventDefault();
-          navigateSearch(navigate, location, search);
-        }}
-        onLogout={() => {
-          void logout.mutateAsync().finally(() => {
-            void navigate("/login", {
-              replace: true,
-              state: { from: location.pathname + location.search + location.hash },
-            });
-          });
-        }}
-        onContextTransition={setContextTransition}
-      />
-      <Layout className="frame" hasSider={!focusedReading}>
+      {!focusedReading && topbar}
+      <Layout className="frame" hasSider>
         <AppSidebar
           actor={actor}
           pathname={location.pathname}
           adminRulePacksUrl={adminRulePacksUrl}
           focusedReading={focusedReading}
-          context={focusedReading ? breadcrumbNav : undefined}
+          context={focusedReading ? topbar : undefined}
         />
         <Layout.Content className="content-column">
           {focusedReading ? null : breadcrumbNav}

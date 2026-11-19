@@ -497,20 +497,26 @@
       "sources": [
         "web/src/pages/review-page.tsx",
         "web/src/components/review-workspace.tsx",
-        "web/src/components/document-stage.tsx"
+        "web/src/components/document-stage.tsx",
+        "web/src/components/document-stage-immersive.css",
+        "web/src/components/finding-panel.tsx"
       ],
-      "implementationIssue": 258,
+      "implementationIssue": 339,
       "figmaNodeId": "6:206",
       "screenshotRefs": [
         "review-workspace.png",
         "audit/round41/review-nav-1440.png",
         "audit/round41/review-nav-1280.png",
         "audit/round41/review-nav-1024.png",
-        "audit/round41/review-nav-390.png"
+        "audit/round41/review-nav-390.png",
+        "../ui-redesign-20261119/impl-b/review-1440x900.png",
+        "../ui-redesign-20261119/impl-b/review-1280x800.png",
+        "../ui-redesign-20261119/impl-b/review-1024x768.png",
+        "../ui-redesign-20261119/impl-b/review-drawer-1440x900.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
-      "template": "ReviewWorkspaceView"
+      "statusDetail": "PARTIAL：1440、1280、1024 及审查记录抽屉为确定性夹具截图；完整视口和角色矩阵 NOT_RUN。",
+      "template": "双文档原文、线索判断与审查记录抽屉"
     },
     {
       "designId": "UI-014",

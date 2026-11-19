@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -601,9 +601,13 @@ describe("办理返回路径", () => {
       "case-1",
       "actor-a",
     );
-    expect(readWorkReturn(section, "case-1", "actor-a")).toBe(
-      "/cases/case-1/reviews/run-1?review_section=work",
-    );
+    expect(readWorkReturn(section, "case-1", "actor-a")).toBe("/cases/case-1/reviews/run-1");
+    expect(
+      reviewReturnPath("/cases/case-1/reviews/run-1?attempt_id=a1&review_section=diff", "case-1"),
+    ).toBe("/cases/case-1/reviews/run-1?attempt_id=a1&drawer=record&tab=history");
+    expect(
+      reviewReturnPath("/cases/case-1/reviews/run-1?drawer=execution&tab=history", "case-1"),
+    ).toBe("/cases/case-1/reviews/run-1?drawer=execution");
     expect(readWorkReturn(state, "case-1", "actor-b")).toBeNull();
     for (const path of [
       "https://evil.test/cases/case-1/reviews/r",

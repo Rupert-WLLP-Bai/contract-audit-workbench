@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-19
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -52,6 +52,6 @@ it("keeps uncertainty visible while collapsed and allows keyboard access to exac
   await user.keyboard("{Enter}");
   expect(toggle).toHaveAttribute("aria-expanded", "true");
   expect(screen.getByText(citation.quote)).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "定位冻结原文" }));
+  await user.click(screen.getByRole("button", { name: "定位原文" }));
   expect(locate).toHaveBeenCalledWith(citation, "payment_schedule-0");
 });

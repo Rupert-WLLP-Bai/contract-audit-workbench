@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Decide appends a human decision. It does not delete earlier decisions. Related `store` operations include sourcesOf, readyCount, decided, publicModelError.
+// Purpose: Persists authorized append-only decisions and adapts the selected review attempt and verified parse records to the domain check for confirming a model risk.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r4
+// Updated: 2026-11-19
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -20,6 +20,7 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/engine"
 	executionapp "contractaudit/internal/execution/app"
+	executionmodel "contractaudit/internal/execution/model"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/model"
 
@@ -155,6 +156,11 @@ func (s *Store) Decide(user accounts.User, caseID, runID, findingID, key, action
 		if st.Findings[idx].Version != expected {
 			return fault.Conflict("该事项已被他人更新，请按最新内容重新确认")
 		}
+		finding := st.Findings[idx]
+		if executionmodel.RequiresFrozenDecisionEvidence(action, finding) &&
+			!frozenDecisionEvidenceMatches(st, latestAttempt, finding) {
+			return fault.Conflict("模型建议的引用未全部对上本次审查留档原文，不能确认是风险")
+		}
 		prev := st.decisions(findingID)
 		old := "pending"
 		if len(prev) > 0 {
@@ -201,6 +207,27 @@ func (s *Store) Decide(user accounts.User, caseID, runID, findingID, key, action
 		st.Activity = append(st.Activity, Activity{ID: act, CaseID: caseID, At: now, Summary: user.DisplayName + "记录了一条人工决定"})
 		return nil
 	})
+}
+
+func frozenDecisionEvidenceMatches(st *state, attempt Attempt, finding Finding) bool {
+	input, ok := st.attemptInput(attempt.ID)
+	if !ok || attempt.HistoryKind != "frozen" || attempt.InputHash == nil || attempt.ID == "" ||
+		attempt.RunID != finding.RunID || attempt.ID != finding.AttemptID ||
+		input.RunID != finding.RunID || input.AttemptID != attempt.ID || input.InputHash != *attempt.InputHash ||
+		!frozenAttemptInputMatches(*st, finding.RunID, attempt.ID, input) {
+		return false
+	}
+	// The write transaction has already decoded and verified the scoped parse rows.
+	trusted := make([]FrozenDocument, 0, len(input.Documents))
+	for _, frozen := range input.Documents {
+		parsed, ok := st.parsedByID(frozen.ParsedDocumentID)
+		if ok && frozen.Document.CaseID == finding.CaseID && parsed.DocumentID == frozen.Document.ID &&
+			parsed.OriginalDigest == frozen.OriginalHash && frozen.OriginalHash == frozen.Document.Digest &&
+			parsed.ArtifactDigest == frozen.ParsedArtifactDigest && verifyFrozenParsedPayload(frozen, parsed) == nil {
+			trusted = append(trusted, frozen)
+		}
+	}
+	return executionmodel.FrozenDecisionEvidenceMatches(finding.Anchors, trusted)
 }
 
 // Revision is one comparison row against the previous run.

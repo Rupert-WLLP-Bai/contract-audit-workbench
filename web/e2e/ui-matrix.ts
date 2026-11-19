@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-19
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -144,23 +144,22 @@ const targets: Target[] = [
     path: reviewPath,
     needs: "E2E_CASE_ID and E2E_RUN_ID",
     ready: async (page) => {
-      // Source text and at least one finding must be visibly rendered.
-      await page.locator(".workspace-grid").waitFor({ state: "visible", timeout: readyTimeout });
       await page
-        .locator(".finding-button")
+        .getByRole("region", { name: "审查工作区" })
+        .waitFor({ state: "visible", timeout: readyTimeout });
+      await page
+        .locator("[data-finding-id]")
         .first()
         .waitFor({ state: "visible", timeout: readyTimeout });
       await waitForText(page, ".col-doc .doc-pane[data-document-version-id]");
-      const inspector = page.locator(".execution-inspector-disclosure");
-      await inspector.waitFor({ state: "visible", timeout: readyTimeout });
-      if (!(await inspector.evaluate((element) => (element as HTMLDetailsElement).open))) {
-        await inspector.locator(":scope > summary.execution-inspector-summary").click();
-      }
+      await page.getByRole("button", { name: "执行过程" }).click();
+      await page
+        .getByRole("dialog", { name: "执行过程" })
+        .waitFor({ state: "visible", timeout: readyTimeout });
+      const loadDiagnostics = page.getByRole("button", { name: "加载运行轨迹与诊断" });
+      if (await loadDiagnostics.isVisible()) await loadDiagnostics.click();
       await page
         .locator(".execution-inspector-body")
-        .waitFor({ state: "visible", timeout: readyTimeout });
-      await page
-        .locator('.execution-inspector-body select[aria-label="查看执行记录"]')
         .waitFor({ state: "visible", timeout: readyTimeout });
     },
   },
@@ -292,30 +291,23 @@ async function keyboardAudit(page: Page): Promise<{
   return { steps: 8, distinct: new Set(identities).size, targets, offscreen, hidden };
 }
 
-/** Three-column workspace content: real regions, real text, real findings. */
+/** Inspect the document, finding queue and execution drawer actually rendered. */
 async function workspaceAudit(page: Page): Promise<Record<string, unknown>> {
   return await page.evaluate(() => {
-    const grid = document.querySelector(".workspace-grid");
-    if (!grid) return { ok: false, reason: "no .workspace-grid" };
-    const columns = window
-      .getComputedStyle(grid)
-      .gridTemplateColumns.split(" ")
-      .filter(Boolean).length;
+    const workspace = document.querySelector('[aria-label="审查工作区"]');
+    if (!workspace) return { ok: false, reason: "no review workspace" };
     const text = (selector: string) =>
       (document.querySelector(selector)?.textContent ?? "").trim().length;
     return {
       ok: true,
-      columns,
-      layout_class: grid.className,
-      nav_text: text(".col-nav"),
+      documents: document.querySelectorAll(".immersive-document-column").length,
       doc_text: text(".col-doc .doc-pane[data-document-version-id]"),
-      findings: document.querySelectorAll(".col-findings .finding-button").length,
-      inspector_text: text(".execution-inspector"),
+      findings: document.querySelectorAll("[data-finding-id]").length,
+      inspector_text: text('[role="dialog"] .execution-inspector'),
       inspector_open: Boolean(
-        (document.querySelector(".execution-inspector-disclosure") as HTMLDetailsElement | null)
-          ?.open,
+        document.querySelector('[role="dialog"][aria-modal="true"] .execution-inspector'),
       ),
-      inspector_body_text: text(".execution-inspector-body"),
+      inspector_body_text: text('[role="dialog"] .execution-inspector-body'),
     };
   });
 }
@@ -517,16 +509,13 @@ try {
         if (target.id === "review-workspace") {
           const workspace = await workspaceAudit(page);
           validation.workspace = workspace;
-          const wide = viewport.width >= 1280;
           validation.workspace_ok =
             Boolean(workspace.ok) &&
-            (wide ? workspace.columns === 3 : true) &&
             Number(workspace.doc_text) > 0 &&
             Number(workspace.findings) >= 1 &&
             Number(workspace.inspector_text) > 0 &&
             workspace.inspector_open === true &&
-            Number(workspace.inspector_body_text) > 0 &&
-            (wide ? Number(workspace.nav_text) > 0 : true);
+            Number(workspace.inspector_body_text) > 0;
         }
         const keyboard = await keyboardAudit(page);
         validation.keyboard = keyboard;
@@ -570,7 +559,7 @@ try {
             login_form: document.querySelectorAll('input[name="password"]').length > 0,
             case_filters: document.querySelectorAll(".cases-filters").length,
             document_rows: document.querySelectorAll(".document-list li[data-document-id]").length,
-            workspace_grid: document.querySelectorAll(".workspace-grid").length,
+            workspace_grid: document.querySelectorAll('[aria-label="审查工作区"]').length,
             api_docs_browser: document.querySelectorAll(".api-docs-browser").length,
             admin_table: document.querySelectorAll("table.data-table").length,
           };

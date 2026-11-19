@@ -1,17 +1,17 @@
 // File metadata (manifest mirror):
-// Purpose: Renders FindingPanel, the finding panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.
+// Purpose: Renders risk findings, cited passages, clause suggestions and judgment drafts, and enforces the workspace’s exact citation and keyboard behavior before calling the existing decision command.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r6
+// Updated: 2026-11-19
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Tabs } from "antd";
 import { Card } from "antd";
 import { Button, Checkbox, Input, Radio } from "antd";
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type {
   ConstraintEvaluation,
   DecisionAction,
@@ -46,6 +46,7 @@ import { findingPresentation, findingTitle } from "../domain/finding-presentatio
 import { FindingBatchControls } from "./finding-batch-controls";
 import { TechnicalDetail } from "./technical-detail";
 import { ClauseProposalPanel, type ClauseProposalPanelContext } from "./clause-proposal-panel";
+import "./finding-panel.css";
 const FILTERS: { id: FindingFilter; label: string }[] = [
   { id: "all", label: "全部" },
   { id: "conflict", label: "冲突" },
@@ -60,6 +61,22 @@ const SEVERITY_LABELS: Record<string, string> = {
   info: "提示",
   unrated: "未分级",
 };
+
+const WORKSPACE_FILTERS = [
+  { id: "undecided", label: "待判断" },
+  { id: "decided", label: "已判断" },
+  { id: "all", label: "全部" },
+] as const;
+type WorkspaceFilter = (typeof WORKSPACE_FILTERS)[number]["id"];
+const WORKSPACE_DECISION_ACTIONS = [
+  { action: "confirm_risk", label: "确认是风险" },
+  { action: "false_positive", label: "不构成风险" },
+  { action: "insufficient_evidence", label: "依据不够" },
+] as const;
+
+function isModelFinding(finding: Finding): boolean {
+  return finding.origin === "model" || finding.origin === "ai";
+}
 
 function SeverityCounts({ findings }: { findings: Finding[] }) {
   const severities = [
@@ -433,6 +450,42 @@ function resolveEvidence(anchor: EvidenceAnchor, source: ReviewDocument | null) 
   );
 }
 
+function locatedCitationSource(
+  anchor: EvidenceAnchor,
+  documents: ReviewDocument[],
+  parsedDocumentIds: readonly string[],
+): ReviewDocument | null {
+  if (
+    anchor.status !== "located" ||
+    !anchor.parsed_document_id ||
+    !parsedDocumentIds.includes(anchor.parsed_document_id) ||
+    anchor.quote.trim() === ""
+  )
+    return null;
+  const matches = documents.filter(
+    (document) =>
+      document.id === anchor.document_version_id &&
+      document.parsed_document_id === anchor.parsed_document_id &&
+      document.parse_status === "ready" &&
+      resolveEvidence(anchor, document).kind === "highlight",
+  );
+  return matches.length === 1 ? matches[0]! : null;
+}
+
+function canConfirmRisk(
+  finding: Finding,
+  documents: ReviewDocument[],
+  parsedDocumentIds: readonly string[],
+): boolean {
+  return (
+    !isModelFinding(finding) ||
+    (finding.evidence.length > 0 &&
+      finding.evidence.every(
+        (anchor) => locatedCitationSource(anchor, documents, parsedDocumentIds) !== null,
+      ))
+  );
+}
+
 function EvidenceResolution({
   anchor,
   resolved,
@@ -570,14 +623,39 @@ function DecisionCard({
   finding,
   action,
   canDecide,
+  riskConfirmable,
+  immersive,
   onAction,
 }: {
   finding: Finding;
   action: DecisionAction | null;
   canDecide: boolean;
+  riskConfirmable: boolean;
+  immersive: boolean;
   onAction: (action: DecisionAction) => void;
 }) {
   const correction = finding.decisions.length > 0;
+  const actions = immersive ? WORKSPACE_DECISION_ACTIONS : DECISION_ACTIONS;
+  const choices = actions.map((item) => (
+    <div key={item.action} className="choice">
+      <Radio
+        disabled={!canDecide || (item.action === "confirm_risk" && !riskConfirmable)}
+        name={`decision-${finding.id}`}
+        value={item.action}
+        checked={action === item.action}
+        onChange={() => onAction(item.action)}
+      >
+        {item.label}
+      </Radio>
+    </div>
+  ));
+  if (immersive)
+    return (
+      <fieldset className="review-decision-choices">
+        <legend>你的判断</legend>
+        <div>{choices}</div>
+      </fieldset>
+    );
   return (
     <Card
       role="group"
@@ -585,32 +663,24 @@ function DecisionCard({
       title={<>{correction ? "更正判断" : "审查判断"}</>}
     >
       {correction ? <p className="meta">修改判断时，之前的记录也会保留。</p> : null}
-      {DECISION_ACTIONS.map((item) => (
-        <div key={item.action} className="choice">
-          <Radio
-            disabled={!canDecide}
-            name={`decision-${finding.id}`}
-            value={item.action}
-            checked={action === item.action}
-            onChange={() => onAction(item.action)}
-          >
-            {item.label}
-          </Radio>
-        </div>
-      ))}
+      {choices}
     </Card>
   );
 }
 
-function DecisionSubmit({ pending, canSubmit }: { pending: boolean; canSubmit: boolean }) {
+function DecisionSubmit({
+  pending,
+  canSubmit,
+  immersive,
+}: {
+  pending: boolean;
+  canSubmit: boolean;
+  immersive: boolean;
+}) {
+  const label = pending ? "正在保存" : immersive ? "保存判断" : "保存决定";
   return (
-    <Button
-      aria-label={String(pending ? "正在保存" : "保存决定")}
-      type="primary"
-      htmlType="submit"
-      disabled={!canSubmit}
-    >
-      {pending ? "正在保存" : "保存决定"}
+    <Button aria-label={label} type="primary" htmlType="submit" disabled={!canSubmit}>
+      {label}
     </Button>
   );
 }
@@ -619,6 +689,8 @@ function DecisionForm({
   finding,
   pending,
   canDecide,
+  riskConfirmable,
+  immersive = false,
   decisionDisabledReason,
   conflictMessage,
   saveError,
@@ -628,6 +700,8 @@ function DecisionForm({
   finding: Finding;
   pending: boolean;
   canDecide: boolean;
+  riskConfirmable: boolean;
+  immersive?: boolean;
   decisionDisabledReason?: string | null;
   conflictMessage: string | null;
   saveError: string | null;
@@ -637,15 +711,21 @@ function DecisionForm({
     reason: string;
     expectedVersion: number;
   }) => Promise<boolean>;
-  onSaved: (findingId: string) => void;
+  onSaved: (findingId: string, advance: boolean) => void;
 }) {
   const reasonId = useId();
   const hintId = useId();
   const draft = useDecisionDraft(finding.id);
+  const advanceOnSave = useRef(false);
+  const submitting = useRef(false);
   const [attempted, setAttempted] = useState(false);
   const reasonError = attempted ? validateDecisionReason(draft.reason) : null;
+  const actionAllowed =
+    draft.action === "confirm_risk"
+      ? riskConfirmable
+      : !(immersive && draft.action === "accept_residual");
   const canSubmit = canSubmitDecision(
-    canDecide,
+    canDecide && actionAllowed,
     draft.action,
     finding.version,
     draft.reason,
@@ -655,32 +735,43 @@ function DecisionForm({
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAttempted(true);
-    if (!canSubmitDecision(canDecide, draft.action, finding.version, draft.reason, pending)) return;
-    if (draft.action === null || finding.version === null) return;
-    const saved = await onDecide({
-      findingId: finding.id,
-      action: draft.action,
-      reason: draft.reason.trim(),
-      expectedVersion: finding.version,
-    });
-    if (saved) {
-      draft.clear();
-      setAttempted(false);
-      onSaved(finding.id);
+    const advance = !immersive || advanceOnSave.current;
+    advanceOnSave.current = false;
+    if (!canSubmit || submitting.current || draft.action === null || finding.version === null)
+      return;
+    submitting.current = true;
+    try {
+      const saved = await onDecide({
+        findingId: finding.id,
+        action: draft.action,
+        reason: draft.reason.trim(),
+        expectedVersion: finding.version,
+      });
+      if (saved) {
+        draft.clear();
+        setAttempted(false);
+        onSaved(finding.id, advance);
+      }
+    } finally {
+      submitting.current = false;
     }
   }
 
   return (
     <form
+      className={immersive ? "review-decision-form" : undefined}
       onSubmit={onSubmit}
       onKeyDown={(event) => {
         if (
           event.key === "Enter" &&
           (event.ctrlKey || event.metaKey) &&
+          !event.nativeEvent.isComposing &&
+          !event.repeat &&
           !event.altKey &&
           !event.shiftKey
         ) {
           event.preventDefault();
+          advanceOnSave.current = true;
           event.currentTarget.requestSubmit();
         }
       }}
@@ -690,8 +781,13 @@ function DecisionForm({
         finding={finding}
         action={draft.action}
         canDecide={canDecide && !pending}
+        riskConfirmable={riskConfirmable}
+        immersive={immersive}
         onAction={(action) => draft.update((current) => ({ ...current, action }))}
       />
+      {!riskConfirmable ? (
+        <p className="review-citation-unmatched">引用没对上原文，不能确认是风险。</p>
+      ) : null}
       <label className="field" htmlFor={reasonId}>
         理由
       </label>
@@ -705,19 +801,23 @@ function DecisionForm({
           }))
         }
         aria-describedby={hintId}
-        rows={4}
+        rows={immersive ? 2 : 4}
         disabled={!canDecide || pending}
       />
-      <p id={hintId} className="meta">
-        四种决定都要写理由。保存后写入审查记录。按 Ctrl+Enter 可保存。
-      </p>
       <DecisionAlerts
         version={finding.version}
         reasonError={reasonError}
         conflictMessage={conflictMessage}
         saveError={saveError}
       />
-      <DecisionSubmit pending={pending} canSubmit={canSubmit} />
+      <div className={immersive ? "review-decision-submit" : undefined}>
+        <p id={hintId} className="meta">
+          {immersive
+            ? "Ctrl+Enter 保存并看下一条"
+            : "四种决定都要写理由。保存后写入审查记录。按 Ctrl+Enter 可保存。"}
+        </p>
+        <DecisionSubmit pending={pending} canSubmit={canSubmit} immersive={immersive} />
+      </div>
     </form>
   );
 }
@@ -762,6 +862,11 @@ function FindingDetail({
       <DecisionHistory decisions={finding.decisions} />
       <DecisionForm
         finding={finding}
+        riskConfirmable={canConfirmRisk(
+          finding,
+          documents,
+          clauseProposalContext?.frozenParsedDocumentIds ?? [],
+        )}
         pending={pending}
         canDecide={canDecide}
         decisionDisabledReason={decisionDisabledReason}
@@ -774,12 +879,84 @@ function FindingDetail({
   );
 }
 
+function WorkspaceFindingDetails({
+  finding,
+  documents,
+  onSelectCitation,
+  clauseProposalContext,
+}: {
+  finding: Finding;
+  documents: ReviewDocument[];
+  onSelectCitation?: (findingId: string, anchor: EvidenceAnchor) => void;
+  clauseProposalContext?: ClauseProposalPanelContext;
+}) {
+  const presentation = findingPresentation(finding);
+  const parseIds = clauseProposalContext?.frozenParsedDocumentIds ?? [];
+  const title = findingTitle(finding);
+  const reasons = new Set(
+    [presentation?.nextStep, finding.severity_source?.reason, finding.unverified_reason]
+      .map((text) => text?.trim())
+      .filter((text) => text && text !== title && text !== finding.claim),
+  );
+  return (
+    <div className="review-finding-detail">
+      {finding.claim !== title ? <p>{finding.claim}</p> : null}
+      {Array.from(reasons, (reason) => (
+        <p key={reason} className="meta">
+          {reason}
+        </p>
+      ))}
+      {finding.evidence.length === 0 ? <p className="meta">未附原文引用</p> : null}
+      <ul className="review-finding-citations" aria-label="原文引用">
+        {finding.evidence.map((anchor) => {
+          const source = locatedCitationSource(anchor, documents, parseIds);
+          const label =
+            source?.filename ?? sourceForAnchor(anchor, documents)?.filename ?? "材料未对应";
+          return (
+            <li
+              key={anchor.id}
+              data-evidence-document-version-id={anchor.document_version_id}
+              data-evidence-parsed-document-id={anchor.parsed_document_id ?? undefined}
+            >
+              {source && onSelectCitation ? (
+                <button type="button" onClick={() => onSelectCitation(finding.id, anchor)}>
+                  {label} · <span className="review-citation-matched">原文已对上</span>
+                </button>
+              ) : (
+                <span>
+                  {label} ·{" "}
+                  <span
+                    className={source ? "review-citation-matched" : "review-citation-unmatched"}
+                  >
+                    {source ? "原文已对上" : "引用没对上原文"}
+                  </span>
+                </span>
+              )}
+              {anchor.quote && <q>{anchor.quote}</q>}
+            </li>
+          );
+        })}
+      </ul>
+      {clauseProposalContext ? (
+        <ClauseProposalPanel
+          {...clauseProposalContext}
+          finding={finding}
+          documents={documents}
+          immersive
+        />
+      ) : null}
+    </div>
+  );
+}
+
 export function FindingPanel({
+  immersive = false,
   findings,
   evaluations = [],
   documents,
   selectedId,
   onSelect,
+  onSelectCitation,
   showDiagnostics = false,
   pending,
   canDecide = true,
@@ -792,11 +969,13 @@ export function FindingPanel({
   navigationSerial = 0,
   clauseProposalContext,
 }: {
+  immersive?: boolean;
   findings: Finding[];
   evaluations?: ConstraintEvaluation[];
   documents: ReviewDocument[];
   selectedId: string | null;
   onSelect: (findingId: string) => void;
+  onSelectCitation?: (findingId: string, anchor: EvidenceAnchor) => void;
   pending: boolean;
   showDiagnostics?: boolean;
   canDecide?: boolean;
@@ -815,16 +994,33 @@ export function FindingPanel({
   clauseProposalContext?: ClauseProposalPanelContext;
 }) {
   const [filter, setFilter] = useState<FindingFilter>("all");
+  const [workspaceFilter, setWorkspaceFilter] = useState<WorkspaceFilter>(() =>
+    findings.some((finding) => finding.id === selectedId && latestDecision(finding))
+      ? "all"
+      : "undecided",
+  );
   const [panel, setPanel] = useState("风险审查");
   useEffect(() => {
-    if (
-      requestedFindingId &&
-      findings.filter((finding) => finding.id === requestedFindingId).length === 1
-    )
-      setPanel("风险审查");
-  }, [requestedFindingId, navigationSerial, findings]);
-  const visible = findingQueue(findings, filter);
+    if (!requestedFindingId) return;
+    const match = findings.filter((finding) => finding.id === requestedFindingId);
+    if (match.length !== 1) return;
+    setPanel("风险审查");
+    if (immersive) {
+      const targetFilter = latestDecision(match[0]!) ? "decided" : "undecided";
+      setWorkspaceFilter((current) => (current === targetFilter ? current : "all"));
+    }
+  }, [requestedFindingId, navigationSerial, findings, immersive]);
+  const allFindings = findingQueue(findings, "all");
+  const pendingFindings = allFindings.filter((finding) => latestDecision(finding) === null);
+  const decidedFindings = allFindings.filter((finding) => latestDecision(finding) !== null);
+  const workspaceQueues = {
+    all: allFindings,
+    undecided: pendingFindings,
+    decided: decidedFindings,
+  };
+  const visible = immersive ? workspaceQueues[workspaceFilter] : findingQueue(findings, filter);
   const batch = useBatchDecisionDraft();
+  const parsedDocumentIds = clauseProposalContext?.frozenParsedDocumentIds ?? [];
   const [busyScope, setBusyScope] = useState<{ key: string | null } | null>(null);
   const batchPending = busyScope !== null && busyScope.key === batch.scopeKey;
   const scopeEpoch = useRef(0);
@@ -874,21 +1070,18 @@ export function FindingPanel({
     membersValid &&
     !needsReconfirmation &&
     batch.action !== null &&
+    (batch.action !== "confirm_risk" ||
+      selectedForBatch.every((finding) => canConfirmRisk(finding, documents, parsedDocumentIds))) &&
     validateDecisionReason(batch.reason) === null;
-  const navigate = useCallback(
-    (direction: -1 | 1) => {
-      const next = adjacentFindingId(visible, selectedId, direction);
-      if (next !== null) onSelect(next);
-    },
-    [visible, selectedId, onSelect],
-  );
+  const previousId = adjacentFindingId(visible, selectedId, -1);
+  const nextId = adjacentFindingId(visible, selectedId, 1);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (
         event.defaultPrevented ||
         event.isComposing ||
         event.repeat ||
-        !event.altKey ||
+        (immersive ? event.altKey : !event.altKey) ||
         event.ctrlKey ||
         event.metaKey ||
         event.shiftKey ||
@@ -905,15 +1098,15 @@ export function FindingPanel({
         )
       )
         return;
-      const direction =
-        event.key.toLowerCase() === "j" ? 1 : event.key.toLowerCase() === "k" ? -1 : null;
-      if (direction === null) return;
+      const key = event.key.toLowerCase();
+      const targetId = key === "j" ? nextId : key === "k" ? previousId : null;
+      if (targetId === null) return;
       event.preventDefault();
-      navigate(direction);
+      onSelect(targetId);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [batchPending, navigate, panel, pending]);
+  }, [batchPending, immersive, nextId, onSelect, panel, pending, previousId]);
 
   async function submitBatch() {
     const action = batch.action;
@@ -994,6 +1187,113 @@ export function FindingPanel({
   const selectedHidden =
     selected !== null && !visible.some((finding) => finding.id === selected.id);
 
+  if (immersive) {
+    return (
+      <section className="col-findings review-finding-panel" aria-label="风险线索">
+        <header className="review-finding-panel-header">
+          <h2>风险线索</h2>
+          <span className="meta">J / K 切换</span>
+        </header>
+        <div className="review-finding-filters" role="group" aria-label="筛选线索">
+          {WORKSPACE_FILTERS.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              aria-label={label}
+              aria-pressed={workspaceFilter === id}
+              onClick={() => {
+                setWorkspaceFilter(id);
+                const queue = workspaceQueues[id];
+                if (!queue.some((finding) => finding.id === selectedId) && queue[0])
+                  onSelect(queue[0].id);
+              }}
+            >
+              {label} <span>{workspaceQueues[id].length}</span>
+            </button>
+          ))}
+        </div>
+        <div className="review-finding-queue">
+          {visible.length === 0 ? (
+            <p className="meta">
+              {findings.length ? "当前筛选没有线索" : "本次审查还没有风险线索"}
+            </p>
+          ) : null}
+          <ul>
+            {visible.map((finding) => {
+              const decision = latestDecision(finding);
+              const model = isModelFinding(finding);
+              const active = finding.id === selectedId;
+              const severity = finding.severity ?? "unrated";
+              return (
+                <li
+                  key={finding.id}
+                  data-finding-id={finding.id}
+                  data-source={model && !decision ? "model" : "record"}
+                  data-selected={active}
+                >
+                  <button
+                    className="review-finding-select finding-button"
+                    type="button"
+                    aria-label={`选择线索：${findingTitle(finding)}`}
+                    aria-expanded={active}
+                    onClick={() => onSelect(finding.id)}
+                  >
+                    <span className="finding-grade" data-severity={severity}>
+                      {SEVERITY_LABELS[severity] ?? "未分级"}
+                    </span>
+                    <strong>{findingTitle(finding)}</strong>
+                    {model ? <span className="review-finding-ai">AI 建议</span> : null}
+                  </button>
+                  {decision ? (
+                    <p className="review-finding-decision-summary">
+                      已判断 · {decision.actor} ·{" "}
+                      {WORKSPACE_DECISION_ACTIONS.find(({ action }) => action === decision.action)
+                        ?.label ?? decisionLabel(decision.action)}{" "}
+                      ·{" "}
+                      <time dateTime={decision.decided_at}>
+                        {formatDateTime(decision.decided_at)}
+                      </time>
+                    </p>
+                  ) : null}
+                  {active ? (
+                    <WorkspaceFindingDetails
+                      finding={finding}
+                      documents={documents}
+                      onSelectCitation={onSelectCitation}
+                      clauseProposalContext={clauseProposalContext}
+                    />
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+        {selected && !selectedHidden ? (
+          <DecisionForm
+            key={`${batch.scopeKey ?? ""}:${selected.id}`}
+            immersive
+            finding={selected}
+            pending={pending}
+            canDecide={canDecide}
+            riskConfirmable={canConfirmRisk(selected, documents, parsedDocumentIds)}
+            decisionDisabledReason={decisionDisabledReason}
+            conflictMessage={conflictMessage}
+            saveError={saveError}
+            onDecide={onDecide}
+            onSaved={(findingId, advance) => {
+              if (scopeRef.current !== batch.scopeKey || selectedRef.current !== findingId) return;
+              const next = advance ? nextUndecidedFindingId(allFindings, findingId) : null;
+              if (next !== null) {
+                if (workspaceFilter === "decided") setWorkspaceFilter("undecided");
+                onSelect(next);
+              } else if (workspaceFilter === "undecided") setWorkspaceFilter("all");
+            }}
+          />
+        ) : null}
+      </section>
+    );
+  }
+
   return (
     <aside className="col-findings">
       <h2 className="sr-only">审查结果</h2>
@@ -1023,17 +1323,15 @@ export function FindingPanel({
         <div className="filter-row" role="group" aria-label="浏览线索队列">
           <Button
             htmlType="button"
-            disabled={
-              pending || batchPending || adjacentFindingId(visible, selectedId, -1) === null
-            }
-            onClick={() => navigate(-1)}
+            disabled={pending || batchPending || previousId === null}
+            onClick={() => previousId !== null && onSelect(previousId)}
           >
             上一条
           </Button>
           <Button
             htmlType="button"
-            disabled={pending || batchPending || adjacentFindingId(visible, selectedId, 1) === null}
-            onClick={() => navigate(1)}
+            disabled={pending || batchPending || nextId === null}
+            onClick={() => nextId !== null && onSelect(nextId)}
           >
             下一条
           </Button>
