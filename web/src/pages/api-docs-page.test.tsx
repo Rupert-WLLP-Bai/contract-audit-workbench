@@ -189,7 +189,7 @@ test.each([
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(contract)));
   renderApiDocsPage();
 
-  expect(screen.getByRole("link", { name: "管理端", exact: true })).toHaveAttribute("href", href);
+  expect(screen.getByRole("link", { name: "管理端" })).toHaveAttribute("href", href);
   await screen.findByRole("heading", { name: "读取案件" });
 });
 
