@@ -16,6 +16,8 @@ import { formatDateTime } from "../domain/review";
 import { renderWithAntd as render } from "../test/antd";
 import { FindingPanel } from "./finding-panel";
 
+vi.mock("./clause-proposal-panel", () => ({ ClauseProposalPanel: () => null }));
+
 const at = "2026-10-21T06:00:00Z";
 
 const parsedDocument = {
@@ -116,6 +118,96 @@ function renderPanel(props: Partial<Parameters<typeof FindingPanel>[0]> = {}) {
 }
 
 describe("finding panel", () => {
+  it("filters the immersive queue and keeps previous judgment actions readable", async () => {
+    const user = userEvent.setup();
+    const { onSelect } = renderPanel({
+      immersive: true,
+      selectedId: "finding-1",
+      findings: [
+        finding(),
+        finding({
+          id: "done",
+          claim: "历史已判断",
+          decisions: [{ ...decision, action: "accept_residual" }],
+        }),
+      ],
+    });
+    const panel = within(screen.getByRole("region", { name: "风险线索" }));
+    expect(panel.getByRole("button", { name: "待判断" })).toHaveTextContent("1");
+    expect(panel.getByRole("button", { name: "已判断" })).toHaveTextContent("1");
+    expect(panel.queryByRole("button", { name: "选择线索：历史已判断" })).not.toBeInTheDocument();
+    await user.click(panel.getByRole("button", { name: "已判断" }));
+    expect(onSelect).toHaveBeenCalledWith("done");
+    expect(panel.getByText(/接受残余风险/)).toBeInTheDocument();
+  });
+
+  it("confirms model risks only when every citation matches an exact selected parse and span", async () => {
+    const user = userEvent.setup();
+    const anchor = { ...locatedAnchor, normalized_digest: null };
+    const model = finding({ origin: "model", evidence: [anchor], verification_status: "unknown" });
+    const context = {
+      caseId: "case",
+      runId: "run",
+      attemptId: "attempt",
+      frozenParsedDocumentIds: ["parsed-1"],
+      remediations: [],
+      canWrite: true,
+    };
+    const onSelectCitation = vi.fn();
+    const props = {
+      immersive: true,
+      documents: [{ ...document, parsed_document: null }],
+      selectedId: model.id,
+      conflictMessage: null,
+      saveError: null,
+      pending: false,
+      onSelect: vi.fn(),
+      onSelectCitation,
+      onDecide: vi.fn(),
+      clauseProposalContext: context,
+    };
+    const view = render(<FindingPanel {...props} findings={[model]} />);
+    const confirm = screen.getByRole("radio", { name: "确认是风险" });
+    expect(confirm).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: /合同.txt.*原文已对上/ }));
+    expect(onSelectCitation).toHaveBeenCalledWith(model.id, anchor);
+    await user.click(confirm);
+    await user.type(screen.getByRole("textbox", { name: "理由" }), "核对完成");
+    view.rerender(
+      <FindingPanel
+        {...props}
+        findings={[{ ...model, evidence: [anchor, { ...anchor, id: "bad", quote: "四十日" }] }]}
+      />,
+    );
+    expect(screen.getByRole("radio", { name: "确认是风险" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存判断" })).toBeDisabled();
+    expect(screen.getByText("引用没对上原文，不能确认是风险。")).toBeInTheDocument();
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    expect(props.onDecide).not.toHaveBeenCalled();
+  });
+
+  it("moves to the next item with J and advances after Ctrl+Enter only on success", async () => {
+    const user = userEvent.setup();
+    const onDecide = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const { onSelect } = renderPanel({
+      immersive: true,
+      selectedId: "finding-1",
+      onDecide,
+      findings: [finding(), finding({ id: "next", claim: "下一条线索" })],
+    });
+    await user.keyboard("j");
+    expect(onSelect).toHaveBeenCalledWith("next");
+    onSelect.mockClear();
+    await user.click(screen.getByRole("radio", { name: "不构成风险" }));
+    await user.type(screen.getByRole("textbox", { name: "理由" }), "条款核对无误");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    expect(onDecide).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    expect(onDecide).toHaveBeenCalledTimes(2);
+    expect(onSelect).toHaveBeenCalledWith("next");
+  });
+
   it("explains a known insufficient rule result without changing its status or hiding its source", async () => {
     const claim = "规则 ENT-COM-ADV-001 信息不足：缺少采购文件或中标文件中的合同依据。";
     renderPanel({
