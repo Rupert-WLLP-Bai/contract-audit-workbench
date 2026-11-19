@@ -82146,7 +82146,7 @@
         "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "af463f5aa7da15df8fecd3d91bcdcfc20d71086f",
+          "commit": "b59ddc0a3bca767c5b0d1307f462168baa873aef",
           "path": "web/src/components/single-contract-scope-coverage.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -82194,7 +82194,7 @@
         "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "af463f5aa7da15df8fecd3d91bcdcfc20d71086f",
+          "commit": "b59ddc0a3bca767c5b0d1307f462168baa873aef",
           "path": "web/src/components/single-contract-scope-coverage.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
@@ -83835,7 +83835,7 @@
         "value": "2026-11-19",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "af463f5aa7da15df8fecd3d91bcdcfc20d71086f",
+          "commit": "b59ddc0a3bca767c5b0d1307f462168baa873aef",
           "path": "web/src/domain/key-clauses.test.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
