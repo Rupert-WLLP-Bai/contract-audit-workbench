@@ -824,18 +824,25 @@ func (s *Store) verifyFrozenDocumentsContext(ctx context.Context, st state, docs
 		if err := s.verifyParsedRecordContext(ctx, parsed, doc); err != nil {
 			return err
 		}
-		left, _ := json.Marshal(frozen.IR)
-		right, _ := json.Marshal(parsed.IR)
-		if frozen.Text != parsed.Text || frozen.Ready != (parsed.Status == "ready") || frozen.FromOCR != parsed.FromOCR ||
-			frozen.ParseError != parsed.ParseError || string(left) != string(right) || frozen.SelectionOrder != parsed.SelectionOrder || frozen.ConfigHash != parsed.ConfigHash ||
-			frozen.ParserID != parsed.ParserID || frozen.ParserVersion != parsed.ParserVersion ||
-			frozen.ParsedCreatedAt != parsed.CreatedAt || frozen.ParsedStatus != parsed.Status || frozen.IRDigest != parsed.IRDigest {
-			return errors.New("frozen input payload differs from its parsed artifact")
+		if err := verifyFrozenParsedPayload(frozen, parsed); err != nil {
+			return err
 		}
-		if parsed.NormalizedDigest == "" && frozen.NormalizedHash != nil || parsed.NormalizedDigest != "" &&
-			(frozen.NormalizedHash == nil || *frozen.NormalizedHash != parsed.NormalizedDigest) {
-			return errors.New("frozen input normalized digest differs from its parsed artifact")
-		}
+	}
+	return nil
+}
+
+func verifyFrozenParsedPayload(frozen FrozenDocument, parsed ParsedDocument) error {
+	left, _ := json.Marshal(frozen.IR)
+	right, _ := json.Marshal(parsed.IR)
+	if frozen.Text != parsed.Text || frozen.Ready != (parsed.Status == "ready") || frozen.FromOCR != parsed.FromOCR ||
+		frozen.ParseError != parsed.ParseError || string(left) != string(right) || frozen.SelectionOrder != parsed.SelectionOrder || frozen.ConfigHash != parsed.ConfigHash ||
+		frozen.ParserID != parsed.ParserID || frozen.ParserVersion != parsed.ParserVersion ||
+		frozen.ParsedCreatedAt != parsed.CreatedAt || frozen.ParsedStatus != parsed.Status || frozen.IRDigest != parsed.IRDigest {
+		return errors.New("frozen input payload differs from its parsed artifact")
+	}
+	if parsed.NormalizedDigest == "" && frozen.NormalizedHash != nil || parsed.NormalizedDigest != "" &&
+		(frozen.NormalizedHash == nil || *frozen.NormalizedHash != parsed.NormalizedDigest) {
+		return errors.New("frozen input normalized digest differs from its parsed artifact")
 	}
 	return nil
 }

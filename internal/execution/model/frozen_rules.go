@@ -15,7 +15,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
 
+	"contractaudit/internal/docir"
 	"contractaudit/internal/rulepack"
 )
 
@@ -28,6 +30,46 @@ func AttemptTerminalForRun(attempt Attempt, runID string) bool {
 }
 func HasFrozenAttemptHashes(attempt Attempt) bool {
 	return attempt.HistoryKind == "frozen" && attempt.InputHash != nil && *attempt.InputHash != "" && attempt.OutputHash != nil && *attempt.OutputHash != ""
+}
+
+// RequiresFrozenDecisionEvidence identifies the decision that promotes a model suggestion to a confirmed risk.
+func RequiresFrozenDecisionEvidence(action string, finding Finding) bool {
+	return action == "confirm_risk" && (finding.Origin == "model" || finding.Origin == "ai")
+}
+
+// FrozenDecisionEvidenceMatches requires every citation to match the trusted
+// frozen parse of its original document.
+func FrozenDecisionEvidenceMatches[Original OriginalDocument](anchors []Anchor, docs []FrozenDocument[Original]) bool {
+	if len(anchors) == 0 {
+		return false
+	}
+	byID := make(map[string]FrozenDocument[Original], len(docs))
+	for _, doc := range docs {
+		id := doc.Document.OriginalProof().ID
+		if _, exists := byID[id]; exists {
+			return false
+		}
+		byID[id] = doc
+	}
+	for _, anchor := range anchors {
+		doc, ok := byID[anchor.DocumentID]
+		if !ok || !doc.Ready || anchor.Status != docir.StatusLocated || anchor.DocumentID == "" ||
+			anchor.ParsedDocumentID == "" || anchor.ParsedDocumentID != doc.ParsedDocumentID ||
+			anchor.NormalizedDigest == "" || doc.NormalizedHash == nil || anchor.NormalizedDigest != *doc.NormalizedHash ||
+			strings.TrimSpace(anchor.Quote) == "" {
+			return false
+		}
+		if quote, located := docir.Slice(doc.Text, anchor.Start, anchor.End); !located || quote != anchor.Quote {
+			return false
+		}
+		if element := doc.IR.ElementAt(anchor.Start, anchor.End); anchor.ElementID != "" && element != "" && anchor.ElementID != element {
+			return false
+		}
+		if page, hasPage := doc.IR.PageAt(anchor.Start, anchor.End); anchor.Page != nil && (!hasPage || *anchor.Page != page) {
+			return false
+		}
+	}
+	return true
 }
 
 func FrozenRulePack(attempt Attempt, caseItem FrozenRulePackScope) (rulepack.Manifest, error) {
