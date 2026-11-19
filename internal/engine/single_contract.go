@@ -15,16 +15,21 @@ import (
 	"fmt"
 )
 
-// SingleContractPrecheckManifest is the published, versioned mapping shipped
-// with this binary. Its exact bytes identify the implementation; older mappings
-// must remain available when a later version is introduced.
-const SingleContractPrecheckManifest = `{"id":"single-contract-precheck","version":"1","scope":"single_contract_precheck","status":"published","rules":[{"id":"single-payment-sum-v1","domain":"payment_sum"}]}`
-
 const SingleContractPrecheckRule = "single-payment-sum-v1"
+const SingleContractPaymentTermsRule = "single-payment-terms-v2"
+const SingleContractPaymentTermsCapability = "single_contract.payment_terms"
+
+const singleContractPrecheckManifestV1 = `{"id":"single-contract-precheck","version":"1","scope":"single_contract_precheck","status":"published","rules":[{"id":"single-payment-sum-v1","domain":"payment_sum"}]}`
+
+// SingleContractPrecheckManifest is the exact, published mapping for new
+// reviews. Older mappings remain available to the attempts that froze them.
+const SingleContractPrecheckManifest = `{"id":"single-contract-precheck","version":"2","scope":"single_contract_precheck","status":"published","rules":[{"id":"single-payment-terms-v2","domain":"payment_terms"}]}`
 
 var (
 	singleContractRuleSetHash  = sha256hex(SingleContractPrecheckManifest)
-	singleContractPlaybookHash = sha256hex("single-contract-precheck/v1\n" + SingleContractPrecheckManifest)
+	singleContractPlaybookHash = sha256hex("single-contract-precheck/v2\n" + SingleContractPrecheckManifest)
+	singleContractV1RuleHash   = sha256hex(singleContractPrecheckManifestV1)
+	singleContractV1PlayHash   = sha256hex("single-contract-precheck/v1\n" + singleContractPrecheckManifestV1)
 )
 
 type SingleContractMapping struct {
@@ -41,10 +46,17 @@ type SingleContractMapping struct {
 // PublishedSingleContractMapping resolves the immutable release and refuses an
 // unrecognized identity instead of silently executing another rule version.
 func PublishedSingleContractMapping(hash string) (SingleContractMapping, error) {
+	var manifest, version, rule, domain string
+	switch hash {
+	case singleContractV1RuleHash:
+		manifest, version, rule, domain = singleContractPrecheckManifestV1, "1", SingleContractPrecheckRule, "payment_sum"
+	case singleContractRuleSetHash:
+		manifest, version, rule, domain = SingleContractPrecheckManifest, "2", SingleContractPaymentTermsRule, "payment_terms"
+	}
 	var mapping SingleContractMapping
-	if hash != SingleContractRuleSetHash() || json.Unmarshal([]byte(SingleContractPrecheckManifest), &mapping) != nil ||
-		mapping.ID != "single-contract-precheck" || mapping.Version != "1" || mapping.Scope != "single_contract_precheck" ||
-		mapping.Status != "published" || len(mapping.Rules) != 1 || mapping.Rules[0].ID != SingleContractPrecheckRule || mapping.Rules[0].Domain != "payment_sum" {
+	if manifest == "" || json.Unmarshal([]byte(manifest), &mapping) != nil ||
+		mapping.ID != "single-contract-precheck" || mapping.Version != version || mapping.Scope != "single_contract_precheck" ||
+		mapping.Status != "published" || len(mapping.Rules) != 1 || mapping.Rules[0].ID != rule || mapping.Rules[0].Domain != domain {
 		return SingleContractMapping{}, fmt.Errorf("single-contract rule mapping is unavailable")
 	}
 	return mapping, nil
@@ -52,6 +64,16 @@ func PublishedSingleContractMapping(hash string) (SingleContractMapping, error) 
 
 func SingleContractRuleSetHash() string  { return singleContractRuleSetHash }
 func SingleContractPlaybookHash() string { return singleContractPlaybookHash }
+
+func SingleContractPlaybookMatches(ruleHash, playbookHash string) bool {
+	return (ruleHash == singleContractRuleSetHash && playbookHash == singleContractPlaybookHash) ||
+		(ruleHash == singleContractV1RuleHash && playbookHash == singleContractV1PlayHash)
+}
+
+func HasSingleContractIdentity(ruleHash, playbookHash string) bool {
+	return ruleHash == singleContractRuleSetHash || ruleHash == singleContractV1RuleHash ||
+		playbookHash == singleContractPlaybookHash || playbookHash == singleContractV1PlayHash
+}
 
 // EvaluateSingleContractPaymentSum computes only the payment phrases this
 // typed extractor recognizes in the primary contract. The extractor cannot

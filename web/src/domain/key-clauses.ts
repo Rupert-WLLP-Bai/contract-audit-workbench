@@ -15,6 +15,7 @@ import {
   type FrozenQuoteScope,
   type FrozenQuoteSelection,
 } from "./frozen-quote";
+import { frozenTableValues } from "./key-clause-table";
 import { createTextIndex, sliceByCodePoints, type CodePointTextIndex } from "./text";
 
 // Automatic reading highlights stay short. Longer text can still be searched and quoted.
@@ -128,6 +129,7 @@ interface RatedSentence {
   emphasized: boolean;
   key: string;
   source: ReviewDocument["clauses"][number] | undefined;
+  tableHeading?: string;
 }
 
 function parsedDocumentIdOf(document: ReviewDocument, scope: FrozenQuoteScope): string | null {
@@ -493,10 +495,22 @@ export function keyClauseNavigationFor(
   if (sentences === null) {
     return unavailable("当前浏览器不支持原生句段定位，因此没有可定位的关键条款。");
   }
-  const picked = selectSentences(rateSentences(document, index, sentences));
+  const tableValues: RatedSentence[] = frozenTableValues(document.table_cells, index).map(
+    ({ range, heading, key, category, emphasized }) => ({
+      range,
+      categories: [category],
+      primary: category,
+      score: 20,
+      emphasized,
+      key,
+      source: undefined,
+      tableHeading: heading,
+    }),
+  );
+  const picked = selectSentences([...rateSentences(document, index, sentences), ...tableValues]);
   const candidates: KeyClauseCandidate[] = [];
   const allCandidates: KeyClauseCandidate[] = [];
-  for (const { range, categories, source, emphasized } of picked) {
+  for (const { range, categories, source, emphasized, tableHeading } of picked) {
     const selection = createFrozenQuoteSelection(scope, document, range, index);
     if (!selection || !frozenQuoteMatchesDocument(selection, scope, document, index)) continue;
 
@@ -513,12 +527,14 @@ export function keyClauseNavigationFor(
         : null;
     const candidate = candidateFromSelection(selection, parsedDocumentId, categories, {
       clauseId: source?.id || null,
-      heading: heading ?? "正文片段/标题未识别",
-      sourceLabel: wholeNode
-        ? "结构化条款"
-        : heading
-          ? "正文片段/非完整条款"
-          : "正文片段/标题未识别",
+      heading: tableHeading ?? heading ?? "正文片段/标题未识别",
+      sourceLabel: tableHeading
+        ? "冻结表格单元格"
+        : wholeNode
+          ? "结构化条款"
+          : heading
+            ? "正文片段/非完整条款"
+            : "正文片段/标题未识别",
       kind: wholeNode ? "structured" : "fragment",
       page,
     });

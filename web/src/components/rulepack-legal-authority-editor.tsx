@@ -10,7 +10,7 @@
 
 import { Alert, Button, Input, Select } from "antd";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { getGovernedKnowledge } from "../api/governed-knowledge";
 import { searchAdminLegalKnowledge, type LegalHit } from "../api/legal-knowledge";
 import type { RulePackLegalAuthority } from "../api/rulepacks";
@@ -163,10 +163,11 @@ export function RulePackLegalAuthorityEditor({
     conditions.every((item) => item.field && item.one_of.length > 0),
   );
 
-  function submitSearch(event: FormEvent) {
-    event.preventDefault();
+  function submitSearch() {
+    const query = searchDraft.trim();
+    if (disabled || !query) return;
     setSelectedKey("");
-    setSubmittedQuery(searchDraft.trim());
+    setSubmittedQuery(query);
   }
 
   function updateCondition(index: number, patch: Partial<ApplicabilityDraft>) {
@@ -229,7 +230,7 @@ export function RulePackLegalAuthorityEditor({
       ) : (
         <p className="meta">尚未添加法律条文依据。</p>
       )}
-      <form className="workflow-form" onSubmit={submitSearch}>
+      <div className="workflow-form" role="group" aria-label="检索依据">
         <label className="field">
           查找已发布法律条文
           <Input
@@ -238,12 +239,17 @@ export function RulePackLegalAuthorityEditor({
             onChange={(event) => setSearchDraft(event.target.value)}
             disabled={disabled}
             placeholder="法规名称、条号或正文"
+            onPressEnter={(event) => {
+              if (event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              submitSearch();
+            }}
           />
         </label>
-        <Button htmlType="submit" disabled={disabled || !searchDraft.trim()}>
+        <Button htmlType="button" disabled={disabled || !searchDraft.trim()} onClick={submitSearch}>
           搜索条文
         </Button>
-      </form>
+      </div>
       {search.isError ? (
         <Alert
           type="error"

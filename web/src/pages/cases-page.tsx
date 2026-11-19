@@ -317,12 +317,6 @@ export function CasesPage() {
       contentRef={readingContent}
       className="cases-page"
       title="案件"
-      description={
-        <>
-          案件由服务端按当前身份授权返回；“我负责的”依据服务端责任人名称匹配当前身份，“已归档”依据归档时间筛选。
-          {canCreate ? "" : " 当前角色仅可查看案件；新建案件需要管理员或经办人角色。"}
-        </>
-      }
       actions={
         <Button
           aria-label={"新建案件"}

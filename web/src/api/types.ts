@@ -178,6 +178,7 @@ export interface EvidenceAnchor {
   text_offset: TextOffset | null;
   bbox: BoundingBox | null;
   mismatch_reason: string | null;
+  observation_labels?: string[];
 }
 
 // The UI displays only these fields of the server's decision history.
@@ -220,7 +221,10 @@ export interface ReviewDocument extends DocumentVersion {
   parsed_document_id: string | null;
   text: string | null;
   clauses: ClauseNode[];
+  table_cells?: ReviewTableCell[];
 }
+
+export type ReviewTableCell = WireSchemas["ReviewTableCell"];
 
 export type FindingVerification = "verified" | "unverified" | "unknown";
 export interface ReviewScopeIdentity {
@@ -778,6 +782,7 @@ export interface ConstraintEvaluation {
   finding_id: string | null;
   reason_code: string;
   fact_ids: string[];
+  evidence?: EvidenceAnchor[];
 }
 
 export interface RevisionComparison {

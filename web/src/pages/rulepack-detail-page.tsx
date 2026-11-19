@@ -328,7 +328,12 @@ export function RulePackDetailPage() {
         </nav>
       }
       title={`${pack.id}，v${pack.version}`}
-      description={`租户 ${pack.tenant_id}，状态 ${pack.status}，行修订 ${pack.revision}，指针修订 ${pack.active_pointer_revision}${pack.is_active ? "，当前生效" : "，当前未生效"}`}
+      description={`租户 ${pack.tenant_id}`}
+      status={
+        <span className={`status-text ${pack.is_active ? "status-active" : ""}`}>
+          {pack.is_active ? "当前生效" : "当前未生效"} · {pack.status}
+        </span>
+      }
       actions={
         <Button
           aria-label={"基于此版本修改"}
@@ -341,9 +346,9 @@ export function RulePackDetailPage() {
       navigation={
         <nav className="rulepack-detail-nav" aria-label="规则包详情章节">
           <a href="#rulepack-content">规则内容</a>
-          <a href="#rulepack-provenance">版本来源</a>
           <a href="#rulepack-lifecycle">验证与发布</a>
           <a href="#rulepack-history">历史与回滚</a>
+          <a href="#rulepack-provenance">版本来源</a>
           <a href="#rulepack-test">规则试算</a>
           <a href="#rulepack-shadow">影子对比</a>
         </nav>
@@ -354,74 +359,6 @@ export function RulePackDetailPage() {
           当前会话的可信租户与规则包不一致，页面只读。
         </p>
       ) : null}
-      <section id="rulepack-provenance">
-        <Collapse
-          className="workflow-panel rulepack-provenance"
-          items={[
-            {
-              key: "content",
-              label: (
-                <>
-                  <h2 id="rulepack-provenance-title">版本与来源信息</h2>
-                </>
-              ),
-              children: (
-                <>
-                  <dl className="rulepack-summary-grid">
-                    <div>
-                      <dt>内容摘要</dt>
-                      <dd>
-                        <code className="digest">{pack.content_hash}</code>
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>保存版本的 SHA-256</dt>
-                      <dd>
-                        <code className="digest">{pack.snapshot_sha256}</code>
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>有效期</dt>
-                      <dd>
-                        {pack.effective_from} — {pack.effective_until}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>规则依据来源</dt>
-                      <dd>{pack.authority_sources.join("；") || "无"}</dd>
-                    </div>
-                    {manifest.lifecycle.verification ? (
-                      <div>
-                        <dt>验证</dt>
-                        <dd>
-                          {manifest.lifecycle.verification.passed ? "通过" : "未通过"} ，
-                          {manifest.lifecycle.verification.verifier_version}，
-                          {manifest.lifecycle.verification.manifest_hash}
-                        </dd>
-                      </div>
-                    ) : null}
-                    {manifest.lifecycle.approval ? (
-                      <div>
-                        <dt>批准</dt>
-                        <dd>
-                          操作者 {manifest.lifecycle.approval.actor_id}，内容{" "}
-                          {manifest.lifecycle.approval.manifest_hash}
-                        </dd>
-                      </div>
-                    ) : null}
-                    {manifest.lifecycle.release ? (
-                      <div>
-                        <dt>发布证明</dt>
-                        <dd>发布摘要 {manifest.lifecycle.release.release_hash}</dd>
-                      </div>
-                    ) : null}
-                  </dl>
-                </>
-              ),
-            },
-          ]}
-        />
-      </section>
       {canEdit ? (
         <form
           className="workflow-form rulepack-form"
@@ -737,6 +674,82 @@ export function RulePackDetailPage() {
         contentHash={pack.content_hash}
         available={manifest.fixture_suite !== undefined}
       />
+      <section id="rulepack-provenance">
+        <Collapse
+          className="workflow-panel rulepack-provenance"
+          items={[
+            {
+              key: "content",
+              label: (
+                <>
+                  <h2 id="rulepack-provenance-title">版本与来源信息</h2>
+                </>
+              ),
+              children: (
+                <>
+                  <dl className="rulepack-summary-grid">
+                    <div>
+                      <dt>行修订</dt>
+                      <dd>{pack.revision}</dd>
+                    </div>
+                    <div>
+                      <dt>指针修订</dt>
+                      <dd>{pack.active_pointer_revision}</dd>
+                    </div>
+                    <div>
+                      <dt>内容摘要</dt>
+                      <dd>
+                        <code className="digest">{pack.content_hash}</code>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>保存版本的 SHA-256</dt>
+                      <dd>
+                        <code className="digest">{pack.snapshot_sha256}</code>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>有效期</dt>
+                      <dd>
+                        {pack.effective_from} — {pack.effective_until}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>规则依据来源</dt>
+                      <dd>{pack.authority_sources.join("；") || "无"}</dd>
+                    </div>
+                    {manifest.lifecycle.verification ? (
+                      <div>
+                        <dt>验证</dt>
+                        <dd>
+                          {manifest.lifecycle.verification.passed ? "通过" : "未通过"} ，
+                          {manifest.lifecycle.verification.verifier_version}，
+                          {manifest.lifecycle.verification.manifest_hash}
+                        </dd>
+                      </div>
+                    ) : null}
+                    {manifest.lifecycle.approval ? (
+                      <div>
+                        <dt>批准</dt>
+                        <dd>
+                          操作者 {manifest.lifecycle.approval.actor_id}，内容{" "}
+                          {manifest.lifecycle.approval.manifest_hash}
+                        </dd>
+                      </div>
+                    ) : null}
+                    {manifest.lifecycle.release ? (
+                      <div>
+                        <dt>发布证明</dt>
+                        <dd>发布摘要 {manifest.lifecycle.release.release_hash}</dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                </>
+              ),
+            },
+          ]}
+        />
+      </section>
       <div id="rulepack-test">
         <RulePackTestPanel
           packId={pack.id}

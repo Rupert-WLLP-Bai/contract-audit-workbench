@@ -265,32 +265,30 @@
   display: none;
 }
 
-.api-docs-session {
-  display: inline-flex;
-  min-width: 0;
-  max-width: 268px;
+.api-docs-access {
+  display: flex;
+  min-inline-size: 0;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.api-docs-session {
+  min-inline-size: 0;
+  max-inline-size: 14ch;
   overflow: hidden;
-  padding: 6px 12px;
-  border: 1px solid var(--api-rule);
-  border-radius: 999px;
-  background: var(--api-surface);
-  color: var(--api-muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
+  color: var(--text-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.api-docs-session::before {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 6px;
-  border-radius: 50%;
-  background: var(--api-ink);
-  content: "";
+.api-code-section > summary {
+  color: var(--action-primary);
+  cursor: pointer;
+}
+
+.api-reference-content:focus-visible {
+  outline-offset: -2px;
 }
 
 /* Explorer frame */
@@ -1355,10 +1353,6 @@
     padding-inline: 18px;
   }
 
-  .api-docs-session {
-    display: none;
-  }
-
   .api-explorer-grid {
     grid-template-columns: 228px minmax(0, 1fr) 332px;
   }
@@ -1380,7 +1374,13 @@
 
   .api-docs-nav {
     grid-column: 1 / -1;
+    grid-row: 2;
     height: 40px;
+  }
+
+  .api-docs-access {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .api-docs-nav .ant-tabs-tab-btn {
@@ -1517,7 +1517,7 @@
   }
 
   .api-docs-brand strong {
-    max-width: 62vw;
+    max-inline-size: 100%;
     font-size: 14px;
   }
 

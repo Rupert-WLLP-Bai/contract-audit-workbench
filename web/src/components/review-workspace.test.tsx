@@ -345,6 +345,7 @@ describe("review workspace", () => {
   it("shows both sources on request and does not treat the model claim as verified", async () => {
     const user = userEvent.setup();
     const { container } = renderWorkspace("split", workspace(), true);
+    await user.click(screen.getByRole("button", { name: "审查结果" }));
     await user.click(screen.getByRole("button", { name: "双来源对照" }));
     expect(screen.getByRole("button", { name: "双来源对照" })).toHaveAttribute(
       "aria-pressed",
@@ -372,13 +373,15 @@ describe("review workspace", () => {
     expect(screen.getAllByText("历史来源未记录解析身份或正文摘要")).toHaveLength(2);
   });
 
-  it("keeps citation identities hidden and does not claim the finding was verified", () => {
+  it("keeps citation identities hidden and does not claim the finding was verified", async () => {
+    const user = userEvent.setup();
     const result = workspace();
     result.documents[0]!.parsed_document_id = "parsed_private_source";
     result.findings[0]!.evidence[0]!.parsed_document_id = "parsed_private_source";
     result.findings[0]!.verification_status = "verified";
     result.findings[0]!.unverified_reason = null;
     const { container } = renderWorkspace("split", result);
+    await user.click(screen.getByRole("button", { name: "审查结果" }));
     expect(container.querySelector("mark.hit-evidence")).not.toBeNull();
     expect(screen.getByText("内容含义待核实")).toBeInTheDocument();
     expect(container).not.toHaveTextContent(/parsed_private_source|SHA-256|abc12345/);
@@ -481,6 +484,7 @@ describe("review workspace", () => {
   it("switches evidence sources without dropping the finding, and refuses a bad anchor highlight", async () => {
     const user = userEvent.setup();
     const { container } = renderWorkspace("switch");
+    await user.click(screen.getByRole("button", { name: "审查结果" }));
     expect(container.querySelector("mark.hit-evidence")?.textContent).toBe("三十六个月");
     await user.click(screen.getByRole("button", { name: "拟签合同" }));
     expect(container.querySelector("mark.hit-evidence")?.textContent).toBe("二十四个月");
@@ -691,6 +695,170 @@ describe("frozen workspace key clauses", () => {
 });
 
 describe("review workspace lifecycle", () => {
+  it("opens review results for an explicit legacy finding link", () => {
+    const view = renderView({ surface: "document", explicitFindingId: "f1", selectedId: "f1" });
+    expect(view.container.querySelector(".review-workspace-layout")).toHaveClass(
+      "workspace-view-evidence",
+    );
+    expect(view.container.querySelector(".hit-evidence")).not.toBeNull();
+  });
+
+  it("keeps the exact legacy no-observation rule in history, not the risk queue", () => {
+    const result = workspace();
+    const doc = documentOf("d1", "draft_contract", "合同.txt", "付款按照约定。");
+    doc.parsed_document_id = "parse-1";
+    result.documents = [doc];
+    const finding = {
+      ...result.findings[1]!,
+      id: "legacy",
+      origin: "rule",
+      domain: "payment_sum",
+      relation: "insufficient",
+      severity: null,
+      version: 1,
+      claim: "未识别到支持的付款比例表达。",
+      decisions: [],
+      evidence: [],
+    };
+    result.findings = [finding];
+    const identity = {
+      id: "single_contract_precheck",
+      rule_set_id: "single-contract-precheck",
+      rule_set_version: "1",
+      rule_set_hash: "51676a95611b6e1bf4c30fc50be82e1d493528f34b89f3ece9dbb5aa6c291596",
+    };
+    const selected = {
+      ...attempt("attempt-1", 1, "completed"),
+      parsed_document_ids: ["parse-1"],
+      review_scope: identity,
+    };
+    result.review_attempts = { attempt: selected, attempts: [selected] };
+    result.snapshot = {
+      document_ids: ["d1"],
+      rule_set_hash: identity.rule_set_hash,
+      playbook_hash: "",
+      model_ref: null,
+      comparator_ref: null,
+      review_scope: identity,
+    };
+    result.evaluations = [
+      {
+        id: "ev",
+        domain: "payment_sum",
+        relation: "insufficient",
+        rule_version: "single-payment-sum-v1",
+        rule_id: "single-payment-sum-v1",
+        capability_id: "single_contract.payment_sum",
+        reason: finding.claim,
+        reason_code: "",
+        object_refs: [],
+        finding_id: finding.id,
+        fact_ids: [],
+      },
+    ];
+    const view = renderView({ workspace: result, surface: "document" });
+    expect(view.container.querySelector(".col-findings")).not.toHaveTextContent(finding.claim);
+    expect(screen.getByText("历史规则记录").closest("details")).toHaveTextContent(finding.claim);
+  });
+
+  it("shows a v2 payment observation and locates its exact frozen quote", async () => {
+    const user = userEvent.setup();
+    const result = workspace();
+    const text = "验收后支付首期款10%。";
+    const doc = documentOf("d1", "draft_contract", "合同.txt", text);
+    doc.digest = "a".repeat(64);
+    doc.parsed_document_id = "parse-1";
+    doc.clauses = [];
+    result.documents = [doc];
+    result.findings = [];
+    const identity = {
+      id: "single_contract_precheck",
+      rule_set_id: "single-contract-precheck",
+      rule_set_version: "2",
+      rule_set_hash: "3a26ce92e0dfd674d444f3ab2ca832d71d161f84d0a8bb94f8eee33c7ff2f8ab",
+    };
+    const selected = {
+      ...attempt("attempt-1", 1, "completed"),
+      parsed_document_ids: ["parse-1"],
+      review_scope: identity,
+    };
+    result.review_attempts = { attempt: selected, attempts: [selected] };
+    result.snapshot = {
+      document_ids: ["d1"],
+      rule_set_hash: identity.rule_set_hash,
+      playbook_hash: "",
+      model_ref: null,
+      comparator_ref: null,
+      review_scope: identity,
+    };
+    result.evaluations = [
+      {
+        id: "ev",
+        domain: "payment_terms",
+        relation: "insufficient",
+        rule_version: "single-payment-terms-v2",
+        rule_id: "single-payment-terms-v2",
+        capability_id: "single_contract.payment_terms",
+        reason: "已定位",
+        reason_code: "payment_terms_observed",
+        object_refs: [],
+        finding_id: null,
+        fact_ids: [],
+        evidence: [
+          {
+            id: "a1",
+            document_version_id: "d1",
+            parsed_document_id: "parse-1",
+            normalized_digest: null,
+            quote: text,
+            status: "located",
+            page: null,
+            text_offset: { start: 0, end: Array.from(text).length },
+            bbox: null,
+            mismatch_reason: null,
+            observation_labels: ["首期款"],
+          },
+        ],
+      },
+    ];
+    const view = renderView({
+      workspace: result,
+      selectedId: null,
+      surface: "document",
+      quoteScope: {
+        caseId: "c1",
+        runId: "r1",
+        attemptId: "attempt-1",
+        isFrozenAttempt: true,
+        parsedDocumentIds: ["parse-1"],
+        sourceProofs: [
+          { documentId: "d1", parsedDocumentId: "parse-1", originalDigest: doc.digest },
+        ],
+      },
+    });
+    const button = screen.getByRole("button", { name: /首期款.*验收后支付/ });
+    expect(button).toBeEnabled();
+    await user.click(button);
+    expect(view.container.querySelector(".doc-text .hit-find")?.textContent).toBe(text);
+  });
+
+  it("opens the original at full width and makes review results available on demand", async () => {
+    const user = userEvent.setup();
+    const view = renderView({ surface: "document", selectedId: null });
+    expect(screen.getByRole("button", { name: "阅读原文" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(view.container.querySelector(".review-workspace-layout")).toHaveClass(
+      "workspace-view-reading",
+    );
+    await user.click(screen.getByRole("button", { name: "审查结果" }));
+    expect(view.container.querySelector(".review-workspace-layout")).toHaveClass(
+      "workspace-view-evidence",
+    );
+    expect(screen.getByText("采购文件与拟签合同的质保期不一致")).toBeInTheDocument();
+  });
+
   it.each([
     ["connecting", "正在连接运行状态"],
     ["live", "运行状态已连接"],

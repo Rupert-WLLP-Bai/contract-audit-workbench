@@ -29,7 +29,7 @@ func normalizeReviewScope(scope string) (string, error) {
 }
 
 func snapshotScope(snapshot RunSnapshot) *ReviewScopeIdentity {
-	if snapshot.RuleSetHash != engine.SingleContractRuleSetHash() || snapshot.PlaybookHash != engine.SingleContractPlaybookHash() {
+	if !engine.SingleContractPlaybookMatches(snapshot.RuleSetHash, snapshot.PlaybookHash) {
 		return nil
 	}
 	mapping, err := engine.PublishedSingleContractMapping(snapshot.RuleSetHash)
@@ -57,7 +57,7 @@ func isSingleContractSnapshot(snapshot RunSnapshot) bool {
 }
 
 func singleContractChecks(materials []ReviewReadinessMaterial, primaryID string) []ReviewReadinessCheck {
-	check := ReviewReadinessCheck{RuleID: engine.SingleContractPrecheckRule, Status: "ready", MissingDependencies: []string{}, NextAction: "start_review"}
+	check := ReviewReadinessCheck{RuleID: engine.SingleContractPaymentTermsRule, Status: "ready", MissingDependencies: []string{}, NextAction: "start_review"}
 	foundPrimary := false
 	for _, material := range materials {
 		if material.DocumentID != primaryID || !material.Selected {

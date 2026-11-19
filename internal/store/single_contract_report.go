@@ -31,7 +31,8 @@ func (s *Store) validateSingleContractReport(st state, item Case, runID, attempt
 	if !isSingleContractSnapshot(snapshot) {
 		return invalid()
 	}
-	if _, err := engine.PublishedSingleContractMapping(snapshot.RuleSetHash); err != nil {
+	mapping, err := engine.PublishedSingleContractMapping(snapshot.RuleSetHash)
+	if err != nil {
 		return invalid()
 	}
 	input, ok := st.attemptInput(attemptID)
@@ -46,7 +47,7 @@ func (s *Store) validateSingleContractReport(st state, item Case, runID, attempt
 		}
 	}
 	evaluations := st.evaluationsForAttempt(runID, attemptID)
-	if primaryCount != 1 || len(evaluations) != 1 || evaluations[0].RuleVersion != engine.SingleContractPrecheckRule || evaluations[0].Domain != "payment_sum" {
+	if primaryCount != 1 || len(evaluations) != 1 || evaluations[0].RuleVersion != mapping.Rules[0].ID || evaluations[0].Domain != mapping.Rules[0].Domain {
 		return invalid()
 	}
 	digest, err := s.agentReviewDigestFor(item.TenantID, item.OwnerOrgID, attemptID)

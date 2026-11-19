@@ -77,6 +77,7 @@ const CAPABILITIES: Record<string, string> = {
   "cloud_services.minimum_bandwidth": "最低保障带宽",
   "cloud_services.monthly_availability": "月可用率",
   "single_contract.payment_sum": "主合同中可识别的付款比例合计",
+  "single_contract.payment_terms": "主合同付款与结算原文",
 };
 const COMPARATORS: Record<string, string> = {
   minimum_bandwidth: "最低保障带宽对照",

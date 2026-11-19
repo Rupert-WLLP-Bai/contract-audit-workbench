@@ -18,6 +18,7 @@ import (
 
 	"contractaudit/internal/agentflow"
 	"contractaudit/internal/docir"
+	"contractaudit/internal/engine"
 	"contractaudit/internal/store"
 )
 
@@ -119,6 +120,107 @@ func TestBusinessWorkspaceProjectsOnlyBusinessData(t *testing.T) {
 		diagnostics["documents"].([]any)[0].(map[string]any)["digest"] != "private-original-hash" ||
 		diagnostics["evidence"].([]any)[0].(map[string]any)["anchors"].([]any)[0].(map[string]any)["normalized_digest"] != ir.NormalizedDigest {
 		t.Fatalf("diagnostics lost the separately authorized technical data: %v", diagnostics)
+	}
+}
+
+func TestBusinessWorkspaceProjectsPinnedTableCellCoordinates(t *testing.T) {
+	text := "😀标题\n\n金额\t10万元"
+	ir := docir.Build(text)
+	ir.Cells = []docir.Cell{
+		{ID: "cell-1", TableID: "t-1", Row: 1, Col: 1, Text: "金额", Start: 5, End: 7},
+		{ID: "cell-2", TableID: "t-1", Row: 1, Col: 3, Text: "10万元", Start: 8, End: 12},
+	}
+	pinned := store.Interpreted{
+		Document: store.Document{ID: "doc-current"}, Ready: true, Text: text, IR: ir,
+		ParsedDocument: &store.ParsedDocument{ID: "parse-current", DocumentID: "doc-current"},
+	}
+	unpinned := pinned
+	unpinned.Document.ID = "doc-previous"
+	unpinned.ParsedDocument = &store.ParsedDocument{ID: "parse-previous", DocumentID: "doc-previous"}
+	attempt := store.Attempt{ID: "frozen", HistoryKind: "frozen", ParsedDocumentIDs: []string{"parse-current"}}
+	ws := store.Workspace{
+		View:      store.RunView{Run: store.Run{ID: "run-1"}},
+		Documents: []store.Interpreted{pinned, unpinned},
+		Snapshot:  store.RunSnapshot{DocumentIDs: []string{"doc-current", "doc-previous"}},
+		Execution: &store.Execution{Attempt: &attempt},
+	}
+	raw, err := json.Marshal(workspaceJSON(nil, ws))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var projected struct {
+		Documents []struct {
+			Cells []struct {
+				TableID string                   `json:"table_id"`
+				Row     int                      `json:"row"`
+				Column  int                      `json:"column"`
+				Range   struct{ Start, End int } `json:"text_offset"`
+			} `json:"table_cells"`
+		}
+	}
+	if err := json.Unmarshal(raw, &projected); err != nil {
+		t.Fatal(err)
+	}
+	got := projected.Documents[0].Cells
+	if len(got) != 2 || got[1].TableID != "t-1" || got[1].Row != 1 || got[1].Column != 3 ||
+		got[1].Range.Start != 8 || got[1].Range.End != 12 {
+		t.Fatalf("frozen cell coordinates: %+v", got)
+	}
+	if projected.Documents[1].Cells != nil {
+		t.Fatal("unpinned comparison document exposed cell coordinates")
+	}
+	ws.Documents[0].IR.Cells[1].End++
+	raw, err = json.Marshal(workspaceJSON(nil, ws))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"table_cells"`) {
+		t.Fatal("inconsistent table-cell projection was exposed")
+	}
+}
+
+func TestBusinessWorkspaceProjectsLabeledPaymentObservation(t *testing.T) {
+	quote := "十个工作日内支付"
+	ir := docir.Build("😀" + quote)
+	doc := store.Interpreted{
+		Document: store.Document{ID: "doc-1", Digest: "original"}, Ready: true, IR: ir, Text: ir.NormalizedText,
+		ParsedDocument: &store.ParsedDocument{ID: "parse-1", DocumentID: "doc-1", Status: "ready", OriginalDigest: "original", NormalizedDigest: ir.NormalizedDigest},
+	}
+	ref := store.EvaluationEvidenceRef{
+		DocumentID: "doc-1", ParsedDocumentID: "parse-1", NormalizedDigest: ir.NormalizedDigest,
+		Quote: quote, Start: 1, End: 1 + len([]rune(quote)),
+	}
+	wrong := ref
+	wrong.Start = 0
+	attempt := store.Attempt{ID: "attempt-1", HistoryKind: "frozen", ParsedDocumentIDs: []string{"parse-1"}}
+	eval := store.ConstraintEval{
+		ID: "eval-1", AttemptID: "attempt-1", RuleID: engine.SingleContractPaymentTermsRule,
+		RuleVersion: engine.SingleContractPaymentTermsRule, CapabilityID: engine.SingleContractPaymentTermsCapability,
+		Evidence: []store.EvaluationEvidence{
+			{FactID: "payment_deadline", Ref: ref}, {FactID: "payment_trigger", Ref: ref},
+			{FactID: "payment_method", Ref: wrong},
+		},
+	}
+	ws := store.Workspace{
+		View: store.RunView{Run: store.Run{ID: "run-1"}}, Documents: []store.Interpreted{doc},
+		Snapshot: store.RunSnapshot{DocumentIDs: []string{"doc-1"}}, Execution: &store.Execution{Attempt: &attempt},
+		Evaluations: []store.ConstraintEval{eval},
+	}
+	body := workspaceJSON(nil, ws)
+	projected := body["evaluations"].([]any)[0].(map[string]any)
+	evidence, _ := projected["evidence"].([]any)
+	if len(evidence) != 1 {
+		t.Fatalf("expected one exact observation, got %d", len(evidence))
+	}
+	anchor := evidence[0].(map[string]any)
+	if anchor["quote"] != quote || !reflect.DeepEqual(anchor["observation_labels"], []string{"付款期限", "付款前置条件"}) ||
+		len(body["findings"].([]any)) != 0 {
+		t.Fatal("labeled observations must retain exact quotes without becoming findings")
+	}
+	ws.Evaluations[0].AttemptID = "other-attempt"
+	projected = workspaceJSON(nil, ws)["evaluations"].([]any)[0].(map[string]any)
+	if _, ok := projected["evidence"]; ok {
+		t.Fatal("cross-attempt evidence was exposed")
 	}
 }
 

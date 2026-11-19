@@ -506,14 +506,7 @@ export function CaseDetailPage() {
           </nav>
         }
         title={item.title}
-        description={
-          [
-            businessScopeLabel(item.business_line, item.scenario),
-            contractTypeLabel(item.contract_type),
-          ]
-            .filter(Boolean)
-            .join("，") + `，更新于 ${formatDateTime(item.updated_at)}`
-        }
+        description={contractTypeLabel(item.contract_type)}
         status={
           <StatusText tone={businessStatusTone(item.business_status ?? "")}>
             {businessStatusLabel(item.business_status ?? "")}

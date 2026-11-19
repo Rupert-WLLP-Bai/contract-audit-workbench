@@ -1222,7 +1222,7 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 	ctx, cancelExecution := reviewWorkContext(work, ctx, started, limit)
 	defer cancelExecution()
 	frozenScope := initial.snapshotOf(runID)
-	if frozenScope.RuleSetHash == engine.SingleContractRuleSetHash() || frozenScope.PlaybookHash == engine.SingleContractPlaybookHash() {
+	if engine.HasSingleContractIdentity(frozenScope.RuleSetHash, frozenScope.PlaybookHash) {
 		if !isSingleContractSnapshot(frozenScope) {
 			_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "rule_mapping_integrity_failed")
 			return

@@ -1257,6 +1257,14 @@ async function openReviewSection(
   if (button.getAttribute("aria-pressed") !== "true") await user.click(button);
 }
 
+async function navigateFromReviewToCases(user: ReturnType<typeof userEvent.setup>) {
+  const trigger = screen.getByRole("button", { name: "打开主导航" });
+  await user.click(trigger);
+  expect(trigger).toHaveAttribute("aria-expanded", "true");
+  const navigation = await screen.findByRole("navigation", { name: "主导航" });
+  await user.click(within(navigation).getByRole("link", { name: "案件与材料" }));
+}
+
 async function selectBusinessTime() {
   fireEvent.change(await screen.findByLabelText("审查业务时间（北京时间）"), {
     target: { value: "2026-10-21T08:00" },
@@ -2617,9 +2625,7 @@ describe("application routes and API contract", () => {
     await user.click(await within(queue).findByRole("button", { name: /待补件/ }));
     await user.click(await within(queue).findByRole("button", { name: "查看补件来源" }));
     expect(await screen.findByRole("heading", { name: "发起补充材料请求" })).toBeVisible();
-    await user.click(
-      within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件与材料" }),
-    );
+    await navigateFromReviewToCases(user);
     expect(await screen.findByRole("heading", { name: "案件" })).toBeVisible();
     expect(screen.queryByText("有未提交的草稿")).not.toBeInTheDocument();
   });
@@ -2636,14 +2642,14 @@ describe("application routes and API contract", () => {
     const beforeUnload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(beforeUnload);
     expect(beforeUnload.defaultPrevented).toBe(true);
-    await user.click(
-      within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件与材料" }),
-    );
+    await navigateFromReviewToCases(user);
     expect([...router.state.blockers.values()].some((blocker) => blocker.state === "blocked")).toBe(
       true,
     );
-    expect(await screen.findByText("有未提交的草稿")).toBeVisible();
-    expect(screen.getByRole("dialog")).toContainElement(screen.getByText("有未提交的草稿"));
+    const title = await screen.findByText("有未提交的草稿");
+    expect(title).toBeVisible();
+    const guard = screen.getAllByRole("dialog").find((dialog) => dialog.contains(title));
+    expect(guard).toBeVisible();
     await user.click(screen.getByRole("button", { name: "留在本页" }));
     expect(screen.getByLabelText("需要补充的问题")).toHaveValue("请提供质保期限依据");
   });
@@ -2656,9 +2662,7 @@ describe("application routes and API contract", () => {
     await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
     expect(await screen.findByText("补充材料请求已创建。")).toBeVisible();
     expect(screen.getByLabelText("完成期限（本地时间）")).toHaveValue("2026-11-06T10:00");
-    await user.click(
-      within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件与材料" }),
-    );
+    await navigateFromReviewToCases(user);
     expect(await screen.findByRole("heading", { name: "案件" })).toBeVisible();
     expect(screen.queryByText("有未提交的草稿")).not.toBeInTheDocument();
   });

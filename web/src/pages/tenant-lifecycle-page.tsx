@@ -714,7 +714,7 @@ export function TenantLifecyclePage() {
       className="tenant-lifecycle-page"
       standaloneSurface={false}
       title="租户生命周期管理"
-      description="平台控制操作与租户自助运维分别授权。页面记录幂等操作、步骤回执和外部结果核对；未知结果不得盲目重试。"
+      description="登记租户操作，查看步骤和回执。未知结果不得盲目重试。"
       actions={<Button onClick={() => void pageQuery.refetch()}>刷新操作</Button>}
       beforeSummary={
         <OperationCreator
@@ -735,12 +735,13 @@ export function TenantLifecyclePage() {
         </dl>
       }
     >
-      <Card className="lifecycle-operations-card" title="持久化操作记录">
+      <Card className="lifecycle-operations-card" title="操作记录">
         <Table<TenantProvisionOperation>
           rowKey="operation_id"
           size="small"
           pagination={false}
           columns={columns}
+          scroll={{ x: 680 }}
           dataSource={page?.operations ?? []}
         />
         <Space className="lifecycle-pagination">

@@ -680,15 +680,9 @@ export function ApprovalTasksPage() {
       className="approval-page"
       standaloneSurface={false}
       title="合同会签"
-      description="待办只显示服务端仍标记为活动的任务。通过和退回只有在服务端确认后才会改变状态；失败重试复用同一幂等键。"
       summary={
-        <div className="approval-summary" aria-label="会签视图摘要">
-          <span>
-            当前视图：<strong>{VIEW_LABELS[view]}</strong>
-          </span>
-          <span>
-            已加载 <strong>{items.length}</strong> 项
-          </span>
+        <div className="approval-summary" role="status">
+          已加载 <strong>{items.length}</strong> 项
         </div>
       }
       filters={

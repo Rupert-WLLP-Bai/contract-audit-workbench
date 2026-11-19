@@ -1,0 +1,12 @@
+.docx-workspace-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 8px 0;
+}
+.docx-workspace-editor {
+  height: min(70vh, 760px);
+  min-height: 320px;
+  border: 1px solid var(--line, #d9d9d9);
+  overflow: auto;
+}

@@ -9,7 +9,7 @@
 // End file metadata.
 
 import { Button, Checkbox, Select, Upload } from "antd";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ApiError,
   assertCommandContextCurrent,
@@ -24,6 +24,9 @@ import { formatDateTime, parseLabel, parseTone, roleLabel } from "../domain/revi
 import { ParsedDocumentSummary } from "./parsed-document-summary";
 import { StatusText } from "./status-text";
 import { TechnicalDetail } from "./technical-detail";
+import { DirtyLeaveGuard } from "./dirty-leave-guard";
+
+const DocxWorkspace = lazy(() => import("./docx-workspace"));
 
 const roles: Array<{ value: MaterialProjection["role"]; label: string }> = [
   { value: "procurement", label: "采购文件" },
@@ -82,6 +85,12 @@ function legacyStatusLabel(material: MaterialProjection): string {
 }
 
 export function MaterialCollectionPanel({ caseDetail, canWrite, actorId, source }: Props) {
+  const [editorSession, setEditorSession] = useState<{
+    document: CaseDetail["documents"][number];
+    material: MaterialProjection;
+  } | null>(null);
+  const [editorDirty, setEditorDirty] = useState(false);
+  const onEditorDirty = useCallback((dirty: boolean) => setEditorDirty(dirty), []);
   const upload = useUploadDocument(caseDetail.id);
   const reparse = useReparse(caseDetail.id);
   const confirmSelection = useConfirmLegacyMaterialSelection(caseDetail.id);
@@ -292,6 +301,39 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId, source 
 
   return (
     <section id="case-materials" aria-labelledby={headingId}>
+      {editorSession && (
+        <>
+          <DirtyLeaveGuard
+            dirty={editorDirty}
+            description="修改稿尚未保存。离开后将丢失本次修改。"
+          />
+          <Suspense fallback={<p role="status">正在加载编辑器…</p>}>
+            <DocxWorkspace
+              caseId={caseDetail.id}
+              documentId={editorSession.document.id}
+              filename={editorSession.document.filename}
+              digest={editorSession.document.digest}
+              material={editorSession.material}
+              canSave={
+                canWrite &&
+                materials.some(
+                  (material) =>
+                    material.material_id === editorSession.material.material_id &&
+                    material.current_document_id === editorSession.document.id,
+                ) &&
+                caseDetail.documents.some(
+                  (document) =>
+                    document.id === editorSession.document.id &&
+                    document.digest === editorSession.document.digest,
+                )
+              }
+              onDirty={onEditorDirty}
+              onClose={() => setEditorSession(null)}
+            />
+          </Suspense>
+        </>
+      )}
+
       <h2 id={headingId}>材料</h2>
       {!canWrite ? <p>当前角色只能查看材料，不能上传或重新解析。</p> : null}
       {selection.status === "pending_confirmation" ? (
@@ -410,6 +452,13 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId, source 
                     <StatusText tone={parseTone(document.parse_status)}>
                       {parseLabel(document.parse_status)}
                     </StatusText>
+                    {canWrite &&
+                      /\.docx$/i.test(document.filename) &&
+                      /^[a-f0-9]{64}$/i.test(document.digest) && (
+                        <Button onClick={() => setEditorSession({ document, material })}>
+                          编辑修改稿
+                        </Button>
+                      )}
                     <Button
                       type="text"
                       htmlType="button"

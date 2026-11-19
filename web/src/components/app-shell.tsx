@@ -382,10 +382,14 @@ function AppSidebar({
   actor,
   pathname,
   adminRulePacksUrl,
+  focusedReading,
+  context,
 }: {
   actor: Actor | undefined;
   pathname: string;
   adminRulePacksUrl: string;
+  focusedReading: boolean;
+  context?: ReactNode;
 }) {
   const canSeeManagementLinks = actor?.role === "admin";
   const selectedPath = navigationPath(pathname);
@@ -405,7 +409,14 @@ function AppSidebar({
       })),
   }));
 
-  return <ShellNavigation title="主导航" groups={groups} />;
+  return (
+    <ShellNavigation
+      title="主导航"
+      groups={groups}
+      drawerOnly={focusedReading}
+      drawerContext={context}
+    />
+  );
 }
 
 export function AppShell() {
@@ -426,8 +437,10 @@ export function AppShell() {
     setSearch(searchFromLocation(location.search));
   }, [location.pathname, location.search]);
   const reviewMatch = location.pathname.match(/^\/cases\/([^/]+)\/reviews\/([^/]+)/);
+  const focusedReading = /^\/cases\/[^/]+\/reviews\/[^/]+\/?$/.test(location.pathname);
   const caseTitle = caseTitleOf(caseDetail.data?.title);
   const breadcrumbs = breadcrumbsFor(location.pathname, caseId, caseTitle, reviewMatch !== null);
+  const breadcrumbNav = breadcrumbs.length > 0 ? <BreadcrumbItems crumbs={breadcrumbs} /> : null;
 
   return (
     <Layout className={layoutClassName(reviewMatch !== null, location.pathname)}>
@@ -437,7 +450,9 @@ export function AppShell() {
       <AppTopbar
         actor={actor}
         search={search}
-        showCaseSearch={location.pathname !== "/" && location.pathname !== "/contract-desk"}
+        showCaseSearch={
+          !focusedReading && location.pathname !== "/" && location.pathname !== "/contract-desk"
+        }
         logoutPending={logout.isPending}
         onSearchChange={setSearch}
         onSearchSubmit={(event) => {
@@ -454,14 +469,16 @@ export function AppShell() {
         }}
         onContextTransition={setContextTransition}
       />
-      <Layout className="frame" hasSider>
+      <Layout className="frame" hasSider={!focusedReading}>
         <AppSidebar
           actor={actor}
           pathname={location.pathname}
           adminRulePacksUrl={adminRulePacksUrl}
+          focusedReading={focusedReading}
+          context={focusedReading ? breadcrumbNav : undefined}
         />
         <Layout.Content className="content-column">
-          {breadcrumbs.length > 0 ? <BreadcrumbItems crumbs={breadcrumbs} /> : null}
+          {focusedReading ? null : breadcrumbNav}
           <main id="main" tabIndex={-1}>
             {contextTransition ? (
               <PageStatus kind="loading" title="正在确认新的工作上下文" />

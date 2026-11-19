@@ -148,6 +148,30 @@ function ReadinessHarness() {
 }
 
 describe("single contract coverage", () => {
+  it("shows the v2 payment-and-settlement check without advertising the old ratio rule", () => {
+    const data = readiness();
+    data.scopes[1]!.rule_set = {
+      ...v1,
+      rule_set_version: "2",
+      rule_set_hash: "3a26ce92e0dfd674d444f3ab2ca832d71d161f84d0a8bb94f8eee33c7ff2f8ab",
+    };
+    data.scopes[1]!.checks[0]!.rule_id = "single-payment-terms-v2";
+    render(
+      <ReviewReadinessPanel
+        caseId="case-1"
+        data={data}
+        loading={false}
+        error={null}
+        onRefresh={() => {}}
+        selectedScope="single_contract_precheck"
+        onSelectScope={() => {}}
+      />,
+    );
+    const coverage = screen.getByRole("region", { name: "单合同预审范围" });
+    expect(within(coverage).getByText("付款与结算原文")).toBeInTheDocument();
+    expect(within(coverage).queryByText(/预付款20%/)).not.toBeInTheDocument();
+  });
+
   it("lets a user move from the planned precheck to the server-blocked full review", async () => {
     render(<ReadinessHarness />);
     const coverage = screen.getByRole("region", { name: "单合同预审范围" });

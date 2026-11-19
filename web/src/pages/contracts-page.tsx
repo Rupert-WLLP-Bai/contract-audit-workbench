@@ -679,7 +679,6 @@ export function ContractsPage() {
       className="contracts-page"
       standaloneSurface={false}
       title="合同登记"
-      description="草稿可以先不写全，保存后继续填。收款账号一类敏感字段只对有管理权限的人显示。"
       beforeSummary={
         <ContractDeskSources
           active="registered"

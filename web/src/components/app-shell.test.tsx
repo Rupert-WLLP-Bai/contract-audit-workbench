@@ -215,12 +215,22 @@ describe("app shell", () => {
     expect(screen.getByLabelText("全局搜索案件")).toHaveValue("基站");
   });
 
-  it("marks the active navigation entry and review layout", () => {
+  it("keeps the full navigation available in a drawer on the review reading route", async () => {
+    const user = userEvent.setup();
     renderShell("/cases/case-1/reviews/run-1");
-    expect(
-      within(screen.getByLabelText("主导航")).getByRole("link", { name: "案件与材料" }),
-    ).toHaveAttribute("aria-current", "page");
+    expect(screen.queryByRole("navigation", { name: "主导航" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("全局搜索案件")).not.toBeInTheDocument();
     expect(document.querySelector(".app")).toHaveClass("app--review");
+    const trigger = screen.getByRole("button", { name: "打开主导航" });
+    trigger.focus();
+    await user.keyboard("{Enter}");
+    const drawer = await screen.findByRole("dialog", { name: "主导航" });
+    expect(within(drawer).getByRole("link", { name: "案件与材料" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it.each([

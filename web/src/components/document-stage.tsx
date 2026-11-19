@@ -1901,6 +1901,7 @@ export function DocumentStage({
   quoteScope = null,
   sourceDocumentId = null,
   contractFactsCitation = null,
+  coverageEvidence = null,
   contractFactsLocationScope = null,
   onQuoteSelectionChange,
 }: {
@@ -1921,6 +1922,7 @@ export function DocumentStage({
   quoteScope?: FrozenQuoteScope | null;
   sourceDocumentId?: string | null;
   contractFactsCitation?: ContractFactsCitation | null;
+  coverageEvidence?: EvidenceAnchor | null;
   contractFactsLocationScope?: ContractFactsLocationScope | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
@@ -1948,19 +1950,49 @@ export function DocumentStage({
   useEffect(() => {
     if (requestedSourceKey) setActiveKey(requestedSourceKey);
   }, [requestedSourceKey]);
-  const factSource = useMemo(
-    () =>
-      documentForContractFactsCitation(
-        contractFactsCitation,
-        documents,
-        contractFactsLocationScope,
-      ),
-    [contractFactsCitation, contractFactsLocationScope, documents],
-  );
-  const factRange =
-    factSource && contractFactsCitation
+  const factSource = useMemo(() => {
+    const fromFacts = documentForContractFactsCitation(
+      contractFactsCitation,
+      documents,
+      contractFactsLocationScope,
+    );
+    if (fromFacts) return fromFacts;
+    if (
+      !coverageEvidence ||
+      coverageEvidence.status !== "located" ||
+      !coverageEvidence.text_offset ||
+      !coverageEvidence.parsed_document_id ||
+      !quoteScope?.isFrozenAttempt ||
+      !quoteScope.parsedDocumentIds.includes(coverageEvidence.parsed_document_id)
+    )
+      return null;
+    const matches = documents.filter(
+      (document) =>
+        document.id === coverageEvidence.document_version_id &&
+        document.parsed_document_id === coverageEvidence.parsed_document_id &&
+        document.text !== null &&
+        quoteScope.sourceProofs?.some(
+          (proof) =>
+            proof.documentId === document.id &&
+            proof.parsedDocumentId === document.parsed_document_id &&
+            proof.originalDigest === document.digest,
+        ) &&
+        (!document.parsed_document ||
+          !coverageEvidence.normalized_digest ||
+          document.parsed_document.normalized_digest === coverageEvidence.normalized_digest) &&
+        sliceByCodePoints(
+          document.text,
+          coverageEvidence.text_offset!.start,
+          coverageEvidence.text_offset!.end,
+        ) === coverageEvidence.quote,
+    );
+    return matches.length === 1 ? matches[0]! : null;
+  }, [contractFactsCitation, contractFactsLocationScope, coverageEvidence, documents, quoteScope]);
+  const factRange = factSource
+    ? contractFactsCitation
       ? { start: contractFactsCitation.start, end: contractFactsCitation.end }
-      : null;
+      : (coverageEvidence?.text_offset ?? null)
+    : null;
   const quoteParsedIds = quoteScope?.parsedDocumentIds.join("\u0000") ?? "";
   useEffect(() => {
     onQuoteSelectionChange?.(null);

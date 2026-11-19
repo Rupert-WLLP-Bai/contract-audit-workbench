@@ -9,8 +9,7 @@
 // End file metadata.
 
 import { FileProtectOutlined } from "@ant-design/icons";
-import { Select } from "antd";
-import { Button, Input, Table, type TableProps } from "antd";
+import { Button, Input, Table, Tabs, type TableProps } from "antd";
 import { useState } from "react";
 import { Link } from "react-router";
 import { errorMessage, isForbidden } from "../api/http";
@@ -164,7 +163,7 @@ export function RulePacksPage() {
     <ListPage
       className="page-rulepacks"
       title="规则库 / RulePack 治理"
-      description="管理规则版本、验证与发布。已发布内容保持不可变，活动版本用于后续新审查。"
+      description="当前生效版本用于后续新审查。"
       actions={
         <Button aria-label={"创建草稿"} type="primary" href="/admin/rulepacks/new">
           创建草稿
@@ -175,51 +174,28 @@ export function RulePacksPage() {
           {filtered.length} / {rows.length} 个版本
         </p>
       }
+      filters={
+        <>
+          <Tabs
+            activeKey={state}
+            aria-label="规则包版本分类"
+            items={filters.map(({ id, label, count }) => ({ key: id, label: `${label} ${count}` }))}
+            onChange={setState}
+          />
+          <label className="field governance-version-search">
+            查找规则包
+            <Input
+              type="search"
+              placeholder="名称、版本或规则依据来源"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+        </>
+      }
     >
       <div className="governance-workspace">
-        <nav className="governance-state-nav" aria-label="规则包版本分类">
-          <h2>版本状态</h2>
-          {filters.map((item) => (
-            <Button
-              aria-label={`${item.label} ${item.count}`}
-              key={item.id}
-              htmlType="button"
-              aria-pressed={state === item.id}
-              onClick={() => setState(item.id)}
-            >
-              <span>{item.label}</span>
-              <span>{item.count}</span>
-            </Button>
-          ))}
-        </nav>
         <div className="governance-list">
-          <div className="governance-filters">
-            <label className="field">
-              查找规则包
-              <Input
-                type="search"
-                placeholder="名称、版本或规则依据来源"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </label>
-            <label className="field">
-              版本状态
-              <Select<string>
-                aria-label={"版本状态"}
-                value={String(state)}
-                onChange={(selectedValue) => setState(selectedValue)}
-                options={[
-                  { value: "all", label: "全部状态" },
-                  { value: "active", label: "当前生效" },
-                  ...Object.entries(STATE_LABELS).map(([value, label]) => ({
-                    value: String(value),
-                    label: String(label ?? ""),
-                  })),
-                ]}
-              />
-            </label>
-          </div>
           {rows.length === 0 ? (
             <PageStatus
               kind="empty"
@@ -240,6 +216,7 @@ export function RulePacksPage() {
                 dataSource={filtered}
                 rowKey={(pack) => `${pack.id}:${pack.version}`}
                 pagination={false}
+                scroll={{ x: 740 }}
                 onRow={(pack) => ({
                   "aria-current": selected?.id === pack.id && selected.version === pack.version,
                 })}

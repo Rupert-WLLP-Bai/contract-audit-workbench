@@ -15,7 +15,7 @@ function classNames(...values: (string | undefined)[]): string {
   return values.filter((value): value is string => Boolean(value)).join(" ");
 }
 
-function PageHeading({
+export function PageHeading({
   title,
   description,
   eyebrow,
@@ -150,8 +150,8 @@ export function ObjectDetailPage({
       />
       {facts || nextStep ? (
         <div className="page-pattern-overview page-pattern-surface">
-          {facts}
           {nextStep}
+          {facts}
         </div>
       ) : null}
       {navigation}

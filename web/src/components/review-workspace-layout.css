@@ -39,6 +39,20 @@
   background: var(--surface-subtle);
 }
 
+.review-workspace-layout.workspace-view-reading {
+  grid-template-columns: minmax(0, 1fr);
+}
+.review-workspace-layout.workspace-view-reading .col-nav,
+.review-workspace-layout.workspace-view-reading .col-findings,
+.review-workspace-layout.workspace-view-reading .workspace-resize-handle {
+  display: none;
+}
+.review-workspace-layout.workspace-view-reading .col-doc {
+  grid-column: 1;
+  height: calc(100dvh - 300px);
+  min-height: 360px;
+}
+
 .review-workspace-layout.workspace-view-context {
   grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
 }
@@ -397,4 +411,42 @@
 }
 .review-workspace-layout .original-reader-modes {
   margin-block: var(--space-1);
+}
+
+.reading-payment-evidence {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-raised);
+}
+.reading-payment-evidence > strong {
+  flex: none;
+  padding-top: 5px;
+}
+.reading-payment-evidence > div {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  min-width: 0;
+}
+.reading-payment-evidence button {
+  flex: 0 0 auto;
+  max-width: min(300px, 65vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.reading-payment-evidence button > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-workspace-layout.coverage-quote-selected .doc-text .hit-find {
+  background: var(--evidence-mark);
+  border-bottom: 2px solid var(--state-progress);
 }

@@ -42,7 +42,11 @@ export function ReviewOutcomeSummary({ workspace }: { workspace: ReviewWorkspace
   const payment =
     coverage.kind === "known"
       ? {
-          insufficient: "已执行主合同付款比例识别，信息仍不足，需核对原文。",
+          insufficient:
+            coverage.version === "1"
+              ? "已执行主合同付款比例识别，信息仍不足，需核对原文。"
+              : "已执行付款识别，未定位支持的原文。",
+          observed: "已定位付款与结算原文，可结合上下文核对。",
           not_executed: "主合同未完成解析，付款比例识别未执行。",
           pending: "付款比例识别结果尚未返回。",
           failed: "未返回付款比例识别结果，无法确认失败前是否执行。",

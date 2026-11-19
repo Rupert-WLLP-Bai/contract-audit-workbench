@@ -22,6 +22,14 @@
   align-items: start;
   gap: var(--space-4);
   margin-block-end: var(--space-6);
+  padding-block-end: var(--space-4);
+  border-block-end: 1px solid var(--border-default);
+}
+
+.page-pattern-heading h1 {
+  font-size: clamp(22px, 2vw, 28px);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .page-pattern-heading h2 {
@@ -57,6 +65,7 @@
   background: var(--surface-raised);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-panel);
+  overflow-wrap: anywhere;
 }
 
 .page-pattern-filters {

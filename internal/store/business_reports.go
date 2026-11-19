@@ -572,6 +572,7 @@ var reportLabelTables = map[string]map[string]string{
 		"dedicated_line.minimum_bandwidth": "最低保障带宽", "dedicated_line.monthly_availability": "月可用率",
 		"payment.advance_ratio.ceiling": "预付款比例上限", "cloud_services.minimum_bandwidth": "最低保障带宽",
 		"cloud_services.monthly_availability": "月可用率", "single_contract.payment_sum": "主合同中可识别的付款比例合计",
+		"single_contract.payment_terms": "主合同付款与结算原文",
 	},
 	"relation": {"compatible": "一致", "conflict": "冲突", "insufficient": "信息不足"},
 	"origin":   {"rule": "规则", "ai": "模型建议", "model": "模型建议", "manual": "人工"},

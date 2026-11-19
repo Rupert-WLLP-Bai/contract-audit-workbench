@@ -146,6 +146,28 @@ afterEach(() => {
 });
 
 describe("material collection behavior", () => {
+  it("offers editing only for a current DOCX when the actor can upload", () => {
+    const document = { ...doc("current", "合成.docx", "draft_contract"), digest: "a".repeat(64) };
+    const detail = {
+      ...emptyDetail,
+      documents: [document],
+      materials: [
+        material({
+          material_id: "m1",
+          role: "draft_contract",
+          purpose: "primary_contract",
+          current_document_id: document.id,
+        }),
+      ],
+    };
+    const view = render(
+      <MaterialCollectionPanel caseDetail={detail} canWrite={false} actorId="actor-1" />,
+    );
+    expect(screen.queryByRole("button", { name: "编辑修改稿" })).not.toBeInTheDocument();
+    view.rerender(<MaterialCollectionPanel caseDetail={detail} canWrite actorId="actor-1" />);
+    expect(screen.getByRole("button", { name: "编辑修改稿" })).toBeInTheDocument();
+  });
+
   it("keeps upload success copy usable without exposing random identities", () => {
     mocks.useUploadDocument.mockReturnValue(
       state({ data: { id: "doc-random", material_id: "mat-random", version: 2, replayed: true } }),

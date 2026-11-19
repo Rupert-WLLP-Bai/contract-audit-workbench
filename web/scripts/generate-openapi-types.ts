@@ -109,6 +109,7 @@ const ROOTS = [
   "RemediationInput",
   "RemediationSubmitInput",
   "RemediationVerifyInput",
+  "ReviewTableCell",
   "TextOffset",
   "WorkbenchTask",
   "WorkbenchTaskInput",

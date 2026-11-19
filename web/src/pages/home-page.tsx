@@ -28,6 +28,7 @@ import {
 } from "../api/queries";
 import type { WorkbenchPeriod, WorkbenchSnapshot } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { PageHeading } from "../components/page-patterns";
 import { IntakePrimaryContract } from "../components/intake-primary-contract";
 import { IntakePendingList } from "../components/intake-pending-list";
 import type { IntakeContinuationSelection } from "../features/intake/intake-continuation";
@@ -555,19 +556,19 @@ export function HomePage() {
 
   return (
     <section className="page home-page">
-      <header className="home-page-head">
-        <div className="home-welcome">
-          <h1>你好，{session.data?.display_name ?? "当前用户"}</h1>
-        </div>
-        <div className="home-head-actions">
-          <Link className="home-review-link" to="/review">
-            进入合同审查
-          </Link>
-          <Button aria-label={"打开案件中心"} className="home-case-link" href="/cases">
-            打开案件中心
-          </Button>
-        </div>
-      </header>
+      <PageHeading
+        title="工作台"
+        meta={`你好，${session.data?.display_name ?? "当前用户"}`}
+        actions={
+          <>
+            <Link to="/review">进入合同审查</Link>
+            <Button href="/cases">打开案件中心</Button>
+            <Button type="primary" href="/contract-desk">
+              查看合同
+            </Button>
+          </>
+        }
+      />
 
       <div className="home-focus-grid">
         <section className="home-panel home-tasks" aria-labelledby="home-tasks-title">
@@ -575,7 +576,6 @@ export function HomePage() {
             <div className="home-section-title">
               <span aria-hidden="true" />
               <h2 id="home-tasks-title">任务与待办</h2>
-              <strong className="home-figure-badge">{activeTaskCount}</strong>
             </div>
             {canCreateTasks ? (
               <Button
@@ -702,11 +702,9 @@ export function HomePage() {
               {errorMessage(updateTask.error)}
             </p>
           ) : null}
-          {tasks.length > 8 ? (
-            <Link className="home-view-all" to="/workbench/tasks">
-              查看全部任务
-            </Link>
-          ) : null}
+          <Link className="home-view-all" to="/workbench/tasks">
+            查看全部任务
+          </Link>
         </section>
 
         <section className="home-panel home-case-work" aria-labelledby="home-case-work-title">
@@ -715,7 +713,9 @@ export function HomePage() {
               <span aria-hidden="true" />
               <h2 id="home-case-work-title">按案件处理</h2>
             </div>
-            <span className="home-panel-meta">按案件更新时间排序，最多显示 8 个案件</span>
+            <Link className="home-view-all" to="/cases">
+              全部案件
+            </Link>
           </header>
           {caseWork.length === 0 ? (
             <p className="home-empty">当前无可见案件。</p>

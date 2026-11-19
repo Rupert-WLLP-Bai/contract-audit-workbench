@@ -1419,6 +1419,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   const [tab, setTab] = useState<string>(WORKBENCH_MODULES[module].tabs[0]);
   const [detailTab, setDetailTab] = useState<string>(WORKBENCH_MODULES[module].details[0]);
   const [selectedId, setSelectedId] = useState("");
+  const detailRegion = useRef<HTMLElement>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [updatedTaskId, setUpdatedTaskId] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1597,6 +1598,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
       next.set("version", id);
       setSearchParams(next);
     }
+    if (id && window.matchMedia("(max-width: 900px)").matches) detailRegion.current?.focus();
   }
 
   function completeTask(task: WorkbenchSnapshot["tasks"][number]) {
@@ -1667,18 +1669,8 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         <ListPage
           className="module-page"
           headingClassName="module-page-head"
-          title={
-            <>
-              {config.title}
-              <span className="module-total">{allRecords.length}</span>
-            </>
-          }
-          description={
-            <>
-              {config.description} 数据更新时间： {formatDateTime(snapshot.generated_at)}。
-            </>
-          }
-          actions={<div className="module-actions">{headerAction}</div>}
+          title={config.title}
+          actions={headerAction}
           beforeSummary={
             <>
               {module === "tools" ? <QccMcpPanel /> : null}
@@ -1700,28 +1692,23 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
             </>
           }
           summary={
-            <dl className="module-stats" aria-label="真实数据摘要">
-              <div>
-                <dt>工作台集合</dt>
-                <dd>{allRecords.length}</dd>
-              </div>
-              <div>
-                <dt>匹配当前标签</dt>
-                <dd>{records.length}</dd>
-              </div>
-              <div>
-                <dt>数据周期</dt>
-                <dd>{periodLabel}</dd>
-              </div>
-              <div>
-                <dt>数据更新时间</dt>
-                <dd>
+            <div className="module-result-summary">
+              <span role="status">
+                共 {records.length} 条
+                {records.length !== allRecords.length ? `（全部 ${allRecords.length} 条）` : ""}
+              </span>
+              <details>
+                <summary>统计范围</summary>
+                <p>{config.description}</p>
+                <p>
+                  周期：{periodLabel}。更新于{" "}
                   <time dateTime={snapshot.generated_at}>
                     {formatDateTime(snapshot.generated_at)}
                   </time>
-                </dd>
-              </div>
-            </dl>
+                  。
+                </p>
+              </details>
+            </div>
           }
           filters={
             <div className="module-toolbar">
@@ -1840,15 +1827,16 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                 />
               )}
             </section>
-            <aside className="module-detail-panel" aria-label="所选记录详情">
+            <aside
+              ref={detailRegion}
+              tabIndex={-1}
+              className="module-detail-panel"
+              aria-label="所选记录详情"
+            >
               {selected ? (
                 <>
                   <header className="module-detail-head">
                     <div>
-                      <TechnicalDetail
-                        value={selected.reference ?? selected.knowledgeId ?? selected.id}
-                        label="记录标识"
-                      />
                       <h2>{selected.title}</h2>
                       <span>{selected.subtitle}</span>
                     </div>
@@ -1861,7 +1849,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                               ? "读取材料原件"
                               : "打开关联记录",
                         )}
-                        type="text"
+                        type={module === "reports" || module === "evidence" ? "primary" : "default"}
                         href={selected.href}
                         target={
                           module === "reports" || module === "evidence" ? "_blank" : undefined
@@ -1919,6 +1907,33 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                         <dd>{selected.subtitle}</dd>
                       </div>
                     </dl>
+                  ) : null}
+                  {selectedTask &&
+                  selectedTask.status !== "completed" &&
+                  selectedTask.can_complete === true &&
+                  canCompleteTasks ? (
+                    <Button
+                      aria-label={String(
+                        updatedTaskId === selectedTask.id ? "正在保存" : "标记任务完成",
+                      )}
+                      type="primary"
+                      className="module-complete-task"
+                      htmlType="button"
+                      disabled={updateTask.isPending}
+                      onClick={() => completeTask(selectedTask)}
+                    >
+                      {updatedTaskId === selectedTask.id ? "正在保存" : "标记任务完成"}
+                    </Button>
+                  ) : null}
+                  {selected.caseId && module === "remediation" ? (
+                    <Button
+                      aria-label={"进入案件整改与复核"}
+                      type="primary"
+                      className="module-complete-task"
+                      href={`/cases/${encodeURIComponent(selected.caseId)}`}
+                    >
+                      进入案件整改与复核
+                    </Button>
                   ) : null}
                   {selectedAudit ? (
                     <dl className="audit-event-summary" aria-label="所选审计事件摘要">
@@ -2046,33 +2061,10 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                   ) : (
                     <p className="module-empty">当前数据没有返回该分类的明细。</p>
                   )}
-                  {selectedTask &&
-                  selectedTask.status !== "completed" &&
-                  selectedTask.can_complete === true &&
-                  canCompleteTasks ? (
-                    <Button
-                      aria-label={String(
-                        updatedTaskId === selectedTask.id ? "正在保存" : "标记任务完成",
-                      )}
-                      type="primary"
-                      className="module-complete-task"
-                      htmlType="button"
-                      disabled={updateTask.isPending}
-                      onClick={() => completeTask(selectedTask)}
-                    >
-                      {updatedTaskId === selectedTask.id ? "正在保存" : "标记任务完成"}
-                    </Button>
-                  ) : null}
-                  {selected.caseId && module === "remediation" ? (
-                    <Button
-                      aria-label={"进入案件整改与复核"}
-                      type="primary"
-                      className="module-complete-task"
-                      href={`/cases/${encodeURIComponent(selected.caseId)}`}
-                    >
-                      进入案件整改与复核
-                    </Button>
-                  ) : null}
+                  <TechnicalDetail
+                    value={selected.reference ?? selected.knowledgeId ?? selected.id}
+                    label="记录标识"
+                  />
                 </>
               ) : (
                 <p className="module-empty">

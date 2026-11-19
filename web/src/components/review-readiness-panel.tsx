@@ -22,7 +22,7 @@ import {
   readinessCheckActionLabel,
 } from "../domain/business-labels";
 import { contractTypeLabel, roleLabel } from "../domain/review";
-import { isSingleContractV1 } from "../features/review/single-contract-coverage";
+import { singleContractVersion } from "../features/review/single-contract-coverage";
 import { SingleContractScopeCoverage } from "./single-contract-scope-coverage";
 import { StatusText } from "./status-text";
 import { TechnicalDetail } from "./technical-detail";
@@ -42,6 +42,7 @@ const checkStates: Record<string, string> = {
 };
 const checkLabels: Record<string, string> = {
   "single-payment-sum-v1": "主合同中可识别的付款比例合计",
+  "single-payment-terms-v2": "付款与结算原文",
   cross_material_comparison: "跨材料对照",
   formal_policy_review: "正式制度与法律依据审查",
 };
@@ -289,7 +290,8 @@ export function ReviewReadinessPanel({
                   </ul>
                 ) : null}
                 {scope.checks.length &&
-                (scope.id !== "single_contract_precheck" || isSingleContractV1(scope.rule_set)) ? (
+                (scope.id !== "single_contract_precheck" ||
+                  singleContractVersion(scope.rule_set) !== null) ? (
                   <>
                     <h4>本次检查项目</h4>
                     <p className="meta">材料已解析，可打开原文核对；缺事实或依据时请继续补充。</p>

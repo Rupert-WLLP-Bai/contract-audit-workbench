@@ -17,6 +17,8 @@ export interface OriginalReadScope {
   caseId: string;
   contextKey: string;
   digests: ReadonlyMap<string, string>;
+  editableDocumentIds?: ReadonlySet<string>;
+  editDocument?: (documentId: string) => void;
 }
 
 export const OriginalSourceContext = createContext<OriginalReadScope | null>(null);
@@ -102,6 +104,9 @@ export function OriginalDocumentReader({
       aria-label={`${filename}原件与文字对照`}
     >
       <div className="original-reader-modes" role="group" aria-label="原文显示方式">
+        {scope.editableDocumentIds?.has(documentId) && (
+          <Button onClick={() => scope.editDocument?.(documentId)}>编辑合同修改稿</Button>
+        )}
         <Button
           aria-pressed={effectiveMode === "original"}
           disabled={Boolean(keyClause && !onClearKeyClause)}

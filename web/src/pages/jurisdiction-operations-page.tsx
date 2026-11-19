@@ -31,6 +31,8 @@ import {
   type TenantOperationsSummary,
 } from "../api/jurisdiction-operations";
 import { PageStatus } from "../components/page-status";
+import { PageHeading } from "../components/page-patterns";
+import { CollapsibleSection } from "../components/collapsible-section";
 import "./jurisdiction-operations-page.css";
 
 const PROJECTION_LABEL = {
@@ -256,92 +258,11 @@ export function JurisdictionOperationsPage() {
         detail={errorMessage(session.error)}
       />
     );
-  if (!validRange)
-    return (
-      <PageStatus
-        kind="error"
-        title="统计日期范围无效"
-        detail="请选择真实日期，结束日期不早于开始日期，且最多包含 31 天。"
-      />
-    );
-  if (query.isLoading) return <PageStatus kind="loading" title="正在读取已授权辖区汇总" />;
-  if (query.isError && isForbidden(query.error))
-    return (
-      <PageStatus
-        kind="denied"
-        title="没有辖区运营统计权限"
-        detail="辖区与指标范围由服务端按当前 membership 授权；页面不接收客户端租户清单。"
-      />
-    );
-  if (query.isError || !query.data)
-    return (
-      <PageStatus
-        kind="error"
-        title="辖区运营统计不可用"
-        detail={errorMessage(query.error)}
-        action={<Button onClick={() => void query.refetch()}>重试</Button>}
-      />
-    );
   const data = query.data;
-  const stale = data.projection_state !== "current" || data.dirty_since !== null;
+  const stale = data && (data.projection_state !== "current" || data.dirty_since !== null);
   return (
     <section className="page jurisdiction-operations-page">
-      <header className="page-head">
-        <div>
-          <h1>辖区运营统计</h1>
-          <p>
-            仅显示服务端授权的 jurisdiction、tenant 与 metric
-            汇总，不包含合同或案件明细。租户逻辑额度与共享池资源分列。
-          </p>
-        </div>
-      </header>
-      <section className="jurisdiction-summary" aria-label="投影状态概览">
-        <Statistic
-          title="投影状态"
-          value={PROJECTION_LABEL[data.projection_state]}
-          valueStyle={{ color: PROJECTION_TEXT_COLOR[data.projection_state] }}
-        />
-        <Statistic title="授权辖区" value={data.jurisdictions.length.toLocaleString()} />
-        <Statistic title="查询窗口" value={`${data.from_date} 至 ${data.to_date}`} />
-      </section>
-      {stale ? (
-        <Alert
-          className="jurisdiction-alert"
-          type="warning"
-          showIcon
-          message="统计投影不是当前状态"
-          description="页面按 PostgreSQL 持久快照提供汇总；重算期间可能落后，请结合构建时间和 dirty 标记判断。"
-        />
-      ) : null}
-      <Card
-        className="jurisdiction-projection-card"
-        title="快照与重算信息"
-        extra={<Button onClick={() => void query.refetch()}>刷新</Button>}
-      >
-        <Descriptions size="small" column={{ xs: 1, md: 3 }}>
-          <Descriptions.Item label="PG 观测时刻">
-            {formatInstant(data.observed_at)}
-          </Descriptions.Item>
-          <Descriptions.Item label="watermark 类型">
-            {data.watermark_kind === "pg_snapshot" ? "PG 持久快照" : "未知"}
-          </Descriptions.Item>
-          <Descriptions.Item label="事件序号 watermark">
-            {data.watermark ?? "没有可证明的事件序号"}
-          </Descriptions.Item>
-          <Descriptions.Item label="来源快照版本">
-            <code>{data.source_snapshot_token ?? "未提供"}</code>
-          </Descriptions.Item>
-          <Descriptions.Item label="投影构建时间">{formatInstant(data.built_at)}</Descriptions.Item>
-          <Descriptions.Item label="开始变脏时间">
-            {formatInstant(data.dirty_since)}
-          </Descriptions.Item>
-          <Descriptions.Item label="投影年龄（秒）">
-            {data.projection_age_seconds === null
-              ? "未知"
-              : data.projection_age_seconds.toLocaleString()}
-          </Descriptions.Item>
-        </Descriptions>
-      </Card>
+      <PageHeading title="辖区运营统计" description="租户额度和共享资源分别统计。" />
       <Card className="jurisdiction-filter-card" title="统计窗口">
         <Space wrap>
           <label>
@@ -356,23 +277,101 @@ export function JurisdictionOperationsPage() {
             结束日期{" "}
             <Input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
           </label>
-          <Button onClick={() => void query.refetch()} disabled={!validRange}>
+          <Button
+            type="primary"
+            onClick={() => void query.refetch()}
+            disabled={!validRange || query.isFetching}
+          >
             查询
           </Button>
         </Space>
-        <p className="meta">
-          日期范围含首尾两日，最多 31 天。服务端按当前授权过滤辖区和指标；客户端不提交 jurisdiction
-          或 tenant ID 列表。
-        </p>
+        <p className="meta">日期范围含首尾两日，最多 31 天。</p>
       </Card>
-      {data.jurisdictions.length === 0 ? (
-        <Card className="jurisdiction-operations-card">
-          <Empty description="当前授权范围内没有可展示的辖区汇总。" />
-        </Card>
+      {!validRange ? (
+        <Alert
+          type="error"
+          showIcon
+          title="统计日期范围无效"
+          description="请选择真实日期，结束日期不得早于开始日期，最多 31 天。"
+        />
+      ) : query.isLoading ? (
+        <PageStatus kind="loading" title="正在读取已授权辖区汇总" />
+      ) : query.isError || !data ? (
+        query.isError && isForbidden(query.error) ? (
+          <PageStatus
+            kind="denied"
+            title="没有辖区运营统计权限"
+            detail="辖区与指标范围由服务端按当前成员身份授权。"
+          />
+        ) : (
+          <PageStatus
+            kind="error"
+            title="辖区运营统计不可用"
+            detail={errorMessage(query.error)}
+            action={<Button onClick={() => void query.refetch()}>重试</Button>}
+          />
+        )
       ) : (
-        data.jurisdictions.map((jurisdiction) => (
-          <JurisdictionCard key={jurisdiction.jurisdiction_id} jurisdiction={jurisdiction} />
-        ))
+        <>
+          <section className="jurisdiction-summary" aria-label="投影状态概览">
+            <Statistic
+              title="投影状态"
+              value={PROJECTION_LABEL[data.projection_state]}
+              valueStyle={{ color: PROJECTION_TEXT_COLOR[data.projection_state] }}
+            />
+            <Statistic title="授权辖区" value={data.jurisdictions.length.toLocaleString()} />
+            <Statistic title="查询窗口" value={`${data.from_date} 至 ${data.to_date}`} />
+          </section>
+          {stale ? (
+            <Alert
+              className="jurisdiction-alert"
+              type="warning"
+              showIcon
+              message="统计投影不是当前状态"
+              description="页面按 PostgreSQL 持久快照提供汇总；重算期间可能落后，请结合构建时间和 dirty 标记判断。"
+            />
+          ) : null}
+          {data.jurisdictions.length === 0 ? (
+            <Card className="jurisdiction-operations-card">
+              <Empty description="当前授权范围内没有可展示的辖区汇总。" />
+            </Card>
+          ) : (
+            data.jurisdictions.map((jurisdiction) => (
+              <JurisdictionCard key={jurisdiction.jurisdiction_id} jurisdiction={jurisdiction} />
+            ))
+          )}
+          <CollapsibleSection
+            id="jurisdiction-projection"
+            title="快照与重算信息"
+            summaryLabel="展开快照与重算信息"
+          >
+            <Descriptions size="small" column={{ xs: 1, md: 3 }}>
+              <Descriptions.Item label="PG 观测时刻">
+                {formatInstant(data.observed_at)}
+              </Descriptions.Item>
+              <Descriptions.Item label="watermark 类型">
+                {data.watermark_kind === "pg_snapshot" ? "PG 持久快照" : "未知"}
+              </Descriptions.Item>
+              <Descriptions.Item label="事件序号 watermark">
+                {data.watermark ?? "没有可证明的事件序号"}
+              </Descriptions.Item>
+              <Descriptions.Item label="来源快照版本">
+                <code>{data.source_snapshot_token ?? "未提供"}</code>
+              </Descriptions.Item>
+              <Descriptions.Item label="投影构建时间">
+                {formatInstant(data.built_at)}
+              </Descriptions.Item>
+              <Descriptions.Item label="开始变脏时间">
+                {formatInstant(data.dirty_since)}
+              </Descriptions.Item>
+              <Descriptions.Item label="投影年龄（秒）">
+                {data.projection_age_seconds === null
+                  ? "未知"
+                  : data.projection_age_seconds.toLocaleString()}
+              </Descriptions.Item>
+            </Descriptions>
+          </CollapsibleSection>
+        </>
       )}
     </section>
   );

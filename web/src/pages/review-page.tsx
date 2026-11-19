@@ -9,7 +9,16 @@
 // End file metadata.
 
 import { Button } from "antd";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Link,
   useLocation,
@@ -48,12 +57,19 @@ import {
 import { paths } from "../api/paths";
 import { evidenceRequestsKey, listEvidenceRequests } from "../api/evidence-workflow";
 import { caseOptionLabel } from "../domain/case-identity";
-import type { CaseRelationInput, DecisionAction } from "../api/types";
+import type {
+  CaseRelationInput,
+  DecisionAction,
+  MaterialProjection,
+  ReviewDocument,
+} from "../api/types";
 import type { FrozenQuoteScope, FrozenQuoteSelection } from "../domain/frozen-quote";
 import { PageStatus } from "../components/page-status";
 import { ReviewWorkspaceView } from "../components/review-workspace";
 import { ReviewWorkItems } from "../components/review-work-items";
 import { DirtyLeaveGuard } from "../components/dirty-leave-guard";
+
+const DocxWorkspace = lazy(() => import("../components/docx-workspace"));
 import {
   isReadingInteraction,
   readCaseListReturn,
@@ -373,6 +389,19 @@ export function ReviewPage() {
     }
   }, [session.data]);
   const layout = useReviewLayout();
+  const [docxSession, setDocxSession] = useState<{
+    document: ReviewDocument;
+    material: MaterialProjection;
+    actorScope: string;
+  } | null>(null);
+  const [docxDirty, setDocxDirty] = useState(false);
+  const onDocxDirty = useCallback((dirty: boolean) => setDocxDirty(dirty), []);
+  useEffect(() => {
+    if (docxSession && navigationActorScope !== docxSession.actorScope) {
+      setDocxSession(null);
+      setDocxDirty(false);
+    }
+  }, [docxSession, navigationActorScope]);
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [conflictFinding, setConflictFinding] = useState<string | null>(null);
@@ -958,6 +987,36 @@ export function ReviewPage() {
         proof.parsedDocumentId === sourceMatches[0]?.parsed_document_id,
     ),
   );
+  function editorTarget(documentId: string) {
+    if (
+      !caseDetailReady ||
+      caseArchived ||
+      !session.isSuccess ||
+      session.isFetching ||
+      (session.data?.role !== "admin" && session.data?.role !== "clerk")
+    )
+      return null;
+    const documents = workspace.documents.filter((document) => document.id === documentId);
+    const materials = (caseDetail.data.materials ?? []).filter(
+      (material) => material.current_document_id === documentId,
+    );
+    const document = documents[0];
+    if (
+      documents.length !== 1 ||
+      materials.length !== 1 ||
+      !document ||
+      !/\.docx$/i.test(document.filename) ||
+      !sourceProofs.some(
+        (proof) =>
+          proof.documentId === documentId && proof.parsedDocumentId === document.parsed_document_id,
+      )
+    )
+      return null;
+    return { document, material: materials[0]!, actorScope: navigationActorScope };
+  }
+  const directEditorTarget =
+    sourceVerified && requestedSourceDocument ? editorTarget(requestedSourceDocument) : null;
+  const retainedEditorTarget = docxSession ? editorTarget(docxSession.document.id) : null;
   const sourcePending = Boolean(
     requestedSourceDocument &&
     (review.isFetching ||
@@ -1318,6 +1377,9 @@ export function ReviewPage() {
                   返回人工办理
                 </Link>
               ) : null}
+              {directEditorTarget && (
+                <Button onClick={() => setDocxSession(directEditorTarget)}>编辑合同修改稿</Button>
+              )}
               <details className="review-more-tools">
                 <summary>更多工具</summary>
                 <Button
@@ -1451,6 +1513,19 @@ export function ReviewPage() {
                 caseDetailReady && session.isSuccess && !session.isFetching
                   ? {
                       caseId,
+                      editDocument: !hasRequestedSourceDocument
+                        ? (id: string) => {
+                            const target = editorTarget(id);
+                            if (target) setDocxSession(target);
+                          }
+                        : undefined,
+                      editableDocumentIds: !hasRequestedSourceDocument
+                        ? new Set(
+                            workspace.documents.flatMap((document) =>
+                              editorTarget(document.id) ? [document.id] : [],
+                            ),
+                          )
+                        : undefined,
                       contextKey: `${actorReadContextKey(session.data)}:${selectedAttempt?.id ?? "legacy"}`,
                       digests: new Map(
                         caseDetail.data.documents.map((document) => [document.id, document.digest]),
@@ -1508,6 +1583,7 @@ export function ReviewPage() {
                     quoteScope={quoteScope}
                     onQuoteSelectionChange={setQuoteSelection}
                     selectedId={selectedId}
+                    explicitFindingId={scopeMismatch ? null : params.get("finding")}
                     workTarget={workTarget}
                     navigationSerial={navigationSerial}
                     caseContext={caseContext}
@@ -1603,7 +1679,26 @@ export function ReviewPage() {
               </div>
             </OriginalSourceContext.Provider>
           </DecisionDraftScopeProvider>
-          <DirtyLeaveGuard dirty={decisionDraftsDirty || evidenceDraftDirty} />
+          <DirtyLeaveGuard dirty={decisionDraftsDirty || evidenceDraftDirty || docxDirty} />
+          {docxSession && (
+            <Suspense fallback={<p role="status">正在加载编辑器…</p>}>
+              <DocxWorkspace
+                caseId={caseId}
+                documentId={docxSession.document.id}
+                filename={docxSession.document.filename}
+                digest={docxSession.document.digest}
+                material={docxSession.material}
+                canSave={Boolean(
+                  retainedEditorTarget &&
+                  retainedEditorTarget.document.digest === docxSession.document.digest &&
+                  retainedEditorTarget.material.material_id === docxSession.material.material_id &&
+                  navigationActorScope === docxSession.actorScope,
+                )}
+                onDirty={onDocxDirty}
+                onClose={() => setDocxSession(null)}
+              />
+            </Suspense>
+          )}
           <details
             id="review-coverage-section"
             className="review-secondary-section"

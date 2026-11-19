@@ -14,9 +14,8 @@ import { frozenQuoteMatchesDocument } from "./frozen-quote";
 import { keyClauseNavigationFor, readingGroupFor } from "./key-clauses";
 
 const text = "😀第一条 付款条款：甲方支付预付款。第二条 保密数据条款：双方保护个人信息。";
-const codePoints = Array.from(text);
-
-function rangeOf(quote: string): TextOffset {
+function rangeOf(quote: string, source = text): TextOffset {
+  const codePoints = Array.from(source);
   const quotePoints = Array.from(quote);
   const start = codePoints.findIndex((_, index) =>
     quotePoints.every((character, quoteIndex) => codePoints[index + quoteIndex] === character),
@@ -129,6 +128,78 @@ describe("key clause navigation", () => {
     ]);
   });
 
+  it("uses the pinned table columns for amounts, preserves merged column numbers and excludes quantity", () => {
+    const grid = [
+      [
+        [1, "名称"],
+        [2, "数量"],
+        [3, "单价"],
+        [5, "含税金额（元）"],
+      ],
+      [
+        [1, "支持服务"],
+        [2, "999"],
+        [3, "80.50"],
+        [5, "241.50"],
+      ],
+      [
+        [1, "合计"],
+        [5, "241.50"],
+      ],
+    ] as const;
+    let text = "😀采购项目。\n\n";
+    const table_cells = grid.flatMap((row, rowIndex) => {
+      if (rowIndex > 0) text += "\n";
+      return row.map(([column, value], cellIndex) => {
+        if (cellIndex > 0) text += "\t";
+        const start = Array.from(text).length;
+        text += value;
+        return {
+          table_id: "t-金",
+          row: rowIndex + 1,
+          column,
+          text_offset: { start, end: start + Array.from(value).length },
+        };
+      });
+    });
+    const document = documentOf({ text, table_cells, clauses: [] });
+    const result = keyClauseNavigationFor(scope, document);
+    expect(result.candidates.map(({ quote, categories }) => ({ quote, categories }))).toEqual([
+      { quote: "241.50", categories: ["payment"] },
+    ]);
+    expect(result.candidates[0]?.range.start).toBe(table_cells.at(-1)?.text_offset.start);
+    expect(result.allCandidates?.map(({ quote }) => quote)).toEqual(["80.50", "241.50", "241.50"]);
+    expect(result.candidates[0]?.sourceLabel).toBe("冻结表格单元格");
+    for (const item of result.allCandidates ?? []) {
+      expect(frozenQuoteMatchesDocument(item.selection, scope, document)).toBe(true);
+    }
+    const older = keyClauseNavigationFor(scope, documentOf({ text, clauses: [] }));
+    expect(older.allCandidates?.some((item) => item.sourceLabel === "冻结表格单元格")).not.toBe(
+      true,
+    );
+  });
+
+  it("uses explicit deadline labels and units without assuming a bare number is a date or duration", () => {
+    const text = "😀导语。\n\n合同履约期限\t36个月\n响应时间\t50\n数量\t9个工作日";
+    const rows = [
+      ["合同履约期限", "36个月"],
+      ["响应时间", "50"],
+      ["数量", "9个工作日"],
+    ];
+    const table_cells = rows.flatMap((row, r) =>
+      row.map((value, c) => ({
+        table_id: "t-1",
+        row: r + 1,
+        column: c + 1,
+        text_offset: rangeOf(value, text),
+      })),
+    );
+    const result = keyClauseNavigationFor(scope, documentOf({ text, table_cells, clauses: [] }));
+    expect(result.candidates.map(({ quote, categories }) => ({ quote, categories }))).toEqual([
+      { quote: "36个月", categories: ["term_termination"] },
+    ]);
+  });
+
   it("maps payment milestones, obligations and termination to the requested reading groups", () => {
     const source =
       "验收通过并收到发票后10个工作日内支付首期款。年度服务期满并完成交接后15个工作日内支付尾款。乙方应在10个工作日内交付服务成果。逾期超过15日，甲方有权解除合同。";
@@ -174,7 +245,7 @@ describe("key clause navigation", () => {
           {
             id: "bad",
             heading: "付款条款",
-            text_offset: { start: 4, end: codePoints.length + 1 },
+            text_offset: { start: 4, end: Array.from(text).length + 1 },
             page: 1,
           },
         ],

@@ -134,7 +134,6 @@ function AdminTopbar({
         </span>
       </NavLink>
       <ContextSwitcher actor={actor} audience="admin" onTransition={onContextTransition} />
-      <p className="disclaimer">此工作区不授予案件正文访问权限。</p>
       <div className="who" aria-label="当前管理身份">
         {actor ? (
           <>
@@ -172,7 +171,12 @@ function AdminSidebar({ pathname }: { pathname: string }) {
         ...group,
         links: group.links.map((link) => ({ ...link, current: link.href === selected })),
       }))}
-      footer={<div className="nav-footer">规则版本与发布历史</div>}
+      footer={
+        <div className="nav-footer">
+          <div>规则版本与发布历史</div>
+          <div>此工作区不授予案件正文访问权限。</div>
+        </div>
+      }
     />
   );
 }
@@ -215,7 +219,10 @@ export function AdminShell() {
         <Layout.Content className="content-column">
           <Breadcrumb
             className="breadcrumbs"
-            items={[{ title: "管理" }, { title: adminBreadcrumb(pathname) }]}
+            items={[
+              { title: <NavLink to="/admin/settings">管理</NavLink> },
+              { title: adminBreadcrumb(pathname) },
+            ]}
           />
           <main id="main" tabIndex={-1}>
             {contextTransition ? (

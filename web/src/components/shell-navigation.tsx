@@ -87,11 +87,15 @@ export function ShellNavigation({
   title,
   groups,
   footer,
+  drawerOnly = false,
+  drawerContext,
   className = "",
 }: {
   title: string;
   groups: ShellNavGroup[];
   footer?: ReactNode;
+  drawerOnly?: boolean;
+  drawerContext?: ReactNode;
   className?: string;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -101,7 +105,7 @@ export function ShellNavigation({
   const drawerId = useId();
   const opener = useRef<HTMLButtonElement | HTMLAnchorElement>(null);
   const restoreFocus = useRef(false);
-  const drawerOpen = openedAt === key && !screens.lg;
+  const drawerOpen = openedAt === key && (drawerOnly || !screens.lg);
   if (openedAt !== null && !drawerOpen) setOpenedAt(null);
 
   useEffect(() => {
@@ -112,28 +116,36 @@ export function ShellNavigation({
 
   return (
     <>
-      <Layout.Sider
-        className={`sidenav shell-sidenav ${className}`}
-        theme="light"
-        width={248}
-        collapsedWidth={72}
-        collapsed={collapsed}
-        collapsible
-        onCollapse={setCollapsed}
-        trigger={
-          <Button
-            type="text"
-            className="nav-collapse-action"
-            aria-label={collapsed ? "展开侧栏" : "收合侧栏"}
-            aria-expanded={!collapsed}
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-          />
+      {!drawerOnly ? (
+        <Layout.Sider
+          className={`sidenav shell-sidenav ${className}`}
+          theme="light"
+          width={248}
+          collapsedWidth={72}
+          collapsed={collapsed}
+          collapsible
+          onCollapse={setCollapsed}
+          trigger={
+            <Button
+              type="text"
+              className="nav-collapse-action"
+              aria-label={collapsed ? "展开侧栏" : "收合侧栏"}
+              aria-expanded={!collapsed}
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            />
+          }
+        >
+          <NavigationMenu title={title} groups={groups} />
+          {collapsed ? null : footer}
+        </Layout.Sider>
+      ) : null}
+      <div
+        className={
+          drawerOnly
+            ? "shell-mobile-navigation shell-mobile-navigation--always"
+            : "shell-mobile-navigation"
         }
       >
-        <NavigationMenu title={title} groups={groups} />
-        {collapsed ? null : footer}
-      </Layout.Sider>
-      <div className="shell-mobile-navigation">
         <Button
           ref={opener}
           type="text"
@@ -149,6 +161,7 @@ export function ShellNavigation({
         >
           {title}
         </Button>
+        {drawerContext}
       </div>
       <Drawer
         id={drawerId}

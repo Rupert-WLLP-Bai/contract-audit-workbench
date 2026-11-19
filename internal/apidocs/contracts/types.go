@@ -3007,21 +3007,28 @@ type Clause struct {
 	Text_offset TextOffset `json:"text_offset" openapi:"{\"$ref\":\"#/components/schemas/TextOffset\"}"`
 	Page        any        `json:"page" openapi:"{\"anyOf\":[{\"type\":\"integer\",\"minimum\":1},{\"type\":\"null\"}]}"`
 }
+type ReviewTableCell struct {
+	Table_id    string     `json:"table_id" openapi:"{\"type\":\"string\",\"minLength\":1}"`
+	Row         int64      `json:"row" openapi:"{\"type\":\"integer\",\"minimum\":1}"`
+	Column      int64      `json:"column" openapi:"{\"type\":\"integer\",\"minimum\":1}"`
+	Text_offset TextOffset `json:"text_offset" openapi:"{\"$ref\":\"#/components/schemas/TextOffset\"}"`
+}
 type ReviewDocument struct {
-	Id                 string   `json:"id" openapi:"{\"type\":\"string\"}"`
-	Role               string   `json:"role" openapi:"{\"type\":\"string\",\"enum\":[\"procurement\",\"award\",\"draft_contract\",\"attachment\"]}"`
-	Filename           string   `json:"filename" openapi:"{\"type\":\"string\"}"`
-	Media_type         string   `json:"media_type" openapi:"{\"type\":\"string\"}"`
-	Size               int64    `json:"size" openapi:"{\"type\":\"integer\",\"minimum\":0}"`
-	Parse_status       string   `json:"parse_status" openapi:"{\"type\":\"string\",\"enum\":[\"pending\",\"ready\",\"failed\"]}"`
-	Parse_error        any      `json:"parse_error" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
-	Created_at         string   `json:"created_at" openapi:"{\"type\":\"string\",\"format\":\"date-time\"}"`
-	Superseded         bool     `json:"superseded" openapi:"{\"type\":\"boolean\"}"`
-	Coordinate_space   string   `json:"coordinate_space,omitempty" openapi:"{\"type\":\"string\",\"const\":\"unicode_codepoint\"}"`
-	Text               any      `json:"text" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
-	Clauses            []Clause `json:"clauses" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/Clause\"}"`
-	Parsed_document    any      `json:"parsed_document" openapi:"{\"type\":\"null\"}"`
-	Parsed_document_id any      `json:"parsed_document_id" openapi:"{\"type\":[\"string\",\"null\"]}"`
+	Id                 string            `json:"id" openapi:"{\"type\":\"string\"}"`
+	Role               string            `json:"role" openapi:"{\"type\":\"string\",\"enum\":[\"procurement\",\"award\",\"draft_contract\",\"attachment\"]}"`
+	Filename           string            `json:"filename" openapi:"{\"type\":\"string\"}"`
+	Media_type         string            `json:"media_type" openapi:"{\"type\":\"string\"}"`
+	Size               int64             `json:"size" openapi:"{\"type\":\"integer\",\"minimum\":0}"`
+	Parse_status       string            `json:"parse_status" openapi:"{\"type\":\"string\",\"enum\":[\"pending\",\"ready\",\"failed\"]}"`
+	Parse_error        any               `json:"parse_error" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
+	Created_at         string            `json:"created_at" openapi:"{\"type\":\"string\",\"format\":\"date-time\"}"`
+	Superseded         bool              `json:"superseded" openapi:"{\"type\":\"boolean\"}"`
+	Coordinate_space   string            `json:"coordinate_space,omitempty" openapi:"{\"type\":\"string\",\"const\":\"unicode_codepoint\"}"`
+	Text               any               `json:"text" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
+	Clauses            []Clause          `json:"clauses" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/Clause\"}"`
+	Table_cells        []ReviewTableCell `json:"table_cells,omitempty" openapi:"{\"type\":\"array\",\"minItems\":1,\"maxItems\":4096}" openapi_items:"{\"$ref\":\"#/components/schemas/ReviewTableCell\"}"`
+	Parsed_document    any               `json:"parsed_document" openapi:"{\"type\":\"null\"}"`
+	Parsed_document_id any               `json:"parsed_document_id" openapi:"{\"type\":[\"string\",\"null\"]}"`
 }
 type FindingCounts struct {
 	Total        int64 `json:"total" openapi:"{\"type\":\"integer\",\"minimum\":0}"`
@@ -3063,16 +3070,17 @@ type CaseDetail struct {
 	Members                                  []Actor                     `json:"members" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/Actor\"}"`
 }
 type Anchor struct {
-	Id                  string `json:"id" openapi:"{\"type\":\"string\"}"`
-	Document_version_id string `json:"document_version_id" openapi:"{\"type\":\"string\"}"`
-	Quote               string `json:"quote" openapi:"{\"type\":\"string\"}"`
-	Status              string `json:"status" openapi:"{\"type\":\"string\",\"enum\":[\"located\",\"missing\",\"unlocatable\"]}"`
-	Page                any    `json:"page" openapi:"{\"anyOf\":[{\"type\":\"integer\",\"minimum\":1},{\"type\":\"null\"}]}"`
-	Text_offset         any    `json:"text_offset" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/TextOffset\"},{\"type\":\"null\"}]}"`
-	Bbox                any    `json:"bbox" openapi:"{\"type\":\"null\",\"description\":\"当前 API 不输出推测的 PDF 边界框。\"}"`
-	Element_id          any    `json:"element_id" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
-	Mismatch_reason     any    `json:"mismatch_reason" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
-	Parsed_document_id  any    `json:"parsed_document_id" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
+	Id                  string   `json:"id" openapi:"{\"type\":\"string\"}"`
+	Document_version_id string   `json:"document_version_id" openapi:"{\"type\":\"string\"}"`
+	Quote               string   `json:"quote" openapi:"{\"type\":\"string\"}"`
+	Status              string   `json:"status" openapi:"{\"type\":\"string\",\"enum\":[\"located\",\"missing\",\"unlocatable\"]}"`
+	Page                any      `json:"page" openapi:"{\"anyOf\":[{\"type\":\"integer\",\"minimum\":1},{\"type\":\"null\"}]}"`
+	Text_offset         any      `json:"text_offset" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/TextOffset\"},{\"type\":\"null\"}]}"`
+	Bbox                any      `json:"bbox" openapi:"{\"type\":\"null\",\"description\":\"当前 API 不输出推测的 PDF 边界框。\"}"`
+	Element_id          any      `json:"element_id" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
+	Mismatch_reason     any      `json:"mismatch_reason" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
+	Parsed_document_id  any      `json:"parsed_document_id" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
+	Observation_labels  []string `json:"observation_labels,omitempty" openapi:"{\"type\":\"array\",\"description\":\"付款与结算覆盖中该原句支持的观察项。\"}" openapi_items:"{\"type\":\"string\"}"`
 }
 type Decision struct {
 	Id              string `json:"id" openapi:"{\"type\":\"string\"}"`
@@ -3180,6 +3188,7 @@ type Evaluation struct {
 	Reason_code   string   `json:"reason_code" openapi:"{\"type\":\"string\"}"`
 	Fact_ids      []string `json:"fact_ids" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\"}"`
 	Object_refs   []string `json:"object_refs" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\"}"`
+	Evidence      []Anchor `json:"evidence,omitempty" openapi:"{\"type\":\"array\",\"description\":\"可定位的付款与结算原文引用，属于检查覆盖，不是风险发现。\"}" openapi_items:"{\"$ref\":\"#/components/schemas/Anchor\"}"`
 }
 type AuditEvent struct {
 	Event_id        string   `json:"event_id" openapi:"{\"type\":\"string\"}"`
@@ -4620,6 +4629,7 @@ var SchemaRules = map[string]string{
 	"TextOffset":                             "{\"type\":\"object\",\"required\":[\"start\",\"end\"],\"additionalProperties\":false,\"description\":\"规范化文本的 Unicode 码点区间 [start,end)，不是 UTF-8 字节或 JavaScript UTF-16 索引。\"}",
 	"Clause":                                 "{\"type\":\"object\",\"required\":[\"id\",\"heading\",\"text_offset\",\"page\"],\"additionalProperties\":false}",
 	"ReviewDocument":                         "{\"type\":\"object\",\"required\":[\"id\",\"role\",\"filename\",\"media_type\",\"size\",\"parse_status\",\"parse_error\",\"created_at\",\"superseded\",\"text\",\"clauses\",\"parsed_document\",\"parsed_document_id\"],\"additionalProperties\":false}",
+	"ReviewTableCell":                        "{\"type\":\"object\",\"required\":[\"table_id\",\"row\",\"column\",\"text_offset\"],\"additionalProperties\":false,\"description\":\"冻结解析表格的单元格位置。行列从 1 开始，合并或空单元格可能留出间隔。内容以原冻结文本的 Unicode 码点区间为准。\"}",
 	"FindingCounts":                          "{\"type\":\"object\",\"required\":[\"total\",\"undecided\",\"conflict\",\"insufficient\"],\"additionalProperties\":false}",
 	"Activity":                               "{\"type\":\"object\",\"required\":[\"id\",\"at\",\"summary\"],\"additionalProperties\":false}",
 	"CaseDetail":                             "{\"type\":\"object\",\"required\":[\"id\",\"title\",\"contract_type\",\"document_count\",\"pending_decisions\",\"latest_run\",\"updated_at\",\"created_at\",\"documents\",\"revision_pending\",\"configuration_pending\",\"subject_context_changed_after_latest_run\",\"finding_counts\",\"activity\",\"members\",\"business_line\",\"scenario\",\"business_status\",\"archived_at\",\"generations\",\"remediations\",\"reports\",\"archives\"],\"additionalProperties\":false}",
@@ -5080,6 +5090,7 @@ func Types() map[string]reflect.Type {
 		"TextOffset":                             reflect.TypeFor[TextOffset](),
 		"Clause":                                 reflect.TypeFor[Clause](),
 		"ReviewDocument":                         reflect.TypeFor[ReviewDocument](),
+		"ReviewTableCell":                        reflect.TypeFor[ReviewTableCell](),
 		"FindingCounts":                          reflect.TypeFor[FindingCounts](),
 		"Activity":                               reflect.TypeFor[Activity](),
 		"CaseDetail":                             reflect.TypeFor[CaseDetail](),

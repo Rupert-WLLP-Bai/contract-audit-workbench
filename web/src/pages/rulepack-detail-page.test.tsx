@@ -600,7 +600,12 @@ describe("RulePackDetailPage lifecycle transitions", () => {
     const user = userEvent.setup();
     await clickAction(user, "发布此版本");
     expect(await screen.findByRole("alert")).toHaveTextContent("Pointer revision changed");
-    await screen.findByText(/指针修订 9/);
+    await user.click(screen.getByRole("button", { name: "版本与来源信息" }));
+    await waitFor(() =>
+      expect(screen.getByText("指针修订", { selector: "dt" }).nextElementSibling).toHaveTextContent(
+        "9",
+      ),
+    );
     expect(screen.queryByRole("button", { name: "重试上一次请求" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "发布此版本" }));
     await screen.findByRole("button", { name: "停用活动指针" });

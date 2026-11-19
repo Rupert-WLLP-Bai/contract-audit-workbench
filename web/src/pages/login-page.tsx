@@ -73,8 +73,8 @@ export function LoginPage({ audience = "client" }: { audience?: SessionAudience 
 
   return (
     <main className="login-screen" id="main">
-      <aside className="login-rail">
-        <div className="login-rail-brand competition-brand">
+      <form className="login-card" onSubmit={onSubmit}>
+        <div className="login-brand competition-brand">
           {audience === "client" ? (
             <CompetitionIdentity />
           ) : (
@@ -84,22 +84,10 @@ export function LoginPage({ audience = "client" }: { audience?: SessionAudience 
             </>
           )}
         </div>
-        <p className="login-rail-copy">查看审查当时的合同原文，核对发现并记录处理决定。</p>
-        <ol className="login-rail-circuit" aria-label="审查链路示意">
-          <li>材料</li>
-          <li>解析</li>
-          <li>引用</li>
-          <li>决定</li>
-        </ol>
-      </aside>
-      <form className="login-card" onSubmit={onSubmit}>
-        {audience === "client" ? (
-          <div className="login-mobile-brand competition-brand">
-            <CompetitionIdentity />
-          </div>
-        ) : null}
-        <h1>{audience === "admin" ? "登录管理工作台" : "登录合同审查"}</h1>
-        <p>使用组织分配的账号登录。</p>
+        <header className="login-heading">
+          <h1>{audience === "admin" ? "登录管理工作台" : "登录合同审查"}</h1>
+          <p>使用组织分配的账号登录。</p>
+        </header>
         <label className="field">
           账号
           <Input
@@ -123,7 +111,11 @@ export function LoginPage({ audience = "client" }: { audience?: SessionAudience 
             required
           />
         </label>
-        {login.isError ? <p role="alert">{errorMessage(login.error)}</p> : null}
+        {login.isError ? (
+          <p className="login-error" role="alert">
+            {errorMessage(login.error)}
+          </p>
+        ) : null}
         <Button
           aria-label={String(login.isPending ? "正在登录" : "登录")}
           type="primary"
