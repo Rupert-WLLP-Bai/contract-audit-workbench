@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders the chosen frozen review attempt, working with exact document selection, permitted DOCX workspace actions, immediate original reading and separately accessible decisions.
+// Purpose: Orchestrates a scoped review attempt, the document-and-judgment workspace, authorized report actions, and drawers for history, evidence and execution with legacy-link continuity.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-19
-// Revision: r14
+// Revision: r15
 // Copyright: See LICENSE
 // End file metadata.
 

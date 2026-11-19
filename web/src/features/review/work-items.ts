@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Projects selected frozen-review findings and case evidence/remediation workflows into readable navigation items, preserving stable source identities, uncertain states and same-context return paths without creating task authority.
+// Purpose: Builds review work items and scoped return paths, preserving legacy review-section links and allowing valid workspace drawer and tab combinations.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

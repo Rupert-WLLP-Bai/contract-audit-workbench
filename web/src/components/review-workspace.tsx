@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Composes the frozen attempt, document reading controls and supporting findings, decisions and execution views without displacing the original.
+// Purpose: Composes the selected review attempt’s documents and risk findings and coordinates exact citation navigation, scope changes and the existing review commands.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-19
-// Revision: r13
+// Revision: r14
 // Copyright: See LICENSE
 // End file metadata.
 

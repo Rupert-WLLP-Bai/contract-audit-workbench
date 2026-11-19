@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Exercises the `httpapi_test` package behavior through TestMalformedModelOutputRetainsRulesAsPartialRun, TestImageOCRFeedsReview, TestSettingsReportsConfiguredModels; these checks pin observable state, error handling, or wire/database compatibility for this module.
+// Purpose: Verifies model and OCR integration and the decision endpoint behavior for model suggestions with missing or exact frozen citations, including append-only history and idempotent replay.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-19
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 

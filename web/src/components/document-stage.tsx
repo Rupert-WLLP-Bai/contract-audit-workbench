@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Presents case materials and the selected historical or current document through searchable text, original-file reading, exact highlights and source navigation.
+// Purpose: Presents the selected review attempt’s materials through text and original-file readers, with responsive two-document comparison, synchronized clause topics and precise citation navigation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-19
-// Revision: r8
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 

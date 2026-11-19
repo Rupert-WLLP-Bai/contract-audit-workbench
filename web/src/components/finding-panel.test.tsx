@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “finding panel”; representative assertions cover counts severities and includes an unrated bucket only when needed, filters findings and keeps the selected one visible in its detail, explains an empty finding list without claiming the contract is clean. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Tests the finding queue, evidence state and decision forms, including the workspace filters, exact model citation checks, keyboard navigation and save-before-advance behavior.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

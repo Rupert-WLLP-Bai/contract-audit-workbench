@@ -1,3 +1,13 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles the responsive comparison of the procurement document and draft contract, including clause topics, original and text views, and matched citation markers. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-19 */
+/* Updated: 2026-11-19 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
 .immersive-document-stage {
   min-width: 0;
   display: flex;

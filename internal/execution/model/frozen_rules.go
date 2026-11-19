@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Validates terminal attempt predicates and frozen rule-pack identity and scope from explicit immutable values.
+// Purpose: Validates terminal attempts and frozen rule-pack identity and verifies that every citation of a model risk matches the original text and parse selected for the attempt.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-19
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
