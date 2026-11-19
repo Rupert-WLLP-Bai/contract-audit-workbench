@@ -80,12 +80,12 @@ export function ContractFactsPanel({
                 title="模型建议需人工核对；它不构成风险结论或法律判断。"
                 description={
                   structuredOutputUnavailable
-                    ? "请求没有形成可用的结构化事实输出，当前字段只表示未知；请核对冻结原文。"
+                    ? "请求没有形成可用的结构化事实输出，当前字段只表示未知；请核对原文。"
                     : facts.input_truncated
                       ? "正文按上限截断，未提供部分保持未知；本次结果为不完整建议。"
                       : facts.status === "partial"
-                        ? "本次没有达到完整覆盖；未知项不表示合同没有约定，仍需核对冻结原文。"
-                        : "引用可定位到本次冻结原文，引用存在不代表事实归纳正确。"
+                        ? "本次没有达到完整覆盖；未知项不表示合同没有约定，仍需核对原文。"
+                        : "引用可定位到本次原文，引用存在不代表事实归纳正确。"
                 }
               />
               <ul>
@@ -97,7 +97,7 @@ export function ContractFactsPanel({
                       {field.status === "known"
                         ? field.value
                         : field.status === "conflicting"
-                          ? "模型提示不同表述，请结合冻结原文核对。"
+                          ? "模型提示不同表述，请结合原文核对。"
                           : "没有足够依据，保持未知。"}
                     </Typography.Paragraph>
                     {field.citations.length > 0 ? (
@@ -113,7 +113,7 @@ export function ContractFactsPanel({
                                   size="small"
                                   onClick={() => onLocate(citation, key)}
                                 >
-                                  定位冻结原文
+                                  定位原文
                                 </Button>
                               ) : null}
                             </li>

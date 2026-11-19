@@ -93,13 +93,13 @@ function CitationReader({
         disabled={!authority.article || authority.legacy_rule_gap}
         onClick={() => setOpen((value) => !value)}
       >
-        {open ? "收起冻结条文" : "读取本次冻结条文"}
+        {open ? "收起适用条文" : "读取本次适用条文"}
       </button>
-      {open && citation.isFetching ? <p role="status">正在读取本次冻结条文…</p> : null}
+      {open && citation.isFetching ? <p role="status">正在读取本次适用条文…</p> : null}
       {open && citation.isError ? (
         <div role="alert">
           <p>
-            本次冻结条文读取失败：
+            本次适用条文读取失败：
             {citation.error instanceof Error ? citation.error.message : "未知错误"}
           </p>
           <button type="button" onClick={() => void citation.refetch()}>
@@ -121,7 +121,7 @@ function CitationReader({
             状态记录：{article.status_provenance.observed_status}（
             {article.status_provenance.observed_at}）
           </p>
-          <p>法律审核状态为未运行；该条文按本次审查冻结的版本显示。</p>
+          <p>法律审核状态为未运行；该条文按本次审查适用的版本显示。</p>
           <blockquote>{article.canonical_full_article_body}</blockquote>
           <a href={article.source_provenance.official_url} target="_blank" rel="noreferrer">
             查看记录的官方来源

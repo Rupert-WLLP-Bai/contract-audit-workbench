@@ -52,6 +52,6 @@ it("keeps uncertainty visible while collapsed and allows keyboard access to exac
   await user.keyboard("{Enter}");
   expect(toggle).toHaveAttribute("aria-expanded", "true");
   expect(screen.getByText(citation.quote)).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "定位冻结原文" }));
+  await user.click(screen.getByRole("button", { name: "定位原文" }));
   expect(locate).toHaveBeenCalledWith(citation, "payment_schedule-0");
 });

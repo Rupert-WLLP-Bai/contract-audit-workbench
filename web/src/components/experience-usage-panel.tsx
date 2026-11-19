@@ -129,7 +129,7 @@ export function ExperienceUsagePanel({
     <section className="workflow-panel" aria-labelledby="experience-usage-heading">
       <h2 id="experience-usage-heading">本次发现参考的经验</h2>
       <p className="meta">
-        只登记实际参考过的冻结经验，并在首次人工判断前确认。候选出现或被检索不算使用；预期方向不会替代人工判断。
+        只登记实际参考过的已留档经验，并在首次人工判断前确认。候选出现或被检索不算使用；预期方向不会替代人工判断。
       </p>
       {options.isLoading && <p role="status">正在读取本次审查的经验版本</p>}
       {options.isError && (

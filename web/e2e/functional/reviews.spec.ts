@@ -50,16 +50,11 @@ test(
     await page.goto(
       `${webURL}/cases/${caseID}/reviews/${accepted.id}?attempt_id=${accepted.attempt_id}`,
     );
-    await expect(page.getByRole("heading", { name: "审查工作区", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "审查工作区" })).toBeVisible();
     await page.getByRole("button", { name: `选择线索：${finding.claim}`, exact: true }).click();
     await expect(page.locator("mark.hit-evidence").first()).toContainText(/质保/);
-    await page.getByRole("button", { name: "双来源对照", exact: true }).click();
-    await expect(page.locator(".document-split mark.hit-evidence")).toHaveCount(2);
-    await page.getByRole("button", { name: "单篇阅读", exact: true }).click();
-    await expect(page.getByRole("button", { name: "单篇阅读", exact: true })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    await expect(page.locator(".immersive-document-column mark.hit-evidence")).toHaveCount(2);
+    await expect(page.getByRole("checkbox", { name: "按条款联动" })).toBeChecked();
     const streamURL = `${webURL}/api/cases/${caseID}/reviews/${accepted.id}/events`;
     const initial = await page.evaluate(async (url) => {
       const controller = new AbortController();
@@ -81,7 +76,7 @@ test(
         response.request().method() === "POST" &&
         response.url().includes(`/findings/${finding.id}/decisions`),
     );
-    await page.getByRole("button", { name: "保存决定", exact: true }).click();
+    await page.getByRole("button", { name: "保存判断", exact: true }).click();
     expect((await saved).status()).toBe(204);
     await expect(
       page.getByText("合成采购要求36个月，拟签仅24个月，确认风险。", { exact: true }),

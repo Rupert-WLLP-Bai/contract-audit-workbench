@@ -197,8 +197,8 @@ async function run(): Promise<void> {
       await page.wait(
         session,
         `(() => {
-          const pane = document.querySelector('.doc-pane[data-active-source="true"]');
-          if (pane?.dataset.parsedDocumentId !== ${JSON.stringify(parsedId)}) return false;
+          const pane = [...document.querySelectorAll('.doc-pane[data-active-source="true"]')].find((item) => item.dataset.parsedDocumentId === ${JSON.stringify(parsedId)});
+          if (!pane) return false;
           const marks = [...pane.querySelectorAll('.doc-text mark.hit-key-clause, .doc-text mark.key-clause-overlap')];
           return marks.filter((mark) => mark.checkVisibility({ visibilityProperty: true }) &&
             !mark.hasAttribute('data-selected-key-clause'))
@@ -219,7 +219,7 @@ async function run(): Promise<void> {
     if (selectedFinding !== "selected") throw new Error(selectedFinding);
     await page.wait(
       session,
-      "document.querySelector('.finding-detail h3')?.textContent.includes('质保月数不一致')",
+      "document.querySelector('[data-finding-id][data-selected=true]')?.textContent.includes('质保月数不一致')",
     );
     const retryInputs = await readWorkspaceParseMetadata(page, session);
     const retryTabs = await readWorkspaceSourceTabs(page, session);
@@ -235,7 +235,7 @@ async function run(): Promise<void> {
     if (JSON.stringify(firstAttemptParsedIds) !== JSON.stringify(retryAttemptParsedIds)) {
       throw new Error("retry changed the parsed document references pinned by the first attempt");
     }
-    await clickText(page, session, "button", "双来源对照");
+    // Both source documents are rendered together on wide screens.
     const evidenceSources = await readEvidenceSources(page, session);
     if (
       evidenceSources.length === 0 ||
@@ -248,8 +248,7 @@ async function run(): Promise<void> {
       );
     }
     await openReviewSection(page, session, "执行轨迹");
-    // Reopening the section remounts the inspector with its default expanded
-    // disclosure, so collapse it again before asserting the compact state.
+    // Verify the execution drawer's inspector can be collapsed.
     await setInspectorDisclosure(page, session, false);
     await page.wait(
       session,
@@ -271,18 +270,16 @@ async function run(): Promise<void> {
       await Bun.write(process.env.E2E_EXECUTION_SCREENSHOT, Buffer.from(shot.data, "base64"));
     }
     await openReviewSection(page, session, "原文核对");
-    // Re-entering the section remounts the reader in its single-source default;
-    // the two-document comparison is what renders one highlight per source.
-    await clickText(page, session, "button", "双来源对照");
+    // Both source documents are rendered together on wide screens.
     await page.wait(
       session,
-      "document.querySelectorAll('.workspace-grid mark.hit-evidence').length >= 2 && document.querySelector('input[type=radio][value=confirm_risk]')?.matches(':enabled') && document.querySelector('textarea')?.matches(':enabled')",
+      "document.querySelectorAll('.immersive-document-columns mark.hit-evidence').length >= 2 && document.querySelector('input[type=radio][value=confirm_risk]')?.matches(':enabled') && document.querySelector('textarea')?.matches(':enabled')",
     );
 
     const radio = await page.eval(
       session,
       `(() => {
-      const label = [...document.querySelectorAll("label")].find((item) => item.textContent.includes("确认风险"));
+      const label = [...document.querySelectorAll("label")].find((item) => item.textContent.includes("确认是风险"));
       const input = label?.querySelector("input");
       if (!input) return "missing";
       input.click();
@@ -291,8 +288,8 @@ async function run(): Promise<void> {
     );
     if (radio !== "ok") throw new Error(`confirm radio ${radio}`);
     await fill(page, session, "textarea", "两份材料写明的质保月数不同");
-    await clickText(page, session, "button", "保存决定");
-    await page.wait(session, "document.body.innerText.includes('已记录确认风险')");
+    await clickText(page, session, "button", "保存判断");
+    await openJudgedFinding(page, session, "质保月数不一致");
     step("attempt 2 decision recorded");
     const oldRunURL = await page.eval(session, "location.href");
     await clickText(page, session, "a", "返回案件");
@@ -375,10 +372,8 @@ async function run(): Promise<void> {
       throw new Error("revision overwrote original run");
     await openReviewSection(page, session, "来源与历史");
     await clickText(page, session, "a", "查看上一轮审查");
-    await page.wait(
-      session,
-      "(() => { const text = document.body.innerText.replace(/\\s/g, ''); return text.includes('已记录确认风险') && text.includes('24个月'); })()",
-    );
+    await openJudgedFinding(page, session, "质保月数不一致");
+    await page.wait(session, "document.body.innerText.includes('24个月')");
     if ((await page.eval(session, "location.href")).split("?")[0] !== oldRunURL.split("?")[0]) {
       throw new Error("previous-run link did not preserve the original run identity");
     }
@@ -448,7 +443,7 @@ async function run(): Promise<void> {
     await openReviewSection(page, session, "原文核对");
     await page.wait(
       session,
-      `[...document.querySelectorAll('.review-material-context [role=tab] [data-parsed-document-id]')].some((item) => item.dataset.parsedDocumentId === ${JSON.stringify(reparsedDocument.parsedDocumentId)})`,
+      `[...document.querySelectorAll('.immersive-document-column .doc-pane[data-parsed-document-id]')].some((item) => item.dataset.parsedDocumentId === ${JSON.stringify(reparsedDocument.parsedDocumentId)})`,
     );
     step("reparse review submitted and selected parse verified");
     await selectParsedDocumentTab(page, session, reparsedDocument.parsedDocumentId);
@@ -496,37 +491,14 @@ async function run(): Promise<void> {
         "new attempt did not pin the selected parse identity or retained its superseded parse",
       );
     }
-    const previousParseIds = documentTabs
-      .filter(
-        (item) =>
-          item.documentVersionId === reparsedDocument.documentVersionId &&
-          item.parsedDocumentId !== "" &&
-          item.parsedDocumentId !== reparsedDocument.parsedDocumentId,
-      )
-      .map((item) => item.parsedDocumentId);
-    await selectParsedDocumentTab(page, session, reparsedDocument.parsedDocumentId);
-    const selectedParse = await page.eval(
-      session,
-      "document.querySelector('.doc-pane[data-active-source=\"true\"]')?.dataset.parsedDocumentId ?? ''",
+    const staleSources = documentTabs.filter(
+      (item) =>
+        item.documentVersionId === reparsedDocument.documentVersionId &&
+        item.parsedDocumentId !== reparsedDocument.parsedDocumentId,
     );
-    if (selectedParse !== reparsedDocument.parsedDocumentId) {
-      throw new Error(`current parsed document was not the primary selection: ${selectedParse}`);
-    }
-    for (const previousParseId of previousParseIds) {
-      await selectParsedDocumentTab(page, session, previousParseId);
-      const previousInputs = await readWorkspaceParseMetadata(page, session);
-      if (
-        !previousInputs.some(
-          (item) =>
-            item.documentVersionId === reparsedDocument.documentVersionId &&
-            item.parsedDocumentId === previousParseId,
-        )
-      ) {
-        throw new Error(`historical parse ${previousParseId} did not become the displayed source`);
-      }
-    }
-    if (previousParseIds.length > 0)
-      await selectParsedDocumentTab(page, session, reparsedDocument.parsedDocumentId);
+    if (staleSources.length)
+      throw new Error(`current review exposed superseded parses: ${JSON.stringify(staleSources)}`);
+    await selectParsedDocumentTab(page, session, reparsedDocument.parsedDocumentId);
     await page.send("Page.navigate", { url: revisionRunURL }, session);
     await openReviewSection(page, session, "来源与历史");
     await page.wait(
@@ -560,10 +532,8 @@ async function run(): Promise<void> {
       throw new Error("reparse changed the pre-reparse revision run identity");
     }
     await page.send("Page.navigate", { url: oldRunURL }, session);
-    await page.wait(
-      session,
-      "(() => { const text = document.body.innerText.replace(/\\s/g, ''); return text.includes('已记录确认风险') && text.includes('24个月'); })()",
-    );
+    await openJudgedFinding(page, session, "质保月数不一致");
+    await page.wait(session, "document.body.innerText.includes('24个月')");
     const restoredOldRunInputs = await readWorkspaceParseMetadata(page, session);
     if (
       !restoredOldRunInputs.some(
@@ -1002,8 +972,33 @@ async function openSection(
 
 // The review page renders one workspace surface at a time. Open the section
 // that owns the element under test before reading rendered text or controls.
+async function openJudgedFinding(page: Page, session: string, title: string): Promise<void> {
+  await page.wait(session, "Boolean(document.querySelector('[aria-label=已判断]'))");
+  await page.eval(session, "document.querySelector('[aria-label=已判断]')?.click()");
+  await page.wait(
+    session,
+    `(() => {
+    const item = [...document.querySelectorAll('[data-finding-id]')].find((node) => node.textContent?.includes(${JSON.stringify(title)}));
+    return Boolean(item?.querySelector('.review-finding-decision-summary')?.textContent?.includes('确认是风险'));
+  })()`,
+  );
+}
+
 async function openReviewSection(page: Page, session: string, section: string): Promise<void> {
-  await openSection(page, session, "审查工作区分区", section);
+  const drawer = section === "执行轨迹" ? "执行过程" : section === "来源与历史" ? "审查记录" : null;
+  const existing = await page.eval(
+    session,
+    "Boolean(document.querySelector('[role=dialog] .ant-drawer-close'))",
+  );
+  if (existing === "true")
+    await page.eval(session, "document.querySelector('[role=dialog] .ant-drawer-close')?.click()");
+  if (drawer) {
+    await clickText(page, session, "button", drawer);
+    await page.wait(session, `Boolean(document.querySelector('[role="dialog"]'))`);
+    if (drawer === "审查记录") await clickText(page, session, "div[role=tab]", "历次审查");
+  } else {
+    await page.wait(session, "Boolean(document.querySelector('[aria-label=审查工作区]'))");
+  }
 }
 
 // Case details keep only the selected section in the rendered text, so each
@@ -1266,7 +1261,7 @@ async function readWorkspaceSourceTabs(
 ): Promise<DocumentTabSnapshot[]> {
   const raw = await page.eval(
     session,
-    `JSON.stringify([...document.querySelectorAll('.review-material-context [role=tab] [data-document-version-id]')].map((tab) => ({
+    `JSON.stringify([...document.querySelectorAll('.immersive-document-column .doc-pane[data-document-version-id]')].map((tab) => ({
     documentVersionId: tab.dataset.documentVersionId ?? '',
     parsedDocumentId: tab.dataset.parsedDocumentId ?? '',
   })))`,
@@ -1356,79 +1351,27 @@ async function readWorkspaceParseMetadata(
   page: Page,
   session: string,
 ): Promise<WorkspaceParseSnapshot[]> {
-  const rawTabs = await page.eval(
-    session,
-    `JSON.stringify([...document.querySelectorAll('.review-material-context [role="tab"] [data-document-version-id]')].map((item, index) => ({
-    index,
-    documentVersionId: item.dataset.documentVersionId ?? '',
-    parsedDocumentId: item.dataset.parsedDocumentId ?? '',
-  })))`,
-  );
-  const tabs = JSON.parse(rawTabs) as Array<{
-    index: number;
-    documentVersionId: string;
-    parsedDocumentId: string;
-  }>;
-  if (tabs.length === 0) throw new Error("review workspace has no source tabs");
-  const snapshots: WorkspaceParseSnapshot[] = [];
-  for (const tab of tabs) {
-    const selected = await page.eval(
-      session,
-      `(() => {
-      const item = document.querySelectorAll('.review-material-context [role="tab"] [data-document-version-id]')[${tab.index}];
-      if (!(item instanceof HTMLElement) || item.dataset.documentVersionId !== ${JSON.stringify(tab.documentVersionId)} || item.dataset.parsedDocumentId !== ${JSON.stringify(tab.parsedDocumentId)}) return 'changed';
-      item.click();
-      return 'selected';
-    })()`,
-    );
-    if (selected !== "selected")
-      throw new Error(
-        `source tab ${tab.index} changed while reading its parse metadata: ${selected}`,
-      );
-    try {
-      await page.wait(
-        session,
-        `(() => {
-        const pane = document.querySelector('.doc-pane[data-active-source="true"]');
-        return pane?.dataset.documentVersionId === ${JSON.stringify(tab.documentVersionId)} && pane?.dataset.parsedDocumentId === ${JSON.stringify(tab.parsedDocumentId)};
-      })()`,
-      );
-    } catch (error) {
-      const state = await page.eval(
-        session,
-        `JSON.stringify({
-        panes: [...document.querySelectorAll('.doc-pane')].map((pane) => ({
-          active: pane.dataset.activeSource,
-          documentVersionId: pane.dataset.documentVersionId,
-          parsedDocumentId: pane.dataset.parsedDocumentId,
-        })),
-      })`,
-      );
-      throw new Error(`source tab ${tab.index} did not show its frozen parse identity: ${state}`);
-    }
-    // The business workspace deliberately withholds parser metadata; the
-    // frozen parse identity is exposed on the displayed source pane.
-    snapshots.push({
-      documentVersionId: tab.documentVersionId,
-      parsedDocumentId: tab.parsedDocumentId,
+  const tabs = await readWorkspaceSourceTabs(page, session);
+  if (!tabs.length) throw new Error("review workspace has no displayed sources");
+  return tabs
+    .map((tab) => ({
+      ...tab,
       originalDigest: "",
       normalizedDigest: "",
       artifactDigest: "",
       configHash: "",
-    });
-  }
-  return snapshots.sort((left, right) =>
-    (left.documentVersionId + ":" + left.parsedDocumentId).localeCompare(
-      right.documentVersionId + ":" + right.parsedDocumentId,
-    ),
-  );
+    }))
+    .sort((a, b) =>
+      (a.documentVersionId + ":" + a.parsedDocumentId).localeCompare(
+        b.documentVersionId + ":" + b.parsedDocumentId,
+      ),
+    );
 }
 
 async function readEvidenceSources(page: Page, session: string): Promise<EvidenceSourceSnapshot[]> {
   const raw = await page.eval(
     session,
-    `(() => JSON.stringify([...document.querySelectorAll('.evidence-card')].map((card) => {
-    const evidence = card.querySelector('[data-evidence-parsed-document-id]');
+    `(() => JSON.stringify([...document.querySelectorAll('[data-selected=true] .review-finding-citations [data-evidence-parsed-document-id]')].map((evidence) => {
     const documentVersionId = evidence?.getAttribute('data-evidence-document-version-id') ?? '';
     const parsedDocumentId = evidence?.getAttribute('data-evidence-parsed-document-id') ?? '';
     const source = [...document.querySelectorAll('.doc-pane')].find((item) =>
@@ -1605,25 +1548,9 @@ async function selectParsedDocumentTab(
   session: string,
   parsedDocumentId: string,
 ): Promise<void> {
-  const status = await page.eval(
-    session,
-    `(() => {
-    const tab = [...document.querySelectorAll('.review-material-context [role=tab] [data-parsed-document-id]')].find((item) => item.dataset.parsedDocumentId === ${JSON.stringify(parsedDocumentId)});
-    if (!tab) return 'missing';
-    tab.click();
-    return 'ok';
-  })()`,
-  );
-  if (status !== "ok") throw new Error(`parsed source ${parsedDocumentId} was not selectable`);
   await page.wait(
     session,
-    `(() => {
-    const label = [...document.querySelectorAll('.review-material-context [role=tab] [data-parsed-document-id]')].find(
-      (item) => item.dataset.parsedDocumentId === ${JSON.stringify(parsedDocumentId)},
-    );
-    return label?.closest('[role=tab]')?.getAttribute('aria-selected') === 'true' ||
-      Boolean(label?.closest('.ant-tabs-tab.ant-tabs-tab-active'));
-  })()`,
+    `Boolean([...document.querySelectorAll('.immersive-document-column .doc-pane')].find((item) => item.dataset.parsedDocumentId === ${JSON.stringify(parsedDocumentId)}))`,
   );
 }
 

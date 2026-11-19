@@ -57,14 +57,14 @@ function FrozenText({ citation }: { citation: FrozenContractCitation }) {
       <Alert
         type="error"
         showIcon
-        title="引用区间与返回的冻结原文不一致"
-        description="为避免误导，本次不显示高亮；请重新读取或联系管理员核对冻结原文。"
+        title="引用区间与返回的原文不一致"
+        description="为避免误导，本次不显示高亮；请重新读取或联系管理员核对原文。"
       />
     );
   }
   const segments = segmentText(citation.text, { start: citation.start, end: citation.end }, []);
   return (
-    <pre className="frozen-citation-text" tabIndex={0} aria-label="本次冻结原文，引用区间已高亮">
+    <pre className="frozen-citation-text" tabIndex={0} aria-label="本次原文，引用区间已高亮">
       {segments.map((segment) =>
         segment.highlighted === "evidence" ? (
           <mark key={segment.start} data-offset={segment.start} className="hit-evidence">
@@ -114,7 +114,7 @@ function CitationBody({
           <br />
           <code>{`解析摘要 ${citation.parse_digest}`}</code>
           <br />
-          <code>{`冻结解析 ${citation.parsed_document_id}`}</code>
+          <code>{`留档解析 ${citation.parsed_document_id}`}</code>
         </p>
       </details>
       {originalScope?.caseId === citation.case_id && supportsOriginalPreview(citation.filename) ? (
@@ -178,13 +178,13 @@ export function FrozenContractCitationReader({
   });
   const ids = { caseId, runId, attemptId, evidenceId };
   return (
-    <section className="frozen-citation-reader" aria-label="本次冻结原文">
-      {citation.isFetching ? <p role="status">正在读取本次冻结原文…</p> : null}
+    <section className="frozen-citation-reader" aria-label="本次原文">
+      {citation.isFetching ? <p role="status">正在读取本次原文…</p> : null}
       {citation.isError ? (
         <Alert
           type="error"
           showIcon
-          title="本次冻结原文暂时无法读取，不能把这条引用当成已确认结论"
+          title="本次原文暂时无法读取，不能把这条引用当成已确认结论"
           description={errorMessage(citation.error)}
           action={<Button onClick={() => void citation.refetch()}>重试</Button>}
         />

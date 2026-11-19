@@ -111,7 +111,7 @@ export function ReviewWorkItems({
       </div>
       {refreshing ? <p role="status">正在刷新办理状态，数量待核对。</p> : null}
       {error ? <p role="alert">{error}；数量待重新核对。</p> : null}
-      {!projection.frozenScope ? <p>当前执行的冻结身份不可确认，发现和来源不计入数量。</p> : null}
+      {!projection.frozenScope ? <p>当前执行的留档身份不可确认，发现和来源不计入数量。</p> : null}
       {visible.length === 0 ? (
         <p>
           {error ||
@@ -145,7 +145,7 @@ export function ReviewWorkItems({
               </p>
               <p>{item.verification}</p>
               <p className="meta">
-                来源冻结审查：
+                来源审查：
                 {!item.sourceRunId || !item.sourceAttemptId
                   ? "身份未返回，需核对"
                   : item.sourceRunId === currentRunId && item.sourceAttemptId === currentAttemptId

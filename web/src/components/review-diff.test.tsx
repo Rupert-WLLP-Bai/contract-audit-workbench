@@ -111,7 +111,7 @@ it("shows frozen scope and business names with exact identities behind technical
     </QueryClientProvider>,
   );
   const user = userEvent.setup();
-  await user.click(screen.getByText("复审差异：选择两个冻结执行记录"));
+  await user.click(screen.getByText("复审差异：选择两个审查记录"));
   expect(await screen.findByText(/默认先读取最新审查记录/)).toBeInTheDocument();
   expect(api.getReviewHistoryPage).toHaveBeenCalledTimes(1);
   await user.click(await screen.findByRole("button", { name: "读取更早审查记录" }));
@@ -175,7 +175,7 @@ it("keeps the latest review selectable when an older page fails", async () => {
     </QueryClientProvider>,
   );
   const user = userEvent.setup();
-  await user.click(screen.getByText("复审差异：选择两个冻结执行记录"));
+  await user.click(screen.getByText("复审差异：选择两个审查记录"));
   await user.click(await screen.findByRole("button", { name: "读取更早审查记录" }));
   expect(await screen.findByText(/更早的审查记录没有加载/)).toBeInTheDocument();
   expect(screen.queryByText(/审查历史无法读取/)).not.toBeInTheDocument();

@@ -188,11 +188,15 @@ test("list, review, citation and return retain selection and actual reading posi
   const caseScroll = await page.evaluate(() => scrollY);
   await next.click();
   await expect(page).toHaveURL(new RegExp(`/cases/${caseId}/reviews/${runId}`));
+  if (!(await page.getByRole("dialog", { name: "审查记录" }).isVisible())) {
+    await page.getByRole("button", { name: "审查记录", exact: true }).click();
+  }
+  await page.getByRole("tab", { name: "本次审查", exact: true }).click();
   const queue = page.getByRole("region", { name: "人工办理" });
   await queue.getByRole("button", { name: "查看判断与原文" }).click();
   await expect(page).toHaveURL(/work_kind=finding/);
   const pane = page.locator(".page-review .col-doc");
-  const findingsPane = page.locator(".page-review .col-findings");
+  const findingsPane = page.locator(".page-review .review-finding-queue");
   await expect(pane).toBeVisible();
   await expect(findingsPane).toBeVisible();
   await pane.evaluate((element) => {
@@ -204,8 +208,12 @@ test("list, review, citation and return retain selection and actual reading posi
   const documentScroll = await pane.evaluate((element) => element.scrollTop);
   const findingScroll = await findingsPane.evaluate((element) => element.scrollTop);
   expect(documentScroll).toBeGreaterThan(0);
-  expect(findingScroll).toBeGreaterThan(0);
-  await page.getByRole("button", { name: "读取本次冻结原文" }).first().click();
+  // A short queue may not need scrolling; still verify its actual position is restored.
+  if (!(await page.getByRole("dialog", { name: "审查记录" }).isVisible())) {
+    await page.getByRole("button", { name: "审查记录", exact: true }).click();
+  }
+  await page.getByRole("tab", { name: "本次审查", exact: true }).click();
+  await page.getByRole("button", { name: "读取本次原文" }).first().click();
   await expect(page.locator(".frozen-citation-reader mark.hit-evidence").first()).toHaveText(
     "100万元",
   );
@@ -264,7 +272,11 @@ test("a tenant switch discards the former citation and list return state", async
   );
   await page.getByRole("link", { name: "导航样本 37", exact: true }).click();
   await page.getByRole("link", { name: "核对原文并处理决定" }).click();
-  await page.getByRole("button", { name: "读取本次冻结原文" }).first().click();
+  if (!(await page.getByRole("dialog", { name: "审查记录" }).isVisible())) {
+    await page.getByRole("button", { name: "审查记录", exact: true }).click();
+  }
+  await page.getByRole("tab", { name: "本次审查", exact: true }).click();
+  await page.getByRole("button", { name: "读取本次原文" }).first().click();
   await expect(page.locator(".frozen-citation-reader").first()).toBeVisible();
   fixture.tenant = "tenant-b";
   await page.reload();

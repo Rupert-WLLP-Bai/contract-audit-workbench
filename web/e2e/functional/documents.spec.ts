@@ -102,7 +102,7 @@ async function uiReview(page: Page, api: APIRequestContext, caseID: string, rech
   await page.goto(
     `${webURL}/cases/${caseID}/reviews/${accepted.id}?attempt_id=${accepted.attempt_id}`,
   );
-  await expect(page.getByRole("heading", { name: "审查工作区", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "审查工作区" })).toBeVisible();
   return { accepted, ws };
 }
 

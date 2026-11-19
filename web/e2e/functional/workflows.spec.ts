@@ -487,7 +487,7 @@ test(
       await page.goto(
         `${webURL}/cases/${encodeURIComponent(caseID)}/reviews/${encodeURIComponent(accepted.id)}?attempt_id=${encodeURIComponent(accepted.attempt_id)}&finding=${encodeURIComponent(finding.id)}`,
       );
-      await expect(page.getByRole("heading", { name: "审查工作区", exact: true })).toBeVisible();
+      await expect(page.getByRole("region", { name: "审查工作区" })).toBeVisible();
       await page
         .getByRole("button", { name: `选择线索：${finding.claim || "未命名线索"}`, exact: true })
         .first()
@@ -786,7 +786,7 @@ test(
     await page.goto(
       `${webURL}/cases/${encodeURIComponent(caseID)}/reviews/${encodeURIComponent(source.id)}?attempt_id=${encodeURIComponent(source.attempt_id)}`,
     );
-    await expect(page.getByRole("heading", { name: "审查工作区", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "审查工作区" })).toBeVisible();
     const panel = page.locator('section[aria-label="补充材料请求"]');
     await expect(panel).toBeVisible();
     const missingSelect = panel.getByRole("combobox", { name: "缺失检查" });
@@ -846,7 +846,7 @@ test(
     await upload(request, caseID, "draft_contract", supplementFile, supplementText);
 
     await page.reload();
-    await expect(page.getByRole("heading", { name: "审查工作区", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "审查工作区" })).toBeVisible();
     const panelAfterUpload = page.locator('section[aria-label="补充材料请求"]');
     const cardAfterUpload = panelAfterUpload.locator("li").filter({ hasText: question }).first();
     await expect(
@@ -903,7 +903,7 @@ test(
     if (!conflict) throw new Error("Later review did not expose a warranty conflict evaluation");
 
     await page.reload();
-    await expect(page.getByRole("heading", { name: "审查工作区", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "审查工作区" })).toBeVisible();
     const laterPanel = page.locator('section[aria-label="补充材料请求"]');
     const laterCard = laterPanel.locator("li").filter({ hasText: question }).first();
     await expect(laterCard.getByText("已提交，待复核", { exact: true })).toBeVisible({
@@ -941,7 +941,7 @@ test(
     await expect(laterCard.getByText("已核验", { exact: true })).toBeVisible({ timeout: 30_000 });
 
     await page.reload();
-    await expect(page.getByRole("heading", { name: "审查工作区", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "审查工作区" })).toBeVisible();
     const finalPanel = page.locator('section[aria-label="补充材料请求"]');
     const finalCard = finalPanel.locator("li").filter({ hasText: question }).first();
     await expect(finalCard.getByText("已核验", { exact: true })).toBeVisible({ timeout: 60_000 });

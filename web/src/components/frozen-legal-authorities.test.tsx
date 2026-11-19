@@ -62,7 +62,7 @@ describe("frozen legal authorities review panel", () => {
 
     expect(screen.getByText("适用状态：适用")).toBeInTheDocument();
     expect(screen.getByText("法务审核：未运行")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "读取本次冻结条文" }));
+    fireEvent.click(screen.getByRole("button", { name: "读取本次适用条文" }));
     expect(await screen.findByText("fixture-only body; not a legal quotation")).toBeInTheDocument();
     await waitFor(() =>
       expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
@@ -76,7 +76,7 @@ describe("frozen legal authorities review panel", () => {
     expect(
       screen.getByText("本次审查未返回独立法律依据快照；不会用当前规则或案件资料补填。"),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "读取本次冻结条文" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "读取本次适用条文" })).not.toBeInTheDocument();
   });
 
   it("does not expose a citation action when the selected attempt differs", () => {
@@ -93,6 +93,6 @@ describe("frozen legal authorities review panel", () => {
       </QueryClientProvider>,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("与当前选择的审查或执行记录不匹配");
-    expect(screen.queryByRole("button", { name: "读取本次冻结条文" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "读取本次适用条文" })).not.toBeInTheDocument();
   });
 });

@@ -1012,3 +1012,178 @@ describe("document stage comparison modes", () => {
     expect(containerDocumentId(view.container)).toBe("doc-2");
   });
 });
+
+describe("immersive document stage", () => {
+  it("shows both roles with their matched versions and leaves attachments separate", () => {
+    const procurement = documentOf("p", "procurement", "采购.txt", "采购原文");
+    const contract = documentOf("c", "draft_contract", "合同.txt", "合同原文");
+    const attachment = documentOf("a", "attachment", "附件.txt", "附件原文");
+    const { container } = renderStage({
+      immersive: true,
+      documents: [procurement, contract, attachment],
+      materialVersions: [
+        {
+          material_id: "m",
+          version: 3,
+          document_id: "c",
+          previous_document_id: null,
+          created_at: at,
+        },
+      ],
+    });
+    const columns = container.querySelectorAll(".immersive-document-column");
+    expect(columns).toHaveLength(2);
+    expect(within(columns[0] as HTMLElement).getByText("版本未记录")).toBeInTheDocument();
+    expect(within(columns[1] as HTMLElement).getByText("第 3 版")).toBeInTheDocument();
+    expect(screen.getByText("其他材料（1）")).toBeInTheDocument();
+  });
+
+  it("marks only an exact finding quote and does not invent a mark on the other document", () => {
+    const procurement = documentOf("p", "procurement", "采购.txt", "质保三十六个月。", {
+      parsed_document_id: "pp",
+    });
+    const contract = documentOf("c", "draft_contract", "合同.txt", "质保二十四个月。", {
+      parsed_document_id: "pc",
+    });
+    const anchor = { ...locatedAnchor("c", "二十四", 2, 5), parsed_document_id: "pc" };
+    const finding = findingWith([anchor]);
+    const { container } = renderStage({
+      immersive: true,
+      documents: [procurement, contract],
+      finding,
+      findings: [finding],
+      selectedFindingId: finding.id,
+      quoteScope: {
+        caseId: "case-1",
+        runId: "run-1",
+        attemptId: "attempt-1",
+        isFrozenAttempt: true,
+        parsedDocumentIds: ["pp", "pc"],
+        sourceProofs: [
+          { documentId: "p", parsedDocumentId: "pp", originalDigest: procurement.digest },
+          { documentId: "c", parsedDocumentId: "pc", originalDigest: contract.digest },
+        ],
+      },
+    });
+    expect(container.querySelector('[data-source-id="p"] .hit-evidence')).toBeNull();
+    expect(container.querySelector('[data-source-id="c"] .hit-evidence')).toHaveTextContent(
+      "二十四",
+    );
+    expect(container.querySelector('[data-source-id="c"] .hit-evidence')).toHaveAttribute(
+      "data-finding-number",
+      "1",
+    );
+  });
+
+  it("shows distinct verified finding markers and selects the requested finding", async () => {
+    const user = userEvent.setup();
+    const document = documentOf("c", "draft_contract", "合同.txt", "质保二十四个月。付款三十日。", {
+      parsed_document_id: "pc",
+    });
+    const first = findingWith([
+      { ...locatedAnchor("c", "二十四", 2, 5), parsed_document_id: "pc" },
+    ]);
+    const second = {
+      ...findingWith([{ ...locatedAnchor("c", "三十日", 10, 13), parsed_document_id: "pc" }]),
+      id: "finding-2",
+    };
+    const { onSelectFinding } = renderStage({
+      immersive: true,
+      documents: [document],
+      findings: [first, second],
+      quoteScope: {
+        caseId: "case-1",
+        runId: "run-1",
+        attemptId: "attempt-1",
+        isFrozenAttempt: true,
+        parsedDocumentIds: ["pc"],
+        sourceProofs: [
+          { documentId: "c", parsedDocumentId: "pc", originalDigest: document.digest },
+        ],
+      },
+    });
+    expect(screen.getByRole("button", { name: "查看线索 1" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "查看线索 2" }));
+    expect(onSelectFinding).toHaveBeenCalledWith("finding-2");
+    expect(screen.getByRole("checkbox", { name: "按条款联动" })).toBeChecked();
+    await user.click(screen.getByRole("checkbox", { name: "按条款联动" }));
+    expect(screen.getByRole("checkbox", { name: "按条款联动" })).not.toBeChecked();
+  });
+
+  it("locates a topic in the sole contract when linking is off", async () => {
+    const user = userEvent.setup();
+    const document = documentOf(
+      "c",
+      "draft_contract",
+      "合同.txt",
+      "设备的免费质保期不少于36个月，自验收合格之日起计算。",
+      {
+        parsed_document_id: "pc",
+        clauses: [],
+      },
+    );
+    const { container } = renderStage({
+      immersive: true,
+      documents: [document],
+      quoteScope: {
+        caseId: "case-1",
+        runId: "run-1",
+        attemptId: "attempt-1",
+        isFrozenAttempt: true,
+        parsedDocumentIds: ["pc"],
+        sourceProofs: [
+          { documentId: "c", parsedDocumentId: "pc", originalDigest: document.digest },
+        ],
+      },
+    });
+    await user.click(screen.getByRole("checkbox", { name: "按条款联动" }));
+    await user.click(screen.getByRole("button", { name: "质保" }));
+    expect(container.querySelector('[data-source-id="c"] .hit-find')).toHaveTextContent("质保期");
+  });
+
+  it("opens the exact requested source when a deep link changes between same-role versions", async () => {
+    const first = documentOf("p1", "procurement", "采购一.txt", "原文一");
+    const second = documentOf("p2", "procurement", "采购二.txt", "原文二");
+    const props = {
+      immersive: true,
+      documents: [first, second],
+      finding: null,
+      findings: [],
+      selectedFindingId: null,
+      layout: "switch" as const,
+      onSelectFinding: vi.fn(),
+    };
+    const view = render(
+      <MemoryRouter>
+        <DocumentStage {...props} sourceDocumentId="p1" />
+      </MemoryRouter>,
+    );
+    expect(view.container.querySelector(".immersive-document-column")).toHaveAttribute(
+      "data-source-id",
+      "p1",
+    );
+    view.rerender(
+      <MemoryRouter>
+        <DocumentStage {...props} sourceDocumentId="p2" />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(view.container.querySelector(".immersive-document-column")).toHaveAttribute(
+        "data-source-id",
+        "p2",
+      ),
+    );
+  });
+
+  it("requires a choice when several documents share a role", async () => {
+    const user = userEvent.setup();
+    const first = documentOf("p1", "procurement", "采购一.txt", "原文一");
+    const second = documentOf("p2", "procurement", "采购二.txt", "原文二");
+    const { container } = renderStage({ immersive: true, documents: [first, second] });
+    expect(container.querySelectorAll(".immersive-document-column")).toHaveLength(0);
+    await user.selectOptions(screen.getByLabelText("采购文件"), "p2");
+    expect(
+      container.querySelector(".immersive-document-column")?.getAttribute("data-source-id"),
+    ).toBe("p2");
+  });
+});

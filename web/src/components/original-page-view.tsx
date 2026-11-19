@@ -129,7 +129,7 @@ export default function OriginalPageView({
           controller.signal,
         );
         if (derived.originalDigest !== digest)
-          throw new OriginalReadError("派生预览与本次审查冻结原件不一致，未显示标注");
+          throw new OriginalReadError("派生预览与本次审查原件不一致，未显示标注");
         bytes = derived.bytes;
       } else {
         bytes = await requestBytes(
@@ -384,11 +384,11 @@ export default function OriginalPageView({
         <p className="callout">
           {locations.some((location) => location.kind === "ambiguous")
             ? "当前页有多处相同文字，未自动选择位置。请结合上下文人工核对。"
-            : "当前页未能可靠定位这条引用。请核对页码，或切换文字原文查看冻结引用。"}
+            : "当前页未能可靠定位这条引用。请核对页码，或切换文字原文查看原文引用。"}
         </p>
       ) : null}
       {quotes.length === 0 ? (
-        <p className="meta">当前没有可用于原件标注的冻结引用，可切换文字原文核对。</p>
+        <p className="meta">当前没有可用于原件标注的原文引用，可切换文字原文核对。</p>
       ) : null}
       <div
         ref={scroll}

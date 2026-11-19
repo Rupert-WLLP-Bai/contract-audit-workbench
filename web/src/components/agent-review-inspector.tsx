@@ -96,7 +96,7 @@ const ADVISORY_STATUS_LABELS: Record<AgentReviewAdvisoryStatus, string> = {
   invalid_response: "响应无效",
   budget_exhausted: "模型预算不足",
   persistence_failed: "建议记录未写入",
-  config_mismatch: "冻结配置不一致",
+  config_mismatch: "审查配置不一致",
 };
 
 const ADVISORY_BAND_LABELS: Record<AgentReviewAdvisoryBand, string> = {
@@ -295,7 +295,7 @@ function KnowledgeAdvisoryDetails({ advisory }: { advisory: AgentReviewKnowledge
       </dl>
       <AdvisoryCandidates candidates={advisory.candidates} />
       <p className="meta">
-        概率表示模型对相关性的判断，不是正确率，也不是风险结论；候选身份与概率来自冻结审查记录。
+        概率表示模型对相关性的判断，不是正确率，也不是风险结论；候选身份与概率来自审查记录。
       </p>
       {failed ? <p className="callout">建议不可用时，审查按确定性规则继续。</p> : null}
     </>

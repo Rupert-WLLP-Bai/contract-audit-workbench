@@ -40,6 +40,7 @@ export function OriginalDocumentReader({
   keyClause = null,
   focusRange = null,
   onClearKeyClause,
+  immersive = false,
   children,
 }: {
   scope: OriginalReadScope;
@@ -58,6 +59,7 @@ export function OriginalDocumentReader({
   } | null;
   focusRange?: { start: number; end: number } | null;
   onClearKeyClause?: () => void;
+  immersive?: boolean;
   children: ReactNode;
 }) {
   const noPage = quotes.length > 0 && quotes.every((quote) => quote.page === null);
@@ -115,10 +117,10 @@ export function OriginalDocumentReader({
             setMode("original");
           }}
         >
-          原件标注
+          {immersive ? "原件" : "原件标注"}
         </Button>
         <Button aria-pressed={effectiveMode === "text"} onClick={() => setMode("text")}>
-          文字原文
+          {immersive ? "文字" : "文字原文"}
         </Button>
       </div>
       {keyClause ? (
@@ -135,7 +137,7 @@ export function OriginalDocumentReader({
           已按引用位置打开原文；请结合上下文核对这条事实建议。
         </p>
       ) : null}
-      {effectiveMode === "text" && keyClause === null && noPage ? (
+      {effectiveMode === "text" && keyClause === null && noPage && !immersive ? (
         <p className="meta">引用未记录原件页码，已显示原文中的位置；可切换原件自行核对页码。</p>
       ) : null}
       {effectiveMode === "text" ? (

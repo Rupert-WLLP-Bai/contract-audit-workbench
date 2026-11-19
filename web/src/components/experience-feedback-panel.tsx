@@ -839,7 +839,7 @@ function FeedbackProgressChain({
       <p className="meta">只读状态来自已保存记录；候选生成后仍需审批才能发布。</p>
       <ol>
         <li>
-          <strong>人工决定与冻结证据</strong>
+          <strong>人工决定与留档证据</strong>
           <span>
             {decisionLabel(feedback.decision_action)} · {feedback.evidence_refs.length} 条证据
           </span>

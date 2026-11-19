@@ -268,7 +268,9 @@ try {
 
   // 2. The workspace page opens its own stream.
   await page.goto(`${web}/cases/${caseID}/reviews/${runID}`, { waitUntil: "load" });
-  await page.locator(".workspace-grid").waitFor({ state: "visible", timeout: readyTimeout });
+  await page
+    .locator('[aria-label="审查工作区"]')
+    .waitFor({ state: "visible", timeout: readyTimeout });
   await page
     .getByText(liveLabel, { exact: false })
     .first()
@@ -341,7 +343,7 @@ try {
         return node?.textContent ?? "";
       })
       .catch(() => "");
-    findingsCleared = (await page.locator(".finding-button").count()) === 0;
+    findingsCleared = (await page.locator("[data-finding-id]").count()) === 0;
     loginVisible = await page
       .getByRole("heading", { name: "登录合同审查", exact: true })
       .isVisible();
@@ -361,7 +363,7 @@ try {
     [401, 403].includes(revokedRead.status()),
     `revoked read returned HTTP ${revokedRead.status()}`,
   );
-  const findingsVisible = await page.locator(".finding-button").count();
+  const findingsVisible = await page.locator("[data-finding-id]").count();
   observations.findings_visible_after_revocation = findingsVisible;
   await capture(page, "revoked-1440x900.png");
   assert.equal(findingsVisible, 0, "cached findings remained visible after revocation");
@@ -411,38 +413,46 @@ try {
   );
   let viewerClaims: string[] = [];
   if (workspaceReadStatus === 200) {
-    await page.locator(".workspace-grid").waitFor({ state: "visible", timeout: readyTimeout });
+    await page
+      .locator('[aria-label="审查工作区"]')
+      .waitFor({ state: "visible", timeout: readyTimeout });
     await page
       .getByText(liveLabel, { exact: false })
       .first()
       .waitFor({ state: "visible", timeout: readyTimeout });
     const viewerWorkspace = (await viewerWorkspaceResponse.json()) as {
-      findings?: Array<{ claim?: string }>;
+      findings?: Array<{ id?: string; claim?: string }>;
     };
-    viewerClaims = (await page.locator(".finding-button").allTextContents()).map((claim) =>
-      claim.trim(),
+    await page.getByRole("button", { name: "全部", exact: true }).click();
+    viewerClaims = (await page.locator("[data-finding-id] > button strong").allTextContents()).map(
+      (claim) => claim.trim(),
     );
-    const apiClaims = (viewerWorkspace.findings ?? []).map((finding) => finding.claim ?? "");
+    const displayedIds = await page
+      .locator("[data-finding-id]")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute("data-finding-id") ?? "").sort(),
+      );
+    const apiIds = (viewerWorkspace.findings ?? []).map((finding) => finding.id ?? "").sort();
     assert.deepEqual(
-      viewerClaims,
-      apiClaims,
+      displayedIds,
+      apiIds,
       "the switched identity rendered cached workspace content instead of its fresh response",
     );
   } else {
     await page.locator(".page-status").waitFor({ state: "visible", timeout: readyTimeout });
     assert.deepEqual(
-      await page.locator(".finding-button").allTextContents(),
+      await page.locator("[data-finding-id]").allTextContents(),
       [],
       "a denied identity retained former workspace findings",
     );
   }
   const streamsAfterSwitch = streams.filter((item) => item.resource_type === "eventsource").length;
-  const decisionButton = page.getByRole("button", { name: "保存决定", exact: true });
+  const decisionButton = page.getByRole("button", { name: "保存判断", exact: true });
   const viewerCanSubmitDecision =
     (await decisionButton.count()) > 0 && (await decisionButton.isEnabled());
   const viewerState = await page.evaluate(() => ({
     page_status: document.querySelector(".page-status")?.className ?? "",
-    signals: Array.from(document.querySelectorAll(".finding-button")).length,
+    signals: Array.from(document.querySelectorAll("[data-finding-id]")).length,
     stream_label:
       Array.from(document.querySelectorAll("span"))
         .map((item) => item.textContent ?? "")

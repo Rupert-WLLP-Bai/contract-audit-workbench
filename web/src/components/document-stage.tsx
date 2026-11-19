@@ -29,7 +29,13 @@ import type { CaseReturnState } from "./section-navigation";
 import { TechnicalDetail } from "./technical-detail";
 import { caseSelectPresentation } from "./case-select-presentation";
 import type { ContractFactsCitation, ContractFactsProjection } from "../api/contract-facts";
-import type { CaseRelationInput, EvidenceAnchor, Finding, ReviewDocument } from "../api/types";
+import type {
+  CaseRelationInput,
+  EvidenceAnchor,
+  Finding,
+  MaterialVersionProjection,
+  ReviewDocument,
+} from "../api/types";
 import type { ReviewLayout } from "../domain/review";
 import {
   actorRoleLabel,
@@ -73,6 +79,7 @@ import {
 } from "./original-document-reader";
 import { businessScopeLabel } from "../domain/business-labels";
 import { KeyClauseNavigator } from "./key-clause-navigator";
+import "./document-stage-immersive.css";
 
 export interface ReviewCaseContext {
   caseId: string;
@@ -337,8 +344,21 @@ function keyRangeAt(
   return ranges[lower];
 }
 
+interface FindingMarker {
+  start: number;
+  end: number;
+  number: number;
+  findingId: string;
+  relation: string;
+}
+const FindingMarkerContext = createContext<{
+  markers: FindingMarker[];
+  onSelect: (id: string) => void;
+} | null>(null);
+
 const DocSegments = memo(function DocSegments({ segments }: { segments: TextSegment[] }) {
   const { findRange, selected: keyClause, ranges: keyRanges } = useContext(ClauseContext);
+  const markerContext = useContext(FindingMarkerContext);
   return (
     <>
       {segments.map((segment) => {
@@ -352,11 +372,28 @@ const DocSegments = memo(function DocSegments({ segments }: { segments: TextSegm
           segment.start >= keyClause.range.start &&
           segmentEnd <= keyClause.range.end;
         const selectedAttribute = selected ? { "data-selected-key-clause": "true" } : {};
+        const marker = markerContext?.markers.find((item) => item.start === segment.start);
         if (segment.highlighted === "evidence") {
           return (
             <mark
               key={segment.start}
               data-offset={segment.start}
+              data-finding-number={marker?.number}
+              data-finding-relation={marker?.relation}
+              role={marker ? "button" : undefined}
+              tabIndex={marker ? 0 : undefined}
+              aria-label={marker ? `查看线索 ${marker.number}` : undefined}
+              onClick={marker ? () => markerContext?.onSelect(marker.findingId) : undefined}
+              onKeyDown={
+                marker
+                  ? (event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        markerContext?.onSelect(marker.findingId);
+                      }
+                    }
+                  : undefined
+              }
               {...selectedAttribute}
               className={`hit-evidence${inKeyClause ? " key-clause-overlap" : ""}${selected ? " key-clause-selected" : ""}${findRange && segment.start >= findRange.start && segmentEnd <= findRange.end ? " evidence-find" : ""}`}
             >
@@ -686,6 +723,7 @@ const TextDocumentBody = memo(function TextDocumentBody({
   focusRange?: { start: number; end: number } | null;
   onClearKeyClause?: () => void;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
+  immersive?: boolean;
 }) {
   const textIndex = useMemo(
     () => providedTextIndex ?? (document.text === null ? null : createTextIndex(document.text)),
@@ -698,6 +736,7 @@ const TextDocumentBody = memo(function TextDocumentBody({
     ],
   );
   const { ranges: keyRanges, selected: keyClause } = useContext(ClauseContext);
+  const markerContext = useContext(FindingMarkerContext);
   const anchors = useMemo(() => anchorsFor(document, finding), [document, finding]);
   const resolved = useMemo(
     () =>
@@ -732,10 +771,12 @@ const TextDocumentBody = memo(function TextDocumentBody({
   );
   const segments = useMemo(() => {
     if (document.text === null || document.parse_status === "failed") return null;
-    const highlights = locatedAnchors.map(({ resolved: item }) => ({
-      start: item.start,
-      end: item.end,
-    }));
+    const highlights =
+      markerContext?.markers ??
+      locatedAnchors.map(({ resolved: item }) => ({
+        start: item.start,
+        end: item.end,
+      }));
     const clauseOffsets = clauseStarts.concat(
       keyRanges.flatMap((range) => [range.start, range.end]),
     );
@@ -749,7 +790,16 @@ const TextDocumentBody = memo(function TextDocumentBody({
       findRange,
       textIndex ?? undefined,
     );
-  }, [clauseStarts, document, findRange, keyClause, keyRanges, locatedAnchors, textIndex]);
+  }, [
+    clauseStarts,
+    document,
+    findRange,
+    keyClause,
+    keyRanges,
+    locatedAnchors,
+    markerContext,
+    textIndex,
+  ]);
   function selectAnchor(anchor: LocatedEvidenceAnchor) {
     setSelectedAnchorId(anchor.anchor.id);
     focusAnchorOffset(document, anchor.resolved.start);
@@ -766,7 +816,10 @@ const TextDocumentBody = memo(function TextDocumentBody({
     );
   }
 
-  if (locatedAnchors.length > 0 && document.text !== null) {
+  if (
+    (locatedAnchors.length > 0 || (markerContext?.markers.length ?? 0) > 0) &&
+    document.text !== null
+  ) {
     return (
       <HighlightBody
         document={document}
@@ -913,6 +966,7 @@ const DocumentBody = memo(function DocumentBody(props: ComponentProps<typeof Tex
       }
       focusRange={props.focusRange ?? props.findRange ?? null}
       onClearKeyClause={props.onClearKeyClause}
+      immersive={props.immersive}
     >
       {textBody}
     </OriginalDocumentReader>
@@ -1883,6 +1937,356 @@ function DocumentColumn({
   );
 }
 
+export function ReviewCaseContextPanel({
+  context,
+  caseReturnState,
+  canEditRelations = false,
+  relationPending = false,
+  relationError = null,
+  onCreateRelation,
+  onDeleteRelation,
+}: {
+  context: ReviewCaseContext;
+  caseReturnState?: CaseReturnState;
+  canEditRelations?: boolean;
+  relationPending?: boolean;
+  relationError?: string | null;
+  onCreateRelation?: (input: CaseRelationInput) => Promise<void>;
+  onDeleteRelation?: (relationId: string) => void;
+}) {
+  const [relatedCaseId, setRelatedCaseId] = useState("");
+  const [relationReason, setRelationReason] = useState("");
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!relationIsSubmittable(onCreateRelation, relatedCaseId, relationReason)) return;
+    void onCreateRelation!({ related_case_id: relatedCaseId, reason: relationReason.trim() }).then(
+      () => {
+        setRelatedCaseId("");
+        setRelationReason("");
+      },
+      () => undefined,
+    );
+  }
+  return (
+    <section className="review-case-context-panel" aria-label="案件上下文">
+      <CaseContextHeader context={context} caseReturnState={caseReturnState} />
+      <CollaboratorsPane context={context} />
+      <RelatedCasesPane
+        context={context}
+        canEditRelations={canEditRelations}
+        relationPending={relationPending}
+        relationError={relationError}
+        relatedCaseId={relatedCaseId}
+        relationReason={relationReason}
+        onCreateRelation={onCreateRelation}
+        onDeleteRelation={onDeleteRelation}
+        onRelatedCase={setRelatedCaseId}
+        onReason={setRelationReason}
+        onSubmitRelation={submit}
+      />
+    </section>
+  );
+}
+
+type ImmersiveTopic =
+  | "all"
+  | "warranty"
+  | "payment"
+  | "delivery_acceptance"
+  | "liability_compensation"
+  | "dispute_resolution";
+const IMMERSIVE_TOPICS: { id: ImmersiveTopic; label: string }[] = [
+  { id: "all", label: "全部条款" },
+  { id: "warranty", label: "质保" },
+  { id: "payment", label: "付款" },
+  { id: "delivery_acceptance", label: "验收" },
+  { id: "liability_compensation", label: "违约责任" },
+  { id: "dispute_resolution", label: "争议解决" },
+];
+
+function ImmersiveDocumentStage({
+  documents,
+  finding,
+  findings,
+  quoteScope,
+  sourceDocumentId,
+  versions,
+  externalDocumentId,
+  externalRange,
+  onSelectFinding,
+  onQuoteSelectionChange,
+}: {
+  documents: ReviewDocument[];
+  finding: Finding | null;
+  findings: Finding[];
+  quoteScope: FrozenQuoteScope | null;
+  sourceDocumentId: string | null;
+  versions: MaterialVersionProjection[];
+  externalDocumentId: string | null;
+  externalRange: { start: number; end: number } | null;
+  onSelectFinding: (id: string) => void;
+  onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
+}) {
+  const [topic, setTopic] = useState<ImmersiveTopic>("all");
+  const [chosen, setChosen] = useState<Record<string, string>>({});
+  const [mobileRole, setMobileRole] = useState("procurement");
+  const [linked, setLinked] = useState(true);
+  const [focuses, setFocuses] = useState<Record<string, { start: number; end: number }>>({});
+  const roles = ["procurement", "draft_contract"] as const;
+  const displayed = roles.flatMap((role) => {
+    const candidates = documents.filter((item) => item.role === role);
+    const explicit =
+      candidates.find((item) => item.id === externalDocumentId) ??
+      candidates.find((item) => item.id === chosen[role]) ??
+      candidates.find((item) => item.id === sourceDocumentId);
+    const document = explicit ?? (candidates.length === 1 ? candidates[0] : undefined);
+    return document ? [document] : [];
+  });
+  const activeRole = displayed.some((item) => item.role === mobileRole)
+    ? mobileRole
+    : (displayed[0]?.role ?? mobileRole);
+  useEffect(() => {
+    const requested = documents.find((item) => item.id === sourceDocumentId);
+    if (requested && (requested.role === "procurement" || requested.role === "draft_contract")) {
+      setChosen((current) =>
+        current[requested.role] === requested.id
+          ? current
+          : { ...current, [requested.role]: requested.id },
+      );
+    }
+  }, [sourceDocumentId, documents]);
+  const navigation = new Map(
+    documents.map((document) => [document.id, keyClauseNavigationFor(quoteScope, document)]),
+  );
+  function matchingCandidates(document: ReviewDocument, selectedTopic: ImmersiveTopic) {
+    const nav = navigation.get(document.id);
+    return (nav?.allCandidates ?? nav?.candidates ?? []).filter(
+      (candidate) => selectedTopic === "all" || candidate.categories.includes(selectedTopic),
+    );
+  }
+  function count(selectedTopic: ImmersiveTopic): number {
+    if (selectedTopic === "all") return findings.length;
+    return findings.filter((item) =>
+      item.evidence.some((anchor) => {
+        const document = documentForAnchor(anchor, documents);
+        if (
+          !document ||
+          !anchor.text_offset ||
+          anchor.status !== "located" ||
+          document.text === null
+        )
+          return false;
+        const resolved = resolveAnchor(
+          document.text,
+          anchor,
+          document.parsed_document,
+          document.parsed_document_id,
+        );
+        if (resolved.kind !== "highlight") return false;
+        return matchingCandidates(document, selectedTopic).some(
+          (candidate) =>
+            candidate.range.start < resolved.end && resolved.start < candidate.range.end,
+        );
+      }),
+    ).length;
+  }
+  function selectTopic(next: ImmersiveTopic) {
+    setTopic(next);
+    const ranges: Record<string, { start: number; end: number }> = {};
+    if (next !== "all")
+      for (const document of linked
+        ? displayed
+        : displayed.filter((item) => item.role === activeRole)) {
+        const candidate = matchingCandidates(document, next)[0];
+        if (candidate && frozenQuoteMatchesDocument(candidate.selection, quoteScope, document))
+          ranges[document.id] = candidate.range;
+      }
+    setFocuses(ranges);
+  }
+  useEffect(() => {
+    setFocuses({});
+  }, [finding?.id, quoteScope?.attemptId]);
+  useEffect(() => {
+    for (const document of displayed) {
+      const pane = Array.from(
+        window.document.querySelectorAll<HTMLElement>(".immersive-document-column"),
+      ).find((item) => item.dataset.sourceId === document.id);
+      const range = document.id === externalDocumentId ? externalRange : focuses[document.id];
+      const mark = range
+        ? pane?.querySelector<HTMLElement>(`[data-offset="${range.start}"]`)
+        : pane?.querySelector<HTMLElement>(".hit-evidence");
+      if (mark && typeof mark.scrollIntoView === "function")
+        mark.scrollIntoView({ block: "center" });
+    }
+  }, [finding?.id, focuses, chosen, externalDocumentId, externalRange?.start, externalRange?.end]);
+  const extras = documents.filter((item) => !roles.includes(item.role as (typeof roles)[number]));
+  return (
+    <section className="immersive-document-stage" aria-label="原文对照">
+      <div className="immersive-topics" role="group" aria-label="条款主题">
+        {IMMERSIVE_TOPICS.map((item) => (
+          <Button
+            key={item.id}
+            aria-pressed={topic === item.id}
+            onClick={() => selectTopic(item.id)}
+          >
+            {item.label}
+            {item.id !== "all" && count(item.id) > 0 ? ` ${count(item.id)}` : ""}
+          </Button>
+        ))}
+        <label className="immersive-link-switch">
+          <input
+            type="checkbox"
+            checked={linked}
+            onChange={(event) => setLinked(event.target.checked)}
+          />{" "}
+          按条款联动
+        </label>
+      </div>
+      <div className="immersive-role-switch" role="group" aria-label="切换对照材料">
+        {displayed.map((document) => (
+          <Button
+            key={document.id}
+            aria-pressed={activeRole === document.role}
+            onClick={() => setMobileRole(document.role)}
+          >
+            {roleLabel(document.role)}
+          </Button>
+        ))}
+      </div>
+      {roles.map((role) => {
+        const choices = documents.filter((item) => item.role === role);
+        if (choices.length < 2) return null;
+        return (
+          <label className="immersive-source-choice" key={role}>
+            {roleLabel(role)}
+            <select
+              value={
+                chosen[role] ??
+                (choices.some((item) => item.id === sourceDocumentId)
+                  ? (sourceDocumentId ?? "")
+                  : "")
+              }
+              onChange={(event) => setChosen((old) => ({ ...old, [role]: event.target.value }))}
+            >
+              <option value="">请选择材料</option>
+              {choices.map((item) => (
+                <option key={documentKey(item)} value={item.id}>
+                  {item.filename}
+                </option>
+              ))}
+            </select>
+          </label>
+        );
+      })}
+      <div className="immersive-document-columns">
+        {displayed.map((document) => {
+          const matches = versions.filter((item) => item.document_id === document.id);
+          const version = matches.length === 1 ? `第 ${matches[0]!.version} 版` : "版本未记录";
+          const range =
+            document.id === externalDocumentId ? externalRange : (focuses[document.id] ?? null);
+          return (
+            <article
+              key={documentKey(document)}
+              data-role={document.role}
+              data-relation={finding?.relation}
+              className={`immersive-document-column${displayed.length === 1 || activeRole === document.role ? " is-mobile-active" : ""}`}
+              data-source-id={document.id}
+              onPointerDown={() => setMobileRole(document.role)}
+            >
+              <header>
+                <strong>{roleLabel(document.role)}</strong>
+                <span title={document.filename}>{document.filename}</span>
+                <span>{version}</span>
+              </header>
+              <div className="immersive-document-scroll col-doc" data-review-document-scroll>
+                <FindingMarkerContext.Provider
+                  value={{
+                    markers: findings.flatMap((item, index) =>
+                      item.evidence.flatMap((anchor) => {
+                        if (
+                          !evidenceSourceMatches(
+                            anchor,
+                            document.id,
+                            document.parsed_document,
+                            document.parsed_document_id,
+                          ) ||
+                          document.text === null
+                        )
+                          return [];
+                        const resolved = resolveAnchor(
+                          document.text,
+                          anchor,
+                          document.parsed_document,
+                          document.parsed_document_id,
+                        );
+                        return resolved.kind === "highlight" &&
+                          quoteScope?.sourceProofs?.some(
+                            (proof) =>
+                              proof.documentId === document.id &&
+                              proof.parsedDocumentId === document.parsed_document_id &&
+                              proof.originalDigest === document.digest,
+                          )
+                          ? [
+                              {
+                                start: resolved.start,
+                                end: resolved.end,
+                                number: index + 1,
+                                findingId: item.id,
+                                relation: item.relation,
+                              },
+                            ]
+                          : [];
+                      }),
+                    ),
+                    onSelect: onSelectFinding,
+                  }}
+                >
+                  <DocumentBody
+                    document={document}
+                    finding={finding}
+                    immersive
+                    findRange={range}
+                    focusRange={range}
+                    textIndex={null}
+                    activeSource
+                    showDiagnostics={false}
+                    quoteScope={quoteScope}
+                    onQuoteSelectionChange={onQuoteSelectionChange}
+                  />
+                </FindingMarkerContext.Provider>
+              </div>
+            </article>
+          );
+        })}
+        {displayed.length === 0 && <p>请选择本次审查的材料。</p>}
+      </div>
+      {extras.length > 0 && (
+        <details
+          className="immersive-other-sources"
+          open={extras.some((item) => item.id === sourceDocumentId) || undefined}
+        >
+          <summary>其他材料（{extras.length}）</summary>
+          {extras.map((document) => (
+            <article key={documentKey(document)}>
+              <h3>{document.filename}</h3>
+              <DocumentBody
+                document={document}
+                finding={finding}
+                findRange={null}
+                textIndex={null}
+                activeSource
+                showDiagnostics={false}
+                quoteScope={quoteScope}
+                onQuoteSelectionChange={onQuoteSelectionChange}
+              />
+            </article>
+          ))}
+        </details>
+      )}
+    </section>
+  );
+}
+
 export function DocumentStage({
   documents,
   finding,
@@ -1904,11 +2308,15 @@ export function DocumentStage({
   coverageEvidence = null,
   contractFactsLocationScope = null,
   onQuoteSelectionChange,
+  immersive = false,
+  materialVersions = [],
 }: {
   documents: ReviewDocument[];
   finding: Finding | null;
   findings: Finding[];
   selectedFindingId: string | null;
+  immersive?: boolean;
+  materialVersions?: MaterialVersionProjection[];
   layout: ReviewLayout;
   showDiagnostics?: boolean;
   onSelectFinding: (findingId: string) => void;
@@ -2145,6 +2553,23 @@ export function DocumentStage({
     setSelectedKeyClauseId(candidate.id);
     onQuoteSelectionChange?.(null);
     focusOffsetNode(candidate.range.start, active);
+  }
+
+  if (immersive) {
+    return (
+      <ImmersiveDocumentStage
+        documents={documents}
+        finding={finding}
+        findings={findings}
+        quoteScope={quoteScope}
+        sourceDocumentId={sourceDocumentId}
+        versions={materialVersions}
+        externalDocumentId={factSource?.id ?? null}
+        externalRange={factRange}
+        onSelectFinding={onSelectFinding}
+        onQuoteSelectionChange={onQuoteSelectionChange}
+      />
+    );
   }
 
   return (

@@ -147,7 +147,7 @@ describe("frozen contract citation reader", () => {
       ),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "收起本次冻结原文" }));
+    fireEvent.click(screen.getByRole("button", { name: "收起本次原文" }));
     expect(onSelect).toHaveBeenCalledWith(null);
   });
 
@@ -158,7 +158,7 @@ describe("frozen contract citation reader", () => {
         <BusinessAgentReviewView review={review()} />
       </QueryClientProvider>,
     );
-    expect(screen.queryByRole("button", { name: "读取本次冻结原文" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "读取本次原文" })).not.toBeInTheDocument();
   });
 
   it("refuses a payload that answers a different frozen document", async () => {
