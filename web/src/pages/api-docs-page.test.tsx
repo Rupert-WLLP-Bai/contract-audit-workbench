@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “loads the local OpenAPI contract and displays real route metadata”; representative assertions cover loads the local OpenAPI contract and displays real route metadata, states when the operation filter has no matches, sends a filled same-origin request and shows the unmodified response. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Checks OpenAPI loading, operation filtering and same-origin requests, and verifies the deployed management path for both shared and separate origins.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -160,6 +160,7 @@ afterEach(() => {
   for (const client of clients.splice(0)) client.clear();
   setSessionIdentity(null);
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 test("loads the local OpenAPI contract and displays real route metadata", async () => {
@@ -178,6 +179,18 @@ test("loads the local OpenAPI contract and displays real route metadata", async 
     "/openapi.json",
     expect.objectContaining({ credentials: "same-origin", cache: "no-store" }),
   );
+});
+
+test.each([
+  ["", "/admin/"],
+  ["https://admin.example.test", "https://admin.example.test/admin/"],
+])("links to the deployed management entry for VITE_ADMIN_URL=%s", async (base, href) => {
+  vi.stubEnv("VITE_ADMIN_URL", base);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(contract)));
+  renderApiDocsPage();
+
+  expect(screen.getByRole("link", { name: "管理端" })).toHaveAttribute("href", href);
+  await screen.findByRole("heading", { name: "读取案件" });
 });
 
 test("states when the operation filter has no matches", async () => {

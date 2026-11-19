@@ -1,10 +1,10 @@
 /* File metadata (manifest mirror): */
-/* Purpose: Defines visual tokens and component/page rules, including Hallmark · built: the project · redesign: restyle…, .module-page-head, .module-page-head h1, .module-total; the stylesheet is imported by the web shell and carries no application state. */
+/* Purpose: Styles white workbench lists, transparent result counts and adaptive record or document detail for the shared task, report, evidence and support modules. */
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
-/* Updated: 2026-11-12 */
-/* Revision: r3 */
+/* Updated: 2026-11-19 */
+/* Revision: r4 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -21,60 +21,10 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 21px;
-}
-.module-total {
-  display: inline-grid;
-  min-width: 24px;
-  height: 22px;
-  place-items: center;
-  padding-inline: 8px;
-  border-radius: 4px;
-  background: var(--action-primary-soft);
-  color: var(--action-primary);
-  font-size: 12px;
-  font-weight: 600;
-}
-.module-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.module-stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  margin: 0 0 16px;
 }
 
 .module-page .page-pattern-summary {
   margin: 0;
-}
-.module-stats > div {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 12px 16px;
-  border: 1px solid var(--border-default);
-  border-radius: 6px;
-  background: var(--surface-raised);
-}
-.module-stats > div > span {
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-.module-stats strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--text-primary);
-  font-size: 18px;
-  font-weight: 600;
-  text-align: right;
-}
-.module-stats time {
-  font-size: 11px;
 }
 .module-toolbar {
   display: flex;
@@ -332,16 +282,6 @@
   .module-page {
     padding: 16px;
   }
-  .module-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
-  .module-stats > div {
-    padding: 8px;
-  }
-  .module-stats strong {
-    font-size: 15px;
-  }
   .module-toolbar {
     align-items: stretch;
     flex-direction: column;
@@ -381,65 +321,9 @@
 .module-page-head > div > p:last-child {
   color: var(--text-secondary);
 }
-.module-total {
-  min-width: 0;
-  height: auto;
-  padding: 1px 8px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--panel-radius);
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-.module-stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0;
-  margin: 0 0 16px;
-  border-block: 1px solid var(--border-strong);
-}
-.module-stats > div {
-  display: grid;
-  min-width: 0;
-  align-content: start;
-  gap: 4px;
-  padding: 12px 16px;
-  border: 0;
-  border-left: 1px solid var(--border-default);
-  border-radius: 0;
-  background: transparent;
-}
-.module-stats > div:first-child {
-  border-left: 0;
-  padding-left: 0;
-}
-.module-stats dt {
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-.module-stats dd {
-  min-width: 0;
-  margin: 0;
-  overflow-wrap: anywhere;
-  color: var(--text-primary);
-  font-size: 20px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  text-align: left;
-}
-.module-stats dd time {
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 400;
-}
 .module-toolbar {
-  padding: 0 0 8px;
+  padding: 0;
   border: 0;
-  border-bottom: 1px solid var(--border-default);
   border-radius: 0;
   background: transparent;
 }
@@ -500,13 +384,6 @@
   color: var(--text-secondary);
 }
 @media (max-width: 900px) {
-  .module-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .module-stats > div:nth-child(odd) {
-    border-left: 0;
-    padding-left: 0;
-  }
   .module-workspace {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -519,21 +396,6 @@
 @media (max-width: 560px) {
   .module-page {
     padding: 16px;
-  }
-  .module-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .module-stats > div:nth-child(odd) {
-    border-left: 0;
-    padding-left: 0;
-  }
-  .module-stats > div:nth-child(even) {
-    border-left: 1px solid var(--border-default);
-    padding-left: var(--space-3);
-  }
-  .module-stats > div:nth-child(n + 3) {
-    border-top: 1px solid var(--border-default);
-    padding-top: var(--space-3);
   }
 }
 
@@ -709,4 +571,26 @@
   .module-workspace-reader {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.module-result-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: var(--space-2) var(--space-4);
+  margin-block-end: var(--space-3);
+}
+
+.module-result-summary summary {
+  color: var(--action-primary);
+  cursor: pointer;
+}
+
+.module-result-summary p {
+  max-inline-size: 65ch;
+  margin: var(--space-1) 0;
+}
+
+.module-detail-panel:focus-visible {
+  outline-offset: -2px;
 }

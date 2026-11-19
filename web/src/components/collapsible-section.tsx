@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Provides one shared disclosure/anchor pattern for long evidence pages so dense secondary sections do not flatten into an unreadable single scroll.
+// Purpose: Provides fragment-aware, accessible section disclosure, optionally postponing requests and form mounting until the first expansion.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -27,6 +27,7 @@ export function CollapsibleSection({
   count,
   meta,
   defaultOpen = false,
+  mountOnOpen = false,
   openRequest,
   summaryLabel,
   children,
@@ -38,6 +39,8 @@ export function CollapsibleSection({
    *  state stays visible even when the detail body is collapsed. */
   meta?: ReactNode;
   defaultOpen?: boolean;
+  /** Wait for the first open before starting child requests or rendering their forms. */
+  mountOnOpen?: boolean;
   /** A changed request opens this section without remounting its contents. */
   openRequest?: string | number;
   /** Used when the inner content already has a heading with `title`, to avoid
@@ -48,6 +51,7 @@ export function CollapsibleSection({
   const generatedId = useId();
   const panelId = `${id}-${generatedId}`;
   const [open, setOpen] = useState(defaultOpen);
+  const [opened, setOpened] = useState(defaultOpen);
   const sectionRef = useRef<HTMLDetailsElement>(null);
   const openSection = useCallback(() => setOpen(true), []);
   useNavigableSection(sectionRef, openSection);
@@ -60,7 +64,11 @@ export function CollapsibleSection({
       className="caw-section"
       id={id}
       open={open}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
+      onToggle={(event) => {
+        const expanded = event.currentTarget.open;
+        setOpen(expanded);
+        if (mountOnOpen && expanded) setOpened(true);
+      }}
     >
       <summary className="caw-section-summary">
         <span className="caw-section-title">{open ? title : (summaryLabel ?? title)}</span>
@@ -74,7 +82,7 @@ export function CollapsibleSection({
         </span>
       </summary>
       <div className="caw-section-body" id={panelId}>
-        {children}
+        {!mountOnOpen || open || opened ? children : null}
       </div>
     </details>
   );

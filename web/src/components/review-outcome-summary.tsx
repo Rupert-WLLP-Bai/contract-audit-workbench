@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Presents execution results, actual review coverage and human decision progress with source-preserving preparation and material repair links.
+// Purpose: Displays deterministic review outcomes and payment-term coverage with faithful empty and unavailable states and source navigation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-19
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -42,7 +42,11 @@ export function ReviewOutcomeSummary({ workspace }: { workspace: ReviewWorkspace
   const payment =
     coverage.kind === "known"
       ? {
-          insufficient: "已执行主合同付款比例识别，信息仍不足，需核对原文。",
+          insufficient:
+            coverage.version === "1"
+              ? "已执行主合同付款比例识别，信息仍不足，需核对原文。"
+              : "已执行付款识别，未定位支持的原文。",
+          observed: "已定位付款与结算原文，可结合上下文核对。",
           not_executed: "主合同未完成解析，付款比例识别未执行。",
           pending: "付款比例识别结果尚未返回。",
           failed: "未返回付款比例识别结果，无法确认失败前是否执行。",
@@ -64,7 +68,7 @@ export function ReviewOutcomeSummary({ workspace }: { workspace: ReviewWorkspace
     return (
       <section aria-label="审查结果、范围与人工进度" className="callout">
         <h2>审查结果、范围与人工进度</h2>
-        <p>该执行尚未冻结审查输入，检查范围与人工进度待冻结后确认。</p>
+        <p>本次送审内容尚未确定，检查范围与人工进度待确定后确认。</p>
         {outcome?.reason === "cancelled_by_user" && canReadmitCancelledPreparation(workspace) ? (
           <>
             <p>
@@ -97,7 +101,7 @@ export function ReviewOutcomeSummary({ workspace }: { workspace: ReviewWorkspace
         <p>
           {hasTransientRetryCause(workspace)
             ? "模型调用超时；服务恢复后可在原审查中尝试重试，仍需服务端核验。"
-            : "模型调用超时；冻结材料或当前条件尚需核对，不能确认可否重试。"}
+            : "模型调用超时；送审材料或当前条件尚需核对，不能确认可否重试。"}
         </p>
       ) : null}
       {outcome?.reason === "material_unavailable" || parseFailed ? (
@@ -115,10 +119,10 @@ export function ReviewOutcomeSummary({ workspace }: { workspace: ReviewWorkspace
       {outcome?.reason === "cancelled_by_user" ? (
         <p>
           {canReadmitCancelledPreparation(workspace)
-            ? "审查在准备期间由用户主动取消，尚未冻结审查输入；请返回案件核对准备清单并重新发起新审查。"
+            ? "审查在准备期间由用户主动取消，本次送审内容尚未确定；请返回案件核对准备清单并重新发起新审查。"
             : canRestartUserCancelled(workspace)
-              ? "审查由用户主动取消；可由有权人员选择重新发起，服务端会核验冻结输入。"
-              : "审查由用户主动取消；冻结输入尚不能核对，请查看审查准备。"}
+              ? "审查由用户主动取消；可由有权人员选择重新发起，系统会核验当次审查依据。"
+              : "审查由用户主动取消；当次审查依据尚不能核对，请查看审查准备。"}
         </p>
       ) : null}
       {outcome?.reason === "cancelled" ? (

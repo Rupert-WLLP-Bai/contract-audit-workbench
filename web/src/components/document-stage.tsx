@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders case materials and frozen review sources, coordinating navigation and independently marking verified key clauses, search matches and located evidence.
+// Purpose: Presents case materials and the selected historical or current document through searchable text, original-file reading, exact highlights and source navigation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-19
-// Revision: r7
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -59,6 +59,9 @@ import {
 } from "../domain/frozen-quote";
 import {
   keyClauseNavigationFor,
+  readingGroupFor,
+  READING_GROUPS,
+  type ReadingGroup,
   type KeyClauseCandidate,
   type KeyClauseNavigation,
 } from "../domain/key-clauses";
@@ -305,12 +308,25 @@ function DiagnosticsCollapse({
 const ClauseContext = createContext<{
   document: ReviewDocument | null;
   navigation: KeyClauseNavigation | null;
-  ranges: readonly { start: number; end: number }[];
+  ranges: readonly { start: number; end: number; group: ReadingGroup }[];
+  group: ReadingGroup | "all";
+  showAll: boolean;
   findRange: { start: number; end: number } | null;
   selected: KeyClauseCandidate | null;
-}>({ document: null, navigation: null, ranges: [], findRange: null, selected: null });
+}>({
+  document: null,
+  navigation: null,
+  ranges: [],
+  group: "all",
+  showAll: false,
+  findRange: null,
+  selected: null,
+});
 
-function keyRangeAt(ranges: readonly { start: number; end: number }[], offset: number) {
+function keyRangeAt(
+  ranges: readonly { start: number; end: number; group: ReadingGroup }[],
+  offset: number,
+) {
   let lower = 0;
   let upper = ranges.length;
   while (lower < upper) {
@@ -354,7 +370,7 @@ const DocSegments = memo(function DocSegments({ segments }: { segments: TextSegm
               key={segment.start}
               data-offset={segment.start}
               {...selectedAttribute}
-              className={`hit-key-clause${segment.highlighted === "find" ? " hit-find" : ""}${selected ? " key-clause-selected" : ""}`}
+              className={`hit-key-clause reading-${range!.group}${segment.highlighted === "find" ? " hit-find" : ""}${selected ? " key-clause-selected" : ""}`}
             >
               {segment.text}
             </mark>
@@ -441,11 +457,9 @@ function SelectableDocText({
   segments: TextSegment[];
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
-  const { ranges } = useContext(ClauseContext);
   if (document.text === null) return <p>这份材料还没有可阅读的正文。</p>;
   return (
     <>
-      {ranges.length > 0 ? <p className="meta doc-key-clause-hint">虚线标出常查条款。</p> : null}
       <div
         className="doc-text"
         tabIndex={0}
@@ -489,13 +503,13 @@ function FailedParseBody({
   return (
     <DocPane document={document} activeSource={activeSource}>
       <header className="doc-pane-head">
-        <strong>{document.filename}</strong>
+        <strong title={document.filename}>{document.filename}</strong>
         <StatusText tone="bad">解析失败</StatusText>
+        <TechnicalDetail
+          label="材料状态技术详情"
+          value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
+        />
       </header>
-      <TechnicalDetail
-        label="材料状态技术详情"
-        value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
-      />
       <DiagnosticsCollapse document={document} showDiagnostics={showDiagnostics} />
       <p className="callout">这份材料解析失败，请先处理解析问题再继续审查。</p>
       {document.parse_error ? <p>{document.parse_error}</p> : null}
@@ -535,16 +549,16 @@ function HighlightBody({
   return (
     <DocPane document={document} activeSource={activeSource}>
       <header className="doc-pane-head">
-        <strong>{document.filename}</strong>
+        <strong title={document.filename}>{document.filename}</strong>
         <span>{roleLabel(document.role)}</span>
         {pages.map((page) => (
           <span key={page}>第 {page} 页</span>
         ))}
+        <TechnicalDetail
+          label="材料状态技术详情"
+          value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
+        />
       </header>
-      <TechnicalDetail
-        label="材料状态技术详情"
-        value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
-      />
       <DiagnosticsCollapse document={document} showDiagnostics={showDiagnostics} />
       {activeSource ? (
         <EvidenceAnchorSwitch
@@ -628,16 +642,16 @@ function PlainBody({
   return (
     <DocPane document={document} activeSource={activeSource}>
       <header className="doc-pane-head">
-        <strong>{document.filename}</strong>
+        <strong title={document.filename}>{document.filename}</strong>
         <span>{roleLabel(document.role)}</span>
         <StatusText tone={parseTone(document.parse_status)}>
           {parseLabel(document.parse_status)}
         </StatusText>
+        <TechnicalDetail
+          label="材料状态技术详情"
+          value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
+        />
       </header>
-      <TechnicalDetail
-        label="材料状态技术详情"
-        value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
-      />
       <DiagnosticsCollapse document={document} showDiagnostics={showDiagnostics} />
       <EvidenceNotes resolved={resolved} />
       <EmptyOrText
@@ -814,20 +828,37 @@ const DocumentBody = memo(function DocumentBody(props: ComponentProps<typeof Tex
   );
   const parentClauses = useContext(ClauseContext);
   const keyClause = parentClauses.document === document ? parentClauses.selected : null;
-  const navigation = useMemo(
-    () =>
-      parentClauses.document === document && parentClauses.navigation
-        ? parentClauses.navigation
-        : keyClauseNavigationFor(props.quoteScope, document),
-    [parentClauses.document, parentClauses.navigation, props.quoteScope, document],
-  );
+  const navigation = useMemo(() => {
+    if (parentClauses.document === document && parentClauses.navigation)
+      return parentClauses.navigation;
+    const all = keyClauseNavigationFor(props.quoteScope, document);
+    const available = parentClauses.showAll
+      ? (all.allCandidates ?? all.candidates)
+      : all.candidates;
+    const candidates =
+      parentClauses.group === "all"
+        ? available
+        : available.filter((candidate) => readingGroupFor(candidate) === parentClauses.group);
+    return {
+      ...all,
+      candidates,
+      message: candidates.length ? "" : all.message || "当前分类没有匹配位置。",
+    };
+  }, [
+    parentClauses.document,
+    parentClauses.navigation,
+    parentClauses.group,
+    parentClauses.showAll,
+    props.quoteScope,
+    document,
+  ]);
   const keyRanges = useMemo(() => {
-    const ranges: { start: number; end: number }[] = [];
+    const ranges: { start: number; end: number; group: ReadingGroup }[] = [];
     for (const candidate of navigation.candidates) {
       const previous = ranges.at(-1);
       if (previous && candidate.range.start < previous.end)
         previous.end = Math.max(previous.end, candidate.range.end);
-      else ranges.push({ ...candidate.range });
+      else ranges.push({ ...candidate.range, group: readingGroupFor(candidate) });
     }
     return ranges;
   }, [navigation]);
@@ -837,6 +868,8 @@ const DocumentBody = memo(function DocumentBody(props: ComponentProps<typeof Tex
         document,
         navigation,
         ranges: keyRanges,
+        group: parentClauses.group,
+        showAll: parentClauses.showAll,
         findRange: props.findRange,
         selected: keyClause,
       }}
@@ -1677,6 +1710,91 @@ function EvidenceAside({
   );
 }
 
+function KeyClauseQuickNavigation({
+  onSelect,
+  onGroup,
+  onToggleAll,
+  hasMore,
+}: {
+  onSelect: (candidate: KeyClauseCandidate) => void;
+  onGroup: (group: ReadingGroup | "all") => void;
+  onToggleAll: () => void;
+  hasMore: boolean;
+}) {
+  const { navigation, selected, group, showAll } = useContext(ClauseContext);
+  const candidates = navigation?.candidates ?? [];
+  const selectedIndex = candidates.findIndex((candidate) => candidate.id === selected?.id);
+  function move(direction: -1 | 1) {
+    if (!candidates.length) return;
+    const index =
+      selectedIndex < 0
+        ? direction === 1
+          ? 0
+          : candidates.length - 1
+        : (selectedIndex + direction + candidates.length) % candidates.length;
+    const candidate = candidates[index];
+    if (candidate) onSelect(candidate);
+  }
+  return (
+    <div className="key-clause-quick-nav" role="group" aria-label="重点位置导航">
+      <div className="reading-category-filters" role="group" aria-label="阅读分类">
+        <button type="button" aria-pressed={group === "all"} onClick={() => onGroup("all")}>
+          全部
+        </button>
+        {READING_GROUPS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`reading-filter-${item.id}`}
+            aria-pressed={group === item.id}
+            onClick={() => onGroup(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      {hasMore ? (
+        <Button htmlType="button" aria-pressed={showAll} onClick={onToggleAll}>
+          {showAll ? "只看重点" : "显示更多条款"}
+        </Button>
+      ) : null}
+      <span role="status">
+        {candidates.length === 0
+          ? navigation?.message || "当前分类没有匹配位置。"
+          : selectedIndex < 0
+            ? `阅读重点 · ${candidates.length} 处`
+            : `第 ${selectedIndex + 1} / ${candidates.length} 处`}
+      </span>
+      <Button
+        htmlType="button"
+        disabled={!candidates.length}
+        onClick={() => {
+          const first = candidates[0];
+          if (first) onSelect(first);
+        }}
+      >
+        查看重点
+      </Button>
+      <Button
+        disabled={!candidates.length}
+        aria-label="上一个重点"
+        htmlType="button"
+        onClick={() => move(-1)}
+      >
+        上一处
+      </Button>
+      <Button
+        disabled={!candidates.length}
+        aria-label="下一个重点"
+        htmlType="button"
+        onClick={() => move(1)}
+      >
+        下一处
+      </Button>
+    </div>
+  );
+}
+
 function DocumentColumn({
   documents,
   finding,
@@ -1694,6 +1812,10 @@ function DocumentColumn({
   quoteScope,
   focusRange,
   onClearKeyClause,
+  onSelectKeyClause,
+  onReadingGroup,
+  onToggleAll,
+  hasMoreCandidates,
   onQuoteSelectionChange,
 }: {
   documents: ReviewDocument[];
@@ -1712,17 +1834,29 @@ function DocumentColumn({
   quoteScope: FrozenQuoteScope | null;
   focusRange: { start: number; end: number } | null;
   onClearKeyClause?: () => void;
+  onSelectKeyClause: (candidate: KeyClauseCandidate) => void;
+  onReadingGroup: (group: ReadingGroup | "all") => void;
+  onToggleAll: () => void;
+  hasMoreCandidates: boolean;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   return (
     <section className="col-doc" aria-label="原文">
-      <DocumentToolbar
-        layout={layout}
-        evidenceCount={evidenceDocs.length}
-        activeIsEvidence={activeIsEvidence}
-        compareSources={compareSources}
-        onCompare={onCompare}
-      />
+      <div className="reader-toolbar">
+        <DocumentToolbar
+          layout={layout}
+          evidenceCount={evidenceDocs.length}
+          activeIsEvidence={activeIsEvidence}
+          compareSources={compareSources}
+          onCompare={onCompare}
+        />
+        <KeyClauseQuickNavigation
+          onSelect={onSelectKeyClause}
+          onGroup={onReadingGroup}
+          onToggleAll={onToggleAll}
+          hasMore={hasMoreCandidates}
+        />
+      </div>
       {!split && evidenceDocs.length >= 2 ? (
         <SourceSwitch
           evidenceDocs={evidenceDocs}
@@ -1765,7 +1899,9 @@ export function DocumentStage({
   onCreateRelation,
   onDeleteRelation,
   quoteScope = null,
+  sourceDocumentId = null,
   contractFactsCitation = null,
+  coverageEvidence = null,
   contractFactsLocationScope = null,
   onQuoteSelectionChange,
 }: {
@@ -1784,36 +1920,79 @@ export function DocumentStage({
   onCreateRelation?: (input: CaseRelationInput) => Promise<void>;
   onDeleteRelation?: (relationId: string) => void;
   quoteScope?: FrozenQuoteScope | null;
+  sourceDocumentId?: string | null;
   contractFactsCitation?: ContractFactsCitation | null;
+  coverageEvidence?: EvidenceAnchor | null;
   contractFactsLocationScope?: ContractFactsLocationScope | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
-  const initialDocument = initialDocumentOf(finding, documents);
+  const initialDocument =
+    (sourceDocumentId ? documents.find((document) => document.id === sourceDocumentId) : null) ??
+    initialDocumentOf(finding, documents);
   const [activeKey, setActiveKey] = useState(() =>
     initialDocument ? documentKey(initialDocument) : "",
   );
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [matchIndex, setMatchIndex] = useState(0);
+  const [showAllCandidates, setShowAllCandidates] = useState(false);
+  const [readingGroup, setReadingGroup] = useState<ReadingGroup | "all">("all");
   const [selectedKeyClauseId, setSelectedKeyClauseId] = useState<string | null>(null);
   const [compareSources, setCompareSources] = useState(false);
   const [leftTab, setLeftTab] = useState<"材料" | "审查成员" | "相关案件">("材料");
   const [relatedCaseId, setRelatedCaseId] = useState("");
   const [relationReason, setRelationReason] = useState("");
   const active = activeDocumentOf(documents, activeKey);
-  const factSource = useMemo(
-    () =>
-      documentForContractFactsCitation(
-        contractFactsCitation,
-        documents,
-        contractFactsLocationScope,
-      ),
-    [contractFactsCitation, contractFactsLocationScope, documents],
-  );
-  const factRange =
-    factSource && contractFactsCitation
+  const requestedSource = sourceDocumentId
+    ? documents.find((document) => document.id === sourceDocumentId)
+    : null;
+  const requestedSourceKey = requestedSource ? documentKey(requestedSource) : "";
+  useEffect(() => {
+    if (requestedSourceKey) setActiveKey(requestedSourceKey);
+  }, [requestedSourceKey]);
+  const factSource = useMemo(() => {
+    const fromFacts = documentForContractFactsCitation(
+      contractFactsCitation,
+      documents,
+      contractFactsLocationScope,
+    );
+    if (fromFacts) return fromFacts;
+    if (
+      !coverageEvidence ||
+      coverageEvidence.status !== "located" ||
+      !coverageEvidence.text_offset ||
+      !coverageEvidence.parsed_document_id ||
+      !quoteScope?.isFrozenAttempt ||
+      !quoteScope.parsedDocumentIds.includes(coverageEvidence.parsed_document_id)
+    )
+      return null;
+    const matches = documents.filter(
+      (document) =>
+        document.id === coverageEvidence.document_version_id &&
+        document.parsed_document_id === coverageEvidence.parsed_document_id &&
+        document.text !== null &&
+        quoteScope.sourceProofs?.some(
+          (proof) =>
+            proof.documentId === document.id &&
+            proof.parsedDocumentId === document.parsed_document_id &&
+            proof.originalDigest === document.digest,
+        ) &&
+        (!document.parsed_document ||
+          !coverageEvidence.normalized_digest ||
+          document.parsed_document.normalized_digest === coverageEvidence.normalized_digest) &&
+        sliceByCodePoints(
+          document.text,
+          coverageEvidence.text_offset!.start,
+          coverageEvidence.text_offset!.end,
+        ) === coverageEvidence.quote,
+    );
+    return matches.length === 1 ? matches[0]! : null;
+  }, [contractFactsCitation, contractFactsLocationScope, coverageEvidence, documents, quoteScope]);
+  const factRange = factSource
+    ? contractFactsCitation
       ? { start: contractFactsCitation.start, end: contractFactsCitation.end }
-      : null;
+      : (coverageEvidence?.text_offset ?? null)
+    : null;
   const quoteParsedIds = quoteScope?.parsedDocumentIds.join("\u0000") ?? "";
   useEffect(() => {
     onQuoteSelectionChange?.(null);
@@ -1856,7 +2035,13 @@ export function DocumentStage({
     setSelectedKeyClauseId(null);
     setCompareSources(false);
   }, [factSource]);
-  useEvidenceAutoSwitch(finding, active, documents, setActiveKey, factSource !== null);
+  useEvidenceAutoSwitch(
+    finding,
+    active,
+    documents,
+    setActiveKey,
+    factSource !== null || Boolean(sourceDocumentId),
+  );
   const relatedFindings = useMemo(() => relatedFindingsOf(active, findings), [active, findings]);
   const activeIsEvidence = isActiveEvidence(active, evidenceDocs);
   const split = shouldSplit(compareSources, layout, evidenceDocs.length, activeIsEvidence);
@@ -1891,10 +2076,28 @@ export function DocumentStage({
     () => visibleClausesOf(active, deferredQuery),
     [active, deferredQuery],
   );
-  const keyClauseNavigation = useMemo(
+  const allKeyClauseNavigation = useMemo(
     () => keyClauseNavigationFor(quoteScope, active),
     [active, quoteScope],
   );
+  const keyClauseNavigation = useMemo(() => {
+    const available = showAllCandidates
+      ? (allKeyClauseNavigation.allCandidates ?? allKeyClauseNavigation.candidates)
+      : allKeyClauseNavigation.candidates;
+    const candidates =
+      readingGroup === "all"
+        ? available
+        : available.filter((candidate) => readingGroupFor(candidate) === readingGroup);
+    return {
+      ...allKeyClauseNavigation,
+      candidates,
+      message: candidates.length
+        ? ""
+        : readingGroup === "all"
+          ? allKeyClauseNavigation.message
+          : "当前分类没有匹配位置。",
+    };
+  }, [allKeyClauseNavigation, readingGroup, showAllCandidates]);
   const selectedKeyClause =
     keyClauseNavigation.candidates.find(
       (candidate) =>
@@ -2001,6 +2204,8 @@ export function DocumentStage({
           document: active,
           navigation: keyClauseNavigation,
           ranges: [],
+          group: readingGroup,
+          showAll: showAllCandidates,
           findRange: null,
           selected: selectedKeyClause,
         }}
@@ -2028,6 +2233,23 @@ export function DocumentStage({
               ? factRange
               : null
           }
+          onSelectKeyClause={selectKeyClause}
+          hasMoreCandidates={
+            (allKeyClauseNavigation.allCandidates ?? allKeyClauseNavigation.candidates).filter(
+              (candidate) => readingGroup === "all" || readingGroupFor(candidate) === readingGroup,
+            ).length >
+            allKeyClauseNavigation.candidates.filter(
+              (candidate) => readingGroup === "all" || readingGroupFor(candidate) === readingGroup,
+            ).length
+          }
+          onToggleAll={() => {
+            setShowAllCandidates((value) => !value);
+            setSelectedKeyClauseId(null);
+          }}
+          onReadingGroup={(group) => {
+            setReadingGroup(group);
+            setSelectedKeyClauseId(null);
+          }}
           onClearKeyClause={() => setSelectedKeyClauseId(null)}
           onQuoteSelectionChange={onQuoteSelectionChange}
         />

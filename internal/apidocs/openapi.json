@@ -1582,6 +1582,13 @@
               }
             ]
           },
+          "observation_labels": {
+            "description": "付款与结算覆盖中该原句支持的观察项。",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "page": {
             "anyOf": [
               {
@@ -9364,6 +9371,13 @@
           "domain": {
             "type": "string"
           },
+          "evidence": {
+            "description": "可定位的付款与结算原文引用，属于检查覆盖，不是风险发现。",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Anchor"
+            }
+          },
           "fact_ids": {
             "type": "array",
             "items": {
@@ -16260,6 +16274,14 @@
           "superseded": {
             "type": "boolean"
           },
+          "table_cells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewTableCell"
+            },
+            "minItems": 1,
+            "maxItems": 4096
+          },
           "text": {
             "anyOf": [
               {
@@ -16740,6 +16762,34 @@
             "default": "full_review"
           }
         },
+        "additionalProperties": false
+      },
+      "ReviewTableCell": {
+        "description": "冻结解析表格的单元格位置。行列从 1 开始，合并或空单元格可能留出间隔。内容以原冻结文本的 Unicode 码点区间为准。",
+        "type": "object",
+        "properties": {
+          "column": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "row": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "table_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "text_offset": {
+            "$ref": "#/components/schemas/TextOffset"
+          }
+        },
+        "required": [
+          "table_id",
+          "row",
+          "column",
+          "text_offset"
+        ],
         "additionalProperties": false
       },
       "Revision": {

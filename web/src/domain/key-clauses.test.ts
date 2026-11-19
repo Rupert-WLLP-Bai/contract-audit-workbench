@@ -1,22 +1,21 @@
 // File metadata (manifest mirror):
-// Purpose: Checks frozen document and attempt binding, exact Unicode offsets, long-text fallback and non-risk key clause selection.
+// Purpose: Checks exact contract highlight excerpts and Unicode offsets, category separation, payment table data and decisions to suppress ambiguous observations.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
 // Updated: 2026-11-19
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
 import { describe, expect, it } from "vitest";
 import type { ReviewDocument, TextOffset } from "../api/types";
 import { frozenQuoteMatchesDocument } from "./frozen-quote";
-import { keyClauseNavigationFor } from "./key-clauses";
+import { keyClauseNavigationFor, readingGroupFor } from "./key-clauses";
 
 const text = "😀第一条 付款条款：甲方支付预付款。第二条 保密数据条款：双方保护个人信息。";
-const codePoints = Array.from(text);
-
-function rangeOf(quote: string): TextOffset {
+function rangeOf(quote: string, source = text): TextOffset {
+  const codePoints = Array.from(source);
   const quotePoints = Array.from(quote);
   const start = codePoints.findIndex((_, index) =>
     quotePoints.every((character, quoteIndex) => codePoints[index + quoteIndex] === character),
@@ -81,21 +80,21 @@ describe("key clause navigation", () => {
   it("extracts only exact, selected-attempt clause spans and labels common categories", () => {
     const result = keyClauseNavigationFor(scope, documentOf());
 
-    expect(result.candidates).toHaveLength(2);
-    expect(result.candidates[0]).toMatchObject({
+    expect(result.allCandidates!).toHaveLength(2);
+    expect(result.allCandidates![0]).toMatchObject({
       heading: "付款条款",
       quote: "付款条款：甲方支付预付款。",
       page: 3,
       categories: ["payment"],
       parsedDocumentId: "parsed-1",
     });
-    expect(result.candidates[1]).toMatchObject({
+    expect(result.allCandidates![1]).toMatchObject({
       heading: "保密数据条款",
       quote: "保密数据条款：双方保护个人信息。",
       page: null,
       categories: ["confidentiality_data"],
     });
-    expect(result.candidates[0]?.selection).toMatchObject({
+    expect(result.allCandidates![0]?.selection).toMatchObject({
       caseId: "case-1",
       runId: "run-1",
       attemptId: "attempt-1",
@@ -104,24 +103,113 @@ describe("key clause navigation", () => {
     });
   });
 
-  it("locates explicit contract and procurement amounts without marking background sentences", () => {
+  it("keeps distinct amounts and removes an equivalent duplicate", () => {
     const source =
       "😀项目背景为网络建设。合同总价100万元。合同金额为100万元。采购金额为120万元。其他说明。";
-    const result = keyClauseNavigationFor(scope, documentOf({ text: source, clauses: [] }));
+    const document = documentOf({ text: source, clauses: [] });
+    const result = keyClauseNavigationFor(scope, document);
 
     expect(result.candidates.map((candidate) => candidate.quote)).toEqual([
       "合同总价100万元。",
-      "合同金额为100万元。",
       "采购金额为120万元。",
     ]);
-    expect(result.candidates.every((candidate) => candidate.categories.includes("payment"))).toBe(
+    const [candidate] = result.candidates;
+    expect(candidate).toMatchObject({ quote: "合同总价100万元。", categories: ["payment"] });
+    expect(frozenQuoteMatchesDocument(candidate?.selection ?? null, scope, document)).toBe(true);
+  });
+
+  it("keeps independent payment milestones while removing exact repeats", () => {
+    const source =
+      "验收通过并收到发票后10个工作日内支付首期款。年度服务期满并完成交接后15个工作日内支付尾款。验收通过并收到发票后10个工作日内支付首期款。";
+    const result = keyClauseNavigationFor(scope, documentOf({ text: source, clauses: [] }));
+    expect(result.candidates.map((candidate) => candidate.quote)).toEqual([
+      "验收通过并收到发票后10个工作日内支付首期款。",
+      "年度服务期满并完成交接后15个工作日内支付尾款。",
+    ]);
+  });
+
+  it("uses the pinned table columns for amounts, preserves merged column numbers and excludes quantity", () => {
+    const grid = [
+      [
+        [1, "名称"],
+        [2, "数量"],
+        [3, "单价"],
+        [5, "含税金额（元）"],
+      ],
+      [
+        [1, "支持服务"],
+        [2, "999"],
+        [3, "80.50"],
+        [5, "241.50"],
+      ],
+      [
+        [1, "合计"],
+        [5, "241.50"],
+      ],
+    ] as const;
+    let text = "😀采购项目。\n\n";
+    const table_cells = grid.flatMap((row, rowIndex) => {
+      if (rowIndex > 0) text += "\n";
+      return row.map(([column, value], cellIndex) => {
+        if (cellIndex > 0) text += "\t";
+        const start = Array.from(text).length;
+        text += value;
+        return {
+          table_id: "t-金",
+          row: rowIndex + 1,
+          column,
+          text_offset: { start, end: start + Array.from(value).length },
+        };
+      });
+    });
+    const document = documentOf({ text, table_cells, clauses: [] });
+    const result = keyClauseNavigationFor(scope, document);
+    expect(result.candidates.map(({ quote, categories }) => ({ quote, categories }))).toEqual([
+      { quote: "241.50", categories: ["payment"] },
+    ]);
+    expect(result.candidates[0]?.range.start).toBe(table_cells.at(-1)?.text_offset.start);
+    expect(result.allCandidates?.map(({ quote }) => quote)).toEqual(["80.50", "241.50", "241.50"]);
+    expect(result.candidates[0]?.sourceLabel).toBe("表格单元格");
+    for (const item of result.allCandidates ?? []) {
+      expect(frozenQuoteMatchesDocument(item.selection, scope, document)).toBe(true);
+    }
+    const older = keyClauseNavigationFor(scope, documentOf({ text, clauses: [] }));
+    expect(older.allCandidates?.some((item) => item.sourceLabel === "表格单元格")).not.toBe(
       true,
     );
-    for (const candidate of result.candidates) {
-      expect(Array.from(source).slice(candidate.range.start, candidate.range.end).join("")).toBe(
-        candidate.quote,
-      );
-    }
+  });
+
+  it("uses explicit deadline labels and units without assuming a bare number is a date or duration", () => {
+    const text = "😀导语。\n\n合同履约期限\t36个月\n响应时间\t50\n数量\t9个工作日";
+    const rows = [
+      ["合同履约期限", "36个月"],
+      ["响应时间", "50"],
+      ["数量", "9个工作日"],
+    ];
+    const table_cells = rows.flatMap((row, r) =>
+      row.map((value, c) => ({
+        table_id: "t-1",
+        row: r + 1,
+        column: c + 1,
+        text_offset: rangeOf(value, text),
+      })),
+    );
+    const result = keyClauseNavigationFor(scope, documentOf({ text, table_cells, clauses: [] }));
+    expect(result.candidates.map(({ quote, categories }) => ({ quote, categories }))).toEqual([
+      { quote: "36个月", categories: ["term_termination"] },
+    ]);
+  });
+
+  it("maps payment milestones, obligations and termination to the requested reading groups", () => {
+    const source =
+      "验收通过并收到发票后10个工作日内支付首期款。年度服务期满并完成交接后15个工作日内支付尾款。乙方应在10个工作日内交付服务成果。逾期超过15日，甲方有权解除合同。";
+    const result = keyClauseNavigationFor(scope, documentOf({ text: source, clauses: [] }));
+    expect(result.candidates.map((candidate) => readingGroupFor(candidate))).toEqual([
+      "money",
+      "money",
+      "performance",
+      "rights",
+    ]);
   });
 
   it("rejects a document parsed by a different attempt", () => {
@@ -131,7 +219,7 @@ describe("key clause navigation", () => {
     );
 
     expect(result.candidates).toEqual([]);
-    expect(result.message).toContain("不属于所选冻结尝试");
+    expect(result.message).toContain("不属于所选审查记录");
   });
 
   it("rejects parsed metadata whose identity does not match the selected document", () => {
@@ -146,7 +234,7 @@ describe("key clause navigation", () => {
     );
 
     expect(result.candidates).toEqual([]);
-    expect(result.message).toContain("不属于所选冻结尝试");
+    expect(result.message).toContain("不属于所选审查记录");
   });
 
   it("does not turn headings into candidates when their saved offsets are invalid", () => {
@@ -157,7 +245,7 @@ describe("key clause navigation", () => {
           {
             id: "bad",
             heading: "付款条款",
-            text_offset: { start: 4, end: codePoints.length + 1 },
+            text_offset: { start: 4, end: Array.from(text).length + 1 },
             page: 1,
           },
         ],
@@ -172,7 +260,7 @@ describe("key clause navigation", () => {
     const result = keyClauseNavigationFor({ ...scope, isFrozenAttempt: false }, documentOf());
 
     expect(result.candidates).toEqual([]);
-    expect(result.message).toContain("可核验的冻结审查尝试");
+    expect(result.message).toContain("可核验的审查记录");
   });
 
   it("uses sentence fragments when no ClauseNodes exist and converts emoji/newline offsets to code points", () => {
@@ -180,7 +268,7 @@ describe("key clause navigation", () => {
     const expectedStart = Array.from(fragmentText.slice(0, fragmentText.indexOf("甲方"))).length;
     const document = documentOf({ text: fragmentText, clauses: [] });
     const result = keyClauseNavigationFor(scope, document);
-    const candidate = result.candidates[0];
+    const candidate = result.allCandidates![0];
 
     expect(candidate).toBeDefined();
     expect(candidate).toMatchObject({
@@ -212,8 +300,8 @@ describe("key clause navigation", () => {
     });
     const result = keyClauseNavigationFor(scope, document);
 
-    expect(result.candidates).toHaveLength(1);
-    expect(result.candidates[0]).toMatchObject({
+    expect(result.allCandidates!).toHaveLength(1);
+    expect(result.allCandidates![0]).toMatchObject({
       kind: "fragment",
       heading: "正文片段/标题未识别",
       sourceLabel: "正文片段/标题未识别",
@@ -223,8 +311,8 @@ describe("key clause navigation", () => {
     });
   });
 
-  it("keeps a keyword at the end of an overlong clause in a bounded, exact fragment", () => {
-    const text = `${"背景资料".repeat(1400)}乙方应支付尾款。`;
+  it("finds a whole short obligation inside a long structure without claiming its page", () => {
+    const text = `${"背景资料".repeat(1400)}。乙方应支付尾款。`;
     const document = documentOf({
       text,
       clauses: [
@@ -237,7 +325,7 @@ describe("key clause navigation", () => {
       ],
     });
     const result = keyClauseNavigationFor(scope, document);
-    const candidate = result.candidates[0];
+    const candidate = result.allCandidates![0];
 
     expect(candidate).toBeDefined();
     expect(candidate).toMatchObject({
@@ -247,12 +335,51 @@ describe("key clause navigation", () => {
       page: null,
       range: { end: Array.from(text).length },
     });
-    expect(candidate?.quote.endsWith("乙方应支付尾款。")).toBe(true);
-    expect(Array.from(candidate?.quote ?? "").length).toBeLessThanOrEqual(4096);
+    expect(candidate?.quote).toBe("乙方应支付尾款。");
     expect(candidate?.range.start).toBeGreaterThan(0);
     expect(candidate?.quote).toBe(
       Array.from(text).slice(candidate?.range.start, candidate?.range.end).join(""),
     );
+  });
+
+  it("allows no suggestions for headings, form placeholders and deferred terms", () => {
+    const text =
+      "目录：付款条款、验收标准、保密数据。甲方应按【待填写】金额支付价款。" +
+      "双方同意付款期限另行约定。项目背景提到数据。";
+    expect(keyClauseNavigationFor(scope, documentOf({ text, clauses: [] })).candidates).toEqual([]);
+  });
+
+  it("keeps a following exception with its obligation and the original Unicode offsets", () => {
+    const text = "😀前言。甲方应在收票后三十日内支付价款。\n但通知后仍有争议的款项暂缓支付。";
+    const document = documentOf({ text, clauses: [] });
+    const [item] = keyClauseNavigationFor(scope, document).candidates;
+    expect(item?.quote).toBe("甲方应在收票后三十日内支付价款。\n但通知后仍有争议的款项暂缓支付。");
+    expect(item?.range.start).toBe(Array.from("😀前言。").length);
+    expect(frozenQuoteMatchesDocument(item?.selection ?? null, scope, document)).toBe(true);
+  });
+
+  it("covers explicit jurisdiction, warranties and disclosures alongside payment", () => {
+    const text =
+      "合同总价为人民币壹拾万元整。预付款金额为合同价款的30%。" +
+      "双方协商不成时，任一方可向约定的有管辖权的法院起诉。质保三年。" +
+      "未经甲方书面同意，乙方不得向第三方披露相关资料。";
+    const document = documentOf({ text, clauses: [] });
+    const { candidates } = keyClauseNavigationFor(scope, document);
+    expect(candidates.map((candidate) => candidate.categories[0])).toEqual([
+      "payment",
+      "payment",
+      "dispute_resolution",
+      "warranty",
+      "confidentiality_data",
+    ]);
+    expect(
+      candidates.every(({ selection }) => frozenQuoteMatchesDocument(selection, scope, document)),
+    ).toBe(true);
+  });
+
+  it("does not cut an overlong continuous condition into a misleading fragment", () => {
+    const text = "甲方应支付预付款，" + "补充说明".repeat(80) + "，但仅限验收后。";
+    expect(keyClauseNavigationFor(scope, documentOf({ text, clauses: [] })).candidates).toEqual([]);
   });
 });
 
@@ -263,7 +390,10 @@ describe("frozen source proof", () => {
     const frozen = documentOf({ digest: "", parsed_document: null });
     const current = documentOf({
       digest,
-      parsed_document: { ...documentOf().parsed_document!, original_digest: digest },
+      parsed_document: {
+        ...documentOf().parsed_document!,
+        original_digest: digest,
+      },
     });
     const detail = {
       id: "case-1",
@@ -278,7 +408,7 @@ describe("frozen source proof", () => {
     });
     const provedDocument = { ...frozen, digest };
     expect(
-      keyClauseNavigationFor({ ...scope, sourceProofs: [proof!] }, provedDocument).candidates,
+      keyClauseNavigationFor({ ...scope, sourceProofs: [proof!] }, provedDocument).allCandidates,
     ).toHaveLength(2);
     expect(
       keyClauseNavigationFor({ ...scope, sourceProofs: [] }, provedDocument).candidates,
@@ -305,7 +435,10 @@ describe("frozen source proof", () => {
     const oldDetail = {
       ...detail,
       documents: [
-        { ...current, parsed_document: { ...current.parsed_document!, id: "parsed-new" } },
+        {
+          ...current,
+          parsed_document: { ...current.parsed_document!, id: "parsed-new" },
+        },
       ],
     };
     const history = {
@@ -327,7 +460,10 @@ describe("frozen source proof", () => {
     expect(frozenSourceProof(oldDetail, frozen, ["parsed-1"], undefined)).toBeNull();
     expect(frozenSourceProof(oldDetail, frozen, ["parsed-1"], history)).toEqual(proof);
     expect(
-      frozenSourceProof(oldDetail, frozen, ["parsed-1"], { ...history, document_id: "other" }),
+      frozenSourceProof(oldDetail, frozen, ["parsed-1"], {
+        ...history,
+        document_id: "other",
+      }),
     ).toBeNull();
     expect(
       frozenSourceProof(oldDetail, frozen, ["parsed-1"], {

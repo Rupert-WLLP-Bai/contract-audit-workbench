@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Maps stable business scope and audit action identifiers to Chinese presentation labels without renaming API or stored identifiers.
+// Purpose: Maps service-provided business and capability identifiers to readable labels, including the current payment and settlement excerpt capability.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -77,6 +77,7 @@ const CAPABILITIES: Record<string, string> = {
   "cloud_services.minimum_bandwidth": "最低保障带宽",
   "cloud_services.monthly_availability": "月可用率",
   "single_contract.payment_sum": "主合同中可识别的付款比例合计",
+  "single_contract.payment_terms": "主合同付款与结算原文",
 };
 const COMPARATORS: Record<string, string> = {
   minimum_bandwidth: "最低保障带宽对照",

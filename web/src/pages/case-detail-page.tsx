@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Composes one case workspace from the case profile, material versions, review readiness, pending work and review history; all mutations remain routed through case-scoped API commands.
+// Purpose: Presents the authorized case with next actions before case facts and preserves deep links, original material order and decision history.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r12
+// Updated: 2026-11-19
+// Revision: r13
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -55,6 +55,7 @@ import {
   runLabel,
   runTone,
 } from "../domain/review";
+import { contractDeskReturnHref } from "./contract-desk-page";
 
 const navigationStores = new WeakMap<
   object,
@@ -482,6 +483,9 @@ export function CaseDetailPage() {
         className="case-detail-page"
         before={
           <nav className="page-back" aria-label="案件导航">
+            {location.hash === "#case-material-source" ? (
+              <Link to={contractDeskReturnHref(location.state, workActorScope)}>返回合同清单</Link>
+            ) : null}
             {workReturn ? (
               <Link
                 to={workReturn}
@@ -502,14 +506,7 @@ export function CaseDetailPage() {
           </nav>
         }
         title={item.title}
-        description={
-          [
-            businessScopeLabel(item.business_line, item.scenario),
-            contractTypeLabel(item.contract_type),
-          ]
-            .filter(Boolean)
-            .join("，") + `，更新于 ${formatDateTime(item.updated_at)}`
-        }
+        description={contractTypeLabel(item.contract_type)}
         status={
           <StatusText tone={businessStatusTone(item.business_status ?? "")}>
             {businessStatusLabel(item.business_status ?? "")}
@@ -654,7 +651,7 @@ export function CaseDetailPage() {
           ) : null}
           {item.subject_context_changed_after_latest_run === true ? (
             <p className="callout">
-              主体信息已变更，需发起新审查。新审查会冻结当前主体信息，之前的审查和报告保持不变。
+              主体信息已变更，需发起新审查。新审查会留存当前主体信息，之前的审查和报告保持不变。
             </p>
           ) : null}
           {subjectContextUnknown ? (
@@ -712,6 +709,11 @@ export function CaseDetailPage() {
             caseDetail={item}
             canWrite={canUpload}
             actorId={session.data?.id ?? ""}
+            source={
+              location.hash === "#case-material-source"
+                ? { documentId: searchParams.get("source_document") ?? "", visit: location.key }
+                : undefined
+            }
           />
           <CollapsibleSection
             id="case-template-generation"

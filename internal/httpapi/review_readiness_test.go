@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Exercises the `httpapi_test` package behavior through TestReviewReadinessListsCurrentMaterialsAndPreservesLegacyTimePolicy; these checks pin observable state, error handling, or wire/database compatibility for this module.
+// Purpose: Checks the readiness API and single-contract precheck admission, verifying independent payment evidence reaches coverage without creating findings.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-19
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,7 +12,9 @@ package httpapi_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestReviewReadinessListsCurrentMaterialsAndPreservesLegacyTimePolicy(t *testing.T) {
@@ -85,6 +87,65 @@ func TestReviewReadinessListsCurrentMaterialsAndPreservesLegacyTimePolicy(t *tes
 	viewerSingleBlockers, blockersOK := viewerSingle["blockers"].([]any)
 	if !ok || !blockersOK || viewerSingle["can_start"] != false || !readinessHasBlocker(viewerSingleBlockers, "review_start_role_required") {
 		t.Fatalf("single-contract readiness must preserve the start-role boundary: %+v", viewerScopes[1])
+	}
+}
+
+func TestSingleContractV2ReviewPresentsExactEvidenceAsCoverage(t *testing.T) {
+	api := newAPIWith(t, nil, nil)
+	api.login(t, "demo-admin", "admin-demo")
+	status, created := api.do(t, http.MethodPost, "/api/cases", map[string]any{
+		"title": "合成付款覆盖", "contract_type": "service",
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("create status %d", status)
+	}
+	casePath := "/api/cases/" + created["id"].(string)
+	primary := api.upload(t, created["id"].(string), "draft_contract", "synthetic.txt", "text/plain",
+		[]byte("😀费用按实际使用量结算。收到发票后十个工作日内支付。首期款比例为20%。尾款比例为80%。税率6%。"))
+	status, started := api.do(t, http.MethodPost, casePath+"/reviews", map[string]any{"scope": "single_contract_precheck"})
+	if status != http.StatusCreated && status != http.StatusAccepted {
+		t.Fatalf("precheck admission status %d: %v", status, started)
+	}
+	deadline := time.Now().Add(8 * time.Second)
+	var ws map[string]any
+	for time.Now().Before(deadline) {
+		status, ws = api.do(t, http.MethodGet, casePath+"/reviews/"+started["id"].(string), nil)
+		if status != http.StatusOK {
+			t.Fatalf("workspace status %d", status)
+		}
+		state := ws["run"].(map[string]any)["state"]
+		if state == "partial" {
+			break
+		}
+		if state == "failed" || state == "interrupted" {
+			t.Fatalf("precheck failed before producing coverage: %v", state)
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
+	if ws == nil || ws["run"].(map[string]any)["state"] != "partial" {
+		t.Fatal("limited precheck did not finish")
+	}
+	if len(ws["findings"].([]any)) != 0 {
+		t.Fatal("coverage observations entered the risk queue")
+	}
+	evaluations := ws["evaluations"].([]any)
+	if len(evaluations) != 1 {
+		t.Fatalf("coverage evaluation count %d", len(evaluations))
+	}
+	evaluation := evaluations[0].(map[string]any)
+	if evaluation["rule_id"] != "single-payment-terms-v2" || evaluation["reason_code"] != "payment_terms_observed" ||
+		evaluation["finding_id"] != nil || strings.Contains(evaluation["reason"].(string), "合计") {
+		t.Fatal("coverage identity or classification was not preserved")
+	}
+	evidence := evaluation["evidence"].([]any)
+	if len(evidence) != 4 {
+		t.Fatalf("separate source observations were not preserved: %d", len(evidence))
+	}
+	for _, item := range evidence {
+		anchor := item.(map[string]any)
+		if anchor["document_version_id"] != primary || anchor["status"] != "located" || len(anchor["observation_labels"].([]any)) == 0 {
+			t.Fatal("missing exact source coordinates or observation labels")
+		}
 	}
 }
 

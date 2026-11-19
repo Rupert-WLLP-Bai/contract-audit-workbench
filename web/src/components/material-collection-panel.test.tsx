@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the web behavior for “material collection behavior”; representative assertions cover keeps upload success copy usable without exposing random identities, adds an attachment by default with its explicit purpose and an idempotency key, shows a primary-contract route and sends the selected current document for explicit replacement. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Purpose: Checks case material version navigation, authorized DOCX workspace actions and restoration of the requested source after permission changes.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-19
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -146,6 +146,28 @@ afterEach(() => {
 });
 
 describe("material collection behavior", () => {
+  it("offers editing only for a current DOCX when the actor can upload", () => {
+    const document = { ...doc("current", "合成.docx", "draft_contract"), digest: "a".repeat(64) };
+    const detail = {
+      ...emptyDetail,
+      documents: [document],
+      materials: [
+        material({
+          material_id: "m1",
+          role: "draft_contract",
+          purpose: "primary_contract",
+          current_document_id: document.id,
+        }),
+      ],
+    };
+    const view = render(
+      <MaterialCollectionPanel caseDetail={detail} canWrite={false} actorId="actor-1" />,
+    );
+    expect(screen.queryByRole("button", { name: "编辑修改稿" })).not.toBeInTheDocument();
+    view.rerender(<MaterialCollectionPanel caseDetail={detail} canWrite actorId="actor-1" />);
+    expect(screen.getByRole("button", { name: "编辑修改稿" })).toBeInTheDocument();
+  });
+
   it("keeps upload success copy usable without exposing random identities", () => {
     mocks.useUploadDocument.mockReturnValue(
       state({ data: { id: "doc-random", material_id: "mat-random", version: 2, replayed: true } }),
@@ -592,6 +614,76 @@ describe("material collection behavior", () => {
     await user.click(screen.getByRole("button", { name: "当前材料" }));
     expect(screen.getByRole("button", { name: "新增材料" })).toBeEnabled();
     expect(screen.getByText("草稿.txt")).toBeInTheDocument();
+  });
+
+  it("targets the exact current or historical file and falls back to the material heading", () => {
+    const detail: CaseDetail = {
+      ...emptyDetail,
+      documents: [
+        doc("old", "旧版合同.docx", "draft_contract"),
+        doc("current", "本版合同.docx", "draft_contract"),
+      ],
+      materials: [
+        material({
+          material_id: "chain",
+          role: "draft_contract",
+          purpose: "primary_contract",
+          current_document_id: "current",
+          current_version: 2,
+        }),
+      ],
+      material_versions: [
+        {
+          material_id: "chain",
+          version: 1,
+          document_id: "old",
+          previous_document_id: null,
+          created_at: at,
+        },
+        {
+          material_id: "chain",
+          version: 2,
+          document_id: "current",
+          previous_document_id: "old",
+          created_at: at,
+        },
+      ],
+    };
+    const panel = (documentId: string) => (
+      <MaterialCollectionPanel
+        caseDetail={detail}
+        canWrite={false}
+        actorId="actor-1"
+        source={{ documentId, visit: documentId }}
+      />
+    );
+    const view = render(panel("current"));
+    expect(screen.getByText("本版合同.docx", { exact: true })).toHaveAttribute(
+      "id",
+      "case-material-source",
+    );
+    expect(screen.getByRole("button", { name: "当前材料" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    view.rerender(panel("old"));
+    expect(screen.getByText("v1 · 旧版合同.docx · 同一材料的历史版本")).toHaveAttribute(
+      "id",
+      "case-material-source",
+    );
+    expect(screen.getByRole("button", { name: "版本历史" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    view.rerender(panel("missing"));
+    expect(screen.getByRole("heading", { name: "材料" })).toHaveAttribute(
+      "id",
+      "case-material-source",
+    );
+    expect(screen.getByRole("button", { name: "当前材料" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("does not allow legacy confirmation when the service omits its candidate projection", () => {

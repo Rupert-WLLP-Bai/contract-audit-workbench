@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: executeSingleContractPrecheck uses only the frozen primary contract. Governance dependencies are still resolved at admission and revalidated for execution; the full governed… Related `store` operations include executeSingleContractPrecheck.
+// Purpose: Runs the deterministic single-contract capability against the selected frozen source and stores coverage and evidence without turning observations into findings.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-12
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -27,6 +27,7 @@ func (s *Store) executeSingleContractPrecheck(parent, ctx context.Context, runID
 	agentNotice := "智能审查未在此范围执行。"
 	factsNotice := ""
 	var docs []Interpreted
+	var mapping engine.SingleContractMapping
 	agentStepFailureCode := ""
 	runCtx := execution.WithSpan(ctx, attemptID)
 	err := execution.Run(runCtx, recorder,
@@ -39,7 +40,8 @@ func (s *Store) executeSingleContractPrecheck(parent, ctx context.Context, runID
 			if !isSingleContractSnapshot(snapshot) {
 				return errors.New("frozen precheck mapping is unavailable")
 			}
-			if _, err := engine.PublishedSingleContractMapping(snapshot.RuleSetHash); err != nil {
+			mapping, err = engine.PublishedSingleContractMapping(snapshot.RuleSetHash)
+			if err != nil {
 				return err
 			}
 			if s.telecomAttempt(state, runID) {
@@ -76,36 +78,23 @@ func (s *Store) executeSingleContractPrecheck(parent, ctx context.Context, runID
 			if primary == nil {
 				return errors.New("frozen primary contract is unavailable")
 			}
-			source := sourcesOf([]Interpreted{*primary})
-			evaluation := engine.EvaluateSingleContractPaymentSum(source[0])
 			stored, err := s.snapshotForAttemptContext(stageCtx, attemptID)
 			if err != nil {
 				return err
 			}
-			made, err := materialize(runIDCase(stored, runID), runID, attemptID, stamp(), engine.Findings(evaluation), []Interpreted{*primary})
+			evaluation, made, err := singleContractRuleOutput(mapping, *primary, runIDCase(stored, runID), runID, attemptID)
 			if err != nil {
 				return err
-			}
-			evaluationID, err := newID("evl_")
-			if err != nil {
-				return err
-			}
-			findingID := ""
-			if len(made) > 0 {
-				findingID = made[0].ID
 			}
 			err = s.updateExecutionContext(stageCtx, attemptID, func(next *state) error {
 				for _, prior := range next.evaluationsForAttempt(runID, attemptID) {
-					if prior.RuleVersion != engine.SingleContractPrecheckRule {
+					if prior.RuleVersion != evaluation.RuleVersion {
 						return errors.New("precheck contains an unexpected evaluation")
 					}
 					return nil
 				}
 				next.Findings = append(next.Findings, made...)
-				next.Evaluations = append(next.Evaluations, ConstraintEval{ID: evaluationID, RunID: runID, AttemptID: attemptID,
-					CaseID: runIDCase(*next, runID), Domain: evaluation.Domain, Relation: evaluation.Relation,
-					RuleID: engine.SingleContractPrecheckRule, CapabilityID: "single_contract.payment_sum",
-					RuleVersion: evaluation.RuleVersion, Reason: evaluation.Reason, FindingID: findingID})
+				next.Evaluations = append(next.Evaluations, evaluation)
 				return nil
 			})
 			if err != nil {
@@ -130,6 +119,9 @@ func (s *Store) executeSingleContractPrecheck(parent, ctx context.Context, runID
 			return nil
 		}},
 		execution.Stage{Name: "agent_review", Run: func(stageCtx context.Context) error {
+			if !mapping.SupportsAgentReview() {
+				return recordTelecomAgentReviewResult(stageCtx, recorder, "skipped", "agent_review_unavailable")
+			}
 			stored, err := s.snapshotForAttemptContext(stageCtx, attemptID)
 			if err != nil {
 				return err
@@ -200,5 +192,42 @@ func (s *Store) executeSingleContractPrecheck(parent, ctx context.Context, runID
 	if agentStepFailureCode != "" {
 		terminalCode = agentStepFailureCode
 	}
-	_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "partial", "单合同预审仅核对已识别的付款比例；带引用的合同事实属于建议，不构成已确认风险；跨材料比对、正式制度审查和其他风险尚未执行。请补齐材料后发起完整审查。"+factsNotice+agentNotice, terminalCode)
+	_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "partial", mapping.ScopeNotice()+"跨材料比对、正式制度审查和其他风险尚未执行。请补齐材料后发起完整审查。"+factsNotice+agentNotice, terminalCode)
+}
+
+func singleContractRuleOutput(mapping engine.SingleContractMapping, primary Interpreted, caseID, runID, attemptID string) (ConstraintEval, []Finding, error) {
+	id, err := newID("evl_")
+	if err != nil {
+		return ConstraintEval{}, nil, err
+	}
+	docs := []Interpreted{primary}
+	result := mapping.Evaluate(sourcesOf(docs)[0])
+	evaluation := ConstraintEval{ID: id, RunID: runID, AttemptID: attemptID, CaseID: caseID,
+		Domain: result.Domain, RuleID: result.RuleID, RuleVersion: result.RuleID, Relation: result.Relation,
+		CapabilityID: result.CapabilityID, ReasonCode: result.ReasonCode, Reason: result.Reason, FactIDs: result.FactIDs}
+	var made []Finding
+	if len(result.Findings) > 0 {
+		made, err = materialize(caseID, runID, attemptID, stamp(), result.Findings, docs)
+		if err != nil {
+			return ConstraintEval{}, nil, err
+		}
+		evaluation.FindingID = made[0].ID
+	}
+	if len(result.Coverage) == 0 {
+		return evaluation, made, nil
+	}
+	parsedID, digest := parsedIdentity(docs, primary.Document.ID)
+	if parsedID == "" || digest == "" {
+		return ConstraintEval{}, nil, errors.New("payment terms have no frozen parse identity")
+	}
+	for _, anchor := range result.Coverage {
+		ref := ExperienceEvidenceRef{
+			DocumentID: anchor.DocumentID, ParsedDocumentID: parsedID, NormalizedDigest: digest,
+			Quote: anchor.Quote, Start: anchor.Start, End: anchor.End,
+		}
+		for _, kind := range anchor.TermKinds {
+			evaluation.Evidence = append(evaluation.Evidence, EvaluationEvidence{FactID: kind, Ref: ref})
+		}
+	}
+	return evaluation, made, nil
 }

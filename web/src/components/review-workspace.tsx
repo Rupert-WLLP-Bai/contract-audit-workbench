@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders ReviewWorkspaceView, the review workspace workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.
+// Purpose: Composes the frozen attempt, document reading controls and supporting findings, decisions and execution views without displacing the original.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r12
+// Updated: 2026-11-19
+// Revision: r13
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -23,6 +23,7 @@ import type {
   CaseDetail,
   CaseRelationInput,
   DecisionAction,
+  EvidenceAnchor,
   Finding,
   ExecutionAttempt,
   ReviewDocument,
@@ -43,6 +44,10 @@ import { ContractFactsPanel } from "./contract-facts-panel";
 import { FrozenPlaybookPanel } from "./frozen-playbook-panel";
 import { TrajectoryView } from "./trajectory-view";
 import { SingleContractScopeCoverage } from "./single-contract-scope-coverage";
+import {
+  isLegacyPaymentCoverageFinding,
+  singleContractCoverage,
+} from "../features/review/single-contract-coverage";
 import { ReviewOutcomeSummary } from "./review-outcome-summary";
 import {
   canReadmitCancelledPreparation,
@@ -483,38 +488,43 @@ function DocumentRunStatus({
   const casePath = `/cases/${encodeURIComponent(workspace.run.case_id)}`;
   return (
     <>
-      <div className="review-run-controls">
-        <span className="meta">{STREAM_LABEL[streamStatus]}</span>
-        {preparing ? <p>该执行尚未冻结审查输入，检查范围与人工进度待冻结后确认。</p> : null}
-        {preparing &&
-        outcome?.reason === "cancelled_by_user" &&
-        canReadmitCancelledPreparation(workspace) ? (
-          <p>
-            <a href={`${casePath}#review-readiness`}>返回审查准备清单</a>
-          </p>
-        ) : null}
-        {outcome?.reason === "authorization_revoked" ? (
-          <p>本次执行因授权变化而取消，请联系案件管理员核对权限。</p>
-        ) : null}
-        {outcome?.reason === "cancelled_by_user" &&
-        !canReadmitCancelledPreparation(workspace) &&
-        !canRestartUserCancelled(workspace) ? (
-          <p>审查由用户主动取消；冻结输入尚不能核对，请查看审查准备。</p>
-        ) : null}
-        {selected ? (
-          <label className="field">
-            查看执行记录
-            <Select
-              aria-label="查看执行记录"
-              value={selected.id}
-              onChange={onSelectAttempt}
-              options={attemptOptions(attempts)}
-            />
-          </label>
-        ) : (
-          <p>没有获取到本次审查的执行记录。未记录的阶段、耗时和用量不会显示为已知。</p>
-        )}
-      </div>
+      <details className="review-run-details">
+        <summary>
+          执行记录{selected ? ` · 第 ${selected.ordinal} 次 · ${runLabel(selected.state)}` : ""}
+        </summary>
+        <div className="review-run-controls">
+          <span className="meta">{STREAM_LABEL[streamStatus]}</span>
+          {preparing ? <p>本次送审内容尚未确定，检查范围与人工进度待确定后确认。</p> : null}
+          {preparing &&
+          outcome?.reason === "cancelled_by_user" &&
+          canReadmitCancelledPreparation(workspace) ? (
+            <p>
+              <a href={`${casePath}#review-readiness`}>返回审查准备清单</a>
+            </p>
+          ) : null}
+          {outcome?.reason === "authorization_revoked" ? (
+            <p>本次执行因授权变化而取消，请联系案件管理员核对权限。</p>
+          ) : null}
+          {outcome?.reason === "cancelled_by_user" &&
+          !canReadmitCancelledPreparation(workspace) &&
+          !canRestartUserCancelled(workspace) ? (
+            <p>审查由用户主动取消；当次审查依据尚不能核对，请查看审查准备。</p>
+          ) : null}
+          {selected ? (
+            <label className="field">
+              查看执行记录
+              <Select
+                aria-label="查看执行记录"
+                value={selected.id}
+                onChange={onSelectAttempt}
+                options={attemptOptions(attempts)}
+              />
+            </label>
+          ) : (
+            <p>没有获取到本次审查的执行记录。未记录的阶段、耗时和用量不会显示为已知。</p>
+          )}
+        </div>
+      </details>
       {selected?.history_kind === "legacy_unfrozen" ? (
         <p className="callout">
           较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。
@@ -563,10 +573,12 @@ export function ReviewWorkspaceView({
   onCreateRelation,
   onDeleteRelation,
   quoteScope,
+  sourceDocumentId,
   onQuoteSelectionChange,
   selectedEvidenceId = null,
   onSelectEvidence,
   workTarget = null,
+  explicitFindingId = null,
   navigationSerial = 0,
   surface = "full",
 }: {
@@ -574,6 +586,7 @@ export function ReviewWorkspaceView({
   caseDetail?: CaseDetail;
   layout: ReviewLayout;
   selectedId: string | null;
+  explicitFindingId?: string | null;
   streamStatus: StreamStatus;
   showDiagnostics?: boolean;
   pending: boolean;
@@ -607,6 +620,7 @@ export function ReviewWorkspaceView({
   onCreateRelation?: (input: CaseRelationInput) => Promise<void>;
   onDeleteRelation?: (relationId: string) => void;
   quoteScope?: FrozenQuoteScope | null;
+  sourceDocumentId?: string | null;
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
   selectedEvidenceId?: string | null;
   onSelectEvidence?: (evidenceId: string | null) => void;
@@ -658,7 +672,22 @@ export function ReviewWorkspaceView({
     return { ...quoteScope, parsedDocumentIds };
   }, [quoteScope, run.case_id, run.id, selected, workspace.documents]);
   const [findingColumnWidth, setFindingColumnWidth] = useState(440);
-  const [workspaceView, setWorkspaceView] = useState<"context" | "evidence">("evidence");
+  const [workspaceView, setWorkspaceView] = useState<"reading" | "context" | "evidence">("reading");
+  const [coverageLocation, setCoverageLocation] = useState<{
+    attemptId: string;
+    anchor: EvidenceAnchor;
+  } | null>(null);
+  const coverage = singleContractCoverage(workspace);
+  const oldCoverageFindings = workspace.findings.filter((finding) =>
+    isLegacyPaymentCoverageFinding(workspace, finding),
+  );
+  const reviewFindings = workspace.findings.filter(
+    (finding) => !isLegacyPaymentCoverageFinding(workspace, finding),
+  );
+  const activeCoverageEvidence =
+    coverageLocation && coverageLocation.attemptId === selected?.id
+      ? coverageLocation.anchor
+      : null;
   const [factLocation, setFactLocation] = useState<{
     attemptId: string;
     citation: ContractFactsCitation;
@@ -694,8 +723,9 @@ export function ReviewWorkspaceView({
     }
   }, [workspaceView]);
   useEffect(() => {
-    if (workTarget?.kind === "finding") setWorkspaceView("evidence");
-  }, [workTarget?.kind, workTarget?.id, navigationSerial]);
+    if (workTarget?.kind === "finding" || (explicitFindingId && explicitFindingId === selectedId))
+      setWorkspaceView("evidence");
+  }, [workTarget?.kind, workTarget?.id, navigationSerial, explicitFindingId, selectedId]);
   function selectFinding(findingId: string) {
     onSelect(findingId);
     if (workspaceView !== "evidence") {
@@ -728,22 +758,57 @@ export function ReviewWorkspaceView({
           onLoadDiagnostics={onLoadDiagnostics}
         />
       ) : null}
-      {surface === "document" ? (
-        <>
-          <DocumentRunStatus
-            workspace={workspace}
-            streamStatus={streamStatus}
-            selected={selected}
-            attempts={attempts}
-            onSelectAttempt={onSelectAttempt}
-            canCancel={canCancel}
-            cancelling={cancelling}
-            cancelError={cancelError}
-            onCancel={onCancel}
-          />
-        </>
+      <div className="review-reading-controls">
+        {surface === "document" ? (
+          <>
+            <DocumentRunStatus
+              workspace={workspace}
+              streamStatus={streamStatus}
+              selected={selected}
+              attempts={attempts}
+              onSelectAttempt={onSelectAttempt}
+              canCancel={canCancel}
+              cancelling={cancelling}
+              cancelError={cancelError}
+              onCancel={onCancel}
+            />
+          </>
+        ) : null}
+        {showDocument ? (
+          <div className="review-workspace-view-switch" role="group" aria-label="工作区视图">
+            <Button
+              htmlType="button"
+              aria-pressed={workspaceView === "reading"}
+              onClick={() => setWorkspaceView("reading")}
+            >
+              阅读原文
+            </Button>
+            <Button
+              htmlType="button"
+              aria-pressed={workspaceView === "context"}
+              onClick={() => setWorkspaceView("context")}
+            >
+              案件与材料
+            </Button>
+            <Button
+              ref={evidenceViewButton}
+              htmlType="button"
+              aria-pressed={workspaceView === "evidence"}
+              onClick={() => setWorkspaceView("evidence")}
+            >
+              审查结果
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      {surface === "document" && workspace.snapshot?.adopted_playbook ? (
+        <details className="review-playbook-details">
+          <summary>本次审查手册</summary>
+          <FrozenPlaybookPanel adoption={workspace.snapshot.adopted_playbook} />
+        </details>
+      ) : surface !== "document" ? (
+        <FrozenPlaybookPanel adoption={workspace.snapshot?.adopted_playbook} />
       ) : null}
-      <FrozenPlaybookPanel adoption={workspace.snapshot?.adopted_playbook} />
       {showCoverage ? (
         <>
           <ReviewOutcomeSummary workspace={workspace} />
@@ -763,42 +828,60 @@ export function ReviewWorkspaceView({
       ) : null}
       {showDocument ? (
         <>
-          {workspace.contract_facts ? (
-            <ContractFactsPanel
-              facts={workspace.contract_facts}
-              onLocate={(citation) => {
-                setWorkspaceView("evidence");
-                setFactLocation({ attemptId: workspace.contract_facts!.attempt_id, citation });
-              }}
-            />
-          ) : null}
-          <div className="review-workspace-view-switch" role="group" aria-label="工作区视图">
-            <Button
-              htmlType="button"
-              aria-pressed={workspaceView === "context"}
-              onClick={() => setWorkspaceView("context")}
-            >
-              案件与材料
-            </Button>
-            <Button
-              ref={evidenceViewButton}
-              htmlType="button"
-              aria-pressed={workspaceView === "evidence"}
-              onClick={() => setWorkspaceView("evidence")}
-            >
-              原文与风险发现
-            </Button>
-          </div>
+          {coverage.kind === "known" &&
+            coverage.version === "2" &&
+            coverage.payment.status === "observed" && (
+              <section className="reading-payment-evidence" aria-label="付款与结算">
+                <strong>付款与结算</strong>
+                <div>
+                  {coverage.payment.evidence?.map((anchor) => (
+                    <Button
+                      key={anchor.id}
+                      title={anchor.quote}
+                      disabled={
+                        !stageQuoteScope?.sourceProofs?.some(
+                          (proof) =>
+                            proof.documentId === anchor.document_version_id &&
+                            proof.parsedDocumentId === anchor.parsed_document_id,
+                        )
+                      }
+                      onClick={() => {
+                        setFactLocation(null);
+                        setCoverageLocation({ attemptId: selected!.id, anchor: { ...anchor } });
+                        setWorkspaceView("reading");
+                      }}
+                    >
+                      {anchor.observation_labels?.length
+                        ? `${anchor.observation_labels.join("、")}：`
+                        : ""}
+                      {anchor.quote}
+                    </Button>
+                  ))}
+                </div>
+              </section>
+            )}
+          {coverage.kind === "known" &&
+            coverage.version === "2" &&
+            coverage.payment.status === "insufficient" && (
+              <p className="reading-payment-evidence">
+                <strong>付款与结算</strong>
+                <span>本次未定位支持的原文，请结合全文核对。</span>
+              </p>
+            )}
           <div
-            className={`workspace-grid review-workspace-layout workspace-view-${workspaceView} layout-${layout}`}
+            className={`workspace-grid review-workspace-layout workspace-view-${workspaceView} layout-${layout}${activeCoverageEvidence ? " coverage-quote-selected" : ""}`}
             style={gridStyle}
           >
             <DocumentStage
               key={`${run.id}:${workspace.review_attempts?.attempt.id ?? "legacy"}`}
               documents={workspace.documents}
-              finding={workspace.findings.find((item) => item.id === selectedId) ?? null}
-              findings={workspace.findings}
-              selectedFindingId={selectedId}
+              finding={
+                workspaceView === "evidence"
+                  ? (reviewFindings.find((item) => item.id === selectedId) ?? null)
+                  : null
+              }
+              findings={reviewFindings}
+              selectedFindingId={workspaceView === "evidence" ? selectedId : null}
               onSelectFinding={selectFinding}
               layout={layout}
               showDiagnostics={showDiagnostics}
@@ -810,13 +893,15 @@ export function ReviewWorkspaceView({
               onCreateRelation={onCreateRelation}
               onDeleteRelation={onDeleteRelation}
               quoteScope={stageQuoteScope}
+              sourceDocumentId={sourceDocumentId}
+              coverageEvidence={activeCoverageEvidence}
               contractFactsCitation={factCitation}
               contractFactsLocationScope={contractFactsLocationScope}
               onQuoteSelectionChange={onQuoteSelectionChange}
             />
             <WorkspaceResizeHandle value={findingColumnWidth} onChange={setFindingColumnWidth} />
             <FindingPanel
-              findings={workspace.findings}
+              findings={reviewFindings}
               evaluations={workspace.evaluations ?? []}
               documents={workspace.documents}
               selectedId={selectedId}
@@ -845,6 +930,34 @@ export function ReviewWorkspaceView({
               }}
             />
           </div>
+          {coverage.kind === "known" &&
+            !workspace.documents.some((document) => document.role === "procurement") && (
+              <details className="review-secondary-section">
+                <summary>条款比对</summary>
+                <p>本次未包含采购文件，尚不能进行采购条款比对。</p>
+                <a href={`/cases/${encodeURIComponent(run.case_id)}#case-materials`}>
+                  查看案件材料
+                </a>
+              </details>
+            )}
+          {oldCoverageFindings.length > 0 && (
+            <details className="review-secondary-section">
+              <summary>历史规则记录</summary>
+              {oldCoverageFindings.map((finding) => (
+                <p key={finding.id}>{finding.claim}</p>
+              ))}
+            </details>
+          )}
+          {workspace.contract_facts ? (
+            <ContractFactsPanel
+              facts={workspace.contract_facts}
+              onLocate={(citation) => {
+                setCoverageLocation(null);
+                setWorkspaceView("reading");
+                setFactLocation({ attemptId: workspace.contract_facts!.attempt_id, citation });
+              }}
+            />
+          ) : null}
         </>
       ) : null}
       {showCoverage ? (

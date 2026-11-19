@@ -1,10 +1,10 @@
 /* File metadata (manifest mirror): */
-/* Purpose: Defines visual tokens and component/page rules, including Hallmark · built: the project · redesign: restyle…, .home-page-head, .home-welcome, .home-welcome h1; the stylesheet is imported by the web shell and carries no application state. */
+/* Purpose: Styles workbench assignments, recent cases and server-reported summaries within the shared page and semantic surface system. */
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
-/* Updated: 2026-11-08 */
-/* Revision: r6 */
+/* Updated: 2026-11-19 */
+/* Revision: r7 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -13,43 +13,7 @@
 .home-page {
   max-width: 1680px;
   margin-inline: auto;
-  padding: 24px 24px 36px;
-}
-
-.home-page-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.home-welcome {
-  min-width: 0;
-}
-.home-welcome h1 {
-  margin: 0;
-  font-size: 27px;
-  line-height: 1.3;
-}
-.home-welcome > p:last-child {
-  margin: 4px 0 0;
-  color: var(--text-secondary, var(--text-secondary));
-  font-size: 13px;
-}
-.home-case-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 36px;
-  padding-inline: 16px;
-  white-space: nowrap;
-  text-decoration: none;
-}
-.home-case-link svg {
-  width: 17px;
-  height: 17px;
+  padding: var(--space-6) var(--space-6) var(--space-8);
 }
 
 .home-metrics {
@@ -156,13 +120,6 @@
   font-size: 17px;
   line-height: 1.4;
 }
-.home-figure-badge {
-  display: inline-flex;
-  min-width: 22px;
-  height: 21px;
-  align-items: center;
-  justify-content: center;
-}
 .home-panel-meta {
   color: var(--text-secondary, var(--text-secondary));
   font-size: 12px;
@@ -176,14 +133,8 @@
   border-bottom: 1px solid var(--border-default, var(--border-default));
   scrollbar-width: thin;
 }
-.home-case-work {
-  margin-bottom: 16px;
-  background: var(--surface-raised, var(--surface-raised));
-}
 .home-case-work-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 24px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -669,21 +620,6 @@
   .home-page {
     padding: 16px 16px 28px;
   }
-  .home-page-head {
-    align-items: flex-start;
-    margin-bottom: 16px;
-  }
-  .home-welcome h1 {
-    font-size: 23px;
-  }
-  .home-welcome > p:last-child {
-    font-size: 12px;
-  }
-  .home-case-link {
-    min-height: 32px;
-    padding-inline: 8px;
-    font-size: 12px;
-  }
   .home-metrics {
     gap: 8px;
     margin-bottom: 12px;
@@ -784,13 +720,6 @@
   .home-page {
     padding-inline: 8px;
   }
-  .home-page-head {
-    gap: 8px;
-  }
-  .home-case-link {
-    padding-inline: 8px;
-    font-size: 10px;
-  }
   .home-metric {
     gap: 8px;
     padding-inline: 8px;
@@ -810,11 +739,6 @@
     gap: 4px;
     padding-inline: 4px;
   }
-}
-.home-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 .home-period-select {
   display: flex;
@@ -1012,13 +936,6 @@
   text-align: right;
 }
 @media (max-width: 620px) {
-  .home-page-head {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .home-head-actions {
-    justify-content: space-between;
-  }
   .home-task-row {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas: "copy complete" "state complete";
@@ -1056,22 +973,6 @@
 .home-page {
   max-width: 1720px;
   padding: 20px 24px 40px;
-}
-.home-page-head {
-  align-items: flex-end;
-  margin-bottom: 16px;
-}
-.home-welcome h1 {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-.home-welcome > p:last-child {
-  max-width: 72ch;
-  margin: 8px 0 0;
-  color: var(--text-secondary);
-  font-size: 13px;
 }
 .home-eyebrow {
   display: none;
@@ -1146,15 +1047,6 @@
 .home-section-title h2 {
   font-weight: 600;
 }
-.home-figure-badge {
-  min-width: 22px;
-  height: 22px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-control);
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
 .home-content-grid {
   gap: 16px;
 }
@@ -1200,35 +1092,38 @@
   }
 }
 
-/* Put actionable work immediately after the transparent summary. */
-.home-tasks {
-  margin-bottom: 16px;
+.home-focus-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
 }
-.home-review-link {
-  display: inline-flex;
+
+.home-reporting-head {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  min-height: 36px;
-  padding: 0 16px;
-  border-radius: var(--radius-control);
-  background: var(--action-primary);
-  color: var(--surface-raised);
-  text-decoration: none;
-  white-space: nowrap;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-block: var(--space-6) var(--space-3);
 }
-.home-review-link:hover {
-  color: var(--surface-raised);
-  opacity: 0.9;
+
+.home-reporting-head h2 {
+  margin: 0;
+  font-size: 18px;
 }
-.home-review-link:focus-visible {
-  outline: 2px solid var(--action-primary);
-  outline-offset: 3px;
+
+.home-focus-grid + .home-recent {
+  margin-bottom: var(--space-4);
+}
+
+@media (max-width: 1080px) {
+  .home-focus-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 @media (max-width: 620px) {
-  .home-head-actions {
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
   .home-panel-head {
     flex-wrap: wrap;
   }

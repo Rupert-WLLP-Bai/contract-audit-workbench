@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: 实现 `ProvisionKind`, `ProvisionReconciliation`, `ProvisionStepName`, `TenantProvisionInput` 等界面组件或状态处理，呈现服务端返回的业务数据并提交受控用户操作。
+// Purpose: Lists tenant lifecycle operations and receipts with authorized actions, bounded table scrolling and visible handling for unknown results.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-12
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -712,8 +712,9 @@ export function TenantLifecyclePage() {
   return (
     <ListPage
       className="tenant-lifecycle-page"
+      standaloneSurface={false}
       title="租户生命周期管理"
-      description="平台控制操作与租户自助运维分别授权。页面记录幂等操作、步骤回执和外部结果核对；未知结果不得盲目重试。"
+      description="登记租户操作，查看步骤和回执。未知结果不得盲目重试。"
       actions={<Button onClick={() => void pageQuery.refetch()}>刷新操作</Button>}
       beforeSummary={
         <OperationCreator
@@ -734,12 +735,13 @@ export function TenantLifecyclePage() {
         </dl>
       }
     >
-      <Card className="lifecycle-operations-card" title="持久化操作记录">
+      <Card className="lifecycle-operations-card" title="操作记录">
         <Table<TenantProvisionOperation>
           rowKey="operation_id"
           size="small"
           pagination={false}
           columns={columns}
+          scroll={{ x: 680 }}
           dataSource={page?.operations ?? []}
         />
         <Space className="lifecycle-pagination">

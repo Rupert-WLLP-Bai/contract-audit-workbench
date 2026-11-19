@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Provides attempt-scoped original-reading identity and switches between original annotations and frozen text without changing evidence or decisions.
+// Purpose: Presents an authorized source file in its supported original view, preserving integrity verification and original-file controls within the review workspace.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-19
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -17,6 +17,8 @@ export interface OriginalReadScope {
   caseId: string;
   contextKey: string;
   digests: ReadonlyMap<string, string>;
+  editableDocumentIds?: ReadonlySet<string>;
+  editDocument?: (documentId: string) => void;
 }
 
 export const OriginalSourceContext = createContext<OriginalReadScope | null>(null);
@@ -69,6 +71,7 @@ export function OriginalDocumentReader({
     if (hasKeyClauses && !initialKeyClausesShown.current && quotes.length === 0) setMode("text");
     if (hasKeyClauses) initialKeyClausesShown.current = true;
   }, [hasKeyClauses, quotes.length]);
+  const keyClauseId = keyClause?.id;
   const effectiveMode = keyClause ? "text" : mode;
   useEffect(() => {
     if (noPage) setMode("text");
@@ -90,8 +93,10 @@ export function OriginalDocumentReader({
     if (mark && pane && pane.scrollHeight > pane.clientHeight) {
       pane.scrollTop +=
         mark.getBoundingClientRect().top - pane.getBoundingClientRect().top - pane.clientHeight / 2;
+    } else if (mark && (keyClauseId || focusRange) && typeof mark.scrollIntoView === "function") {
+      mark.scrollIntoView({ block: "center" });
     }
-  }, [effectiveMode, focusRange?.start, keyClause?.id, quoteIdentity]);
+  }, [effectiveMode, focusRange?.start, keyClauseId, quoteIdentity]);
   return (
     <section
       ref={reader}
@@ -99,6 +104,9 @@ export function OriginalDocumentReader({
       aria-label={`${filename}原件与文字对照`}
     >
       <div className="original-reader-modes" role="group" aria-label="原文显示方式">
+        {scope.editableDocumentIds?.has(documentId) && (
+          <Button onClick={() => scope.editDocument?.(documentId)}>编辑合同修改稿</Button>
+        )}
         <Button
           aria-pressed={effectiveMode === "original"}
           disabled={Boolean(keyClause && !onClearKeyClause)}
@@ -114,23 +122,21 @@ export function OriginalDocumentReader({
         </Button>
       </div>
       {keyClause ? (
-        <div className="original-reader-key-clause" aria-label="关键条款冻结文字位置">
+        <div className="original-reader-key-clause" aria-label="关键条款原文位置">
           <p role="status">
-            关键条款“{keyClause.heading}”已在冻结文字中定位（{keyClause.sourceLabel}）；
-            {keyClause.page === null
-              ? "原件页码未记录，只定位冻结文字。"
-              : `ClauseNode 记录的起始页为第 ${keyClause.page} 页。`}
+            已定位“{keyClause.heading}”的原文。
+            {keyClause.page === null ? "未记录页码。" : `起始页：第 ${keyClause.page} 页。`}
           </p>
           <blockquote>{keyClause.quote}</blockquote>
         </div>
       ) : null}
       {focusRange && effectiveMode === "text" && !keyClause ? (
         <p className="meta" role="status">
-          已按引用位置打开冻结文字；请结合上下文核对这条事实建议。
+          已按引用位置打开原文；请结合上下文核对这条事实建议。
         </p>
       ) : null}
       {effectiveMode === "text" && keyClause === null && noPage ? (
-        <p className="meta">引用未记录原件页码，已显示冻结文字中的位置；可切换原件自行核对页码。</p>
+        <p className="meta">引用未记录原件页码，已显示原文中的位置；可切换原件自行核对页码。</p>
       ) : null}
       {effectiveMode === "text" ? (
         children

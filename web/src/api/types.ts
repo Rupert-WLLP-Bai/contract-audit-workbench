@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Collects client-side types for server wire projections such as sessions, cases, reviews and parsed documents; these declarations do not authorize access.
+// Purpose: Defines client-facing API domain types, including compatibility with historical single-contract executions and exact payment observation references.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r9
+// Updated: 2026-11-19
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -178,6 +178,7 @@ export interface EvidenceAnchor {
   text_offset: TextOffset | null;
   bbox: BoundingBox | null;
   mismatch_reason: string | null;
+  observation_labels?: string[];
 }
 
 // The UI displays only these fields of the server's decision history.
@@ -220,7 +221,10 @@ export interface ReviewDocument extends DocumentVersion {
   parsed_document_id: string | null;
   text: string | null;
   clauses: ClauseNode[];
+  table_cells?: ReviewTableCell[];
 }
+
+export type ReviewTableCell = WireSchemas["ReviewTableCell"];
 
 export type FindingVerification = "verified" | "unverified" | "unknown";
 export interface ReviewScopeIdentity {
@@ -778,6 +782,7 @@ export interface ConstraintEvaluation {
   finding_id: string | null;
   reason_code: string;
   fact_ids: string[];
+  evidence?: EvidenceAnchor[];
 }
 
 export interface RevisionComparison {

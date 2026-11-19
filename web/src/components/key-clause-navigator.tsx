@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Provides legal-review navigation to verified frozen contract clauses and bounded source fragments without creating risk conclusions.
+// Purpose: Lists a limited set of exact frozen-source reading highlights by topic and locates the selected excerpt in the document.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12
 // Updated: 2026-11-19
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -27,7 +27,7 @@ export function KeyClauseNavigator({
   const selected = navigation.candidates.find((candidate) => candidate.id === selectedId) ?? null;
   return (
     <section className="key-clause-navigator" aria-label="关键条款导航">
-      <h3>关键条款导航</h3>
+      <h3>阅读重点</h3>
 
       {navigation.candidates.length === 0 ? (
         <p className="meta" role="status">
@@ -67,17 +67,11 @@ export function KeyClauseNavigator({
       ) : null}
       {selected ? (
         <p className="key-clause-selection" role="status">
-          已在冻结文字中定位“{selected.heading}”；
-          {selected.kind === "fragment"
-            ? "这是正文片段，不是已解析的完整结构化条款；原件页码未记录，只定位冻结文字。"
-            : selected.page === null
-              ? "原件页码未记录，只定位冻结文字。"
-              : `ClauseNode 记录的起始页为第 ${selected.page} 页。`}
+          已定位“{selected.heading}”。
+          {selected.page === null ? "未记录页码。" : `起始页：第 ${selected.page} 页。`}
         </p>
       ) : null}
-      <p className="meta">
-        虚线标出常查条款，实线框表示当前选择；搜索和证据使用各自颜色。点选可定位，是否存在风险由审查人员判断。
-      </p>
+      <p className="meta">选择后跳到原文。</p>
     </section>
   );
 }

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Shows the authenticated actor’s contract-approval inbox by todo/done/initiated view, loads frozen round/task details and submits only the server-provided decision actions with revision/idempotency context.
+// Purpose: Presents the authorized approval inbox, relevant record detail and server-backed processing or retries across the three approval views.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-19
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -391,7 +391,7 @@ function RevisionDiff({ detail }: { detail: ApprovalRoundReadDetail }) {
       <section className="approval-detail-section" aria-label="轮次差异">
         <h3>轮次差异</h3>
         <p className="approval-muted">
-          本轮与第 {detail.previous_round.round_number} 轮使用同一冻结版本，正文没有变化。
+          本轮与第 {detail.previous_round.round_number} 轮使用同一留档版本，正文没有变化。
         </p>
       </section>
     );
@@ -560,11 +560,11 @@ function ApprovalDetailBody({
           </dd>
         </div>
         <div>
-          <dt>冻结版本</dt>
+          <dt>留档版本</dt>
           <dd className="approval-mono">{detail.round.contract_revision_id}</dd>
         </div>
       </dl>
-      <FrozenPlaybookPanel adoption={detail.adopted_playbook} heading="本轮冻结采用的审查手册" />
+      <FrozenPlaybookPanel adoption={detail.adopted_playbook} heading="本轮采用的审查手册" />
       <RoundTimeline detail={detail} selectedTaskId={selectedTaskId} />
       <DecisionForm detail={detail} activeTask={activeTask} />
       <RevisionDiff detail={detail} />
@@ -598,7 +598,7 @@ function ApprovalDetailPanel({
         <PageStatus
           kind="empty"
           title="选择一条记录查看详情"
-          detail="待办、已办和轮次可以在这里查看节点意见与冻结版本差异。"
+          detail="待办、已办和轮次可以在这里查看节点意见与留档版本差异。"
         />
       </aside>
     );
@@ -678,16 +678,11 @@ export function ApprovalTasksPage() {
   return (
     <ListPage
       className="approval-page"
+      standaloneSurface={false}
       title="合同会签"
-      description="待办只显示服务端仍标记为活动的任务。通过和退回只有在服务端确认后才会改变状态；失败重试复用同一幂等键。"
       summary={
-        <div className="approval-summary" aria-label="会签视图摘要">
-          <span>
-            当前视图：<strong>{VIEW_LABELS[view]}</strong>
-          </span>
-          <span>
-            已加载 <strong>{items.length}</strong> 项
-          </span>
+        <div className="approval-summary" role="status">
+          已加载 <strong>{items.length}</strong> 项
         </div>
       }
       filters={
