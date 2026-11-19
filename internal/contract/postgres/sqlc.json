@@ -1,0 +1,23 @@
+{
+  "version": "2",
+  "sql": [
+    {
+      "engine": "postgresql",
+      "schema": "../../store/migrations/0021_contract_ledger.sql",
+      "queries": "internal/savedviewquery/saved_views.sql",
+      "gen": {
+        "go": {
+          "package": "savedviewquery",
+          "out": "internal/savedviewquery",
+          "sql_package": "pgx/v5",
+          "omit_unused_structs": true,
+          "emit_methods_with_db_argument": true,
+          "overrides": [
+            {"column": "clm_contract_saved_views.view_id", "go_type": "string"},
+            {"db_type": "timestamptz", "go_type": "time.Time"}
+          ]
+        }
+      }
+    }
+  ]
+}

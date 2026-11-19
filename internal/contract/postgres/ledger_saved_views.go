@@ -10,12 +10,15 @@
 
 package postgres
 
+//go:generate python3 ../../../scripts/generate_saved_view_query.py
+
 import (
 	"context"
 	"encoding/json"
 	"errors"
 
 	"contractaudit/internal/contract/ledger"
+	"contractaudit/internal/contract/postgres/internal/savedviewquery"
 	"contractaudit/internal/fault"
 	platform "contractaudit/internal/platform/postgres"
 
@@ -33,23 +36,22 @@ func NewSavedViewCommands(tx platform.Executor) *SavedViewCommands {
 }
 
 func (r *SavedViewCommands) List(ctx context.Context, identity ledger.SavedViewIdentity) ([]ledger.SavedView, error) {
-	rows, err := r.tx.Query(ctx, `SELECT view_id,name,filter,columns,row_version,created_at,updated_at
-		FROM clm_contract_saved_views WHERE tenant_id=$1 AND owner_user_id=$2
-		ORDER BY updated_at DESC,view_id DESC`, identity.TenantID, identity.ActorID)
+	rows, err := savedviewquery.New().ListSavedViews(ctx, r.tx, savedviewquery.ListSavedViewsParams{
+		TenantID: identity.TenantID, OwnerUserID: identity.ActorID,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []ledger.SavedView{}
-	for rows.Next() {
-		item, err := scanSavedView(rows)
+	out := make([]ledger.SavedView, 0, len(rows))
+	for _, row := range rows {
+		filter, columns, err := ledger.DecodeStoredSavedView(row.Filter, row.Columns)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+		out = append(out, ledger.SavedView{
+			ViewID: row.ViewID, Name: row.Name, Filter: filter, Columns: columns,
+			RowVersion: row.RowVersion, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		})
 	}
 	return out, nil
 }
@@ -116,25 +118,6 @@ func (r *SavedViewCommands) Delete(ctx context.Context, identity ledger.SavedVie
 		return r.savedViewMutationMiss(ctx, identity, viewID)
 	}
 	return nil
-}
-
-type savedViewRowScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanSavedView(row savedViewRowScanner) (ledger.SavedView, error) {
-	var item ledger.SavedView
-	var filterJSON, columnsJSON []byte
-	if err := row.Scan(&item.ViewID, &item.Name, &filterJSON, &columnsJSON, &item.RowVersion,
-		&item.CreatedAt, &item.UpdatedAt); err != nil {
-		return ledger.SavedView{}, err
-	}
-	filter, columns, err := ledger.DecodeStoredSavedView(filterJSON, columnsJSON)
-	if err != nil {
-		return ledger.SavedView{}, err
-	}
-	item.Filter, item.Columns = filter, columns
-	return item, nil
 }
 
 func (r *SavedViewCommands) savedViewMutationMiss(ctx context.Context, identity ledger.SavedViewIdentity, viewID string) error {

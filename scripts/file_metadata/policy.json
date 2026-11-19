@@ -489,6 +489,14 @@
       ],
       "handling": "manifest-only",
       "reason": "Versioned SQL migration bytes are integrity-checked after application and must not be changed by metadata headers."
+    },
+    {
+      "id": "contract-saved-views-sqlc-input",
+      "paths": [
+        "internal/contract/postgres/internal/savedviewquery/saved_views.sql"
+      ],
+      "handling": "manifest-only",
+      "reason": "The saved-view query file is a direct sqlc input with named-query directives. Keep its SQL bytes and directive positions independent of metadata changes."
     }
   ],
   "unclassified_file_policy": "Do not infer a comment syntax or purpose. Add a reviewed class or path rule before the complete inventory is accepted.",
