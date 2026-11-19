@@ -216,7 +216,7 @@ describe("contract ledger API routes", () => {
 
   it("keeps the ledger list cursor and reference-check query on their existing routes", async () => {
     const ledgerURL =
-      "/api/contracts?text=%E8%AE%BE%E5%A4%87+%2F%3F&contract_state=draft&cursor=cursor%2B%2F%3D&limit=25";
+      "/api/contracts?text=%E8%AE%BE%E5%A4%87+%2F%3F&department_id=org%2F1&contract_state=draft&cursor=cursor%2B%2F%3D&limit=25";
     const referenceURL = `/api/contracts/${viewID}/reference-checks?case_id=%E6%A1%88%E4%BB%B6%20%2F%3F`;
     const fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       if (String(url) === ledgerURL && init?.method === "GET")
@@ -227,10 +227,63 @@ describe("contract ledger API routes", () => {
     });
     vi.stubGlobal("fetch", fetch);
     await expect(
-      listContractLedger({ text: "设备 /?", contract_state: "draft" }, "cursor+/=", 25),
+      listContractLedger(
+        { text: "设备 /?", contract_state: "draft", department_id: "org/1" },
+        "cursor+/=",
+        25,
+      ),
     ).resolves.toEqual({ items: [], next_cursor: null, has_more: false });
     await expect(checkContractReferences(viewID, "案件 /?")).rejects.toMatchObject({ status: 404 });
     expect(fetch.mock.calls.map(([url]) => String(url))).toEqual([ledgerURL, referenceURL]);
+  });
+
+  it("retains older ledger state strings and decimal amounts across nullable fields", async () => {
+    const item = {
+      contract_id: viewID,
+      authority_mode: "legacy_mode",
+      name: "历史合同",
+      number: null,
+      amount: "9999999999999999.99",
+      currency: "CNY",
+      contract_state: "legacy_state",
+      workflow_state: "legacy_workflow",
+      department_id: null,
+      owner_org_id: actor.org_id,
+      row_version: 1,
+      created_at: at,
+      updated_at: at,
+    };
+    const fetch = vi.fn(async (_url: RequestInfo | URL) =>
+      json({ items: [item], next_cursor: null, has_more: false }),
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const page = await listContractLedger({
+      contract_state: "external_observed",
+      workflow_state: "external_observed",
+    });
+    expect(String(fetch.mock.calls[0]?.[0])).toBe(
+      "/api/contracts?contract_state=external_observed&workflow_state=external_observed&limit=25",
+    );
+    expect(page).toEqual({ items: [item], next_cursor: null, has_more: false });
+    expect(page.items[0]?.supplier_name).toBeUndefined();
+
+    fetch.mockResolvedValueOnce(
+      json({ items: [{ ...item, unrecognized: true }], next_cursor: null, has_more: false }),
+    );
+    await expect(listContractLedger({})).rejects.toMatchObject({ code: "invalid_response" });
+  });
+
+  it("reads historical saved filters with omitted and null values", async () => {
+    const oldFilter = { contract_state: "legacy_state", workflow_state: null };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json({ items: [{ ...view, filter: oldFilter }] })),
+    );
+
+    await expect(listContractSavedViews()).resolves.toEqual([
+      { ...view, filter: { contract_state: "legacy_state" } },
+    ]);
   });
 
   it("rejects an expired or revoked export without returning CSV", async () => {

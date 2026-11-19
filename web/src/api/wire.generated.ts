@@ -533,6 +533,62 @@ export interface components {
             unallocated_quantity: string;
             unit?: string;
         };
+        ContractLedgerFilter: {
+            amount_max?: string;
+            amount_min?: string;
+            /** @enum {string} */
+            authority_mode?: "native" | "external";
+            /** @enum {string} */
+            contract_state?: "draft" | "ready_to_sign" | "registered" | "performing" | "closed" | "terminated" | "external_observed";
+            /** Format: date-time */
+            created_from?: string;
+            /** Format: date-time */
+            created_to?: string;
+            department_id?: string;
+            procurement_method?: string;
+            project_type?: string;
+            /** Format: date */
+            signing_date_from?: string;
+            /** Format: date */
+            signing_date_to?: string;
+            supplier_name?: string;
+            text?: string;
+            /** @enum {string} */
+            validity_state?: "active" | "voided";
+            /** @enum {string} */
+            workflow_state?: "not_started" | "in_review" | "external_observed";
+        };
+        ContractLedgerItem: {
+            amount: string | null;
+            /** @enum {string} */
+            authority_mode: "native" | "external";
+            /** Format: uuid */
+            contract_id: string;
+            /** @enum {string} */
+            contract_state: "draft" | "ready_to_sign" | "registered" | "performing" | "closed" | "terminated" | "external_observed";
+            /** Format: date-time */
+            created_at: string;
+            currency: string | null;
+            department_id?: string | null;
+            name: string;
+            number: string | null;
+            owner_org_id: string;
+            procurement_method?: string | null;
+            project_type?: string | null;
+            row_version: number;
+            signing_date?: string | null;
+            source_system?: string | null;
+            supplier_name?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            /** @enum {string} */
+            workflow_state: "not_started" | "in_review" | "external_observed";
+        };
+        ContractLedgerPage: {
+            has_more: boolean;
+            items: components["schemas"]["ContractLedgerItem"][];
+            next_cursor: string | null;
+        };
         ContractLifecycleOverview: {
             acceptances: components["schemas"]["ContractAcceptanceList"];
             assets: components["schemas"]["ContractAssetList"];

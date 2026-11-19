@@ -52,6 +52,8 @@ const ROOTS = [
   "ContractAcceptanceDefectInput",
   "ContractAcceptanceList",
   "ContractAcceptanceRequest",
+  "ContractLedgerFilter",
+  "ContractLedgerPage",
   "ContractSourceCapability",
   "ContractLifecycleOverview",
   "ContractDelivery",

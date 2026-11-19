@@ -1648,50 +1648,20 @@ export const CONTRACT_LEDGER_DEFAULT_COLUMNS: ContractLedgerColumn[] = [
   "updated_at",
 ];
 
-export interface ContractLedgerFilter {
-  text?: string;
-  supplier_name?: string;
-  department_id?: string;
-  contract_state?: string;
-  workflow_state?: string;
-  authority_mode?: string;
-  validity_state?: string;
-  project_type?: string;
-  procurement_method?: string;
-  amount_min?: string;
-  amount_max?: string;
-  signing_date_from?: string;
-  signing_date_to?: string;
-  created_from?: string;
-  created_to?: string;
-}
+type LedgerStateField = "authority_mode" | "contract_state" | "workflow_state";
+type LedgerFilterStateField = LedgerStateField | "validity_state";
 
-export interface ContractLedgerItem {
-  contract_id: string;
-  authority_mode: string;
-  name: string;
-  number: string | null;
-  amount: string | null;
-  currency: string | null;
-  contract_state: string;
-  workflow_state: string;
-  supplier_name?: string | null;
-  department_id?: string | null;
-  project_type?: string | null;
-  procurement_method?: string | null;
-  signing_date?: string | null;
-  source_system?: string | null;
-  owner_org_id: string;
-  row_version: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ContractLedgerPage {
+// Keep historical codes readable in saved filters and ledger rows.
+export type ContractLedgerFilter = Omit<
+  WireSchemas["ContractLedgerFilter"],
+  LedgerFilterStateField
+> &
+  Partial<Record<LedgerFilterStateField, string>>;
+export type ContractLedgerItem = Omit<WireSchemas["ContractLedgerItem"], LedgerStateField> &
+  Record<LedgerStateField, string>;
+export type ContractLedgerPage = Omit<WireSchemas["ContractLedgerPage"], "items"> & {
   items: ContractLedgerItem[];
-  next_cursor: string | null;
-  has_more: boolean;
-}
+};
 
 export interface ContractSavedView {
   view_id: string;
@@ -1722,23 +1692,52 @@ export interface ContractExportRequest {
   format: "csv";
 }
 
-const LEDGER_FILTER_KEYS = [
-  "text",
-  "supplier_name",
-  "department_id",
+// Use one exhaustive list in the URL and saved-filter response, in request order.
+const LEDGER_FILTER_FIELDS = {
+  text: true,
+  supplier_name: true,
+  department_id: true,
+  contract_state: true,
+  workflow_state: true,
+  authority_mode: true,
+  validity_state: true,
+  project_type: true,
+  procurement_method: true,
+  amount_min: true,
+  amount_max: true,
+  signing_date_from: true,
+  signing_date_to: true,
+  created_from: true,
+  created_to: true,
+} satisfies Record<keyof WireSchemas["ContractLedgerFilter"], true>;
+const LEDGER_FILTER_KEYS = Object.keys(
+  LEDGER_FILTER_FIELDS,
+) as (keyof typeof LEDGER_FILTER_FIELDS)[];
+
+const REQUIRED_LEDGER_ITEM_KEYS = [
+  "contract_id",
+  "authority_mode",
+  "name",
+  "number",
+  "amount",
+  "currency",
   "contract_state",
   "workflow_state",
-  "authority_mode",
-  "validity_state",
+  "owner_org_id",
+  "row_version",
+  "created_at",
+  "updated_at",
+] as const satisfies readonly (keyof ContractLedgerItem)[];
+
+const LEDGER_ITEM_KEYS = [
+  ...REQUIRED_LEDGER_ITEM_KEYS,
+  "supplier_name",
+  "department_id",
   "project_type",
   "procurement_method",
-  "amount_min",
-  "amount_max",
-  "signing_date_from",
-  "signing_date_to",
-  "created_from",
-  "created_to",
-] as const;
+  "signing_date",
+  "source_system",
+] as const satisfies readonly (keyof ContractLedgerItem)[];
 
 function ledgerColumn(value: unknown, path: string): ContractLedgerColumn {
   const candidate = text(value, path);
@@ -1760,54 +1759,15 @@ function exportColumn(value: unknown, path: string): ContractExportColumn {
 function parseLedgerFilter(value: unknown, path: string): ContractLedgerFilter {
   const row = record(value, path, LEDGER_FILTER_KEYS, []);
   const filter: ContractLedgerFilter = {};
-  const read = (key: keyof ContractLedgerFilter) => {
+  for (const key of LEDGER_FILTER_KEYS) {
     const entry = row[key];
-    if (entry === undefined || entry === null) return;
-    filter[key] = text(entry, `${path}.${key}`);
-  };
-  for (const key of LEDGER_FILTER_KEYS) read(key);
+    if (entry !== undefined && entry !== null) filter[key] = text(entry, `${path}.${key}`);
+  }
   return filter;
 }
 
 function parseLedgerItem(value: unknown, path: string): ContractLedgerItem {
-  const item = record(
-    value,
-    path,
-    [
-      "contract_id",
-      "authority_mode",
-      "name",
-      "number",
-      "amount",
-      "currency",
-      "contract_state",
-      "workflow_state",
-      "supplier_name",
-      "department_id",
-      "project_type",
-      "procurement_method",
-      "signing_date",
-      "source_system",
-      "owner_org_id",
-      "row_version",
-      "created_at",
-      "updated_at",
-    ],
-    [
-      "contract_id",
-      "authority_mode",
-      "name",
-      "number",
-      "amount",
-      "currency",
-      "contract_state",
-      "workflow_state",
-      "owner_org_id",
-      "row_version",
-      "created_at",
-      "updated_at",
-    ],
-  );
+  const item = record(value, path, LEDGER_ITEM_KEYS, REQUIRED_LEDGER_ITEM_KEYS);
   const optional = (key: string) =>
     item[key] === undefined ? undefined : nullableText(item[key], `${path}.${key}`);
   return {
@@ -1833,12 +1793,7 @@ function parseLedgerItem(value: unknown, path: string): ContractLedgerItem {
 }
 
 export function parseContractLedgerPage(value: unknown): ContractLedgerPage {
-  const page = record(
-    value,
-    "contracts",
-    ["items", "next_cursor", "has_more"],
-    ["items", "next_cursor", "has_more"],
-  );
+  const page = record(value, "contracts", ["items", "next_cursor", "has_more"]);
   return {
     items: array(page.items, "contracts.items", parseLedgerItem),
     next_cursor: nullableText(page.next_cursor, "contracts.next_cursor"),

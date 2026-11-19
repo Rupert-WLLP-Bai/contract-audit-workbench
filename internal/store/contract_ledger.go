@@ -61,11 +61,6 @@ func validateContractLedgerFilter(filter *ContractLedgerFilter) error {
 	return ledger.ValidateFilter(filter)
 }
 
-func normalizeContractLedgerColumns(columns []string) ([]string, error) {
-	return ledger.NormalizeSavedViewColumns(columns)
-}
-
-func validateContractLedgerSort(sort string) (string, error) { return ledger.ValidateSort(sort) }
 func contractLedgerFilterDigest(filter ContractLedgerFilter, sort string) (string, error) {
 	return ledger.FilterDigest(filter, sort)
 }
@@ -94,10 +89,6 @@ func (s *Store) beginContractLedgerRead(ctx context.Context, user accounts.User)
 		return nil, accounts.User{}, err
 	}
 	return tx, current, nil
-}
-
-func contractLedgerItemFrom(record clmContractRecord, content []byte, inReview bool) (ContractLedgerItem, error) {
-	return ledger.ItemFromAggregate(record, content, inReview)
 }
 
 // ListContractLedger returns one authorized keyset page. SQL narrows by the
