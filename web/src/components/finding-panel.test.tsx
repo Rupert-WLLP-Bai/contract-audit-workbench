@@ -130,21 +130,36 @@ describe("finding panel", () => {
           claim: "历史已判断",
           decisions: [{ ...decision, action: "accept_residual" }],
         }),
+        finding({
+          id: "dismissed",
+          claim: "复核后已判断",
+          origin: "model",
+          decisions: [{ ...decision, action: "false_positive" }],
+        }),
       ],
     });
     const panel = within(screen.getByRole("region", { name: "风险线索" }));
     expect(panel.getByRole("button", { name: "待判断" })).toHaveTextContent("1");
-    expect(panel.getByRole("button", { name: "已判断" })).toHaveTextContent("1");
+    expect(panel.getByRole("button", { name: "已判断" })).toHaveTextContent("2");
     expect(panel.queryByRole("button", { name: "选择线索：历史已判断" })).not.toBeInTheDocument();
     await user.click(panel.getByRole("button", { name: "已判断" }));
     expect(onSelect).toHaveBeenCalledWith("done");
     expect(panel.getByText(/接受残余风险/)).toBeInTheDocument();
+    const dismissed = panel.getByRole("button", { name: "选择线索：复核后已判断" }).closest("li")!;
+    expect(dismissed).toHaveAttribute("data-source", "record");
+    expect(within(dismissed).getByText("AI 建议")).toBeInTheDocument();
+    expect(within(dismissed).getByText(/不构成风险/)).toBeInTheDocument();
   });
 
   it("confirms model risks only when every citation matches an exact selected parse and span", async () => {
     const user = userEvent.setup();
     const anchor = { ...locatedAnchor, normalized_digest: null };
-    const model = finding({ origin: "model", evidence: [anchor], verification_status: "unknown" });
+    const model = finding({
+      origin: "model",
+      evidence: [anchor],
+      verification_status: "unknown",
+      unverified_reason: severitySource.reason,
+    });
     const context = {
       caseId: "case",
       runId: "run",
@@ -169,7 +184,11 @@ describe("finding panel", () => {
     const view = render(<FindingPanel {...props} findings={[model]} />);
     const confirm = screen.getByRole("radio", { name: "确认是风险" });
     expect(confirm).toBeEnabled();
-    await user.click(screen.getByRole("button", { name: /合同.txt.*原文已对上/ }));
+    expect(screen.getByText(severitySource.reason)).toBeInTheDocument();
+    const citation = screen.getByRole("button", { name: /合同.txt.*原文已对上/ });
+    expect(citation.closest("li")).toHaveAttribute("data-evidence-document-version-id", "doc-1");
+    expect(citation.closest("li")).toHaveAttribute("data-evidence-parsed-document-id", "parsed-1");
+    await user.click(citation);
     expect(onSelectCitation).toHaveBeenCalledWith(model.id, anchor);
     await user.click(confirm);
     await user.type(screen.getByRole("textbox", { name: "理由" }), "核对完成");

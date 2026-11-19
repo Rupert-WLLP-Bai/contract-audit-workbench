@@ -68,6 +68,11 @@ const WORKSPACE_FILTERS = [
   { id: "all", label: "全部" },
 ] as const;
 type WorkspaceFilter = (typeof WORKSPACE_FILTERS)[number]["id"];
+const WORKSPACE_DECISION_ACTIONS = [
+  { action: "confirm_risk", label: "确认是风险" },
+  { action: "false_positive", label: "不构成风险" },
+  { action: "insufficient_evidence", label: "依据不够" },
+] as const;
 
 function isModelFinding(finding: Finding): boolean {
   return finding.origin === "model" || finding.origin === "ai";
@@ -630,13 +635,7 @@ function DecisionCard({
   onAction: (action: DecisionAction) => void;
 }) {
   const correction = finding.decisions.length > 0;
-  const actions = immersive
-    ? ([
-        { action: "confirm_risk", label: "确认是风险" },
-        { action: "false_positive", label: "不构成风险" },
-        { action: "insufficient_evidence", label: "依据不够" },
-      ] as const)
-    : DECISION_ACTIONS;
+  const actions = immersive ? WORKSPACE_DECISION_ACTIONS : DECISION_ACTIONS;
   const choices = actions.map((item) => (
     <div key={item.action} className="choice">
       <Radio
@@ -893,10 +892,20 @@ function WorkspaceFindingDetails({
 }) {
   const presentation = findingPresentation(finding);
   const parseIds = clauseProposalContext?.frozenParsedDocumentIds ?? [];
+  const title = findingTitle(finding);
+  const reasons = new Set(
+    [presentation?.nextStep, finding.severity_source?.reason, finding.unverified_reason]
+      .map((text) => text?.trim())
+      .filter((text) => text && text !== title && text !== finding.claim),
+  );
   return (
     <div className="review-finding-detail">
-      {finding.claim !== findingTitle(finding) ? <p>{finding.claim}</p> : null}
-      {presentation?.nextStep ? <p className="meta">{presentation.nextStep}</p> : null}
+      {finding.claim !== title ? <p>{finding.claim}</p> : null}
+      {Array.from(reasons, (reason) => (
+        <p key={reason} className="meta">
+          {reason}
+        </p>
+      ))}
       {finding.evidence.length === 0 ? <p className="meta">未附原文引用</p> : null}
       <ul className="review-finding-citations" aria-label="原文引用">
         {finding.evidence.map((anchor) => {
@@ -904,7 +913,11 @@ function WorkspaceFindingDetails({
           const label =
             source?.filename ?? sourceForAnchor(anchor, documents)?.filename ?? "材料未对应";
           return (
-            <li key={anchor.id}>
+            <li
+              key={anchor.id}
+              data-evidence-document-version-id={anchor.document_version_id}
+              data-evidence-parsed-document-id={anchor.parsed_document_id ?? undefined}
+            >
               {source && onSelectCitation ? (
                 <button type="button" onClick={() => onSelectCitation(finding.id, anchor)}>
                   {label} · <span className="review-citation-matched">原文已对上</span>
@@ -1233,7 +1246,10 @@ export function FindingPanel({
                   </button>
                   {decision ? (
                     <p className="review-finding-decision-summary">
-                      已判断 · {decision.actor} · {decisionLabel(decision.action)} ·{" "}
+                      已判断 · {decision.actor} ·{" "}
+                      {WORKSPACE_DECISION_ACTIONS.find(({ action }) => action === decision.action)
+                        ?.label ?? decisionLabel(decision.action)}{" "}
+                      ·{" "}
                       <time dateTime={decision.decided_at}>
                         {formatDateTime(decision.decided_at)}
                       </time>

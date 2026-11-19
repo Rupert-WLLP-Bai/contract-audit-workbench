@@ -114,6 +114,26 @@
   font-size: 0.75rem;
 }
 
+.review-finding-select .finding-grade[data-severity="high"] {
+  color: var(--state-conflict);
+  background: var(--state-conflict-bg);
+}
+
+.review-finding-select .finding-grade[data-severity="medium"] {
+  color: var(--state-insufficient);
+  background: var(--state-insufficient-bg);
+}
+
+.review-finding-select .finding-grade[data-severity="low"] {
+  color: var(--state-neutral);
+  background: var(--state-neutral-bg);
+}
+
+.review-finding-select .finding-grade[data-severity="info"] {
+  color: var(--state-progress);
+  background: var(--state-progress-bg);
+}
+
 .review-finding-ai {
   border: 1px dashed currentColor;
   color: var(--state-progress);
