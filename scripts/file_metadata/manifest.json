@@ -887,7 +887,7 @@
       "header_state": "pending-header-application"
     },
     ".github/ISSUE_TEMPLATE/bug.yml": {
-      "purpose": "GitHub Issue Form “行为错误”: 登记可复现的现有行为错误. It collects 问题与目标, 范围与排除项, 依赖, 文件所有权, 验收条件, 最小验证, 回退, 文档、概念与文件说明影响 and applies the initial labels bug, 阶段/待实现, 验收/NOT_RUN; the selected area label is added after submission.",
+      "purpose": "Defines the bug issue form, retains the bug label and area selection, and requires four checks that the work can close in the current iteration.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -914,14 +914,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0421831c5ca86fdf56ea6d32939da4f825f08c3d",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "2ef264c9ff3d0aaafb32fd16c14bd549b14c3a00",
+          "path": ".github/ISSUE_TEMPLATE/bug.yml",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -981,7 +982,7 @@
       "header_state": "pending-header-application"
     },
     ".github/ISSUE_TEMPLATE/documentation.yml": {
-      "purpose": "GitHub Issue Form “文档与术语”: 登记文档、术语或文件说明维护. It collects 问题与目标, 范围与排除项, 依赖, 文件所有权, 验收条件, 最小验证, 回退, 文档、概念与文件说明影响 and applies the initial labels documentation, 阶段/待实现, 验收/NOT_RUN; the selected area label is added after submission.",
+      "purpose": "Defines the documentation issue form, retains the documentation label and area selection, and requires four checks that the work can close in the current iteration.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -1008,14 +1009,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0421831c5ca86fdf56ea6d32939da4f825f08c3d",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "2ef264c9ff3d0aaafb32fd16c14bd549b14c3a00",
+          "path": ".github/ISSUE_TEMPLATE/documentation.yml",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -1028,7 +1030,7 @@
       "header_state": "pending-header-application"
     },
     ".github/ISSUE_TEMPLATE/feature.yml": {
-      "purpose": "GitHub Issue Form “新能力或结构调整”: 登记新能力或保持行为的结构调整. It collects 问题与目标, 范围与排除项, 依赖, 文件所有权, 验收条件, 最小验证, 回退, 文档、概念与文件说明影响 and applies the initial labels enhancement, 阶段/待实现, 验收/NOT_RUN; the selected area label is added after submission.",
+      "purpose": "Defines the feature issue form, retains the enhancement label and area selection, and requires four checks that the work can close in the current iteration.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -1055,14 +1057,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0421831c5ca86fdf56ea6d32939da4f825f08c3d",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "2ef264c9ff3d0aaafb32fd16c14bd549b14c3a00",
+          "path": ".github/ISSUE_TEMPLATE/feature.yml",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -1075,7 +1078,7 @@
       "header_state": "pending-header-application"
     },
     ".github/pull_request_template.md": {
-      "purpose": "Guides PR authors to state changed behavior and each related Issue, record actual local-check states including NOT_RUN, list Closes/Refs per Issue, and explain merge danger and rollback.",
+      "purpose": "Guides pull request authors to describe scoped changes, record actual verification and iteration release limitations, link issues, and explain merge and rollback risks.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -1102,15 +1105,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "fcf994d1a32fb862ee21b9de1e4ecf1eba2466d8",
+          "commit": "2ef264c9ff3d0aaafb32fd16c14bd549b14c3a00",
           "path": ".github/pull_request_template.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -1314,7 +1317,7 @@
       "header_state": "pending-header-application"
     },
     "AGENTS.md": {
-      "purpose": "Defines repository boundaries, business invariants, implementation phases, verification cadence, and shared-checkout ownership rules that govern agent work.",
+      "purpose": "Defines repository boundaries, business invariants, iteration and Issue lifecycle, verification cadence, and shared-checkout ownership rules that govern agent work.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -1341,15 +1344,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0e81479ec2075009b6a7ee1a16f6a819fbe0fef5",
+          "commit": "2ef264c9ff3d0aaafb32fd16c14bd549b14c3a00",
           "path": "AGENTS.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -8172,7 +8175,7 @@
       "header_state": "pending-header-application"
     },
     "docs/engineering/contributing.md": {
-      "purpose": "Defines short-lived issue branches, refactor conventions, Store entry restrictions, shared-checkout ownership and evidence requirements for the scoped contribution workflow.",
+      "purpose": "Defines short-lived issue branches, refactor conventions, Store entry restrictions, shared-checkout ownership, evidence requirements, and the iteration, Issue, backlog Project and release close-out operations for the scoped contribution workflow.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -8199,15 +8202,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "03ff076d0f71d280994fa40bf92d0ef8f4747897",
+          "commit": "cec08ecaa4a6c4d93c827f1384659232a1c8ef0c",
           "path": "docs/engineering/contributing.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -8593,15 +8596,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0e81479ec2075009b6a7ee1a16f6a819fbe0fef5",
+          "commit": "2ef264c9ff3d0aaafb32fd16c14bd549b14c3a00",
           "path": "docs/engineering/verification.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -65854,7 +65857,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r94",
+      "revision": "r95",
       "copyright": [
         {
           "holder": "Bai Junhao",

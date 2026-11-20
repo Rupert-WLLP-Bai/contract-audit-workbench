@@ -1,10 +1,10 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: Defines short-lived issue branches, refactor conventions, Store entry restrictions, shared-checkout ownership and evidence requirements for the scoped contribution workflow. -->
+<!-- Purpose: Defines short-lived issue branches, refactor conventions, Store entry restrictions, shared-checkout ownership, evidence requirements, and the iteration, Issue, backlog Project and release close-out operations for the scoped contribution workflow. -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
-<!-- Updated: 2026-11-14 -->
-<!-- Revision: r6 -->
+<!-- Updated: 2026-11-20 -->
+<!-- Revision: r7 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 

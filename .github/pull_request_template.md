@@ -1,10 +1,10 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: Guides PR authors to state changed behavior and each related Issue, record actual local-check states including NOT_RUN, list Closes/Refs per Issue, and explain merge danger and rollback. -->
+<!-- Purpose: Guides pull request authors to describe scoped changes, record actual verification and iteration release limitations, link issues, and explain merge and rollback risks. -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-10-31 -->
-<!-- Updated: 2026-11-02 -->
-<!-- Revision: r2 -->
+<!-- Updated: 2026-11-20 -->
+<!-- Revision: r3 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 

@@ -1,10 +1,10 @@
 # File metadata (manifest mirror):
-# Purpose: GitHub Issue Form “行为错误”: 登记可复现的现有行为错误. It collects 问题与目标, 范围与排除项, 依赖, 文件所有权, 验收条件, 最小验证, 回退, 文档、概念与文件说明影响 and applies the initial labels bug, 阶段/待实现, 验收/NOT_RUN; the selected area label is added after submission.
+# Purpose: Defines the bug issue form, retains the bug label and area selection, and requires four checks that the work can close in the current iteration.
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-11-01
-# Updated: 2026-11-01
-# Revision: r1
+# Updated: 2026-11-20
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
