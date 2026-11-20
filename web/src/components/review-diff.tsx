@@ -588,7 +588,7 @@ function ReviewDiffBody({ caseId, latestRunId, actorScope }: ReviewDiffProps) {
       {choices.length === 0 ? (
         <p>
           {history.hasNextPage
-            ? "当前已加载的审查中没有可选择的执行记录；请先读取更早审查记录。"
+            ? "当前审查没有可选择的执行记录；请先读取更早审查记录。"
             : "当前没有可选择的审查执行记录。"}
         </p>
       ) : (

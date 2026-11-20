@@ -355,7 +355,7 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
   function submitBusinessTime() {
     const businessAt = beijingInputToUtc(businessAtInput);
     if (!businessAt) {
-      setSaveError("请输入有效的北京时间（UTC+08:00）。");
+      setSaveError("请输入有效的北京时间。");
       return;
     }
     const cutoffUTC = beijingInputToUtc(evidenceCutoff);
@@ -459,7 +459,7 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
         draft.temporal_basis === "historical_interval" ||
         (draft.status === "unknown" && draft.unknown_reason !== "insufficient_evidence");
       if (requiresAnchor && basisRefs.length === 0)
-        throw new Error("请从本案固定材料原文中选择可核验依据。");
+        throw new Error("请从本案留档材料原文中选择可核验依据。");
       const side = partySide(dimension);
       const binding = partyDimension(dimension)
         ? subjects.data?.items.find((item) => item.binding_id === draft.binding_id)
@@ -615,7 +615,7 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
       {accessible ? (
         <>
           <section className="workflow-form" aria-label="法律适用事实材料依据">
-            <h3>选择本案固定材料依据</h3>
+            <h3>选择本案留档材料依据</h3>
             <Select
               aria-label="选择事实依据的材料版本"
               value={materialKey || undefined}
@@ -627,11 +627,11 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
               }))}
             />
             {caseDetail.data && !caseDetail.isError && options.length === 0 ? (
-              <Empty description="本案暂无可引用的固定材料版本。" />
+              <Empty description="本案暂无可引用的留档材料版本。" />
             ) : null}
             {selectedMaterial && parsedDocuments.data ? (
               <Select
-                aria-label="选择事实依据的固定解析版本"
+                aria-label="选择事实依据的留档解析版本"
                 value={parsedDocumentId || undefined}
                 onChange={(value: string) => {
                   setParsedDocumentId(value);
@@ -639,7 +639,7 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
                   setPageStack([]);
                   setAnchor(null);
                 }}
-                placeholder="选择固定解析版本"
+                placeholder="选择留档解析版本"
                 options={parsedDocuments.data.items.map((item) => ({
                   value: item.parsed_document_id,
                   disabled: item.status !== "ready",
@@ -648,13 +648,13 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
               />
             ) : null}
             {selectedMaterial && parsedDocuments.data?.items.length === 0 ? (
-              <Empty description="所选材料版本还没有固定解析记录。" />
+              <Empty description="所选材料版本还没有留档解析记录。" />
             ) : null}
             {parsedDocuments.isError ? (
               <Alert
                 type="error"
                 showIcon
-                title="固定解析记录暂不可用"
+                title="留档解析记录暂不可用"
                 description={errorMessage(parsedDocuments.error)}
                 action={<Button onClick={() => void parsedDocuments.refetch()}>重试</Button>}
               />
@@ -663,7 +663,7 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
               <Alert
                 type="error"
                 showIcon
-                title="固定材料原文暂不可用"
+                title="留档材料原文暂不可用"
                 description={errorMessage(parsedPage.error)}
                 action={<Button onClick={() => void parsedPage.refetch()}>重试</Button>}
               />
@@ -671,7 +671,7 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
             {parsedPage.data ? (
               <>
                 <p>
-                  {parsedPage.data.filename} · 材料 v{parsedPage.data.material_version} · 固定解析{" "}
+                  {parsedPage.data.filename} · 材料 v{parsedPage.data.material_version} · 留档解析{" "}
                   {parsedPage.data.parsed_document_id} · 字符 {parsedPage.data.offset + 1}–
                   {parsedPage.data.offset + [...parsedPage.data.text].length} /{" "}
                   {parsedPage.data.total_runes}
@@ -798,7 +798,7 @@ export function CaseLegalApplicabilityPanel({ caseId }: { caseId: string }) {
                           </div>
                         ))}
                         <div aria-label={`${labels[dimension]}历史版本`}>
-                          <h4>版本历史（当前写入头 v{history?.current_version ?? "…"}）</h4>
+                          <h4>版本历史（最新版本 v{history?.current_version ?? "…"}）</h4>
                           {historyQuery?.isError ? (
                             <Alert
                               type="error"

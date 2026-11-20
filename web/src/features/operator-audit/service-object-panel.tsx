@@ -578,7 +578,7 @@ export function ServiceObjectPanel({
               <div className="document-main">
                 <strong>{summaryLabel(item)}</strong>
                 <p className="meta">
-                  {item.business_code || "业务编号未登记"} ·{" "}
+                  {item.business_code ? `${item.business_code} · ` : null}
                   {item.object_type === "dedicated_line" ? "政企专线" : "服务"}
                 </p>
                 {item.current_association ? (
@@ -650,7 +650,7 @@ export function ServiceObjectPanel({
           </button>
         </form>
       ) : list.isSuccess && summaries.length === 0 ? (
-        <p className="callout">当前服务端没有返回空列表写入权限，暂不能新增服务对象。</p>
+        <p className="callout">当前未确认新增服务对象的权限，暂不能新增。</p>
       ) : null}
       {formError ? <p role="alert">操作失败：{formError}</p> : null}
       {create.isSuccess ? (
@@ -672,7 +672,7 @@ export function ServiceObjectPanel({
             {detail.data.identity.display_name} · 身份第 {detail.data.current_version} 版
           </h3>
           <p>
-            {detail.data.identity.business_code || "业务编号未登记"} ·{" "}
+            {detail.data.identity.business_code ? `${detail.data.identity.business_code} · ` : null}
             {detail.data.identity.state === "confirmed"
               ? "已确认"
               : detail.data.identity.state === "inactive"
@@ -680,9 +680,7 @@ export function ServiceObjectPanel({
                 : "待确认"}
           </p>
           {detail.data.identity.basis_summary ? <p>{detail.data.identity.basis_summary}</p> : null}
-          {detail.data.can_manage ? null : (
-            <p className="callout">服务端当前将该服务对象设为只读。</p>
-          )}
+          {detail.data.can_manage ? null : <p className="callout">该服务对象当前为只读。</p>}
           {detail.data.needs_reassociation ? <p>当前事实关联需要复核。</p> : null}
           {detail.data.association ? (
             <div>

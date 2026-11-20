@@ -72,15 +72,15 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 20px var(--space-6);
+  gap: var(--space-3);
+  padding: 0;
 }
 
 .subjects-page .page-pattern-filters {
+  padding: 0;
   margin-bottom: var(--space-3);
-  border: 1px solid var(--card-border);
-  border-radius: var(--panel-radius);
-  background: var(--surface-raised);
+  border: 0;
+  background: transparent;
 }
 
 .subject-ledger-toolbar h2 {
@@ -529,4 +529,21 @@
     width: 100%;
     padding-left: 48px;
   }
+}
+.subject-ledger-toolbar > .ant-select {
+  width: 160px;
+}
+
+.subjects-page .page-pattern-heading {
+  margin-bottom: var(--space-2);
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.subjects-page .page-pattern-filters {
+  margin-bottom: var(--space-1);
+}
+
+.subject-ledger-table .ant-table-placeholder td {
+  color: var(--text-secondary);
 }

@@ -270,19 +270,19 @@ describe("AgentStudioPage", () => {
     renderPage();
 
     await userEvent.click(screen.getByRole("radio", { name: "事件列表" }));
-    expect(screen.getByText("当前匹配 3 / 已加载 3")).toBeInTheDocument();
+    expect(screen.getByText("匹配 3 条 · 当前 3 条")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("搜索事件"), {
       target: { value: "模型" },
     });
-    expect(screen.getByText("当前匹配 1 / 已加载 3")).toBeInTheDocument();
+    expect(screen.getByText("匹配 1 条 · 当前 3 条")).toBeInTheDocument();
     expect(screen.getByText("模型调用完成")).toBeInTheDocument();
     expect(screen.queryByText("开始")).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("搜索事件"), {
       target: { value: "不存在的内容" },
     });
-    expect(screen.getByText("当前匹配 0 / 已加载 3")).toBeInTheDocument();
+    expect(screen.getByText("匹配 0 条 · 当前 3 条")).toBeInTheDocument();
     expect(screen.getByText("没有匹配的事件。")).toBeInTheDocument();
   });
 

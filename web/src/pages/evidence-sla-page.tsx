@@ -35,7 +35,6 @@ export function EvidenceSLAPage() {
       <header className="page-head">
         <div>
           <h1>补充材料时效</h1>
-          <p>只读取当前账号可访问的案件，并逐案读取补充材料请求及其回执历史。</p>
         </div>
       </header>
       <EvidenceSLADashboard cases={cases.data ?? []} />

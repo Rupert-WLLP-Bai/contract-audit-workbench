@@ -8,11 +8,12 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DirtyLeaveGuard, DirtyLeaveGuardProvider } from "../components/dirty-leave-guard";
 import { ApprovalTasksPage } from "./approval-tasks-page";
 import { renderWithAntd as render } from "../test/antd";
 import { setSessionIdentity } from "../api/http";
@@ -258,6 +259,10 @@ class ApprovalService {
     idempotencyKey: string | null;
   }[] = [];
   conflictsRemaining = 1;
+  empty = false;
+  denyTask = false;
+  mismatchTask = false;
+  allowOnlyReturn = false;
 
   handle = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
@@ -277,13 +282,24 @@ class ApprovalService {
     if (url.pathname === "/api/approval-tasks" && method === "GET") {
       const view = url.searchParams.get("view");
       return json({
-        items: view === "done" ? [doneItem] : view === "initiated" ? [initiatedItem] : [todoItem],
+        items: this.empty
+          ? []
+          : view === "done"
+            ? [doneItem]
+            : view === "initiated"
+              ? [initiatedItem]
+              : [todoItem],
         next_cursor: null,
         has_more: false,
       });
     }
     if (url.pathname === "/api/approval-tasks/task-1" && method === "GET") {
-      return json({ selected_task_id: "task-1", round_detail: taskRoundDetail() });
+      if (this.denyTask) return json({ error: { code: "forbidden", message: "无权查看" } }, 403);
+      const detail = taskRoundDetail();
+      return json({
+        selected_task_id: this.mismatchTask ? "other-task" : "task-1",
+        round_detail: this.allowOnlyReturn ? { ...detail, allowed_actions: ["return"] } : detail,
+      });
     }
     if (url.pathname === "/api/contracts/contract-1/approval-rounds" && method === "GET") {
       return json({
@@ -322,20 +338,21 @@ class ApprovalService {
         this.conflictsRemaining -= 1;
         return json({ error: { code: "conflict", message: "任务已被他人处理" } }, 409);
       }
+      const decision = JSON.parse(typeof init?.body === "string" ? init.body : "{}").decision;
       return json({
         decision_id: "decision-3",
-        decision: "approve",
+        decision,
         round: {
           approval_round_id: "round-2",
           contract_revision_id: "revision-2",
           round_number: 2,
-          state: "in_review",
+          state: decision === "return" ? "returned" : "in_review",
           row_version: 4,
         },
         task: {
           approval_task_id: "task-1",
           node_order: 1,
-          state: "approved",
+          state: decision === "return" ? "returned" : "approved",
         },
         next_task: null,
         contract_state: "in_approval",
@@ -349,7 +366,7 @@ class ApprovalService {
 
 const clients: QueryClient[] = [];
 
-function open(search = "?view=todo", service = new ApprovalService()) {
+function open(search = "?view=todo", service = new ApprovalService(), otherDiscard?: () => void) {
   vi.stubGlobal("fetch", vi.fn(service.handle));
   const client = new QueryClient({
     defaultOptions: {
@@ -359,7 +376,19 @@ function open(search = "?view=todo", service = new ApprovalService()) {
   });
   clients.push(client);
   const router = createMemoryRouter(
-    [{ path: "/workbench/approvals", element: <ApprovalTasksPage /> }],
+    [
+      {
+        path: "/workbench/approvals",
+        element: (
+          <DirtyLeaveGuardProvider>
+            {otherDiscard ? (
+              <DirtyLeaveGuard dirty onDiscard={otherDiscard} description="另一窗口的草稿" />
+            ) : null}
+            <ApprovalTasksPage />
+          </DirtyLeaveGuardProvider>
+        ),
+      },
+    ],
     { initialEntries: [`/workbench/approvals${search}`] },
   );
   render(
@@ -389,10 +418,10 @@ describe("approval tasks page", () => {
   it("switches between todo, done and initiated views from the server", async () => {
     const { user, service } = open();
     expect(await screen.findByRole("heading", { name: "会签", level: 1 })).toBeVisible();
-    const todo = await screen.findByRole("region", { name: "我的待办" });
-    expect(await within(todo).findByText("专线采购合同")).toBeInTheDocument();
-    expect(within(todo).getByText("部门负责人")).toBeInTheDocument();
-    expect(screen.getByText(/已加载/)).toHaveTextContent("已加载 1 项");
+    expect(await screen.findByText("专线采购合同")).toBeInTheDocument();
+    const todo = screen.getByRole("region", { name: "待我审批" });
+    expect(within(todo).getByText(/第 2 轮 · 部门负责人/)).toBeInTheDocument();
+    expect(screen.queryByText(/已加载/)).not.toBeInTheDocument();
     expect(
       service.calls.some((call) => call.path === "/api/approval-tasks" && call.view === "todo"),
     ).toBe(true);
@@ -419,8 +448,8 @@ describe("approval tasks page", () => {
 
   it("opens the exact pending approval from a task link and clears it on close", async () => {
     const { user, service, router } = open("?view=todo&task=task-1");
-    expect(await screen.findByRole("button", { name: "通过" })).toBeInTheDocument();
-    const panel = screen.getByRole("complementary", { name: "会签详情" });
+    expect(await screen.findByRole("button", { name: "同意通过" })).toBeInTheDocument();
+    const panel = screen.getByRole("dialog", { name: "会签详情" });
     expect(
       service.calls.some(
         (call) => call.path === "/api/approval-tasks/task-1" && call.method === "GET",
@@ -432,17 +461,17 @@ describe("approval tasks page", () => {
 
   it("keeps a failed decision unapproved and retries with the same idempotency key", async () => {
     const { user, service } = open();
-    const todo = await screen.findByRole("region", { name: "我的待办" });
-    await within(todo).findByText("专线采购合同");
-    await user.click(within(todo).getByRole("button", { name: /查看/ }));
+    await screen.findByText("专线采购合同");
+    const todo = screen.getByRole("region", { name: "待我审批" });
+    await user.click(within(todo).getByRole("button", { name: /审批 专线采购合同/ }));
 
-    const panel = await screen.findByRole("complementary", { name: "会签详情" });
+    const panel = await screen.findByRole("dialog", { name: "会签详情" });
     expect((await within(panel).findAllByText(/部门负责人/)).length).toBeGreaterThan(0);
     expect(
       within(panel).getByText(/风险处置未配置|未配置，不能视为已接受风险/),
     ).toBeInTheDocument();
 
-    await user.click(within(panel).getByRole("button", { name: "通过" }));
+    await user.click(within(panel).getByRole("button", { name: "同意通过" }));
     expect(await within(panel).findByText("请填写审批意见或退回理由。")).toBeInTheDocument();
     expect(service.calls.filter((call) => call.method === "POST")).toHaveLength(0);
 
@@ -450,10 +479,10 @@ describe("approval tasks page", () => {
       within(panel).getByRole("textbox", { name: "审批意见或退回理由" }),
       "同意进入法务节点",
     );
-    await user.click(within(panel).getByRole("button", { name: "通过" }));
+    await user.click(within(panel).getByRole("button", { name: "同意通过" }));
 
     expect(await within(panel).findByText(/当前任务或轮次已经变化/)).toBeInTheDocument();
-    expect(within(panel).queryByText(/服务端已确认/)).not.toBeInTheDocument();
+    expect(within(panel).queryByText(/已保存审批决定/)).not.toBeInTheDocument();
     const posts = service.calls.filter((call) => call.method === "POST");
     expect(posts).toHaveLength(1);
     expect(posts[0]?.path).toBe("/api/approval-tasks/task-1/decisions");
@@ -467,8 +496,8 @@ describe("approval tasks page", () => {
     await waitFor(() =>
       expect(within(panel).getByText(/当前任务或轮次已经变化/)).toBeInTheDocument(),
     );
-    await user.click(buttonWithText(panel, "通过"));
-    expect(await within(panel).findByText(/服务端已确认/)).toBeInTheDocument();
+    await user.click(buttonWithText(panel, "同意通过"));
+    expect(await within(panel).findByText(/已保存审批决定/)).toBeInTheDocument();
     const retried = service.calls.filter((call) => call.method === "POST");
     expect(retried).toHaveLength(2);
     expect(retried[1]?.idempotencyKey).toBe(retried[0]?.idempotencyKey);
@@ -477,14 +506,14 @@ describe("approval tasks page", () => {
 
   it("shows historical rounds read-only and never offers a decision on them", async () => {
     const { user, service } = open("?view=initiated");
-    const initiated = await screen.findByRole("region", { name: "我发起的" });
-    await within(initiated).findByText("已退回合同");
+    await screen.findByText("已退回合同");
+    const initiated = screen.getByRole("region", { name: "我发起的" });
     await user.click(within(initiated).getByRole("button", { name: /查看/ }));
 
-    const panel = await screen.findByRole("complementary", { name: "会签详情" });
+    const panel = await screen.findByRole("dialog", { name: "会签详情" });
     expect(await within(panel).findByText("请补充付款节点。")).toBeInTheDocument();
     expect(within(panel).getByText(/未配置，不能视为已接受风险/)).toBeInTheDocument();
-    expect(within(panel).queryByRole("button", { name: "通过" })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "同意通过" })).not.toBeInTheDocument();
     expect(within(panel).queryByRole("button", { name: "退回修改" })).not.toBeInTheDocument();
 
     const history = within(await screen.findByRole("region", { name: "轮次历史" }));
@@ -500,12 +529,106 @@ describe("approval tasks page", () => {
         ),
       ).toBe(true),
     );
-    const updatedPanel = await screen.findByRole("complementary", {
+    const updatedPanel = await screen.findByRole("dialog", {
       name: "会签详情",
     });
     await waitFor(() =>
-      expect(within(updatedPanel).queryByRole("button", { name: "通过" })).not.toBeInTheDocument(),
+      expect(
+        within(updatedPanel).queryByRole("button", { name: "同意通过" }),
+      ).not.toBeInTheDocument(),
     );
     expect(within(updatedPanel).getByText("首轮会签，没有上一轮可比较。")).toBeInTheDocument();
+  });
+
+  it("keeps the five-column table and hides the drawer in all three empty views", async () => {
+    const service = new ApprovalService();
+    service.empty = true;
+    const { user } = open("?view=todo", service);
+    for (const [label, empty] of [
+      ["待我审批", "当前没有待你审批的合同"],
+      ["我已审批", "暂无已审批记录"],
+      ["我发起的", "暂无你发起的会签"],
+    ]) {
+      await user.click(await screen.findByRole("tab", { name: new RegExp(label + "$") }));
+      expect(await screen.findByText(empty, { exact: true })).toBeVisible();
+      const headers = within(screen.getByRole("table")).getAllByRole("columnheader");
+      expect(headers.map((header) => header.textContent)).toEqual([
+        "合同",
+        "当前节点",
+        "状态",
+        "送达时间",
+        "操作",
+      ]);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    }
+  });
+
+  it("opens by keyboard, protects Back and close without discarding an unrelated draft, and restores focus", async () => {
+    const otherDiscard = vi.fn();
+    const { router, user, service } = open("?view=todo", new ApprovalService(), otherDiscard);
+    const trigger = await screen.findByRole("button", { name: /审批 专线采购合同/ });
+    trigger.focus();
+    await user.keyboard("{Enter}");
+    const dialog = await screen.findByRole("dialog", { name: "会签详情" });
+    const field = await within(dialog).findByRole("textbox", { name: "审批意见或退回理由" });
+    await user.type(field, "先核对合同原文");
+    expect(router.state.location.search).toContain("task=task-1");
+    await act(async () => {
+      await router.navigate(-1);
+    });
+    const stay = await screen.findByRole("button", { name: "留在本页" });
+    const guard = stay.closest('[role="dialog"]');
+    expect(guard).toHaveTextContent("有未提交的草稿");
+    expect(guard).toHaveTextContent("这条审批意见尚未提交");
+    expect(guard).not.toHaveTextContent("另一窗口的草稿");
+    await user.click(stay);
+    expect(field).toHaveValue("先核对合同原文");
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    await user.click(await screen.findByRole("button", { name: "离开" }));
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(screen.queryByRole("dialog", { name: "会签详情" })).not.toBeInTheDocument();
+    expect(router.state.location.search).toBe("?view=todo");
+    expect(otherDiscard).not.toHaveBeenCalled();
+    expect(service.calls.some((call) => call.method === "POST")).toBe(false);
+  });
+
+  it("shows no decision controls for denied or wrongly identified task details", async () => {
+    const service = new ApprovalService();
+    service.denyTask = true;
+    const { user } = open("?view=todo&task=task-1", service);
+    const dialog = await screen.findByRole("dialog", { name: "会签详情" });
+    expect(await within(dialog).findByText("会签详情没有加载")).toBeVisible();
+    expect(within(dialog).queryByRole("button", { name: "同意通过" })).not.toBeInTheDocument();
+    service.denyTask = false;
+    service.mismatchTask = true;
+    await user.click(within(dialog).getByRole("button", { name: "重试" }));
+    expect(await within(dialog).findByText("无法确认这条会签记录")).toBeVisible();
+    expect(within(dialog).queryByRole("button", { name: "退回修改" })).not.toBeInTheDocument();
+    expect(service.calls.some((call) => call.method === "POST")).toBe(false);
+  });
+
+  it("submits only the server-permitted return action with the exact round version", async () => {
+    const service = new ApprovalService();
+    service.conflictsRemaining = 0;
+    service.allowOnlyReturn = true;
+    const { user } = open("?view=todo", service);
+    await user.click(await screen.findByText("专线采购合同"));
+    const dialog = await screen.findByRole("dialog", { name: "会签详情" });
+    expect(await within(dialog).findByRole("button", { name: "退回修改" })).toBeVisible();
+    expect(within(dialog).queryByRole("button", { name: "同意通过" })).not.toBeInTheDocument();
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "审批意见或退回理由" }),
+      "请补充付款节点",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "退回修改" }));
+    expect(await within(dialog).findByText(/已保存审批决定/)).toBeVisible();
+    const writes = service.calls.filter((call) => call.method === "POST");
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.idempotencyKey).toBeTruthy();
+    expect(JSON.parse(writes[0]?.body ?? "{}")).toMatchObject({
+      decision: "return",
+      comment: "请补充付款节点",
+      expected_round_row_version: 4,
+    });
   });
 });

@@ -723,7 +723,7 @@ async function list(title: string) {
 }
 
 function details() {
-  return within(screen.getByRole("complementary", { name: "所选记录详情" }));
+  return within(screen.getByRole("dialog"));
 }
 
 function expectField(label: string, value: string) {
@@ -754,12 +754,22 @@ async function detailTab(user: User, name: string) {
 }
 
 async function category(user: User, _title: string, name: string) {
+  const dialog = screen.queryByRole("dialog");
+  if (dialog) {
+    await user.click(within(dialog).getByRole("button", { name: "关闭记录详情" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  }
   const tabs = within(screen.getAllByRole("tablist")[0]!);
   await user.click(tabs.getByRole("tab", { name }));
 }
 
 async function selectRecord(user: User, name: RegExp | string) {
-  await user.click(within(screen.getByRole("row", { name })).getByRole("radio"));
+  await user.click(within(screen.getByRole("row", { name })).getByRole("button"));
+}
+
+async function openFirstRecord(title: string) {
+  const rows = await list(title);
+  await userEvent.setup().click(within(rows.getByRole("table")).getAllByRole("button")[0]!);
 }
 
 afterEach(() => {
@@ -964,13 +974,14 @@ describe("workbench tasks", () => {
       else service.snapshot.tasks[0]!.can_complete = canComplete;
       open("tasks", service);
       const rows = await list("审查任务");
+      await openFirstRecord("审查任务");
 
       expect(rows.getByRole("button", { name: /核实付款依据/ })).toBeInTheDocument();
       expect(details().getByRole("link", { name: "打开关联记录" })).toHaveAttribute(
         "href",
         "/cases/case%2Falpha/reviews/run%2Fcurrent",
       );
-      expect(details().queryByRole("button", { name: "标记任务完成" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "标记任务完成" })).not.toBeInTheDocument();
     },
   );
 
@@ -980,6 +991,7 @@ describe("workbench tasks", () => {
     service.fail("PUT /api/cases/case%2Falpha/tasks/task%2Fassigned", 403, "任务完成权限已撤销");
     const { user } = open("tasks", service);
     await list("审查任务");
+    await openFirstRecord("审查任务");
     expect(details().getByRole("button", { name: "标记任务完成" })).toBeInTheDocument();
     await user.click(details().getByRole("button", { name: "标记任务完成" }));
 
@@ -1007,9 +1019,10 @@ describe("workbench tasks", () => {
   it("uses assignee and creator IDs for task tabs and resolves authorized case details", async () => {
     const { user } = open("tasks");
     const rows = await list("审查任务");
-    expect(
-      within(await rows.findByRole("row", { name: /核实付款依据/ })).getByRole("radio"),
-    ).toBeChecked();
+    await openFirstRecord("审查任务");
+    expect(await rows.findByRole("row", { name: /核实付款依据/ })).toHaveClass(
+      "module-row-selected",
+    );
     expect(rows.queryByRole("button", { name: /我创建的复核/ })).not.toBeInTheDocument();
     expect(rows.queryByRole("button", { name: /历史已办任务/ })).not.toBeInTheDocument();
     expectField("责任人", "审查员甲");
@@ -1047,20 +1060,18 @@ describe("workbench tasks", () => {
     expectField("案件负责人", "管理员乙");
 
     await category(user, "审查任务", "我发起的");
-    expect(
-      screen.getByText(/由当前用户创建的任务/, { selector: 'p[role="status"]' }),
-    ).toBeVisible();
+    expect(screen.getByText(/你发起的任务/, { selector: 'p[role="status"]' })).toBeVisible();
     expect(rows.getByRole("button", { name: /我创建的复核/ })).toBeInTheDocument();
     expect(
       rows.queryByRole("button", { name: /核实付款依据|历史已办任务/ }),
     ).not.toBeInTheDocument();
     await category(user, "审查任务", "已完成");
     expect(rows.getByRole("button", { name: /历史已办任务/ })).toBeInTheDocument();
-    expect(details().queryByRole("button", { name: "标记任务完成" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "标记任务完成" })).not.toBeInTheDocument();
     await user.type(screen.getByRole("searchbox"), "does-not-exist");
-    expect(rows.getByText("没有符合此分类或搜索词的记录。")).toBeInTheDocument();
-    expect(details().getByText("选择一条记录查看服务端返回的详情。")).toBeInTheDocument();
-    expect(details().queryByRole("link")).not.toBeInTheDocument();
+    expect(rows.getByText("没有匹配的记录。")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("creates a dated task and moves its persisted completion to the completed tab", async () => {
@@ -1068,7 +1079,7 @@ describe("workbench tasks", () => {
     service.snapshot.tasks = [];
     const { user } = open("tasks", service);
     const rows = await list("审查任务");
-    expect(rows.getByText("没有获取到记录。")).toBeInTheDocument();
+    expect(rows.getByText("当前没有任务")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "分派任务" }));
     expect(screen.getByRole("button", { name: "保存任务" })).toBeDisabled();
     await chooseOption(
@@ -1085,6 +1096,7 @@ describe("workbench tasks", () => {
 
     expect(await rows.findByRole("button", { name: /核对新合同/ })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByLabelText("任务名称")).not.toBeInTheDocument());
+    await selectRecord(user, /核对新合同/);
     expectField("任务 ID", "task/server-created");
     expectField("截止时间", "2026-10-28T23:59:59+08:00");
     expectField("版本", "1");
@@ -1105,9 +1117,10 @@ describe("workbench tasks", () => {
     );
     await category(user, "审查任务", "已完成");
     expect(await rows.findByRole("button", { name: /核对新合同/ })).toBeInTheDocument();
+    await selectRecord(user, /核对新合同/);
     expectDisplayField("状态", "已完成");
     expectField("版本", "2");
-    expect(details().queryByRole("button", { name: "标记任务完成" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "标记任务完成" })).not.toBeInTheDocument();
     expect(
       service.requests.find(
         (item) => item.key === "PUT /api/cases/case%2Falpha/tasks/task%2Fserver-created",
@@ -1141,6 +1154,7 @@ describe("workbench tasks", () => {
     expect(screen.getByLabelText("关联案件").parentElement).toHaveTextContent("未启动案件");
     expect(screen.getByRole("button", { name: "保存任务" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "保存任务" }));
+    await user.click(await screen.findByRole("button", { name: "查看：无截止日期的核对" }));
     expect(await details().findByRole("heading", { name: "无截止日期的核对" })).toBeInTheDocument();
     expectField("截止时间", "未报告");
     expect(details().getByRole("link", { name: "打开关联记录" })).toHaveAttribute(
@@ -1178,6 +1192,7 @@ describe("workbench tasks", () => {
     service.taskVersions.set("task/assigned", 8);
     const { user } = open("tasks", service);
     const rows = await list("审查任务");
+    await openFirstRecord("审查任务");
     await rows.findByRole("row", { name: /核实付款依据/ });
     await user.click(details().getByRole("button", { name: "标记任务完成" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("该任务版本已更新，请刷新后重试");
@@ -1215,6 +1230,7 @@ describe("workbench tasks", () => {
     const { user } = open("tasks", service);
     await list("审查任务");
     await category(user, "审查任务", "我发起的");
+    await openFirstRecord("审查任务");
     expectDisplayField("责任人", "姓名未提供");
     await expectTechnicalField(user, "责任人标识", "former-assignee");
     await expectTechnicalField(user, "案件标识", "case-missing");
@@ -1245,16 +1261,16 @@ describe("workbench tasks", () => {
     service.snapshot.audit[0]!.action = "case.relation.created·";
     const { user } = open("tasks", service);
     const rows = await list("审查任务");
+    await openFirstRecord("审查任务");
     await detailTab(user, "关联材料");
     expectDisplayField("ENT（测试）合同.pdf", "材料角色待核对，解析状态未识别");
     await expectTechnicalField(user, "材料 1 角色编码", "draft_contract（旧）");
     await expectTechnicalField(user, "材料 1 解析状态编码", "ready·");
     await user.type(screen.getByRole("searchbox"), "ready·");
     await selectRecord(user, /核实付款依据/);
-    expect(
-      within(rows.getByRole("row", { name: /核实付款依据/ })).getByRole("radio"),
-    ).toBeChecked();
+    expect(rows.getByRole("row", { name: /核实付款依据/ })).toHaveClass("module-row-selected");
     await user.clear(screen.getByRole("searchbox"));
+    await selectRecord(user, /核实付款依据/);
     await detailTab(user, "处理记录");
     expect(details().getByText(/已记录一项操作，类型待核对/)).toBeVisible();
     await expectTechnicalField(user, "事件 1 操作编码", "case.relation.created·");
@@ -1268,6 +1284,7 @@ describe("workbench knowledge", () => {
     try {
       const { client, user } = open("knowledge");
       const rows = await list("知识库");
+      await openFirstRecord("知识库");
       expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeVisible();
       const query = client
         .getQueryCache()
@@ -1331,8 +1348,8 @@ describe("workbench knowledge", () => {
     const rows = await list("知识库");
     const oldVersion = rows.getByRole("row", { name: /采购安全制度.*1\.0\.0/ });
     const newVersion = rows.getByRole("row", { name: /采购安全制度.*2\.0\.0/ });
-    expect(within(oldVersion).getByRole("radio")).toBeChecked();
-    expect(within(newVersion).getByRole("radio")).not.toBeChecked();
+    expect(oldVersion).toHaveClass("module-row-selected");
+    expect(newVersion).not.toHaveClass("module-row-selected");
     expect(await details().findByText(/旧版本限定/)).toBeVisible();
     expectField("版本", "1.0.0");
 
@@ -1340,7 +1357,7 @@ describe("workbench knowledge", () => {
     expect(details().queryByText(/旧版本限定/)).not.toBeInTheDocument();
     expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeVisible();
     expectField("版本", "2.0.0");
-    expect(within(newVersion).getByRole("radio")).toBeChecked();
+    expect(newVersion).toHaveClass("module-row-selected");
     expect(new URLSearchParams(router.state.location.search).get("version")).toBe(policyV2);
     expect(new URLSearchParams(router.state.location.search).get("keep")).toBe("one");
     await user.click(within(newVersion).getByRole("button", { name: /采购安全制度/ }));
@@ -1349,12 +1366,12 @@ describe("workbench knowledge", () => {
       await router.navigate(-1);
     });
     expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
-    expect(within(oldVersion).getByRole("radio")).toBeChecked();
+    expect(oldVersion).toHaveClass("module-row-selected");
     await act(async () => {
       await router.navigate(1);
     });
     expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
-    expect(within(newVersion).getByRole("radio")).toBeChecked();
+    expect(newVersion).toHaveClass("module-row-selected");
 
     const search = router.state.location.search;
     unmount();
@@ -1376,38 +1393,25 @@ describe("workbench knowledge", () => {
     );
   });
 
-  it("keeps an explicit selection when filters temporarily hide it", async () => {
+  it("closes the previous detail before searching a different version and restores focus", async () => {
     const service = new WorkbenchService();
     addPolicyV1(service);
-    const { user, router } = open("knowledge", service, `?version=${policyV1}`);
+    const { user, router } = open("knowledge", service, `?keep=one&version=${policyV1}`);
     const rows = await list("知识库");
     expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
-
-    await user.type(screen.getByRole("searchbox"), "special-clause");
-    const visible = rows.getByRole("row", { name: /采购安全制度.*2\.0\.0/ });
-    expect(within(visible).getByRole("radio")).not.toBeChecked();
-    expect(details().getByText("指定的知识版本不存在或未包含在当前筛选中。")).toBeInTheDocument();
-    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
-    expect(new URLSearchParams(router.state.location.search).get("version")).toBe(policyV1);
-    await user.click(within(visible).getByRole("button", { name: /采购安全制度/ }));
+    const search = screen.getByRole("searchbox");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(search).toHaveFocus());
+    expect(router.state.location.search).toBe("?keep=one");
+    await user.type(search, "special-clause");
+    expect(rows.queryByRole("row", { name: /采购安全制度.*1\.0\.0/ })).not.toBeInTheDocument();
+    await selectRecord(user, /采购安全制度.*2\.0\.0/);
     expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
     expect(new URLSearchParams(router.state.location.search).get("version")).toBe(policyV2);
-    await act(async () => {
-      await router.navigate(-1);
-    });
-    expect(details().getByText("指定的知识版本不存在或未包含在当前筛选中。")).toBeInTheDocument();
-    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
-
-    await user.clear(screen.getByRole("searchbox"));
-    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
-    await category(user, "知识库", "检索测试");
-    expect(details().queryByRole("heading")).not.toBeInTheDocument();
-    await user.type(screen.getByRole("searchbox"), "special-clause");
-    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
-    expect(new URLSearchParams(router.state.location.search).get("version")).toBe(policyV1);
-    await user.clear(screen.getByRole("searchbox"));
-    await category(user, "知识库", "文档库");
-    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+    const trigger = rows.getByRole("button", { name: /采购安全制度.*2\.0\.0/ });
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it("does not substitute another version after the selected one leaves the refreshed snapshot", async () => {
@@ -1422,11 +1426,9 @@ describe("workbench knowledge", () => {
     await act(async () => {
       await client.refetchQueries({ queryKey: queryKeys.workbench("week") });
     });
-    await waitFor(() =>
-      expect(details().getByText("指定的知识版本不存在或未包含在当前筛选中。")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("指定记录暂不可查看。")).toBeInTheDocument());
     expect(rows.getByRole("row", { name: /采购安全制度.*2\.0\.0/ })).toBeInTheDocument();
-    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SPECIAL-CLAUSE 必须留存|旧版本限定/)).not.toBeInTheDocument();
     expect(new URLSearchParams(router.state.location.search).get("version")).toBe(policyV1);
   });
 
@@ -1436,9 +1438,9 @@ describe("workbench knowledge", () => {
       const service = new WorkbenchService();
       const { router } = open("knowledge", service, `?version=${version}`);
       const rows = await list("知识库");
-      for (const radio of rows.getAllByRole("radio")) expect(radio).not.toBeChecked();
-      expect(details().getByText("指定的知识版本不存在或未包含在当前筛选中。")).toBeInTheDocument();
-      expect(details().queryByText(/SPECIAL-CLAUSE|供应商应提供/)).not.toBeInTheDocument();
+      expect(rows.queryByText(/SPECIAL-CLAUSE|供应商应提供/)).not.toBeInTheDocument();
+      expect(screen.getByText("指定记录暂不可查看。")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       expect(new URLSearchParams(router.state.location.search).get("version")).toBe(version);
       expect(service.requests.some((item) => item.key.includes("/versions/"))).toBe(false);
     },
@@ -1457,13 +1459,14 @@ describe("workbench knowledge", () => {
     const { user, router } = open("knowledge", service);
     const rows = await list("知识库");
     expect(router.state.location.search).toBe("");
-    expect(
-      within(rows.getByRole("row", { name: /采购安全制度.*2\.0\.0/ })).getByRole("radio"),
-    ).toBeChecked();
+    await openFirstRecord("知识库");
+    expect(rows.getByRole("row", { name: /采购安全制度.*2\.0\.0/ })).toHaveClass(
+      "module-row-selected",
+    );
     expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
     await selectRecord(user, /采购安全制度.*1\.0\.0/);
     expect(details().getByText("正在加载指定知识版本。")).toBeInTheDocument();
-    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SPECIAL-CLAUSE 必须留存|旧版本限定/)).not.toBeInTheDocument();
     await act(async () => {
       pending.resolve(json(oldVersion));
     });
@@ -1517,6 +1520,7 @@ describe("workbench knowledge", () => {
       });
     const { user } = open("knowledge", service);
     await list("知识库");
+    await openFirstRecord("知识库");
     expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
     await selectRecord(user, /采购安全制度.*1\.0\.0/);
     expect(await details().findByRole("alert")).toHaveTextContent(
@@ -1530,33 +1534,35 @@ describe("workbench knowledge", () => {
     addPolicyV1(service);
     const { user } = open("knowledge", service);
     await list("知识库");
+    await openFirstRecord("知识库");
     expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
     await selectRecord(user, /采购安全制度.*1\.0\.0/);
     expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
     service.fail(`GET /api/knowledge/knowledge-policy/versions/${policyV2}`, 404, "知识版本不存在");
     await selectRecord(user, /采购安全制度.*2\.0\.0/);
     expect(await details().findByRole("alert")).toHaveTextContent("知识版本不存在");
-    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SPECIAL-CLAUSE 必须留存|旧版本限定/)).not.toBeInTheDocument();
   });
 
   it("searches saved body text only after a retrieval query and preserves source and version details", async () => {
     const { user } = open("knowledge");
     const rows = await list("知识库");
+    await openFirstRecord("知识库");
     await waitFor(() => expectField("维护人", "审查员甲"));
     expectField("生效时间", "未报告");
     expect(details().getByText(/SPECIAL-CLAUSE 必须留存/)).toBeVisible();
     await category(user, "知识库", "知识条目");
+    await openFirstRecord("知识库");
     await detailTab(user, "条目与引用");
     await expectTechnicalField(user, "条目 ID", "knowledge-policy");
     expectField("版本", "2.0.0");
     await category(user, "知识库", "检索测试");
-    expect(
-      rows.getByText("输入关键词，搜索当前工作台中已保存的制度标题与正文。"),
-    ).toBeInTheDocument();
-    expect(details().queryByRole("heading")).not.toBeInTheDocument();
+    expect(rows.getByText("输入关键词检索制度标题与正文。")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await user.type(screen.getByRole("searchbox"), "  special-clause  ");
     expect(rows.getByRole("button", { name: /采购安全制度/ })).toBeInTheDocument();
     expect(rows.queryByRole("button", { name: /外部参考资料/ })).not.toBeInTheDocument();
+    await openFirstRecord("知识库");
     await detailTab(user, "适用范围");
     await waitFor(() => expectField("来源类型", "合成制度"));
     expect(details().getByText("没有获取到其他适用范围信息。")).toBeInTheDocument();
@@ -1664,6 +1670,7 @@ describe("workbench remediation and frozen artifacts", () => {
   it("routes remediation status groups to their real materials, original run and verification run", async () => {
     const { user } = open("remediation");
     const rows = await list("整改");
+    await openFirstRecord("整改");
     expect(rows.getByRole("button", { name: /补充付款材料/ })).toBeInTheDocument();
     expect(rows.getByRole("button", { name: /重新整改付款条款/ })).toBeInTheDocument();
     expect(
@@ -1677,7 +1684,7 @@ describe("workbench remediation and frozen artifacts", () => {
     expect(within(remediationSummary).getByText("专线采购案件")).toBeInTheDocument();
     expect(details().getByRole("link", { name: "进入案件整改与复核" })).toHaveAttribute(
       "href",
-      "/cases/case%2Falpha",
+      "/cases/case%2Falpha?work_kind=remediation&work_item=remediation%2Fopen#case-remediation",
     );
     await detailTab(user, "材料与版本");
     expectDisplayField("采购原件.pdf", "拟签合同，已解析");
@@ -1699,6 +1706,8 @@ describe("workbench remediation and frozen artifacts", () => {
     await category(user, "整改", "待复核");
     expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(1);
     expect(rows.getByRole("button", { name: /等待复核签章/ })).toBeInTheDocument();
+    await openFirstRecord("整改");
+    await detailTab(user, "复核记录");
     expectField("复核尝试", "attempt/verification");
     expectField("原始尝试", "attempt/original");
     expect(details().getByRole("link", { name: "打开复核审查" })).toHaveAttribute(
@@ -1726,13 +1735,14 @@ describe("workbench remediation and frozen artifacts", () => {
     ];
     const { user } = open("remediation", service);
     await list("整改");
+    await openFirstRecord("整改");
     expectDisplayField("责任人", "姓名未提供");
     await expectTechnicalField(user, "责任人标识", "former-assignee");
     await expectTechnicalField(user, "案件标识", "case-empty");
     expectField("截止时间", "未报告");
     expectField("最近理由", "未报告");
     await detailTab(user, "材料与版本");
-    expect(details().getByText("整改记录没有关联工作台中显示的材料。")).toBeInTheDocument();
+    expect(details().getByText("暂无关联材料。")).toBeInTheDocument();
     await detailTab(user, "操作历史");
     expect(details().getByText("没有获取到相关案件的审计历史。")).toBeInTheDocument();
   });
@@ -1740,16 +1750,19 @@ describe("workbench remediation and frozen artifacts", () => {
   it("moves workbench statistics and business activity into the reports module", async () => {
     const { user } = open("reports");
     await list("报告");
-    await user.click(screen.getByText("审查统计与业务记录", { exact: true }));
+    await category(user, "报告", "统计概览");
     expect(screen.getByRole("heading", { name: "审查发现分布" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "最近业务记录" })).toBeVisible();
-    expect(screen.getByLabelText("统计周期")).toHaveValue("week");
-    expect(screen.getByRole("region", { name: "报告记录" })).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "统计周期" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "报告记录" })).not.toBeInTheDocument();
+    await category(user, "报告", "审查报告");
+    expect(await screen.findByRole("region", { name: "报告记录" })).toBeVisible();
   });
 
   it("shows frozen report versions without exposing raw IDs or digests in the business view", async () => {
     const { user } = open("reports");
     const rows = await list("报告");
+    await openFirstRecord("报告");
     expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(3);
     expect(within(rows.getByRole("table")).getAllByText("已生成")).toHaveLength(3);
     expect(details().queryByText("报告 ID")).not.toBeInTheDocument();
@@ -1789,15 +1802,11 @@ describe("workbench remediation and frozen artifacts", () => {
     ]) {
       expect(details().queryByText(digest)).not.toBeInTheDocument();
     }
-    await category(user, "报告", "版本对比");
-    expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(2);
-    expect(rows.queryByRole("button", { name: /独立单版案件/ })).not.toBeInTheDocument();
-    await user.type(screen.getByRole("searchbox"), "  审查报告 V1  ");
-    expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(1);
+    await user.click(details().getByRole("button", { name: "查看审查报告 v1" }));
     expectField("报告版本", "1");
     expect(details().queryByText("report-v1-sha256")).not.toBeInTheDocument();
-    await user.clear(screen.getByRole("searchbox"));
-    await category(user, "报告", "导出记录");
+    await category(user, "报告", "统计概览");
+    await category(user, "报告", "审查报告");
     await selectRecord(user, /独立单版案件/);
     await detailTab(user, "导出记录");
     expect(details().queryByText("run-single")).not.toBeInTheDocument();
@@ -1816,6 +1825,7 @@ describe("workbench remediation and frozen artifacts", () => {
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
     const { user } = open("evidence");
     const rows = await list("证据中心");
+    await openFirstRecord("证据中心");
     expect(rows.getByRole("columnheader", { name: "状态" })).toBeVisible();
     expectField("文件名", "采购原件.pdf");
     expect(await details().findByTitle("采购原件.pdf原件预览")).toHaveAttribute(
@@ -1834,6 +1844,7 @@ describe("workbench remediation and frozen artifacts", () => {
     expect(
       screen.getByText(/具体的审查和执行记录/, { selector: 'p[role="status"]' }),
     ).toBeVisible();
+    await openFirstRecord("证据中心");
     await detailTab(user, "引用片段");
     await expectTechnicalField(user, "解析产物", "parsed/source");
     expect(details().getByRole("link", { name: "查看审查引用" })).toHaveAttribute(
@@ -1875,6 +1886,7 @@ describe("workbench remediation and frozen artifacts", () => {
     service.snapshot.cases[0]!.latest_run!.state = "completed·";
     const { user } = open("evidence", service);
     const rows = await list("证据中心");
+    await openFirstRecord("证据中心");
     expectDisplayField("文件名", "ENT（测试）股份有限公司.pdf");
     expectDisplayField("已记录文件类型", "文件类型待核对");
     await expectTechnicalField(user, "文件类型标识", "application/pdf（旧）");
@@ -1888,9 +1900,9 @@ describe("workbench remediation and frozen artifacts", () => {
     await expectTechnicalField(user, "最新状态编码", "completed·");
     await user.type(screen.getByRole("searchbox"), "attachment（旧）");
     await selectRecord(user, /ENT（测试）股份有限公司.pdf/);
-    expect(
-      within(rows.getByRole("row", { name: /ENT（测试）股份有限公司.pdf/ })).getByRole("radio"),
-    ).toBeChecked();
+    expect(rows.getByRole("row", { name: /ENT（测试）股份有限公司.pdf/ })).toHaveClass(
+      "module-row-selected",
+    );
     await user.clear(screen.getByRole("searchbox"));
     await selectRecord(user, /无类型原件.txt/);
     await detailTab(user, "原文预览");
@@ -1909,6 +1921,7 @@ describe("workbench remediation and frozen artifacts", () => {
     const { user } = open("evidence");
     const rows = await list("证据中心");
     await category(user, "证据中心", "完整性校验");
+    await openFirstRecord("证据中心");
     expect(screen.queryByRole("tablist", { name: "记录详情分类" })).not.toBeInTheDocument();
     expectField("校验结果", "原件摘要与解析来源一致");
     expectField("解析产物 ID", "parsed/source");
@@ -1935,10 +1948,10 @@ describe("workbench remediation and frozen artifacts", () => {
     expectField("解析器标识", "未报告");
     expectField("解析版本", "未报告");
     await detailTab(user, "使用记录");
-    expect(details().getByText("工作台没有返回该案件的审查记录。")).toBeInTheDocument();
+    expect(details().getByText("此案件暂无审查记录。")).toBeInTheDocument();
     expect(details().queryByRole("link", { name: "打开最近审查" })).not.toBeInTheDocument();
     await user.type(screen.getByRole("searchbox"), "未报告");
-    expect(rows.getByRole("button", { name: "尚未解析.txt" })).toBeVisible();
+    expect(rows.getByRole("button", { name: "查看：尚未解析.txt" })).toBeVisible();
   });
 });
 
@@ -1946,6 +1959,7 @@ describe("workbench execution and platform projections", () => {
   it("renders reported run usage and preserves missing usage instead of inventing zeroes", async () => {
     const { user } = open("executions");
     const rows = await list("执行轨迹");
+    await openFirstRecord("执行轨迹");
     expect(details().getByText("记录标识")).toBeInTheDocument();
     expect(details().getByText("run/current")).toBeInTheDocument();
     expect(details().queryByText("运行 ID")).not.toBeInTheDocument();
@@ -1961,7 +1975,7 @@ describe("workbench execution and platform projections", () => {
     await detailTab(user, "调用时间轴");
     expectField("实际调用数", "7");
     expectField("用量未知调用数", "2");
-    expectDisplayField("已报告来源", "2 项");
+    expectDisplayField("已记录来源", "2 项");
     await expectTechnicalField(user, "来源 1 标识", "provider");
     await expectTechnicalField(user, "来源 2 标识", "gateway");
     expect(details().getByRole("link", { name: "查看执行事件" })).toHaveAttribute(
@@ -1975,13 +1989,15 @@ describe("workbench execution and platform projections", () => {
     expectField("成本", "未报告");
     await user.type(screen.getByRole("searchbox"), " FAILED ");
     expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(1);
+    await openFirstRecord("执行轨迹");
+    await detailTab(user, "输入与输出");
     expectField("输入 tokens", "未报告");
     expectField("输出 tokens", "未报告");
     expectField("总 tokens", "未报告");
     await detailTab(user, "调用时间轴");
     expectField("实际调用数", "未报告");
     expectField("用量未知调用数", "未报告");
-    expectField("已报告来源", "未报告");
+    expectField("已记录来源", "未报告");
     await detailTab(user, "运行概览");
     expectField("开始时间", "未报告");
     expectField("结束时间", "未报告");
@@ -2015,6 +2031,7 @@ describe("workbench execution and platform projections", () => {
   it("keeps registered tool capabilities, call counts and unreported status distinct from private payloads", async () => {
     const { user } = open("tools");
     await list("工具网关");
+    await openFirstRecord("工具网关");
     await expectTechnicalField(user, "工具 ID", "tool/read-only");
     expectDisplayField("名称", "授权证据检索");
     expectDisplayField("最近状态", "调用完成");
@@ -2023,15 +2040,18 @@ describe("workbench execution and platform projections", () => {
     expectDisplayField("能力", "2 项");
     await expectTechnicalField(user, "能力 1 标识", "search");
     await expectTechnicalField(user, "能力 2 标识", "read");
-    expect(details().getByText("工作台没有提供单次调用的输入和输出正文。")).toBeInTheDocument();
+    expect(details().getByText("暂无单次调用的输入和输出正文。")).toBeInTheDocument();
     await category(user, "工具网关", "权限策略");
+    await openFirstRecord("工具网关");
     await detailTab(user, "权限与预算");
     expectDisplayField("登记能力", "2 项");
     expect(details().getByText("公开的工具信息不包含权限与预算。")).toBeInTheDocument();
     await category(user, "工具网关", "调用记录");
+    await openFirstRecord("工具网关");
     await detailTab(user, "调用记录");
     expectField("已统计调用", "19");
     await selectRecord(user, /尚未使用工具/);
+    await detailTab(user, "调用记录");
     expectField("已统计调用", "0");
     expectDisplayField("最近状态", "状态未报告");
     await detailTab(user, "输入与输出");
@@ -2049,17 +2069,16 @@ describe("workbench execution and platform projections", () => {
     service.snapshot.runs[0]!.usage!.sources = ["provider（旧）", "外部来源"];
     const { user } = open("executions", service);
     const rows = await list("执行轨迹");
+    await openFirstRecord("执行轨迹");
     expectDisplayField("运行状态", "状态未识别");
     await expectTechnicalField(user, "运行状态编码", "ready");
     await detailTab(user, "调用时间轴");
-    expectDisplayField("已报告来源", "2 项");
+    expectDisplayField("已记录来源", "2 项");
     await expectTechnicalField(user, "来源 1 标识", "provider（旧）");
     await expectTechnicalField(user, "来源 2 标识", "外部来源");
     await user.type(screen.getByRole("searchbox"), "provider（旧）");
     await selectRecord(user, /专线采购案件/);
-    expect(
-      within(rows.getByRole("row", { name: /专线采购案件/ })).getByRole("radio"),
-    ).toBeChecked();
+    expect(rows.getByRole("row", { name: /专线采购案件/ })).toHaveClass("module-row-selected");
   });
 
   it("distinguishes the known capability-only projection from supplied tool names", async () => {
@@ -2092,9 +2111,10 @@ describe("workbench execution and platform projections", () => {
     ];
     const { user } = open("tools", service);
     const rows = await list("工具网关");
-    expect(rows.getByRole("button", { name: "工具名称未提供" })).toBeVisible();
-    expect(rows.getByRole("button", { name: "same-name" })).toBeVisible();
-    expect(rows.getByRole("button", { name: "ENT（测试）股份有限公司" })).toBeVisible();
+    await openFirstRecord("工具网关");
+    expect(rows.getByRole("button", { name: "查看：工具名称未提供" })).toBeVisible();
+    expect(rows.getByRole("button", { name: "查看：same-name" })).toBeVisible();
+    expect(rows.getByRole("button", { name: "查看：ENT（测试）股份有限公司" })).toBeVisible();
     expectDisplayField("名称", "工具名称未提供");
     expectDisplayField("说明", "持久工具调用账本中的实际能力");
     expectDisplayField("最近状态", "状态待核对");
@@ -2106,9 +2126,7 @@ describe("workbench execution and platform projections", () => {
     await expectTechnicalField(user, "能力 1 标识", "capability.unknown");
     await user.type(screen.getByRole("searchbox"), "capability.unknown");
     await selectRecord(user, /工具名称未提供/);
-    expect(
-      within(rows.getByRole("row", { name: /工具名称未提供/ })).getByRole("radio"),
-    ).toBeChecked();
+    expect(rows.getByRole("row", { name: /工具名称未提供/ })).toHaveClass("module-row-selected");
   });
 });
 
@@ -2116,13 +2134,13 @@ describe("workbench public directory, templates and audit", () => {
   it("shows public member identity without inferring case ACL and sorts only that actor audit events", async () => {
     const { user } = open("organization");
     const rows = await list("组织与权限");
+    await openFirstRecord("组织与权限");
     await expectTechnicalField(user, "身份 ID", "reviewer-1");
     await expectTechnicalField(user, "租户 ID", "tenant-public");
     await expectTechnicalField(user, "组织 ID", "org-alpha");
     await category(user, "组织与权限", "角色权限");
-    expect(
-      screen.getByText(/系统仍会逐次检查权限/, { selector: 'p[role="status"]' }),
-    ).toBeVisible();
+    expect(screen.getByText(/成员的角色和组织/, { selector: 'p[role="status"]' })).toBeVisible();
+    await openFirstRecord("组织与权限");
     await detailTab(user, "角色与权限");
     expectDisplayField("角色", "审查员");
     expectDisplayField("组织", "组织名称未提供");
@@ -2144,12 +2162,11 @@ describe("workbench public directory, templates and audit", () => {
       "/workbench/audit",
     );
     await selectRecord(user, /未活动成员/);
+    await detailTab(user, "活动记录");
     expect(details().getByText("没有获取到与该成员关联的业务审计记录。")).toBeInTheDocument();
     expect(details().queryByRole("link")).not.toBeInTheDocument();
     await category(user, "组织与权限", "组织架构");
-    expect(
-      screen.getByText(/不包含组织的上下级关系/, { selector: 'p[role="status"]' }),
-    ).toBeVisible();
+    expect(screen.getByText(/成员按所属组织列出/, { selector: 'p[role="status"]' })).toBeVisible();
     await user.type(screen.getByRole("searchbox"), "org-beta");
     expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(2);
     expect(rows.queryByRole("button", { name: /审查员甲/ })).not.toBeInTheDocument();
@@ -2196,15 +2213,17 @@ describe("workbench public directory, templates and audit", () => {
     ];
     const { user } = open("organization", service);
     const rows = await list("组织与权限");
-    expect(rows.queryByRole("button", { name: "演示管理员" })).not.toBeInTheDocument();
-    await user.type(screen.getByRole("searchbox", { name: "搜索当前数据" }), "万州区");
-    expect(rows.getByRole("button", { name: "Ethan Brooks" })).toBeVisible();
-    expect(rows.getByRole("button", { name: "Grace Coleman" })).toBeVisible();
+    expect(rows.queryByRole("button", { name: "查看：演示管理员" })).not.toBeInTheDocument();
+    await user.type(screen.getByRole("searchbox", { name: "搜索记录" }), "万州区");
+    expect(rows.getByRole("button", { name: "查看：Ethan Brooks" })).toBeVisible();
+    expect(rows.getByRole("button", { name: "查看：Grace Coleman" })).toBeVisible();
+    await selectRecord(user, /Ethan Brooks/);
     expectDisplayField("组织", "万州区");
     expectDisplayField("显示姓名", "Ethan Brooks");
-    await user.clear(screen.getByRole("searchbox", { name: "搜索当前数据" }));
-    await user.type(screen.getByRole("searchbox", { name: "搜索当前数据" }), "James Carter");
-    expect(rows.getByRole("button", { name: "James Carter" })).toBeVisible();
+    await user.clear(screen.getByRole("searchbox", { name: "搜索记录" }));
+    await user.type(screen.getByRole("searchbox", { name: "搜索记录" }), "James Carter");
+    expect(rows.getByRole("button", { name: "查看：James Carter" })).toBeVisible();
+    await selectRecord(user, /James Carter/);
     expectDisplayField("组织", "两江新区");
     expectDisplayField("显示姓名", "James Carter");
   });
@@ -2212,6 +2231,7 @@ describe("workbench public directory, templates and audit", () => {
   it("renders returned template field definitions and current version without fabricating generated documents", async () => {
     const { user } = open("templates");
     await list("合同模板");
+    await openFirstRecord("合同模板");
     expectField("ID", "template/line");
     expectField("版本", "3.0.0");
     expectField("摘要", "template-sha256");
@@ -2221,6 +2241,7 @@ describe("workbench public directory, templates and audit", () => {
     expect(placeholders).toHaveTextContent("{{金额}}");
     expect(placeholders).toHaveTextContent("文本 · 必填");
     await category(user, "合同模板", "字段配置");
+    await openFirstRecord("合同模板");
     await detailTab(user, "字段定义");
     expectDisplayField("供应商", "文本，必填");
     expectDisplayField("金额", "小数，必填");
@@ -2229,9 +2250,9 @@ describe("workbench public directory, templates and audit", () => {
     await expectTechnicalField(user, "字段 1 标识", "supplier");
     await expectTechnicalField(user, "字段 4 类型编码", "textarea");
     await category(user, "合同模板", "生成记录");
+    await openFirstRecord("合同模板");
     await detailTab(user, "使用记录");
-    expectField("当前身份可见案件", "2");
-    expect(details().getByText(/不包含按模板汇总的生成日志/)).toBeInTheDocument();
+    expect(details().getByText("可在案件详情中查看该案件保存的生成记录。")).toBeInTheDocument();
     expect(details().getByRole("link", { name: "打开案件中心查看生成记录" })).toHaveAttribute(
       "href",
       "/cases",
@@ -2254,6 +2275,7 @@ describe("workbench public directory, templates and audit", () => {
     ];
     const { user } = open("templates", service);
     await list("合同模板");
+    await openFirstRecord("合同模板");
     await detailTab(user, "字段定义");
     expect(details().getByRole("heading", { name: "空字段模板" })).toBeInTheDocument();
     expect(details().queryByRole("definition")).not.toBeInTheDocument();
@@ -2287,8 +2309,9 @@ describe("workbench public directory, templates and audit", () => {
     ];
     const { user } = open("organization", service);
     const rows = await list("组织与权限");
-    expect(rows.getAllByRole("button", { name: "姓名未提供" })).toHaveLength(2);
-    expect(rows.getByRole("button", { name: "ENT（测试）股份有限公司" })).toBeVisible();
+    await openFirstRecord("组织与权限");
+    expect(rows.getAllByRole("button", { name: "查看：姓名未提供" })).toHaveLength(2);
+    expect(rows.getByRole("button", { name: "查看：ENT（测试）股份有限公司" })).toBeVisible();
     expectDisplayField("显示姓名", "姓名未提供");
     expectDisplayField("角色", "角色未识别");
     expectDisplayField("租户", "租户名称未提供");
@@ -2298,7 +2321,11 @@ describe("workbench public directory, templates and audit", () => {
     await expectTechnicalField(user, "组织 ID", "org-precise");
     await user.type(screen.getByRole("searchbox"), "member/unnamed");
     await selectRecord(user, /姓名未提供/);
-    expect(within(rows.getByRole("row", { name: /姓名未提供/ })).getByRole("radio")).toBeChecked();
+    expect(
+      rows
+        .getAllByRole("row", { name: /姓名未提供/ })
+        .some((row) => row.classList.contains("module-row-selected")),
+    ).toBe(true);
     await expectTechnicalField(user, "身份 ID", "member/unnamed");
     const identity = details().getByText("身份 ID", { selector: "dt" }).nextElementSibling;
     if (!identity) throw new Error("missing identity field");
@@ -2321,6 +2348,7 @@ describe("workbench public directory, templates and audit", () => {
   it("separates case, platform and current-actor audit projections and never treats them as access logs", async () => {
     const { user } = open("audit");
     const rows = await list("审计日志");
+    await openFirstRecord("审计日志");
     expectField("事件标识", "audit-case-1");
     expectField("资源范围", "专线采购案件");
     const summary = within(details().getByLabelText("所选审计事件摘要"));
@@ -2340,6 +2368,7 @@ describe("workbench public directory, templates and audit", () => {
     expect(details().getByText(/提交签章材料/)).toBeInTheDocument();
     expect(details().queryByText(/维护安全制度|发布运营商规则包/)).not.toBeInTheDocument();
     await selectRecord(user, /发布规则包/);
+    await detailTab(user, "关联事件");
     expect(summary.getByText("平台级事件")).toBeVisible();
     expect(summary.getByText("发布规则包")).toBeVisible();
     expect(details().getByText("平台级事件没有案件关联。")).toBeInTheDocument();
@@ -2374,8 +2403,26 @@ describe("workbench public directory, templates and audit", () => {
       }),
     ).toBeVisible();
     expect(rows.queryByRole("button")).not.toBeInTheDocument();
-    expect(details().queryByRole("heading")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+});
+
+it("keeps all status tabs and the actual five table headers when remediation is empty", async () => {
+  const service = new WorkbenchService();
+  service.snapshot.remediations = [];
+  const { user } = open("remediation", service);
+  const rows = await list("整改");
+  expect(rows.getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
+    "整改事项",
+    "案件",
+    "状态",
+    "更新",
+    "操作",
+  ]);
+  expect(rows.getByText("当前没有待整改事项")).toBeVisible();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await category(user, "整改", "待复核");
+  expect(rows.getByText("当前没有待复核事项")).toBeVisible();
 });
 
 describe("workbench snapshot boundaries", () => {
@@ -2392,9 +2439,10 @@ describe("workbench snapshot boundaries", () => {
     const { user } = open("evidence", service);
     expect(await screen.findByRole("alert")).toHaveTextContent("持久业务快照暂时不可用");
     expect(screen.getByRole("heading", { name: "证据中心没有加载" })).toBeInTheDocument();
-    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试" }));
     const rows = await list("证据中心");
+    await openFirstRecord("证据中心");
     expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(1);
     expect(details().getByRole("heading", { name: "授权材料.pdf" })).toBeInTheDocument();
     expect(details().getByRole("link", { name: "读取材料原件" })).toHaveAttribute(
@@ -2419,7 +2467,7 @@ describe("workbench snapshot boundaries", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("没有读取工作台快照的权限");
     expect(screen.queryByRole("link", { name: "打开报告" })).not.toBeInTheDocument();
     expect(screen.queryByText("专线采购案件")).not.toBeInTheDocument();
-    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("rejects an invalid parsed-document projection and can recover with a valid snapshot", async () => {
@@ -2433,19 +2481,22 @@ describe("workbench snapshot boundaries", () => {
     expect(screen.queryByRole("link", { name: "读取材料原件" })).not.toBeInTheDocument();
     service.responseSnapshot = undefined;
     await user.click(screen.getByRole("button", { name: "重试" }));
-    await list("证据中心");
+    await openFirstRecord("证据中心");
     expectField("文件名", "采购原件.pdf");
   });
 
   it("does not retain a selected record when a refreshed snapshot no longer contains it", async () => {
-    const { user, service } = open("reports");
+    const { client, service } = open("reports");
     await list("报告");
+    await openFirstRecord("报告");
     expect(details().getByRole("link", { name: "打开报告" })).toBeInTheDocument();
     service.snapshot.reports = [];
-    await user.click(screen.getByRole("button", { name: "刷新数据" }));
-    await waitFor(() => expect(details().queryByRole("link")).not.toBeInTheDocument());
-    expect(screen.getByText("没有获取到记录。")).toBeInTheDocument();
-    expect(details().getByText("选择一条记录查看服务端返回的详情。")).toBeInTheDocument();
+    await act(async () => {
+      await client.refetchQueries({ queryKey: queryKeys.workbenchPrefix });
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(await screen.findByText("暂无审查报告")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("rejects prototype property names as module routes without fetching business data", () => {

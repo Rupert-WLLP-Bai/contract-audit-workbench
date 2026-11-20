@@ -285,7 +285,7 @@ export function RulePackDetailPage() {
     const onSuccess = (result: RulePackMutationResult) =>
       completeAction(
         kind === "validate"
-          ? "规则包验证完成。请检查服务端返回的验证摘要。"
+          ? "规则包验证完成，请查看验证摘要。"
           : kind === "approve"
             ? "规则包已由当前可信管理身份批准。"
             : "规则包已停用；已发布字节与生命周期记录仍保留。",
@@ -709,9 +709,9 @@ export function RulePackDetailPage() {
                       </dd>
                     </div>
                     <div>
-                      <dt>有效期</dt>
+                      <dt>生效期限</dt>
                       <dd>
-                        {pack.effective_from} — {pack.effective_until}
+                        {pack.effective_from} — {pack.effective_until}（包含开始，不包含结束）
                       </dd>
                     </div>
                     <div>

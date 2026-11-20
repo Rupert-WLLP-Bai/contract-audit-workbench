@@ -1,0 +1,15 @@
+@media (min-width: 1024px) {
+  .workbench-side-peek .workbench-side-peek-wrapper {
+    inset-block-start: var(--header-height);
+  }
+
+  .workbench-side-peek .workbench-side-peek-mask {
+    inset-block-start: var(--header-height);
+    inset-inline-start: var(--sidebar-expanded-width);
+    background: color-mix(in srgb, var(--text-primary) 14%, transparent);
+  }
+
+  :root:has(.client-sidebar .shell-nav--collapsed) .workbench-side-peek .workbench-side-peek-mask {
+    inset-inline-start: var(--sidebar-collapsed-width);
+  }
+}

@@ -514,7 +514,7 @@ export function LegalKnowledgePage() {
         <header className="page-head">
           <div>
             <h1>案件适用依据</h1>
-            <p>先选择有权访问的案件，再按条文名称、条号或正文检索。</p>
+            <p>先选择案件，再按条文名称、条号或正文检索。</p>
           </div>
         </header>
         <ul className="document-list">
@@ -731,7 +731,7 @@ export function LegalKnowledgeAdminList({
           <h2>导入官方来源捕获</h2>
           <p>
             粘贴带有 capture 与 articles 的原始
-            JSON。服务端会核对来源正文、状态证据和各自摘要；法律审阅状态保持 NOT_RUN。
+            JSON。将核对来源正文、状态证据和各自摘要；法律审阅状态保持 NOT_RUN。
           </p>
           <form className="workflow-form" onSubmit={(event) => void submit(event)}>
             <label className="field">

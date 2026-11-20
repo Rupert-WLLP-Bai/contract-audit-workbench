@@ -142,7 +142,7 @@ describe("subject detail pagination scope", () => {
     expect(screen.getByText("****1234")).not.toBeVisible();
     expect(screen.getAllByText("经办人录入").length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "更正历史" }));
-    expect(screen.getByRole("link", { name: "查看有权访问的案件记录" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "查看案件记录" })).toHaveAttribute(
       "href",
       "/cases/case-1/subject-changes/request-1",
     );

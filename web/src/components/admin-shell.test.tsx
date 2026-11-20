@@ -104,10 +104,11 @@ describe("admin shell", () => {
     expect(screen.queryByText("管理内容")).not.toBeInTheDocument();
   });
 
-  it("shows the administration identity, active tenant and read-only disclaimer", () => {
+  it("shows the administration identity, active tenant and read-only disclaimer", async () => {
     renderShell();
     expect(screen.getByLabelText("管理工作台")).toHaveAttribute("href", "/admin/settings");
-    expect(screen.getByText("合同智能审计工作台")).toBeInTheDocument();
+    expect(screen.getByText("合同审计 · 管理后台")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "管理个人菜单" }));
     expect(screen.getByText("租户一")).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -116,11 +117,9 @@ describe("admin shell", () => {
           element.textContent === "当前组织：演示组织",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText("此工作区不授予案件正文访问权限。")).toBeInTheDocument();
+    expect(screen.queryByText("此工作区不授予案件正文访问权限。")).not.toBeInTheDocument();
     const who = screen.getByLabelText("当前管理身份");
-    expect(within(who).getByText("管理员甲")).toBeInTheDocument();
-    expect(within(who).getByText("管")).toHaveClass("ant-avatar-string");
-    expect(within(who).getByText("管理员")).toBeInTheDocument();
+    expect(within(who).getByText("管理员甲 · 管理员")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "规则库" })).toHaveAttribute(
       "href",
       "/admin/rulepacks",
@@ -134,13 +133,17 @@ describe("admin shell", () => {
       "/admin/infrastructure",
     );
     expect(screen.getByText("管理内容")).toBeInTheDocument();
-    expect(screen.getByText("规则版本与发布历史")).toBeInTheDocument();
+    expect(screen.queryByText("规则版本与发布历史")).not.toBeInTheDocument();
+    for (const group of ["系统与模型", "规则库", "知识治理", "租户管理", "运营统计", "服务状态"]) {
+      expect(screen.getAllByText(group).length).toBeGreaterThan(0);
+    }
   });
 
-  it("shows an unknown identity while the session is still loading", () => {
+  it("shows an unknown identity while the session is still loading", async () => {
     session = { data: undefined };
     renderShell();
     expect(screen.getByText("身份未知")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "管理个人菜单" }));
     expect(screen.getByRole("button", { name: "退出" })).toBeInTheDocument();
     expect(screen.queryByText(/^租户：/)).not.toBeInTheDocument();
   });
@@ -174,6 +177,7 @@ describe("admin shell", () => {
   it("navigates to the admin login after logging out", async () => {
     const user = userEvent.setup();
     renderShell();
+    await user.click(screen.getByRole("button", { name: "管理个人菜单" }));
     await user.click(screen.getByRole("button", { name: "退出" }));
     expect(mutateAsync).toHaveBeenCalledTimes(1);
     await waitFor(() =>
@@ -186,9 +190,10 @@ describe("admin shell", () => {
     expect(document.querySelector("#main")).toHaveAttribute("tabindex", "-1");
   });
 
-  it("disables the logout action while it is pending", () => {
+  it("disables the logout action while it is pending", async () => {
     logoutPending = true;
     renderShell();
+    await userEvent.click(screen.getByRole("button", { name: "管理个人菜单" }));
     expect(screen.getByRole("button", { name: "退出" })).toBeDisabled();
   });
 });

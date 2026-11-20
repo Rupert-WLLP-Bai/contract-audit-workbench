@@ -18,6 +18,7 @@ import { ReviewDiff } from "./review-diff";
 
 const api = vi.hoisted(() => ({ getReview: vi.fn(), getReviewHistoryPage: vi.fn() }));
 vi.mock("../api/endpoints", () => api);
+vi.mock("./app-shell-preferences", () => ({ useProfessionalMode: () => ({ enabled: true }) }));
 
 function workspace(runId: string) {
   const attempt = {

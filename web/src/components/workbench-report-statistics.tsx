@@ -8,6 +8,7 @@
 // Copyright: See LICENSE
 // End file metadata.
 
+import { Select } from "antd";
 import { Link } from "react-router";
 import type { WorkbenchPeriod, WorkbenchSnapshot } from "../api/types";
 import { businessActionLabel } from "../domain/business-labels";
@@ -39,22 +40,20 @@ export function WorkbenchReportStatistics({
     : "var(--surface-subtle)";
   const riskCount = dashboard.risks.reduce((sum, row) => sum + row.count, 0);
   return (
-    <details className="workbench-report-statistics">
-      <summary>审查统计与业务记录</summary>
+    <section className="workbench-report-statistics" aria-label="统计概览">
       <div className="workbench-report-statistics-content">
         <label className="module-search">
           统计周期
-          <select
+          <Select<WorkbenchPeriod>
+            aria-label="统计周期"
             value={snapshot.period}
-            onChange={(event) => {
-              const period = event.target.value;
-              if (period === "day" || period === "week" || period === "month") changePeriod(period);
-            }}
-          >
-            <option value="day">今天</option>
-            <option value="week">本周</option>
-            <option value="month">本月</option>
-          </select>
+            onChange={changePeriod}
+            options={[
+              { value: "day", label: "今天" },
+              { value: "week", label: "本周" },
+              { value: "month", label: "本月" },
+            ]}
+          />
         </label>
         <dl className="workbench-report-counts">
           <div>
@@ -102,7 +101,6 @@ export function WorkbenchReportStatistics({
                 </li>
               ))}
             </ul>
-            {total !== dashboard.visible_cases ? <p>已报告状态 {total} 项。</p> : null}
           </section>
           <section aria-label="审查发现分布">
             <h2>审查发现分布</h2>
@@ -143,10 +141,10 @@ export function WorkbenchReportStatistics({
               ))}
             </ul>
           ) : (
-            <p>没有已报告的业务记录。</p>
+            <p>暂无业务记录。</p>
           )}
         </section>
       </div>
-    </details>
+    </section>
   );
 }

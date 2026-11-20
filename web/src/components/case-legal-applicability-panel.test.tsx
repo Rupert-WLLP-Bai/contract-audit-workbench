@@ -550,7 +550,7 @@ describe("case legal applicability panel", () => {
       }),
     );
     renderPanel();
-    expect(await screen.findByText("版本历史（当前写入头 v3）")).toBeInTheDocument();
+    expect(await screen.findByText("版本历史（最新版本 v3）")).toBeInTheDocument();
     expect(await screen.findByText(/第 2 版 · 企业/)).toBeInTheDocument();
     const section = screen.getByRole("region", { name: "采购方主体类型" });
     await user.click(within(section).getByRole("button", { name: "下一页历史" }));
@@ -570,7 +570,7 @@ describe("case legal applicability panel", () => {
 
   it("explains when the case has no fixed material versions and a dimension has no fact history", async () => {
     renderPanel();
-    expect(await screen.findByText("本案暂无可引用的固定材料版本。")).toBeInTheDocument();
+    expect(await screen.findByText("本案暂无可引用的留档材料版本。")).toBeInTheDocument();
     const heading = await screen.findByRole("heading", { name: "供应方主体类型" });
     const section = heading.closest("section");
     if (!section) throw new Error("供应方主体类型事实区未渲染");
@@ -597,6 +597,6 @@ describe("case legal applicability panel", () => {
       screen.getByRole("combobox", { name: "选择事实依据的材料版本" }),
       /拟签合同.*主合同.*v1/,
     );
-    expect(await screen.findByText("所选材料版本还没有固定解析记录。")).toBeInTheDocument();
+    expect(await screen.findByText("所选材料版本还没有留档解析记录。")).toBeInTheDocument();
   });
 });

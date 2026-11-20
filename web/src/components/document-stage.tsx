@@ -1429,7 +1429,7 @@ function RelationForm({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   if (availableCases.length === 0) {
-    return <p className="meta">当前身份可见范围内没有可新增的案件。</p>;
+    return <p className="meta">暂无可添加的案件。</p>;
   }
   return (
     <form className="review-relation-form" onSubmit={onSubmit}>

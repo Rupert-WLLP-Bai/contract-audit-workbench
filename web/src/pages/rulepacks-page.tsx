@@ -122,7 +122,7 @@ export function RulePacksPage() {
       ),
     },
     {
-      title: "有效期（含开始，不含结束）",
+      title: "生效期限",
       key: "effective",
       render: (_, pack) => (
         <>
@@ -254,11 +254,11 @@ export function RulePacksPage() {
                 <dd>{selected.tenant_id}</dd>
               </div>
               <div>
-                <dt>生效开始</dt>
+                <dt>生效开始（含）</dt>
                 <dd>{selected.effective_from}</dd>
               </div>
               <div>
-                <dt>生效结束</dt>
+                <dt>生效结束（不含）</dt>
                 <dd>{selected.effective_until}</dd>
               </div>
             </dl>
