@@ -4,7 +4,7 @@
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-20 */
 /* Updated: 2026-11-20 */
-/* Revision: r4 */
+/* Revision: r5 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -24,6 +24,13 @@
   width: var(--control-height-small);
   height: var(--control-height-small);
   line-height: var(--control-height-small);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .client-account-popup {
+    /* Ant Design measures the popup by changing its inset and reading it in the same frame. */
+    transition-property: none;
+  }
 }
 
 .client-account-menu {
