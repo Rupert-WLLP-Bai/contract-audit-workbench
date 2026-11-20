@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-19
-// Revision: r6
+// Updated: 2026-11-20
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -22,6 +22,7 @@ export interface OriginalReadScope {
 }
 
 export const OriginalSourceContext = createContext<OriginalReadScope | null>(null);
+export const OpenOriginalContext = createContext<(() => void) | null>(null);
 
 export function supportsOriginalPreview(filename: string): boolean {
   return /\.(?:pdf|png|jpe?g|docx)$/i.test(filename);
@@ -141,7 +142,18 @@ export function OriginalDocumentReader({
         <p className="meta">引用未记录原件页码，已显示原文中的位置；可切换原件自行核对页码。</p>
       ) : null}
       {effectiveMode === "text" ? (
-        children
+        <OpenOriginalContext.Provider
+          value={
+            keyClause && !onClearKeyClause
+              ? null
+              : () => {
+                  if (keyClause) onClearKeyClause?.();
+                  setMode("original");
+                }
+          }
+        >
+          {children}
+        </OpenOriginalContext.Provider>
       ) : (
         <Suspense fallback={<p role="status">正在加载原件阅读器…</p>}>
           <OriginalPageView

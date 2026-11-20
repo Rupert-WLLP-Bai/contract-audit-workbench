@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-19
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -141,9 +141,9 @@ function display(
 }
 
 export const businessLineLabel = (value: string | null | undefined) =>
-  display(LINES, value, "业务条线未设置", "业务条线待核对", true);
+  display(LINES, value, "—", "业务条线待核对", true);
 export const scenarioLabel = (value: string | null | undefined) =>
-  display(SCENARIOS, value, "业务场景未设置", "业务场景待核对", true);
+  display(SCENARIOS, value, "—", "业务场景待核对", true);
 export const businessActionLabel = (value: string | null | undefined) =>
   display(ACTIONS, value, "业务操作未记录", "已记录一项操作，类型待核对", true);
 export const businessDomainLabel = (value: string | null | undefined) =>

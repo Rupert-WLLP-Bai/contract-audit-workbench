@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r11
+// Revision: r12
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1422,6 +1422,108 @@ describe("application routes and API contract", () => {
     const request = api.requests.find((entry) => entry.key === "POST /api/cases/c1/reports");
     expect(request?.input).toEqual({ run_id: "r1", attempt_id: "attempt-r1-1" });
     expect(request?.headers.get("Idempotency-Key")).toBeTruthy();
+  });
+
+  it("preflights a partial report with zero rule findings and no retry eligibility", async () => {
+    const api = new Service();
+    api.role = "admin";
+    const review = api.addReview("partial");
+    review.findings = [];
+    review.evaluations = [evaluation({ relation: "compatible" })];
+    review.run.partial_reason = "调用审查模型失败，已保留可定位的规则结果；模型审查尚未完成。";
+    review.execution!.attempt.frozen_result_available = true;
+    review.execution!.attempt.outcome = {
+      reason: "execution_failed",
+      agent_stage: "unknown",
+      retry_cause: "none",
+    };
+    const { user } = open(api, "/cases/c1/reviews/r1?attempt_id=attempt-r1-1");
+    const progress = await screen.findByRole("list", { name: "审查进度" });
+    expect(within(progress).getByText("原文审查（部分完成）")).toHaveAttribute(
+      "data-stage",
+      "warning",
+    );
+    expect(within(progress).getByText("整改与报告")).not.toHaveAttribute("data-stage");
+    expect(screen.getByText("规则检查 0 条 · 智能审查未完成")).toBeInTheDocument();
+    expect(await screen.findByText(/不能据此认定没有风险/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新执行智能审查" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "查看原因" }));
+    const reasons = await screen.findByRole("region", { name: "本次审查状态" });
+    expect(reasons).toHaveTextContent("调用审查模型失败");
+    await openReviewSection(user, "原文核对");
+
+    const action = screen.getByRole("button", { name: "出报告" });
+    await waitFor(() => expect(action).toBeEnabled());
+    await user.click(action);
+    const preflight = await screen.findByRole("dialog", { name: "部分报告预检" });
+    expect(within(preflight).getByText("已保存规则检查结果")).toBeInTheDocument();
+    expect(within(preflight).getByRole("link", { name: "查看重新审查准备" })).toHaveAttribute(
+      "href",
+      "/cases/c1#review-readiness",
+    );
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/reports")).toHaveLength(
+      0,
+    );
+    await user.click(within(preflight).getByRole("button", { name: "仍出部分报告" }));
+    await waitFor(() => {
+      expect(
+        api.requests.filter((entry) => entry.key === "POST /api/cases/c1/reports"),
+      ).toHaveLength(1);
+    });
+    expect((await screen.findByText("查看报告")).closest("a")).toHaveAttribute(
+      "href",
+      "/api/cases/c1/reports/report-1?format=html",
+    );
+    const writes = api.requests.filter((entry) => entry.key === "POST /api/cases/c1/reports");
+    expect(writes[0]?.input).toEqual({ run_id: "r1", attempt_id: "attempt-r1-1" });
+    expect(writes[0]?.headers.get("Idempotency-Key")).toBeTruthy();
+  });
+
+  it("reuses the current retry command from the partial report preflight for a verified timeout", async () => {
+    const api = new Service();
+    api.role = "admin";
+    const review = api.addReview("partial");
+    review.findings = [];
+    markModelTimeout(review);
+    review.execution!.attempt.frozen_result_available = true;
+    const { router, user } = open(api, "/cases/c1/reviews/r1?attempt_id=attempt-r1-1");
+    const report = await screen.findByRole("button", { name: "出报告" });
+    await waitFor(() => expect(report).toBeEnabled());
+    await user.click(report);
+    const dialog = await screen.findByRole("dialog", { name: "部分报告预检" });
+    await user.click(within(dialog).getByRole("button", { name: "重新执行智能审查" }));
+    await waitFor(() => expect(router.state.location.search).toContain("attempt_id=attempt-r1-2"));
+    expect(
+      api.requests.filter((entry) => entry.key === "POST /api/cases/c1/reviews/r1/retry"),
+    ).toHaveLength(1);
+    expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/reports")).toHaveLength(
+      0,
+    );
+  });
+
+  it("dismisses partial report confirmation when navigating to another attempt", async () => {
+    const api = new Service();
+    api.role = "admin";
+    const previous = api.addReview("completed", "r1");
+    previous.findings = [];
+    previous.execution!.attempt.frozen_result_available = true;
+    const partial = api.addReview("partial", "r2");
+    partial.findings = [];
+    partial.execution!.attempt.frozen_result_available = true;
+    const { router, user } = open(api, "/cases/c1/reviews/r2?attempt_id=attempt-r2-1");
+    const report = await screen.findByRole("button", { name: "出报告" });
+    await waitFor(() => expect(report).toBeEnabled());
+    await user.click(report);
+    await screen.findByRole("dialog", { name: "部分报告预检" });
+    await router.navigate("/cases/c1/reviews/r1?attempt_id=attempt-r1-1");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "部分报告预检" })).not.toBeInTheDocument(),
+    );
+    await router.navigate("/cases/c1/reviews/r2?attempt_id=attempt-r2-1");
+    await waitFor(() => expect(screen.getByRole("button", { name: "出报告" })).toBeEnabled());
+    expect(screen.queryByRole("dialog", { name: "部分报告预检" })).not.toBeInTheDocument();
+    expect(api.requests.some((entry) => entry.key === "POST /api/cases/c1/reports")).toBe(false);
   });
 
   it("does not offer report creation while the selected sealed review still needs a judgment", async () => {
@@ -3993,9 +4095,9 @@ describe("application routes and API contract", () => {
       expect(screen.getByRole("radio", { name: "确认是风险" })).toBeDisabled();
       expect(screen.getByRole("button", { name: "保存判断" })).toBeDisabled();
       if (action === "retry")
-        expect(screen.getByRole("button", { name: "重新执行未完成的审查" })).toBeDisabled();
+        expect(screen.getByRole("button", { name: "重新执行智能审查" })).toBeDisabled();
       for (const button of screen.queryAllByRole("button", {
-        name: /^(保存判断|重新执行未完成的审查|取消本次执行)$/,
+        name: /^(保存判断|重新执行智能审查|取消本次执行)$/,
       })) {
         await user.click(button);
       }
@@ -4371,7 +4473,7 @@ describe("application routes and API contract", () => {
     markModelTimeout(api.addReview("partial"));
     open(api, "/cases/c1/reviews/r1");
     expect(await screen.findByText("当前角色不能提交审查判断。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "重新执行未完成的审查" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新执行智能审查" })).toBeDisabled();
     expect(screen.getByRole("radio", { name: "确认是风险" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存判断" })).toBeDisabled();
     expect(screen.getAllByText("36个月").length).toBeGreaterThan(0);
@@ -4384,7 +4486,7 @@ describe("application routes and API contract", () => {
     markModelTimeout(api.addReview("partial"));
     open(api, "/cases/c1/reviews/r1");
     await screen.findByRole("region", { name: "审查工作区" });
-    expect(screen.getByRole("button", { name: "重新执行未完成的审查" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "重新执行智能审查" })).toBeEnabled();
     expect(screen.getByRole("radio", { name: "确认是风险" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存判断" })).toBeDisabled();
     expect(api.requests.filter((entry) => entry.key.includes("/decisions"))).toHaveLength(0);

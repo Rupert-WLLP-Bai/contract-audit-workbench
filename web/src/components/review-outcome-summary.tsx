@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-19
-// Revision: r5
+// Updated: 2026-11-20
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -17,15 +17,23 @@ import {
   hasFrozenParseFailure,
   hasTransientRetryCause,
   limitedPrecheck,
+  partialReportScope,
   selectedOutcome,
   unresolvedGapKinds,
 } from "../features/review/review-outcome";
 import { singleContractCoverage } from "../features/review/single-contract-coverage";
 
-export function ReviewOutcomeSummary({ workspace }: { workspace: ReviewWorkspace }) {
+export function ReviewOutcomeSummary({
+  workspace,
+  showPartialReason = true,
+}: {
+  workspace: ReviewWorkspace;
+  showPartialReason?: boolean;
+}) {
   const coverage = singleContractCoverage(workspace);
   const outcome = selectedOutcome(workspace);
   const limited = limitedPrecheck(workspace);
+  const partial = partialReportScope(workspace);
   const stage = agentStage(workspace);
   const undecided = workspace.findings.filter((finding) => finding.decisions.length === 0).length;
   const gaps =
@@ -110,8 +118,11 @@ export function ReviewOutcomeSummary({ workspace }: { workspace: ReviewWorkspace
       {outcome?.reason === "dependency_unavailable" ? (
         <p>审查依赖尚未就绪，请联系管理员核对。</p>
       ) : null}
-      {outcome?.reason === "execution_failed" ? (
-        <p>执行发生故障，原因与恢复条件需要进一步核对。</p>
+      {outcome?.reason === "execution_failed" && (!partial || showPartialReason) ? (
+        <p>
+          {partial?.reason ?? "本次审查未能完成。"}{" "}
+          <a href={`${casePath}#review-readiness`}>查看重新审查准备</a>
+        </p>
       ) : null}
       {outcome?.reason === "review_incomplete" ? (
         <p>部分审查或所需证据尚未完成，请核对现有结果和缺项。</p>

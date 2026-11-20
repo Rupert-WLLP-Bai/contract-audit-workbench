@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r6
+// Updated: 2026-11-20
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -230,8 +230,8 @@ func (s *Store) CreateReportWithIdempotency(ctx context.Context, user accounts.U
 	}
 	if precheck {
 		envelope.PrecheckMapping = json.RawMessage(engine.SingleContractPrecheckManifest)
-		envelope.CoverageNotice = "仅核对主合同中可识别的付款比例；跨材料比对、正式制度审查及其他风险未执行。应补齐材料后发起完整审查，识别结果仍需人工核对。"
 	}
+	envelope.CoverageNotice = reportCoverageNotice(attempt, precheck)
 	jsonBytes, err := json.Marshal(envelope)
 	if err != nil {
 		return ReportRecord{}, err
@@ -508,6 +508,24 @@ func manifestSnapshot(raw []byte) (json.RawMessage, error) {
 		return nil, fault.Conflict("保存的规则包内容不符合规范格式")
 	}
 	return append(json.RawMessage(nil), raw...), nil
+}
+
+func reportCoverageNotice(attempt Attempt, precheck bool) string {
+	const precheckScope = "仅核对主合同中可识别的付款比例；跨材料比对、正式制度审查及其他风险未执行。应补齐材料后发起完整审查，识别结果仍需人工核对。"
+	if precheck {
+		if attempt.State == "partial" {
+			return "部分完成。" + precheckScope
+		}
+		return precheckScope
+	}
+	if attempt.State == "partial" {
+		reason := "本次审查未完整覆盖。"
+		if attempt.ErrorCode != nil && *attempt.ErrorCode != "" {
+			reason = publicAttemptFailure(*attempt.ErrorCode)
+		}
+		return "部分完成。" + reason + "本报告仅记录本次执行已返回的规则检查、审查发现和人工决定。未返回的检查项和风险线索不在报告覆盖范围内，不能据此认定没有风险。"
+	}
+	return ""
 }
 
 func renderBusinessReportHTML(caseTitle string, reportJSON []byte) ([]byte, error) {

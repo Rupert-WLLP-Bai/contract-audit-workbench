@@ -687,6 +687,7 @@
       "web/src/components/playbook-picker.tsx",
       "web/src/components/qcc-mcp-panel.css",
       "web/src/components/qcc-mcp-panel.tsx",
+      "web/src/components/report-preflight.tsx",
       "web/src/components/review-choice-select.test.tsx",
       "web/src/components/review-diff.test.tsx",
       "web/src/components/review-outcome-summary.tsx",
@@ -25512,15 +25513,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "10b7d37e71f50b44488f2e373d7eca70a6acd8b4",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "internal/httpapi/business_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -29225,15 +29226,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-19",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "af463f5aa7da15df8fecd3d91bcdcfc20d71086f",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "internal/httpapi/review_readiness_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -42990,15 +42991,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-19",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "af463f5aa7da15df8fecd3d91bcdcfc20d71086f",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "internal/store/business_reports.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -43086,15 +43087,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-15",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "84902a10cf146694d2e967211e0da2f49d402c88",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "internal/store/business_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -65836,7 +65837,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r88",
+      "revision": "r89",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -72221,7 +72222,7 @@
       }
     },
     "web/index.html": {
-      "purpose": "HTML shell titled “第一届黄桷树AI智能体开发大赛 - 合同智能审计工作台”; it selects the client bundle /src/main.tsx and provides the mount point for the corresponding browser application.",
+      "purpose": "HTML shell titled “合同审计工作台”; it selects the client bundle /src/main.tsx and provides the mount point for the corresponding browser application.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -72248,15 +72249,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-15",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "f46de6767c51dac40465f99db0cd126d7f838ad6",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/index.html",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -76064,12 +76065,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e20730998791d661caad0a6144fbc512cc944795",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/app.integration.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r11",
+      "revision": "r12",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -78316,12 +78317,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6dfa220ccc8abf7dfaceb22e94945701dfb5be4c",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/components/document-stage.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r8",
+      "revision": "r9",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -78364,12 +78365,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6dfa220ccc8abf7dfaceb22e94945701dfb5be4c",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/components/document-stage.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r11",
+      "revision": "r12",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -79227,12 +79228,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e20730998791d661caad0a6144fbc512cc944795",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/components/finding-panel.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r8",
+      "revision": "r9",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -80089,12 +80090,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "b7029ab76e3fc3de73a6cdeee31d4be387b00bc4",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/components/original-document-reader.css",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -80182,15 +80183,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-19",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ec4a7f60819891ca961aaefc2ae920c091191fd2",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/components/original-document-reader.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -80758,15 +80759,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-15",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "f46de6767c51dac40465f99db0cd126d7f838ad6",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/components/report-archive-panel.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -80809,12 +80810,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e20730998791d661caad0a6144fbc512cc944795",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/components/report-archive-panel.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -81093,15 +81094,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-19",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "af463f5aa7da15df8fecd3d91bcdcfc20d71086f",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/components/review-outcome-summary.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -81528,12 +81529,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e20730998791d661caad0a6144fbc512cc944795",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/components/review-workspace.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r15",
+      "revision": "r16",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -83257,15 +83258,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-15",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "f46de6767c51dac40465f99db0cd126d7f838ad6",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/domain/business-labels.test.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -83305,15 +83306,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-19",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "af463f5aa7da15df8fecd3d91bcdcfc20d71086f",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/domain/business-labels.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -86719,15 +86720,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-15",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "f46de6767c51dac40465f99db0cd126d7f838ad6",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/features/review/manual-findings/manual-findings-panel.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -86959,15 +86960,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-15",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "f46de6767c51dac40465f99db0cd126d7f838ad6",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/features/review/review-outcome.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -89462,12 +89463,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "b7029ab76e3fc3de73a6cdeee31d4be387b00bc4",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/pages/review-page.css",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "handling": "header-and-manifest",
       "header_state": "pending-header-application",
       "copyright": [
@@ -89510,12 +89511,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "e20730998791d661caad0a6144fbc512cc944795",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
           "path": "web/src/pages/review-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r16",
+      "revision": "r17",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -95823,6 +95824,54 @@
         }
       },
       "revision": "r3",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "web/src/components/report-preflight.tsx": {
+      "purpose": "Presents the partial report coverage and confirmation dialog, and binds confirmation to the selected execution and command context.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-20",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
+          "path": "web/src/components/report-preflight.tsx",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-20",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "5cc78d6330e0c4eb5b40959a40e6d5a41f85c87b",
+          "path": "web/src/components/report-preflight.tsx",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
       "copyright": [
         {
           "holder": "Bai Junhao",

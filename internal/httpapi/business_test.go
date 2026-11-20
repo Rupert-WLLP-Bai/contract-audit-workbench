@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -46,6 +46,44 @@ type telecomDatasetFixture struct {
 	Template        string                   `json:"template_id"`
 	TemplateVersion string                   `json:"template_version"`
 	Scenarios       []telecomScenarioFixture `json:"scenarios"`
+}
+
+func TestPartialTelecomReportShowsIncompleteCoverage(t *testing.T) {
+	api := newAPIWith(t, nil, nil)
+	publishTelecomBusinessPolicy(t, api)
+	api.login(t, "demo-admin", "admin-demo")
+	dataset := readTelecomDataset(t)
+	fixture := telecomScenario(t, dataset, "compatible")
+	templateID := requireTelecomTemplate(t, api, dataset.Template, dataset.TemplateVersion)
+	caseID := createTelecomCase(t, api, "智能审查未完成的专线报告")
+	generateTelecomDraft(t, api, caseID, templateID, fixture.Fields)
+	for _, material := range fixture.Materials {
+		api.upload(t, caseID, material.Role, material.Filename, "text/plain", []byte(material.Text))
+	}
+	runID, attemptID, workspace := startTelecomReview(t, api, caseID)
+	attempt := workspace["review_attempts"].(map[string]any)["attempt"].(map[string]any)
+	if attempt["state"] != "partial" || attempt["frozen_result_available"] != true {
+		t.Fatalf("expected a partial attempt with preserved rule results: %v", attempt)
+	}
+	assertTelecomRelations(t, workspace, fixture.ExpectedRelations)
+
+	report := createTelecomReport(t, api, caseID, runID, attemptID)
+	path := "/api/cases/" + caseID + "/reports/" + requiredString(t, report, "id")
+	status, snapshot := api.do(t, http.MethodGet, path+"?format=json", nil)
+	if status != http.StatusOK {
+		t.Fatalf("read partial report JSON: status=%d", status)
+	}
+	coverage := requiredString(t, snapshot, "coverage_notice")
+	savedAttempt := snapshot["attempt"].(map[string]any)
+	if savedAttempt["id"] != attemptID || savedAttempt["state"] != "partial" ||
+		!strings.HasPrefix(coverage, "部分完成。") || !strings.Contains(coverage, "不能据此认定没有风险") {
+		t.Fatalf("report did not retain the selected attempt and coverage warning: attempt=%v coverage=%q", savedAttempt, coverage)
+	}
+	assertTelecomRelations(t, snapshot, fixture.ExpectedRelations)
+	html := readHTTPBody(t, api.client, api.base, http.MethodGet, path+"?format=html", nil)
+	if html.status != http.StatusOK || !strings.Contains(string(html.body), "<p>"+coverage+"</p>") {
+		t.Fatalf("report did not visibly show its coverage warning: status=%d", html.status)
+	}
 }
 
 func TestTelecomBusinessHTTPWorkflowFreezesReportsAndRejectsInsufficientClosure(t *testing.T) {
@@ -173,6 +211,7 @@ func TestTelecomBusinessHTTPWorkflowFreezesReportsAndRejectsInsufficientClosure(
 	if !json.Valid(firstJSON.body) || !strings.Contains(strings.ToLower(string(firstHTML.body)), "<!doctype html>") {
 		t.Fatalf("reports are not frozen JSON/HTML bytes: json=%q html=%q", firstJSON.body, firstHTML.body)
 	}
+
 	if !strings.Contains(firstJSON.header.Get("Content-Type"), "application/json") || !strings.Contains(firstHTML.header.Get("Content-Type"), "text/html") {
 		t.Fatalf("report media types: JSON=%q HTML=%q", firstJSON.header.Get("Content-Type"), firstHTML.header.Get("Content-Type"))
 	}

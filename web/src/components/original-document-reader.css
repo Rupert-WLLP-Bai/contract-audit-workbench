@@ -4,7 +4,7 @@
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-04 */
 /* Updated: 2026-11-20 */
-/* Revision: r3 */
+/* Revision: r4 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -73,4 +73,15 @@
 .original-reader-key-clause blockquote {
   margin-block-start: var(--space-2);
   white-space: pre-wrap;
+}
+
+.doc-image-reference::before {
+  content: "[图片]";
+}
+.doc-image-reference {
+  color: var(--action-primary);
+  cursor: pointer;
+}
+.doc-projection-heading {
+  font-weight: 600;
 }

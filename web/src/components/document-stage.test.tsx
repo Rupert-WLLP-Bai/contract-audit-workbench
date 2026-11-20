@@ -4,11 +4,11 @@
 // Contact: +86 13617696321
 // Created: 2026-10-30
 // Updated: 2026-11-20
-// Revision: r8
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -26,6 +26,115 @@ vi.mock("./original-page-view", () => ({
 }));
 
 const at = "2026-10-21T06:00:00Z";
+
+it("projects parser markers without changing exact raw selection offsets", async () => {
+  const raw = "# 😀标题\n付款三十日。\n![](images/a.jpg)\n目录……… 2";
+  const doc = documentOf("doc-projection", "draft_contract", "合同.pdf", raw, {
+    parsed_document_id: "parsed-projection",
+    clauses: [],
+  });
+  const scope = {
+    caseId: "case-1",
+    contextKey: "attempt-1",
+    digests: new Map([[doc.id, doc.digest]]),
+  };
+  const quoteScope = {
+    caseId: "case-1",
+    runId: "run-1",
+    attemptId: "attempt-1",
+    isFrozenAttempt: true,
+    parsedDocumentIds: ["parsed-projection"],
+    sourceProofs: [
+      { documentId: doc.id, parsedDocumentId: "parsed-projection", originalDigest: doc.digest },
+    ],
+  };
+  const onQuote = vi.fn();
+  const view = render(
+    <MemoryRouter>
+      <OriginalSourceContext.Provider value={scope}>
+        <DocumentStage
+          documents={[doc]}
+          finding={null}
+          findings={[]}
+          selectedFindingId={null}
+          onSelectFinding={vi.fn()}
+          layout="switch"
+          quoteScope={quoteScope}
+          onQuoteSelectionChange={onQuote}
+        />
+      </OriginalSourceContext.Provider>
+    </MemoryRouter>,
+  );
+  await userEvent.setup().click(screen.getByRole("button", { name: "文字原文" }));
+  const content = view.container.querySelector<HTMLElement>(".doc-text")!;
+  expect(content.textContent).toBe(raw);
+  expect(view.container.querySelector(".doc-projection-heading")?.textContent).toContain("😀标题");
+  expect(view.container.querySelectorAll("[data-projection-hidden]").length).toBeGreaterThanOrEqual(
+    3,
+  );
+  const walker = window.document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+  let payment: Node | null = null;
+  while (walker.nextNode())
+    if (walker.currentNode.textContent?.includes("付款三十日。")) {
+      payment = walker.currentNode;
+      break;
+    }
+  expect(payment).toBeTruthy();
+  const selection = window.getSelection()!,
+    range = window.document.createRange();
+  const offset = payment!.textContent!.indexOf("付款三十日。");
+  range.setStart(payment!, offset);
+  range.setEnd(payment!, offset + 6);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  fireEvent.mouseUp(content);
+  expect(onQuote).toHaveBeenLastCalledWith(
+    expect.objectContaining({ quote: "付款三十日。", start: 6, end: 12 }),
+  );
+  const hiddenImage = content.querySelector<HTMLElement>("[data-projection-hidden]")!;
+  const across = window.document.createRange();
+  across.setStart(hiddenImage.firstChild!, 0);
+  across.setEnd(payment!, offset + 2);
+  selection.removeAllRanges();
+  selection.addRange(across);
+  fireEvent.mouseUp(content);
+  expect(onQuote).toHaveBeenLastCalledWith(null);
+  await userEvent.setup().click(screen.getByRole("button", { name: "查看原件中的图片" }));
+  expect(await screen.findByTestId("original-page-quotes")).toBeVisible();
+});
+
+it("keeps a finding marker at a hidden heading prefix", () => {
+  const text = "# 标题\n正文";
+  const doc = documentOf("doc-hidden", "draft_contract", "合同.txt", text, {
+    clauses: [],
+    parsed_document_id: "pc",
+  });
+  const finding = findingWith([
+    { ...locatedAnchor(doc.id, "# 标题", 0, 4), parsed_document_id: "pc" },
+  ]);
+  const choose = vi.fn();
+  const view = renderStage({
+    documents: [doc],
+    finding,
+    findings: [finding],
+    selectedFindingId: finding.id,
+    onSelectFinding: choose,
+    immersive: true,
+    quoteScope: {
+      caseId: "case-1",
+      runId: "run-1",
+      attemptId: "attempt-1",
+      isFrozenAttempt: true,
+      parsedDocumentIds: ["pc"],
+      sourceProofs: [{ documentId: doc.id, parsedDocumentId: "pc", originalDigest: doc.digest }],
+    },
+  });
+  const marker = view.container.querySelector<HTMLElement>('[data-finding-number="1"]');
+  expect(marker).toBeTruthy();
+  expect(view.container.querySelector('[data-offset="0"]')).toContainElement(marker);
+  fireEvent.click(marker!);
+  expect(choose).toHaveBeenCalledWith(finding.id);
+});
 
 it("connects a frozen finding to original-page annotations and keeps unfrozen history on the text reader", async () => {
   const document = documentOf("doc-pdf", "draft_contract", "合同.pdf", "甲方支付100万元。", {

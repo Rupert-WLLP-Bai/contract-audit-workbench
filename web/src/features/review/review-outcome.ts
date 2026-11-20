@@ -3,13 +3,14 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
 import type { ReviewWorkspace } from "../../api/types";
-import { singleContractCoverage } from "./single-contract-coverage";
+import { businessCapabilityLabel } from "../../domain/business-labels";
+import { isLegacyPaymentCoverageFinding, singleContractCoverage } from "./single-contract-coverage";
 
 /** The selected attempt and the workspace must describe the same execution. */
 export function selectedOutcome(workspace: ReviewWorkspace) {
@@ -151,5 +152,81 @@ export function unresolvedGapKinds(workspace: ReviewWorkspace) {
     budget: reasons.has("max_calls_reached"),
     unsupported:
       reasons.has("source_expression_not_supported") || reasons.has("capability_not_registered"),
+  };
+}
+
+/** A partial report describes the exact attempt, even after a later attempt completes. */
+export function partialReportScope(workspace: ReviewWorkspace) {
+  const attempt = workspace.review_attempts?.attempt;
+  if (
+    !attempt ||
+    attempt.run_id !== workspace.run.id ||
+    attempt.history_kind !== "frozen" ||
+    attempt.state !== "partial"
+  )
+    return null;
+  const outcome = selectedOutcome(workspace);
+  const precheck =
+    outcome?.reason === "scope_limited" || attempt.review_scope?.id === "single_contract_precheck";
+  const stage = agentStage(workspace);
+  const findings = workspace.findings.filter(
+    (finding) => !isLegacyPaymentCoverageFinding(workspace, finding),
+  );
+  const ruleFindings = findings.filter((finding) => finding.origin === "rule").length;
+  const modelFindings = findings.filter(
+    (finding) => finding.origin === "model" || finding.origin === "ai",
+  ).length;
+  const ruleEvaluationSaved = (workspace.evaluations?.length ?? 0) > 0;
+  const executionLabel =
+    stage === "completed"
+      ? "审查未全部完成"
+      : stage === "failed" ||
+          stage === "partial" ||
+          stage === "skipped" ||
+          outcome?.reason === "execution_failed"
+        ? "智能审查未完成"
+        : "智能审查完成情况待确认";
+
+  // The business workspace projects partial_reason through the public
+  // failure mapping for its selected attempt. It carries no diagnostic code.
+  const publicReason =
+    workspace.run.state === "partial" ? workspace.run.partial_reason?.trim() : "";
+  const reason = precheck
+    ? "审查范围选择了单合同预审，完整审查需另行发起。"
+    : outcome?.retry_cause === "model_timeout"
+      ? "模型调用超时。"
+      : publicReason ||
+        (outcome?.reason === "dependency_unavailable"
+          ? "审查依赖暂不可用。"
+          : outcome?.reason === "execution_failed"
+            ? "本次审查执行失败，具体原因未记录。"
+            : "本次未记录可用于确定原因的审查信息。");
+  const gaps = unresolvedGapKinds(workspace);
+  const openGaps =
+    workspace.agent_review?.attempt_id === attempt.id
+      ? (workspace.agent_review.gaps ?? []).filter((gap) => gap.status === "open")
+      : [];
+  const namedGaps = [...new Set(openGaps.map((gap) => businessCapabilityLabel(gap.capability_id)))];
+  return {
+    precheck,
+    ruleFindings,
+    modelFindings,
+    reason,
+    decidedCount: findings.filter((finding) => finding.decisions.length > 0).length,
+    findingCount: findings.length,
+    executionLabel,
+    ruleCoverage: ruleEvaluationSaved ? "已保存规则检查结果" : "规则检查完成情况待确认",
+    uncovered: precheck
+      ? ["跨材料对照、制度核对及预审范围外的风险项"]
+      : [
+          ...namedGaps,
+          ...(gaps.materials ? ["缺少材料或必要字段的检查"] : []),
+          ...(gaps.budget ? ["未完成的智能审查调用"] : []),
+          ...(gaps.unsupported ? ["当前审查能力不支持的检查"] : []),
+          "本次审查未完成或未能核实的项目",
+        ],
+    emptyMessage: precheck
+      ? "本次单合同预审未产生风险线索。其他检查不在预审范围内。"
+      : `${ruleEvaluationSaved ? "规则检查未发现线索" : "当前没有已保存的规则线索"}；${executionLabel}，不能据此认定没有风险。`,
   };
 }

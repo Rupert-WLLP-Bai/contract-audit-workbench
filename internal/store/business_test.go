@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r5
+// Updated: 2026-11-20
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -149,6 +149,42 @@ func TestBusinessReportHTMLBusinessProjection(t *testing.T) {
 		t.Fatal("raw JSON is not behind a disclosure")
 	}
 	t.Logf("HTML_SAMPLE=%s", page)
+}
+
+func TestReportCoverageNoticeUsesSelectedAttempt(t *testing.T) {
+	for _, test := range []struct {
+		name, state string
+		precheck    bool
+		want        string
+	}{
+		{"complete full review", "completed", false, ""},
+		{"partial full review", "partial", false, "部分完成。本次审查未完整覆盖。本报告仅记录本次执行已返回的规则检查、审查发现和人工决定。未返回的检查项和风险线索不在报告覆盖范围内，不能据此认定没有风险。"},
+		{"limited precheck", "partial", true, "部分完成。仅核对主合同中可识别的付款比例；跨材料比对、正式制度审查及其他风险未执行。应补齐材料后发起完整审查，识别结果仍需人工核对。"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			attempt := Attempt{State: test.state}
+			envelope := reportEnvelope{Attempt: attempt, CoverageNotice: reportCoverageNotice(attempt, test.precheck)}
+			if envelope.CoverageNotice != test.want {
+				t.Fatalf("coverage notice = %q, want %q", envelope.CoverageNotice, test.want)
+			}
+			raw, err := json.Marshal(envelope)
+			if err != nil {
+				t.Fatal(err)
+			}
+			html, err := renderBusinessReportHTML("审查报告", raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.want == "" {
+				if bytes.Contains(raw, []byte(`"coverage_notice"`)) || bytes.Contains(html, []byte("部分完成")) {
+					t.Fatal("completed review has a partial-coverage warning")
+				}
+			} else if !bytes.Contains(raw, []byte(`"coverage_notice":"`+test.want+`"`)) ||
+				!bytes.Contains(html, []byte("<p>"+test.want+"</p>")) {
+				t.Fatal("coverage notice must appear in JSON and visibly in HTML")
+			}
+		})
+	}
 }
 
 func TestFrozenReportDigestCoversJSONAndHTMLBytes(t *testing.T) {

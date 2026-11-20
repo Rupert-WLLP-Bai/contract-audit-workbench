@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-19
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -146,6 +146,31 @@ func TestSingleContractV2ReviewPresentsExactEvidenceAsCoverage(t *testing.T) {
 		if anchor["document_version_id"] != primary || anchor["status"] != "located" || len(anchor["observation_labels"].([]any)) == 0 {
 			t.Fatal("missing exact source coordinates or observation labels")
 		}
+	}
+	attempt := ws["review_attempts"].(map[string]any)["attempt"].(map[string]any)
+	status, report := api.do(t, http.MethodPost, casePath+"/reports", map[string]any{
+		"run_id": started["id"], "attempt_id": attempt["id"],
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("create scoped partial report: status=%d body=%v", status, report)
+	}
+	reportPath := casePath + "/reports/" + requiredString(t, report, "id")
+	status, reportJSON := api.do(t, http.MethodGet, reportPath+"?format=json", nil)
+	if status != http.StatusOK {
+		t.Fatalf("read scoped partial report JSON: status=%d", status)
+	}
+	reportAttempt := reportJSON["attempt"].(map[string]any)
+	coverage := requiredString(t, reportJSON, "coverage_notice")
+	reportFindings, _ := reportJSON["findings"].([]any)
+	if reportAttempt["id"] != attempt["id"] || reportAttempt["state"] != "partial" ||
+		!strings.HasPrefix(coverage, "部分完成。仅核对主合同中可识别的付款比例") ||
+		!strings.Contains(coverage, "跨材料比对、正式制度审查及其他风险未执行") ||
+		len(reportFindings) != 0 || len(reportJSON["evaluations"].([]any)) != 1 {
+		t.Fatalf("scoped report omitted the selected attempt, coverage limits or rule result: attempt=%v coverage=%q", reportAttempt, coverage)
+	}
+	reportHTML := readHTTPBody(t, api.client, api.base, http.MethodGet, reportPath+"?format=html", nil)
+	if reportHTML.status != http.StatusOK || !strings.Contains(string(reportHTML.body), "<p>"+coverage+"</p>") {
+		t.Fatalf("scoped report did not visibly show its coverage limits: status=%d", reportHTML.status)
 	}
 }
 
