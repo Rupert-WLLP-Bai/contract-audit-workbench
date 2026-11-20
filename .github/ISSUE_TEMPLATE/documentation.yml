@@ -13,12 +13,23 @@ description: 登记文档、术语或文件说明维护
 title: "[DOCS] "
 labels:
   - documentation
-  - 阶段/待实现
-  - 验收/NOT_RUN
 body:
   - type: markdown
     attributes:
-      value: 新 Issue 默认阶段为待实现、验收状态为 NOT_RUN。只选一个主 area；提交后给 Issue 加上对应的 area 标签。
+      value: 只有本轮可关闭的事项才建 Issue；只选一个主 area，提交后给 Issue 加上对应的 area 标签。
+  - type: checkboxes
+    id: iteration_ready
+    attributes:
+      label: 本轮可关闭
+      options:
+        - label: 一到两个 PR 能完成
+          required: true
+        - label: 验收条款本轮可执行，所需环境、数据、模型和账号已经具备
+          required: true
+        - label: 不依赖外部人员、用户暂缓事项或其他未排期工作
+          required: true
+        - label: 已写明不做什么
+          required: true
   - type: dropdown
     id: area
     attributes:

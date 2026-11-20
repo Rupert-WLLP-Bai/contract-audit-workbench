@@ -25,9 +25,9 @@
 
 - 修改前的行为与证据：
 - 修改后的行为与受影响快检查：
-- 固定候选验收及外部依赖（未执行写 NOT_RUN）：
+- 需写进本轮发布说明的限制（未执行写 NOT_RUN）：
 
-<!-- 完全满足该 Issue 验收时逐项写 Closes #N；部分完成或仅关联时写 Refs #N。 -->
+<!-- 完全满足该 Issue 验收时逐项写 Closes #N；仅关联时写 Refs #N。 -->
 - Closes/Refs #…：
 - Closes/Refs #…（可选）：
 - Closes/Refs #…（可选）：
