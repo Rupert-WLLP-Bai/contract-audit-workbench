@@ -192,18 +192,18 @@ it.each([false, true])(
       );
     }
     await act(async () => router.navigate(-1));
-    const warning = (await screen.findByRole("button", { name: "留在本页" })).closest(
-      '[role="dialog"]',
-    )!;
-    expect(warning).toHaveTextContent(caseDirty ? "当前页面有未提交的草稿" : "尚未提交的文件");
-    await user.click(within(warning).getByRole("button", { name: "留在本页" }));
+    const stay = await screen.findByRole("button", { name: "留在本页" });
+    expect(stay.closest('[role="dialog"]')).toHaveTextContent(
+      caseDirty ? "当前页面有未提交的草稿" : "尚未提交的文件",
+    );
+    await user.click(stay);
     expect(router.state.location.pathname).toBe("/cases/contract");
     expect(onClose).not.toHaveBeenCalled();
     if (!caseDirty)
       expect(within(intake).getByRole("textbox", { name: "案件名称" })).toHaveValue("待提交合同");
 
     await act(async () => router.navigate(-1));
-    await user.click(await screen.findByRole("button", { name: "离开", exact: true }));
+    await user.click(await screen.findByRole("button", { name: "离开" }));
     expect(await screen.findByRole("heading", { name: "案件" })).toBeVisible();
     expect(onClose).toHaveBeenCalledTimes(caseDirty ? 0 : 1);
   },
