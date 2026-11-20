@@ -784,7 +784,7 @@ export function HomePage() {
                       )
                     }
                   >
-                    {activeNextStepCaseId === item.id ? "收起实际下一步" : "查看实际下一步"}
+                    {activeNextStepCaseId === item.id ? "收起下一步" : "查看下一步"}
                   </Button>
                   {activeNextStepCaseId === item.id ? (
                     <WorkbenchCaseNextStep
@@ -799,7 +799,6 @@ export function HomePage() {
               ))}
             </ul>
           )}
-          <p className="home-case-work-note">具体办理步骤请进入案件查看。</p>
         </section>
       </div>
 

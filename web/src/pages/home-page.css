@@ -194,12 +194,6 @@
   grid-column: 1 / -1;
   width: 100%;
 }
-.home-case-work-note {
-  margin: 12px 0 0;
-  color: var(--text-secondary, var(--text-secondary));
-  font-size: 11px;
-  line-height: 1.6;
-}
 .home-task-list {
   margin: 0;
   padding: 0;

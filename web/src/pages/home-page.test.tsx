@@ -497,7 +497,6 @@ describe("HomePage snapshot consumers", () => {
       "href",
       "/cases/case-1",
     );
-    expect(within(caseWork).getByText(/具体办理步骤请进入案件查看/)).toBeInTheDocument();
 
     expect(
       within(screen.getByLabelText("工作台摘要"))
@@ -588,8 +587,8 @@ describe("HomePage snapshot consumers", () => {
     const caseWork = await screen.findByRole("region", { name: "按案件处理" });
     const caseRow = within(caseWork).getByRole("link", { name: "尚未审查且无期限" }).closest("li");
     expect(caseRow).not.toHaveTextContent("尚未审查且无期限 ·");
-    expect(within(caseRow!).getByRole("button", { name: "查看实际下一步" })).toBeInTheDocument();
-    await user.click(within(caseRow!).getByRole("button", { name: "查看实际下一步" }));
+    expect(within(caseRow!).getByRole("button", { name: "查看下一步" })).toBeInTheDocument();
+    await user.click(within(caseRow!).getByRole("button", { name: "查看下一步" }));
     expect(await within(caseRow!).findByText("缺少主合同")).toBeInTheDocument();
   });
 
@@ -603,7 +602,7 @@ describe("HomePage snapshot consumers", () => {
     ).toHaveLength(0);
     const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
     expect(targetCase).not.toBeNull();
-    await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
+    await user.click(within(targetCase!).getByRole("button", { name: "查看下一步" }));
 
     await screen.findByRole("heading", { name: "案件下一步不可用" });
     expect(service.requests.filter((request) => request.path === "/api/cases/case-1")).toHaveLength(
@@ -623,7 +622,7 @@ describe("HomePage snapshot consumers", () => {
     const caseWork = await screen.findByRole("region", { name: "按案件处理" });
     const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
 
-    await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
+    await user.click(within(targetCase!).getByRole("button", { name: "查看下一步" }));
 
     const continueLink = await screen.findByRole("link", { name: "转到材料集合" });
     expect(continueLink).toHaveAttribute("href", "/cases/case-1#case-materials");
@@ -689,7 +688,7 @@ describe("HomePage snapshot consumers", () => {
     const { user } = open(service);
     const caseWork = await screen.findByRole("region", { name: "按案件处理" });
     const target = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li")!;
-    await user.click(within(target).getByRole("button", { name: "查看实际下一步" }));
+    await user.click(within(target).getByRole("button", { name: "查看下一步" }));
     const summary = await within(target).findByRole("region", { name: "审查结果、范围与人工进度" });
     expect(summary).toHaveTextContent("单合同预审已结束");
     expect(summary).toHaveTextContent("智能审查执行失败");
@@ -710,7 +709,7 @@ describe("HomePage snapshot consumers", () => {
     const caseWork = await screen.findByRole("region", { name: "按案件处理" });
     const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
 
-    await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
+    await user.click(within(targetCase!).getByRole("button", { name: "查看下一步" }));
 
     expect(await screen.findByRole("heading", { name: "案件身份不匹配" })).toBeInTheDocument();
     expect(
@@ -745,7 +744,7 @@ describe("HomePage snapshot consumers", () => {
     const { user, client } = open(service);
     const caseWork = await screen.findByRole("region", { name: "按案件处理" });
     const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
-    await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
+    await user.click(within(targetCase!).getByRole("button", { name: "查看下一步" }));
     expect(await screen.findByText("旧材料缺项")).toBeInTheDocument();
 
     service.caseDetail = {
@@ -790,7 +789,7 @@ describe("HomePage snapshot consumers", () => {
     const { user, client } = open(service);
     const caseWork = await screen.findByRole("region", { name: "按案件处理" });
     const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
-    await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
+    await user.click(within(targetCase!).getByRole("button", { name: "查看下一步" }));
     await screen.findByRole("heading", { name: "可以开始首次审查" });
     const continueLink = screen.getByRole("link", { name: "打开案件继续" });
     expect(continueLink).toHaveAttribute("href", "/cases/case-1#case-next-step-title");
@@ -812,7 +811,7 @@ describe("HomePage snapshot consumers", () => {
     const { user, client } = open(service);
     const caseWork = await screen.findByRole("region", { name: "按案件处理" });
     const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
-    await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
+    await user.click(within(targetCase!).getByRole("button", { name: "查看下一步" }));
     expect(await screen.findByText("缺少主合同")).toBeInTheDocument();
 
     service.snapshotGate = Promise.withResolvers<void>();
@@ -870,7 +869,7 @@ describe("HomePage snapshot consumers", () => {
     });
     const caseWork = await screen.findByRole("region", { name: "按案件处理" });
     const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
-    await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
+    await user.click(within(targetCase!).getByRole("button", { name: "查看下一步" }));
 
     expect(await screen.findByRole("heading", { name: "等待审查与执行历史" })).toBeInTheDocument();
     expect(
