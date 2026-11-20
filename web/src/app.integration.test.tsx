@@ -4299,7 +4299,7 @@ describe("application routes and API contract", () => {
     expect(
       await screen.findByRole("heading", { name: "需要重新核对审查准备状态" }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "刷新准备清单", exact: true }));
+    await user.click(screen.getByRole("button", { name: /^刷新准备清单$/ }));
     expect(await screen.findByRole("button", { name: "重新发起新审查" })).toBeEnabled();
     expect(
       api.requests.filter((entry) => entry.key === "GET /api/cases/c1").length,
