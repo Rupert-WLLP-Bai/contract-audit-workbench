@@ -1261,12 +1261,46 @@ describe("immersive document stage", () => {
         ],
       },
     });
-    expect(screen.getByRole("button", { name: "查看线索 1" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "查看线索 2" }));
+    expect(screen.getByRole("button", { name: "查看线索 1：二十四" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "查看线索 2：三十日" }));
     expect(onSelectFinding).toHaveBeenCalledWith("finding-2");
     expect(screen.getByRole("checkbox", { name: "按条款联动" })).toBeChecked();
     await user.click(screen.getByRole("checkbox", { name: "按条款联动" }));
     expect(screen.getByRole("checkbox", { name: "按条款联动" })).not.toBeChecked();
+  });
+
+  it("announces a topic count from verified finding anchors", () => {
+    const text = "设备的免费质保期不少于36个月，自验收合格之日起计算。";
+    const doc = documentOf("c", "draft_contract", "合同.txt", text, {
+      parsed_document_id: "pc",
+      clauses: [],
+    });
+    const start = Array.from(text).indexOf("3");
+    const finding = findingWith([
+      { ...locatedAnchor("c", "36个月", start, start + 4), parsed_document_id: "pc" },
+    ]);
+    renderStage({
+      immersive: true,
+      documents: [doc],
+      findings: [finding],
+      quoteScope: {
+        caseId: "case-1",
+        runId: "run-1",
+        attemptId: "attempt-1",
+        isFrozenAttempt: true,
+        parsedDocumentIds: ["pc"],
+        sourceProofs: [{ documentId: "c", parsedDocumentId: "pc", originalDigest: doc.digest }],
+      },
+    });
+    expect(screen.getByRole("button", { name: "质保，1 条线索" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "质保，1 条线索" }));
+    expect(screen.getByRole("button", { name: "质保，1 条线索" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("locates a topic in the sole contract when linking is off", async () => {
@@ -1296,7 +1330,7 @@ describe("immersive document stage", () => {
       },
     });
     await user.click(screen.getByRole("checkbox", { name: "按条款联动" }));
-    await user.click(screen.getByRole("button", { name: "质保" }));
+    await user.click(screen.getByRole("button", { name: "质保，0 条线索" }));
     expect(container.querySelector('[data-source-id="c"] .hit-find')).toHaveTextContent("质保期");
     expect(screen.queryByRole("group", { name: "切换对照材料", hidden: true })).toBeNull();
   });

@@ -8,13 +8,14 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Finding, ReviewDocument } from "../api/types";
 import { formatDateTime } from "../domain/review";
 import { renderWithAntd as render } from "../test/antd";
 import { FindingPanel } from "./finding-panel";
+import { AdministrativeTechnicalDetails } from "./app-shell-preferences";
 
 vi.mock("./clause-proposal-panel", () => ({ ClauseProposalPanel: () => null }));
 
@@ -98,7 +99,10 @@ const decision = {
   decided_at: at,
 };
 
-function renderPanel(props: Partial<Parameters<typeof FindingPanel>[0]> = {}) {
+function renderPanel(
+  props: Partial<Parameters<typeof FindingPanel>[0]> = {},
+  showTechnicalDetails = false,
+) {
   const onDecide = vi.fn().mockResolvedValue(true);
   const onSelect = vi.fn();
   const view = render(
@@ -113,6 +117,7 @@ function renderPanel(props: Partial<Parameters<typeof FindingPanel>[0]> = {}) {
       onDecide={onDecide}
       {...props}
     />,
+    showTechnicalDetails ? { wrapper: AdministrativeTechnicalDetails } : undefined,
   );
   return { ...view, onDecide, onSelect };
 }
@@ -205,7 +210,50 @@ describe("finding panel", () => {
     expect(props.onDecide).not.toHaveBeenCalled();
   });
 
-  it("moves to the next item with J and advances after Ctrl+Enter only on success", async () => {
+  it.each([true, false])(
+    "uses scoped J/K and exposes help in either mode (immersive=%s)",
+    async (immersive) => {
+      const user = userEvent.setup();
+      const { onSelect } = renderPanel({
+        immersive,
+        selectedId: "finding-1",
+        findings: [finding(), finding({ id: "next", claim: "下一条线索" })],
+      });
+      await user.keyboard("j");
+      expect(onSelect).not.toHaveBeenCalled();
+      const row = screen.getByRole("button", { name: "选择线索：付款期限过长" });
+      row.focus();
+      await user.keyboard("{Alt>}j{/Alt}");
+      fireEvent.keyDown(row, { key: "j", isComposing: true });
+      expect(onSelect).not.toHaveBeenCalled();
+      await user.keyboard("j");
+      expect(onSelect).toHaveBeenCalledWith("next");
+      onSelect.mockClear();
+
+      const input = screen.getByRole("textbox", { name: "理由" });
+      input.focus();
+      await user.keyboard("jk?");
+      expect(input).toHaveValue("jk?");
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      row.focus();
+      fireEvent.keyDown(row, { key: "?", shiftKey: true });
+      const help = await screen.findByRole("dialog");
+      expect(help).toHaveTextContent("在线索区使用 J 选下一条、K 选上一条");
+      expect(screen.getByRole("button", { name: "快捷键" })).toHaveAttribute(
+        "aria-keyshortcuts",
+        "Shift+/",
+      );
+      expect(
+        screen.getByRole("button", { name: immersive ? "保存判断" : "保存决定" }),
+      ).toHaveAttribute("aria-keyshortcuts", "Control+Enter Meta+Enter");
+      fireEvent.keyDown(within(help).getByText(/在线索区使用 J/), { key: "j" });
+      expect(onSelect).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps focus and the draft on failed Ctrl+Enter and advances only on success", async () => {
     const user = userEvent.setup();
     const onDecide = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     const { onSelect } = renderPanel({
@@ -214,14 +262,14 @@ describe("finding panel", () => {
       onDecide,
       findings: [finding(), finding({ id: "next", claim: "下一条线索" })],
     });
-    await user.keyboard("j");
-    expect(onSelect).toHaveBeenCalledWith("next");
-    onSelect.mockClear();
     await user.click(screen.getByRole("radio", { name: "不构成风险" }));
     await user.type(screen.getByRole("textbox", { name: "理由" }), "条款核对无误");
     await user.keyboard("{Control>}{Enter}{/Control}");
     expect(onDecide).toHaveBeenCalledTimes(1);
     expect(onSelect).not.toHaveBeenCalled();
+    const reason = screen.getByRole("textbox", { name: "理由" });
+    expect(reason).toHaveFocus();
+    expect(reason).toHaveValue("条款核对无误");
     await user.keyboard("{Control>}{Enter}{/Control}");
     expect(onDecide).toHaveBeenCalledTimes(2);
     expect(onSelect).toHaveBeenCalledWith("next");
@@ -229,19 +277,22 @@ describe("finding panel", () => {
 
   it("explains a known insufficient rule result without changing its status or hiding its source", async () => {
     const claim = "规则 ENT-COM-ADV-001 信息不足：缺少采购文件或中标文件中的合同依据。";
-    renderPanel({
-      findings: [
-        finding({
-          claim,
-          relation: "insufficient",
-          verification_status: "unverified",
-          unverified_reason: claim,
-          evidence: [],
-          severity: null,
-        }),
-      ],
-      selectedId: "finding-1",
-    });
+    renderPanel(
+      {
+        findings: [
+          finding({
+            claim,
+            relation: "insufficient",
+            verification_status: "unverified",
+            unverified_reason: claim,
+            evidence: [],
+            severity: null,
+          }),
+        ],
+        selectedId: "finding-1",
+      },
+      true,
+    );
     expect(screen.getAllByText("预付款依据不足，暂无法核对").length).toBeGreaterThan(0);
     expect(
       within(screen.getByLabelText("当前选中线索")).getByText(

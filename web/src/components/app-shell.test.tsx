@@ -271,6 +271,9 @@ describe("app shell", () => {
     trigger.focus();
     await user.keyboard("{Enter}");
     const drawer = await screen.findByRole("dialog", { name: "主导航" });
+    expect(screen.getAllByRole("navigation", { name: "主导航" })).toEqual([
+      within(drawer).getByRole("navigation", { name: "主导航" }),
+    ]);
     expect(within(drawer).getByRole("link", { name: "案件与材料" })).toHaveAttribute(
       "aria-current",
       "page",
@@ -299,6 +302,22 @@ describe("app shell", () => {
     ).not.toHaveAttribute("aria-current", "page");
   });
 
+  it("gives each navigation destination a single Tab stop and preserves arrow navigation", async () => {
+    const user = userEvent.setup();
+    renderShell("/cases");
+    const nav = within(screen.getByRole("navigation", { name: "主导航" }));
+    const home = nav.getByRole("link", { name: "我的待办" });
+    const review = nav.getByRole("link", { name: "发起审查" });
+    expect(nav.queryAllByRole("menuitem")).toHaveLength(0);
+    expect(nav.getAllByRole("link", { name: "我的待办" })).toEqual([home]);
+    expect(review).toHaveAttribute("href", "/review");
+    home.focus();
+    await user.tab();
+    expect(review).toHaveFocus();
+    await user.keyboard("{ArrowUp}");
+    expect(home).toHaveFocus();
+  });
+
   it("puts the inbox first and only shows professional links when enabled", async () => {
     const user = userEvent.setup();
     renderShell();
@@ -307,7 +326,7 @@ describe("app shell", () => {
     expect(nav.getByRole("link", { name: "我的待办" })).toHaveAttribute("aria-current", "page");
     expect(nav.getByRole("link", { name: "合同清单" })).toHaveAttribute("href", "/contract-desk");
     expect(nav.getByRole("link", { name: "案件与材料" })).toHaveAttribute("href", "/cases");
-    await user.click(nav.getByRole("menuitem", { name: "更多工具" }));
+    await user.click(nav.getByRole("button", { name: "更多工具" }));
     expect(nav.queryByRole("link", { name: "Agent Studio" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "头像菜单" }));
     expect(screen.getByRole("switch", { name: "专业模式" })).not.toBeChecked();
@@ -402,7 +421,7 @@ describe("app shell", () => {
     renderShell(path);
     const nav = within(screen.getByRole("navigation", { name: "主导航" }));
     if (path === "/docs/") {
-      await userEvent.click(nav.getByRole("menuitem", { name: "知识与规则" }));
+      await userEvent.click(nav.getByRole("button", { name: "知识与规则" }));
     }
     expect(nav.getByRole("link", { name: label })).toHaveAttribute("href", href);
   });
@@ -419,7 +438,7 @@ describe("app shell", () => {
       "href",
       "/workbench/templates",
     );
-    await user.click(nav.getByRole("menuitem", { name: "更多工具" }));
+    await user.click(nav.getByRole("button", { name: "更多工具" }));
     expect(nav.getByRole("link", { name: "使用手册" })).toHaveAttribute("href", "/docs/");
     expect(nav.queryByRole("link", { name: "API 文档" })).not.toBeInTheDocument();
     expect(nav.getByRole("link", { name: "组织与权限" })).toHaveAttribute(
@@ -441,7 +460,7 @@ describe("app shell", () => {
     await user.click(screen.getByRole("switch", { name: "专业模式" }));
     const nav = within(screen.getByLabelText("主导航"));
     if (!nav.queryByRole("link", { name: "Agent Studio" })) {
-      await user.click(nav.getByRole("menuitem", { name: "更多工具" }));
+      await user.click(nav.getByRole("button", { name: "更多工具" }));
     }
     expect(nav.getByRole("link", { name: "Agent Studio" })).toHaveAttribute("aria-current", "page");
     expect(nav.getByRole("link", { name: "Agent Studio" })).toHaveAttribute(
@@ -501,7 +520,7 @@ describe("app shell", () => {
     mocks.useSession.mockReturnValue({ data: { ...actor, role: "admin" } });
     renderShell();
     const utility = within(screen.getByRole("navigation", { name: "主导航" }));
-    await userEvent.click(utility.getByRole("menuitem", { name: "更多工具" }));
+    await userEvent.click(utility.getByRole("button", { name: "更多工具" }));
     expect(utility.getByRole("link", { name: "系统设置" })).toHaveAttribute(
       "href",
       "/workbench/settings",

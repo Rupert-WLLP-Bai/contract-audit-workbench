@@ -9,9 +9,10 @@
 // End file metadata.
 
 import { MenuFoldOutlined, MenuOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
-import { Button, Drawer, Grid, Layout, Menu, type MenuProps } from "antd";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { Button, Drawer, Grid, Layout } from "antd";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Link, useLocation } from "react-router";
+import "./shell-navigation.css";
 
 export type ShellNavLink = {
   href: string;
@@ -30,58 +31,124 @@ export type ShellNavGroup = {
   links: ShellNavLink[];
 };
 
-function NavigationMenu({ title, groups }: { title: string; groups: ShellNavGroup[] }) {
-  const navigate = useNavigate();
-  const links = groups.flatMap((group) => group.links);
-  const items: MenuProps["items"] = groups.map((group) => ({
-    ...(group.disclosureIcon ? { icon: group.disclosureIcon } : { type: "group" as const }),
-    key: group.key,
-    label: group.title,
-    className: group.bottomStart ? "shell-navigation-bottom-start" : undefined,
-    children: group.links.map((link) => {
-      const attributes = {
-        "aria-label": link.label,
-        "aria-current": link.current ? ("page" as const) : undefined,
-        className: link.current ? "active" : undefined,
-      };
-      return {
-        key: link.href,
-        icon: link.icon,
-        className: group.key === "primary" ? "shell-navigation-primary-item" : undefined,
-        title: link.label,
-        label: link.external ? (
-          <a href={link.href} {...attributes}>
-            {link.label}
-          </a>
-        ) : (
-          <Link to={link.href} {...attributes}>
-            {link.label}
-          </Link>
-        ),
-      };
-    }),
-  }));
+function NavigationLink({ link, primary = false }: { link: ShellNavLink; primary?: boolean }) {
+  const className = [
+    "shell-nav-control",
+    primary ? "shell-navigation-primary-item" : "",
+    link.current ? "active" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const content = (
+    <>
+      <span className="shell-nav-icon" aria-hidden="true">
+        {link.icon}
+      </span>
+      <span className="shell-nav-label">{link.label}</span>
+    </>
+  );
+  const attributes = { className, "aria-current": link.current ? ("page" as const) : undefined };
+  return link.external ? (
+    <a href={link.href} {...attributes}>
+      {content}
+    </a>
+  ) : (
+    <Link to={link.href} {...attributes}>
+      {content}
+    </Link>
+  );
+}
 
+function focusNavigationControl(event: KeyboardEvent<HTMLElement>) {
+  const { key, altKey, ctrlKey, metaKey, shiftKey } = event;
+  if (
+    altKey ||
+    ctrlKey ||
+    metaKey ||
+    shiftKey ||
+    !["ArrowDown", "ArrowUp", "Home", "End"].includes(key)
+  )
+    return;
+  const controls = Array.from(
+    event.currentTarget.querySelectorAll<HTMLElement>(".shell-nav-control"),
+  ).filter((control) => !control.closest("[hidden]"));
+  const index = controls.findIndex((control) => control === event.target);
+  if (index === -1) return;
+  const last = controls.length - 1;
+  const next =
+    key === "Home"
+      ? 0
+      : key === "End"
+        ? last
+        : key === "ArrowDown"
+          ? (index + 1) % controls.length
+          : (index + last) % controls.length;
+  event.preventDefault();
+  controls[next]?.focus();
+}
+
+function NavigationMenu({
+  title,
+  groups,
+  collapsed = false,
+}: {
+  title: string;
+  groups: ShellNavGroup[];
+  collapsed?: boolean;
+}) {
+  const id = useId();
+  const [visibility, setVisibility] = useState<Record<string, boolean>>({});
   return (
-    <nav className="shell-navigation" aria-label={title}>
-      <Menu
-        mode="inline"
-        items={items}
-        triggerSubMenuAction="click"
-        defaultOpenKeys={groups
-          .filter((group) => group.disclosureIcon && group.links.some((link) => link.current))
-          .map((group) => group.key)}
-        selectedKeys={links.filter((link) => link.current).map((link) => link.href)}
-        onClick={({ key, domEvent }) => {
-          // Anchors keep native browser gestures and React Router blockers. The
-          // Menu itself can also activate a row by icon or keyboard.
-          if (domEvent.target instanceof Element && domEvent.target.closest("a")) return;
-          const link = links.find((item) => item.href === key);
-          if (!link) return;
-          if (link.external) window.location.assign(link.href);
-          else void navigate(link.href);
-        }}
-      />
+    <nav
+      className={`shell-navigation${collapsed ? " shell-nav--collapsed" : ""}`}
+      aria-label={title}
+      onKeyDown={focusNavigationControl}
+    >
+      <ul className="shell-nav-groups">
+        {groups.map((group) => {
+          const expanded = visibility[group.key] ?? group.links.some((link) => link.current);
+          const groupId = `${id}-${group.key}`;
+          return (
+            <li
+              key={group.key}
+              className={group.bottomStart ? "shell-navigation-bottom-start" : undefined}
+            >
+              {group.disclosureIcon ? (
+                <button
+                  type="button"
+                  className="shell-nav-control shell-nav-disclosure"
+                  aria-expanded={expanded}
+                  aria-controls={groupId}
+                  onClick={() =>
+                    setVisibility((current) => ({ ...current, [group.key]: !expanded }))
+                  }
+                >
+                  <span className="shell-nav-icon" aria-hidden="true">
+                    {group.disclosureIcon}
+                  </span>
+                  <span className="shell-nav-label">{group.title}</span>
+                  <span className="shell-nav-chevron" aria-hidden="true">
+                    ›
+                  </span>
+                </button>
+              ) : group.key === "primary" ? null : (
+                <div className="shell-nav-group-title">{group.title}</div>
+              )}
+              <ul
+                className="shell-nav-links"
+                id={groupId}
+                hidden={Boolean(group.disclosureIcon) && !expanded}
+              >
+                {group.links.map((link) => (
+                  <li key={link.href}>
+                    <NavigationLink link={link} primary={group.key === "primary"} />
+                  </li>
+                ))}
+              </ul>
+            </li>
+          );
+        })}
+      </ul>
     </nav>
   );
 }
@@ -126,6 +193,8 @@ export function ShellNavigation({
       {!drawerOnly ? (
         <Layout.Sider
           className={`sidenav shell-sidenav ${className}`}
+          inert={drawerOpen}
+          aria-hidden={drawerOpen || undefined}
           theme="light"
           width="var(--sidebar-expanded-width)"
           collapsedWidth="var(--sidebar-collapsed-width)"
@@ -158,25 +227,21 @@ export function ShellNavigation({
             />
           )}
           {compact ? (
-            <nav className="review-rail-navigation" aria-label={title}>
+            <nav
+              className="review-rail-navigation shell-nav--collapsed"
+              aria-label={title}
+              onKeyDown={focusNavigationControl}
+            >
               {groups
                 .flatMap((group) =>
                   group.links.filter((link) => group.key === "primary" || link.compact),
                 )
                 .map((link) => (
-                  <Link
-                    key={link.href}
-                    to={link.href}
-                    title={link.label}
-                    aria-label={link.label}
-                    aria-current={link.current ? "page" : undefined}
-                  >
-                    {link.icon}
-                  </Link>
+                  <NavigationLink key={link.href} link={link} />
                 ))}
             </nav>
           ) : (
-            <NavigationMenu title={title} groups={groups} />
+            <NavigationMenu title={title} groups={groups} collapsed={collapsed} />
           )}
           {compact || collapsed ? null : footer}
         </Layout.Sider>

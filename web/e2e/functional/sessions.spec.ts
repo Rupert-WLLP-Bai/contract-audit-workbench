@@ -92,29 +92,31 @@ test("sidebars retain readable labels, keyboard controls and contained narrow la
   const cases = nav.getByRole("link", { name: "案件与材料", exact: true });
   const tasks = nav.getByRole("link", { name: "我的待办", exact: true });
   const review = nav.getByRole("link", { name: "发起审查", exact: true });
-  const tasksItem = tasks.locator("xpath=ancestor::*[@role='menuitem']");
   const trigger = rail.getByRole("button", { name: "收合侧栏" });
 
   await expect(rail).toHaveCSS("background-color", tokens.rail);
   await expect(contracts).toHaveCSS("color", tokens.secondary);
   await expect(tasks).toHaveCSS("color", tokens.secondary);
-  await expect(tasksItem.locator("svg")).toHaveCSS("color", tokens.secondary);
+  await expect(tasks.locator("svg")).toHaveCSS("color", tokens.secondary);
   await expect(nav.getByText("合同履约", { exact: true })).toBeVisible();
   await expect(cases).toHaveAttribute("aria-current", "page");
+  const snapshot = await nav.ariaSnapshot();
+  expect(snapshot.match(/link "案件与材料"/g)).toHaveLength(1);
+  expect(snapshot).not.toContain("menuitem");
+  await tasks.focus();
+  await page.keyboard.press("Tab");
+  await expect(review).toBeFocused();
   await expect(cases).toHaveCSS("color", tokens.selectedText);
-  await expect(cases.locator("xpath=ancestor::*[@role='menuitem']")).toHaveCSS(
-    "background-color",
-    tokens.selected,
-  );
+  await expect(cases).toHaveCSS("background-color", tokens.selected);
 
   await tasks.hover();
   await expect(tasks).toHaveCSS("color", tokens.primary);
-  await expect(tasksItem).toHaveCSS("background-color", tokens.raised);
-  await tasksItem.press("ArrowDown");
+  await expect(tasks).toHaveCSS("background-color", tokens.raised);
+  await tasks.press("ArrowDown");
   await expect(review).toBeFocused();
   await expect(review).toHaveCSS("outline-color", tokens.focus);
   await expect(review).toHaveCSS("outline-style", "solid");
-  const tools = nav.getByRole("menuitem", { name: "更多工具" });
+  const tools = nav.getByRole("button", { name: "更多工具" });
   await expect(tools).toHaveAttribute("aria-expanded", "false");
   await tools.hover();
   await expect(tools).toHaveAttribute("aria-expanded", "false");

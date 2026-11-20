@@ -346,35 +346,42 @@ type ResizeDrag = {
   gridWidth: number;
 };
 
-function maximumFindingColumnWidth(gridWidth: number): number {
+function maximumFindingColumnWidth(gridWidth: number, immersive = false): number {
   return Math.max(
     MIN_FINDING_COLUMN_WIDTH,
     Math.min(
       MAX_FINDING_COLUMN_WIDTH,
       gridWidth -
-        (window.innerWidth >= 1440
-          ? WORKSPACE_WIDE_NAV_COLUMN_WIDTH
-          : window.innerWidth >= 1100
-            ? WORKSPACE_NAV_COLUMN_WIDTH
-            : 0) -
+        (immersive
+          ? 0
+          : window.innerWidth >= 1440
+            ? WORKSPACE_WIDE_NAV_COLUMN_WIDTH
+            : window.innerWidth >= 1100
+              ? WORKSPACE_NAV_COLUMN_WIDTH
+              : 0) -
         WORKSPACE_RESIZER_WIDTH -
         MIN_DOCUMENT_COLUMN_WIDTH,
     ),
   );
 }
 
-function clampFindingColumnWidth(width: number, gridWidth: number): number {
+function clampFindingColumnWidth(width: number, gridWidth: number, immersive = false): number {
   return Math.round(
-    Math.max(MIN_FINDING_COLUMN_WIDTH, Math.min(maximumFindingColumnWidth(gridWidth), width)),
+    Math.max(
+      MIN_FINDING_COLUMN_WIDTH,
+      Math.min(maximumFindingColumnWidth(gridWidth, immersive), width),
+    ),
   );
 }
 
 function WorkspaceResizeHandle({
   value,
   onChange,
+  immersive = false,
 }: {
   value: number;
   onChange: (width: number) => void;
+  immersive?: boolean;
 }) {
   const handleRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<ResizeDrag | null>(null);
@@ -384,12 +391,12 @@ function WorkspaceResizeHandle({
     const grid = handleRef.current?.parentElement;
     if (!grid) return;
     const updateMaximum = () => {
-      setMaximumWidth(maximumFindingColumnWidth(grid.clientWidth));
+      setMaximumWidth(maximumFindingColumnWidth(grid.clientWidth, immersive));
     };
     window.addEventListener("resize", updateMaximum);
     updateMaximum();
     return () => window.removeEventListener("resize", updateMaximum);
-  }, []);
+  }, [immersive]);
 
   useEffect(() => {
     if (value > maximumWidth) onChange(maximumWidth);
@@ -414,7 +421,11 @@ function WorkspaceResizeHandle({
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     onChange(
-      clampFindingColumnWidth(drag.startWidth + drag.startX - event.clientX, drag.gridWidth),
+      clampFindingColumnWidth(
+        drag.startWidth + drag.startX - event.clientX,
+        drag.gridWidth,
+        immersive,
+      ),
     );
   }
 
@@ -434,9 +445,9 @@ function WorkspaceResizeHandle({
       event.key === "Home"
         ? MIN_FINDING_COLUMN_WIDTH
         : event.key === "End"
-          ? maximumFindingColumnWidth(gridWidth)
+          ? maximumFindingColumnWidth(gridWidth, immersive)
           : value + (event.key === "ArrowLeft" ? 16 : -16);
-    onChange(clampFindingColumnWidth(next, gridWidth));
+    onChange(clampFindingColumnWidth(next, gridWidth, immersive));
   }
 
   return (
@@ -977,9 +988,11 @@ export function ReviewWorkspaceView({
               contractFactsLocationScope={contractFactsLocationScope}
               onQuoteSelectionChange={onQuoteSelectionChange}
             />
-            {!immersive && (
-              <WorkspaceResizeHandle value={findingColumnWidth} onChange={setFindingColumnWidth} />
-            )}
+            <WorkspaceResizeHandle
+              value={findingColumnWidth}
+              onChange={setFindingColumnWidth}
+              immersive={immersive}
+            />
             <FindingPanel
               immersive={immersive}
               emptyFindingMessage={emptyFindingMessage}

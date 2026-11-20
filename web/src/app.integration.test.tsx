@@ -1570,6 +1570,105 @@ describe("application routes and API contract", () => {
     expect(api.requests.some((entry) => entry.key === "POST /api/cases/c1/reports")).toBe(false);
   });
 
+  it("advances from the first finding to the next judgment using only the keyboard", async () => {
+    const api = new Service();
+    const review = api.addReview("completed");
+    const first = review.findings[0]!;
+    review.findings.push({ ...first, id: "f2", claim: "第二条待判断线索", version: 2 });
+    const { user } = open(api, "/cases/c1/reviews/r1?attempt_id=attempt-r1-1");
+    const queue = await screen.findByRole("region", { name: "风险线索" });
+    const firstRow = within(queue).getByRole("button", { name: "选择线索：质保期限不一致" });
+    const secondRow = within(queue).getByRole("button", { name: "选择线索：第二条待判断线索" });
+    async function tabTo(target: HTMLElement) {
+      for (let count = 0; count < 60 && document.activeElement !== target; count++)
+        await user.tab();
+      expect(target).toHaveFocus();
+    }
+
+    await tabTo(firstRow);
+    await user.keyboard("j");
+    expect(secondRow).toHaveFocus();
+    await user.keyboard("k");
+    expect(firstRow).toHaveFocus();
+    await user.keyboard("{Enter}");
+    const risk = within(queue).getByRole("radio", { name: "确认是风险" });
+    await tabTo(risk);
+    await user.keyboard("{ArrowRight}");
+    expect(within(queue).getByRole("radio", { name: "不构成风险" })).toBeChecked();
+    await user.tab();
+    const reason = within(queue).getByRole("textbox", { name: "理由" });
+    expect(reason).toHaveFocus();
+    await user.keyboard("人工核对无误");
+    expect(reason).toHaveValue("人工核对无误");
+    expect(within(queue).getByRole("button", { name: "保存判断" })).toBeEnabled();
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    await waitFor(() =>
+      expect(api.requests.filter((entry) => entry.key.endsWith("/decisions"))).toHaveLength(1),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "选择线索：第二条待判断线索" })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      ),
+    );
+    const advancedRow = screen.getByRole("button", { name: "选择线索：第二条待判断线索" });
+    const nextJudgment = screen.getByRole("radio", { name: "确认是风险" });
+    await waitFor(() => expect(nextJudgment).toBeEnabled());
+    expect(advancedRow).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(nextJudgment).toHaveFocus();
+    const writes = api.requests.filter((entry) => entry.key.endsWith("/decisions"));
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.key).toContain("/findings/f1/decisions");
+    expect(writes[0]?.headers.get("Idempotency-Key")).toBeTruthy();
+    expect(writes[0]?.input).toMatchObject({ action: "false_positive", expected_version: 1 });
+  });
+
+  it("submits immersive batch decisions individually for the same verified rule group", async () => {
+    const api = new Service();
+    const review = api.addReview("completed");
+    const first = review.findings[0]!;
+    review.findings.push(
+      { ...first, id: "f2", claim: "同规则第二条", version: 2 },
+      { ...first, id: "f3", claim: "另一条规则", version: 3 },
+    );
+    review.evaluations = [
+      evaluation({ id: "rule-eval-1", domain: first.domain, finding_id: "f1" }),
+      evaluation({ id: "rule-eval-2", domain: first.domain, finding_id: "f2" }),
+      evaluation({ id: "rule-eval-3", domain: first.domain, finding_id: "f3", rule_id: "OTHER" }),
+    ];
+    const { user } = open(api, "/cases/c1/reviews/r1?attempt_id=attempt-r1-1");
+    const queue = await screen.findByRole("region", { name: "风险线索" });
+    const firstChoice = within(queue).getByRole("checkbox", {
+      name: "批量选择线索：质保期限不一致",
+    });
+    await user.click(firstChoice);
+    expect(
+      within(queue).getByRole("checkbox", { name: "批量选择线索：另一条规则" }),
+    ).toBeDisabled();
+    await user.click(within(queue).getByRole("checkbox", { name: "批量选择线索：同规则第二条" }));
+    const batch = within(queue).getByRole("region", { name: "批量裁决" });
+    expect(within(batch).getAllByRole("radio")).toHaveLength(3);
+    await user.click(within(batch).getByRole("radio", { name: "不构成风险" }));
+    await user.type(within(batch).getByRole("textbox", { name: "批量决定理由" }), "逐条核对后确认");
+    await user.click(within(batch).getByRole("button", { name: "逐条提交已选线索" }));
+    await waitFor(() =>
+      expect(api.requests.filter((entry) => entry.key.endsWith("/decisions"))).toHaveLength(2),
+    );
+    const writes = api.requests.filter((entry) => entry.key.endsWith("/decisions"));
+    expect(writes.map((entry) => entry.key)).toEqual([
+      "POST /api/cases/c1/reviews/r1/findings/f1/decisions",
+      "POST /api/cases/c1/reviews/r1/findings/f2/decisions",
+    ]);
+    expect(writes.map((entry) => entry.input)).toEqual([
+      { action: "false_positive", expected_version: 1, reason: "逐条核对后确认" },
+      { action: "false_positive", expected_version: 2, reason: "逐条核对后确认" },
+    ]);
+    const keys = writes.map((entry) => entry.headers.get("Idempotency-Key"));
+    expect(keys.every(Boolean)).toBe(true);
+    expect(new Set(keys).size).toBe(2);
+  });
+
   it("does not offer report creation while the selected sealed review still needs a judgment", async () => {
     const api = new Service();
     const review = api.addReview("completed");

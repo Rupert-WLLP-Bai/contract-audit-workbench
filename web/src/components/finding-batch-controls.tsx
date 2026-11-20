@@ -10,12 +10,14 @@
 
 import { Button, Input, Radio } from "antd";
 import { useId, type FormEvent } from "react";
-import type { Finding } from "../api/types";
+import type { DecisionAction, Finding } from "../api/types";
 import { DECISION_ACTIONS, relationLabel, type FindingBatchGroup } from "../domain/review";
 import type { BatchDecisionDraftHandle } from "../hooks/decision-drafts";
 
 export function FindingBatchControls({
   draft,
+  actions = DECISION_ACTIONS,
+  showRuleIdentity = true,
   selected,
   selectedId,
   group,
@@ -29,6 +31,8 @@ export function FindingBatchControls({
   onSubmit,
 }: {
   draft: BatchDecisionDraftHandle;
+  actions?: readonly { action: DecisionAction; label: string }[];
+  showRuleIdentity?: boolean;
   selected: Finding[];
   selectedId: string | null;
   group: FindingBatchGroup | null;
@@ -60,7 +64,9 @@ export function FindingBatchControls({
         <p>
           已选 {draft.selectedIds.length} 条
           {group
-            ? `：规则 ${group.ruleId}${group.ruleVersion ? `（${group.ruleVersion}）` : ""}，${relationLabel(group.relation)}`
+            ? showRuleIdentity
+              ? `：规则 ${group.ruleId}${group.ruleVersion ? `（${group.ruleVersion}）` : ""}，${relationLabel(group.relation)}`
+              : `：同一规则，${relationLabel(group.relation)}`
             : "：无法确认规则"}
         </p>
       ) : null}
@@ -79,7 +85,7 @@ export function FindingBatchControls({
         <form onSubmit={submit}>
           <fieldset disabled={!canDecide || pending}>
             <legend>统一决定</legend>
-            {DECISION_ACTIONS.map((item) => (
+            {actions.map((item) => (
               <div className="choice" key={item.action}>
                 <Radio
                   name={radioName}
