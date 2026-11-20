@@ -3,8 +3,8 @@
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
-<!-- Updated: 2026-11-14 -->
-<!-- Revision: r5 -->
+<!-- Updated: 2026-11-20 -->
+<!-- Revision: r6 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -72,7 +72,7 @@ go run ./cmd/legalstatuscheck -capture-dir /tmp/legal-status-<ts>
 
 ## 单机关键流程
 
-日常优先打通同一主机上的业务闭环。应用可以使用本机的独立服务进程；单机通过不代表多副本、跨节点或高可用已验收。分布式故障、扩缩容和 K3D 按专项后置，不能阻塞已完成的单机功能修复。
+日常优先打通同一主机上的业务闭环。应用可以使用本机的独立服务进程；单机通过不代表多副本、跨节点或高可用已验收。分布式故障、扩缩容和 K3D 记在待办池，不能阻塞已完成的单机功能修复。
 
 已有审查主旅程可单独运行：
 
@@ -90,7 +90,7 @@ go test -tags browser -run '^TestBrowserTelecomC1BFullJourney$' -count=1 -v ./e2
 
 完整 `static` 阶段对仓库 Python 源运行 Ruff `check` 与 `format --check`，并对 Web 工具范围运行 ESLint 和 Prettier `--check`。两者都只报告，不写回源码。Ruff 配置目标 Python 3.10；ESLint 与 Prettier 依赖通过 `bun install --frozen-lockfile` 准备，Ruff 由 `requirements-dev.txt` 固定并安装。完整质量入口与 PR 快速入口使用同一工具版本和配置。
 
-Phase 0–3 只做受影响局部检查。完整 race、coverage、浏览器、真实模型/OCR、容量、故障和恢复矩阵集中在固定候选窗口。检查失败后只重跑相关范围，避免重复已取得的同范围证据。
+每个 PR 只做受影响局部检查。完整 race、coverage 和浏览器在每轮收口时于最终提交上执行，五阶段全部 `success` 才能结束本轮并发布版本（操作见[贡献与协作](contributing.md)的「收口」）。真实模型/OCR、容量、故障和恢复矩阵属于发布级检查，只在以其为目标且环境具备的轮次执行，其他轮次在发布说明记 `NOT_RUN`。检查失败后只重跑相关范围，避免重复已取得的同范围证据。
 
 ## 工作流启动与完整验收
 

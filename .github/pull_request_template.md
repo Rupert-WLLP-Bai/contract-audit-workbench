@@ -1,10 +1,10 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: Guides PR authors to state changed behavior and each related Issue, record actual local-check states including NOT_RUN, list Closes/Refs per Issue, and explain merge danger and rollback. -->
+<!-- Purpose: Guides pull request authors to describe scoped changes, record actual verification and iteration release limitations, link issues, and explain merge and rollback risks. -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-10-31 -->
-<!-- Updated: 2026-11-02 -->
-<!-- Revision: r2 -->
+<!-- Updated: 2026-11-20 -->
+<!-- Revision: r3 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -25,9 +25,9 @@
 
 - 修改前的行为与证据：
 - 修改后的行为与受影响快检查：
-- 固定候选验收及外部依赖（未执行写 NOT_RUN）：
+- 需写进本轮发布说明的限制（未执行写 NOT_RUN）：
 
-<!-- 完全满足该 Issue 验收时逐项写 Closes #N；部分完成或仅关联时写 Refs #N。 -->
+<!-- 完全满足该 Issue 验收时逐项写 Closes #N；仅关联时写 Refs #N。 -->
 - Closes/Refs #…：
 - Closes/Refs #…（可选）：
 - Closes/Refs #…（可选）：
