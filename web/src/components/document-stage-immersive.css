@@ -57,6 +57,7 @@
   grid-template-columns: minmax(0, 1fr);
 }
 .immersive-document-column {
+  min-height: 0;
   position: relative;
   min-width: 0;
   display: flex;
@@ -159,7 +160,7 @@
 .immersive-other-sources {
   padding: var(--space-2) var(--space-4);
 }
-@media (min-width: 1024px) and (max-width: 1279px) {
+@media (max-width: 1279px) {
   .immersive-role-switch {
     display: flex;
   }
@@ -170,8 +171,18 @@
     display: none;
   }
 }
-@media (max-width: 1023px) {
-  .immersive-document-columns {
-    grid-template-columns: minmax(0, 1fr);
+@media (max-width: 1023px), (max-height: 599px) {
+  .page-review .workspace-view-immersive .immersive-document-scroll {
+    max-block-size: min(60dvh, 30rem);
+  }
+
+  .page-review .workspace-view-immersive .immersive-document-column > header {
+    flex-wrap: wrap;
+    padding-inline-end: var(--space-4);
+  }
+
+  .page-review .workspace-view-immersive .original-reader-modes {
+    position: static;
+    flex-wrap: wrap;
   }
 }

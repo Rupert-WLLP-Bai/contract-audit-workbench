@@ -469,7 +469,7 @@
   background: var(--surface-raised);
   border-inline-start: 1px solid var(--border-control);
 }
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (min-height: 600px) {
   .workspace-view-immersive {
     flex: 1 1 auto;
     min-height: 0;
