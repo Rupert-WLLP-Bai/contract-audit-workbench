@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -285,10 +285,10 @@ func compareSignedTerms(ctx context.Context, tx pgx.Tx, current accounts.User, r
 		return ContractSigningCheckResult{}, err
 	}
 	if seal == nil {
-		return ContractSigningCheckResult{}, fault.Conflict("冻结版本缺少完整封印，无法安全核对签署稿")
+		return ContractSigningCheckResult{}, fault.Conflict("定稿版本缺少完整的校验记录，无法核对签署稿")
 	}
 	if sha256Bytes(frozen.Snapshot) != frozen.SnapshotDigest || seal.SnapshotDigest != frozen.SnapshotDigest {
-		return ContractSigningCheckResult{}, fault.Conflict("冻结版本摘要与封印不一致")
+		return ContractSigningCheckResult{}, fault.Conflict("定稿版本的内容与保存时的摘要不一致")
 	}
 	materials, err := loadContractVersionMaterials(ctx, tx, accounts.Tenant(current), record.ContractID, revisionID)
 	if err != nil {
@@ -299,7 +299,7 @@ func compareSignedTerms(ctx context.Context, tx pgx.Tx, current accounts.User, r
 		return ContractSigningCheckResult{}, err
 	}
 	if seal.MaterialsDigest != materialsDigest {
-		return ContractSigningCheckResult{}, fault.Conflict("冻结版本材料摘要与封印不一致")
+		return ContractSigningCheckResult{}, fault.Conflict("定稿版本的材料与保存时的摘要不一致")
 	}
 	var baseline DraftContent
 	if err := unmarshalStoredDraft(frozen.Snapshot, &baseline); err != nil {
@@ -394,7 +394,7 @@ func (s *Store) CheckContractSigning(ctx context.Context, user accounts.User, in
 		return ContractSigningCheckResult{}, fault.Forbidden("外部权威合同不能在本地核对签署内容")
 	}
 	if record.CurrentRevisionID == nil || *record.CurrentRevisionID != input.BaselineRevisionID {
-		return ContractSigningCheckResult{}, fault.Conflict("基线必须是合同当前冻结版本")
+		return ContractSigningCheckResult{}, fault.Conflict("请选择当前定稿版本核对签署稿")
 	}
 	evidence, err := resolveMaterialVersion(ctx, tx, accounts.Tenant(current), input.SignedEvidence)
 	if err != nil {
@@ -533,7 +533,7 @@ func (s *Store) RegisterContractSigning(ctx context.Context, user accounts.User,
 		return ContractSigningRegistration{}, fault.Conflict("合同已被修改，请刷新后重试")
 	}
 	if record.CurrentRevisionID == nil || *record.CurrentRevisionID != input.BaselineRevisionID {
-		return ContractSigningRegistration{}, fault.Conflict("基线必须是合同当前冻结版本")
+		return ContractSigningRegistration{}, fault.Conflict("请选择当前定稿版本核对签署稿")
 	}
 	var inReview bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM clm_approval_rounds
@@ -911,7 +911,7 @@ func (s *Store) CreateContractSupplement(ctx context.Context, user accounts.User
 		return ContractSupplementResult{}, fault.Conflict("主合同已被修改，请刷新后重试")
 	}
 	if parent.CurrentRevisionID == nil || *parent.CurrentRevisionID != input.ParentRevisionID {
-		return ContractSupplementResult{}, fault.Conflict("parent_revision_id 必须是主合同当前冻结版本")
+		return ContractSupplementResult{}, fault.Conflict("请选择主合同当前的定稿版本作为补充协议关联版本")
 	}
 	if _, err := loadFrozenContractVersion(ctx, tx, accounts.Tenant(current), parentID, input.ParentRevisionID); err != nil {
 		return ContractSupplementResult{}, err

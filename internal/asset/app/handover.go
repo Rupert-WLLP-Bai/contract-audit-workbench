@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-13
-// Updated: 2026-11-13
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -143,14 +143,14 @@ func CreateHandover(ctx context.Context, tenant, actor string, p PreparedHandove
 		return empty, fault.Conflict("合同已被修改，请刷新后重试")
 	}
 	if record.CurrentRevisionID == nil || *record.CurrentRevisionID != input.ContractRevisionID {
-		return empty, fault.Conflict("资产移交必须对应当前冻结修订")
+		return empty, fault.Conflict("资产移交必须对应当前定稿版本")
 	}
 	_, signed, err := c.LoadSigningRegistration(ctx, tenant, id, input.ContractRevisionID)
 	if err != nil {
 		return empty, err
 	}
 	if !signed {
-		return empty, fault.Conflict("资产移交必须对应已登记签署的冻结修订")
+		return empty, fault.Conflict("资产移交必须对应已登记签署的定稿版本")
 	}
 	revision, err := c.LoadFulfillmentRevision(ctx, tenant, id, input.ContractRevisionID)
 	if err != nil {
@@ -171,7 +171,7 @@ func CreateHandover(ctx context.Context, tenant, actor string, p PreparedHandove
 		return empty, err
 	}
 	if !found {
-		return empty, fault.Conflict("冻结资产计划不存在、重复或无法核验")
+		return empty, fault.Conflict("合同资产计划不存在、重复或无法核验")
 	}
 	count := 0
 	var draftPlan contract.DraftAssetPlan
@@ -184,21 +184,21 @@ func CreateHandover(ctx context.Context, tenant, actor string, p PreparedHandove
 	}
 	itemID, e := contract.NormalizeContractUUID(draftPlan.ItemID)
 	if count != 1 || e != nil || itemID != plan.ItemID || draftPlan.Quantity != plan.Quantity || draftPlan.DepartmentCode != plan.DepartmentCode || draftPlan.DepartmentName != plan.DepartmentName || draftPlan.CustodianUser != plan.CustodianUser {
-		return empty, fault.Conflict("冻结资产计划快照与安全投影不一致")
+		return empty, fault.Conflict("合同资产计划快照与安全投影不一致")
 	}
 	item, found, err := c.LoadFulfillmentRevisionItem(ctx, tenant, id, input.ContractRevisionID, plan.ItemID)
 	if err != nil {
 		return empty, err
 	}
 	if !found {
-		return empty, fault.Conflict("资产计划对应的冻结商品或单位未知")
+		return empty, fault.Conflict("资产计划对应的合同商品或单位未知")
 	}
 	if item.Unit == nil || *item.Unit == "" || *item.Unit != plan.Unit || item.PlannedQuantity == nil || *item.PlannedQuantity == "" {
-		return empty, fault.Conflict("冻结商品单位或数量不能核验")
+		return empty, fault.Conflict("合同商品单位或数量不能核验")
 	}
 	planQty, err := fulfillment.ParseDecimal("asset plan quantity", plan.Quantity, false)
 	if err != nil {
-		return empty, fault.Conflict("冻结资产计划数量不能核验")
+		return empty, fault.Conflict("合同资产计划数量不能核验")
 	}
 	proposal := new(big.Rat).Sub(p.End, p.Start)
 	if proposal.Sign() <= 0 || proposal.Cmp(planQty) > 0 {
@@ -236,7 +236,7 @@ func CreateHandover(ctx context.Context, tenant, actor string, p PreparedHandove
 		allocatedRat = new(big.Rat)
 	}
 	if new(big.Rat).Add(allocatedRat, proposal).Cmp(planQty) > 0 {
-		return empty, fault.Conflict("移交累计数量超过冻结资产计划数量")
+		return empty, fault.Conflict("移交累计数量超过合同资产计划数量")
 	}
 	evidence, err := fulfillment.ResolveEvidence(ctx, input.Evidence, "asset_handover", a)
 	if err != nil {

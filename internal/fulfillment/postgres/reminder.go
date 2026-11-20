@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -45,7 +45,7 @@ func (r *ReminderRepository) Insert(ctx context.Context, p app.ReminderInsert) (
 	if err != nil {
 		var pg *pgconn.PgError
 		if errors.As(err, &pg) && pg.Code == "23505" {
-			return out, fault.Conflict("该冻结计划已有有效提醒")
+			return out, fault.Conflict("此合同计划已有生效的提醒")
 		}
 		return out, err
 	}

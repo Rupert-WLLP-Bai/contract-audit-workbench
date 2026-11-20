@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-13
-// Updated: 2026-11-13
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -175,7 +175,7 @@ func CreateContractDelivery(ctx context.Context, principal Principal, prepared P
 		return ContractDelivery{}, err
 	}
 	if record.CurrentRevisionID == nil || *record.CurrentRevisionID != input.ContractRevisionID {
-		return ContractDelivery{}, fault.Conflict("交付必须对应合同当前冻结修订")
+		return ContractDelivery{}, fault.Conflict("交付必须对应合同当前定稿版本")
 	}
 	revision, err := contracts.LoadFulfillmentRevision(ctx, record.TenantID, input.ContractID, input.ContractRevisionID)
 	if err != nil {
@@ -194,7 +194,7 @@ func CreateContractDelivery(ctx context.Context, principal Principal, prepared P
 		return ContractDelivery{}, err
 	}
 	if !ok {
-		return ContractDelivery{}, fault.Invalid("商品行不属于指定冻结修订")
+		return ContractDelivery{}, fault.Invalid("商品行不属于指定定稿版本")
 	}
 	item, err := frozenItemMetadata(revision.Snapshot, input.ItemID)
 	if err != nil {
@@ -202,7 +202,7 @@ func CreateContractDelivery(ctx context.Context, principal Principal, prepared P
 	}
 	item.Quantity, item.Unit = pointerValue(index.PlannedQuantity), pointerValue(index.Unit)
 	if item.Quantity == "" || item.Unit == "" {
-		return ContractDelivery{}, fault.Conflict("冻结商品行未提供可核验的计划数量和单位")
+		return ContractDelivery{}, fault.Conflict("合同明细未提供可核验的计划数量和单位")
 	}
 	quantity, err := ParseDecimal("quantity", input.Quantity, false)
 	if err != nil {
@@ -215,7 +215,7 @@ func CreateContractDelivery(ctx context.Context, principal Principal, prepared P
 	planned, _ := new(big.Rat).SetString(item.Quantity)
 	delivered, _ := new(big.Rat).SetString(totalText)
 	if new(big.Rat).Add(delivered, quantity).Cmp(planned) > 0 {
-		return ContractDelivery{}, fault.Conflict("累计实际交付数量超过冻结商品行计划数量")
+		return ContractDelivery{}, fault.Conflict("累计实际交付数量超过合同明细计划数量")
 	}
 	if plan != nil && plan.Quantity != "" {
 		planTotalText, err := repository.SumPlanDelivery(ctx, record.TenantID, input.ContractID,
@@ -226,7 +226,7 @@ func CreateContractDelivery(ctx context.Context, principal Principal, prepared P
 		planLimit, ok := new(big.Rat).SetString(plan.Quantity)
 		prior, priorOK := new(big.Rat).SetString(planTotalText)
 		if !ok || !priorOK || new(big.Rat).Add(prior, quantity).Cmp(planLimit) > 0 {
-			return ContractDelivery{}, fault.Conflict("累计实际交付数量超过所选冻结交付计划数量")
+			return ContractDelivery{}, fault.Conflict("累计实际交付数量超过所选合同交付计划数量")
 		}
 	}
 	evidence, err := resolveFulfillmentEvidence(ctx, input.Evidence, "supporting", access)
@@ -308,7 +308,7 @@ func CreateContractAcceptance(ctx context.Context, principal Principal, prepared
 		return ContractAcceptance{}, err
 	}
 	if record.CurrentRevisionID == nil || *record.CurrentRevisionID != input.ContractRevisionID {
-		return ContractAcceptance{}, fault.Conflict("验收必须对应合同当前冻结修订")
+		return ContractAcceptance{}, fault.Conflict("验收必须对应合同当前定稿版本")
 	}
 	revision, err := contracts.LoadFulfillmentRevision(ctx, record.TenantID, input.ContractID, input.ContractRevisionID)
 	if err != nil {
@@ -334,7 +334,7 @@ func CreateContractAcceptance(ctx context.Context, principal Principal, prepared
 		return ContractAcceptance{}, fault.NotFound("没有找到对应交付批次")
 	}
 	if itemProjection.Unit == nil {
-		return ContractAcceptance{}, fault.Conflict("冻结商品行未提供可核验的计划数量和单位")
+		return ContractAcceptance{}, fault.Conflict("合同明细未提供可核验的计划数量和单位")
 	}
 	item := parseRevisionItemMetadata(revision.Snapshot)[delivery.ItemID]
 	item.Unit = pointerValue(itemProjection.Unit)
@@ -345,7 +345,7 @@ func CreateContractAcceptance(ctx context.Context, principal Principal, prepared
 	standard := strings.TrimSpace(input.Standard)
 	if plan != nil && strings.TrimSpace(plan.Criteria) != "" {
 		if standard != strings.TrimSpace(plan.Criteria) {
-			return ContractAcceptance{}, fault.Conflict("验收标准必须与指定冻结计划一致")
+			return ContractAcceptance{}, fault.Conflict("验收标准必须与指定合同计划一致")
 		}
 		standard = strings.TrimSpace(plan.Criteria)
 	}
@@ -656,7 +656,7 @@ func RecordContractRectification(ctx context.Context, principal Principal, prepa
 		return ContractRectification{}, err
 	}
 	if record.CurrentRevisionID == nil || *record.CurrentRevisionID != input.ContractRevisionID {
-		return ContractRectification{}, fault.Conflict("整改事实必须对应合同当前冻结修订")
+		return ContractRectification{}, fault.Conflict("整改事实必须对应合同当前定稿版本")
 	}
 	result, found, err := repository.LoadAcceptanceResult(ctx, record.TenantID, input.ContractID, input.AcceptanceID, input.ContractRevisionID)
 	if err != nil {

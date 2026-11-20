@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -106,11 +106,11 @@ func ResolveReminderPlan(plans []ReminderPlan, input ReminderCreateInput) (Remin
 		}
 	}
 	if count != 1 {
-		return ReminderPlan{}, time.Time{}, fault.Conflict("冻结计划日期不存在或存在歧义")
+		return ReminderPlan{}, time.Time{}, fault.Conflict("合同计划日期不存在或存在歧义")
 	}
 	date, err := time.Parse("2006-01-02", found.PlannedDate)
 	if err != nil {
-		return ReminderPlan{}, time.Time{}, fault.Conflict("冻结计划日期无效")
+		return ReminderPlan{}, time.Time{}, fault.Conflict("合同计划日期无效")
 	}
 	local := time.Date(date.Year(), date.Month(), date.Day(), 9, 0, 0, 0, location).AddDate(0, 0, -input.LeadDays)
 	if local.Hour() != 9 {
@@ -169,7 +169,7 @@ func ConfirmedReminderPlan(record contract.Aggregate, revision contract.FrozenCo
 		return ReminderPlan{}, time.Time{}, fault.Conflict("合同已被修改，请刷新后重试")
 	}
 	if record.CurrentRevisionID == nil || *record.CurrentRevisionID != input.ContractRevisionID || revision.RevisionID != input.ContractRevisionID {
-		return ReminderPlan{}, time.Time{}, fault.Conflict("提醒必须对应合同当前冻结修订")
+		return ReminderPlan{}, time.Time{}, fault.Conflict("提醒必须对应合同当前定稿版本")
 	}
 	if err := VerifyReminderRevision(revision, seal); err != nil {
 		return ReminderPlan{}, time.Time{}, err
@@ -373,7 +373,7 @@ func VerifyReminderRevision(revision contract.FrozenContractRevision, seal *cont
 	digest := sha256.Sum256(revision.Snapshot)
 	actual := hex.EncodeToString(digest[:])
 	if seal == nil || actual != revision.SnapshotDigest || actual != seal.SnapshotDigest {
-		return fault.Conflict("冻结计划来源完整性校验失败")
+		return fault.Conflict("合同计划来源完整性校验失败")
 	}
 	return nil
 }

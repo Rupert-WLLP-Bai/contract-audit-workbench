@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -51,7 +51,7 @@ const viewer = {
 };
 const readyTimeout = Number(process.env.E2E_READY_TIMEOUT_MS ?? 20000);
 const liveLabel = "运行状态已连接";
-const closedLabel = "运行状态流已关闭，不会自动重连；请刷新页面或重新登录后再试。";
+const closedLabel = "实时进度连接已关闭，请刷新页面或重新登录。";
 
 interface StreamRecord {
   url: string;

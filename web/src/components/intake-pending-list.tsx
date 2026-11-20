@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -247,9 +247,7 @@ export function IntakePendingList({
           </Button>
         ) : null}
       </header>
-      <p className="intake-pending-summary">
-        列表由服务器按当前身份和案件权限返回。清除本机续办信息、换浏览器或重新登录后，未完成办理仍可在这里找回。
-      </p>
+      <p className="intake-pending-summary">换浏览器或重新登录后，仍可在这里继续办理。</p>
       {notice === null ? null : (
         <Alert className="intake-pending-feedback" type="success" showIcon title={notice} />
       )}

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12
-// Updated: 2026-11-12
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -43,7 +43,7 @@ func PrepareFreezeVersion(input clmcontract.FreezeContractVersionInput) (Prepare
 		return PreparedFreezeVersion{}, err
 	}
 	if input.ExpectedRowVersion < 1 {
-		return PreparedFreezeVersion{}, fault.Invalid("冻结合同版本必须携带当前合同 row_version")
+		return PreparedFreezeVersion{}, fault.Invalid("定稿需要当前合同记录的版本号")
 	}
 	if err := clmcontract.ValidateCLMIdempotencyKey(input.IdempotencyKey); err != nil {
 		return PreparedFreezeVersion{}, err
@@ -229,13 +229,13 @@ func FreezeVersion(ctx context.Context, principal VersionPrincipal, prepared Pre
 		return clmcontract.FreezeContractVersionResult{}, fault.NotFound("没有找到对应记录")
 	}
 	if !access.CanManage(record) {
-		return clmcontract.FreezeContractVersionResult{}, fault.Forbidden("当前授权不能冻结合同版本")
+		return clmcontract.FreezeContractVersionResult{}, fault.Forbidden("当前账号没有合同定稿权限")
 	}
 	if record.AuthorityMode != "native" {
-		return clmcontract.FreezeContractVersionResult{}, fault.Forbidden("外部权威合同不允许在本地冻结合同版本")
+		return clmcontract.FreezeContractVersionResult{}, fault.Forbidden("请在该合同的来源系统办理定稿")
 	}
 	if record.LifecycleState != "draft" || record.ValidityState != "active" {
-		return clmcontract.FreezeContractVersionResult{}, fault.Conflict("合同当前状态不允许冻结合同版本")
+		return clmcontract.FreezeContractVersionResult{}, fault.Conflict("合同当前状态无法定稿")
 	}
 	if record.RowVersion != input.ExpectedRowVersion {
 		return clmcontract.FreezeContractVersionResult{}, fault.Conflict("合同内容已被他人修改，请刷新后确认")
@@ -245,7 +245,7 @@ func FreezeVersion(ctx context.Context, principal VersionPrincipal, prepared Pre
 		return clmcontract.FreezeContractVersionResult{}, err
 	}
 	if workflowFacts.InReview {
-		return clmcontract.FreezeContractVersionResult{}, fault.Conflict("合同已有进行中的会签轮次，不能重新冻结版本")
+		return clmcontract.FreezeContractVersionResult{}, fault.Conflict("会签尚未结束，暂不能重新定稿")
 	}
 	contentBytes, err := repository.LoadDraftContent(ctx, principal.TenantID, prepared.ContractID)
 	if err != nil {
@@ -404,7 +404,7 @@ func LoadContractVersion(ctx context.Context, record clmcontract.Aggregate, revi
 		}
 		if seal.SnapshotDigest != frozen.SnapshotDigest || bytesDigest(frozen.Snapshot) != frozen.SnapshotDigest ||
 			seal.MaterialsDigest != materialsDigest {
-			return clmcontract.ContractVersionDetail{}, fault.Conflict("冻结版本的摘要与封印不一致")
+			return clmcontract.ContractVersionDetail{}, fault.Conflict("定稿版本的内容与保存时的摘要不一致")
 		}
 	}
 	detail := clmcontract.ContractVersionDetail{

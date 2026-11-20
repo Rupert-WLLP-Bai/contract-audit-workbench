@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -324,7 +324,7 @@ export function ContractReferencesPanel({
   return (
     <div className="contracts-page-references">
       <p className="meta">
-        核对会按来源案件重新解析主体绑定、材料版本和采购结果来源；草稿保存保持宽松，冻结时才固定来源快照。
+        核对会重新读取来源案件中的主体、材料版本和采购结果。合同定稿时留存这些依据。
         预览/下载复用既有原件端点，每次访问都会重新检查案件读权限和原件摘要。
       </p>
       {contractID === null ? (
@@ -374,12 +374,12 @@ export function ContractReferencesPanel({
                     : "未登记"
                   : "未在当前授权列表中"}
                 {" · "}
-                {check.source === "revision" ? "冻结版本" : "当前草稿"}
+                {check.source === "revision" ? "定稿版本" : "当前草稿"}
                 {" · "}核对时间：
                 {incompleteCheckedAt ? "时间格式异常" : preciseTime(check.checked_at)}
               </p>
               <TechnicalDetail
-                label="来源与合同版本技术详情"
+                label="来源与合同版本"
                 value={JSON.stringify(
                   {
                     contract_id: check.contract_id,
@@ -412,10 +412,10 @@ export function ContractReferencesPanel({
                           {bindingStateLabel(subject.binding_state)}
                           {" · "}登记核验状态：{verificationStateLabel(subject.verification_state)}{" "}
                           · 核验范围未提供
-                          {subject.frozen ? " · 冻结引用" : " · 当前引用"}
+                          {subject.frozen ? " · 留档引用" : " · 当前引用"}
                         </span>
                         <TechnicalDetail
-                          label="主体引用技术详情"
+                          label="主体引用记录"
                           value={JSON.stringify(subject, null, 2)}
                         />
                       </li>
@@ -445,12 +445,12 @@ export function ContractReferencesPanel({
                           预览/下载
                         </a>
                         {material.frozen ? (
-                          <span className="meta">冻结引用</span>
+                          <span className="meta">留档引用</span>
                         ) : (
                           <span className="meta">当前引用</span>
                         )}
                         <TechnicalDetail
-                          label="材料引用技术详情"
+                          label="材料引用记录"
                           value={JSON.stringify(material, null, 2)}
                         />
                       </li>
@@ -471,7 +471,7 @@ export function ContractReferencesPanel({
                     版
                   </p>
                   <TechnicalDetail
-                    label="采购来源技术详情"
+                    label="采购来源记录"
                     value={JSON.stringify(procurement, null, 2)}
                   />
                 </>
@@ -481,7 +481,7 @@ export function ContractReferencesPanel({
                   {check.warnings.map((warning, index) => (
                     <li key={`${warning}-${index}`}>
                       <span>提示：{warningLabel(warning)}</span>
-                      <TechnicalDetail label="提示代码技术详情" value={warning} />
+                      <TechnicalDetail label="提示代码" value={warning} />
                     </li>
                   ))}
                 </ul>

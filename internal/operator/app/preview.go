@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -51,7 +51,7 @@ func Preview[D executionmodel.OriginalDocument](ctx context.Context, p PreviewFa
 	input.MaterialID, input.DocumentID = strings.TrimSpace(input.MaterialID), strings.TrimSpace(input.DocumentID)
 	input.ParsedDocumentID = strings.TrimSpace(input.ParsedDocumentID)
 	if input.RunID == "" || input.AttemptID == "" || input.MaterialID == "" || input.MaterialVersion < 1 || input.DocumentID == "" || input.ParsedDocumentID == "" {
-		return model.ServiceObjectAssociationPreview{}, fault.Invalid("冻结审查及材料解析选择无效")
+		return model.ServiceObjectAssociationPreview{}, fault.Invalid("所选审查记录或材料解析版本无效")
 	}
 	run, ok := p.Run(input.RunID)
 	if !ok || !executionmodel.RunMatchesCase(run, scope.CaseID) {
@@ -66,30 +66,30 @@ func Preview[D executionmodel.OriginalDocument](ctx context.Context, p PreviewFa
 	}
 	frozen, ok := p.Input(input.AttemptID)
 	if !ok || frozen.RunID != input.RunID || frozen.AttemptID != input.AttemptID || frozen.InputHash != *attempt.InputHash {
-		return model.ServiceObjectAssociationPreview{}, fault.Conflict("来源审查的冻结输入未通过校验")
+		return model.ServiceObjectAssociationPreview{}, fault.Conflict("来源审查的送审内容未通过校验")
 	}
 	snapshot := p.SnapshotForHash(input.RunID)
 	hash, err := executionmodel.FrozenInputHash(snapshot, frozen.Documents)
 	if err != nil || hash != frozen.InputHash || !executionmodel.FrozenInputMatchesSnapshot(snapshot, frozen.Documents) || !executionmodel.AttemptSelectionsMatchFrozen(p.Selections(input.AttemptID), frozen.Documents) {
-		return model.ServiceObjectAssociationPreview{}, fault.Conflict("来源审查的冻结输入未通过校验")
+		return model.ServiceObjectAssociationPreview{}, fault.Conflict("来源审查的送审内容未通过校验")
 	}
 	if err := p.VerifyDocuments(ctx, frozen.Documents); err != nil {
-		return model.ServiceObjectAssociationPreview{}, fault.Conflict("来源审查的冻结材料未通过校验")
+		return model.ServiceObjectAssociationPreview{}, fault.Conflict("来源审查的送审材料未通过校验")
 	}
 	digest, err := p.AgentDigest(ctx, input.AttemptID)
 	if err != nil {
-		return model.ServiceObjectAssociationPreview{}, fault.Conflict("来源审查的冻结输出未通过校验")
+		return model.ServiceObjectAssociationPreview{}, fault.Conflict("来源审查的结果未通过校验")
 	}
 	findings, evaluations := p.OutputRows(input.RunID, input.AttemptID)
 	output, err := executionmodel.AttemptOutputHash(findings, evaluations, attempt.RulePackHash, attempt.RulePackSnapshotDigest, attempt.RulePackCompilerRef, digest)
 	if err != nil || output != *attempt.OutputHash {
-		return model.ServiceObjectAssociationPreview{}, fault.Conflict("来源审查的冻结输出未通过校验")
+		return model.ServiceObjectAssociationPreview{}, fault.Conflict("来源审查的结果未通过校验")
 	}
 	if _, err := executionmodel.FrozenRulePack(attempt, executionmodel.FrozenRulePackScope{TenantID: scope.TenantID, BusinessLine: scope.BusinessLine, Scenario: scope.Scenario, ContractType: scope.ContractType}); err != nil {
-		return model.ServiceObjectAssociationPreview{}, fault.Conflict("来源审查缺少有效的冻结规则包")
+		return model.ServiceObjectAssociationPreview{}, fault.Conflict("未能核对来源审查采用的规则版本")
 	}
 	if attempt.RunID != input.RunID {
-		return model.ServiceObjectAssociationPreview{}, fault.Conflict("冻结审查尝试编号不匹配")
+		return model.ServiceObjectAssociationPreview{}, fault.Conflict("所选审查记录的编号不匹配")
 	}
 	var selected *executionmodel.FrozenDocument[D]
 	for i := range frozen.Documents {
@@ -100,10 +100,10 @@ func Preview[D executionmodel.OriginalDocument](ctx context.Context, p PreviewFa
 		}
 	}
 	if selected == nil || selected.Material == nil || !((selected.Material.Purpose == "primary_contract" && selected.Document.OriginalProof().Role == "draft_contract") || (selected.Material.Purpose == "supplement" && selected.Document.OriginalProof().Role == "attachment")) || !selected.Ready || selected.ParsedDocumentID == "" || selected.Material.MaterialID != input.MaterialID || selected.Material.Version != input.MaterialVersion {
-		return model.ServiceObjectAssociationPreview{}, fault.Conflict("合同材料不在该次冻结审查中")
+		return model.ServiceObjectAssociationPreview{}, fault.Conflict("合同材料未用于该次审查")
 	}
 	if !p.HasMaterial(input.MaterialID, input.MaterialVersion, input.DocumentID) {
-		return model.ServiceObjectAssociationPreview{}, fault.Conflict("材料版本与冻结合同原件不匹配")
+		return model.ServiceObjectAssociationPreview{}, fault.Conflict("材料版本与本次送审的合同原件不匹配")
 	}
 	selectedParse := false
 	for _, selection := range p.Selections(input.AttemptID) {
@@ -113,18 +113,18 @@ func Preview[D executionmodel.OriginalDocument](ctx context.Context, p PreviewFa
 		}
 	}
 	if !selectedParse {
-		return model.ServiceObjectAssociationPreview{}, fault.Conflict("解析版本不在该次冻结审查中")
+		return model.ServiceObjectAssociationPreview{}, fault.Conflict("该次审查未采用此解析版本")
 	}
 	source, err := p.TelecomSource(ctx, *selected)
 	if err != nil {
-		return model.ServiceObjectAssociationPreview{}, fault.Conflict("冻结合同原文未通过完整性校验")
+		return model.ServiceObjectAssociationPreview{}, fault.Conflict("本次送审的合同原文未通过完整性校验")
 	}
 	sources := []rulepack.Source{source}
 	principal, resource := p.ExtractionAuthorization()
 	request := rulepack.Request{Principal: principal, Resource: resource, BusinessLine: scope.BusinessLine, Scenario: scope.Scenario, ContractType: scope.ContractType, At: p.Now().UTC(), Sources: sources}
 	facts, err := telecom.ExtractContractMaterial(request, source)
 	if err != nil {
-		return model.ServiceObjectAssociationPreview{}, fault.Conflict("冻结合同中没有可用的服务对象事实")
+		return model.ServiceObjectAssociationPreview{}, fault.Conflict("送审合同中没有可用于核验的服务对象事实")
 	}
 	byObject := make(map[string][]model.ServiceObjectFactRef)
 	for _, fact := range facts {

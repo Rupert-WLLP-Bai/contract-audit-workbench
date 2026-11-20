@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -101,7 +101,7 @@ function materialChoices(workspace: ReviewWorkspace | undefined): {
   if (ids.length === 0)
     return {
       items: [],
-      warning: workspace.documents.length ? "未报告可验证的冻结材料身份，无法确认本侧材料。" : null,
+      warning: workspace.documents.length ? "未报告可验证的留档材料身份，无法确认本侧材料。" : null,
     };
   const allowed = new Set(ids);
   const parsed = new Set(workspace.review_attempts?.attempt.parsed_document_ids ?? []);
@@ -721,7 +721,7 @@ export function ComparePage() {
     <section className="page compare-page">
       <header className="compare-page-head">
         <div>
-          <h1>冻结执行对照</h1>
+          <h1>审查记录对照</h1>
           <strong>{selectedCase?.title ?? "版本对照"}</strong>
           <span>
             {selectedCase ? caseIdentityDetails(selectedCase, snapshot.members) : "案件不可用"}
@@ -733,7 +733,7 @@ export function ComparePage() {
           <Link to={selectedCase ? `/cases/${selectedCase.id}` : "/cases"}>案件详情</Link>
         </nav>
       </header>
-      <dl className="compare-facts" aria-label="冻结执行对照摘要">
+      <dl className="compare-facts" aria-label="审查记录对照摘要">
         <div>
           <dt>来源执行</dt>
           <dd>{rightRun ? runLabel(rightRun.state) : "未选择"}</dd>
@@ -744,7 +744,7 @@ export function ComparePage() {
         </div>
         <div>
           <dt>可比性</dt>
-          <dd>{comparisonsLinked ? "已关联同一案件冻结执行" : "不可比或身份未确认"}</dd>
+          <dd>{comparisonsLinked ? "已关联同一案件的审查记录" : "不可比或身份未确认"}</dd>
         </div>
         <div>
           <dt>变化</dt>
@@ -856,7 +856,7 @@ export function ComparePage() {
               onChange={(id) => chooseRun("left_run_id", id)}
             />
             <RunSelect
-              label="历史版本"
+              label="原留档版本"
               value={rightRun}
               runs={caseRuns}
               attemptId={rightAttemptId}
@@ -889,7 +889,7 @@ export function ComparePage() {
             </li>
             <li data-state={rightState ? "filled" : "open"}>
               <span className="compare-chain-mark" aria-hidden="true" />
-              <span className="compare-chain-label">历史版本</span>
+              <span className="compare-chain-label">原留档版本</span>
               <strong>
                 {rightState ? runLabel(rightState) : rightRun ? "状态未读取" : "未选择"}
               </strong>
@@ -926,7 +926,7 @@ export function ComparePage() {
               loading={leftReview.isFetching}
             />
             <MaterialPane
-              label="历史版本"
+              label="原留档版本"
               caseId={selectedCase?.id ?? ""}
               run={rightRun}
               state={rightState}

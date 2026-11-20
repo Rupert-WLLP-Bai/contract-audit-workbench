@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -108,7 +108,7 @@ func (h *handler) downloadEvidenceBundle(w http.ResponseWriter, r *http.Request)
 			sum := sha256.Sum256(body)
 			if doc.ID != original.DocumentID || doc.CaseID != caseID || doc.Digest != original.SHA256 ||
 				doc.Size != original.Size || int64(len(body)) != original.Size || hex.EncodeToString(sum[:]) != original.SHA256 {
-				return nil, fault.Conflict("原件与冻结摘要或大小不一致")
+				return nil, fault.Conflict("原件与报告所用的文件摘要或大小不一致")
 			}
 			if err := r.Context().Err(); err != nil {
 				return nil, err

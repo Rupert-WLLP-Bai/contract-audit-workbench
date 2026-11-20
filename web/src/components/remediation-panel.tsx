@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r6
+// Updated: 2026-11-20
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -157,13 +157,13 @@ function RemediationCard({
     (sourceBusinessTimeValid && sourceBusinessTime === candidateBusinessAt);
   const businessTimeMismatchReason =
     typeof sourceBusinessAt !== "string"
-      ? "原审查没有返回可用于复审的冻结业务时点。"
+      ? "原审查未记录可用于复审的业务时间。"
       : !sourceBusinessTimeValid
-        ? "原审查返回的冻结业务时点无法识别，不能安全判断复核时点。"
+        ? "无法识别原审查的业务时间，暂不能确认复核时点。"
         : typeof candidateBusinessAt !== "string" ||
             !Number.isFinite(Date.parse(candidateBusinessAt))
-          ? `所选复核没有返回可识别的冻结业务时点；来源时点为${formatDateTime(sourceBusinessAt)}。`
-          : `所选复核的冻结业务时点为${formatDateTime(candidateBusinessAt)}，与来源审查的${formatDateTime(sourceBusinessAt)}不一致。`;
+          ? `无法识别所选复核的业务时间；原审查时间为${formatDateTime(sourceBusinessAt)}。`
+          : `所选复核的业务时间为${formatDateTime(candidateBusinessAt)}，与来源审查的${formatDateTime(sourceBusinessAt)}不一致。`;
 
   useEffect(() => {
     if (!candidateKey && choices.length > 0) setCandidateKey(candidateDefault);
@@ -247,7 +247,7 @@ function RemediationCard({
       "复核未为每个整改发现返回唯一、同规则版本、同能力和同业务对象的兼容评估。";
   else if (candidateWorkspace.data && !isNewAttempt && sourceBusinessTime === null)
     verificationBlockReason =
-      "必须选择不同于来源执行记录的新执行；来源审查未返回冻结业务时点，无法自动带入原时点发起复审。请使用服务端已确认兼容的现有复核记录或核对来源审查。";
+      "原审查未记录业务时间，无法按原时点发起复审。请选择已确认可用于复核的其他审查记录，或先核对原审查。";
   else if (candidateWorkspace.data && !isNewAttempt)
     verificationBlockReason = "关闭整改时，必须选择不同于原审查执行记录的新执行记录。";
   else if (selectedAttempt && !isTerminalAttemptState(selectedAttempt.state))
@@ -343,7 +343,7 @@ function RemediationCard({
           {remediationStatusLabel(item.status)}
         </StatusText>
       </header>
-      <TechnicalDetail label="整改状态技术详情" value={item.status} />
+      <TechnicalDetail label="整改状态编码" value={item.status} />
       <dl className="execution-dl">
         <div>
           <dt>来源审查</dt>
@@ -400,7 +400,7 @@ function RemediationCard({
           </dd>
         </div>
         <div>
-          <dt>来源冻结业务时间</dt>
+          <dt>原审查业务时间</dt>
           <dd>
             {typeof sourceBusinessAt === "string"
               ? formatDateTime(sourceBusinessAt)
@@ -518,7 +518,7 @@ function RemediationCard({
                           {revision.mark}，{businessDomainLabel(revision.domain)}，
                           {relationLabel(revision.relation)}，{revision.claim}
                           <TechnicalDetail
-                            label="比较记录技术详情"
+                            label="比较记录编号"
                             value={[revision.domain, revision.relation].join(" / ")}
                           />
                         </div>
@@ -536,8 +536,8 @@ function RemediationCard({
           {canStartSourceTimeReview && sourceBusinessTime !== null ? (
             <>
               <p className="meta">
-                新审查会使用来源冻结业务时点 {formatDateTime(sourceBusinessTime)}
-                ；材料、规则和其他依赖仍由服务端重新冻结并核验。
+                新审查沿用原审查业务时间 {formatDateTime(sourceBusinessTime)}
+                ；送审材料与审查依据会重新核对并留档。
               </p>
               <PlaybookPicker
                 caseId={caseId}
@@ -582,7 +582,7 @@ function RemediationCard({
             <div role="status">
               服务端复核结果：
               {remediationStatusLabel(verify.data.status)}， 版本 {verify.data.version}
-              <TechnicalDetail label="复核状态技术详情" value={verify.data.status} />
+              <TechnicalDetail label="复核状态编码" value={verify.data.status} />
             </div>
           ) : null}
           <Button
@@ -745,7 +745,7 @@ export function RemediationPanel({
                   >
                     {finding.claim}，{businessDomainLabel(finding.domain)}
                   </Checkbox>
-                  <TechnicalDetail label="发现领域技术详情" value={finding.domain} />
+                  <TechnicalDetail label="发现领域编码" value={finding.domain} />
                 </div>
               ))}
             </Card>

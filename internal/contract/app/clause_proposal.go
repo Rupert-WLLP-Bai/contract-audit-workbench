@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -92,7 +92,7 @@ func DecideClauseProposal(ctx context.Context, principal ClauseProposalPrincipal
 	history := contract.ClauseProposalHistory{Version: proposal.Version + 1, Action: input.Action, ActorID: principal.ActorID, Reason: input.Reason, CreatedAt: now}
 	if input.Action != "reject" {
 		if !proposal.EvidenceVerified || proposal.Evidence == nil {
-			return contract.ClauseProposal{}, fault.Conflict("条款建议缺少可核验的冻结引用")
+			return contract.ClauseProposal{}, fault.Conflict("条款建议缺少可核验的原文引用")
 		}
 		frozen, err := acceptance.FrozenText(ctx, proposal)
 		if err != nil {

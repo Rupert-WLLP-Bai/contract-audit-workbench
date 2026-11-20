@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -89,7 +89,7 @@ export function ContractReminderInbox({
         key: "plan",
         render: (_value: unknown, item: ContractReminderInboxItem) => planLabel(item),
       },
-      { title: "冻结计划日期", dataIndex: "planned_date", key: "planned_date" },
+      { title: "计划日期", dataIndex: "planned_date", key: "planned_date" },
       {
         title: "站内送达",
         key: "delivered_at",

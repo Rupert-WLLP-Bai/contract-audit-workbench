@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -152,12 +152,12 @@ func experiencePolicyContext(ctx context.Context, tx pgx.Tx, item Case, feedback
 	}
 	snapshot.PartyContext, err = decodePartyContext(partyContext, partyContextHash)
 	if err != nil {
-		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的主体冻结上下文无效")
+		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的主体留档信息无效")
 	}
 	snapshot.PartyContextHash = partyContextHash
 	snapshot.ServiceObjectContext, err = decodeServiceObjectReviewContext(serviceObjectContext, serviceObjectContextHash)
 	if err != nil {
-		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的服务对象冻结上下文无效")
+		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的服务对象留档信息无效")
 	}
 	snapshot.ServiceObjectContextHash = serviceObjectContextHash
 	inputHash, err := frozenInputHash(snapshot, documents)

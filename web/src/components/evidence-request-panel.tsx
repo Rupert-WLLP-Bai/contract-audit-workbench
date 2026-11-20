@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-14
-// Revision: r6
+// Updated: 2026-11-20
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -537,7 +537,7 @@ function RequestCardHeading({
         {knownLabel(conditionLabels, item.verification_condition, "核验条件待核对")}
       </p>
       <TechnicalDetail
-        label="补件状态技术详情"
+        label="补件状态编码"
         value={[item.status, item.verification_condition, item.material_role]
           .filter(Boolean)
           .join(" / ")}
@@ -567,7 +567,7 @@ function RequestCardVerifiedOutcome({ item, caseId }: { item: EvidenceRequest; c
       <p>
         核验结果：{result}；{verification.reason}
       </p>
-      <TechnicalDetail label="核验结果技术详情" value={relation} />
+      <TechnicalDetail label="核验结果编码" value={relation} />
       {verification.evidence.map((entry, index) => (
         <blockquote key={`${entry.document_id}-${entry.start}-${index}`}>{entry.quote}</blockquote>
       ))}
@@ -663,7 +663,7 @@ function RequestCardHistoryEvent({
     <li>
       {knownLabel(eventLabels, event.type, "处理类型待核对")} · {historyActorName(event, context)} ·{" "}
       {formatDateTime(event.occurred_at)}
-      <TechnicalDetail label="处理类型技术详情" value={event.type} />
+      <TechnicalDetail label="处理类型编码" value={event.type} />
       {event.receipt?.document_id ? <p>提交材料：{filename}</p> : null}
       {event.receipt?.answer ? <p>提交答复：{event.receipt.answer}</p> : null}
     </li>

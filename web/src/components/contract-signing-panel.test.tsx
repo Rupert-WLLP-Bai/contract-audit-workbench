@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-15
-// Updated: 2026-11-15
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -311,7 +311,7 @@ async function selectEvidence(user: ReturnType<typeof userEvent.setup>) {
 async function prepareCheck(user: ReturnType<typeof userEvent.setup>) {
   await selectEvidence(user);
   await user.click(screen.getByRole("checkbox"));
-  const checkButton = screen.getByRole("button", { name: "核对转录与冻结修订" });
+  const checkButton = screen.getByRole("button", { name: "核对转录与合同定稿" });
   await waitFor(() => expect(checkButton).toBeEnabled());
   await user.click(checkButton);
 }
@@ -332,7 +332,7 @@ it("shows an existing signing registration as a read-only fact with the original
   expect(screen.getByText(/审批依据：approved_round/)).toBeVisible();
   expect(screen.getByText("历史审批依据需人工复核")).toBeVisible();
   expect(screen.queryByText("请人工对照原件核对结构化字段。")).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "核对转录与冻结修订" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "核对转录与合同定稿" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "从当前不可变修订创建补充协议草稿" })).toBeEnabled();
 });
 
@@ -364,12 +364,12 @@ it("requires valid transcription JSON and an explicit confirmation before checki
   fireEvent.change(transcription, { target: { value: "[]" } });
   expect(screen.getByText("需要包含 contract 对象的合同结构化内容")).toBeVisible();
   expect(screen.getByRole("checkbox")).toBeDisabled();
-  expect(screen.getByRole("button", { name: "核对转录与冻结修订" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "核对转录与合同定稿" })).toBeDisabled();
 
   fireEvent.change(transcription, { target: { value: JSON.stringify(draft, null, 2) } });
   await selectEvidence(user);
   await user.click(screen.getByRole("checkbox"));
-  await user.click(screen.getByRole("button", { name: "核对转录与冻结修订" }));
+  await user.click(screen.getByRole("button", { name: "核对转录与合同定稿" }));
 
   expect(
     await screen.findByText(

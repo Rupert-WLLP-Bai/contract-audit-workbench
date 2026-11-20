@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -434,14 +434,14 @@ func decodeAssociationRow(row AssociationRow) (model.ServiceObjectContractAssoci
 	item.BasisRefs = append(json.RawMessage(nil), row.BasisRefs...)
 	factsDigest := sha256.Sum256(item.FactsCanonicalJSON)
 	if hex.EncodeToString(factsDigest[:]) != item.FactsSHA256 || json.Unmarshal(item.FactsCanonicalJSON, &item.FactRefs) != nil {
-		return model.ServiceObjectContractAssociation{}, fault.New(500, "integrity_error", "服务对象关联冻结事实校验失败")
+		return model.ServiceObjectContractAssociation{}, fault.New(500, "integrity_error", "服务对象关联留档事实校验失败")
 	}
 	if err := model.ValidateServiceObjectFactRefs(item); err != nil {
 		return model.ServiceObjectContractAssociation{}, fault.New(500, "integrity_error", "服务对象关联引用未通过校验")
 	}
 	canonical, digest, err := model.CanonicalServiceObjectFacts(item.FactRefs)
 	if err != nil || !bytes.Equal(canonical, item.FactsCanonicalJSON) || digest != item.FactsSHA256 {
-		return model.ServiceObjectContractAssociation{}, fault.New(500, "integrity_error", "服务对象关联事实与冻结字节不一致")
+		return model.ServiceObjectContractAssociation{}, fault.New(500, "integrity_error", "服务对象关联事实与留档记录不一致")
 	}
 	payloadSHA, err := model.CanonicalServiceObjectAssociationSHA256(item)
 	if err != nil || payloadSHA != item.PayloadSHA256 {

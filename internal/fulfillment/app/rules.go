@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -122,7 +122,7 @@ func frozenItemMetadata(snapshot []byte, itemID string) (revisionItemMetadata, e
 	metadata := parseRevisionItemMetadata(snapshot)
 	item, ok := metadata[itemID]
 	if !ok || item.ItemID == "" {
-		return revisionItemMetadata{}, fault.Invalid("冻结修订商品行快照缺失")
+		return revisionItemMetadata{}, fault.Invalid("定稿版本缺少合同明细记录")
 	}
 	return item, nil
 }
@@ -174,7 +174,7 @@ func deliveryPlanForItem(draft clmcontract.DraftContent, sequence *int, itemID s
 		return nil, nil
 	}
 	if sequence == nil {
-		return nil, fault.Invalid("必须选择冻结交付计划期次")
+		return nil, fault.Invalid("请选择合同交付计划的期次")
 	}
 	for i := range draft.DeliveryPlans {
 		plan := &draft.DeliveryPlans[i]
@@ -182,11 +182,11 @@ func deliveryPlanForItem(draft clmcontract.DraftContent, sequence *int, itemID s
 			continue
 		}
 		if plan.ItemID != itemID {
-			return nil, fault.Invalid("交付计划商品行与冻结 item_id 不匹配")
+			return nil, fault.Invalid("交付计划与所选合同明细不匹配")
 		}
 		return plan, nil
 	}
-	return nil, fault.Invalid("交付计划期次不属于冻结修订")
+	return nil, fault.Invalid("交付计划期次不属于定稿版本")
 }
 
 func acceptancePlanForItem(draft clmcontract.DraftContent, sequence *int, itemID string) (*clmcontract.DraftAcceptancePlan, error) {
@@ -194,7 +194,7 @@ func acceptancePlanForItem(draft clmcontract.DraftContent, sequence *int, itemID
 		return nil, nil
 	}
 	if sequence == nil {
-		return nil, fault.Invalid("必须选择冻结验收计划期次")
+		return nil, fault.Invalid("请选择合同验收计划的期次")
 	}
 	for i := range draft.AcceptancePlans {
 		plan := &draft.AcceptancePlans[i]
@@ -205,9 +205,9 @@ func acceptancePlanForItem(draft clmcontract.DraftContent, sequence *int, itemID
 			if slices.Contains(plan.ItemIDs, itemID) {
 				return plan, nil
 			}
-			return nil, fault.Invalid("验收计划不覆盖该冻结商品行")
+			return nil, fault.Invalid("验收计划不覆盖该合同明细")
 		}
 		return plan, nil
 	}
-	return nil, fault.Invalid("验收计划期次不属于冻结修订")
+	return nil, fault.Invalid("验收计划期次不属于定稿版本")
 }

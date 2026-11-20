@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-19
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -188,7 +188,7 @@ test("list, review, citation and return retain selection and actual reading posi
   const caseScroll = await page.evaluate(() => scrollY);
   await next.click();
   await expect(page).toHaveURL(new RegExp(`/cases/${caseId}/reviews/${runId}`));
-  await expect(page.getByText("运行状态流已关闭", { exact: false })).toBeVisible();
+  await expect(page.getByText("实时进度连接已关闭", { exact: false })).toBeVisible();
   if (!(await page.getByRole("dialog", { name: "审查记录" }).isVisible())) {
     await page.getByRole("button", { name: "审查记录", exact: true }).click();
   }
@@ -210,7 +210,7 @@ test("list, review, citation and return retain selection and actual reading posi
   const findingScroll = await findingsPane.evaluate((element) => element.scrollTop);
   expect(documentScroll).toBeGreaterThan(0);
   // A short queue may not need scrolling; still verify its actual position is restored.
-  await expect(page.getByText("运行状态流已关闭", { exact: false })).toBeVisible();
+  await expect(page.getByText("实时进度连接已关闭", { exact: false })).toBeVisible();
   if (!(await page.getByRole("dialog", { name: "审查记录" }).isVisible())) {
     await page.getByRole("button", { name: "审查记录", exact: true }).click();
   }
@@ -274,7 +274,7 @@ test("a tenant switch discards the former citation and list return state", async
   );
   await page.getByRole("link", { name: "导航样本 37", exact: true }).click();
   await page.getByRole("link", { name: "核对原文并处理决定" }).click();
-  await expect(page.getByText("运行状态流已关闭", { exact: false })).toBeVisible();
+  await expect(page.getByText("实时进度连接已关闭", { exact: false })).toBeVisible();
   if (!(await page.getByRole("dialog", { name: "审查记录" }).isVisible())) {
     await page.getByRole("button", { name: "审查记录", exact: true }).click();
   }

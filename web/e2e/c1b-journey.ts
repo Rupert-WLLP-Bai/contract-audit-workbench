@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1059,7 +1059,7 @@ try {
   );
 
   await selectReportOption(page, page.getByLabel("归档所依据的报告", { exact: true }), finalReport);
-  await page.getByLabel("归档理由", { exact: true }).fill("已完成复审并归档冻结报告。");
+  await page.getByLabel("归档理由", { exact: true }).fill("已完成复审并归档审查报告。");
   const [archiveResponse] = await Promise.all([
     page.waitForResponse(
       (response) =>

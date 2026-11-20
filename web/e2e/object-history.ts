@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r6
+// Updated: 2026-11-20
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -354,18 +354,16 @@ async function chooseFrozenObject(
   ref: string,
   expectedText: string,
 ): Promise<void> {
-  const materials = target.getByLabel("服务对象冻结合同材料", { exact: true });
+  const materials = target.getByLabel("服务对象的合同材料", { exact: true });
   const options = await materials.locator("option").allTextContents();
   const label = options.find((value) => value.startsWith(`${filename} · `));
   assert.ok(label, `frozen material ${filename} missing: ${JSON.stringify(options)}`);
   await materials.selectOption({ label });
-  const candidates = target.getByLabel("冻结服务对象候选", { exact: true });
+  const candidates = target.getByLabel("服务对象候选", { exact: true });
   await target.waitForFunction(
     ({ objectRef }) =>
       Array.from(
-        document.querySelectorAll<HTMLSelectElement>(
-          'select[aria-label="冻结服务对象候选"] option',
-        ),
+        document.querySelectorAll<HTMLSelectElement>('select[aria-label="服务对象候选"] option'),
       ).some((option) => option.value === objectRef),
     { objectRef: ref },
   );
@@ -390,7 +388,7 @@ async function associate(
       new URL(response.url()).pathname ===
         `/api/cases/${caseID}/service-objects/${objectID}/associations`,
   );
-  await target.getByRole("button", { name: "确认首个冻结事实关联", exact: true }).click();
+  await target.getByRole("button", { name: "确认首个事实关联", exact: true }).click();
   const response = await responsePromise;
   assert.equal(response.status(), 201, `association ${ref} failed: ${await response.text()}`);
   const data = (await response.json()) as {
@@ -540,7 +538,7 @@ async function frozenLegalView(
       new URL(response.url()).pathname ===
         `/api/cases/${caseID}/runs/${runA}/attempts/${attemptA}/legal-citations/${String(expected.citation_id)}`,
   );
-  await section.getByRole("button", { name: "读取本次冻结条文", exact: true }).click();
+  await section.getByRole("button", { name: "读取本次适用条文", exact: true }).click();
   const response = await responsePromise;
   assert.equal(response.status(), 200, "exact frozen legal citation could not be read");
   assert.deepEqual(
@@ -550,7 +548,7 @@ async function frozenLegalView(
   );
   await section.locator("blockquote").filter({ hasText: expectedBody }).waitFor();
   await section
-    .getByText("法律审核状态为未运行；该条文按本次审查冻结的版本显示。", { exact: true })
+    .getByText("法律审核状态为未运行；该条文按本次审查适用的版本显示。", { exact: true })
     .waitFor();
 }
 async function publishLaterLegalVersion(browserInstance: Browser): Promise<KnowledgeVersion> {
@@ -625,7 +623,7 @@ async function run(): Promise<void> {
   await signIn(current, "demo-admin", "admin-demo");
   await current.getByRole("button", { name: "新建案件", exact: true }).click();
   const dialog = current.getByRole("dialog");
-  const title = `多对象冻结历史 · ${Date.now()}`;
+  const title = `多对象留档历史 · ${Date.now()}`;
   await dialog.getByLabel("标题", { exact: true }).fill(title);
   await selectMaterialOption(current, "合同类型", "服务合同");
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
@@ -722,7 +720,7 @@ async function run(): Promise<void> {
     `${web}/cases/${caseID}/operator-audit?run_id=${encodeURIComponent(runA)}&attempt_id=${encodeURIComponent(attemptA)}`,
   );
   await openOperatorTab(current, "服务对象");
-  await current.getByRole("heading", { name: "服务对象与冻结事实", exact: true }).waitFor();
+  await current.getByRole("heading", { name: "服务对象与合同事实", exact: true }).waitFor();
   const objectA = await createObject(current, "合成专线甲", "LINE-001");
   await associate(current, objectA, "合同-A.txt", "LINE-001", "50 Mbit/s");
   const objectB = await createObject(current, "合成专线乙", "LINE-002");
@@ -1064,7 +1062,7 @@ async function run(): Promise<void> {
     `${web}/cases/${caseID}/operator-audit?run_id=${encodeURIComponent(second.run)}&attempt_id=${encodeURIComponent(second.attempt)}&service_object_id=${encodeURIComponent(objectA)}`,
   );
   await openOperatorTab(current, "服务对象");
-  await current.getByRole("heading", { name: "服务对象与冻结事实", exact: true }).waitFor();
+  await current.getByRole("heading", { name: "服务对象与合同事实", exact: true }).waitFor();
   await chooseFrozenObject(current, "合同-B.txt", "LINE-001", "80 Mbit/s");
   await current.getByRole("button", { name: "预览关联更正", exact: true }).click();
   await current.getByRole("heading", { name: "核对关联更正预览", exact: true }).waitFor();
@@ -1171,7 +1169,7 @@ async function run(): Promise<void> {
   );
   await current.goto(approvalURL);
   await openOperatorTab(current, "服务对象");
-  await current.getByText("冻结事实关联历史", { exact: true }).click();
+  await current.getByText("事实关联历史", { exact: true }).click();
   await current.getByText(new RegExp(`关联第 1 版.*${runA}/${attemptA}`)).waitFor();
   await current.getByText(new RegExp(`关联第 2 版.*${second.run}/${second.attempt}`)).waitFor();
   assert.deepEqual(

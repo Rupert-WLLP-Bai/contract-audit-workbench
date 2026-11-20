@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -53,7 +53,7 @@ func PrepareSingleFlow[D executionmodel.OriginalDocument](ctx context.Context, f
 		return out, fault.Conflict("来源审查不属于当前案件")
 	}
 	if !FrozenHasContract(frozenInput.Documents, input.ContractVersionID) {
-		return out, fault.Conflict("合同版本不在冻结输入中")
+		return out, fault.Conflict("合同版本不在送审内容中")
 	}
 	if binding.ServiceObjectID == "" || binding.ObjectVersion < 1 || binding.AssociationVersion < 1 {
 		return out, fault.Conflict("历史对象映射尚未绑定已确认的服务对象，不能发起新的核验")

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -37,7 +37,7 @@ function parseEvidence(value: unknown, path: string): ClauseProposalEvidence {
   const start = reader.integer(row.start, `${path}.start`, 0);
   const end = reader.integer(row.end, `${path}.end`, 1);
   const quote = reader.text(row.quote, `${path}.quote`);
-  if (end <= start || quote === "") throw new Error(`${path} 的冻结引用区间无效`);
+  if (end <= start || quote === "") throw new Error(`${path} 的原文引用区间无效`);
   return {
     document_id: reader.text(row.document_id, `${path}.document_id`),
     parsed_document_id: reader.text(row.parsed_document_id, `${path}.parsed_document_id`),

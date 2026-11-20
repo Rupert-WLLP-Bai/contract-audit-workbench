@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -129,7 +129,7 @@ func (s *Store) ExperienceMetricsForVersion(ctx context.Context, user accounts.U
 		hash, err := experienceUsageHash(usage)
 		if err != nil || hash != usage.UsageSHA256 || usage.Ref != version.Ref {
 			rows.Close()
-			return ExperienceMetrics{}, fault.Conflict("经验使用记录的冻结摘要无效")
+			return ExperienceMetrics{}, fault.Conflict("经验使用记录的摘要无效")
 		}
 		outcome := experienceDecisionOutcome(usage.ExpectedAction, decisionID, action, disposition)
 		out.UsageCount++

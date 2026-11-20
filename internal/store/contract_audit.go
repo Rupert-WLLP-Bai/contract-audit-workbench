@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -424,7 +424,7 @@ func (s *Store) BindContractAudit(ctx context.Context, user accounts.User, input
 		return ContractAuditBinding{}, fault.NotFound("没有找到对应记录")
 	}
 	if record.CurrentRevisionID == nil || *record.CurrentRevisionID != revisionID {
-		return ContractAuditBinding{}, fault.Conflict("只能绑定当前送审的冻结版本")
+		return ContractAuditBinding{}, fault.Conflict("只能绑定当前送审的定稿版本")
 	}
 	if record.RowVersion != input.ExpectedRowVersion {
 		return ContractAuditBinding{}, fault.Conflict("合同已被他人更新，请刷新后确认")
@@ -434,14 +434,14 @@ func (s *Store) BindContractAudit(ctx context.Context, user accounts.User, input
 		return ContractAuditBinding{}, err
 	}
 	if seal == nil {
-		return ContractAuditBinding{}, fault.Conflict("该版本没有可核验的冻结封印，不能绑定审计结果")
+		return ContractAuditBinding{}, fault.Conflict("该版本缺少可核对的定稿校验记录，无法关联审计结果")
 	}
 	materials, err := loadContractVersionMaterials(ctx, tx, accounts.Tenant(current), contractID, revisionID)
 	if err != nil {
 		return ContractAuditBinding{}, err
 	}
 	if len(materials) == 0 {
-		return ContractAuditBinding{}, fault.Invalid("冻结版本没有材料，不能绑定审计结果")
+		return ContractAuditBinding{}, fault.Invalid("定稿版本没有材料，不能绑定审计结果")
 	}
 	run, err := loadAuditRunAttempt(ctx, tx, accounts.Tenant(current), input.ReviewRunID, input.ReviewAttemptID)
 	if err != nil {
@@ -471,13 +471,13 @@ func (s *Store) BindContractAudit(ctx context.Context, user accounts.User, input
 		HasInput: run.FrozenDocuments != nil, Materials: materials,
 	}
 	if strings.TrimSpace(run.FrozenInputHash) == "" {
-		return ContractAuditBinding{}, fault.Conflict("审查尝试缺少冻结输入摘要，不能绑定")
+		return ContractAuditBinding{}, fault.Conflict("该次审查缺少送审内容摘要，无法关联")
 	}
 	if run.FrozenDocuments == nil || strings.TrimSpace(*run.FrozenDocuments) == "" {
-		return ContractAuditBinding{}, fault.Conflict("审查尝试缺少冻结输入，不能绑定")
+		return ContractAuditBinding{}, fault.Conflict("该次审查缺少送审内容，无法关联")
 	}
 	if err := json.Unmarshal([]byte(*run.FrozenDocuments), &evidence.Documents); err != nil {
-		return ContractAuditBinding{}, fault.Conflict("审查尝试的冻结输入损坏，不能绑定")
+		return ContractAuditBinding{}, fault.Conflict("该次审查的送审内容未通过校验，无法关联")
 	}
 	evidence.Findings, err = loadAuditFindingEvidence(ctx, tx, run.RunID, run.AttemptID, run.CaseID)
 	if err != nil {

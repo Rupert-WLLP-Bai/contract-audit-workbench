@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-19
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -19,7 +19,7 @@ import (
 // integrity checks when an ungoverned precheck has no governed RulePack.
 func (s *Store) validateSingleContractReport(st state, item Case, runID, attemptID string) (Run, Attempt, AttemptInput, error) {
 	invalid := func() (Run, Attempt, AttemptInput, error) {
-		return Run{}, Attempt{}, AttemptInput{}, fault.Conflict("单合同预审的冻结输入、规则映射或结果未通过校验")
+		return Run{}, Attempt{}, AttemptInput{}, fault.Conflict("单合同预审的送审内容、适用规则或结果未通过校验")
 	}
 	run, attempt, err := terminalRunAndAttempt(st, item, runID, attemptID)
 	if err != nil || requireFrozenAttemptHashes(attempt) != nil || isGovernedReviewCase(item) ||

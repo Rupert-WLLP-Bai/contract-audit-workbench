@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -130,7 +130,7 @@ func SelectFrozenLegalCitation(snapshot ReviewSnapshot, citationID string) (lega
 	sealed, err := sealFrozen(snapshot)
 	fields := legalModel.LegalReuseFields{EvidenceCutoffAt: snapshot.EvidenceCutoffAt, EvidenceCutoffMode: snapshot.EvidenceCutoffMode, ExplicitEvidenceCutoffAt: snapshot.ExplicitEvidenceCutoffAt, LegalReuseFingerprint: snapshot.LegalReuseFingerprint, LegalAuthorities: snapshot.LegalAuthorities}
 	if err != nil || sealed.SnapshotSHA256 != snapshot.SnapshotSHA256 || snapshot.LegalReuseFingerprint == "" || legalModel.PrepareLegalReuse(&fields) != nil || fields.LegalReuseFingerprint != snapshot.LegalReuseFingerprint {
-		return legalModel.FrozenLegalAuthority{}, fault.Conflict("所选审查的冻结法律依据摘要不一致")
+		return legalModel.FrozenLegalAuthority{}, fault.Conflict("所选审查的适用法律依据摘要不一致")
 	}
 	var selected *legalModel.FrozenLegalAuthority
 	for i := range snapshot.LegalAuthorities {

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -534,7 +534,7 @@ async function run(): Promise<void> {
       .waitFor({ state: "visible" });
     await reviewer
       .getByLabel("复核理由", { exact: true })
-      .fill("已核对本案冻结原文与更正内容，按双人复核流程批准。");
+      .fill("已核对本案送审原文与更正内容，按双人复核流程批准。");
     await reviewer.getByRole("button", { name: "批准并生效", exact: true }).click();
     await reviewer
       .getByText("更正已批准并由服务端追加新版本。", { exact: true })

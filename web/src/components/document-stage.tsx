@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r9
+// Updated: 2026-11-20
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -543,7 +543,7 @@ function FailedParseBody({
         <strong title={document.filename}>{document.filename}</strong>
         <StatusText tone="bad">解析失败</StatusText>
         <TechnicalDetail
-          label="材料状态技术详情"
+          label="材料状态编码"
           value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
         />
       </header>
@@ -592,7 +592,7 @@ function HighlightBody({
           <span key={page}>第 {page} 页</span>
         ))}
         <TechnicalDetail
-          label="材料状态技术详情"
+          label="材料状态编码"
           value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
         />
       </header>
@@ -685,7 +685,7 @@ function PlainBody({
           {parseLabel(document.parse_status)}
         </StatusText>
         <TechnicalDetail
-          label="材料状态技术详情"
+          label="材料状态编码"
           value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
         />
       </header>

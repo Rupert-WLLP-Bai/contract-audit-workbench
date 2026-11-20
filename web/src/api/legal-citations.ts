@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -83,11 +83,11 @@ export interface FrozenLegalReviewProjection {
 }
 
 const { record, object, text, integer, array, nullableText, bool } = responseReader(
-  (path) => `冻结法律依据响应中的 ${path} 无法识别`,
+  (path) => `审查法律依据响应中的 ${path} 无法识别`,
 );
 const digest = (value: unknown, path: string) => {
   const result = text(value, path);
-  if (!/^[a-f0-9]{64}$/.test(result)) throw new Error(`冻结法律依据响应中的 ${path} 不是 SHA-256`);
+  if (!/^[a-f0-9]{64}$/.test(result)) throw new Error(`审查法律依据响应中的 ${path} 不是 SHA-256`);
   return result;
 };
 const date = (value: unknown, path: string) => {
@@ -98,7 +98,7 @@ const date = (value: unknown, path: string) => {
     Number.isNaN(parsed.getTime()) ||
     parsed.toISOString().slice(0, 10) !== result
   ) {
-    throw new Error(`冻结法律依据响应中的 ${path} 不是有效日期`);
+    throw new Error(`审查法律依据响应中的 ${path} 不是有效日期`);
   }
   return result;
 };
@@ -108,7 +108,7 @@ const instant = (value: unknown, path: string) => {
     !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(result) ||
     Number.isNaN(Date.parse(result))
   ) {
-    throw new Error(`冻结法律依据响应中的 ${path} 不是 UTC 时间`);
+    throw new Error(`审查法律依据响应中的 ${path} 不是 UTC 时间`);
   }
   return result;
 };
@@ -122,7 +122,7 @@ function parseCondition(value: unknown, path: string): FrozenLegalApplicabilityC
   );
   const outcome = text(row.outcome, `${path}.outcome`);
   if (!(["satisfied", "missing", "conflicting", "unknown"] as string[]).includes(outcome))
-    throw new Error(`冻结法律依据响应中的 ${path}.outcome 无效`);
+    throw new Error(`审查法律依据响应中的 ${path}.outcome 无效`);
   if (row.fact !== undefined && row.fact !== null) object(row.fact, `${path}.fact`);
   return {
     field: text(row.field, `${path}.field`),
@@ -212,17 +212,17 @@ function parseArticle(value: unknown, path: string): FrozenLegalArticle {
     integer(quote.end, `${path}.quote_span.end`, 0) <
     integer(quote.start, `${path}.quote_span.start`, 0)
   )
-    throw new Error(`冻结法律依据响应中的 ${path}.quote_span 范围无效`);
+    throw new Error(`审查法律依据响应中的 ${path}.quote_span 范围无效`);
   const ref = record(row.ref, `${path}.ref`, ["knowledge_id", "version_id", "content_sha256"]);
   if (
     digest(ref.content_sha256, `${path}.ref.content_sha256`) !==
     digest(row.content_sha256, `${path}.content_sha256`)
   ) {
-    throw new Error(`冻结法律依据响应中的 ${path}.ref 与条文摘要不一致`);
+    throw new Error(`审查法律依据响应中的 ${path}.ref 与条文摘要不一致`);
   }
   const officialUrl = text(source.official_url, `${path}.source_provenance.official_url`);
   if (!/^https?:\/\//.test(officialUrl))
-    throw new Error(`冻结法律依据响应中的 ${path}.source_provenance.official_url 无效`);
+    throw new Error(`审查法律依据响应中的 ${path}.source_provenance.official_url 无效`);
   return {
     content_sha256: digest(row.content_sha256, `${path}.content_sha256`),
     source_id: text(row.source_id, `${path}.source_id`),
@@ -314,10 +314,10 @@ export function parseFrozenLegalAuthority(
   const citationId = digest(row.citation_id, `${path}.citation_id`);
   const outcome = text(row.outcome, `${path}.outcome`);
   if (!(["applicable", "not_applicable", "unknown"] as string[]).includes(outcome))
-    throw new Error(`冻结法律依据响应中的 ${path}.outcome 无效`);
+    throw new Error(`审查法律依据响应中的 ${path}.outcome 无效`);
   const status = text(row.legal_review_status, `${path}.legal_review_status`);
   if (status !== "NOT_RUN")
-    throw new Error(`冻结法律依据响应中的 ${path}.legal_review_status 不得伪称已人工审核`);
+    throw new Error(`审查法律依据响应中的 ${path}.legal_review_status 不得伪称已人工审核`);
   const article =
     row.article === undefined || row.article === null
       ? undefined
@@ -327,7 +327,7 @@ export function parseFrozenLegalAuthority(
       ? false
       : bool(row.legacy_rule_gap, `${path}.legacy_rule_gap`);
   if (!article && !legacyGap)
-    throw new Error(`冻结法律依据响应中的 ${path} 缺少精确条文且未标记为历史缺口`);
+    throw new Error(`审查法律依据响应中的 ${path} 缺少精确条文且未标记为历史缺口`);
   if (row.exact_reference !== undefined && row.exact_reference !== null) {
     const ref = record(row.exact_reference, `${path}.exact_reference`, [
       "authority_source_id",
@@ -359,7 +359,7 @@ export function parseFrozenLegalAuthority(
     const start = integer(span.start, `${path}.exact_reference.quote_span.start`, 0);
     const end = integer(span.end, `${path}.exact_reference.quote_span.end`, 0);
     if (end < start)
-      throw new Error(`冻结法律依据响应中的 ${path}.exact_reference.quote_span 无效`);
+      throw new Error(`审查法律依据响应中的 ${path}.exact_reference.quote_span 无效`);
     text(span.quote, `${path}.exact_reference.quote_span.quote`);
     const applicability = record(ref.applicability, `${path}.exact_reference.applicability`, [
       "all_of",
@@ -395,7 +395,7 @@ export function parseFrozenLegalAuthority(
     object(item, itemPath),
   );
   if (row.reviewer !== null)
-    throw new Error(`冻结法律依据响应中的 ${path}.reviewer 必须为空，因为状态是 NOT_RUN`);
+    throw new Error(`审查法律依据响应中的 ${path}.reviewer 必须为空，因为状态是 NOT_RUN`);
   return {
     citation_id: citationId,
     rule_id: text(row.rule_id, `${path}.rule_id`),
@@ -436,7 +436,7 @@ export function parseFrozenLegalReviewProjection(value: unknown): FrozenLegalRev
   );
   const mode = text(row.evidence_cutoff_mode, "legal_authorities.evidence_cutoff_mode");
   if (mode !== "acceptance_time" && mode !== "explicit")
-    throw new Error("冻结法律依据响应中的 evidence_cutoff_mode 无效");
+    throw new Error("审查法律依据响应中的 evidence_cutoff_mode 无效");
   const explicitAt =
     row.explicit_evidence_cutoff_at === undefined
       ? undefined

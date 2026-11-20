@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -88,7 +88,7 @@ func SelectSingleSource[D executionmodel.OriginalDocument](ctx context.Context, 
 		}
 	}
 	if _, err := f.Sources(ctx, selected[0]); err != nil {
-		return "", "", fault.Conflict("冻结合同输入未通过完整性校验")
+		return "", "", fault.Conflict("合同送审内容未通过完整性校验")
 	}
 	return purpose, selected[0].Document.OriginalProof().Role, nil
 }
@@ -118,7 +118,7 @@ func PrepareSingleEvaluation(ctx context.Context, evaluator auditext.Evaluator, 
 	}
 	frozen := auditext.FrozenInput{Scope: auditext.AuthorizedScope{TenantID: id.TenantID, CaseID: id.CaseID, ActorID: id.ActorID, GrantVersion: grant}, Pack: pack, ContractVersion: input.ContractVersionID, RulePackVersion: rulePackVersion, BindingStatus: auditext.BindingConfirmed, BindingVersion: binding.Version, SnapshotSetID: snapshot.SnapshotSetID, ExternalObjectID: binding.ExternalObject.ExternalObjectID, SourceSystem: snapshot.SourceSystem, ModelConfigurationID: config.Model, PlannerConfigurationID: config.Planner, ParserConfigurationID: config.Parser, BusinessAt: input.BusinessAt, EvidenceCutoffAt: input.EvidenceCutoffAt, Facts: facts, EvaluationScope: &auditext.EvaluationScope{Kind: scope.Kind, ServiceObjectIDs: append([]string(nil), scope.ServiceObjectIDs...)}}
 	if err = frozen.Validate(); err != nil {
-		return out, fault.Conflict("冻结核验输入不完整")
+		return out, fault.Conflict("核验所用材料不完整")
 	}
 	checks, err := evaluator.Evaluate(ctx, frozen, ObservationsForEvaluation(snapshot, input.BusinessAt, *input.EvidenceCutoffAt))
 	if err != nil {

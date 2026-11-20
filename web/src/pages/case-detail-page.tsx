@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r13
+// Updated: 2026-11-20
+// Revision: r14
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -656,7 +656,7 @@ export function CaseDetailPage() {
           ) : null}
           {subjectContextUnknown ? (
             <p className="callout">
-              服务未提供主体信息变化状态，无法确认当前主体信息是否与最近审查一致。请刷新或联系管理员。
+              暂无主体信息变化状态，无法确认当前主体信息是否与最近审查一致。请刷新或联系管理员。
             </p>
           ) : null}
           {item.material_selection?.status === "pending_confirmation" ? (
@@ -665,7 +665,7 @@ export function CaseDetailPage() {
             </p>
           ) : null}
           {!hasMaterialProjection ? (
-            <p className="callout">服务未提供材料集合与版本信息，当前不能启动新审查。</p>
+            <p className="callout">暂无材料集合与版本信息，当前不能启动新审查。</p>
           ) : null}
           {run && run.state !== "queued" && run.state !== "running" ? (
             <p className="meta">新上传的材料不会加入已经开始的审查。</p>

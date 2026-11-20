@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -94,7 +94,7 @@ func contractCitationJSON(workspace store.Workspace, caseID, runID, attemptID, e
 	// Only a frozen attempt keeps the exact documents and parse that produced
 	// the citation. An older attempt without a frozen input cannot be replayed.
 	if attempt.HistoryKind != "frozen" {
-		return contractCitation{}, fault.Conflict("本次执行没有保存当时的冻结输入，不能打开当时的原文")
+		return contractCitation{}, fault.Conflict("本次审查没有保存送审内容，无法打开当时的原文")
 	}
 	if len(execution.AgentReview) == 0 || string(execution.AgentReview) == "null" {
 		return contractCitation{}, fault.Conflict("本次执行没有保存智能体审查记录，不能定位引用")
@@ -111,19 +111,19 @@ func contractCitationJSON(workspace store.Workspace, caseID, runID, attemptID, e
 		return contractCitation{}, fault.NotFound("本次执行没有这条智能体引用")
 	}
 	if evidence.Verification != "typed_semantic_and_frozen_quote_verified" {
-		return contractCitation{}, fault.Conflict("这条引用尚未通过冻结原文核验，不能打开原文定位")
+		return contractCitation{}, fault.Conflict("这条引用尚未对上本次审查原文，无法定位")
 	}
 	anchor := evidence.Anchor
 	if anchor.Status != "located" || anchor.DocumentID == "" || anchor.ParsedDocumentID == "" ||
 		anchor.NormalizedDigest == "" || anchor.Quote == "" {
-		return contractCitation{}, fault.Conflict("这条引用缺少冻结原文身份、摘要或区间，不能定位")
+		return contractCitation{}, fault.Conflict("这条引用缺少原文编号、摘要或位置，无法定位")
 	}
 	if !containsString(attempt.ParsedDocumentIDs, anchor.ParsedDocumentID) {
-		return contractCitation{}, fault.Conflict("这条引用不属于本次执行的冻结解析，不能定位")
+		return contractCitation{}, fault.Conflict("这条引用不属于本次审查采用的解析版本，无法定位")
 	}
 	doc, ok := frozenAttemptDocument(workspace.Documents, caseID, anchor)
 	if !ok {
-		return contractCitation{}, fault.Conflict("本次执行没有保存这条引用对应的冻结原文，不能定位")
+		return contractCitation{}, fault.Conflict("本次审查没有保存这条引用对应的原文，无法定位")
 	}
 	frozen := store.Anchor{
 		ID: anchor.ID, DocumentID: anchor.DocumentID, ParsedDocumentID: anchor.ParsedDocumentID,
@@ -131,10 +131,10 @@ func contractCitationJSON(workspace store.Workspace, caseID, runID, attemptID, e
 		Start: anchor.Start, End: anchor.End, Page: anchor.Page, ElementID: optionalStringValue(anchor.ElementID),
 	}
 	if !anchorMatchesFrozenIdentity(frozen, doc) {
-		return contractCitation{}, fault.Conflict("引用摘要与本次执行的冻结原文不一致，不能当成已验证结论")
+		return contractCitation{}, fault.Conflict("引用摘要与本次审查原文不一致，无法核验")
 	}
 	if _, _, _, located := locateFrozenAnchor(frozen, doc); !located {
-		return contractCitation{}, fault.Conflict("引用区间与本次执行的冻结原文不一致，不能高亮")
+		return contractCitation{}, fault.Conflict("引用位置对不上本次审查原文，无法在正文中标出")
 	}
 	parsed := doc.ParsedDocument
 	return contractCitation{

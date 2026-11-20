@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -30,14 +30,14 @@ const reasons: Record<string, string> = {
   service_object_source_unresolved: "无法解析所选对象的合同来源",
   contract_object_source_ambiguous: "对象的合同来源不明确",
   contract_object_source_evidence_missing: "合同对象缺少来源证据",
-  contract_object_candidates_missing: "冻结合同中未识别出可核验对象",
-  contract_source_not_ready: "合同或补充协议尚未形成可用的冻结解析",
+  contract_object_candidates_missing: "合同定稿中未找到可核验对象",
+  contract_source_not_ready: "合同或补充协议暂无可用的解析文本",
   operator_mapping_missing: "缺少有效的外部对象映射",
   operator_mapping_ambiguous: "存在多个有效映射",
   external_snapshot_missing: "证据截止前没有该对象的快照",
   identity_evidence_after_cutoff: "对象或关联在证据截止后才确认",
   contract_evidence_after_cutoff: "合同或解析记录晚于证据截止时间，或取得时间无法核实",
-  contract_source_integrity_error: "冻结合同来源未通过校验",
+  contract_source_integrity_error: "合同定稿来源未通过校验",
   evaluation_unavailable: "对象核验未能完成",
   evaluation_partial: "对象核验未完整完成",
 };

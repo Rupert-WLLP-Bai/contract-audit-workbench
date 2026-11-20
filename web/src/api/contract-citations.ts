@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -32,7 +32,7 @@ export interface FrozenContractCitation {
 }
 
 const { record, text, integer, nullableText } = responseReader(
-  (path) => `冻结引用响应中的 ${path} 无法识别`,
+  (path) => `原文引用响应中的 ${path} 无法识别`,
 );
 
 const FIELDS = [
@@ -56,7 +56,7 @@ const FIELDS = [
 function digest(value: unknown, path: string): string {
   const result = text(value, path);
   if (!/^[0-9a-f]{64}$/.test(result)) {
-    throw new Error(`冻结引用响应中的 ${path} 不是 SHA-256`);
+    throw new Error(`原文引用响应中的 ${path} 不是 SHA-256`);
   }
   return result;
 }
@@ -74,10 +74,10 @@ export function parseFrozenContractCitation(
   // does not reproduce its own quote instead of highlighting nearby text.
   const characters = Array.from(textValue);
   if (quote === "" || end <= start || end > characters.length) {
-    throw new Error(`冻结引用响应中的 ${path} 区间无效`);
+    throw new Error(`原文引用响应中的 ${path} 区间无效`);
   }
   if (characters.slice(start, end).join("") !== quote) {
-    throw new Error(`冻结引用响应中的 ${path} 区间与引用原文不一致`);
+    throw new Error(`原文引用响应中的 ${path} 区间与引用原文不一致`);
   }
   const materialId = nullableText(row.material_id, `${path}.material_id`);
   const materialVersion =
@@ -85,7 +85,7 @@ export function parseFrozenContractCitation(
       ? null
       : integer(row.material_version, `${path}.material_version`, 1);
   if ((materialId === null) !== (materialVersion === null)) {
-    throw new Error(`冻结引用响应中的 ${path} 材料身份不完整`);
+    throw new Error(`原文引用响应中的 ${path} 材料身份不完整`);
   }
   return {
     case_id: text(row.case_id, `${path}.case_id`),

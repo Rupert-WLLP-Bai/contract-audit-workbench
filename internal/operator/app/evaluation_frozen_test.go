@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -36,7 +36,7 @@ func TestFrozenEvaluationInputErrorsRetainBothProtocols(t *testing.T) {
 	for _, tc := range []struct {
 		inside  bool
 		message string
-	}{{false, "这次执行保存的输入不存在或编号不匹配"}, {true, "来源审查的冻结输入未通过校验"}} {
+	}{{false, "这次执行保存的输入不存在或编号不匹配"}, {true, "来源审查的送审内容未通过校验"}} {
 		_, _, _, _, err := ValidateEvaluationFrozen[previewTestDocument](context.Background(), absentEvaluationInput{}, PreviewScope{CaseID: "case"}, "run", "attempt", tc.inside)
 		f, ok := err.(*fault.Error)
 		if !ok || f.Message != tc.message {

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -36,7 +36,7 @@ func FactsForAssociation(association model.ServiceObjectContractAssociation) ([]
 		evidence := make([]auditext.EvidenceRef, 0, len(fact.Citations))
 		for _, citation := range fact.Citations {
 			if citation.SourceID != association.DocumentID || citation.SourceVersion != association.ParsedDocumentID {
-				return nil, fault.Conflict("服务对象合同关联引用了不同的冻结材料或解析")
+				return nil, fault.Conflict("服务对象关联的材料或解析版本与本次核验依据不一致")
 			}
 			evidence = append(evidence, auditext.EvidenceRef{
 				Kind: auditext.EvidenceDocument, DocumentVersionID: citation.SourceID,

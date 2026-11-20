@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -47,7 +47,7 @@ func (f legalRecordFacts) VerifyBasis(ctx context.Context, raw json.RawMessage) 
 	if provided {
 		refs, err = validateSubjectBasisRefs(st, &item, raw)
 		if err != nil {
-			return nil, nil, fault.Invalid("法律适用事实依据不是本案已冻结的材料原文")
+			return nil, nil, fault.Invalid("法律适用事实依据须引用本案的送审原文")
 		}
 	}
 	obtained, err := legalFactBasisObtainedAt(st, item, refs)

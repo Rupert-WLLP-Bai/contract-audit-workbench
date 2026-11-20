@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -32,11 +32,11 @@ func SupplementCandidates[D executionmodel.OriginalDocument](ctx context.Context
 		}
 		sources, err := f.Sources(ctx, frozen)
 		if err != nil || len(sources) != 1 {
-			return nil, fault.Conflict("冻结补充协议未通过完整性校验")
+			return nil, fault.Conflict("留档的补充协议未通过完整性校验")
 		}
 		facts, err := telecom.ExtractContractMaterial(request, sources[0])
 		if err != nil {
-			return nil, fault.Conflict("冻结补充协议的对象事实无法提取")
+			return nil, fault.Conflict("无法从留档的补充协议中提取服务对象事实")
 		}
 		seen := make(map[string]bool)
 		for _, fact := range facts {

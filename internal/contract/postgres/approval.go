@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-13
-// Updated: 2026-11-13
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -57,7 +57,7 @@ func (r *Approval) LoadApprovalRevisionScope(ctx context.Context, tenantID, cont
 	var scope contractapp.ApprovalRevisionScope
 	err := r.tx.QueryRow(ctx, `SELECT revision.revision_number, revision.amount::text, revision.currency, seal.snapshot_digest FROM clm_contract_revisions revision JOIN clm_contract_version_seals seal ON seal.tenant_id=revision.tenant_id AND seal.contract_id=revision.contract_id AND seal.contract_revision_id=revision.contract_revision_id WHERE revision.tenant_id=$1 AND revision.contract_id=$2 AND revision.contract_revision_id=$3`, tenantID, contractID, revisionID).Scan(&scope.RevisionNumber, &scope.Amount, &scope.Currency, &scope.SnapshotDigest)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return scope, fault.Conflict("该版本没有可核验的冻结封印")
+		return scope, fault.Conflict("该版本缺少可核对的定稿校验记录")
 	}
 	return scope, err
 }

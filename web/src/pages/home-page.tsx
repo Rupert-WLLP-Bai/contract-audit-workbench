@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r9
+// Updated: 2026-11-20
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -524,7 +524,7 @@ export function HomePage() {
       key: "cases",
       label: "可见案件",
       value: dashboard.visible_cases,
-      hint: "按当前身份权限统计",
+      hint: "",
       tone: "blue",
       icon: <FolderOpenOutlined />,
     },
@@ -784,7 +784,7 @@ export function HomePage() {
                       )
                     }
                   >
-                    {activeNextStepCaseId === item.id ? "收起实际下一步" : "查看实际下一步"}
+                    {activeNextStepCaseId === item.id ? "收起下一步" : "查看下一步"}
                   </Button>
                   {activeNextStepCaseId === item.id ? (
                     <WorkbenchCaseNextStep
@@ -799,9 +799,6 @@ export function HomePage() {
               ))}
             </ul>
           )}
-          <p className="home-case-work-note">
-            此处展示工作台快照中的任务、整改和风险级别；案件实际下一步及可执行动作以案件页服务端信息为准。
-          </p>
         </section>
       </div>
 
@@ -882,7 +879,7 @@ export function HomePage() {
               <div>
                 <dt>{metric.label}</dt>
                 <dd>{metric.value}</dd>
-                <p>{metric.hint}</p>
+                {metric.hint ? <p>{metric.hint}</p> : null}
               </div>
             </div>
           ))}
@@ -923,7 +920,6 @@ export function HomePage() {
                 <span aria-hidden="true" />
                 <h2 id="home-risk-title">审查发现分布</h2>
               </div>
-              <span className="home-panel-meta">后端统计</span>
             </header>
             <ProgressList
               kind="risk"

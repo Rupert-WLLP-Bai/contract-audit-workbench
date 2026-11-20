@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-19
-// Revision: r6
+// Updated: 2026-11-20
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -432,7 +432,7 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId, source 
                         : "未选入本次审查"}
                   </p>
                   <TechnicalDetail
-                    label="材料状态技术详情"
+                    label="材料状态编码"
                     value={JSON.stringify({
                       role: material.role,
                       parse_status: document?.parse_status ?? null,

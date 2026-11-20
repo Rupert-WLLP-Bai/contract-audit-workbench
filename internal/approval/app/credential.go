@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-13
-// Updated: 2026-11-13
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -65,7 +65,7 @@ func IssueCredential(ctx context.Context, current accounts.User, id string, keyr
 		return empty, fault.Conflict("合同当前状态不允许签发审批凭证")
 	}
 	if record.CurrentRevisionID == nil || *record.CurrentRevisionID != round.ContractRevisionID {
-		return empty, fault.Conflict("审批轮次引用的不是当前冻结版本")
+		return empty, fault.Conflict("本轮会签采用的合同版本已不是当前定稿版本")
 	}
 	if round.State != "in_review" || task.State != "active" {
 		return empty, fault.Conflict("审批任务已结束，不能签发凭证")

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-12
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -173,7 +173,7 @@ export function ContractLifecycleOverviewPanel({
   const acceptanceRows = projection?.acceptances.items ?? [];
   const paymentRows = projection?.payments ?? [];
   const assetPlans = projection?.assets.items ?? [];
-  const revisionLabel = revisionId ?? "当前合同尚无冻结修订";
+  const revisionLabel = revisionId ?? "合同尚未定稿";
   const plans = projection?.completeness.plans === "known" ? projection.plans : null;
   const frozenPlanReadable = plans !== null && plans !== undefined;
   const reminders = frozenPlanReadable
@@ -349,7 +349,7 @@ export function ContractLifecycleOverviewPanel({
         </Tag>
         {projection?.completeness.assets === "known" && (
           <p>
-            冻结修订标记：
+            合同定稿标记：
             {projection?.assets.fixed_asset_status === "true"
               ? "固定资产"
               : projection?.assets.fixed_asset_status === "not_applicable"

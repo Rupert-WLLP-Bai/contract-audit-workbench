@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -155,7 +155,7 @@ export function frozenWorkspaceProblem(
     attempt.run_id !== runId
   )
     return "返回的案件、审查或执行身份不一致，不能比较。";
-  if (attempt.history_kind !== "frozen") return "该执行没有可核对的冻结记录，不能比较。";
+  if (attempt.history_kind !== "frozen") return "这次审查没有可核对的留档记录，无法比较。";
   if (
     !attempt.finished_at ||
     (attempt.state !== "completed" &&
@@ -163,11 +163,11 @@ export function frozenWorkspaceProblem(
       attempt.state !== "partial")
   )
     return "该执行尚未结束，不能比较；未执行的检查不能视为风险消除。";
-  if (attempt.frozen_result_available !== true) return "冻结输入或结果尚不可核对，不能比较。";
+  if (attempt.frozen_result_available !== true) return "送审内容或审查结果暂不可核对，无法比较。";
   const documentIds = workspace.snapshot?.document_ids ?? [];
   const parsedIds = attempt.parsed_document_ids;
   if (!hasUniqueStrings(documentIds) || !hasUniqueStrings(parsedIds))
-    return "冻结材料或解析版本身份未完整返回，不能比较。";
+    return "当次留档材料或解析版本的编号不完整，无法比较。";
   for (const documentId of documentIds) {
     const matches = workspace.documents.filter(
       (doc) =>
@@ -176,7 +176,7 @@ export function frozenWorkspaceProblem(
         parsedIds.includes(doc.parsed_document_id),
     );
     if (matches.length !== 1 || matches[0]?.text === null)
-      return "冻结材料或其解析原文缺失、重复或不可读取，不能比较。";
+      return "当次留档材料或解析文本缺失、重复或无法读取，无法比较。";
   }
   if (
     parsedIds.some(
@@ -186,7 +186,7 @@ export function frozenWorkspaceProblem(
         ).length !== 1,
     )
   )
-    return "冻结解析身份与材料不一致，不能比较。";
+    return "当次留档材料与解析版本不匹配，无法比较。";
   return null;
 }
 
@@ -402,7 +402,7 @@ export function compareReviewWorkspaces(
         reason:
           kind === "unmatched"
             ? "对应检查缺少可确认的发现或结论。"
-            : "按规则、能力和同一冻结来源中的对象或条款唯一对应。",
+            : "按规则、检查项目和同一份留档材料中的对象或条款逐一对应。",
       });
       return;
     }

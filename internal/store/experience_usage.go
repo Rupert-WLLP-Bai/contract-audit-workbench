@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -121,13 +121,13 @@ func loadExperienceUsageReview(ctx context.Context, tx pgx.Tx, item Case, input 
 		item.TenantID, item.OwnerOrgID, item.ID, input.RunID, input.AttemptID, input.FindingID).
 		Scan(&raw, &out.InputSHA, &historyKind, &state, &out.Latest, &out.Decided)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return out, fault.NotFound("没有找到对应的冻结审查发现")
+		return out, fault.NotFound("没有找到对应的审查线索")
 	}
 	if err != nil {
 		return out, err
 	}
 	if historyKind != "frozen" || !validKnowledgeHash(out.InputSHA) {
-		return out, fault.Conflict("该审查没有可核对的冻结输入")
+		return out, fault.Conflict("该审查没有可核对的送审内容")
 	}
 	switch state {
 	case "completed", "partial", "failed", "cancelled", "interrupted":
@@ -135,10 +135,10 @@ func loadExperienceUsageReview(ctx context.Context, tx pgx.Tx, item Case, input 
 	}
 	out.Snapshot, err = decodeGovernedKnowledge(raw)
 	if err != nil {
-		return out, fault.Conflict("审查冻结知识记录的摘要无效")
+		return out, fault.Conflict("本次审查使用的知识记录的摘要无效")
 	}
 	if out.Snapshot != nil && (out.Snapshot.Scope.CaseID != item.ID || out.Snapshot.Scope.OrgID != item.OwnerOrgID) {
-		return out, fault.Conflict("冻结知识记录与案件范围不一致")
+		return out, fault.Conflict("审查所用知识记录与案件范围不一致")
 	}
 	return out, nil
 }
@@ -165,7 +165,7 @@ func scanExperienceUsage(row pgx.Row, tenantID, orgID string) (ExperienceUsage, 
 	}
 	hash, err := experienceUsageHash(usage)
 	if err != nil || hash != usage.UsageSHA256 {
-		return ExperienceUsage{}, fault.Conflict("经验使用记录的冻结摘要无效")
+		return ExperienceUsage{}, fault.Conflict("经验使用记录的摘要无效")
 	}
 	return usage, nil
 }
@@ -223,7 +223,7 @@ func (s *Store) ListExperienceUsageOptions(ctx context.Context, user accounts.Us
 			}
 			version, _, _, _, err := loadGovernedKnowledge(ctx, tx, item.TenantID, candidate.Ref.KnowledgeID, candidate.Ref.VersionID)
 			if err != nil || version.Ref != candidate.Ref || version.Content.Kind != "experience" {
-				return ExperienceUsageOptions{}, fault.Conflict("冻结经验版本无法验证")
+				return ExperienceUsageOptions{}, fault.Conflict("本次使用的经验版本无法核验")
 			}
 			if err := authorizeKnowledgeReadWithCaseLocks(ctx, tx, current, version.Content, false); err != nil {
 				var problem *fault.Error
@@ -238,7 +238,7 @@ func (s *Store) ListExperienceUsageOptions(ctx context.Context, user accounts.Us
 			var usage *ExperienceUsage
 			if err == nil {
 				if stored.Ref != candidate.Ref || stored.SnapshotSHA256 != review.Snapshot.SnapshotSHA256 || stored.InputSHA256 != review.InputSHA {
-					return ExperienceUsageOptions{}, fault.Conflict("经验使用记录与冻结审查不一致")
+					return ExperienceUsageOptions{}, fault.Conflict("经验使用记录与审查记录不一致")
 				}
 				usage = &stored
 			} else if !errors.Is(err, pgx.ErrNoRows) {
@@ -312,7 +312,7 @@ func (s *Store) RecordExperienceUsage(ctx context.Context, user accounts.User, i
 		return ExperienceUsage{}, err
 	}
 	if _, found := usageSelection(review.Snapshot, input.Ref); !found {
-		return ExperienceUsage{}, fault.NotFound("经验不在本次审查的冻结候选中")
+		return ExperienceUsage{}, fault.NotFound("这条经验不在本次审查保存的候选范围内")
 	}
 	version, _, _, _, err := loadGovernedKnowledge(ctx, tx, item.TenantID, input.Ref.KnowledgeID, input.Ref.VersionID)
 	if err != nil || version.Ref != input.Ref || version.Content.Kind != "experience" {

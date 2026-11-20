@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -255,7 +255,7 @@ export function ContractPaymentsPanel({
       render: (_value: number, row: PaymentPlanRow) => `第 ${row.plan.sequence} 期`,
     },
     {
-      title: "冻结计划",
+      title: "已确认计划",
       key: "plan",
       render: (_value: unknown, row: PaymentPlanRow) => (
         <div>
@@ -326,20 +326,18 @@ export function ContractPaymentsPanel({
   ];
 
   return (
-    <section className="contracts-page-section" aria-label="冻结付款计划与资格核验">
+    <section className="contracts-page-section" aria-label="付款计划与资格核验">
       <h3>付款计划与资格核验</h3>
       <Alert
         type="info"
         showIcon
-        title="计划取自当前冻结合同修订。资格核验只检查当前条件，不发起付款；有无本地可信回执也不能单独证明现实中是否已付款。"
+        title="付款计划来自合同定稿。资格核验只检查付款条件，实际付款状态须另行核实。"
       />
       {loading ? <p role="status">正在读取本修订的可信付款回执…</p> : null}
       {error ? <Alert type="error" showIcon title={error} /> : null}
       {refreshWarning ? <Alert type="warning" showIcon title={refreshWarning} /> : null}
-      {!revisionId ? (
-        <Alert type="warning" showIcon title="当前没有可核验的冻结合同修订。" />
-      ) : null}
-      {revisionId && plans.length === 0 ? <p className="meta">当前冻结修订没有付款计划。</p> : null}
+      {!revisionId ? <Alert type="warning" showIcon title="暂无可核验的合同定稿。" /> : null}
+      {revisionId && plans.length === 0 ? <p className="meta">合同定稿中暂无付款计划。</p> : null}
       {plans.length > 0 ? (
         <Table<PaymentPlanRow>
           rowKey="key"

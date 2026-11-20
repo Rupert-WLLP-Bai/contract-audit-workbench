@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -28,7 +28,7 @@ func (previewTestDocument) OriginalProof() executionmodel.OriginalDocumentProof 
 func TestPreviewRejectsMissingSelectionBeforeReadingFacts(t *testing.T) {
 	_, err := Preview[previewTestDocument](context.Background(), nil, PreviewScope{}, model.ServiceObjectHead{}, model.ServiceObjectAssociationPreviewInput{})
 	problem, ok := err.(*fault.Error)
-	if !ok || problem.Status != 422 || problem.Message != "冻结审查及材料解析选择无效" {
+	if !ok || problem.Status != 422 || problem.Message != "所选审查记录或材料解析版本无效" {
 		t.Fatalf("unexpected invalid selection result: %v", err)
 	}
 }

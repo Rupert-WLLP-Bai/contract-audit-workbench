@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -173,7 +173,7 @@ function ReviewAttemptSummary({ review }: { review: ReturnType<typeof useReview>
         <dt>执行状态</dt>
         <dd>
           <StatusText tone={runTone(runStateOf(review))}>{runLabel(runStateOf(review))}</StatusText>
-          <TechnicalDetail label="执行状态技术详情" value={runStateOf(review)} />
+          <TechnicalDetail label="执行状态编码" value={runStateOf(review)} />
         </dd>
       </div>
       <div>

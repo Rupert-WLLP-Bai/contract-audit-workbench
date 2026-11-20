@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -203,7 +203,7 @@ func Submit(ctx context.Context, p PreparedSubmission, tenantID, actorID string,
 		return empty, fault.Conflict("合同已有进行中的会签轮次")
 	}
 	if record.CurrentRevisionID == nil {
-		return empty, fault.Conflict("请先冻结合同版本再送审")
+		return empty, fault.Conflict("请先定稿，再提交会签")
 	}
 	revisionID := *record.CurrentRevisionID
 	materials, err := freeze.VerifyFreeze(ctx, tenantID, p.ContractID, revisionID)

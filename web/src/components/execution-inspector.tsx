@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -944,7 +944,7 @@ export function ExecutionInspector({
         ) : null}
       </div>
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-        第 {selected.ordinal} 次尝试状态：{runLabel(selected.state)}。
+        第 {selected.ordinal} 次审查状态：{runLabel(selected.state)}。
       </p>
       {cancelError ? (
         <p className="execution-error" role="alert">

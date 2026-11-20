@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-14
-// Revision: r8
+// Updated: 2026-11-20
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -113,8 +113,7 @@ const MATERIAL_BLOCKER_CODES: Record<string, true> = {
 };
 function roleFocus(role: string): string {
   if (role === "clerk") return "经办视图：优先补齐并确认材料、准备报告；审查结论由审查员人工决定。";
-  if (role === "reviewer")
-    return "审查视图：优先核对冻结原文、处理未裁决问题和补件复核；材料写入由经办负责。";
+  if (role === "reviewer") return "请先核对送审原文、判断线索，再复核补件。材料由经办人员维护。";
   if (role === "admin")
     return "管理员视图：可协助材料、审查与报告流程；人工决定仍由具备审查权限的人员提交。";
   if (role === "viewer")
@@ -277,7 +276,7 @@ function planFor(props: Props): CaseNextStepPlan {
         stage: "主体状态待确认",
         title: "服务端没有返回主体变化状态",
         tone: "attention",
-        reason: "无法确认当前主体信息是否与最近一次冻结审查一致；请先核对主体后再发起新审查。",
+        reason: "无法确认当前主体信息是否与最近一次审查一致。请先核对主体，再发起新审查。",
         missingItems: ["当前主体与最近一次审查之间的服务端比较结果"],
         owner: "案件管理员",
         action: { kind: "link", href: "#case-subjects", label: "查看案件主体信息" },
@@ -339,7 +338,7 @@ function planFor(props: Props): CaseNextStepPlan {
           stage: "主体信息已变更",
           title: "等待具备发起权限的人员复审",
           tone: "attention",
-          reason: "主体信息已变化，新审查会冻结当前主体信息；旧审查、决定和报告会保留。",
+          reason: "主体信息已变化。新审查会记录当前主体信息，原审查、判断和报告仍可查阅。",
           missingItems: ["由具备审查权限的经办、审查员或管理员发起复审"],
           owner: "经办、审查员或管理员",
           action: { kind: "link", href: "#review-readiness", label: "查看复审准备状态" },
@@ -438,8 +437,7 @@ function planFor(props: Props): CaseNextStepPlan {
         stage: "审查准备期间已取消",
         title: "可以重新发起新的审查",
         tone: "attention",
-        reason:
-          "此前由用户主动取消，原执行尚未冻结输入。新审查将重新核对当前材料、范围、权限和依据，原取消记录保留。",
+        reason: "上次审查已取消，尚未留存送审内容。新审查会重新核对材料、范围、权限和依据。",
         missingItems: [],
         owner: "经办或审查员",
         action: {
@@ -466,7 +464,7 @@ function planFor(props: Props): CaseNextStepPlan {
         stage: "需要复审",
         title: "当前信息与最近一次审查不同",
         tone: "attention",
-        reason: `${changeReasons.join("；")}。发起新审查会冻结当前信息，旧运行、决定和报告会保留。`,
+        reason: `${changeReasons.join("；")}。新审查会留存当前信息，原审查、判断和报告仍可查阅。`,
         missingItems: [],
         owner: "经办或审查员",
         action: { kind: "start", label: "开始复审", loading: startPending, disabled: startPending },
@@ -568,7 +566,7 @@ function planFor(props: Props): CaseNextStepPlan {
         stage: "审查已取消",
         title: "可由有权人员重新发起已取消审查",
         tone: "attention",
-        reason: "此前由用户主动取消；在原审查中选择重新发起时，服务端会重新核验权限和冻结输入。",
+        reason: "此前由用户取消。可在原审查中重新发起，届时会复核权限和当次留档材料。",
         missingItems: ["人工确认是否重新发起"],
         owner: "经办或审查员",
         action: { kind: "link", href: reviewHref, label: "打开已取消审查" },
@@ -583,7 +581,7 @@ function planFor(props: Props): CaseNextStepPlan {
       tone: "attention",
       reason:
         latestWorkspace && hasTransientRetryCause(latestWorkspace)
-          ? "服务恢复后可在原审查中尝试重试；服务端会核验权限和冻结输入。"
+          ? "服务恢复后可在原审查中重试，届时会复核权限和送审内容。"
           : "请在原审查中查看已保存的结果、未执行项及人工判断；原因未确认时不能推断重试可以解决。",
       missingItems: ["本次执行未完成的检查与原因"],
       owner: "审查员",
@@ -684,7 +682,7 @@ function planFor(props: Props): CaseNextStepPlan {
       title: submitted ? "经办已提交修改稿，等待复核" : "这项整改尚未关闭",
       tone: "attention",
       reason: submitted
-        ? "关闭整改前，需要依据新的结束审查和服务端返回的兼容评估完成复核；服务端会核验来源冻结信息。"
+        ? "关闭整改前，请用一份已结束且符合复核条件的新审查完成复核。原留档依据会一并核对。"
         : "整改记录绑定了来源发现；仅上传材料不会提交或关闭整改。",
       missingItems: submitted ? ["新的复核执行记录及服务端兼容确认"] : ["修改稿与整改措施的提交"],
       owner: submitted ? "审查员" : remediationOwner(item, activeRemediation),
@@ -739,7 +737,7 @@ function planFor(props: Props): CaseNextStepPlan {
     title: canCreateReport ? "人工判断已完成，选择报告依据" : "等待经办生成审查报告",
     tone: "neutral",
     reason: canCreateReport
-      ? "请在报告区选择本次审查与执行记录；服务端会核验冻结输入、规则依据和结果。符合条件后生成固定版本，再从同一区域导出。"
+      ? "请在报告区选择审查记录。系统核对当次送审内容、审查依据和结果后，即可生成并导出报告。"
       : "当前角色不能生成报告；请交由经办或管理员完成报告保存和导出。",
     missingItems: ["审查报告"],
     owner: canCreateReport ? "经办" : "经办或管理员",
@@ -849,7 +847,7 @@ export function CaseNextStep(props: Props) {
             {plan.reason}
           </p>
           {plan.technicalDetail ? (
-            <TechnicalDetail label="状态技术详情" value={plan.technicalDetail} />
+            <TechnicalDetail label="状态编码" value={plan.technicalDetail} />
           ) : null}
         </section>
         <section aria-labelledby="case-next-step-owner-title">
@@ -860,7 +858,7 @@ export function CaseNextStep(props: Props) {
       <section className="case-next-step-focus" aria-label={`${actorRoleLabel(actorRole)}工作重点`}>
         <strong>{actorRoleLabel(actorRole)}工作重点</strong>
         <p>{roleFocus(actorRole)}</p>
-        <TechnicalDetail label="角色技术详情" value={actorRole} />
+        <TechnicalDetail label="角色编码" value={actorRole} />
       </section>
       <div className="case-next-step-action">
         <div>

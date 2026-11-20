@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -41,7 +41,7 @@ func PrepareAggregateProof[D executionmodel.OriginalDocument](ctx context.Contex
 		return zero, "", "", fault.Conflict("来源审查使用的规则包与能力包不一致")
 	}
 	if err = ValidateAggregateSources(ctx, f, frozen.Documents); err != nil {
-		return zero, "", "", fault.Conflict("冻结合同来源未通过完整性校验")
+		return zero, "", "", fault.Conflict("留档的合同来源未通过完整性校验")
 	}
 	sha, err := EvaluationRequestSHA(input)
 	if err != nil {
@@ -55,7 +55,7 @@ func ValidateFreshAggregate[D executionmodel.OriginalDocument](ctx context.Conte
 		return executionmodel.AttemptInput[D]{}, err
 	}
 	if *attempt.InputHash != *outer.InputHash || *attempt.OutputHash != *outer.OutputHash {
-		return executionmodel.AttemptInput[D]{}, fault.Conflict("来源审查的冻结输入或输出已变化")
+		return executionmodel.AttemptInput[D]{}, fault.Conflict("来源审查的送审内容或结果已变化")
 	}
 	if attempt.RulePackID != "" && attempt.RulePackID != pack.RulePackRef.ID {
 		return executionmodel.AttemptInput[D]{}, fault.Conflict("来源审查使用的规则包与能力包不一致")

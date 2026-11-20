@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-12
-// Revision: r5
+// Updated: 2026-11-20
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -149,7 +149,7 @@ export function CompareEntryPage() {
     <ListPage
       className="compare-entry-page"
       title="版本对照"
-      description="先选择同一案件及两次明确的冻结执行，再进入结果对照。"
+      description="先选择同一案件及两次已留档的审查记录，再进入结果对照。"
       actions={
         <Button aria-label={"案件列表"} type="text" href="/cases">
           案件列表
@@ -170,7 +170,7 @@ export function CompareEntryPage() {
             </li>
           </ol>
           <p className="compare-entry-note">
-            本周返回的运行数量不能确认冻结执行或可比性；请进入案件选择并核对两次执行。
+            本周返回的运行数量不能确认审查记录是否已留档或可比；请进入案件选择并核对两次执行。
           </p>
         </>
       }

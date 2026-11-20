@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -66,7 +66,7 @@ func RunAggregateAfterProof[D executionmodel.OriginalDocument](ctx context.Conte
 	}
 	frozen := auditext.FrozenInput{Scope: auditext.AuthorizedScope{TenantID: id.TenantID, CaseID: id.CaseID, ActorID: id.ActorID, GrantVersion: grantVersion}, Pack: pack, RulePackVersion: rulePackVersion, ModelConfigurationID: config.Model, PlannerConfigurationID: config.Planner, ParserConfigurationID: config.Parser, BusinessAt: input.BusinessAt, EvidenceCutoffAt: input.EvidenceCutoffAt, EvaluationScope: &auditext.EvaluationScope{Kind: selected.Kind, ServiceObjectIDs: append([]string(nil), selected.ServiceObjectIDs...)}, Facts: []auditext.Fact{}}
 	if err = frozen.Validate(); err != nil {
-		return out, fault.Conflict("整案核验冻结输入不完整")
+		return out, fault.Conflict("整案核验所用材料不完整")
 	}
 	records, err := EvaluateAggregateObjects(ctx, repo, facts, rid, input, selected, candidates, objects, evaluator, frozen)
 	if err != nil {

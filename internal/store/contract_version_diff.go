@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -125,7 +125,7 @@ func (s *Store) DiffContractVersions(ctx context.Context, user accounts.User, co
 			WHERE tenant_id=$1 AND contract_id=$2 ORDER BY revision_number DESC LIMIT 1`,
 			accounts.Tenant(current), id).Scan(&toRevisionID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				return ContractVersionDiff{}, fault.NotFound("没有找到可比较的冻结版本")
+				return ContractVersionDiff{}, fault.NotFound("没有找到可比较的定稿版本")
 			}
 			return ContractVersionDiff{}, err
 		}
@@ -240,14 +240,14 @@ func loadVersionComparisonState(ctx context.Context, tx pgx.Tx, tenantID, contra
 	}
 	if seal != nil {
 		if seal.SnapshotDigest != version.SnapshotDigest || sha256Bytes(version.Snapshot) != version.SnapshotDigest {
-			return nil, nil, fault.Conflict("冻结版本的快照摘要与封印不一致")
+			return nil, nil, fault.Conflict("定稿版本的内容摘要与保存时不一致")
 		}
 		materialsDigest, err := canonicalHash(materials)
 		if err != nil {
 			return nil, nil, err
 		}
 		if materialsDigest != seal.MaterialsDigest {
-			return nil, nil, fault.Conflict("冻结版本的材料摘要与封印不一致")
+			return nil, nil, fault.Conflict("定稿版本的材料摘要与保存时不一致")
 		}
 	}
 	return seal, materials, nil

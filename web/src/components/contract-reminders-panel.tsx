@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -60,7 +60,7 @@ function friendlyError(error: unknown): string {
     if (error.status === 403)
       return "当前身份没有管理此合同提醒的授权。请切换到有合同管理权限的组织或账号。";
     if (error.status === 404) return "合同已不可见或不在当前租户范围内；请返回台账重新打开。";
-    if (error.status === 409) return "合同修订或提醒状态已变化，请刷新后核对冻结计划再重试。";
+    if (error.status === 409) return "合同版本或提醒状态已变化，请刷新后核对计划。";
     if (error.status === 503) return "提醒服务暂不可用；当前提醒未确认，请联系管理员检查服务状态。";
   }
   return errorMessage(error);
@@ -101,7 +101,7 @@ function statusView(
     return {
       label: "已失效",
       color: "warning",
-      explanation: "投递时合同状态或冻结计划已变化，未按旧计划发送。请核对当前修订。",
+      explanation: "合同状态或计划已变化，旧提醒未发送。请核对当前版本。",
     };
   if (reminder.status === "denied")
     return {
@@ -120,7 +120,7 @@ function statusView(
       label: "旧修订待核验",
       color: "warning",
       explanation:
-        "此提醒绑定旧冻结修订；到期时服务端会复核并将不匹配项置为失效。若仍需提醒，请取消后按当前修订重设。",
+        "此提醒关联旧定稿版本。到期时会复核，版本不符的提醒将失效。需要提醒时，请取消旧提醒后按当前版本重设。",
     };
   }
   return {
@@ -221,7 +221,7 @@ export function ContractRemindersPanel({
       values.leadDays < 0 ||
       values.leadDays > 365
     ) {
-      setActionError("请选择有效的冻结计划，并将提前天数设置为 0 到 365 的整数。");
+      setActionError("请选择一项计划，提前天数须为 0 到 365 的整数。");
       return;
     }
     const input: ContractReminderCreateInput = {
@@ -246,9 +246,7 @@ export function ContractRemindersPanel({
       );
       await createContractReminder(contractId, input, pending.key);
       clearPendingMutationKey(pending.storageKey);
-      setMessage(
-        `已为${actor.display_name}确认提醒。日期来自当前冻结修订，服务端会按所选时区计算提醒时刻。`,
-      );
+      setMessage(`已为${actor.display_name}确认提醒。提醒时刻按合同定稿日期及所选时区确定。`);
       await onRefresh();
       await remindersQuery.refetch();
     } catch (caught) {
@@ -274,9 +272,7 @@ export function ContractRemindersPanel({
       );
       await cancelContractReminder(contractId, reminder.reminder_id, input, pending.key);
       clearPendingMutationKey(pending.storageKey);
-      setMessage(
-        "提醒已取消；原确认记录仍保留在履约历史中。需要更改时，请按当前冻结修订重新创建。 ",
-      );
+      setMessage("提醒已取消，历史仍可查看。需要时可按当前合同版本重设。");
       await onRefresh();
       await remindersQuery.refetch();
     } catch (caught) {
@@ -292,7 +288,7 @@ export function ContractRemindersPanel({
       <Alert
         type="info"
         showIcon
-        title="提醒我：仅从当前合同冻结修订中明确记录日期的交付、验收或付款计划创建；不会推测缺失日期。修改计划请取消旧项后按新修订重设，历史保留。"
+        title="可为合同定稿中日期明确的交付、验收或付款计划设置提醒。计划变更后，请取消旧提醒并重新设置。"
       />
       {!active ? (
         <Alert type="info" showIcon title="合同当前不能新增履约提醒；以下保留历史记录。" />
@@ -320,28 +316,18 @@ export function ContractRemindersPanel({
       {actor && isNative && reminders ? (
         <>
           {active && currentRevisionId && !currentRevisionAligned ? (
-            <Alert
-              type="warning"
-              showIcon
-              title="合同详情与提醒读取到的冻结修订不一致，请刷新合同详情后再操作。"
-            />
+            <Alert type="warning" showIcon title="合同和提醒所用版本不一致，请刷新合同详情。" />
           ) : null}
-          {!currentRevisionId ? (
-            <Empty description="合同尚无当前冻结修订，不能确认履约提醒。" />
-          ) : null}
+          {!currentRevisionId ? <Empty description="合同定稿后可设置履约提醒。" /> : null}
           {currentRevisionAligned && reminders.plans.length === 0 ? (
             <Empty
-              description={
-                <span>
-                  服务端未从当前冻结修订找到可用的明确计划日期。可能尚未录入计划、日期无效或期次编号有歧义；系统不会推测日期。
-                </span>
-              }
+              description={<span>合同定稿中暂无可用于提醒的计划日期。请核对计划日期和期次。</span>}
             />
           ) : null}
           {currentRevisionAligned && reminders.plans.length > 0 ? (
             <>
               <p className="meta">
-                日期来源：当前冻结修订 <code>{reminders.contract_revision_id}</code>
+                日期来源：合同定稿 <code>{reminders.contract_revision_id}</code>
                 。提醒时刻为计划日期前所选天数的当地 09:00，服务端同时保存对应 UTC 时间。
               </p>
               <p className="meta">
@@ -359,7 +345,7 @@ export function ContractRemindersPanel({
                   <Form.Item
                     name="planKey"
                     label="计划事项"
-                    rules={[{ required: true, message: "请选择一项有明确日期的冻结计划。" }]}
+                    rules={[{ required: true, message: "请选择日期明确的计划。" }]}
                   >
                     <Select
                       placeholder="选择交付、验收或付款期次"
@@ -429,7 +415,7 @@ export function ContractRemindersPanel({
                       <strong>
                         {PLAN_LABELS[reminder.plan_kind]}第 {reminder.plan_sequence} 期
                       </strong>
-                      · 冻结计划日期 {reminder.planned_date}
+                      · 计划日期 {reminder.planned_date}
                     </p>
                     <p>
                       责任人：{responsible} · 提前 {reminder.lead_days} 天 · {reminder.timezone}{" "}
@@ -457,7 +443,7 @@ export function ContractRemindersPanel({
           ) : null}
           {canWrite && !currentRevisionAligned ? (
             <Button onClick={retryRead} loading={loading}>
-              刷新提醒与冻结修订
+              刷新提醒与合同版本
             </Button>
           ) : null}
         </>

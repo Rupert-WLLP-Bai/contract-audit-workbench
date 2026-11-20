@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r9
+// Updated: 2026-11-20
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -825,7 +825,7 @@ export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
     (legalAuthorities.run_id !== run.id ||
       legalAuthorities.attempt_id !== reviewAttempts?.attempt?.id)
   ) {
-    fail("冻结法律依据不属于当前审查及所选执行记录");
+    fail("审查法律依据不属于当前审查及所选执行记录");
   }
   return {
     run,

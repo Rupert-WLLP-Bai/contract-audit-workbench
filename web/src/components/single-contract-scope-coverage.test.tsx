@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-19
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -237,7 +237,7 @@ describe("single contract coverage", () => {
     });
     render(<SingleContractScopeCoverage mode="workspace" workspace={result} />);
     expect(
-      screen.getByText("主合同没有可读取的送审文本，付款与结算原文核对未执行。"),
+      screen.getByText("主合同没有可读取的冻结文本，付款与结算原文核对未执行。"),
     ).toBeInTheDocument();
   });
 

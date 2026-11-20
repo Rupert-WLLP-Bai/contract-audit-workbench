@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -83,7 +83,7 @@ func (a approvalSubmissionFreeze) VerifyFreeze(ctx context.Context, tenantID, co
 // ResolveApprovalPlaybook takes scope only from verified revision materials.
 func (a approvalSubmissionFreeze) ResolveApprovalPlaybook(ctx context.Context, tenantID, contractID, revisionID string, materials []contract.FrozenVersionMaterial, ref approvalmodel.PlaybookRef) (json.RawMessage, error) {
 	if len(materials) == 0 {
-		return nil, fault.Conflict("合同冻结版本没有可验证的来源案件")
+		return nil, fault.Conflict("合同定稿版本没有可验证的来源案件")
 	}
 	caseID, orgID := materials[0].CaseID, materials[0].CaseOrgID
 	if caseID == "" || orgID == "" {
@@ -91,7 +91,7 @@ func (a approvalSubmissionFreeze) ResolveApprovalPlaybook(ctx context.Context, t
 	}
 	for _, material := range materials {
 		if material.CaseID != caseID || material.CaseOrgID != orgID {
-			return nil, fault.Conflict("合同冻结版本包含多个来源案件")
+			return nil, fault.Conflict("合同定稿版本包含多个来源案件")
 		}
 	}
 	item, err := loadPlaybookSourceCase(ctx, a.tx, a.user, orgID, caseID)

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-13
-// Updated: 2026-11-13
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -94,7 +94,7 @@ func TestFrozenLegalFailurePrecedesRequiredLoad(t *testing.T) {
 	facts := &frozenSourceFacts{}
 	snapshot := ReviewSnapshot{AuthorizationRevision: "revision", RequiredPolicies: []model.GovernedKnowledgeSelection{{Ref: row.Version.Ref}}, LegalAuthorities: []legalModel.FrozenLegalAuthority{{}}}
 	err := ValidateFrozenDependencies(context.Background(), repo, facts, nil, in.TenantID, snapshot)
-	if err == nil || err.Error() != "冻结的规范性法律引用缺少精确条文" || repo.loads != 0 || facts.calls != 0 {
+	if err == nil || err.Error() != "留档的规范性法律引用缺少精确条文" || repo.loads != 0 || facts.calls != 0 {
 		t.Fatalf("legal precedence: loads=%d source=%d err=%v", repo.loads, facts.calls, err)
 	}
 }

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r14
+// Updated: 2026-11-20
+// Revision: r15
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -64,7 +64,7 @@ const STREAM_LABEL: Record<StreamStatus, string> = {
   connecting: "正在连接运行状态",
   live: "运行状态已连接",
   reconnecting: "连接中断，正在按游标重连",
-  exhausted: "运行状态流自动重连次数已用尽；可以手动重新连接。",
+  exhausted: "实时进度连接已断开，可重新连接。",
   closed: "状态更新已中断，请刷新页面或重新登录。",
   inactive: "本次执行没有活动的事件流",
 };
@@ -171,7 +171,7 @@ function WorkspaceBanner({
   return (
     <div className="workspace-banner">
       <StatusText tone={runTone(run.state)}>{runLabel(run.state)}</StatusText>
-      <TechnicalDetail label="运行状态技术详情" value={run.state} />
+      <TechnicalDetail label="运行状态编码" value={run.state} />
       <span>{STREAM_LABEL[streamStatus]}</span>
       {run.model_ref ? <span>模型 {run.model_ref}</span> : null}
       <TraceLink
@@ -296,7 +296,7 @@ function MissingExecution({
               options={attemptOptions(attempts)}
             />
           </label>
-          <TechnicalDetail label="执行状态技术详情" value={selected.state} />
+          <TechnicalDetail label="执行状态编码" value={selected.state} />
           {selected.history_kind === "legacy_unfrozen" ? (
             <p className="callout">
               较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。

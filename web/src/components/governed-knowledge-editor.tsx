@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-14
-// Revision: r5
+// Updated: 2026-11-20
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1124,7 +1124,7 @@ function BindingSection({ value, onChange, issues, disabled }: SectionProps) {
         ruleOptions={options2}
       />
       <TechnicalDetail
-        label="所选规则技术详情"
+        label="所选规则来源"
         value={
           value.binding.source_spans?.length
             ? JSON.stringify(

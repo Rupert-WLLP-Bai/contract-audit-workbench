@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -84,7 +84,7 @@ export function ExperienceMetricsPanel({ version }: { version: KnowledgeVersion 
       ),
     },
     {
-      title: "冻结身份",
+      title: "采用版本",
       key: "identity",
       render: (_, item) => (
         <>

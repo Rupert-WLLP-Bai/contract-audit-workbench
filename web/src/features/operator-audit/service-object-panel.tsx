@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -161,9 +161,9 @@ function CandidateFacts({
   return (
     <div>
       <label className="field">
-        选择冻结审查中的服务对象
+        选择当次审查中的服务对象
         <select
-          aria-label="冻结服务对象候选"
+          aria-label="服务对象候选"
           value={selectedRef}
           onChange={(event) => onSelect(event.target.value)}
         >
@@ -556,7 +556,7 @@ export function ServiceObjectPanel({
   return (
     <section className="evidence-card" aria-label="案件服务对象">
       <header>
-        <h2>服务对象与冻结事实</h2>
+        <h2>服务对象与合同事实</h2>
       </header>
       <p className="meta">
         服务对象有独立身份版本；事实关联固定到所选审查尝试、材料版本与解析版本。再次变更映射需经过单独审批。
@@ -686,7 +686,7 @@ export function ServiceObjectPanel({
           {detail.data.needs_reassociation ? <p>当前事实关联需要复核。</p> : null}
           {detail.data.association ? (
             <div>
-              <h4>当前冻结事实关联第 {detail.data.association.association_version} 版</h4>
+              <h4>当前事实关联第 {detail.data.association.association_version} 版</h4>
               <p>
                 基于审查 {detail.data.association.source_run_id} /{" "}
                 {detail.data.association.source_attempt_id}，材料版本{" "}
@@ -709,7 +709,7 @@ export function ServiceObjectPanel({
 
           {detail.data.can_manage ? (
             <div>
-              <h4>{detail.data.association ? "重新关联冻结合同事实" : "确认首个冻结事实关联"}</h4>
+              <h4>{detail.data.association ? "重新关联合同事实" : "确认首个事实关联"}</h4>
               <label className="field">
                 审查执行记录
                 <select
@@ -729,7 +729,7 @@ export function ServiceObjectPanel({
               </label>
               {review.isError ? (
                 <div role="alert">
-                  <p>冻结审查读取失败：{errorMessage(review.error)}</p>
+                  <p>读取审查记录失败：{errorMessage(review.error)}</p>
                   <button type="button" onClick={() => void review.refetch()}>
                     重试
                   </button>
@@ -740,9 +740,9 @@ export function ServiceObjectPanel({
               ) : null}
               {candidates.length > 0 ? (
                 <label className="field">
-                  冻结合同材料版本
+                  合同材料留档版本
                   <select
-                    aria-label="服务对象冻结合同材料"
+                    aria-label="服务对象的合同材料"
                     value={candidate ? candidateKey(candidate) : ""}
                     onChange={(event) => {
                       const next = candidates.find(
@@ -759,7 +759,7 @@ export function ServiceObjectPanel({
                   </select>
                 </label>
               ) : null}
-              {preview.isFetching ? <p role="status">正在从该次冻结审查读取候选事实…</p> : null}
+              {preview.isFetching ? <p role="status">正在读取当次审查的候选事实…</p> : null}
               {preview.isError ? (
                 <div role="alert">
                   <p>候选读取失败：{errorMessage(preview.error)}</p>
@@ -780,7 +780,7 @@ export function ServiceObjectPanel({
                 />
               ) : null}
               {preview.data && preview.data.options.length === 0 ? (
-                <p>该冻结材料没有可关联的已核对对象事实。</p>
+                <p>这份材料没有可关联的已核对事实。</p>
               ) : null}
               {preview.data &&
               preview.data.options.some((option) => option.object_ref === selectedObjectRef) ? (
@@ -799,7 +799,7 @@ export function ServiceObjectPanel({
               <p className="meta">
                 {detail.data.mapping
                   ? "已映射对象的合同重关联需由另一人审批；批准后关联与映射同时生效。"
-                  : "确认会固定此处展示的冻结事实，不自动认定履约结果。"}
+                  : "确认后会留存这些合同事实；履约结果仍需另行认定。"}
               </p>
               <button
                 type="button"
@@ -817,8 +817,8 @@ export function ServiceObjectPanel({
                   : detail.data.mapping
                     ? "预览关联更正"
                     : detail.data.association
-                      ? "确认新的冻结事实关联"
-                      : "确认首个冻结事实关联"}
+                      ? "确认新的事实关联"
+                      : "确认首个事实关联"}
               </button>
               {confirmAssociation.isError ? (
                 <p role="alert">关联确认失败：{errorMessage(confirmAssociation.error)}</p>
@@ -909,7 +909,7 @@ export function ServiceObjectPanel({
                     ))}
                   </ul>
                   <p className="meta">
-                    可复制当前页面地址交由另一位有决定权限的人员核对。审批会重新校验冻结材料、摘要及当前版本。
+                    可将本页链接交给有审批权限的同事。审批时会复核留档材料、摘要和当前版本。
                   </p>
                   {mappingChange.data.state === "pending_decision" ? (
                     <>
@@ -976,7 +976,7 @@ export function ServiceObjectPanel({
             ) : null}
           </details>
           <details>
-            <summary>冻结事实关联历史</summary>
+            <summary>事实关联历史</summary>
             {associationVersions.isError ? (
               <div role="alert">
                 关联历史读取失败：{errorMessage(associationVersions.error)}{" "}

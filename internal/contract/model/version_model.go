@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12
-// Updated: 2026-11-12
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -127,7 +127,7 @@ func FrozenMaterialsFromReferences(caseOrgID, caseID string, refs []ResolvedVers
 	materials := make([]FrozenVersionMaterial, 0, len(refs))
 	for _, ref := range refs {
 		if seen[ref.MaterialID] {
-			return nil, fault.Invalid("同一材料在冻结合同中只能引用一个版本")
+			return nil, fault.Invalid("同一材料在定稿合同中只能引用一个版本")
 		}
 		seen[ref.MaterialID] = true
 		materials = append(materials, FrozenVersionMaterial{

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-13
-// Updated: 2026-11-13
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -132,10 +132,10 @@ func RecordReceipt(ctx context.Context, source TrustedPaymentSource, p PreparedR
 		}
 	}
 	if !foundPlan {
-		return result, false, fault.Invalid("来源事件付款期次不属于冻结计划")
+		return result, false, fault.Invalid("来源事件付款期次不属于合同计划")
 	}
 	if draft.Contract == nil || draft.Contract.Currency != in.Currency {
-		return result, false, fault.Conflict("来源事件币种与冻结合同币种不一致")
+		return result, false, fault.Conflict("来源事件币种与定稿合同中的币种不一致")
 	}
 	if in.EventType == "reversal" {
 		orig, found, err := r.LoadReceipt(ctx, source.TenantID, source.SourceID, in.OriginalEventID)

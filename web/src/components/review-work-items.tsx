@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-19
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -156,7 +156,7 @@ export function ReviewWorkItems({
               </p>
               {item.sourceRunId && item.sourceAttemptId ? (
                 <TechnicalDetail
-                  label="来源执行技术详情"
+                  label="来源审查编号"
                   value={`${item.sourceRunId} / ${item.sourceAttemptId}`}
                 />
               ) : null}

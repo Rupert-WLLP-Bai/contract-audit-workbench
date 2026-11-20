@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -126,7 +126,7 @@ function CapabilityPackPanelContent({
       render: (_, pack) => (
         <>
           {scenarioLabel(pack.scenario)}
-          <TechnicalDetail label="场景技术详情" value={pack.scenario} />
+          <TechnicalDetail label="场景编码" value={pack.scenario} />
         </>
       ),
     },
@@ -136,7 +136,7 @@ function CapabilityPackPanelContent({
       render: (_, pack) => (
         <>
           <StatusText tone={packStatusTone(pack.status)}>{packStatusLabel(pack.status)}</StatusText>
-          <TechnicalDetail label="状态技术详情" value={pack.status} />
+          <TechnicalDetail label="状态编码" value={pack.status} />
         </>
       ),
     },
