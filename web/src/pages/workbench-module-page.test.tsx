@@ -2216,6 +2216,7 @@ describe("workbench public directory, templates and audit", () => {
     expect(rows.queryByRole("button", { name: "查看：演示管理员" })).not.toBeInTheDocument();
     await user.type(screen.getByRole("searchbox", { name: "搜索记录" }), "万州区");
     expect(rows.getByRole("button", { name: "查看：Ethan Brooks" })).toBeVisible();
+    expect(rows.getByRole("row", { name: /Ethan Brooks/ })).toHaveTextContent("万州区");
     expect(rows.getByRole("button", { name: "查看：Grace Coleman" })).toBeVisible();
     await selectRecord(user, /Ethan Brooks/);
     expectDisplayField("组织", "万州区");
@@ -2230,13 +2231,15 @@ describe("workbench public directory, templates and audit", () => {
 
   it("renders returned template field definitions and current version without fabricating generated documents", async () => {
     const { user } = open("templates");
-    await list("合同模板");
+    const rows = await list("合同模板");
+    expect(rows.getByRole("row", { name: /专线服务模板/ })).toHaveTextContent("3.0.0");
     await openFirstRecord("合同模板");
     expectField("ID", "template/line");
     expectField("版本", "3.0.0");
     expectField("摘要", "template-sha256");
     expect(details().queryByRole("link")).not.toBeInTheDocument();
     const placeholders = details().getByLabelText("模板字段占位预览");
+    expect(placeholders).toHaveTextContent("当前仅提供字段定义，未提供模板正文。");
     expect(placeholders).toHaveTextContent("{{供应商}}");
     expect(placeholders).toHaveTextContent("{{金额}}");
     expect(placeholders).toHaveTextContent("文本 · 必填");
@@ -2276,6 +2279,7 @@ describe("workbench public directory, templates and audit", () => {
     const { user } = open("templates", service);
     await list("合同模板");
     await openFirstRecord("合同模板");
+    expect(details().getByText("暂无字段定义，未提供模板正文。")).toBeVisible();
     await detailTab(user, "字段定义");
     expect(details().getByRole("heading", { name: "空字段模板" })).toBeInTheDocument();
     expect(details().queryByRole("definition")).not.toBeInTheDocument();

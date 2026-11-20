@@ -111,6 +111,8 @@ describe("case legal knowledge", () => {
     expect(
       screen.getByText("尚未选择法律依据。请先在“引用条目”中检索并选择精确版本。"),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "内容目录" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "前往引用条目" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "查看来源详情" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("legal-applicability-panel")).not.toBeInTheDocument();
 

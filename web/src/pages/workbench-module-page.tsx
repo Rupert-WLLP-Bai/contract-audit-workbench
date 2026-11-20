@@ -1303,12 +1303,10 @@ function TemplateFieldPreview({
   fields: WorkbenchSnapshot["templates"][number]["fields"];
 }) {
   if (fields.length === 0)
-    return <p className="module-evidence-note">服务端没有返回字段定义，无法生成占位预览。</p>;
+    return <p className="module-evidence-note">暂无字段定义，未提供模板正文。</p>;
   return (
     <section className="module-template-preview" aria-label="模板字段占位预览">
-      <p className="module-evidence-note">
-        服务端未返回范本正文；以下占位符仅由字段定义生成，不拼装合同正文。
-      </p>
+      <p className="module-evidence-note">当前仅提供字段定义，未提供模板正文。</p>
       <ul>
         {fields.map((field) => (
           <li key={field.key}>
@@ -1705,9 +1703,14 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
               : "状态",
       key: "status",
       width: 160,
-      render: (_, record) => (
-        <StatusText tone={statusTone(record.status, module)}>{recordStatus(record)}</StatusText>
-      ),
+      render: (_, record) =>
+        module === "templates" ? (
+          record.template?.version || "版本未提供"
+        ) : module === "organization" ? (
+          record.subtitle
+        ) : (
+          <StatusText tone={statusTone(record.status, module)}>{recordStatus(record)}</StatusText>
+        ),
     },
     {
       title: "更新",
