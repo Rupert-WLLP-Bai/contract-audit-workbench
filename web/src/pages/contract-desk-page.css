@@ -92,3 +92,12 @@
     grid-template-columns: minmax(0, 1fr) auto;
   }
 }
+
+@media (max-width: 1199px) {
+  .contract-desk .ant-table-content {
+    overflow-x: auto;
+  }
+  .contract-desk .ant-table-content table {
+    min-width: 808px;
+  }
+}

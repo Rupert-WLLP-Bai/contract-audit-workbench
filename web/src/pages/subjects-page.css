@@ -547,3 +547,12 @@
 .subject-ledger-table .ant-table-placeholder td {
   color: var(--text-secondary);
 }
+
+@media (max-width: 1199px) {
+  .subject-ledger-table .ant-table-content {
+    overflow-x: auto;
+  }
+  .subject-ledger-table table {
+    min-width: 700px;
+  }
+}

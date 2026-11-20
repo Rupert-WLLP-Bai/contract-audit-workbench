@@ -558,8 +558,12 @@ class WorkbenchService {
       key.includes("task_capabilities=1")
     )
       return json({ error: { message: "旧工作台不支持案件创建 capability" } }, 422);
-    if (key.startsWith("GET /api/workbench?period=week"))
-      return json(this.responseSnapshot ?? this.snapshot);
+    if (key.startsWith("GET /api/workbench?period=")) {
+      const period = new URL(path, "http://localhost").searchParams.get("period");
+      return period === "week"
+        ? json(this.responseSnapshot ?? this.snapshot)
+        : json({ ...this.snapshot, period });
+    }
     if (key === "GET /api/settings")
       return json({
         model: { status: "disabled", label: "服务端规则模式" },
@@ -1747,16 +1751,38 @@ describe("workbench remediation and frozen artifacts", () => {
     expect(details().getByText("没有获取到相关案件的审计历史。")).toBeInTheDocument();
   });
 
-  it("moves workbench statistics and business activity into the reports module", async () => {
-    const { user } = open("reports");
+  it("shows collapsible statistics above the reports list", async () => {
+    const service = new WorkbenchService();
+    service.snapshot.dashboard.progress = [
+      { status: "active", count: 2 },
+      { status: "unrecognized", count: 1 },
+    ];
+    service.snapshot.dashboard.risks = [
+      { severity: "high", count: 1 },
+      { severity: "unrated", count: 2 },
+    ];
+    const { user } = open("reports", service);
     await list("报告");
-    await category(user, "报告", "统计概览");
+    const toggle = screen.getByRole("button", { name: "审查统计与业务记录" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(toggle);
     expect(screen.getByRole("heading", { name: "审查发现分布" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "最近业务记录" })).toBeVisible();
-    expect(screen.getByRole("combobox", { name: "统计周期" })).toBeVisible();
-    expect(screen.queryByRole("region", { name: "报告记录" })).not.toBeInTheDocument();
-    await category(user, "报告", "审查报告");
-    expect(await screen.findByRole("region", { name: "报告记录" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "最近业务动态" })).toBeVisible();
+    expect(screen.getByLabelText("统计周期")).toBeVisible();
+    expect(screen.getByText("状态未识别")).toBeVisible();
+    expect(screen.getByText("等级待核对")).toBeVisible();
+    await user.click(screen.getByText("今天", { selector: ".ant-segmented-item-label" }));
+    await waitFor(() =>
+      expect(
+        service.requests.some((request) => request.key.includes("GET /api/workbench?period=day")),
+      ).toBe(true),
+    );
+    expect(await screen.findByRole("table")).toBeVisible();
+    expect(globalThis.document.querySelector("meter")).toBeNull();
+    const currentToggle = screen.getByRole("button", { name: "审查统计与业务记录" });
+    expect(currentToggle).toHaveAttribute("aria-expanded", "true");
+    await user.click(currentToggle);
+    expect(currentToggle).toHaveAttribute("aria-expanded", "false");
   });
 
   it("shows frozen report versions without exposing raw IDs or digests in the business view", async () => {
@@ -1805,8 +1831,8 @@ describe("workbench remediation and frozen artifacts", () => {
     await user.click(details().getByRole("button", { name: "查看审查报告 v1" }));
     expectField("报告版本", "1");
     expect(details().queryByText("report-v1-sha256")).not.toBeInTheDocument();
-    await category(user, "报告", "统计概览");
-    await category(user, "报告", "审查报告");
+    await user.click(screen.getByRole("button", { name: "审查统计与业务记录", hidden: true }));
+    await user.click(screen.getByRole("button", { name: "审查统计与业务记录", hidden: true }));
     await selectRecord(user, /独立单版案件/);
     await detailTab(user, "导出记录");
     expect(details().queryByText("run-single")).not.toBeInTheDocument();

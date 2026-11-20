@@ -513,7 +513,6 @@ function ContractDeskCompatibilityPage() {
           columns={columns}
           dataSource={pageRows}
           rowKey={(row) => row.document.id}
-          scroll={{ x: 808 }}
           tableLayout="fixed"
           pagination={{
             current: page,

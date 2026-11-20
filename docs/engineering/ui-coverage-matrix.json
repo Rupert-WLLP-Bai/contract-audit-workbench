@@ -720,10 +720,11 @@
         "audit/round41/reports-390.png",
         "audit/round41/reports-reader-1440.png",
         "../ui-redesign-20261120-v2/impl/362/通用-reports-1440.png",
-        "../ui-redesign-20261120-v2/impl/362/通用-报告抽屉-1440.png"
+        "../ui-redesign-20261120-v2/impl/362/通用-报告抽屉-1440.png",
+        "../ui-redesign-20261120-v3/impl/desktop/376/11-reports-statistics-modern.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL：桌面真实页面复核列表、表头与空态；业务写入未执行，完整矩阵未运行。",
+      "statusDetail": "PARTIAL：报告列表保留详情抽屉，统计改为可折叠面板；真实桌面截图与完整矩阵待复核。",
       "template": "ListPage"
     },
     {

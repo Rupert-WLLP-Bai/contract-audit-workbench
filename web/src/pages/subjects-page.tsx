@@ -327,7 +327,7 @@ function SubjectsList({ session }: { session: ReturnType<typeof useSession> }) {
           dataSource={visibleItems}
           loading={subjects.isLoading || subjects.isFetching}
           pagination={false}
-          scroll={{ x: 700 }}
+          tableLayout="fixed"
           locale={{
             emptyText: (
               <span aria-live="polite">
