@@ -719,7 +719,10 @@
         "web/src/components/page-patterns.css"
       ],
       "implementationIssue": 376,
-      "testRefs": ["web/src/pages/workbench-module-page.test.tsx", "web/e2e/ui-matrix.ts"],
+      "testRefs": [
+        "web/src/pages/workbench-module-page.test.tsx",
+        "web/e2e/ui-matrix.ts"
+      ],
       "figmaNodeId": "8:1428",
       "screenshotRefs": [
         "reports.png",
@@ -1371,17 +1374,21 @@
       "sources": [
         "web/src/pages/review-page.tsx",
         "web/src/components/review-workspace.tsx",
-        "web/src/components/document-stage.tsx"
+        "web/src/components/document-stage.tsx",
+        "web/src/pages/agent-studio-page.tsx",
+        "web/src/components/execution-diagram.tsx"
       ],
       "implementationIssue": 258,
       "figmaNodeId": "8:3558",
       "screenshotRefs": [
         "agent-studio-events.png",
         "audit/round41/review-nav-1440.png",
-        "audit/round41/review-nav-390.png"
+        "audit/round41/review-nav-390.png",
+        "../ux-agent-20261121/ux/385/henan.png",
+        "../ux-agent-20261121/ux/385/network.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：专业诊断显示已记录调用、失败事件入口与按尝试校验的可恢复位置；完整视图矩阵未运行。",
       "template": "ReviewWorkspaceView"
     },
     {

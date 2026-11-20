@@ -20,6 +20,8 @@ const PHASE_LABELS: Record<string, string> = {
   contract_facts: "合同事实建议",
   ocr: "文字识别",
   single_contract_facts: "合同事实建议",
+  single_contract_rules: "单合同规则预审",
+  agent_review: "智能体审查",
   citation_verification: "引用核验",
   verified_finding: "引用核验",
   terminal_persistence: "终态保存",

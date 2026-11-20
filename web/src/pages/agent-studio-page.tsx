@@ -225,6 +225,11 @@ export function studioEventKind(event: ExecutionEvent): StudioEventKind {
   }
 }
 
+function studioPhaseLabel(phase: string): string {
+  const label = phaseLabel(phase);
+  return label === phase ? "阶段待识别" : label;
+}
+
 export function studioEventTitle(event: ExecutionEvent): string {
   const label = eventTypeLabel(event.event_type);
   return label === event.event_type ? nodeKindLabel(event.node_kind) : label;
@@ -258,7 +263,7 @@ export function buildStudioLanes(events: ExecutionEvent[]): StudioLane[] {
   }
   return [...byLane.entries()].map(([id, laneEvents]) => ({
     id,
-    label: id === "unknown" ? "未知阶段" : phaseLabel(id),
+    label: id === "unknown" ? "未知阶段" : studioPhaseLabel(id),
     events: laneEvents,
   }));
 }
@@ -392,12 +397,12 @@ export function buildCapabilityGroups(input: StudioCapabilityInput): StudioCapab
   const modelFacts = [
     fact(
       "model-events",
-      "模型调用事件",
+      "已记录模型调用节点",
       execution === null ? executionState : modelCalls > 0 ? "observed" : "not_observed",
       execution === null
         ? "执行事件不可用"
         : modelCalls > 0
-          ? `${modelCalls} 次真实调用`
+          ? `${modelCalls} 个已记录节点`
           : "未观测到模型调用事件",
       modelEvents.length > 0
         ? modelEvents.map((event) => ({
@@ -1365,6 +1370,11 @@ function EventDetailPanel({
               <dd>{event.error_code ?? "未报告"}</dd>
             </div>
           </dl>
+          {event.status === "failed" ||
+          event.event_type === "node_failed" ||
+          event.event_type === "span_failed" ? (
+            <p>原因未报告。</p>
+          ) : null}
           <section className="studio-token-block" aria-labelledby="studio-token-title">
             <h3 id="studio-token-title">Token 用量</h3>
             {event.usage === null ? (
@@ -1457,12 +1467,12 @@ function ExecutionSummary({
         <dd>{events.length} 条</dd>
       </div>
       <div>
-        <dt>模型调用</dt>
-        <dd>{modelCalls} 次</dd>
+        <dt>已记录模型调用节点</dt>
+        <dd>{modelCalls} 个</dd>
       </div>
       <div>
-        <dt>工具调用</dt>
-        <dd>{toolCalls} 次</dd>
+        <dt>已记录工具调用节点</dt>
+        <dd>{toolCalls} 个</dd>
       </div>
       <div>
         <dt>Token 合计</dt>
@@ -1611,7 +1621,7 @@ function EventsView({
                       data-selected={selectedSeq === event.seq ? "true" : undefined}
                     >
                       <td className="studio-event-seq">#{event.seq}</td>
-                      <td>{phaseLabel(event.phase)}</td>
+                      <td>{studioPhaseLabel(event.phase)}</td>
                       <td>
                         <button
                           type="button"
@@ -1650,7 +1660,7 @@ function EventsView({
 
 export function AgentStudioPage() {
   const { caseId = "", runId = "" } = useParams();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const attemptParam = params.get("attempt") ?? params.get("attempt_id");
   const review = useReview(caseId, runId, attemptParam);
   const reviewAttempt = review.data?.review_attempts?.attempt ?? null;
@@ -1658,9 +1668,11 @@ export function AgentStudioPage() {
   const diagnostics = useReviewDiagnostics(caseId, runId, effectiveAttemptId, true);
   const selectedAttempt = reviewAttempt ?? diagnostics.data?.execution?.attempt ?? null;
   const caseDetail = useCaseDetail(caseId);
-  const [view, setView] = useState<StudioView>("execution");
+  const viewParam = params.get("view");
+  const view: StudioView =
+    viewParam === "capabilities" || viewParam === "events" ? viewParam : "execution";
   const [eventQuery, setEventQuery] = useState("");
-  const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
+
   const [selectedCapability, setSelectedCapability] = useState("agent");
 
   const diagnosticExecution = diagnostics.data?.execution ?? null;
@@ -1685,9 +1697,38 @@ export function AgentStudioPage() {
     const source = execution?.events ?? [];
     const attemptId = selectedAttempt?.id ?? null;
     const scoped =
-      attemptId === null ? source : source.filter((event) => event.attempt_id === attemptId);
+      attemptId === null ? [] : source.filter((event) => event.attempt_id === attemptId);
     return [...scoped].sort((left, right) => left.seq - right.seq);
   }, [execution, selectedAttempt?.id]);
+  const seqParam = params.get("event");
+  const parsedSeq = seqParam && /^[1-9]\d*$/.test(seqParam) ? Number(seqParam) : null;
+  const selectedSeq =
+    selectedAttempt &&
+    attemptParam === selectedAttempt.id &&
+    parsedSeq !== null &&
+    events.some((event) => event.seq === parsedSeq && event.attempt_id === selectedAttempt.id)
+      ? parsedSeq
+      : null;
+  function updateLocation(nextView: StudioView, nextSeq: number | null) {
+    const next = new URLSearchParams(params);
+    next.set("view", nextView);
+    if (selectedAttempt?.id) {
+      next.delete("attempt");
+      next.set("attempt_id", selectedAttempt.id);
+    }
+    if (nextSeq === null) next.delete("event");
+    else next.set("event", String(nextSeq));
+    setParams(next);
+  }
+  const failures = selectedAttempt
+    ? events.filter(
+        (event) =>
+          event.attempt_id === selectedAttempt.id &&
+          (event.status === "failed" ||
+            event.event_type === "node_failed" ||
+            event.event_type === "span_failed"),
+      )
+    : [];
   const studioFindings = useMemo(
     () =>
       (review.data?.findings ?? []).map((item) => ({
@@ -1701,7 +1742,7 @@ export function AgentStudioPage() {
   const capabilityGroups = useMemo(
     () =>
       buildCapabilityGroups({
-        execution,
+        execution: execution ? { ...execution, events } : null,
         agentReview,
         businessReview,
         snapshot,
@@ -1711,6 +1752,7 @@ export function AgentStudioPage() {
       }),
     [
       execution,
+      events,
       agentReview,
       businessReview,
       snapshot,
@@ -1889,11 +1931,24 @@ export function AgentStudioPage() {
         </p>
       ) : null}
 
+      {failures.length > 0 ? (
+        <section className="studio-notice studio-notice-warning" aria-label="已记录的失败">
+          <strong>已记录的失败</strong>{" "}
+          {failures.map((event) => (
+            <Button key={event.seq} type="link" onClick={() => updateLocation("events", event.seq)}>
+              查看失败记录：{studioPhaseLabel(event.phase)} #{event.seq}
+            </Button>
+          ))}
+        </section>
+      ) : selectedAttempt?.state === "failed" && execution ? (
+        <p className="studio-notice">执行状态为失败，未返回对应失败事件。</p>
+      ) : null}
+
       <div className="studio-viewbar">
         <Segmented
           aria-label="Agent Studio 视图"
           value={view}
-          onChange={(value) => setView(value as StudioView)}
+          onChange={(value) => updateLocation(value as StudioView, selectedSeq)}
           options={[
             { label: "能力关系", value: "capabilities" },
             { label: "本次执行", value: "execution" },
@@ -1924,7 +1979,7 @@ export function AgentStudioPage() {
           attempt={selectedAttempt}
           events={events}
           selectedSeq={selectedSeq}
-          onSelectSeq={setSelectedSeq}
+          onSelectSeq={(seq) => updateLocation(view, seq)}
           runtimeVersion={
             agentReview?.planner.runtime_version ?? snapshot?.planner?.runtime_version ?? null
           }
@@ -1936,7 +1991,7 @@ export function AgentStudioPage() {
           query={eventQuery}
           onQueryChange={setEventQuery}
           selectedSeq={selectedSeq}
-          onSelectSeq={setSelectedSeq}
+          onSelectSeq={(seq) => updateLocation(view, seq)}
           runtimeVersion={
             agentReview?.planner.runtime_version ?? snapshot?.planner?.runtime_version ?? null
           }

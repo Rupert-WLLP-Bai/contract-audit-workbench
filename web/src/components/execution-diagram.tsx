@@ -115,7 +115,9 @@ export function ExecutionDiagram({
           const status = last.find((item) => item.status)?.status;
           const duration = last.find((item) => item.duration_ms !== null)?.duration_ms ?? null;
           const usage = last.find((item) => item.usage)?.usage;
-          const title = node.title.length > 19 ? `${node.title.slice(0, 18)}…` : node.title;
+          const label =
+            node.kind === "stage" && node.title === node.event.phase ? "阶段待识别" : node.title;
+          const title = label.length > 19 ? `${label.slice(0, 18)}…` : label;
           const metrics =
             node.kind === "model"
               ? ` · ${usage ? `${tokenCount(usage.total_tokens)} tokens` : "Token 未报告"}`
@@ -250,7 +252,8 @@ export function ExecutionDiagram({
               }}
             >
               {node.kind === "model" ? "模型" : node.kind === "tool" ? "工具" : "阶段"} ·{" "}
-              {node.title} · #{node.event.seq}
+              {node.kind === "stage" && node.title === node.event.phase ? "阶段待识别" : node.title}{" "}
+              · #{node.event.seq}
             </button>
           ))}
         </div>
