@@ -156,6 +156,7 @@ function renderList(
   service: PendingService,
   onSelectContinuation = vi.fn<(selection: IntakeContinuationSelection) => void>(),
   onArchived = vi.fn<(operationId: string) => void>(),
+  compact = false,
 ) {
   const client = new QueryClient({
     defaultOptions: {
@@ -171,6 +172,7 @@ function renderList(
       <MemoryRouter>
         <IntakePendingList
           actor={actor}
+          compact={compact}
           onSelectContinuation={onSelectContinuation}
           onArchived={onArchived}
         />
@@ -181,6 +183,22 @@ function renderList(
 }
 
 describe("server-backed pending intake list", () => {
+  it("keeps the compact preview to one action and preserves server-backed continuation", async () => {
+    const service = new PendingService([pendingItem("op-1", "case-1", "采购合同")]);
+    const onSelect = vi.fn<(selection: IntakeContinuationSelection) => void>();
+    renderList(service, onSelect, undefined, true);
+    const user = userEvent.setup();
+    const collection = await screen.findByRole("region", { name: "上次没传完" });
+    const expand = await within(collection).findByRole("button", { name: "查看续办" });
+    expect(within(collection).getAllByRole("button")).toEqual([expand]);
+    expect(within(collection).queryByRole("link")).not.toBeInTheDocument();
+    await user.click(expand);
+    await user.click(within(collection).getByRole("button", { name: "继续办理" }));
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(service.calls.some((call) => call.path === "/api/intakes/pending?limit=2")).toBe(true);
+    expect(service.calls.some((call) => call.path === "/api/intakes/op-1/continuation")).toBe(true);
+  });
+
   it("finds multiple server operations after local continuation metadata is cleared", async () => {
     localStorage.clear();
     const service = new PendingService([

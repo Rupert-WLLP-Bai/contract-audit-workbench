@@ -30,10 +30,12 @@ export function ContextSwitcher({
   actor,
   audience,
   onTransition,
+  hideSingle = false,
 }: {
   actor: Actor | undefined;
   audience: SessionAudience;
   onTransition: (pending: boolean) => void;
+  hideSingle?: boolean;
 }) {
   const choices = useContextChoices(audience);
   const switching = useSwitchContext(audience);
@@ -86,6 +88,9 @@ export function ContextSwitcher({
   }
 
   const enabled = actor.context_switch_enabled && choices.data?.context_switch_enabled !== false;
+  if (hideSingle && (!enabled || (choices.data?.memberships.length ?? 0) < 2)) {
+    return null;
+  }
   if (!enabled) {
     return (
       <span className="organization-badge" title={actor.active_context.org_name}>

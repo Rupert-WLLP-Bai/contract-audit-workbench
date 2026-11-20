@@ -1734,6 +1734,16 @@ describe("workbench remediation and frozen artifacts", () => {
     expect(details().getByText("没有获取到相关案件的审计历史。")).toBeInTheDocument();
   });
 
+  it("moves workbench statistics and business activity into the reports module", async () => {
+    const { user } = open("reports");
+    await list("报告中心");
+    await user.click(screen.getByText("审查统计与业务记录", { exact: true }));
+    expect(screen.getByRole("heading", { name: "审查发现分布" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "最近业务记录" })).toBeVisible();
+    expect(screen.getByLabelText("统计周期")).toHaveValue("week");
+    expect(screen.getByRole("region", { name: "报告中心记录" })).toBeVisible();
+  });
+
   it("shows frozen report versions without exposing raw IDs or digests in the business view", async () => {
     const { user } = open("reports");
     const rows = await list("报告中心");
@@ -1741,7 +1751,7 @@ describe("workbench remediation and frozen artifacts", () => {
     expect(within(rows.getByRole("table")).getAllByText("已生成")).toHaveLength(3);
     expect(details().queryByText("报告 ID")).not.toBeInTheDocument();
     expect(details().queryByText("report/frozen-2")).not.toBeInTheDocument();
-    expect(details().getByText("审查报告 v2")).toBeInTheDocument();
+    expect(details().getByRole("heading", { name: "专线采购案件，审查报告 v2" })).toBeVisible();
     expectField("案件", "专线采购案件");
     expectField("报告版本", "2");
     const reportFrame = await details().findByTitle("报告正文预览");

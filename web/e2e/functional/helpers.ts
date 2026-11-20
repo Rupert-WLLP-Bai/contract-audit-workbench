@@ -67,7 +67,9 @@ export async function uiLogin(page: Page, audience = "client") {
   await page.getByLabel("账号", { exact: true }).fill("demo-admin");
   await page.getByLabel("密码", { exact: true }).fill("admin-demo");
   await page.getByRole("button", { name: "登录", exact: true }).click();
-  await expect(page.getByRole("button", { name: "退出", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: audience === "admin" ? "退出" : "头像菜单", exact: true }),
+  ).toBeVisible();
 }
 export async function createCase(api: APIRequestContext, title = "功能验收", telecom = false) {
   const created = await body(

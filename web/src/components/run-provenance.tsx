@@ -8,6 +8,7 @@
 // Copyright: See LICENSE
 // End file metadata.
 
+import { useProfessionalMode } from "./app-shell-preferences";
 import { Collapse } from "antd";
 import { Link } from "react-router";
 import type {
@@ -90,16 +91,21 @@ function EvidenceSection({
   evaluations: ConstraintEvaluation[];
   showDiagnostics: boolean;
 }) {
+  const { enabled: professional } = useProfessionalMode();
   return (
     <>
       <dl>
         <dt>本次运行采用的租户配置</dt>
         <dd>
           {snapshot?.adopted_tenant_config ? (
-            <>
-              <code>{snapshot.adopted_tenant_config.version_id}</code> · SHA-256{" "}
-              <code>{snapshot.adopted_tenant_config.digest}</code>
-            </>
+            professional ? (
+              <>
+                <code>{snapshot.adopted_tenant_config.version_id}</code> · SHA-256{" "}
+                <code>{snapshot.adopted_tenant_config.digest}</code>
+              </>
+            ) : (
+              "已记录本次采用的配置"
+            )
           ) : (
             "历史未记录 / 未知"
           )}

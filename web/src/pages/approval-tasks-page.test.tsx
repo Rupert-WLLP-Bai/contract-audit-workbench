@@ -416,6 +416,19 @@ describe("approval tasks page", () => {
     ).toBe(true);
   });
 
+  it("opens the exact pending approval from a task link and clears it on close", async () => {
+    const { user, service, router } = open("?view=todo&task=task-1");
+    expect(await screen.findByRole("button", { name: "通过" })).toBeInTheDocument();
+    const panel = screen.getByRole("complementary", { name: "会签详情" });
+    expect(
+      service.calls.some(
+        (call) => call.path === "/api/approval-tasks/task-1" && call.method === "GET",
+      ),
+    ).toBe(true);
+    await user.click(within(panel).getByRole("button", { name: "关闭" }));
+    expect(router.state.location.search).toBe("?view=todo");
+  });
+
   it("keeps a failed decision unapproved and retries with the same idempotency key", async () => {
     const { user, service } = open();
     const todo = await screen.findByRole("region", { name: "我的待办" });

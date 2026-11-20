@@ -8,6 +8,7 @@
 // Copyright: See LICENSE
 // End file metadata.
 
+import { useProfessionalMode } from "./app-shell-preferences";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 /** Short, non-technical stand-in for a raw `case_...` / `run_...` style id. */
@@ -131,7 +132,8 @@ export function TechnicalFieldGroup({
   fields: readonly TechnicalField[];
   label?: string;
 }) {
-  if (fields.length === 0) return null;
+  const { enabled } = useProfessionalMode();
+  if (!enabled || fields.length === 0) return null;
   return (
     <details className="caw-technical-detail caw-technical-group">
       <summary>
@@ -168,8 +170,9 @@ export function TechnicalDetail({
   label?: string;
   children?: ReactNode;
 }) {
-  const { status, copy } = useCopyTechnicalValue(value);
-  if (!value) return null;
+  const { enabled } = useProfessionalMode();
+  const { status, copy } = useCopyTechnicalValue(enabled ? value : null);
+  if (!enabled || !value) return null;
   return (
     <details className="caw-technical-detail">
       <summary>{label ?? "溯源记录"}</summary>

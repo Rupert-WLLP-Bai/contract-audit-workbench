@@ -10,6 +10,7 @@
 
 import { Button } from "antd";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { CaseDetail, Remediation, ReviewWorkspace } from "../api/types";
 import type { ReviewReadiness, ReviewScope } from "../api/review-readiness";
 import { errorMessage } from "../api/http";
@@ -52,6 +53,8 @@ interface Props {
   onRefreshHistory: () => void;
   onStartReview: () => void;
   suppressWriteAction?: boolean;
+  compact?: boolean;
+  actionTarget?: HTMLElement | null;
   onNavigateReview?: (href: string) => void;
 }
 
@@ -750,10 +753,18 @@ export function CaseNextStep(props: Props) {
   const { actorRole } = props;
   const action = plan.action;
   const latestWorkspace = currentWorkspace(props);
+  const explainPartial = Boolean(
+    props.compact &&
+    action.kind === "link" &&
+    action.label === "返回原审查工作区" &&
+    latestWorkspace?.run.state === "partial" &&
+    !hasTransientRetryCause(latestWorkspace),
+  );
+  const actionLabel = explainPartial ? "查看审查原因" : action.label;
   const actionProps = {
     className: "case-next-step-button",
     "aria-label":
-      props.suppressWriteAction && action.kind === "start" ? "打开案件继续" : action.label,
+      props.suppressWriteAction && action.kind === "start" ? "打开案件继续" : actionLabel,
     type: "primary" as const,
     htmlType: "button" as const,
     loading: action.loading,
@@ -762,7 +773,9 @@ export function CaseNextStep(props: Props) {
   const actionHref =
     props.suppressWriteAction && action.href?.startsWith("#")
       ? "/cases/" + encodeURIComponent(props.caseDetail.id) + action.href
-      : action.href;
+      : explainPartial && action.href
+        ? `${action.href}${action.href.includes("?") ? "&" : "?"}drawer=record&tab=review`
+        : action.href;
 
   let mainAction;
   if (action.kind === "link") {
@@ -785,7 +798,7 @@ export function CaseNextStep(props: Props) {
           props.onNavigateReview(actionHref);
         }}
       >
-        {action.label}
+        {actionLabel}
       </Button>
     );
   } else if (action.kind === "start") {
@@ -818,6 +831,36 @@ export function CaseNextStep(props: Props) {
       <Button {...actionProps} onClick={props.onRefreshHistory}>
         {action.label}
       </Button>
+    );
+  }
+
+  if (props.compact) {
+    return (
+      <section className="case-next-step-compact" aria-labelledby="case-next-step-title">
+        {props.actionTarget ? createPortal(mainAction, props.actionTarget) : null}
+        <div className="case-next-step-line">
+          <StatusText tone={plan.tone}>{plan.stage}</StatusText>
+          <h2 id="case-next-step-title">{plan.title}</h2>
+          <span>{plan.owner}</span>
+          <details>
+            <summary>查看原因</summary>
+            <p role={plan.announcement}>{plan.reason}</p>
+            {plan.missingItems.length ? (
+              <ul>
+                {plan.missingItems.map((item, index) => (
+                  <li key={`${index}:${item}`}>{item}</li>
+                ))}
+              </ul>
+            ) : null}
+            {plan.technicalDetail ? (
+              <TechnicalDetail label="状态编码" value={plan.technicalDetail} />
+            ) : null}
+            <TechnicalDetail label="角色编码" value={actorRole} />
+            {latestWorkspace ? <ReviewOutcomeSummary workspace={latestWorkspace} /> : null}
+          </details>
+        </div>
+        {action.kind === "start" && !props.suppressWriteAction ? props.startControls : null}
+      </section>
     );
   }
 

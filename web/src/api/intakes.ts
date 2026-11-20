@@ -294,8 +294,9 @@ function parseIntakeArchiveResult(value: unknown): IntakeArchiveResult {
 export function listPendingIntakes(
   cursor: string | null,
   signal?: AbortSignal,
+  pageSize = 10,
 ): Promise<PendingIntakesPage> {
-  const params = new URLSearchParams({ limit: "10" });
+  const params = new URLSearchParams({ limit: String(pageSize) });
   if (cursor !== null) params.set("cursor", cursor);
   return requestJson(
     `${INTAKES_PATH}/pending?${params}`,

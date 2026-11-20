@@ -149,12 +149,12 @@ export function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route element={<SessionGate />}>
           <Route element={<AppShell />}>
-            <Route
-              index
-              element={<Navigate to={{ pathname: "/contract-desk", search, hash }} replace />}
-            />
+            <Route index element={<HomePage />} />
             <Route path="/contract-desk" element={<ContractDeskPage />} />
-            <Route path="/workbench/home" element={<HomePage />} />
+            <Route
+              path="/workbench/home"
+              element={<Navigate to={{ pathname: "/", search, hash }} replace />}
+            />
             <Route path="/review" element={<ReviewEntryPage />} />
             <Route path="/cases" element={<CasesPage />} />
             <Route path="/contracts" element={<ContractsPage />} />

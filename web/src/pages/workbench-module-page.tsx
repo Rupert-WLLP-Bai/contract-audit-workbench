@@ -24,9 +24,10 @@ import {
   useUpdateWorkbenchTask,
   useWorkbench,
 } from "../api/queries";
-import type { Knowledge, KnowledgeInput, WorkbenchSnapshot } from "../api/types";
+import type { Knowledge, KnowledgeInput, WorkbenchPeriod, WorkbenchSnapshot } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { ListPage } from "../components/page-patterns";
+import { WorkbenchReportStatistics } from "../components/workbench-report-statistics";
 import { StatusText } from "../components/status-text";
 import { TechnicalDetail, TechnicalFieldGroup } from "../components/technical-detail";
 import { caseSelectPresentation } from "../components/case-select-presentation";
@@ -1434,7 +1435,8 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         session.data.active_context?.context_version ?? "",
       ].join("\u0000")
     : "";
-  const query = useWorkbench("week", actorScope);
+  const [period, setPeriod] = useState<WorkbenchPeriod>("week");
+  const query = useWorkbench(module === "reports" ? period : "week", actorScope);
   const updateTask = useUpdateWorkbenchTask();
   const hasCachedModuleData = Boolean(session.data && query.data);
   const moduleRevalidating = hasCachedModuleData && (session.isFetching || query.isFetching);
@@ -1491,12 +1493,14 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
     [allRecords, availableSnapshot, module, queryText, session.data?.id, tab],
   );
   const requestedVersion = module === "knowledge" ? searchParams.get("version") : null;
+  const requestedTask = module === "tasks" ? searchParams.get("task") : null;
+  const requestedRecord = requestedVersion ?? requestedTask;
   const selected = useMemo(
     () =>
-      module === "knowledge" && requestedVersion !== null
-        ? (records.find((record) => record.id === requestedVersion) ?? null)
+      requestedRecord !== null
+        ? (records.find((record) => record.id === requestedRecord) ?? null)
         : (records.find((record) => record.id === selectedId) ?? records[0] ?? null),
-    [module, records, requestedVersion, selectedId],
+    [records, requestedRecord, selectedId],
   );
   const knowledge = useKnowledge(
     module === "knowledge" ? (selected?.knowledgeId ?? "") : "",
@@ -1592,6 +1596,11 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
 
   function selectRecord(id: string) {
     if (module !== "knowledge") {
+      if (requestedTask !== null) {
+        const next = new URLSearchParams(searchParams);
+        next.delete("task");
+        setSearchParams(next, { replace: true });
+      }
       setSelectedId(id);
     } else if (id !== requestedVersion) {
       const next = new URLSearchParams(searchParams);
@@ -1673,6 +1682,9 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
           actions={headerAction}
           beforeSummary={
             <>
+              {module === "reports" ? (
+                <WorkbenchReportStatistics snapshot={snapshot} changePeriod={setPeriod} />
+              ) : null}
               {module === "tools" ? <QccMcpPanel /> : null}
               {createOpen && (canCreateTask || taskCapabilityRevalidating) ? (
                 <TaskCreateForm
@@ -1718,7 +1730,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                   activeKey={tab}
                   onChange={(key) => {
                     setTab(key);
-                    if (module !== "knowledge") setSelectedId("");
+                    if (module !== "knowledge") selectRecord("");
                   }}
                   items={config.tabs.map((label) => ({ key: label, label }))}
                 />

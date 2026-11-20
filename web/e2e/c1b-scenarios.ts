@@ -1313,10 +1313,13 @@ async function readReportLinks(
 
 async function openCaseSection(page: Page, section: string, disclosureID?: string): Promise<void> {
   const navigation = page.getByRole("navigation", { name: "案件详情分区" });
-  const button = navigation.getByRole("button", { name: section, exact: true });
+  const button = navigation.getByRole("tab", {
+    name: section === "主体与对象" || section === "适用依据" ? "主体与依据" : section,
+    exact: true,
+  });
   await button.click();
   assert.equal(
-    await button.getAttribute("aria-pressed"),
+    await button.getAttribute("aria-selected"),
     "true",
     `case section ${section} did not open`,
   );

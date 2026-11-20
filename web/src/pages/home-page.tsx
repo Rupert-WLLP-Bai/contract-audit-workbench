@@ -8,1032 +8,314 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import {
-  CheckSquareOutlined,
-  ClockCircleOutlined,
-  FileSearchOutlined,
-  FolderOpenOutlined,
-} from "@ant-design/icons";
-import { Tabs } from "antd";
-import { Select } from "antd";
-import { Button, Input, Table, type TableProps } from "antd";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useQueries } from "@tanstack/react-query";
+import { Button } from "antd";
+import { useState } from "react";
 import { Link } from "react-router";
+import { useApprovalInbox } from "../api/approval-queries";
+import { evidenceRequestsKey, listEvidenceRequests } from "../api/evidence-workflow";
 import { errorMessage } from "../api/http";
-import {
-  useCreateWorkbenchTask,
-  useSession,
-  useUpdateWorkbenchTask,
-  useWorkbench,
-} from "../api/queries";
-import type { WorkbenchPeriod, WorkbenchSnapshot } from "../api/types";
-import { PageStatus } from "../components/page-status";
-import { PageHeading } from "../components/page-patterns";
-import { IntakePrimaryContract } from "../components/intake-primary-contract";
+import { useSession, useWorkbench } from "../api/queries";
+import type { Actor } from "../api/types";
 import { IntakePendingList } from "../components/intake-pending-list";
+import { IntakePrimaryContract } from "../components/intake-primary-contract";
+import { PageStatus } from "../components/page-status";
+import { actorReadContextKey } from "../domain/actor-read-context";
+import { caseHref, formatDateTime } from "../domain/review";
+import { inboxRows, type InboxKind } from "../features/home/inbox";
+import { recentCaseVisits } from "../features/home/recent-cases";
+import { withEvidenceReadSlot } from "../features/review/evidence-read-slot";
 import type { IntakeContinuationSelection } from "../features/intake/intake-continuation";
-import { StatusText } from "../components/status-text";
-import {
-  businessActionLabel,
-  businessScopeLabel,
-  remediationStatusLabel,
-} from "../domain/business-labels";
-import { TechnicalDetail } from "../components/technical-detail";
-import { caseSelectPresentation } from "../components/case-select-presentation";
-import { CollapsibleSection } from "../components/collapsible-section";
-import { WorkbenchCaseNextStep } from "../components/workbench-case-next-step";
-import { caseOptionLabel } from "../domain/case-identity";
-import { caseHref, formatDateTime, runLabel, runTone, taskKindLabel } from "../domain/review";
 import "./home-page.css";
 
-function barWidth(count: number, total: number): number {
-  return total === 0 ? 0 : Math.max(0, Math.min(100, Math.round((count / total) * 100)));
-}
-const BUSINESS_STATUS_LABELS: Record<string, string> = {
-  active: "未归档",
-  archived: "已归档",
+const evidencePageSize = 8;
+const maximumPreviewRows = 3;
+const kinds: Record<InboxKind, string> = {
+  decision: "等我判断",
+  evidence: "要补材料",
+  approval: "会签",
+  task: "任务",
 };
 
-function progressColor(status: string): string {
-  if (status === "archived") return "var(--state-compatible)";
-  return status === "active" ? "var(--action-primary)" : "var(--state-neutral)";
+function measuredCount(count: number, known: boolean, complete: boolean): string {
+  if (complete) return String(count);
+  if (known && count > 0) return `至少 ${count}`;
+  return "未确认";
 }
 
-function taskStatusLabel(status: string): string {
-  if (status === "open") return "待处理";
-  if (status === "in_progress") return "处理中";
-  return "状态未知";
-}
-
-function ProgressDonut({
-  rows,
-  visibleCases,
-}: {
-  rows: { status: string; count: number }[];
-  visibleCases: number;
-}) {
-  const total = rows.reduce((sum, row) => sum + row.count, 0);
-  let offset = 0;
-  const slices = rows
-    .filter((row) => row.count > 0)
-    .map((row) => {
-      const start = offset;
-      offset += row.count;
-      return `${progressColor(row.status)} ${(start / total) * 100}% ${(offset / total) * 100}%`;
-    });
-  const background = total === 0 ? "var(--surface-subtle)" : `conic-gradient(${slices.join(", ")})`;
-  const center = total === 0 && visibleCases > 0 ? "—" : String(total);
-  const centerLabel = total === 0 && visibleCases > 0 ? "状态未报" : "案件";
-  const accessibleLabel =
-    rows.length === 0
-      ? "打开案件中心；案件状态分布未报告"
-      : `打开案件中心；${rows.map((row) => `${BUSINESS_STATUS_LABELS[row.status] ?? (row.status || "未报告")} ${row.count} 项`).join("，")}`;
+function PersonalWorkspace({ actor, scope }: { actor: Actor; scope: string }) {
+  const snapshot = useWorkbench("week", scope);
+  const approvals = useApprovalInbox("todo", scope, true);
+  const [caseLimit, setCaseLimit] = useState(evidencePageSize);
+  const [showAll, setShowAll] = useState(false);
+  const [selection, setSelection] = useState<IntakeContinuationSelection | null>(null);
+  const currentSnapshot =
+    snapshot.isSuccess && !snapshot.isError && !snapshot.isFetching ? snapshot.data : undefined;
+  const currentCases = currentSnapshot?.cases ?? [];
+  const openCases = [
+    ...new Map(
+      currentCases.filter((item) => !item.archived_at).map((item) => [item.id, item]),
+    ).values(),
+  ];
+  const evidenceCases = openCases.slice(0, caseLimit);
+  const requests = useQueries({
+    queries: evidenceCases.map((item) => ({
+      queryKey: [...evidenceRequestsKey(item.id), "home", scope] as const,
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        withEvidenceReadSlot(signal, async () => {
+          const entries = await listEvidenceRequests(item.id, signal);
+          if (entries.some((entry) => entry.case_id !== item.id))
+            throw new Error("补件记录与当前案件不一致");
+          return entries;
+        }),
+      retry: false,
+      staleTime: 30_000,
+    })),
+  });
+  const usableRequests = requests.flatMap((query) =>
+    query.isSuccess && !query.isError && !query.isFetching ? query.data : [],
+  );
+  const readyEvidenceCases = requests.filter(
+    (query) => query.isSuccess && !query.isError && !query.isFetching,
+  ).length;
+  const evidenceComplete = currentSnapshot !== undefined && readyEvidenceCases === openCases.length;
+  const evidenceBusy = requests.some((query) => query.isPending || query.isFetching);
+  const approvalLoaded = approvals.isSuccess && !approvals.isError && !approvals.isFetching;
+  const approvalComplete =
+    approvalLoaded &&
+    !approvals.data.pages.some((page, index, pages) => index === pages.length - 1 && page.has_more);
+  const rows = inboxRows(
+    currentSnapshot,
+    actor.id,
+    usableRequests,
+    approvalLoaded ? approvals.data.pages.flatMap((page) => page.items) : [],
+  );
+  const hasMoreApprovals = approvalLoaded && !approvalComplete;
+  const showMoreCases = caseLimit < openCases.length;
+  const previewLimit = showMoreCases ? maximumPreviewRows - 1 : maximumPreviewRows;
+  const hasMoreWork = rows.length > previewLimit || hasMoreApprovals;
+  const previewRows = showAll ? rows : rows.slice(0, hasMoreWork ? previewLimit - 1 : previewLimit);
+  const approvalCount = rows.filter((row) => row.kind === "approval").length;
+  const decisionCount = rows.filter((row) => row.kind === "decision").length;
+  const evidenceCount = rows.filter((row) => row.kind === "evidence").length;
+  const complete = currentSnapshot !== undefined && evidenceComplete && approvalComplete;
+  const casePendingKnown = openCases.filter((item) => item.pending_decisions !== null);
+  const visiblePending = casePendingKnown.reduce(
+    (sum, item) => sum + (item.pending_decisions ?? 0),
+    0,
+  );
+  const visibleCaseIds = new Set(openCases.map((item) => item.id));
+  const submittedRemediations = new Set(
+    (currentSnapshot?.remediations ?? [])
+      .filter((item) => item.status === "submitted" && visibleCaseIds.has(item.case_id))
+      .map((item) => JSON.stringify([item.case_id, item.id])),
+  ).size;
+  const caseTitles = new Map(currentCases.map((item) => [item.id, item.title]));
+  const visits = recentCaseVisits(actor)
+    .filter((visit) => caseTitles.has(visit.caseId))
+    .slice(0, 3);
 
   return (
-    <div className="home-progress-content">
-      <Link
-        className="home-progress-ring"
-        to="/cases"
-        style={{ background }}
-        aria-label={accessibleLabel}
-      >
-        <div aria-hidden="true">
-          <strong>{center}</strong>
-          <span>{centerLabel}</span>
+    <section className="page home-page" aria-labelledby="home-title">
+      <header className="home-heading">
+        <h1 id="home-title">我的待办</h1>
+        <p>
+          {actor.display_name}，你好。
+          {complete
+            ? rows.length
+              ? `你有 ${rows.length} 件待办。`
+              : "今天没有待办。"
+            : rows.length
+              ? `目前确认有 ${rows.length} 件待办。`
+              : "待办数量尚未确认。"}
+        </p>
+      </header>
+
+      <dl className="home-inbox-summary" aria-label="待办汇总">
+        <div data-kind="decision">
+          <dt>等我判断</dt>
+          <dd title="已分派给我的判断任务">
+            {measuredCount(decisionCount, currentSnapshot !== undefined, evidenceComplete)}
+          </dd>
         </div>
-      </Link>
-      <div className="home-progress-legend" aria-label="按案件业务状态统计">
-        {rows.length === 0 ? (
-          <p>{visibleCases === 0 ? "当前身份没有可见案件。" : "案件状态统计未报告。"}</p>
-        ) : (
-          rows.map((row) => (
-            <div key={row.status}>
-              <span>
-                <i style={{ background: progressColor(row.status) }} />
-                {BUSINESS_STATUS_LABELS[row.status] ?? (row.status || "未报告")}
-              </span>
-              <strong>{row.count}</strong>
-            </div>
-          ))
-        )}
-        {rows.length > 0 && total !== visibleCases ? (
-          <small>
-            状态统计 {total} 项；可见案件 {visibleCases} 项。
-          </small>
-        ) : null}
-      </div>
-    </div>
-  );
-}
+        <div data-kind="evidence">
+          <dt>要补材料</dt>
+          <dd>{measuredCount(evidenceCount, readyEvidenceCases > 0, evidenceComplete)}</dd>
+        </div>
+        <div data-kind="approval">
+          <dt>会签</dt>
+          <dd>{measuredCount(approvalCount, approvalLoaded, approvalComplete)}</dd>
+        </div>
+        <div data-kind="remediation">
+          <dt>整改待确认（可见案件）</dt>
+          <dd>{currentSnapshot === undefined ? "未确认" : submittedRemediations}</dd>
+        </div>
+      </dl>
 
-function ProgressList({
-  rows,
-  total,
-  kind,
-}: {
-  rows: { label: string; count: number; key: string }[];
-  total: number;
-  kind: "risk";
-}) {
-  if (rows.length === 0) return <p className="home-empty">没有获取到这项统计数据。</p>;
-  return (
-    <ul className={`home-data-bars home-data-bars-${kind}`}>
-      {rows.map((row) => (
-        <li key={row.key}>
-          <div className="home-data-bar-label">
-            <span>{row.label}</span>
-            <strong>{row.count}</strong>
-          </div>
-          <div
-            className="home-data-bar-track"
-            aria-label={`${row.label} ${row.count}，占 ${barWidth(row.count, total)}%`}
-          >
-            <span style={{ width: `${barWidth(row.count, total)}%` }} />
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}
+      <div className="home-inbox-layout">
+        <div className="home-inbox-main">
+          <section className="home-panel home-personal-work" aria-labelledby="personal-work-title">
+            <header className="home-panel-head">
+              <h2 id="personal-work-title">待办事项</h2>
+              <span className="meta">按到期时间排序</span>
+            </header>
+            {snapshot.isError ? (
+              <p className="home-panel-note" role="alert">
+                任务和可见案件暂未加载。{" "}
+                <Button size="small" onClick={() => void snapshot.refetch()}>
+                  重试
+                </Button>
+              </p>
+            ) : null}
+            {approvals.isError ? (
+              <p className="home-panel-note" role="alert">
+                会签待办暂未加载。{" "}
+                <Button size="small" onClick={() => void approvals.refetch()}>
+                  重试会签
+                </Button>
+              </p>
+            ) : null}
+            {rows.length ? (
+              <div className="home-inbox-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">类型</th>
+                      <th scope="col">事项</th>
+                      <th scope="col">到期</th>
+                      <th scope="col">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewRows.map((row) => (
+                      <tr key={row.key}>
+                        <td>
+                          <span className="home-inbox-kind" data-kind={row.kind}>
+                            {kinds[row.kind]}
+                          </span>
+                        </td>
+                        <td>
+                          <strong>{row.title}</strong>
+                          {row.caseTitle && <span className="meta">{row.caseTitle}</span>}
+                        </td>
+                        <td>
+                          {row.due ? (
+                            <time dateTime={row.due}>{formatDateTime(row.due).split(" ")[0]}</time>
+                          ) : (
+                            "未注明"
+                          )}
+                        </td>
+                        <td>
+                          <Link to={row.href} aria-label={`${row.action}：${row.title}`}>
+                            {row.action}
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="home-panel-note">
+                {complete ? "没有待办事项。" : "尚未确认有待办事项。"}
+              </p>
+            )}
+            {!evidenceComplete && currentSnapshot && (
+              <p className="home-panel-note" role="status">
+                补件已核对 {readyEvidenceCases} / {openCases.length} 个可见案件。
+                {requests.some((request) => request.isError) ? " 部分案件的补件未能读取。" : null}
+                {showMoreCases ? (
+                  <Button
+                    size="small"
+                    disabled={evidenceBusy}
+                    onClick={() => setCaseLimit((limit) => limit + evidencePageSize)}
+                  >
+                    核对更多案件
+                  </Button>
+                ) : null}
+              </p>
+            )}
+            {hasMoreWork ? (
+              <footer className="home-panel-note home-inbox-more">
+                <Button size="small" aria-expanded={showAll} onClick={() => setShowAll(!showAll)}>
+                  {showAll ? "收起待办" : "查看全部待办"}
+                </Button>
+                {showAll && hasMoreApprovals ? (
+                  <Link to="/workbench/approvals?view=todo">查看待会签</Link>
+                ) : null}
+              </footer>
+            ) : null}
+          </section>
 
-function CircuitStrip({
-  nodes,
-}: {
-  nodes: readonly { label: string; count: number; tone: "info" | "pending" | "success" }[];
-}) {
-  return (
-    <section className="circuit-panel" aria-label="审查链路">
-      <div className="circuit-head">
-        <h2>审查链路</h2>
+          <section className="home-visible-work" aria-labelledby="visible-work-title">
+            <h2 id="visible-work-title">可见案件待处理</h2>
+            <p>按当前身份可见的未归档案件统计。</p>
+            <p>
+              待判断{" "}
+              {measuredCount(
+                visiblePending,
+                casePendingKnown.length > 0,
+                currentSnapshot !== undefined && casePendingKnown.length === openCases.length,
+              )}{" "}
+              条
+              {currentSnapshot && casePendingKnown.length < openCases.length
+                ? ` · ${openCases.length - casePendingKnown.length} 个案件未返回数量`
+                : null}
+            </p>
+          </section>
+        </div>
+
+        <aside className="home-inbox-side" aria-label="上传、续办与最近打开">
+          <IntakePrimaryContract actor={actor} selectedContinuation={selection} compact />
+          <IntakePendingList
+            actor={actor}
+            compact
+            selectedOperationId={selection?.detail.operation_id ?? null}
+            onSelectContinuation={setSelection}
+            onArchived={(id) =>
+              setSelection((current) =>
+                current?.detail.operation_id === id ? { ...current, archived: true } : current,
+              )
+            }
+          />
+          <section className="home-panel home-recent-visits" aria-labelledby="recent-visits-title">
+            <header className="home-panel-head">
+              <h2 id="recent-visits-title">最近打开</h2>
+            </header>
+            {visits.length ? (
+              <ul>
+                {visits.map((visit) => (
+                  <li key={visit.caseId}>
+                    <Link to={caseHref(visit.caseId)}>{caseTitles.get(visit.caseId)}</Link>
+                    <time dateTime={visit.visitedAt}>{formatDateTime(visit.visitedAt)}</time>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="home-panel-note">
+                {currentSnapshot ? "本浏览器尚无可查看的访问记录。" : "正在确认可见案件。"}
+              </p>
+            )}
+          </section>
+        </aside>
       </div>
-      <ol className="circuit">
-        {nodes.map((node) => (
-          <li
-            className="circuit-node"
-            key={node.label}
-            data-state={node.count > 0 ? "filled" : "empty"}
-            data-tone={node.tone}
-          >
-            <span className="circuit-mark" aria-hidden="true" />
-            <span className="circuit-label">{node.label}</span>
-            <strong className={`circuit-count${node.count === 0 ? " circuit-count-empty" : ""}`}>
-              {node.count}
-            </strong>
-          </li>
-        ))}
-      </ol>
     </section>
   );
 }
 
-function TaskRow({
-  task,
-  caseTitle,
-  assignee,
-  canComplete,
-  pending,
-  onComplete,
-}: {
-  task: WorkbenchSnapshot["tasks"][number];
-  caseTitle: string;
-  assignee: string;
-  canComplete: boolean;
-  pending: boolean;
-  onComplete: () => void;
-}) {
-  return (
-    <li className="home-task-row">
-      <div className="home-task-copy">
-        <Link className="home-task-title" to={caseHref(task.case_id, null)}>
-          {task.title}
-        </Link>
-        <span className="home-task-meta">
-          {caseTitle}，{assignee}，{taskKindLabel(task.kind)}
-        </span>
-      </div>
-      <div className="home-task-state">
-        <StatusText
-          tone={
-            task.priority === "high" ? "bad" : task.priority === "medium" ? "attention" : "neutral"
-          }
-        >
-          {task.priority === "high"
-            ? "高优先级"
-            : task.priority === "medium"
-              ? "中优先级"
-              : "低优先级"}
-        </StatusText>
-        <time className="home-task-time" dateTime={task.due_at ?? undefined}>
-          {task.due_at ? formatDateTime(task.due_at) : "未设期限"}
-        </time>
-      </div>
-      {task.status === "completed" ? (
-        <span className="home-task-complete">已完成</span>
-      ) : task.can_complete === true && canComplete ? (
-        <Button
-          aria-label={String(pending ? "正在保存" : "标记完成")}
-          className="home-task-complete"
-          htmlType="button"
-          disabled={pending}
-          onClick={onComplete}
-        >
-          {pending ? "正在保存" : "标记完成"}
-        </Button>
-      ) : null}
-    </li>
-  );
-}
-
 export function HomePage() {
-  const [period, setPeriod] = useState<WorkbenchPeriod>("week");
-  const [taskCaseId, setTaskCaseId] = useState("");
-  const [taskTitle, setTaskTitle] = useState("");
-  const [taskAssignee, setTaskAssignee] = useState("");
-  const [taskDue, setTaskDue] = useState("");
-  const [showTaskForm, setShowTaskForm] = useState(false);
-  const [taskFilter, setTaskFilter] = useState<"mine" | "all" | "completed">("mine");
-  const [selectedIntake, setSelectedIntake] = useState<{
-    actorScope: string;
-    selection: IntakeContinuationSelection;
-  } | null>(null);
-  const [selectedNextStep, setSelectedNextStep] = useState<{
-    actorScope: string;
-    caseId: string;
-  } | null>(null);
   const session = useSession();
-  const actor = session.data ?? null;
-  const nextStepActorScope = actor
-    ? [
-        actor.audience,
-        actor.tenant_id,
-        actor.org_id,
-        actor.id,
-        actor.role,
-        actor.active_context?.context_version ?? "",
-      ].join("\u0000")
-    : "";
-  const snapshot = useWorkbench(period, nextStepActorScope);
-  const creatableCases = (snapshot.data?.cases ?? []).filter(
-    (item) => item.can_create_task === true,
-  );
-  const canCreateTasks =
-    session.isSuccess &&
-    !session.isFetching &&
-    !session.isError &&
-    snapshot.isSuccess &&
-    !snapshot.isFetching &&
-    !snapshot.isError &&
-    creatableCases.length > 0;
-  const taskCapabilitySnapshotFresh =
-    session.isSuccess &&
-    !session.isFetching &&
-    !session.isError &&
-    snapshot.isSuccess &&
-    !snapshot.isFetching &&
-    !snapshot.isError;
-  const intakeActorScope = actor
-    ? [actor.audience, actor.tenant_id, actor.org_id, actor.id].join("\u0000")
-    : "";
-  const activeIntakeSelection =
-    selectedIntake?.actorScope === intakeActorScope ? selectedIntake.selection : null;
-  const activeNextStepCaseId =
-    selectedNextStep?.actorScope === nextStepActorScope ? selectedNextStep.caseId : null;
-  const nextStepActorScopeRef = useRef(nextStepActorScope);
-  useEffect(() => {
-    if (nextStepActorScopeRef.current === nextStepActorScope) return;
-    nextStepActorScopeRef.current = nextStepActorScope;
-    setSelectedNextStep(null);
-    setTaskCaseId("");
-    setTaskTitle("");
-    setTaskAssignee("");
-    setTaskDue("");
-    setShowTaskForm(false);
-  }, [nextStepActorScope]);
-  const intakeActorScopeRef = useRef(intakeActorScope);
-  useEffect(() => {
-    if (intakeActorScopeRef.current === intakeActorScope) return;
-    intakeActorScopeRef.current = intakeActorScope;
-    setSelectedIntake(null);
-    setTaskCaseId("");
-    setTaskTitle("");
-    setTaskAssignee("");
-    setTaskDue("");
-    setShowTaskForm(false);
-    setTaskFilter("mine");
-    setSelectedNextStep(null);
-  }, [intakeActorScope]);
-  const createTask = useCreateWorkbenchTask(taskCaseId);
-  const updateTask = useUpdateWorkbenchTask();
-  useEffect(() => {
-    if (!taskCapabilitySnapshotFresh) return;
-    if (taskCaseId && !creatableCases.some((item) => item.id === taskCaseId)) setTaskCaseId("");
-    if (showTaskForm && creatableCases.length === 0) {
-      setShowTaskForm(false);
-      setTaskCaseId("");
-      setTaskTitle("");
-      setTaskAssignee("");
-      setTaskDue("");
-    }
-  }, [taskCapabilitySnapshotFresh, creatableCases, taskCaseId, showTaskForm]);
-  const caseTitles = useMemo(
-    () => new Map((snapshot.data?.cases ?? []).map((item) => [item.id, item.title])),
-    [snapshot.data?.cases],
-  );
-  const members = useMemo(
-    () => new Map((snapshot.data?.members ?? []).map((member) => [member.id, member.display_name])),
-    [snapshot.data?.members],
-  );
-
-  if (session.isLoading || session.isFetching || snapshot.isLoading || snapshot.isFetching)
-    return <PageStatus kind="loading" title="正在加载工作台" />;
-  if (session.isError || !session.data) {
+  if (session.isLoading || session.isFetching)
+    return <PageStatus kind="loading" title="正在确认当前身份" />;
+  if (!session.data || session.isError)
     return (
       <PageStatus
         kind="error"
         title="当前身份没有加载"
         detail={errorMessage(session.error)}
-        action={
-          <Button
-            aria-label="重新读取身份"
-            type="primary"
-            htmlType="button"
-            onClick={() => void session.refetch()}
-          >
-            重新读取身份
-          </Button>
-        }
+        action={<Button onClick={() => void session.refetch()}>重新读取身份</Button>}
       />
     );
-  }
-  if (snapshot.isError || !snapshot.data) {
-    return (
-      <PageStatus
-        kind="error"
-        title="工作台数据没有加载"
-        detail={errorMessage(snapshot.error)}
-        action={
-          <Button
-            aria-label={"重试"}
-            type="primary"
-            htmlType="button"
-            onClick={() => void snapshot.refetch()}
-          >
-            重试
-          </Button>
-        }
-      />
-    );
-  }
-
-  const canCompleteTasks =
-    session.isSuccess &&
-    !session.isFetching &&
-    !session.isError &&
-    snapshot.isSuccess &&
-    !snapshot.isFetching &&
-    !snapshot.isError;
-  const data = snapshot.data;
-  const dashboard = data.dashboard;
-  const allTasks = [...data.tasks].sort((left, right) =>
-    (left.due_at ?? "9999").localeCompare(right.due_at ?? "9999"),
-  );
-  const tasks = allTasks.filter((task) =>
-    taskFilter === "completed"
-      ? task.status === "completed"
-      : taskFilter === "mine"
-        ? task.assignee_id === session.data?.id && task.status !== "completed"
-        : task.status !== "completed",
-  );
-  const activeTaskCount = allTasks.filter((task) => task.status !== "completed").length;
-  const cases = [...data.cases].sort((left, right) =>
-    right.updated_at.localeCompare(left.updated_at),
-  );
-  const circuitNodes = [
-    { label: "可见案件", count: dashboard.visible_cases, tone: "info" },
-    { label: "待审查", count: dashboard.pending_review_cases, tone: "pending" },
-    { label: "待办", count: dashboard.my_pending_tasks, tone: "pending" },
-    { label: "整改", count: dashboard.remediation_cases, tone: "pending" },
-    { label: "完成", count: dashboard.completed_reviews, tone: "success" },
-  ] as const;
-  const recentCases = cases.slice(0, 8);
-  const recentCaseColumns: TableProps<(typeof recentCases)[number]>["columns"] = [
-    {
-      title: "案件",
-      key: "case",
-      render: (_, item) => (
-        <>
-          <Link to={caseHref(item.id, item.latest_run?.id ?? null)}>{item.title}</Link>
-          <TechnicalDetail value={item.id} label="案件标识" />
-        </>
-      ),
-    },
-    {
-      title: "审查状态",
-      key: "review-status",
-      render: (_, item) =>
-        item.latest_run ? (
-          <StatusText tone={runTone(item.latest_run.state)}>
-            {runLabel(item.latest_run.state)}
-          </StatusText>
-        ) : (
-          <span className="home-no-run">尚未审查</span>
-        ),
-    },
-    {
-      title: "待决定",
-      dataIndex: "pending_decisions",
-      key: "pending_decisions",
-    },
-    {
-      title: "业务线 / 场景",
-      key: "business",
-      render: (_, item) => businessScopeLabel(item.business_line, item.scenario),
-    },
-    {
-      title: "更新时间",
-      key: "updated_at",
-      render: (_, item) => (
-        <time dateTime={item.updated_at}>{formatDateTime(item.updated_at)}</time>
-      ),
-    },
-    {
-      title: "操作",
-      key: "actions",
-      render: (_, item) => (
-        <Link className="home-recent-open" to={caseHref(item.id, item.latest_run?.id ?? null)}>
-          打开
-        </Link>
-      ),
-    },
-  ];
-  const audit = [...data.audit].sort((left, right) => right.at.localeCompare(left.at)).slice(0, 6);
-  const remediations = [...data.remediations]
-    .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
-    .slice(0, 5);
-  const caseWork = cases.slice(0, 8).map((item) => ({
-    item,
-    tasks: data.tasks.filter((task) => task.case_id === item.id && task.status !== "completed"),
-    remediations: data.remediations.filter(
-      (remediation) => remediation.case_id === item.id && remediation.status !== "closed",
-    ),
-  }));
-
-  function completeTask(task: WorkbenchSnapshot["tasks"][number]) {
-    if (!canCompleteTasks || task.can_complete !== true || task.status === "completed") return;
-    updateTask.mutate({
-      caseId: task.case_id,
-      taskId: task.id,
-      update: {
-        title: task.title,
-        kind: task.kind,
-        assignee_id: task.assignee_id,
-        due_at: task.due_at,
-        status: "completed",
-        priority: task.priority,
-        finding_id: task.finding_id,
-        expected_version: task.version,
-      },
-    });
-  }
-
-  function submitTask(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!canCreateTasks || !creatableCases.some((item) => item.id === taskCaseId)) return;
-    createTask.mutate(
-      {
-        title: taskTitle.trim(),
-        kind: "general",
-        assignee_id: taskAssignee,
-        due_at: taskDue === "" ? null : `${taskDue}T23:59:59+08:00`,
-        status: "open",
-        priority: "medium",
-        finding_id: null,
-      },
-      {
-        onSuccess: () => {
-          setTaskTitle("");
-          setTaskDue("");
-          setShowTaskForm(false);
-        },
-      },
-    );
-  }
-
-  const metrics = [
-    {
-      key: "cases",
-      label: "可见案件",
-      value: dashboard.visible_cases,
-      hint: "",
-      tone: "blue",
-      icon: <FolderOpenOutlined />,
-    },
-    {
-      key: "tasks",
-      label: "我的待办",
-      value: dashboard.my_pending_tasks,
-      hint: "由责任人与任务状态计算",
-      tone: dashboard.my_pending_tasks > 0 ? "amber" : "neutral",
-      icon: <CheckSquareOutlined />,
-    },
-    {
-      key: "late",
-      label: "逾期任务",
-      value: dashboard.overdue_tasks,
-      hint: "按已保存期限统计",
-      tone: dashboard.overdue_tasks > 0 ? "red" : "neutral",
-      icon: <ClockCircleOutlined />,
-    },
-    {
-      key: "reviews",
-      label: "待审查案件",
-      value: dashboard.pending_review_cases,
-      hint: "等待审查或人工处理",
-      tone: dashboard.pending_review_cases > 0 ? "amber" : "neutral",
-      icon: <FileSearchOutlined />,
-    },
-  ] as const;
-
-  return (
-    <section className="page home-page">
-      <PageHeading
-        title="工作台"
-        meta={`你好，${session.data?.display_name ?? "当前用户"}`}
-        actions={
-          <>
-            <Link to="/review">进入合同审查</Link>
-            <Button href="/cases">打开案件中心</Button>
-            <Button type="primary" href="/contract-desk">
-              查看合同
-            </Button>
-          </>
-        }
-      />
-
-      <div className="home-focus-grid">
-        <section className="home-panel home-tasks" aria-labelledby="home-tasks-title">
-          <header className="home-panel-head">
-            <div className="home-section-title">
-              <span aria-hidden="true" />
-              <h2 id="home-tasks-title">任务与待办</h2>
-            </div>
-            {canCreateTasks ? (
-              <Button
-                aria-label={String(showTaskForm ? "收起" : "新建任务")}
-                type="text"
-                htmlType="button"
-                onClick={() => setShowTaskForm((current) => !current)}
-              >
-                {showTaskForm ? "收起" : "新建任务"}
-              </Button>
-            ) : null}
-          </header>
-          <Tabs
-            activeKey={taskFilter}
-            onChange={(key) => {
-              if (key === "mine" || key === "all" || key === "completed") setTaskFilter(key);
-            }}
-            items={[
-              { key: "mine", label: `我的待办 ${dashboard.my_pending_tasks}` },
-              { key: "all", label: `全部未完成 ${activeTaskCount}` },
-              {
-                key: "completed",
-                label: `已完成 ${allTasks.length - activeTaskCount}`,
-              },
-            ]}
-          />
-          {showTaskForm && canCreateTasks ? (
-            <form className="home-task-form" onSubmit={submitTask}>
-              <label>
-                关联案件
-                <Select<string>
-                  {...caseSelectPresentation}
-                  showSearch={{ optionFilterProp: "label" }}
-                  aria-label={"关联案件"}
-                  value={String(taskCaseId)}
-                  onChange={(selectedValue) => setTaskCaseId(selectedValue)}
-                  options={[
-                    { value: "", label: "请选择" },
-                    ...creatableCases.map((item) => ({
-                      value: String(item.id),
-                      label: caseOptionLabel(item, snapshot.data?.members ?? []),
-                    })),
-                  ]}
-                />
-              </label>
-              <label>
-                任务名称
-                <Input
-                  required
-                  maxLength={240}
-                  value={taskTitle}
-                  onChange={(event) => setTaskTitle(event.target.value)}
-                />
-              </label>
-              <label>
-                责任人
-                <Select<string>
-                  aria-label={"责任人"}
-                  value={String(taskAssignee)}
-                  onChange={(selectedValue) => setTaskAssignee(selectedValue)}
-                  options={[
-                    { value: "", label: "请选择" },
-                    ...data.members.map((member) => ({
-                      value: String(member.id),
-                      label: (
-                        <>
-                          {member.display_name}，{member.role}
-                        </>
-                      ),
-                    })),
-                  ]}
-                />
-              </label>
-              <label>
-                截止日期
-                <Input
-                  type="date"
-                  value={taskDue}
-                  onChange={(event) => setTaskDue(event.target.value)}
-                />
-              </label>
-              <Button
-                aria-label={String(createTask.isPending ? "正在保存" : "创建并保存任务")}
-                type="primary"
-                htmlType="submit"
-                disabled={
-                  createTask.isPending ||
-                  !creatableCases.some((item) => item.id === taskCaseId) ||
-                  taskAssignee === ""
-                }
-              >
-                {createTask.isPending ? "正在保存" : "创建并保存任务"}
-              </Button>
-            </form>
-          ) : null}
-          {createTask.isError ? (
-            <p className="home-inline-error" role="alert">
-              {errorMessage(createTask.error)}
-            </p>
-          ) : null}
-          {tasks.length === 0 ? (
-            <p className="home-empty" role="status">
-              {taskFilter === "mine"
-                ? "当前身份没有未完成的分派任务。"
-                : "没有符合条件的任务记录。"}
-            </p>
-          ) : (
-            <ul className="home-task-list">
-              {tasks.slice(0, 8).map((task) => (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  caseTitle={caseTitles.get(task.case_id) ?? task.case_id}
-                  assignee={members.get(task.assignee_id) ?? task.assignee_id}
-                  canComplete={canCompleteTasks}
-                  onComplete={() => completeTask(task)}
-                  pending={updateTask.isPending && updateTask.variables?.taskId === task.id}
-                />
-              ))}
-            </ul>
-          )}
-          {updateTask.isError ? (
-            <p className="home-inline-error" role="alert">
-              {errorMessage(updateTask.error)}
-            </p>
-          ) : null}
-          <Link className="home-view-all" to="/workbench/tasks">
-            查看全部任务
-          </Link>
-        </section>
-
-        <section className="home-panel home-case-work" aria-labelledby="home-case-work-title">
-          <header className="home-panel-head">
-            <div className="home-section-title">
-              <span aria-hidden="true" />
-              <h2 id="home-case-work-title">按案件处理</h2>
-            </div>
-            <Link className="home-view-all" to="/cases">
-              全部案件
-            </Link>
-          </header>
-          {caseWork.length === 0 ? (
-            <p className="home-empty">当前无可见案件。</p>
-          ) : (
-            <ul className="home-case-work-list">
-              {caseWork.map(({ item, tasks: caseTasks, remediations: caseRemediations }) => (
-                <li key={item.id}>
-                  <div className="home-case-work-heading">
-                    <Link to={caseHref(item.id, null)}>{item.title}</Link>
-                    <TechnicalDetail value={item.id} label="案件标识" />
-                  </div>
-                  <div className="home-case-work-details">
-                    {item.severity ? (
-                      <StatusText
-                        tone={
-                          item.severity === "high" || item.severity === "critical"
-                            ? "bad"
-                            : item.severity === "medium"
-                              ? "attention"
-                              : "neutral"
-                        }
-                      >
-                        {item.severity === "high" || item.severity === "critical"
-                          ? "高风险"
-                          : item.severity === "medium"
-                            ? "中风险"
-                            : item.severity === "low"
-                              ? "低风险"
-                              : item.severity === "info"
-                                ? "提示"
-                                : item.severity === "unrated"
-                                  ? "未分级"
-                                  : "风险级别未知"}
-                      </StatusText>
-                    ) : null}
-                    {item.profile?.due_at ? (
-                      <span>案件期限 · {formatDateTime(item.profile.due_at)}</span>
-                    ) : null}
-                    {caseTasks.map((task) => (
-                      <Link key={task.id} to={caseHref(item.id, null)}>
-                        {task.title} · {taskStatusLabel(task.status)}
-                        {task.due_at ? ` · 截止 ${formatDateTime(task.due_at)}` : " · 未设期限"}
-                      </Link>
-                    ))}
-                    {caseRemediations.map((remediation) => (
-                      <Link key={remediation.id} to={caseHref(item.id, remediation.run_id)}>
-                        整改：{remediation.measure} · {remediationStatusLabel(remediation.status)} ·
-                        截止 {formatDateTime(remediation.due_at)}
-                      </Link>
-                    ))}
-                    {caseTasks.length === 0 &&
-                    caseRemediations.length === 0 &&
-                    (item.severity === "high" || item.severity === "critical") ? (
-                      <span>打开案件查看风险详情</span>
-                    ) : null}
-                  </div>
-                  <Button
-                    className="home-case-work-next-step"
-                    htmlType="button"
-                    aria-expanded={activeNextStepCaseId === item.id}
-                    onClick={() =>
-                      setSelectedNextStep((current) =>
-                        current?.actorScope === nextStepActorScope && current.caseId === item.id
-                          ? null
-                          : { actorScope: nextStepActorScope, caseId: item.id },
-                      )
-                    }
-                  >
-                    {activeNextStepCaseId === item.id ? "收起下一步" : "查看下一步"}
-                  </Button>
-                  {activeNextStepCaseId === item.id ? (
-                    <WorkbenchCaseNextStep
-                      key={`${nextStepActorScope}:${item.id}`}
-                      caseId={item.id}
-                    />
-                  ) : null}
-                  <Link className="home-case-work-open" to={caseHref(item.id, null)}>
-                    打开案件
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
-
-      <section className="home-panel home-recent" aria-labelledby="home-recent-title">
-        <header className="home-panel-head">
-          <div className="home-section-title">
-            <span aria-hidden="true" />
-            <h2 id="home-recent-title">最近审查与案件</h2>
-          </div>
-          <Link className="home-view-all" to="/cases">
-            查看全部案件
-          </Link>
-        </header>
-        {cases.length === 0 ? (
-          <p className="home-empty">当前身份没有可见案件。</p>
-        ) : (
-          <div className="home-table-scroll">
-            <Table
-              className="data-table home-recent-table"
-              columns={recentCaseColumns}
-              dataSource={recentCases}
-              rowKey="id"
-              pagination={false}
-              scroll={{ x: "max-content" }}
-            />
-          </div>
-        )}
-      </section>
-
-      <CircuitStrip nodes={circuitNodes} />
-
-      <IntakePendingList
-        key={intakeActorScope}
-        actor={actor}
-        selectedOperationId={activeIntakeSelection?.detail.operation_id ?? null}
-        onSelectContinuation={(selection) =>
-          setSelectedIntake({ actorScope: intakeActorScope, selection })
-        }
-        onArchived={(operationId) => {
-          setSelectedIntake((current) =>
-            current?.actorScope === intakeActorScope &&
-            current.selection.detail.operation_id === operationId
-              ? {
-                  ...current,
-                  selection: { ...current.selection, archived: true },
-                }
-              : current,
-          );
-        }}
-      />
-
-      <section className="home-reporting" aria-labelledby="home-reporting-title">
-        <header className="home-reporting-head">
-          <h2 id="home-reporting-title">审查统计</h2>
-          <label className="home-period-select">
-            统计周期
-            <Select<string>
-              aria-label={"统计周期"}
-              value={String(period)}
-              onChange={(selectedValue) => {
-                const value = selectedValue;
-                setPeriod(value === "day" || value === "month" ? value : "week");
-              }}
-              options={[
-                { value: "day", label: "今日" },
-                { value: "week", label: "本周" },
-                { value: "month", label: "本月" },
-              ]}
-            />
-          </label>
-        </header>
-        <dl className="home-metrics" aria-label="工作台摘要">
-          {metrics.map((metric) => (
-            <div className={`home-metric home-metric-${metric.tone}`} key={metric.key}>
-              <span className="home-metric-icon" aria-hidden="true">
-                {metric.icon}
-              </span>
-              <div>
-                <dt>{metric.label}</dt>
-                <dd>{metric.value}</dd>
-                {metric.hint ? <p>{metric.hint}</p> : null}
-              </div>
-            </div>
-          ))}
-        </dl>
-      </section>
-
-      <div className="home-content-grid workbench-content-grid">
-        <IntakePrimaryContract
-          key={intakeActorScope}
-          actor={actor}
-          selectedContinuation={activeIntakeSelection}
-        />
-
-        <aside className="home-summary-stack" aria-label="真实审查进展与风险分布">
-          <section className="home-panel" aria-labelledby="home-progress-title">
-            <header className="home-panel-head">
-              <div className="home-section-title">
-                <span aria-hidden="true" />
-                <h2 id="home-progress-title">审查进展</h2>
-              </div>
-              <span className="home-panel-meta">
-                {period === "day" ? "今日" : period === "week" ? "本周" : "本月"}
-              </span>
-            </header>
-            <ProgressDonut rows={dashboard.progress} visibleCases={dashboard.visible_cases} />
-            <p className="home-summary-note">
-              环图按可见案件的互斥业务状态统计；已完成审查 {dashboard.completed_reviews}{" "}
-              项；平均运行时长{" "}
-              {dashboard.average_duration_ms === null
-                ? "未知"
-                : `${(dashboard.average_duration_ms / 1000).toFixed(1)} 秒`}
-              。
-            </p>
-          </section>
-          <section className="home-panel" aria-labelledby="home-risk-title">
-            <header className="home-panel-head">
-              <div className="home-section-title">
-                <span aria-hidden="true" />
-                <h2 id="home-risk-title">审查发现分布</h2>
-              </div>
-            </header>
-            <ProgressList
-              kind="risk"
-              total={dashboard.risks.reduce((total, row) => total + row.count, 0)}
-              rows={dashboard.risks.map((row) => ({
-                key: row.severity,
-                label:
-                  row.severity === "high"
-                    ? "高风险"
-                    : row.severity === "medium"
-                      ? "中风险"
-                      : row.severity === "low"
-                        ? "低风险"
-                        : row.severity === "info"
-                          ? "提示"
-                          : "未分级",
-                count: row.count,
-              }))}
-            />
-            <p className="home-summary-note">
-              按可见案件最新审查的发现项分级统计；未分级事项保持未分级。
-            </p>
-          </section>
-        </aside>
-
-        <section className="home-panel home-recent" aria-labelledby="home-remediation-title">
-          <header className="home-panel-head">
-            <div className="home-section-title">
-              <span aria-hidden="true" />
-              <h2 id="home-remediation-title">整改跟踪</h2>
-            </div>
-            <Link className="home-view-all" to="/workbench/remediation">
-              进入整改中心
-            </Link>
-          </header>
-          {remediations.length === 0 ? (
-            <p className="home-empty">没有获取到整改记录。</p>
-          ) : (
-            <CollapsibleSection
-              id="home-remediation-list"
-              title="整改跟踪"
-              summaryLabel="展开整改记录"
-              count={remediations.length}
-            >
-              <ul className="home-record-list">
-                {remediations.map((item) => (
-                  <li key={item.id}>
-                    <Link to={caseHref(item.case_id, item.run_id)}>
-                      <strong>{item.measure}</strong>
-                      <span>
-                        {item.case_title}，责任人{" "}
-                        {members.get(item.assignee_id) ?? item.assignee_id}
-                      </span>
-                    </Link>
-                    <span className="home-record-status">
-                      {remediationStatusLabel(item.status)}
-                    </span>
-                    <TechnicalDetail label="整改状态技术详情" value={item.status} />
-                    <time dateTime={item.due_at}>{formatDateTime(item.due_at)}</time>
-                  </li>
-                ))}
-              </ul>
-            </CollapsibleSection>
-          )}
-        </section>
-
-        <section className="home-panel home-recent" aria-labelledby="home-audit-title">
-          <header className="home-panel-head">
-            <div className="home-section-title">
-              <span aria-hidden="true" />
-              <h2 id="home-audit-title">最近业务记录</h2>
-            </div>
-            <span className="home-panel-meta">{data.audit.length} 条可见事件</span>
-          </header>
-          {audit.length === 0 ? (
-            <p className="home-empty">没有获取到审计记录。</p>
-          ) : (
-            <CollapsibleSection
-              id="home-audit-list"
-              title="最近业务记录"
-              summaryLabel="展开业务记录"
-              count={audit.length}
-            >
-              <ol className="home-audit-list">
-                {audit.map((event) => (
-                  <li key={event.id}>
-                    <time dateTime={event.at}>{formatDateTime(event.at)}</time>
-                    <div>
-                      {event.case_id ? (
-                        <>
-                          <Link to={`/cases/${encodeURIComponent(event.case_id)}`}>
-                            {event.case_title ?? "未命名案件"}
-                          </Link>
-                          <TechnicalDetail value={event.case_id} label="案件标识" />
-                        </>
-                      ) : (
-                        <span>平台级事件</span>
-                      )}
-                      <p>{event.summary}</p>
-                      <small>
-                        {event.actor_name}，{businessActionLabel(event.action)}
-                      </small>
-                      <TechnicalDetail label="操作类型技术详情" value={event.action} />
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </CollapsibleSection>
-          )}
-        </section>
-      </div>
-      <p className="home-snapshot-time">
-        数据生成于 <time dateTime={data.generated_at}>{formatDateTime(data.generated_at)}</time>
-      </p>
-    </section>
-  );
+  const scope = actorReadContextKey(session.data);
+  return <PersonalWorkspace key={scope} actor={session.data} scope={scope} />;
 }

@@ -57,11 +57,13 @@ function pendingStatus(errorCode: string | null): string {
 export function IntakePendingList({
   actor,
   selectedOperationId = null,
+  compact = false,
   onSelectContinuation,
   onArchived,
 }: {
   actor: Actor | null;
   selectedOperationId?: string | null;
+  compact?: boolean;
   onSelectContinuation: (selection: IntakeContinuationSelection) => void;
   onArchived: (operationId: string) => void;
 }) {
@@ -69,6 +71,8 @@ export function IntakePendingList({
   const actorScope = actorScopeKey(actor);
   const actorScopeRef = useRef(actorScope);
   actorScopeRef.current = actorScope;
+  const [expanded, setExpanded] = useState(false);
+  const showDetails = !compact || expanded;
   const [pageState, setPageState] = useState<{
     actorScope: string;
     cursors: (string | null)[];
@@ -92,8 +96,8 @@ export function IntakePendingList({
   const detailController = useRef<AbortController | null>(null);
 
   const pending = useQuery({
-    queryKey: queryKeys.pendingIntakes(actorScope, cursor),
-    queryFn: ({ signal }) => listPendingIntakes(cursor, signal),
+    queryKey: [...queryKeys.pendingIntakes(actorScope, cursor), compact ? 2 : 10],
+    queryFn: ({ signal }) => listPendingIntakes(cursor, signal, compact ? 2 : 10),
     enabled: actor !== null,
     retry: false,
   });
@@ -238,16 +242,23 @@ export function IntakePendingList({
       <header className="home-panel-head">
         <div className="home-section-title">
           <span aria-hidden="true" />
-          <h2 id="intake-pending-title">我的未完成办理</h2>
+          <h2 id="intake-pending-title">{compact ? "上次没传完" : "我的未完成办理"}</h2>
           {pending.data ? <strong className="home-figure-badge">{items.length}</strong> : null}
         </div>
-        {actor !== null ? (
+        {actor !== null && compact && items.length > 0 ? (
+          <Button size="small" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+            {expanded ? "收起续办" : "查看续办"}
+          </Button>
+        ) : null}
+        {actor !== null && showDetails && (!compact || items.length > 0) ? (
           <Button htmlType="button" disabled={pending.isFetching} onClick={retryList}>
             刷新列表
           </Button>
         ) : null}
       </header>
-      <p className="intake-pending-summary">换浏览器或重新登录后，仍可在这里继续办理。</p>
+      {!compact ? (
+        <p className="intake-pending-summary">换浏览器或重新登录后，仍可在这里继续办理。</p>
+      ) : null}
       {notice === null ? null : (
         <Alert className="intake-pending-feedback" type="success" showIcon title={notice} />
       )}
@@ -280,7 +291,10 @@ export function IntakePendingList({
           当前没有未完成办理。
         </p>
       ) : null}
-      {items.length > 0 ? (
+      {compact && !showDetails && items[0] ? (
+        <p className="intake-pending-summary">{items[0].title}</p>
+      ) : null}
+      {items.length > 0 && showDetails ? (
         <ol className="intake-pending-rows" aria-busy={pending.isFetching}>
           {items.map((item) => {
             const detailBusy = detailOperationId === item.operation_id;
@@ -395,7 +409,10 @@ export function IntakePendingList({
           })}
         </ol>
       ) : null}
-      {actor !== null && pending.data ? (
+      {actor !== null &&
+      showDetails &&
+      pending.data &&
+      (!compact || pageNumber > 1 || pending.data.next_cursor) ? (
         <nav className="intake-pending-pagination" aria-label="未完成办理分页">
           <Button
             htmlType="button"

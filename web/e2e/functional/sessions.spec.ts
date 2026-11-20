@@ -26,7 +26,7 @@ import {
 import { parseActor, parseSettings } from "../../src/api/parse";
 
 test(
-  "session UI enters contracts by default and restores the authorized case link after login",
+  "session UI enters the personal workbench by default and restores the authorized case link after login",
   operations("createSession", "getSession", "deleteSession", "listCases"),
   async ({ page }) => {
     await page.goto(`${webURL}/login`);
@@ -36,20 +36,19 @@ test(
     await expect(page.getByRole("alert")).toContainText("账号或密码不正确");
     await page.getByLabel("密码", { exact: true }).fill("admin-demo");
     await page.getByRole("button", { name: "登录", exact: true }).click();
-    await expect(page.getByRole("button", { name: "退出", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "头像菜单", exact: true })).toBeVisible();
     const session = await body(await page.request.get(`${apiURL}/api/session`));
     expect(parseActor(session).role).toBe("admin");
-    await expect(page).toHaveURL(`${webURL}/contract-desk`);
-    await expect(page.getByRole("searchbox", { name: "材料名或案件" })).toBeVisible();
-    await expect(page.getByLabel("全局搜索案件")).toHaveCount(0);
-    await page.goto(`${webURL}/?q=ledger#main`);
-    await expect(page).toHaveURL(`${webURL}/contract-desk?q=ledger#main`);
+    await expect(page).toHaveURL(`${webURL}/`);
+    await expect(page.getByLabel("全局搜索案件")).toBeVisible();
+    await page.goto(`${webURL}/workbench/home?q=ledger#main`);
+    await expect(page).toHaveURL(`${webURL}/?q=ledger#main`);
     const nav = page.getByRole("navigation", { name: "主导航", exact: true });
     await nav.getByRole("link", { name: "案件与材料", exact: true }).click();
     await expect(page.getByRole("heading", { name: "案件", exact: true })).toBeVisible();
-    await nav.getByRole("menuitem", { name: "更多业务" }).click();
-    await nav.getByRole("link", { name: "工作台概览", exact: true }).click();
-    await expect(page).toHaveURL(`${webURL}/workbench/home`);
+    await nav.getByRole("link", { name: "我的待办", exact: true }).click();
+    await expect(page).toHaveURL(`${webURL}/`);
+    await page.getByRole("button", { name: "头像菜单", exact: true }).click();
     await page.getByRole("button", { name: "退出", exact: true }).click();
     await expect(page.getByRole("heading", { name: "登录合同审查", exact: true })).toBeVisible();
     expect((await page.request.get(`${apiURL}/api/session`)).status()).toBe(401);
@@ -89,9 +88,10 @@ test("sidebars retain readable labels, keyboard controls and contained narrow la
   });
   const rail = page.locator(".shell-sidenav");
   const nav = rail.getByRole("navigation", { name: "主导航" });
-  const contracts = nav.getByRole("link", { name: "合同", exact: true });
+  const contracts = nav.getByRole("link", { name: "合同清单", exact: true });
   const cases = nav.getByRole("link", { name: "案件与材料", exact: true });
   const tasks = nav.getByRole("link", { name: "我的待办", exact: true });
+  const review = nav.getByRole("link", { name: "发起审查", exact: true });
   const tasksItem = tasks.locator("xpath=ancestor::*[@role='menuitem']");
   const trigger = rail.getByRole("button", { name: "收合侧栏" });
 
@@ -99,7 +99,7 @@ test("sidebars retain readable labels, keyboard controls and contained narrow la
   await expect(contracts).toHaveCSS("color", tokens.secondary);
   await expect(tasks).toHaveCSS("color", tokens.secondary);
   await expect(tasksItem.locator("svg")).toHaveCSS("color", tokens.secondary);
-  await expect(nav.getByText("合同业务", { exact: true })).toBeVisible();
+  await expect(nav.getByText("合同履约", { exact: true })).toBeVisible();
   await expect(cases).toHaveAttribute("aria-current", "page");
   await expect(cases).toHaveCSS("color", tokens.selectedText);
   await expect(cases.locator("xpath=ancestor::*[@role='menuitem']")).toHaveCSS(
@@ -111,14 +111,19 @@ test("sidebars retain readable labels, keyboard controls and contained narrow la
   await expect(tasks).toHaveCSS("color", tokens.primary);
   await expect(tasksItem).toHaveCSS("background-color", tokens.raised);
   await tasksItem.press("ArrowDown");
-  await expect(cases).toBeFocused();
-  await expect(cases).toHaveCSS("outline-color", tokens.focus);
-  await expect(cases).toHaveCSS("outline-style", "solid");
-  const tools = nav.getByRole("menuitem", { name: "管理与工具" });
+  await expect(review).toBeFocused();
+  await expect(review).toHaveCSS("outline-color", tokens.focus);
+  await expect(review).toHaveCSS("outline-style", "solid");
+  const tools = nav.getByRole("menuitem", { name: "更多工具" });
   await expect(tools).toHaveAttribute("aria-expanded", "false");
   await tools.hover();
   await expect(tools).toHaveAttribute("aria-expanded", "false");
   await tools.press("Enter");
+  await expect(nav.getByRole("link", { name: "API 文档" })).toHaveCount(0);
+  const account = page.getByRole("button", { name: "头像菜单" });
+  await account.press("Enter");
+  await page.getByRole("switch", { name: "专业模式" }).press("Space");
+  await account.press("Enter");
   await expect(nav.getByRole("link", { name: "API 文档" })).toBeVisible();
 
   await expect(trigger.locator("svg")).toHaveCSS("color", tokens.secondary);
@@ -143,7 +148,7 @@ test("sidebars retain readable labels, keyboard controls and contained narrow la
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 
   await mobileTrigger.press("Enter");
-  await menu.getByRole("link", { name: "合同", exact: true }).press("Enter");
+  await menu.getByRole("link", { name: "合同清单", exact: true }).press("Enter");
   await expect(page).toHaveURL(`${webURL}/contract-desk`);
   await expect(menu).toBeHidden();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);

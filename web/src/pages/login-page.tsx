@@ -40,7 +40,7 @@ export function LoginPage({ audience = "client" }: { audience?: SessionAudience 
       ? from
       : audience === "admin"
         ? "/admin/settings"
-        : "/contract-desk";
+        : "/";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 

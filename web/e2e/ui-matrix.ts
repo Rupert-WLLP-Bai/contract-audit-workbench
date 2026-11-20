@@ -152,7 +152,17 @@ const targets: Target[] = [
         .first()
         .waitFor({ state: "visible", timeout: readyTimeout });
       await waitForText(page, ".col-doc .doc-pane[data-document-version-id]");
-      await page.getByRole("button", { name: "执行过程" }).click();
+      const execution = page.getByRole("button", { name: "执行过程" });
+      if (!(await execution.isVisible())) {
+        await page.getByRole("button", { name: "打开主导航" }).click();
+        const menu = page.getByRole("dialog", { name: "主导航" });
+        const account = menu.getByRole("button", { name: "头像菜单" });
+        await account.click();
+        await menu.getByRole("switch", { name: "专业模式" }).click();
+        await account.click();
+        await menu.getByRole("button", { name: "关闭" }).click();
+      }
+      await execution.click();
       await page
         .getByRole("dialog", { name: "执行过程" })
         .waitFor({ state: "visible", timeout: readyTimeout });

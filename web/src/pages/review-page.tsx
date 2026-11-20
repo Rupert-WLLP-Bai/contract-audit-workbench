@@ -8,6 +8,7 @@
 // Copyright: See LICENSE
 // End file metadata.
 
+import { useProfessionalMode } from "../components/app-shell-preferences";
 import { Button, Drawer, Tabs } from "antd";
 import {
   cloneElement,
@@ -259,24 +260,30 @@ export function ReviewPage() {
   const navigate = useNavigate();
   const navigationType = useNavigationType();
   const [params, setParams] = useSearchParams();
+  const { enabled: professional } = useProfessionalMode();
   const requestedDrawer = params.get("drawer");
   const requestedLegacySection =
     params.get("review_section") ??
     (requestedDrawer === null ? sectionForHash(location.hash) : null);
   const requestedTab = params.get("tab");
   const [legacyDrawer, legacyTab] = legacyReviewDrawer(requestedLegacySection);
-  const drawer =
+  const requestedSurface =
     requestedDrawer === "record" || requestedDrawer === "execution"
       ? requestedDrawer
       : legacyDrawer;
-  const recordTab = reviewRecordTabs.find((tab) => tab === requestedTab) ?? legacyTab ?? "finding";
+  const concealedExecution = requestedSurface === "execution" && !professional;
+  const drawer = concealedExecution ? "record" : requestedSurface;
+  const recordTab = concealedExecution
+    ? "review"
+    : (reviewRecordTabs.find((tab) => tab === requestedTab) ?? legacyTab ?? "finding");
   function selectDrawer(nextDrawer: ReviewDrawer | null, tab?: ReviewRecordTab) {
+    if (nextDrawer === "execution" && !professional) return;
     setParams((current) => writeReviewDrawer(new URLSearchParams(current), nextDrawer, tab), {
       state: location.state,
     });
   }
   useEffect(() => {
-    if (requestedLegacySection === null) return;
+    if (requestedLegacySection === null && !concealedExecution) return;
     const next = writeReviewDrawer(
       new URLSearchParams(location.search),
       drawer,
@@ -287,11 +294,12 @@ export function ReviewPage() {
       {
         pathname: location.pathname,
         search: search ? `?${search}` : "",
-        hash: drawer ? location.hash : "",
+        hash: drawer && !concealedExecution ? location.hash : "",
       },
       { replace: true, state: location.state },
     );
   }, [
+    concealedExecution,
     drawer,
     location.pathname,
     location.search,
@@ -397,8 +405,8 @@ export function ReviewPage() {
   const requestedItem = scopeMismatch ? null : params.get("work_item");
   const [diagnosticScope, setDiagnosticScope] = useState<string | null>(null);
   const currentDiagnosticScope =
-    session.data?.role === "admin"
-      ? [caseId, runId, session.data.id, session.data.tenant_id, session.data.org_id].join("\u0000")
+    professional && session.data?.role === "admin"
+      ? [caseId, runId, actorReadContextKey(session.data)].join("\u0000")
       : null;
   const diagnostics = useReviewDiagnostics(
     caseId,
@@ -1397,6 +1405,18 @@ export function ReviewPage() {
     });
   }
 
+  function selectAttempt(attemptId: string) {
+    const next = new URLSearchParams(params);
+    next.set("attempt_id", attemptId);
+    // A citation belongs to its own attempt; never show the previous
+    // attempt's evidence after switching.
+    next.delete("citation");
+    next.delete("finding");
+    next.delete("work_kind");
+    next.delete("work_item");
+    setParams(next, { state: navigationState });
+  }
+
   const workspaceView = (
     <ReviewWorkspaceView
       sourceDocumentId={sourceVerified ? requestedSourceDocument : null}
@@ -1447,17 +1467,7 @@ export function ReviewPage() {
           { state: navigationState },
         );
       }}
-      onSelectAttempt={(attemptId) => {
-        const next = new URLSearchParams(params);
-        next.set("attempt_id", attemptId);
-        // A citation belongs to its own attempt; never show the previous
-        // attempt's evidence after switching.
-        next.delete("citation");
-        next.delete("finding");
-        next.delete("work_kind");
-        next.delete("work_item");
-        setParams(next, { state: navigationState });
-      }}
+      onSelectAttempt={selectAttempt}
       selectedEvidenceId={selectedCitation}
       onSelectEvidence={(evidenceId) => {
         if (actorScope) {
@@ -1650,6 +1660,25 @@ export function ReviewPage() {
   const historyRecord =
     session.isSuccess && !session.isFetching ? (
       <div id="review-diff-section">
+        {!professional && execution && execution.attempts.length > 1 ? (
+          <label className="field">
+            查看审查尝试
+            <select
+              value={selectedAttempt?.id}
+              onChange={(event) => selectAttempt(event.target.value)}
+            >
+              {execution.attempts.map((attempt) => (
+                <option key={attempt.id} value={attempt.id}>
+                  第 {attempt.ordinal} 次审查
+                  {attempt.accepted_at ? ` · ${formatDateTime(attempt.accepted_at)}` : null}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {!professional && selectedAttempt?.history_kind === "legacy_unfrozen" ? (
+          <p>较早的审查没有保存当时使用的材料版本，无法核对当时的来源。</p>
+        ) : null}
         <RunProvenance workspace={workspace} showDiagnostics={diagnosticData !== null} />
         <ReviewDiff
           caseId={caseId}
@@ -1883,13 +1912,19 @@ export function ReviewPage() {
                 >
                   审查记录
                 </Button>
-                <Button
-                  type="text"
-                  aria-haspopup="dialog"
-                  onClick={() => selectDrawer("execution")}
-                >
-                  执行过程
-                </Button>
+                {professional ? (
+                  <Button
+                    type="text"
+                    aria-haspopup="dialog"
+                    onClick={() => selectDrawer("execution")}
+                  >
+                    执行过程
+                  </Button>
+                ) : canCancel ? (
+                  <Button type="text" loading={cancel.isPending} onClick={() => cancel.mutate()}>
+                    取消本次执行
+                  </Button>
+                ) : null}
                 {reportRecord ? (
                   <Button
                     type="primary"
@@ -1938,6 +1973,11 @@ export function ReviewPage() {
                 {reportError}
               </p>
             )}
+            {!professional && cancel.isError ? (
+              <p className="callout" role="alert">
+                {errorMessage(cancel.error)}
+              </p>
+            ) : null}
             {reportRecord && (
               <p role="status" className="sr-only">
                 报告已创建，版本 {reportRecord.version}。
@@ -2095,7 +2135,9 @@ export function ReviewPage() {
             footer={
               drawer === "record" && recordTab === "finding" ? (
                 <div className="review-record-actions">
-                  <Button onClick={() => selectDrawer("execution")}>查看执行过程</Button>
+                  {professional ? (
+                    <Button onClick={() => selectDrawer("execution")}>查看执行过程</Button>
+                  ) : null}
                   <Button
                     type="primary"
                     disabled={!canDecide || !activeFinding}

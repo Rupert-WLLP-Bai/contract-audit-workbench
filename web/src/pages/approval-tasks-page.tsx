@@ -659,16 +659,33 @@ export function ApprovalTasksPage() {
   const inbox = useApprovalInbox(view, actorScope(actor), actor !== null);
   const items = useMemo(() => inbox.data?.pages.flatMap((page) => page.items) ?? [], [inbox.data]);
   const [selection, setSelection] = useState<Selection>(null);
+  const requestedTask = view === "todo" ? params.get("task")?.trim() : null;
+  const activeSelection =
+    session.isSuccess && !session.isFetching
+      ? requestedTask
+        ? { kind: "task" as const, taskId: requestedTask }
+        : selection
+      : null;
+
+  function openSelection(next: Selection) {
+    if (params.has("task")) {
+      const scope = new URLSearchParams(params);
+      scope.delete("task");
+      setParams(scope, { replace: true });
+    }
+    setSelection(next);
+  }
 
   function changeView(next: string) {
     const scope = new URLSearchParams(params);
     scope.set("view", next);
+    scope.delete("task");
     setParams(scope, { replace: true });
     setSelection(null);
   }
 
   function selectRound(contractId: string, round: ApprovalRoundReadSummary) {
-    setSelection({
+    openSelection({
       kind: "round",
       contractId,
       roundId: round.approval_round_id,
@@ -713,14 +730,14 @@ export function ApprovalTasksPage() {
             hasNext={inbox.hasNextPage}
             loadingMore={inbox.isFetchingNextPage}
             onLoadMore={() => void inbox.fetchNextPage()}
-            onOpen={setSelection}
+            onOpen={openSelection}
           />
         </section>
         <ApprovalDetailPanel
-          key={selectionKey(selection)}
-          selection={selection}
+          key={selectionKey(activeSelection)}
+          selection={activeSelection}
           onSelectRound={selectRound}
-          onClose={() => setSelection(null)}
+          onClose={() => openSelection(null)}
         />
       </div>
     </ListPage>
