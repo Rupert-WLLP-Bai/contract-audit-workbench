@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r13
+// Revision: r14
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -308,20 +308,17 @@ function open(
     moreApprovals?: boolean;
     emptyApprovals?: boolean;
     deniedWorkbench?: boolean;
-    canUpload?: boolean;
   } = {},
 ) {
   const workbench = options.data ?? snapshot();
   const paths: string[] = [];
-  const uploadActor = options.canUpload ? { ...actor, role: "admin" } : actor;
-  setSessionIdentity(uploadActor);
+  setSessionIdentity(actor);
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), "http://home.test");
       paths.push(url.pathname);
-      if (url.pathname === "/api/session")
-        return json({ ...session, actor: { ...session.actor, role: uploadActor.role } });
+      if (url.pathname === "/api/session") return json(session);
       if (url.pathname === "/api/workbench")
         return options.deniedWorkbench ? json({}, 403) : json(workbench);
       if (url.pathname === "/api/intakes/pending") return json({ items: [], next_cursor: null });
@@ -374,30 +371,61 @@ afterEach(() => {
 });
 
 describe("Personal workbench home", () => {
-  it("uses authoritative assignment and case counts in their separate scopes", async () => {
-    open();
-    const heading = await screen.findByRole("heading", { name: "我的待办" });
-    await waitFor(() => expect(heading.parentElement).toHaveTextContent("你有 3 件待办。"));
-    const summaries = screen.getByLabelText("待办汇总");
-    expect(summaries).toHaveTextContent("整改待确认（可见案件）1");
-    const table = screen.getByRole("table");
-    expect(within(table).getAllByRole("link")).toHaveLength(3);
+  it("shows independently scoped rows and one action per item", async () => {
+    const { user } = open();
+    const assigned = await screen.findByRole("tab", { name: "指派给我 2" });
+    expect(assigned).toHaveAttribute("aria-selected", "true");
+    const table = screen.getByRole("table", { name: "指派给我" });
+    for (const name of ["事项", "类型", "更新时间 / 截止", "操作"]) {
+      expect(within(table).getByRole("columnheader", { name })).toBeVisible();
+    }
+    expect(within(table).getAllByRole("link")).toHaveLength(2);
     expect(within(table).queryByText("补充附件")).not.toBeInTheDocument();
     expect(within(table).queryByText("其他人的审查")).not.toBeInTheDocument();
     expect(within(table).getByRole("link", { name: "查看任务：确认质保条款" })).toHaveAttribute(
       "href",
       "/workbench/tasks?task=task-mine",
     );
-    expect(within(table).getByRole("link", { name: "查看会签：待会签合同" })).toHaveAttribute(
-      "href",
-      "/workbench/approvals?view=todo&task=approval-1",
-    );
     expect(within(table).getByRole("link", { name: "查看补件：补充采购文件" })).toHaveAttribute(
       "href",
       "/cases/case-1/reviews/run-1?attempt_id=attempt-1&work_kind=request&work_item=request-1&drawer=record&tab=supplement",
     );
-    expect(screen.getByRole("region", { name: "可见案件待处理" })).toHaveTextContent("待判断 6 条");
-    expect(screen.queryByText("审查发现分布")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "团队待处理 2" }));
+    const team = within(screen.getByRole("table", { name: "团队待处理" }));
+    expect(team.getAllByText("3 条线索待判断")).toHaveLength(2);
+    expect(team.getByRole("link", { name: "去判断：设备维保合同" })).toHaveAttribute(
+      "href",
+      "/cases/case%2Fold/reviews/run%20old",
+    );
+    expect(team.getByRole("link", { name: "查看案件：专线采购合同" })).toHaveAttribute(
+      "href",
+      "/cases/case-1",
+    );
+    await user.click(screen.getByRole("tab", { name: "待我会签 1" }));
+    expect(await screen.findByRole("link", { name: "查看会签：待会签合同" })).toHaveAttribute(
+      "href",
+      "/workbench/approvals?view=todo&task=approval-1",
+    );
+    await user.click(screen.getByRole("tab", { name: "整改待确认 1" }));
+    expect(
+      within(screen.getByRole("table", { name: "整改待确认" })).getByRole("link"),
+    ).toHaveAttribute("href", "/cases/case%2Fold?work_kind=remediation&work_item=remediation-1");
+    expect(screen.queryByText("可见案件待处理")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "上次没传完" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "最近打开" })).not.toBeInTheDocument();
+  });
+
+  it("defaults to team if personal work is confirmed empty and keeps a manual selection", async () => {
+    const data = snapshot();
+    data.tasks = [];
+    data.cases = [caseRecord({ id: "team-case", pending_decisions: 2 })];
+    const { user } = open({ data, emptyApprovals: true });
+    const team = await screen.findByRole("tab", { name: "团队待处理 1", selected: true });
+    expect(team).toBeVisible();
+    expect(screen.getByRole("table", { name: "团队待处理" })).toHaveTextContent("2 条线索待判断");
+    await user.click(screen.getByRole("tab", { name: "指派给我 0" }));
+    expect(screen.getByRole("tab", { name: "指派给我 0", selected: true })).toBeVisible();
+    expect(screen.getByRole("table", { name: "指派给我" })).toHaveTextContent("暂无事项");
   });
 
   it("shows separate work for two evidence requests sharing one task, retaining exact attempts", () => {
@@ -418,32 +446,24 @@ describe("Personal workbench home", () => {
   it("shows lower bounds on denied evidence and paginated approval reads", async () => {
     const { user } = open({ deniedCase: "case/old", moreApprovals: true });
     expect(await screen.findByText(/部分案件的补件未能读取/)).toBeInTheDocument();
-    const summaries = screen.getByLabelText("待办汇总");
-    expect(summaries).toHaveTextContent("要补材料至少 1");
-    expect(summaries).toHaveTextContent("会签至少 1");
-    expect(screen.getByRole("heading", { name: "我的待办" }).parentElement).toHaveTextContent(
-      "目前确认有 3 件待办",
-    );
-    await user.click(screen.getByRole("button", { name: "查看全部待办" }));
-    expect(screen.getByRole("link", { name: "查看待会签" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "指派给我 至少 2" })).toBeVisible();
+    const approvals = await screen.findByRole("tab", { name: "待我会签 至少 1" });
+    await user.click(approvals);
+    expect(screen.getByRole("link", { name: "查看全部待会签" })).toHaveAttribute(
       "href",
       "/workbench/approvals?view=todo",
     );
   });
 
-  it("previews two actions in a dense inbox and keeps all tasks reachable", async () => {
+  it("previews three actions in a dense inbox and keeps all tasks reachable", async () => {
     const data = snapshot();
     data.tasks = Array.from({ length: 5 }, (_, index) =>
       task({ id: `t-${index}`, title: `待办 ${index}` }),
     );
     const { user } = open({ data, emptyApprovals: true });
-    await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "我的待办" }).parentElement).toHaveTextContent(
-        "你有 6 件待办",
-      ),
-    );
+    await screen.findByRole("tab", { name: "指派给我 6" });
     const table = screen.getByRole("table");
-    expect(within(table).getAllByRole("link")).toHaveLength(2);
+    expect(within(table).getAllByRole("link")).toHaveLength(3);
     const all = screen.getByRole("button", { name: "查看全部待办" });
     await user.click(all);
     expect(within(table).getAllByRole("link")).toHaveLength(6);
@@ -452,7 +472,7 @@ describe("Personal workbench home", () => {
       "/workbench/tasks?task=t-4",
     );
     await user.click(screen.getByRole("button", { name: "收起待办" }));
-    expect(within(table).getAllByRole("link")).toHaveLength(2);
+    expect(within(table).getAllByRole("link")).toHaveLength(3);
   });
 
   it("loads visible cases in batches and treats all unread cases as uncovered", async () => {
@@ -462,9 +482,9 @@ describe("Personal workbench home", () => {
     const more = await screen.findByRole("button", { name: "核对更多案件" });
     await waitFor(() => expect(more).toBeEnabled());
     expect(paths.filter((path) => path.endsWith("/evidence-requests"))).toHaveLength(8);
-    expect(screen.getByLabelText("待办汇总")).toHaveTextContent("要补材料未确认");
+    expect(screen.getByRole("tab", { name: "指派给我 未确认" })).toBeVisible();
     await user.click(more);
-    await waitFor(() => expect(screen.getByLabelText("待办汇总")).toHaveTextContent("要补材料0"));
+    await screen.findByRole("tab", { name: "指派给我 0" });
     expect(paths.filter((path) => path.endsWith("/evidence-requests"))).toHaveLength(9);
   });
 
@@ -493,29 +513,15 @@ describe("Personal workbench home", () => {
     recordRecentCaseVisit(actor, "case-1");
     open({ deniedWorkbench: true, emptyApprovals: true });
     expect(await screen.findByText("任务和可见案件暂未加载。")).toBeInTheDocument();
-    expect(screen.getByLabelText("待办汇总")).toHaveTextContent("要补材料未确认");
-    expect(
-      within(screen.getByRole("region", { name: "最近打开" })).queryByRole("link"),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "指派给我 未确认" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "最近打开" })).not.toBeInTheDocument();
   });
 
-  it("reports an exact zero when the visible-case scope is confirmed empty", async () => {
+  it("reports exact zero when the visible-case scope is confirmed empty", async () => {
     const data = snapshot();
     data.cases = [];
     open({ data, emptyApprovals: true });
-    const visible = await screen.findByRole("region", { name: "可见案件待处理" });
-    await waitFor(() => expect(visible).toHaveTextContent("待判断 0 条"));
-    expect(screen.getByLabelText("待办汇总")).toHaveTextContent("要补材料0");
-  });
-
-  it("opens the existing upload form after choosing a file", async () => {
-    const { user } = open({ canUpload: true });
-    expect(await screen.findByRole("heading", { name: "审一份新合同" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("案件标题")).not.toBeInTheDocument();
-    const file = new File(["质保"], "合同.txt", { type: "text/plain" });
-    await user.upload(screen.getByLabelText("选择主合同文件"), file);
-    expect(await screen.findByLabelText("案件标题")).toBeVisible();
-    expect(screen.getByText(/已选择 合同.txt/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "上传主合同并建立案件" })).toBeEnabled();
+    expect(await screen.findByRole("tab", { name: "团队待处理 0" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "指派给我 0", selected: true })).toBeVisible();
   });
 });

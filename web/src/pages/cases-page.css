@@ -1,0 +1,96 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles the case list toolbar, responsive view selection, filters, table layout and compact new-case form. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-20 */
+/* Updated: 2026-11-20 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+.case-list-toolbar,
+.case-list-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.case-list-toolbar {
+  justify-content: space-between;
+}
+
+.case-list-toolbar .case-list-tabs {
+  margin: 0;
+}
+
+.case-list-filter-fields {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 13rem;
+}
+
+.case-list-table {
+  background: var(--surface-raised);
+}
+
+.case-list-table strong,
+.case-list-table .meta {
+  overflow-wrap: anywhere;
+}
+
+.case-list-mobile-facts {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .case-list-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .case-list-mobile-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-block-start: var(--space-2);
+  }
+
+  .case-list-action {
+    overflow-wrap: anywhere;
+  }
+}
+
+.cases-page {
+  padding-block-start: var(--space-2);
+}
+
+.cases-page > .page-pattern-heading {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block-end: var(--space-2);
+  padding-block-end: 0;
+  border-block-end: 0;
+}
+
+.cases-page .page-pattern-actions {
+  justify-content: flex-end;
+}
+
+.cases-page .page-pattern-filters {
+  padding: 0 0 var(--space-2);
+}
+
+.case-list-table {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
+}
+
+.cases-page .page-pattern-heading h1 {
+  margin: 0;
+}
+
+.case-list-toolbar .case-list-tab {
+  min-block-size: var(--control-height);
+  padding-block: 0;
+}

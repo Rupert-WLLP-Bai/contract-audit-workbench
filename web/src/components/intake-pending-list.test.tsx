@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -157,6 +157,7 @@ function renderList(
   onSelectContinuation = vi.fn<(selection: IntakeContinuationSelection) => void>(),
   onArchived = vi.fn<(operationId: string) => void>(),
   compact = false,
+  hideWhenEmpty = false,
 ) {
   const client = new QueryClient({
     defaultOptions: {
@@ -173,6 +174,7 @@ function renderList(
         <IntakePendingList
           actor={actor}
           compact={compact}
+          hideWhenEmpty={hideWhenEmpty}
           onSelectContinuation={onSelectContinuation}
           onArchived={onArchived}
         />
@@ -186,7 +188,7 @@ describe("server-backed pending intake list", () => {
   it("keeps the compact preview to one action and preserves server-backed continuation", async () => {
     const service = new PendingService([pendingItem("op-1", "case-1", "采购合同")]);
     const onSelect = vi.fn<(selection: IntakeContinuationSelection) => void>();
-    renderList(service, onSelect, undefined, true);
+    renderList(service, onSelect, undefined, true, true);
     const user = userEvent.setup();
     const collection = await screen.findByRole("region", { name: "上次没传完" });
     const expand = await within(collection).findByRole("button", { name: "查看续办" });

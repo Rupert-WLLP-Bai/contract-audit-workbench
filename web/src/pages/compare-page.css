@@ -1,10 +1,10 @@
 /* File metadata (manifest mirror): */
-/* Purpose: Defines visual tokens and component/page rules, including Hallmark · built: the project · redesign: restyle…, .compare-page :focus-visible, .app--compare .breadcrumbs, .compare-page-head; the stylesheet is imported by the web shell and carries no application state. */
+/* Purpose: Styles the selected review pair, conclusion and source differences, scope notices and keyboard navigation in the comparison workspace. */
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
 /* Updated: 2026-11-20 */
-/* Revision: r4 */
+/* Revision: r5 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -701,5 +701,71 @@
 @media (max-width: 760px) {
   .compare-facts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.compare-view-tabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+}
+.compare-view-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  padding: 10px 2px;
+  cursor: pointer;
+  color: inherit;
+}
+.compare-view-tabs button[aria-selected="true"] {
+  color: var(--ant-color-primary);
+  border-bottom-color: var(--ant-color-primary);
+}
+.compare-run-select > label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1;
+}
+.compare-run-select .ant-select {
+  width: 100%;
+}
+.compare-run-select .meta {
+  flex-shrink: 0;
+}
+.compare-risk-counts > span {
+  color: var(--text-primary);
+}
+.compare-risk-counts [data-severity="high"] small {
+  color: var(--state-conflict);
+}
+.compare-risk-counts [data-severity="medium"] small {
+  color: var(--state-insufficient);
+}
+.compare-risk-counts [data-severity="low"] small {
+  color: var(--state-neutral);
+}
+.compare-risk-counts [data-severity="info"] small {
+  color: var(--state-progress);
+}
+.compare-risk-counts > span[data-severity] {
+  color: var(--text-primary);
+}
+@media (max-width: 760px) {
+  .compare-page-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .compare-page-head > div {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    width: 100%;
+  }
+  .compare-page-head h1 {
+    flex-basis: 100%;
+  }
+  .compare-page-links {
+    flex-wrap: wrap;
   }
 }

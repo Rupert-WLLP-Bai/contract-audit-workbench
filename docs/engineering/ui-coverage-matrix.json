@@ -555,10 +555,13 @@
       ],
       "implementationIssue": 258,
       "figmaNodeId": "8:923",
-      "screenshotRefs": ["compare.png"],
+      "screenshotRefs": [
+        "compare.png",
+        "../ui-redesign-20261120-v2/impl/359/compare-entry-real.png"
+      ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
-      "template": "ListPage"
+      "statusDetail": "PARTIAL：真实河南公开原件隔离副本验证两次留档选择；完整矩阵未运行。",
+      "template": "version selection"
     },
     {
       "designId": "UI-016",
@@ -1179,10 +1182,14 @@
       "designId": "UI-046",
       "viewId": "compare-detail",
       "route": "/compare?case_id=:caseId",
-      "title": "冻结执行对照",
+      "title": "审查记录对照",
       "site": "client",
       "kind": "view",
-      "sources": ["web/src/pages/compare-page.tsx"],
+      "sources": [
+        "web/src/pages/compare-page.tsx",
+        "web/src/pages/compare-page.css",
+        "web/src/domain/document-display.ts"
+      ],
       "implementationIssue": 258,
       "figmaNodeId": "8:3149",
       "screenshotRefs": [
@@ -1190,10 +1197,13 @@
         "audit/round41/compare-detail-1440.png",
         "audit/round41/compare-detail-1280.png",
         "audit/round41/compare-detail-1024.png",
-        "audit/round41/compare-detail-390.png"
+        "audit/round41/compare-detail-390.png",
+        "../ui-redesign-20261120-v2/impl/359/compare-original-real.png",
+        "../ui-redesign-20261120-v2/impl/359/compare-original-390-real.png",
+        "../ui-redesign-20261120-v2/impl/359/compare-outcome-real.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：真实河南两次留档的范围未确认一致，显示不可推断提示；完整矩阵未运行。",
       "template": "specialized comparison diff"
     },
     {

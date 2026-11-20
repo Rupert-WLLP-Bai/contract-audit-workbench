@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -58,12 +58,14 @@ export function IntakePendingList({
   actor,
   selectedOperationId = null,
   compact = false,
+  hideWhenEmpty = false,
   onSelectContinuation,
   onArchived,
 }: {
   actor: Actor | null;
   selectedOperationId?: string | null;
   compact?: boolean;
+  hideWhenEmpty?: boolean;
   onSelectContinuation: (selection: IntakeContinuationSelection) => void;
   onArchived: (operationId: string) => void;
 }) {
@@ -232,6 +234,15 @@ export function IntakePendingList({
   }
 
   const items = actor === null ? [] : (pending.data?.items ?? []);
+  if (hideWhenEmpty && !items.length) {
+    return pending.isError ? (
+      <Alert
+        type="warning"
+        title="暂时无法读取未完成办理"
+        action={<Button onClick={retryList}>重试</Button>}
+      />
+    ) : null;
+  }
 
   return (
     <section

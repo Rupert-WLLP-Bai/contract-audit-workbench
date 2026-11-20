@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,7 +14,7 @@ import { Select } from "antd";
 import { Button } from "antd";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { errorMessage } from "../api/http";
 import { getReview } from "../api/endpoints";
 import { paths } from "../api/paths";
@@ -31,7 +31,9 @@ import { TechnicalDetail } from "../components/technical-detail";
 import { InvalidTimeDetail } from "../components/invalid-time-detail";
 import { businessCapabilityLabel, businessDomainLabel } from "../domain/business-labels";
 import { caseIdentityDetails } from "../domain/case-identity";
-import { preciseTime } from "../domain/time";
+import { compactTime, preciseTime } from "../domain/time";
+import { displaySpans } from "../domain/document-display";
+import { ruleDifference, scopeDifference } from "../domain/review-diff";
 import {
   caseHref,
   decisionLabel,
@@ -230,7 +232,7 @@ function RunSelect({
           value={String(value?.id ?? "")}
           labelRender={() =>
             value
-              ? `审查当前状态 ${runLabel(value.state)} · 更新时间 ${preciseTime(value.updated_at)}`
+              ? `记录 ${runs.findIndex((run) => run.id === value.id) + 1} · ${runLabel(value.state)} · ${compactTime(value.updated_at)}`
               : "没有可选运行"
           }
           onChange={(selectedValue) => onChange(selectedValue)}
@@ -241,9 +243,9 @@ function RunSelect({
           styles={{ popup: { listItem: { whiteSpace: "normal" } } }}
           options={[
             ...(runs.length === 0 ? [{ value: "", label: "没有可选运行" }] : []),
-            ...runs.map((run) => ({
+            ...runs.map((run, index) => ({
               value: String(run.id),
-              label: `审查当前状态 ${runLabel(run.state)} · 审查更新时间 ${preciseTime(run.updated_at)} · 审查标识 ${run.id} · 最新执行标识 ${run.attempt_id ?? "未记录"}`,
+              label: `记录 ${index + 1} · ${runLabel(run.state)} · ${compactTime(run.updated_at)}`,
             })),
           ]}
         />
@@ -313,6 +315,32 @@ function MaterialPane({
     selectedDocument?.text == null
       ? []
       : segmentText(selectedDocument.text, resolved?.kind === "highlight" ? resolved : null, []);
+  const display = selectedDocument?.text ? displaySpans(selectedDocument.text) : [];
+  const projected = segments.flatMap((segment) => {
+    const chars = Array.from(segment.text);
+    const end = segment.start + chars.length;
+    const points = [
+      ...new Set([
+        segment.start,
+        end,
+        ...display
+          .flatMap((span) => [span.start, span.end])
+          .filter((point) => point > segment.start && point < end),
+      ]),
+    ].sort((a, b) => a - b);
+    return points.slice(0, -1).map((start, index) => {
+      const stop = points[index + 1]!;
+      return {
+        ...segment,
+        start,
+        text: chars.slice(start - segment.start, stop - segment.start).join(""),
+        display:
+          display.find(
+            (span) => start >= span.start && stop <= span.end && span.kind !== "heading",
+          ) ?? display.find((span) => start >= span.start && stop <= span.end),
+      };
+    });
+  });
   return (
     <article className="compare-material-pane">
       <header className="compare-material-head">
@@ -412,8 +440,18 @@ function MaterialPane({
               <p className="compare-unavailable">该运行没有可展示的解析正文。</p>
             ) : (
               <pre>
-                {segments.map((segment) =>
-                  segment.highlighted === "evidence" ? (
+                {projected.map((segment) =>
+                  segment.display?.kind === "hidden" || segment.display?.kind === "image" ? (
+                    <span key={segment.start}>
+                      <span data-projection-hidden="true" style={{ display: "none" }}>
+                        {segment.text}
+                      </span>
+                      {segment.display.kind === "image" &&
+                      segment.start === segment.display.start ? (
+                        <a href={paths.documentOriginal(caseId, selectedDocument.id)}>[图片]</a>
+                      ) : null}
+                    </span>
+                  ) : segment.highlighted === "evidence" ? (
                     <mark key={segment.start}>{segment.text}</mark>
                   ) : (
                     <span key={segment.start}>{segment.text}</span>
@@ -478,6 +516,7 @@ export function ComparePage() {
     key: string;
   } | null>(null);
   const [bottomTab, setBottomTab] = useState("修订证据");
+  const [mainView, setMainView] = useState<"outcome" | "original">("original");
   const [findingSelection, setFindingSelection] = useState("");
 
   const snapshot = snapshotQuery.data;
@@ -488,10 +527,69 @@ export function ComparePage() {
       ) ??
       snapshot?.cases[0] ??
       null);
-  const caseRuns =
+  const snapshotRuns =
     selectedCase && snapshot
       ? snapshot.runs.filter((run) => run.case_id === selectedCase.id).sort(latestFirst)
       : [];
+  const requestedMissing = [
+    { runId: leftRunSelection, attemptId: leftAttemptSelection, invalid: leftInvalid },
+    { runId: rightRunSelection, attemptId: rightAttemptSelection, invalid: rightInvalid },
+  ].filter(
+    (item, index, items) =>
+      item.runId &&
+      item.attemptId &&
+      items.findIndex(
+        (other) => other.runId === item.runId && other.attemptId === item.attemptId,
+      ) === index,
+  );
+  const missingRuns = useQueries({
+    queries: requestedMissing.map(({ runId, attemptId, invalid }) => ({
+      queryKey: ["compare-history-run", selectedCase?.id ?? "", runId, attemptId],
+      enabled: Boolean(
+        selectedCase &&
+        runId &&
+        attemptId &&
+        !invalid &&
+        !snapshotRuns.some((run) => run.id === runId),
+      ),
+      retry: false,
+      queryFn: async ({ signal }: { signal: AbortSignal }) => {
+        const workspace = await getReview(selectedCase!.id, runId, attemptId, signal);
+        const attempt = workspace.review_attempts?.attempt;
+        if (
+          workspace.run.case_id !== selectedCase!.id ||
+          workspace.run.id !== runId ||
+          !attempt ||
+          attempt.id !== attemptId ||
+          attempt.run_id !== runId ||
+          attempt.history_kind !== "frozen" ||
+          !workspace.snapshot?.document_ids.length
+        )
+          throw new Error("审查身份无法确认");
+        return {
+          id: runId,
+          case_id: selectedCase!.id,
+          case_title: selectedCase!.title,
+          state: workspace.run.state,
+          created_at: "",
+          updated_at: workspace.run.updated_at,
+          attempt_id: attempt.id,
+          started_at: workspace.run.started_at,
+          finished_at: attempt.finished_at,
+          usage: null,
+        } satisfies WorkbenchRun;
+      },
+    })),
+  });
+  const caseRuns = [...snapshotRuns];
+  for (const item of missingRuns)
+    if (
+      !item.isFetching &&
+      !item.isError &&
+      item.data &&
+      !caseRuns.some((run) => run.id === item.data.id)
+    )
+      caseRuns.push(item.data);
   const leftRun = params.has("left_run_id")
     ? (caseRuns.find((run) => run.id === leftRunSelection) ?? null)
     : (caseRuns[0] ?? null);
@@ -687,6 +785,13 @@ export function ComparePage() {
     source.previous.attempt_id === rightAttemptId &&
     leftData.previous_run_id === rightRun.id,
   );
+  const comparableScope = leftData && rightData ? scopeDifference(leftData, rightData) : "unknown";
+  const comparableRules = leftData && rightData ? ruleDifference(leftData, rightData) : "unknown";
+  const safeComparison =
+    comparisonsLinked &&
+    leftRun?.id !== rightRun?.id &&
+    comparableScope === "same" &&
+    comparableRules === "same";
   const bottomTabs = ["修订证据", "规则依据", "执行记录", "模型用量"];
   const findings = leftData?.findings ?? [];
   const finding = findings.find((item) => item.id === findingSelection) ?? null;
@@ -744,342 +849,446 @@ export function ComparePage() {
         </div>
         <div>
           <dt>可比性</dt>
-          <dd>{comparisonsLinked ? "已关联同一案件的审查记录" : "不可比或身份未确认"}</dd>
+          <dd>
+            {safeComparison ? "已关联同范围审查记录" : "范围或依据不同或未确认，不能推断风险变化"}
+          </dd>
         </div>
         <div>
           <dt>变化</dt>
-          <dd>{leftData ? `${revisions.length} 项修订` : "未读取"}</dd>
+          <dd>{safeComparison ? `${revisions.length} 项修订` : "待核对"}</dd>
         </div>
       </dl>
-      <div className="compare-workspace">
-        <aside className="compare-risk-panel" aria-label="审查结果">
-          <header>
-            <h2>审查结果</h2>
-            <span>{leftData ? `${findings.length} 项实际发现` : "审查发现不可用"}</span>
-          </header>
-          <div className="compare-risk-counts">
-            {(["high", "medium", "low", "info"] as const).map((severity, index) => (
-              <span key={severity} data-severity={severity}>
-                {leftData ? findings.filter((item) => item.severity === severity).length : "—"}
-                <small>{["高风险", "中风险", "低风险", "提示"][index]}</small>
-              </span>
-            ))}
-          </div>
-          <p className="compare-risk-note">
-            请以当前版本使用的规则、模型建议和审查人员的判断为准。
-          </p>
-          <div className="compare-risk-records">
-            {findings.map((item) => (
-              <article
-                key={item.id}
-                data-severity={item.severity ?? "unrated"}
-                data-selected={item.id === finding?.id}
-              >
-                <Button
-                  aria-label={`${item.claim}，${findingOriginLabel(item.origin)}，${relationLabel(item.relation)}`}
-                  htmlType="button"
-                  onClick={() => chooseFinding(item)}
-                  aria-pressed={item.id === finding?.id}
+      <div
+        role="tablist"
+        aria-label="对照视图"
+        className="compare-view-tabs"
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+          event.preventDefault();
+          const next = mainView === "outcome" ? "original" : "outcome";
+          setMainView(next);
+          document.getElementById(`compare-${next}-tab`)?.focus();
+        }}
+      >
+        <button
+          type="button"
+          role="tab"
+          id="compare-outcome-tab"
+          aria-controls="compare-outcome-panel"
+          aria-selected={mainView === "outcome"}
+          onClick={() => setMainView("outcome")}
+        >
+          结论变化
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="compare-original-tab"
+          aria-controls="compare-original-panel"
+          aria-selected={mainView === "original"}
+          onClick={() => setMainView("original")}
+        >
+          原文差异
+        </button>
+      </div>
+      <div
+        role="tabpanel"
+        id="compare-original-panel"
+        aria-labelledby="compare-original-tab"
+        hidden={mainView !== "original"}
+      >
+        <div className="compare-workspace">
+          <aside className="compare-risk-panel" aria-label="审查结果">
+            <header>
+              <h2>审查结果</h2>
+              <span>{leftData ? `${findings.length} 项实际发现` : "审查发现不可用"}</span>
+            </header>
+            <div className="compare-risk-counts">
+              {(["high", "medium", "low", "info"] as const).map((severity, index) => (
+                <span key={severity} data-severity={severity}>
+                  {leftData ? findings.filter((item) => item.severity === severity).length : "—"}
+                  <small>{["高风险", "中风险", "低风险", "提示"][index]}</small>
+                </span>
+              ))}
+            </div>
+            <p className="compare-risk-note">
+              请以当前版本使用的规则、模型建议和审查人员的判断为准。
+            </p>
+            <div className="compare-risk-records">
+              {findings.map((item) => (
+                <article
+                  key={item.id}
+                  data-severity={item.severity ?? "unrated"}
+                  data-selected={item.id === finding?.id}
                 >
-                  <strong>{item.claim}</strong>
-                  <span>
-                    {findingOriginLabel(item.origin)}，{relationLabel(item.relation)}
-                  </span>
-                </Button>
-                {item.id === finding?.id ? (
-                  <div className="compare-risk-detail">
-                    {item.evidence.map((anchor) => (
-                      <blockquote key={anchor.id}>
-                        {anchor.quote}
-                        <small>
-                          {leftDocuments.find((choice) => matchesMaterialAnchor(choice, anchor))
-                            ?.document.filename ?? "引用来源未返回"}
-                        </small>
-                      </blockquote>
-                    ))}
-                    {item.evidence.some(
-                      (anchor) =>
-                        leftDocuments.filter((choice) => matchesMaterialAnchor(choice, anchor))
-                          .length > 1,
-                    ) ? (
-                      <p>引用未区分解析版本，无法确定对应正文。</p>
-                    ) : null}
-                    {item.severity_source ? (
-                      <p>
-                        依据版本 {item.severity_source.policy_version}，
-                        {item.severity_source.clause}
-                      </p>
-                    ) : null}
-                    <TechnicalDetail
-                      label="发现技术详情"
-                      value={JSON.stringify({
-                        finding_id: item.id,
-                        origin: item.origin,
-                        domain: item.domain,
-                        relation: item.relation,
-                      })}
-                    />
-                    {leftHref ? (
-                      <Link to={`${leftHref}&finding=${encodeURIComponent(item.id)}`}>
-                        打开原文与审查判断
-                      </Link>
-                    ) : (
-                      <span>无法固定到这条执行记录。</span>
-                    )}
-                  </div>
-                ) : null}
-              </article>
-            ))}
-            {findings.length === 0 ? (
-              <p className="compare-unavailable">
-                {leftData ? "这次审查没有返回发现。" : "审查身份未确认，无法读取发现。"}
+                  <Button
+                    aria-label={`${item.claim}，${findingOriginLabel(item.origin)}，${relationLabel(item.relation)}`}
+                    htmlType="button"
+                    onClick={() => chooseFinding(item)}
+                    aria-pressed={item.id === finding?.id}
+                  >
+                    <strong>{item.claim}</strong>
+                    <span>
+                      {findingOriginLabel(item.origin)}，{relationLabel(item.relation)}
+                    </span>
+                  </Button>
+                  {item.id === finding?.id ? (
+                    <div className="compare-risk-detail">
+                      {item.evidence.map((anchor) => (
+                        <blockquote key={anchor.id}>
+                          {anchor.quote}
+                          <small>
+                            {leftDocuments.find((choice) => matchesMaterialAnchor(choice, anchor))
+                              ?.document.filename ?? "引用来源未返回"}
+                          </small>
+                        </blockquote>
+                      ))}
+                      {item.evidence.some(
+                        (anchor) =>
+                          leftDocuments.filter((choice) => matchesMaterialAnchor(choice, anchor))
+                            .length > 1,
+                      ) ? (
+                        <p>引用未区分解析版本，无法确定对应正文。</p>
+                      ) : null}
+                      {item.severity_source ? (
+                        <p>
+                          依据版本 {item.severity_source.policy_version}，
+                          {item.severity_source.clause}
+                        </p>
+                      ) : null}
+                      <TechnicalDetail
+                        label="发现技术详情"
+                        value={JSON.stringify({
+                          finding_id: item.id,
+                          origin: item.origin,
+                          domain: item.domain,
+                          relation: item.relation,
+                        })}
+                      />
+                      {leftHref ? (
+                        <Link to={`${leftHref}&finding=${encodeURIComponent(item.id)}`}>
+                          打开原文与审查判断
+                        </Link>
+                      ) : (
+                        <span>无法固定到这条执行记录。</span>
+                      )}
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+              {findings.length === 0 ? (
+                <p className="compare-unavailable">
+                  {leftData ? "这次审查没有返回发现。" : "审查身份未确认，无法读取发现。"}
+                </p>
+              ) : null}
+            </div>
+          </aside>
+          <div className="compare-reading-area">
+            <div className="compare-reading-tabs">
+              <strong>文档审查</strong>
+              <span>双栏对比</span>
+              {leftUnavailable ? (
+                <span>无法固定到这条执行记录。</span>
+              ) : (
+                <Link to={leftHref ?? "/review"}>打开审查与决定</Link>
+              )}
+            </div>
+            <div className="compare-selectors">
+              <RunSelect
+                label="当前版本"
+                value={leftRun}
+                runs={caseRuns}
+                attemptId={leftAttemptId}
+                onChange={(id) => chooseRun("left_run_id", id)}
+              />
+              <RunSelect
+                label="原留档版本"
+                value={rightRun}
+                runs={caseRuns}
+                attemptId={rightAttemptId}
+                onChange={(id) => chooseRun("right_run_id", id)}
+              />
+            </div>
+            {leftInvalid || rightInvalid ? (
+              <p role="alert">所选执行身份为空或相互冲突，无法读取该侧记录。</p>
+            ) : null}
+            {leftMismatch || rightMismatch ? (
+              <p role="alert">返回的审查或执行身份与所选记录不一致，无法读取该侧记录。</p>
+            ) : null}
+            {leftLegacyChanged || rightLegacyChanged ? (
+              <p role="alert">
+                所选历史记录原无执行身份，当前返回了不同执行记录，无法确认是同一版本。
               </p>
             ) : null}
-          </div>
-        </aside>
-        <div className="compare-reading-area">
-          <div className="compare-reading-tabs">
-            <strong>文档审查</strong>
-            <span>双栏对比</span>
-            {leftUnavailable ? (
-              <span>无法固定到这条执行记录。</span>
-            ) : (
-              <Link to={leftHref ?? "/review"}>打开审查与决定</Link>
-            )}
-          </div>
-          <div className="compare-selectors">
-            <RunSelect
-              label="当前版本"
-              value={leftRun}
-              runs={caseRuns}
-              attemptId={leftAttemptId}
-              onChange={(id) => chooseRun("left_run_id", id)}
-            />
-            <RunSelect
-              label="原留档版本"
-              value={rightRun}
-              runs={caseRuns}
-              attemptId={rightAttemptId}
-              onChange={(id) => chooseRun("right_run_id", id)}
-            />
-          </div>
-          {leftInvalid || rightInvalid ? (
-            <p role="alert">所选执行身份为空或相互冲突，无法读取该侧记录。</p>
-          ) : null}
-          {leftMismatch || rightMismatch ? (
-            <p role="alert">返回的审查或执行身份与所选记录不一致，无法读取该侧记录。</p>
-          ) : null}
-          {leftLegacyChanged || rightLegacyChanged ? (
-            <p role="alert">
-              所选历史记录原无执行身份，当前返回了不同执行记录，无法确认是同一版本。
-            </p>
-          ) : null}
-          {leftIdentityUnknown || rightIdentityUnknown ? (
-            <p role="alert">所选记录未报告执行身份或身份信息冲突，无法确认记录来源。</p>
-          ) : null}
-          {(leftLegacy && leftData?.review_attempts_explicit_null) ||
-          (rightLegacy && rightData?.review_attempts_explicit_null) ? (
-            <p>部分历史记录仅有审查身份，没有可固定的执行身份；派生对照无法验证。</p>
-          ) : null}
-          <ol className="compare-chain" aria-label="对照链路">
-            <li data-state={leftState ? "filled" : "open"}>
-              <span className="compare-chain-mark" aria-hidden="true" />
-              <span className="compare-chain-label">当前版本</span>
-              <strong>{leftState ? runLabel(leftState) : leftRun ? "状态未读取" : "未选择"}</strong>
-            </li>
-            <li data-state={rightState ? "filled" : "open"}>
-              <span className="compare-chain-mark" aria-hidden="true" />
-              <span className="compare-chain-label">原留档版本</span>
-              <strong>
-                {rightState ? runLabel(rightState) : rightRun ? "状态未读取" : "未选择"}
-              </strong>
-            </li>
-            <li data-state={findings.length > 0 ? "filled" : "open"}>
-              <span className="compare-chain-mark" aria-hidden="true" />
-              <span className="compare-chain-label">实际发现</span>
-              <strong>{leftData ? findings.length : "不可用"}</strong>
-            </li>
-            <li data-state={decidedCount > 0 ? "filled" : "open"}>
-              <span className="compare-chain-mark" aria-hidden="true" />
-              <span className="compare-chain-label">已有审查判断</span>
-              <strong>{leftData ? decidedCount : "不可用"}</strong>
-            </li>
-          </ol>
-          {selectedCase && caseRuns.length === 0 ? (
-            <div className="compare-empty">
-              <p>没有获取到该案件的审查记录。</p>
-              <Link to={`/cases/${selectedCase.id}`}>打开案件并发起审查</Link>
+            {leftIdentityUnknown || rightIdentityUnknown ? (
+              <p role="alert">所选记录未报告执行身份或身份信息冲突，无法确认记录来源。</p>
+            ) : null}
+            {(leftLegacy && leftData?.review_attempts_explicit_null) ||
+            (rightLegacy && rightData?.review_attempts_explicit_null) ? (
+              <p>部分历史记录仅有审查身份，没有可固定的执行身份；派生对照无法验证。</p>
+            ) : null}
+            <ol className="compare-chain" aria-label="对照链路">
+              <li data-state={leftState ? "filled" : "open"}>
+                <span className="compare-chain-mark" aria-hidden="true" />
+                <span className="compare-chain-label">当前版本</span>
+                <strong>
+                  {leftState ? runLabel(leftState) : leftRun ? "状态未读取" : "未选择"}
+                </strong>
+              </li>
+              <li data-state={rightState ? "filled" : "open"}>
+                <span className="compare-chain-mark" aria-hidden="true" />
+                <span className="compare-chain-label">原留档版本</span>
+                <strong>
+                  {rightState ? runLabel(rightState) : rightRun ? "状态未读取" : "未选择"}
+                </strong>
+              </li>
+              <li data-state={findings.length > 0 ? "filled" : "open"}>
+                <span className="compare-chain-mark" aria-hidden="true" />
+                <span className="compare-chain-label">实际发现</span>
+                <strong>{leftData ? findings.length : "不可用"}</strong>
+              </li>
+              <li data-state={decidedCount > 0 ? "filled" : "open"}>
+                <span className="compare-chain-mark" aria-hidden="true" />
+                <span className="compare-chain-label">已有审查判断</span>
+                <strong>{leftData ? decidedCount : "不可用"}</strong>
+              </li>
+            </ol>
+            {selectedCase && caseRuns.length === 0 ? (
+              <div className="compare-empty">
+                <p>没有获取到该案件的审查记录。</p>
+                <Link to={`/cases/${selectedCase.id}`}>打开案件并发起审查</Link>
+              </div>
+            ) : null}
+            <div className="compare-materials">
+              <MaterialPane
+                label="当前版本"
+                caseId={selectedCase?.id ?? ""}
+                run={leftRun}
+                state={leftState}
+                documents={leftDocuments}
+                warning={leftMaterials.warning}
+                selected={leftDocument}
+                onSelect={(key) => setLeftDocumentSelection({ scope: leftScope, key })}
+                finding={finding}
+                error={leftReview.isError ? leftReview.error : null}
+                loading={leftReview.isFetching}
+              />
+              <MaterialPane
+                label="原留档版本"
+                caseId={selectedCase?.id ?? ""}
+                run={rightRun}
+                state={rightState}
+                documents={rightDocuments}
+                warning={rightMaterials.warning}
+                selected={rightDocument}
+                onSelect={(key) => setRightDocumentSelection({ scope: rightScope, key })}
+                finding={null}
+                error={rightReview.isError ? rightReview.error : null}
+                loading={rightReview.isFetching}
+              />
             </div>
-          ) : null}
-          <div className="compare-materials">
-            <MaterialPane
-              label="当前版本"
-              caseId={selectedCase?.id ?? ""}
-              run={leftRun}
-              state={leftState}
-              documents={leftDocuments}
-              warning={leftMaterials.warning}
-              selected={leftDocument}
-              onSelect={(key) => setLeftDocumentSelection({ scope: leftScope, key })}
-              finding={finding}
-              error={leftReview.isError ? leftReview.error : null}
-              loading={leftReview.isFetching}
-            />
-            <MaterialPane
-              label="原留档版本"
-              caseId={selectedCase?.id ?? ""}
-              run={rightRun}
-              state={rightState}
-              documents={rightDocuments}
-              warning={rightMaterials.warning}
-              selected={rightDocument}
-              onSelect={(key) => setRightDocumentSelection({ scope: rightScope, key })}
-              finding={null}
-              error={rightReview.isError ? rightReview.error : null}
-              loading={rightReview.isFetching}
-            />
           </div>
         </div>
       </div>
-      <section className="compare-results" aria-labelledby="compare-results-title">
-        <header>
-          <div>
-            <h2 id="compare-results-title">审查与运行对照</h2>
-          </div>
-          <Tabs
-            activeKey={bottomTab}
-            onChange={(key) => {
-              const selectedTab = bottomTabs.find((tab) => tab === key);
-              if (selectedTab) setBottomTab(selectedTab);
-            }}
-            items={bottomTabs.map((label) => ({ key: label, label }))}
-          />
-        </header>
-        {bottomTab === "修订证据" ? (
-          <div className="compare-result-body">
-            {!comparisonsLinked ? (
-              <p className="compare-unavailable">
-                当前选择与修订来源不一致或没有来源身份，无法验证修订对照；两侧原文和发现仍可查看。
-              </p>
-            ) : leftData?.revision_comparison_reason ? (
-              <p className="compare-unavailable">
-                服务端没有生成修订对照：
-                {leftData.revision_comparison_reason}
-              </p>
-            ) : revisions.length === 0 ? (
-              <p className="compare-unavailable">所选运行没有返回可比较的修订线索。</p>
-            ) : (
-              <ul className="compare-revision-list">
-                {revisions.map((revision, index) => (
-                  <li
-                    key={`${revision.previous_finding_id ?? "prior"}-${revision.finding_id ?? "current"}-${index}`}
-                  >
-                    <span>{revisionMarkLabel(revision.mark)}</span>
-                    <div>
-                      <strong>
-                        {businessDomainLabel(revision.domain)}，{relationLabel(revision.relation)}
-                      </strong>
-                      <p>{revision.claim}</p>
-                      <small>
-                        旧决定{" "}
-                        {revision.prior_decision
-                          ? decisionLabel(revision.prior_decision.action)
-                          : "未报告"}
-                      </small>
-                      <TechnicalDetail
-                        label="修订技术详情"
-                        value={JSON.stringify({
-                          mark: revision.mark,
-                          domain: revision.domain,
-                          relation: revision.relation,
-                          finding_id: revision.finding_id,
-                          previous_finding_id: revision.previous_finding_id,
-                          prior_decision_id: revision.prior_decision?.id ?? null,
-                          prior_decision_action: revision.prior_decision?.action ?? null,
-                        })}
-                      />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ) : bottomTab === "规则依据" ? (
-          <div className="compare-result-columns">
-            {[
-              {
-                label: "左侧运行",
-                evaluations: leftData?.evaluations ?? [],
-              },
-              {
-                label: "右侧运行",
-                evaluations: rightData?.evaluations ?? [],
-              },
-            ].map((side) => (
-              <section key={side.label}>
-                <h3>{side.label}</h3>
-                {side.evaluations.length === 0 ? (
-                  <p className="compare-unavailable">没有获取到这次审查的规则检查记录。</p>
-                ) : (
-                  <ul className="compare-fact-list">
-                    {side.evaluations.map((item) => (
-                      <li key={item.id}>
+      <div
+        role="tabpanel"
+        id="compare-outcome-panel"
+        aria-labelledby="compare-outcome-tab"
+        hidden={mainView !== "outcome"}
+      >
+        <section className="compare-results" aria-labelledby="compare-results-title">
+          <header>
+            <div>
+              <h2 id="compare-results-title">审查与运行对照</h2>
+            </div>
+            <details>
+              <summary>运行详情</summary>
+              <Tabs
+                activeKey={bottomTab}
+                onChange={(key) => {
+                  const selectedTab = bottomTabs.find((tab) => tab === key);
+                  if (selectedTab) setBottomTab(selectedTab);
+                }}
+                items={bottomTabs.map((label) => ({ key: label, label }))}
+              />
+            </details>
+          </header>
+          {bottomTab === "修订证据" ? (
+            <div className="compare-result-body">
+              {!safeComparison ? (
+                <p className="compare-unavailable">
+                  审查范围、依据或来源无法确认一致，不能推断风险变化；两侧原文和已有发现仍可查看。
+                </p>
+              ) : leftData?.revision_comparison_reason ? (
+                <p className="compare-unavailable">
+                  服务端没有生成修订对照：
+                  {leftData.revision_comparison_reason}
+                </p>
+              ) : revisions.length === 0 ? (
+                <p className="compare-unavailable">所选运行没有返回可比较的修订线索。</p>
+              ) : (
+                <ul className="compare-revision-list">
+                  {revisions.map((revision, index) => (
+                    <li
+                      key={`${revision.previous_finding_id ?? "prior"}-${revision.finding_id ?? "current"}-${index}`}
+                    >
+                      <span>{revisionMarkLabel(revision.mark)}</span>
+                      <div>
                         <strong>
-                          {businessDomainLabel(item.domain)}，{relationLabel(item.relation)}
+                          {businessDomainLabel(revision.domain)}，{relationLabel(revision.relation)}
                         </strong>
-                        <span>{businessCapabilityLabel(item.capability_id)}</span>
-                        <p>{item.reason}</p>
+                        <p>{revision.claim}</p>
+                        <small>
+                          旧决定{" "}
+                          {revision.prior_decision
+                            ? decisionLabel(revision.prior_decision.action)
+                            : "未报告"}
+                        </small>
                         <TechnicalDetail
-                          label="规则技术详情"
+                          label="修订技术详情"
                           value={JSON.stringify({
-                            evaluation_id: item.id,
-                            domain: item.domain,
-                            relation: item.relation,
-                            rule_id: item.rule_id,
-                            rule_version: item.rule_version,
-                            capability_id: item.capability_id,
-                            reason_code: item.reason_code,
-                            finding_id: item.finding_id,
-                            fact_ids: item.fact_ids,
-                            object_refs: item.object_refs,
+                            mark: revision.mark,
+                            domain: revision.domain,
+                            relation: revision.relation,
+                            finding_id: revision.finding_id,
+                            previous_finding_id: revision.previous_finding_id,
+                            prior_decision_id: revision.prior_decision?.id ?? null,
+                            prior_decision_action: revision.prior_decision?.action ?? null,
                           })}
                         />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            ))}
-          </div>
-        ) : bottomTab === "执行记录" ? (
-          <div className="compare-result-columns">
-            {[
-              { label: "左侧运行", review: leftData },
-              { label: "右侧运行", review: rightData },
-            ].map((side) => (
-              <section key={side.label}>
-                <h3>{side.label}</h3>
-                {side.review?.review_attempts ? (
-                  <>
-                    <p>
-                      当前第 {side.review.review_attempts.attempt.ordinal} 次审查，
-                      {runLabel(side.review.review_attempts.attempt.state)}
-                    </p>
-                    <p>尝试数 {side.review.review_attempts.attempts.length}，事件数 不可用</p>
-                    <ol className="compare-attempt-list">
-                      {side.review.review_attempts.attempts.map((attempt) => (
-                        <li key={attempt.id}>
-                          第 {attempt.ordinal} 次，
-                          {runLabel(attempt.state)}，
-                          {attempt.finished_at
-                            ? preciseTime(attempt.finished_at)
-                            : "结束时间未报告"}
-                          <InvalidTimeDetail value={attempt.finished_at} label="执行结束时间" />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : bottomTab === "规则依据" ? (
+            <div className="compare-result-columns">
+              {[
+                {
+                  label: "左侧运行",
+                  evaluations: leftData?.evaluations ?? [],
+                },
+                {
+                  label: "右侧运行",
+                  evaluations: rightData?.evaluations ?? [],
+                },
+              ].map((side) => (
+                <section key={side.label}>
+                  <h3>{side.label}</h3>
+                  {side.evaluations.length === 0 ? (
+                    <p className="compare-unavailable">没有获取到这次审查的规则检查记录。</p>
+                  ) : (
+                    <ul className="compare-fact-list">
+                      {side.evaluations.map((item) => (
+                        <li key={item.id}>
+                          <strong>
+                            {businessDomainLabel(item.domain)}，{relationLabel(item.relation)}
+                          </strong>
+                          <span>{businessCapabilityLabel(item.capability_id)}</span>
+                          <p>{item.reason}</p>
+                          <TechnicalDetail
+                            label="规则技术详情"
+                            value={JSON.stringify({
+                              evaluation_id: item.id,
+                              domain: item.domain,
+                              relation: item.relation,
+                              rule_id: item.rule_id,
+                              rule_version: item.rule_version,
+                              capability_id: item.capability_id,
+                              reason_code: item.reason_code,
+                              finding_id: item.finding_id,
+                              fact_ids: item.fact_ids,
+                              object_refs: item.object_refs,
+                            })}
+                          />
                         </li>
                       ))}
-                    </ol>
+                    </ul>
+                  )}
+                </section>
+              ))}
+            </div>
+          ) : bottomTab === "执行记录" ? (
+            <div className="compare-result-columns">
+              {[
+                { label: "左侧运行", review: leftData },
+                { label: "右侧运行", review: rightData },
+              ].map((side) => (
+                <section key={side.label}>
+                  <h3>{side.label}</h3>
+                  {side.review?.review_attempts ? (
+                    <>
+                      <p>
+                        当前第 {side.review.review_attempts.attempt.ordinal} 次审查，
+                        {runLabel(side.review.review_attempts.attempt.state)}
+                      </p>
+                      <p>尝试数 {side.review.review_attempts.attempts.length}，事件数 不可用</p>
+                      <ol className="compare-attempt-list">
+                        {side.review.review_attempts.attempts.map((attempt) => (
+                          <li key={attempt.id}>
+                            第 {attempt.ordinal} 次，
+                            {runLabel(attempt.state)}，
+                            {attempt.finished_at
+                              ? preciseTime(attempt.finished_at)
+                              : "结束时间未报告"}
+                            <InvalidTimeDetail value={attempt.finished_at} label="执行结束时间" />
+                          </li>
+                        ))}
+                      </ol>
+                      <p>
+                        事件详情可由管理员在{" "}
+                        <Link
+                          to={caseHref(
+                            side.review.run.case_id,
+                            side.review.run.id,
+                            side.review.review_attempts.attempt.id,
+                          )}
+                        >
+                          审查工作区
+                        </Link>{" "}
+                        中按需读取。
+                      </p>
+                    </>
+                  ) : (
+                    <p className="compare-unavailable">此运行没有返回执行记录。</p>
+                  )}
+                </section>
+              ))}
+            </div>
+          ) : (
+            <div className="compare-result-columns">
+              {[
+                { label: "左侧运行", review: leftData },
+                { label: "右侧运行", review: rightData },
+              ].map((side) => (
+                <section key={side.label}>
+                  <h3>{side.label}</h3>
+                  <dl className="compare-usage-grid">
+                    <div>
+                      <dt>模型调用</dt>
+                      <dd>不可用</dd>
+                    </div>
+                    <div>
+                      <dt>输入 tokens</dt>
+                      <dd>不可用</dd>
+                    </div>
+                    <div>
+                      <dt>输出 tokens</dt>
+                      <dd>不可用</dd>
+                    </div>
+                    <div>
+                      <dt>总 tokens</dt>
+                      <dd>不可用</dd>
+                    </div>
+                    <div>
+                      <dt>费用</dt>
+                      <dd>不可用</dd>
+                    </div>
+                  </dl>
+                  {side.review?.review_attempts ? (
                     <p>
-                      事件详情可由管理员在{" "}
+                      模型用量可由管理员在{" "}
                       <Link
                         to={caseHref(
                           side.review.run.case_id,
@@ -1091,63 +1300,13 @@ export function ComparePage() {
                       </Link>{" "}
                       中按需读取。
                     </p>
-                  </>
-                ) : (
-                  <p className="compare-unavailable">此运行没有返回执行记录。</p>
-                )}
-              </section>
-            ))}
-          </div>
-        ) : (
-          <div className="compare-result-columns">
-            {[
-              { label: "左侧运行", review: leftData },
-              { label: "右侧运行", review: rightData },
-            ].map((side) => (
-              <section key={side.label}>
-                <h3>{side.label}</h3>
-                <dl className="compare-usage-grid">
-                  <div>
-                    <dt>模型调用</dt>
-                    <dd>不可用</dd>
-                  </div>
-                  <div>
-                    <dt>输入 tokens</dt>
-                    <dd>不可用</dd>
-                  </div>
-                  <div>
-                    <dt>输出 tokens</dt>
-                    <dd>不可用</dd>
-                  </div>
-                  <div>
-                    <dt>总 tokens</dt>
-                    <dd>不可用</dd>
-                  </div>
-                  <div>
-                    <dt>费用</dt>
-                    <dd>不可用</dd>
-                  </div>
-                </dl>
-                {side.review?.review_attempts ? (
-                  <p>
-                    模型用量可由管理员在{" "}
-                    <Link
-                      to={caseHref(
-                        side.review.run.case_id,
-                        side.review.run.id,
-                        side.review.review_attempts.attempt.id,
-                      )}
-                    >
-                      审查工作区
-                    </Link>{" "}
-                    中按需读取。
-                  </p>
-                ) : null}
-              </section>
-            ))}
-          </div>
-        )}
-      </section>
+                  ) : null}
+                </section>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </section>
   );
 }
