@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Presents the partial report coverage and confirmation dialog, and binds confirmation to the selected execution and command context.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-20
+// Updated: 2026-11-20
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button, Modal } from "antd";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
