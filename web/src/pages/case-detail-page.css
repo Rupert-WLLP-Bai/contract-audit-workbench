@@ -78,7 +78,7 @@
 }
 
 .case-review-history thead th {
-  min-block-size: var(--table-header-height);
+  height: var(--table-header-height);
   color: var(--text-secondary);
   background: var(--surface-subtle);
 }
