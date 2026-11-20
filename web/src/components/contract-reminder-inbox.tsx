@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Displays the current user’s authorized delivered fulfillment reminders and links to their contracts.
+// Purpose: Shows the signed-in user’s delivered contract reminders on demand and links each reminder to its authorized contract.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
 // Updated: 2026-11-20
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

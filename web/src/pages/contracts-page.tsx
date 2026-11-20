@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Presents the contract register with ledger filters, authorized draft actions and lifecycle workflows, retaining the link back to the filtered contract material list.
+// Purpose: Renders the authorized contract ledger and personal draft workspace, including scoped searches, saved views, CSV exports, legacy imports and contract lifecycle commands.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
 // Updated: 2026-11-20
-// Revision: r13
+// Revision: r14
 // Copyright: See LICENSE
 // End file metadata.
 
