@@ -253,8 +253,6 @@ export function businessReviewProgress(workspace: ReviewWorkspace) {
   }
   const outcome = selectedOutcome(workspace);
   const stage = agentStage(workspace);
-  const projection =
-    workspace.agent_review?.attempt_id === attempt.id ? workspace.agent_review : null;
   const partial = partialReportScope(workspace);
   const modelError = [
     "model_request_failed",
@@ -293,15 +291,6 @@ export function businessReviewProgress(workspace: ReviewWorkspace) {
     detail =
       (attempt.state === workspace.run.state && workspace.run.partial_reason?.trim()) ||
       "本次未完成模型审查。";
-  } else if (
-    ["partial", "failed"].includes(attempt.state) &&
-    (projection?.plan?.status === "not_planned" || projection?.plan?.status === "guard_rejected")
-  ) {
-    label = "智能审查计划未就绪";
-    detail =
-      projection?.plan?.status === "guard_rejected"
-        ? "本次审查计划未通过检查。"
-        : "本次未生成可执行的审查计划。";
   } else if (attempt.state === "partial") {
     label = partial?.precheck ? "单合同预审未完成" : "智能审查未完";
     detail =

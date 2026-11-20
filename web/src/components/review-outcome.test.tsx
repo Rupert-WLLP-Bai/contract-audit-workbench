@@ -104,6 +104,18 @@ describe("business review progress", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps a public execution failure generic when the stage is not recorded", () => {
+    const current = workspace();
+    const attempt = current.review_attempts!.attempt;
+    delete attempt.review_scope;
+    attempt.error_code = null;
+    attempt.outcome = { reason: "execution_failed", agent_stage: "unknown", retry_cause: "none" };
+    expect(businessReviewProgress(current)).toMatchObject({
+      label: "智能审查未完",
+      detail: "本次审查执行失败，具体原因未记录。",
+    });
+  });
+
   it("distinguishes preparation, a recorded model failure, and a completed scope", () => {
     const current = workspace();
     const attempt = current.review_attempts!.attempt;
