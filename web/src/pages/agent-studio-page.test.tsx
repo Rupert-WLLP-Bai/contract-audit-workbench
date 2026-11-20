@@ -296,6 +296,42 @@ describe("AgentStudioPage", () => {
     expect(screen.getByText("eino_error")).toBeInTheDocument();
   });
 
+  it("shows each recorded agent result independently and never borrows another attempt", async () => {
+    const saved = [
+      event({
+        seq: 11,
+        phase: "agent_review_result",
+        node_kind: "agent_review",
+        event_type: "agent_review_event",
+        status: "skipped",
+        error_code: "agent_review_unavailable",
+      }),
+      event({
+        seq: 12,
+        phase: "agent_review_result",
+        node_kind: "agent_review",
+        event_type: "agent_review_event",
+        status: "completed",
+      }),
+      event({
+        seq: 13,
+        attempt_id: "other-attempt",
+        phase: "agent_review_result",
+        node_kind: "agent_review",
+        event_type: "agent_review_event",
+        status: "failed",
+      }),
+    ];
+    mocks.useReviewDiagnostics.mockReturnValue(query(diagnostics(execution(saved))));
+    renderPage();
+    const skipped = screen.getByRole("button", { name: "智能体结果 · 已跳过 #11" });
+    expect(screen.getByRole("button", { name: "智能体结果 · 已完成 #12" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /#13/ })).not.toBeInTheDocument();
+    await userEvent.click(skipped);
+    expect(screen.getByTestId("location")).toHaveTextContent("event=11");
+    expect(screen.getByText("agent_review_unavailable")).toBeInTheDocument();
+  });
+
   it("restores a valid event from a shared URL", () => {
     mocks.useReviewDiagnostics.mockReturnValue(
       query(

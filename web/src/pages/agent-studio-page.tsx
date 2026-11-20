@@ -1510,6 +1510,28 @@ function ExecutionView({
   return (
     <div className="studio-view studio-execution-view">
       <ExecutionSummary execution={execution} attempt={attempt} events={events} />
+      {events.some(
+        (event) =>
+          event.phase === "agent_review_result" && event.event_type === "agent_review_event",
+      ) ? (
+        <section className="studio-notice" aria-label="已记录的智能体结果">
+          {events
+            .filter(
+              (event) =>
+                event.phase === "agent_review_result" && event.event_type === "agent_review_event",
+            )
+            .map((event) => (
+              <Button key={event.seq} type="link" onClick={() => onSelectSeq(event.seq)}>
+                智能体结果 ·{" "}
+                {event.status &&
+                ["skipped", "completed", "failed", "partial", "cancelled"].includes(event.status)
+                  ? eventStatusLabel(event.status)
+                  : "状态未报告"}{" "}
+                #{event.seq}
+              </Button>
+            ))}
+        </section>
+      ) : null}
       <div className="studio-execution-layout">
         <section className="studio-panel studio-lanes-panel">
           <header className="studio-panel-head">

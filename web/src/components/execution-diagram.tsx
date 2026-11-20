@@ -16,6 +16,17 @@ import { buildExecutionDiagram, type ExecutionDiagramNode } from "../domain/exec
 import logicFlowCss from "@logicflow/core/dist/index.css?raw";
 import "./execution-diagram.css";
 
+export function diagramNodeStatus(node: ExecutionDiagramNode): string {
+  const status = [...node.events].reverse().find((item) => item.status)?.status;
+  if (
+    node.kind === "stage" &&
+    ["agent_review", "single_contract_facts"].includes(node.event.phase) &&
+    status === "completed"
+  )
+    return "阶段已结束";
+  return status ? eventStatusLabel(status) : "状态未报告";
+}
+
 const LANES = ["材料与事实", "规划与工具", "模型", "核验与留痕"] as const;
 function laneOf(node: ExecutionDiagramNode): number {
   if (node.kind === "model") return 2;
@@ -112,7 +123,6 @@ export function ExecutionDiagram({
         ...visibleNodes.map((node, position) => {
           const lane = laneOf(node);
           const last = [...node.events].reverse();
-          const status = last.find((item) => item.status)?.status;
           const duration = last.find((item) => item.duration_ms !== null)?.duration_ms ?? null;
           const usage = last.find((item) => item.usage)?.usage;
           const label =
@@ -128,7 +138,7 @@ export function ExecutionDiagram({
             properties: { selected: false },
             x: 285 + position * 220,
             y: 70 + lane * 125,
-            text: `#${node.events[0]!.seq}  ${title}\n${status ? eventStatusLabel(status) : "状态未报告"} · ${elapsed(duration)}${metrics}`,
+            text: `#${node.events[0]!.seq}  ${title}\n${diagramNodeStatus(node)} · ${elapsed(duration)}${metrics}`,
           };
         }),
       ],
@@ -253,7 +263,7 @@ export function ExecutionDiagram({
             >
               {node.kind === "model" ? "模型" : node.kind === "tool" ? "工具" : "阶段"} ·{" "}
               {node.kind === "stage" && node.title === node.event.phase ? "阶段待识别" : node.title}{" "}
-              · #{node.event.seq}
+              · #{node.event.seq} · {diagramNodeStatus(node)}
             </button>
           ))}
         </div>

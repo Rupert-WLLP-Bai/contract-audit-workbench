@@ -19,9 +19,9 @@ const PHASE_LABELS: Record<string, string> = {
   planner: "审查计划",
   contract_facts: "合同事实建议",
   ocr: "文字识别",
-  single_contract_facts: "合同事实建议",
+  single_contract_facts: "合同事实处理阶段",
   single_contract_rules: "单合同规则预审",
-  agent_review: "智能体审查",
+  agent_review: "智能体审查框架步骤",
   citation_verification: "引用核验",
   verified_finding: "引用核验",
   terminal_persistence: "终态保存",
@@ -57,6 +57,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
 };
 
 const EVENT_STATUS_LABELS: Record<string, string> = {
+  skipped: "已跳过",
   accepted: "已受理",
   queued: "排队中",
   started: "已开始",
