@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r9
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -170,7 +170,7 @@ async function signIn(target: Page, username: string, password: string): Promise
 async function openSection(page: Page, navigation: string, section: string): Promise<void> {
   const caseNavigation = navigation === "案件详情分区";
   const name =
-    caseNavigation && (section === "主体与对象" || section === "适用依据") ? "主体与依据" : section;
+    caseNavigation && (section === "主体与对象" || section === "适用依据") ? "主体与活动" : section;
   const button = page
     .getByRole("navigation", { name: navigation })
     .getByRole(caseNavigation ? "tab" : "button", { name, exact: true });
@@ -224,18 +224,10 @@ async function caseDetail(target: Page): Promise<CaseDetail> {
   return (await response.json()) as CaseDetail;
 }
 async function waitParsed(target: Page, materialID: string): Promise<void> {
-  await target.waitForFunction(
-    (id) => {
-      const row = document.querySelector(
-        `.material-current-set li[data-material-id="${CSS.escape(id)}"]`,
-      );
-      return (
-        row?.querySelector<HTMLElement>(".parsed-document-summary")?.dataset.status === "ready"
-      );
-    },
-    materialID,
-    { timeout: 30000 },
+  const row = target.locator(
+    `.material-current-set li[data-material-id=${JSON.stringify(materialID)}]`,
   );
+  await row.getByText("已解析", { exact: true }).waitFor({ timeout: 30000 });
 }
 async function waitWorkspace(
   target: Page,
@@ -266,7 +258,7 @@ async function startReview(
   target: Page,
   button: "开始审查" | "开始复审",
 ): Promise<{ run: string; attempt: string; workspace: ReviewWorkspace }> {
-  await openCaseSection(target, "审查记录");
+  await openCaseSection(target, "审查记录", "case-review-preparation");
   const input = target.getByLabel("审查业务时间（北京时间）", { exact: true });
   const local = shanghaiInput(new Date()).slice(0, 16);
   await input.fill(local);
@@ -634,7 +626,7 @@ async function run(): Promise<void> {
   await current.waitForURL(/\/cases\/[^/]+$/);
   caseID = new URL(current.url()).pathname.split("/").at(-1) ?? "";
   assert.ok(caseID);
-  await openCaseSection(current, "材料与版本");
+  await openCaseSection(current, "材料");
   const memberHeaders = await browserSessionCommandHeaders(current.request, web);
   const member = await current.request.post(`${web}/api/cases/${caseID}/members`, {
     headers: { Origin: web, ...memberHeaders },
@@ -1042,7 +1034,7 @@ async function run(): Promise<void> {
   );
 
   await current.goto(`${web}/cases/${caseID}`);
-  await openCaseSection(current, "材料与版本");
+  await openCaseSection(current, "材料");
   const detail = await caseDetail(current);
   const currentPrimary = detail.materials.find(
     (material) => material.material_id === primary.material_id,

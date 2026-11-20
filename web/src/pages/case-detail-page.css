@@ -1,0 +1,132 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles the case heading, property row, compact review history, readiness disclosure and responsive detail sections. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-20 */
+/* Updated: 2026-11-20 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+.case-detail-page {
+  padding-block-start: var(--space-2);
+}
+
+.case-detail-page .page-pattern-heading {
+  align-items: center;
+  margin-block-end: var(--space-2);
+  padding-block-end: 0;
+  border-block-end: 0;
+}
+
+.case-detail-page .page-pattern-heading-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.case-detail-page .page-pattern-heading-main h1,
+.case-detail-page .page-pattern-metadata {
+  margin: 0;
+}
+
+.case-detail-page .page-pattern-overview {
+  gap: var(--space-2);
+  margin-block-end: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.case-detail-properties {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-6);
+  margin: 0 0 var(--space-2);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.case-detail-properties > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.case-detail-properties dt {
+  color: var(--text-secondary);
+  font-size: var(--font-size-small);
+}
+
+.case-detail-properties dd {
+  margin: 0;
+}
+
+.case-detail-page .case-detail-sections {
+  margin-block-start: var(--space-2);
+}
+
+.case-detail-tab {
+  min-block-size: var(--control-height);
+}
+
+.case-review-history {
+  width: 100%;
+  margin-block-end: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-spacing: 0;
+  border-radius: var(--radius-panel);
+  background: var(--surface-raised);
+  text-align: left;
+}
+
+.case-review-history th,
+.case-review-history td {
+  padding: var(--space-2) var(--space-4);
+}
+
+.case-review-history thead th {
+  height: var(--table-header-height);
+  color: var(--text-secondary);
+  background: var(--surface-subtle);
+}
+
+.case-review-history tbody :is(th, td) {
+  border-block-start: 1px solid var(--border-default);
+}
+
+.case-review-history :is(th, td):last-child {
+  text-align: right;
+}
+
+.case-new-review {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: var(--control-height-small);
+  padding-inline: var(--space-2);
+}
+
+@media (max-width: 767px) {
+  .case-review-history :is(th, td):nth-child(2),
+  .case-review-history :is(th, td):nth-child(4) {
+    display: none;
+  }
+
+  .case-review-history th,
+  .case-review-history td {
+    padding-inline: var(--space-2);
+  }
+}
+
+.case-detail-page .material-view-switch button {
+  font-family: inherit;
+  font-size: var(--font-size-ui);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-ui);
+}
+
+.case-detail-page .material-view-switch button[aria-pressed="true"] {
+  font-weight: var(--font-weight-semibold);
+}

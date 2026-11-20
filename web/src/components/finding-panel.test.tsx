@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-30
 // Updated: 2026-11-20
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -123,6 +123,23 @@ function renderPanel(
 }
 
 describe("finding panel", () => {
+  it("omits an unrated badge and preserves a numeric citation with its unit", () => {
+    const quoted = { ...locatedAnchor, quote: "24 个月", text_offset: { start: 0, end: 5 } };
+    const item = finding({ severity: null, evidence: [quoted] });
+    renderPanel({
+      immersive: true,
+      selectedId: item.id,
+      findings: [item],
+      documents: [{ ...document, text: "24 个月" }],
+    });
+    const row = screen.getByRole("button", { name: /选择线索/ });
+    expect(within(row).queryByText("未分级")).not.toBeInTheDocument();
+    expect(within(row).getByText("规则检查")).toBeVisible();
+    const unit = screen.getByText("24 个月");
+    expect(unit).toHaveClass("review-amount");
+    expect(unit.closest("q")).toHaveTextContent("24 个月");
+  });
+
   it("filters the immersive queue and keeps previous judgment actions readable", async () => {
     const user = userEvent.setup();
     const { onSelect } = renderPanel({

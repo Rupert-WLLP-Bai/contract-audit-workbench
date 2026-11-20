@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r6
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -264,7 +264,7 @@ try {
       new Set(template.fields.map((field) => field.key)),
       new Set(Object.keys(scenario.fields)),
     );
-    await openCaseSection(page, "材料与版本", "case-template-generation");
+    await openCaseSection(page, "材料", "case-template-generation");
     await selectMaterialOption(page, "选择模板", templateOptionLabel(template));
     for (const field of template.fields) {
       const value = scenario.fields[field.key];
@@ -349,7 +349,7 @@ try {
       stage: "materials_ready",
     });
 
-    await openCaseSection(page, "审查记录");
+    await openCaseSection(page, "审查记录", "case-review-preparation");
     await enterC1BBusinessAt(page);
     const startReviewResponsePromise = page.waitForResponse(
       (response) =>
@@ -497,7 +497,7 @@ try {
 
     await page.goto(`${web}/cases/${caseID}`);
     await page.getByRole("heading", { name: title, exact: true }).waitFor();
-    await openCaseSection(page, "协作与归档", "case-report-archive");
+    await openCaseSection(page, "整改与报告", "case-report-archive");
     await selectReviewAttempt(
       page,
       web,
@@ -1314,7 +1314,7 @@ async function readReportLinks(
 async function openCaseSection(page: Page, section: string, disclosureID?: string): Promise<void> {
   const navigation = page.getByRole("navigation", { name: "案件详情分区" });
   const button = navigation.getByRole("tab", {
-    name: section === "主体与对象" || section === "适用依据" ? "主体与依据" : section,
+    name: section === "主体与对象" || section === "适用依据" ? "主体与活动" : section,
     exact: true,
   });
   await button.click();

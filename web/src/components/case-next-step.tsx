@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders CaseNextStep, the case next step workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.
+// Purpose: Selects and displays one authorized case action and an optional exception notice using the latest review, undecided findings, material state and readiness facts.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r10
+// Revision: r11
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,7 +14,13 @@ import { createPortal } from "react-dom";
 import type { CaseDetail, Remediation, ReviewWorkspace } from "../api/types";
 import type { ReviewReadiness, ReviewScope } from "../api/review-readiness";
 import { errorMessage } from "../api/http";
-import { actorRoleLabel, runLabel, type StatusTone } from "../domain/review";
+import {
+  actorRoleLabel,
+  caseHref,
+  isTerminalAttemptState,
+  runLabel,
+  type StatusTone,
+} from "../domain/review";
 import { StatusText } from "./status-text";
 import { TechnicalDetail } from "./technical-detail";
 import { ReviewOutcomeSummary } from "./review-outcome-summary";
@@ -55,6 +61,8 @@ interface Props {
   suppressWriteAction?: boolean;
   compact?: boolean;
   actionTarget?: HTMLElement | null;
+  stageTarget?: HTMLElement | null;
+  preparationActionTarget?: HTMLElement | null;
   onNavigateReview?: (href: string) => void;
 }
 
@@ -70,6 +78,8 @@ interface CaseNextStepPlan {
   owner: string;
   action: { kind: ActionKind; label: string; href?: string; loading?: boolean; disabled?: boolean };
   announcement?: "alert" | "status";
+  exception?: { message: string; reasonHref: string };
+  showPreparationStart?: boolean;
 }
 
 const ACTIVE_RUN_STATES: Record<string, true> = {
@@ -167,7 +177,7 @@ function currentWorkspace(props: Props): ReviewWorkspace | undefined {
     workspace.run.id !== item.latest_run.id ||
     workspace.run.case_id !== item.id ||
     workspace.run.state !== item.latest_run.state ||
-    !attempt ||
+    !attempt?.id ||
     attempt.run_id !== workspace.run.id ||
     workspace.review_attempts?.attempts.filter(
       (entry) => entry.id === attempt.id && entry.run_id === workspace.run.id,
@@ -197,15 +207,24 @@ function planFor(props: Props): CaseNextStepPlan {
     startError,
   } = props;
   const run = item.latest_run;
-  const reviewHref = run
-    ? `/cases/${encodeURIComponent(item.id)}/reviews/${encodeURIComponent(run.id)}`
-    : "#review-readiness";
+  const latestWorkspace = currentWorkspace(props);
+  const attempt = latestWorkspace?.review_attempts?.attempt;
+  const reviewHref = run ? caseHref(item.id, run.id) : "#review-readiness";
+  const attemptHref = run && attempt ? caseHref(item.id, run.id, attempt.id) : reviewHref;
+  const reasonHref = run
+    ? `${attemptHref}${attemptHref.includes("?") ? "&" : "?"}drawer=record&tab=review`
+    : reviewHref;
   const canStart = Object.hasOwn(CAN_START_REVIEW_ROLES, actorRole);
+  const canDecide = actorRole === "admin" || actorRole === "reviewer";
   const canCreateReport = Object.hasOwn(CAN_CREATE_REPORT_ROLES, actorRole);
   const archived = item.archived_at !== null;
   const subjectContextUnknown =
     run !== null && item.subject_context_changed_after_latest_run === undefined;
-  const latestWorkspace = currentWorkspace(props);
+  const reportedCount = item.finding_counts?.undecided;
+  const undecided =
+    typeof reportedCount === "number" && Number.isInteger(reportedCount) && reportedCount >= 0
+      ? reportedCount
+      : null;
   const isLimitedPrecheck = latestWorkspace !== undefined && limitedPrecheck(latestWorkspace);
   const readmitPreparation =
     latestWorkspace !== undefined && canReadmitCancelledPreparation(latestWorkspace);
@@ -263,11 +282,59 @@ function planFor(props: Props): CaseNextStepPlan {
       stage: "状态未识别",
       title: "暂不能确认下一项写入操作",
       tone: "attention",
-      reason: "服务端返回了未识别的运行状态。为避免创建错误的后续记录，请先查看这次审查。",
+      reason: "暂时无法识别这次审查的状态，请先打开审查记录核对。",
       technicalDetail: JSON.stringify({ run_id: run.id, state: run.state }),
       missingItems: ["可识别的审查运行状态"],
       owner: "审查员或案件管理员",
       action: { kind: "link", href: reviewHref, label: "查看最近审查状态" },
+    };
+  }
+
+  const outcome = latestWorkspace ? selectedOutcome(latestWorkspace) : null;
+  const partialException =
+    run?.state === "partial"
+      ? {
+          message:
+            isLimitedPrecheck || outcome?.reason === "scope_limited"
+              ? "单合同预审已结束，仅覆盖所选范围。"
+              : "智能审查未完成，未检查的部分仍需核对。",
+          reasonHref,
+        }
+      : undefined;
+
+  const pendingPlan: CaseNextStepPlan | null =
+    undecided !== null && undecided > 0
+      ? {
+          stage: `待判断 ${undecided} 条`,
+          title: `还有 ${undecided} 条线索待判断`,
+          tone: "neutral",
+          reason: "请核对原文和引用后，保存人工判断。",
+          missingItems: [],
+          owner: "审查员",
+          action: {
+            kind: "link",
+            href: attemptHref,
+            label:
+              canDecide &&
+              attempt?.history_kind === "frozen" &&
+              isTerminalAttemptState(attempt.state)
+                ? `去判断 (${undecided})`
+                : "查看审查",
+          },
+          exception: partialException,
+        }
+      : null;
+  if (run?.state === "partial" && pendingPlan) return pendingPlan;
+  if (run?.state === "partial" && undecided === null) {
+    return {
+      stage: "判断状态待确认",
+      title: "待判断数量没有返回",
+      tone: "attention",
+      reason: "待判断数量没有返回，无法确认是否可以重新审查或出报告。",
+      missingItems: [],
+      owner: "审查员",
+      action: { kind: "link", href: reasonHref, label: "查看审查原因" },
+      exception: partialException,
     };
   }
 
@@ -328,7 +395,7 @@ function planFor(props: Props): CaseNextStepPlan {
         title: "请修正审查业务时间",
         tone: "attention",
         reason: "已输入的北京时间无法转换为有效时点；当前不会提交该值。",
-        missingItems: ["有效的北京时间（UTC+08:00）"],
+        missingItems: ["有效的北京时间"],
         owner: "经办或审查员",
         action: { kind: "link", href: "#review-business-time", label: "修正业务时间" },
       };
@@ -352,7 +419,7 @@ function planFor(props: Props): CaseNextStepPlan {
     if (readinessLoading) {
       return {
         stage: "正在核对准备状态",
-        title: "等待服务端返回最新准备清单",
+        title: "正在核对最新准备清单",
         tone: "progress",
         reason: "准备清单刷新期间不启用发起操作；服务端仍会在受理请求时重新校验。",
         missingItems: ["最新材料、规则与依赖核对结果"],
@@ -534,7 +601,6 @@ function planFor(props: Props): CaseNextStepPlan {
   }
 
   if (Object.hasOwn(INCOMPLETE_RUN_STATES, run.state)) {
-    const outcome = latestWorkspace ? selectedOutcome(latestWorkspace) : null;
     if (materialIssue) {
       const parseUnavailable =
         outcome?.reason === "material_unavailable" ||
@@ -564,6 +630,39 @@ function planFor(props: Props): CaseNextStepPlan {
         action: { kind: "link", href: "#review-readiness", label: "查看完整审查准备" },
       };
     }
+    if (
+      run.state === "partial" &&
+      undecided === 0 &&
+      latestWorkspace &&
+      attempt?.state === "partial"
+    ) {
+      const canRetryHere = canStart && hasTransientRetryCause(latestWorkspace);
+      const canPrepare =
+        canStart &&
+        !readinessLoading &&
+        !readinessError &&
+        readiness?.case_id === item.id &&
+        readiness.scopes.some(
+          (scope) =>
+            scope.id === selectedScope &&
+            !scope.blockers.some((blocker) => blocker.code === "case_not_writable"),
+        );
+      return {
+        stage: "智能审查未完成",
+        title: "查看未完成的检查",
+        tone: "attention",
+        reason: "未完成的检查仍需核对。重新审查前，系统会检查材料、依据和权限。",
+        missingItems: [],
+        owner: "经办或审查员",
+        action: {
+          kind: "link",
+          href: canRetryHere ? reasonHref : canPrepare ? "#review-readiness" : reasonHref,
+          label: canRetryHere || canPrepare ? "重新审查" : "查看审查原因",
+        },
+        showPreparationStart: canPrepare && !canRetryHere,
+        exception: partialException,
+      };
+    }
     if (latestWorkspace && canRestartUserCancelled(latestWorkspace)) {
       return {
         stage: "审查已取消",
@@ -580,7 +679,7 @@ function planFor(props: Props): CaseNextStepPlan {
       title:
         latestWorkspace && hasTransientRetryCause(latestWorkspace)
           ? "模型调用超时，查看恢复方式"
-          : "请核对本次审查结果和原因",
+          : "有检查尚未完成",
       tone: "attention",
       reason:
         latestWorkspace && hasTransientRetryCause(latestWorkspace)
@@ -588,12 +687,12 @@ function planFor(props: Props): CaseNextStepPlan {
           : "请在原审查中查看已保存的结果、未执行项及人工判断；原因未确认时不能推断重试可以解决。",
       missingItems: ["本次执行未完成的检查与原因"],
       owner: "审查员",
-      action: { kind: "link", href: reviewHref, label: "返回原审查工作区" },
+      action: { kind: "link", href: reasonHref, label: "查看审查原因" },
+      exception: partialException,
     };
   }
 
-  const undecided = item.finding_counts?.undecided;
-  if (undecided === undefined || item.finding_counts === null) {
+  if (undecided === null) {
     return {
       stage: "人工判断状态未知",
       title: "服务器没有返回待裁决数量",
@@ -605,15 +704,17 @@ function planFor(props: Props): CaseNextStepPlan {
     };
   }
 
-  if (undecided > 0 || run.state === "awaiting_human") {
+  if (pendingPlan) return pendingPlan;
+
+  if (run.state === "awaiting_human") {
     return {
       stage: "待人工决定",
-      title: undecided > 0 ? `还有 ${undecided} 项问题待人工判断` : "运行等待审查员确认",
+      title: "运行等待审查员确认",
       tone: "attention",
       reason: "请核对原文、证据和规则结果后，再保存人工决定。",
-      missingItems: undecided > 0 ? [`${undecided} 项问题尚未完成决定`] : ["本次运行的人工确认"],
+      missingItems: ["本次运行的人工确认"],
       owner: "审查员",
-      action: { kind: "link", href: reviewHref, label: "核对原文并处理决定" },
+      action: { kind: "link", href: reviewHref, label: "查看审查" },
     };
   }
 
@@ -744,7 +845,18 @@ function planFor(props: Props): CaseNextStepPlan {
       : "当前角色不能生成报告；请交由经办或管理员完成报告保存和导出。",
     missingItems: ["审查报告"],
     owner: canCreateReport ? "经办" : "经办或管理员",
-    action: { kind: "link", href: "#report-archive-title", label: "进入报告生成与导出区" },
+    action: {
+      kind: "link",
+      href: "#report-archive-title",
+      label:
+        canCreateReport &&
+        attempt?.history_kind === "frozen" &&
+        attempt.frozen_result_available === true &&
+        attempt.finished_at &&
+        latestWorkspace?.snapshot?.document_ids.length
+          ? "出报告"
+          : "查看报告区",
+    },
   };
 }
 
@@ -753,14 +865,7 @@ export function CaseNextStep(props: Props) {
   const { actorRole } = props;
   const action = plan.action;
   const latestWorkspace = currentWorkspace(props);
-  const explainPartial = Boolean(
-    props.compact &&
-    action.kind === "link" &&
-    action.label === "返回原审查工作区" &&
-    latestWorkspace?.run.state === "partial" &&
-    !hasTransientRetryCause(latestWorkspace),
-  );
-  const actionLabel = explainPartial ? "查看审查原因" : action.label;
+  const actionLabel = action.label;
   const actionProps = {
     className: "case-next-step-button",
     "aria-label":
@@ -773,9 +878,7 @@ export function CaseNextStep(props: Props) {
   const actionHref =
     props.suppressWriteAction && action.href?.startsWith("#")
       ? "/cases/" + encodeURIComponent(props.caseDetail.id) + action.href
-      : explainPartial && action.href
-        ? `${action.href}${action.href.includes("?") ? "&" : "?"}drawer=record&tab=review`
-        : action.href;
+      : action.href;
 
   let mainAction;
   if (action.kind === "link") {
@@ -835,30 +938,116 @@ export function CaseNextStep(props: Props) {
   }
 
   if (props.compact) {
+    const preparationScope = props.readiness?.scopes.find(
+      (scope) => scope.id === props.selectedScope,
+    );
+    const canStartPrepared =
+      props.preparationActionTarget &&
+      plan.showPreparationStart &&
+      !props.suppressWriteAction &&
+      props.sessionReady &&
+      Object.hasOwn(CAN_START_REVIEW_ROLES, actorRole) &&
+      props.caseDetail.archived_at === null &&
+      props.caseDetail.materials &&
+      props.caseDetail.material_versions &&
+      props.caseDetail.material_selection &&
+      props.caseDetail.material_selection.status !== "pending_confirmation" &&
+      props.caseDetail.subject_context_changed_after_latest_run !== undefined &&
+      (!props.businessAtInput || props.validBusinessAt) &&
+      !props.readinessLoading &&
+      !props.readinessError &&
+      props.readiness?.case_id === props.caseDetail.id &&
+      preparationScope?.status === "ready" &&
+      preparationScope.can_start &&
+      preparationScope.blockers.length === 0;
+    const stage = <StatusText tone={plan.tone}>{plan.stage}</StatusText>;
+    const currentAttempt = latestWorkspace?.review_attempts?.attempt;
+    const exception =
+      plan.exception ??
+      (currentAttempt?.state === "partial" && latestWorkspace
+        ? {
+            message:
+              selectedOutcome(latestWorkspace)?.reason === "scope_limited"
+                ? "单合同预审已结束，仅覆盖所选范围。"
+                : "智能审查未完成，未检查的部分仍需核对。",
+            reasonHref: `${caseHref(props.caseDetail.id, currentAttempt.run_id, currentAttempt.id)}&drawer=record&tab=review`,
+          }
+        : undefined);
+    const showIssue = Boolean(
+      exception || plan.tone === "attention" || plan.announcement === "alert",
+    );
     return (
-      <section className="case-next-step-compact" aria-labelledby="case-next-step-title">
+      <section
+        className={
+          showIssue ? "case-next-step-compact case-next-step-has-issue" : "case-next-step-compact"
+        }
+        aria-labelledby="case-next-step-title"
+      >
         {props.actionTarget ? createPortal(mainAction, props.actionTarget) : null}
-        <div className="case-next-step-line">
-          <StatusText tone={plan.tone}>{plan.stage}</StatusText>
-          <h2 id="case-next-step-title">{plan.title}</h2>
-          <span>{plan.owner}</span>
-          <details>
-            <summary>查看原因</summary>
-            <p role={plan.announcement}>{plan.reason}</p>
-            {plan.missingItems.length ? (
-              <ul>
-                {plan.missingItems.map((item, index) => (
-                  <li key={`${index}:${item}`}>{item}</li>
-                ))}
-              </ul>
-            ) : null}
-            {plan.technicalDetail ? (
-              <TechnicalDetail label="状态编码" value={plan.technicalDetail} />
-            ) : null}
-            <TechnicalDetail label="角色编码" value={actorRole} />
-            {latestWorkspace ? <ReviewOutcomeSummary workspace={latestWorkspace} /> : null}
-          </details>
-        </div>
+        {canStartPrepared && props.preparationActionTarget
+          ? createPortal(
+              <div className="case-next-step-preparation">
+                {props.startError ? <p role="alert">{errorMessage(props.startError)}</p> : null}
+                {props.startControls}
+                <Button
+                  loading={props.startPending}
+                  disabled={props.startPending || props.startDisabled}
+                  onClick={props.onStartReview}
+                >
+                  发起新审查
+                </Button>
+              </div>,
+              props.preparationActionTarget,
+            )
+          : null}
+        {props.stageTarget ? createPortal(stage, props.stageTarget) : null}
+        {showIssue ? (
+          <div className="case-next-step-line">
+            <h2 id="case-next-step-title">{exception?.message ?? plan.title}</h2>
+            {exception ? (
+              exception.reasonHref !== actionHref ? (
+                <Button
+                  type="link"
+                  href={exception.reasonHref}
+                  onClick={(event) => {
+                    if (
+                      !props.onNavigateReview ||
+                      event.button !== 0 ||
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.altKey ||
+                      event.shiftKey
+                    )
+                      return;
+                    event.preventDefault();
+                    props.onNavigateReview(exception.reasonHref);
+                  }}
+                >
+                  查看原因
+                </Button>
+              ) : null
+            ) : (
+              <details>
+                <summary>查看原因</summary>
+                <p role={plan.announcement}>{plan.reason}</p>
+                {plan.missingItems.length ? (
+                  <ul>
+                    {plan.missingItems.map((item, index) => (
+                      <li key={`${index}:${item}`}>{item}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                {plan.technicalDetail ? (
+                  <TechnicalDetail label="状态编码" value={plan.technicalDetail} />
+                ) : null}
+              </details>
+            )}
+          </div>
+        ) : (
+          <h2 id="case-next-step-title" className="sr-only">
+            {plan.title}
+          </h2>
+        )}
         {action.kind === "start" && !props.suppressWriteAction ? props.startControls : null}
       </section>
     );

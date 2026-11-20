@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r7
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -23,6 +23,7 @@ import type { CaseDetail, MaterialProjection, MaterialPurpose } from "../api/typ
 import { formatDateTime, parseLabel, parseTone, roleLabel } from "../domain/review";
 import { ParsedDocumentSummary } from "./parsed-document-summary";
 import { StatusText } from "./status-text";
+import { useProfessionalMode } from "./app-shell-preferences";
 import { TechnicalDetail } from "./technical-detail";
 import { DirtyLeaveGuard } from "./dirty-leave-guard";
 
@@ -85,6 +86,7 @@ function legacyStatusLabel(material: MaterialProjection): string {
 }
 
 export function MaterialCollectionPanel({ caseDetail, canWrite, actorId, source }: Props) {
+  const { enabled: professional } = useProfessionalMode();
   const [editorSession, setEditorSession] = useState<{
     document: CaseDetail["documents"][number];
     material: MaterialProjection;
@@ -438,11 +440,8 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId, source 
                       parse_status: document?.parse_status ?? null,
                     })}
                   />
-                  {document ? (
-                    <ParsedDocumentSummary document={document} />
-                  ) : (
-                    <p className="meta">当前材料元数据尚未返回，请刷新重试或联系管理员。</p>
-                  )}
+                  {document && professional ? <ParsedDocumentSummary document={document} /> : null}
+                  {!document ? <p className="meta">暂时无法读取材料，请刷新重试。</p> : null}
                   {document?.parse_status === "failed" && document.parse_error ? (
                     <p>{document.parse_error}</p>
                   ) : null}
@@ -498,7 +497,7 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId, source 
                 {documentById.get(material.current_document_id)?.filename ?? "材料文件名暂不可用"} ·{" "}
                 {purposeLabels[material.purpose]}版本历史
               </h4>
-              {history.length === 0 ? <p>服务尚未返回此材料的版本历史。</p> : null}
+              {history.length === 0 ? <p>暂时没有可查看的版本。</p> : null}
               <ol>
                 {history.map((version) => {
                   const document = documentById.get(version.document_id);
@@ -543,9 +542,7 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId, source 
       {activeMaterialView === "parsing" ? (
         <div className="material-parsing">
           <h3>材料解析状态</h3>
-          <p className="meta">
-            此处展示服务返回的各文件当前解析状态；历史审查使用当次留档的解析结果。
-          </p>
+
           {caseDetail.documents.length === 0 ? (
             <p>当前没有材料解析记录。</p>
           ) : (
@@ -679,6 +676,9 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId, source 
             <Button disabled={!canWrite || upload.isPending}>选择文件</Button>
           </Upload>
         </div>
+        {file && caseDetail.latest_run ? (
+          <p className="meta">本次上传用于后续审查，已有审查保留原材料。</p>
+        ) : null}
         {uploadPreparationError ? <p role="alert">{uploadPreparationError}</p> : null}
         {upload.isError ? (
           <div role="alert">

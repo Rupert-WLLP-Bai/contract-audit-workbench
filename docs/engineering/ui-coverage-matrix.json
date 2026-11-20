@@ -503,10 +503,13 @@
       "kind": "route",
       "sources": [
         "web/src/pages/review-page.tsx",
+        "web/src/pages/review-page.css",
+        "web/src/components/review-workspace-layout.css",
         "web/src/components/review-workspace.tsx",
         "web/src/components/document-stage.tsx",
         "web/src/components/document-stage-immersive.css",
-        "web/src/components/finding-panel.tsx"
+        "web/src/components/finding-panel.tsx",
+        "web/src/components/finding-panel.css"
       ],
       "implementationIssue": 339,
       "figmaNodeId": "6:206",
@@ -519,10 +522,15 @@
         "../ui-redesign-20261119/impl-b/review-1440x900.png",
         "../ui-redesign-20261119/impl-b/review-1280x800.png",
         "../ui-redesign-20261119/impl-b/review-1024x768.png",
-        "../ui-redesign-20261119/impl-b/review-drawer-1440x900.png"
+        "../ui-redesign-20261119/impl-b/review-drawer-1440x900.png",
+        "../ui-redesign-20261120-v2/impl/360/henan-workspace.png",
+        "../ui-redesign-20261120-v2/impl/360/henan-drawer.png",
+        "../ui-redesign-20261120-v2/impl/360/henan-390-workspace.png",
+        "../ui-redesign-20261120-v2/impl/360/henan-390-actions.png",
+        "../ui-redesign-20261120-v2/impl/360/net-workspace.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL：1440、1280、1024 及审查记录抽屉为确定性夹具截图；完整视口和角色矩阵 NOT_RUN。",
+      "statusDetail": "PARTIAL：旧截图为确定性夹具；本批为河南和网联公开原件，均零线索。非零线索由工程测试覆盖，完整视口和角色矩阵 NOT_RUN。",
       "template": "双文档原文、线索判断与审查记录抽屉"
     },
     {

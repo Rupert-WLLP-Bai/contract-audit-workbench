@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -586,9 +586,7 @@ export function TemplateGenerationPanel({
       <header className="workflow-panel-head">
         <div>
           <h2 id="template-generation-title">模板生成</h2>
-          <p className="meta">
-            从已发布模板生成草稿；替换材料时保留原版本。模板版本和摘要由服务端返回。
-          </p>
+          <p className="meta">从已发布模板生成草稿；替换材料时保留原版本。</p>
         </div>
       </header>
       {!canWrite ? <p className="callout">当前角色没有已定义的模板写入权限。</p> : null}

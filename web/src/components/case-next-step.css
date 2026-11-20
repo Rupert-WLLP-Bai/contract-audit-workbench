@@ -1,10 +1,10 @@
 /* File metadata (manifest mirror): */
-/* Purpose: Defines visual tokens and component/page rules, including @layer components, .case-next-step, .case-next-step-head, .case-next-step-eyebrow; the stylesheet is imported by the web shell and carries no application state. */
+/* Purpose: Styles the case action and its compact, actionable exception notice. */
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-31 */
 /* Updated: 2026-11-20 */
-/* Revision: r3 */
+/* Revision: r4 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -104,8 +104,22 @@
 }
 
 .case-next-step-compact {
-  padding: var(--space-3) 0;
+  min-width: 0;
 }
+
+.case-next-step-line {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--state-insufficient-bg);
+}
+
+.case-next-step-preparation {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+}
+
 .case-next-step-line {
   display: flex;
   align-items: baseline;

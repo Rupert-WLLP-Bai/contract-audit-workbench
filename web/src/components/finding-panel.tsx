@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r10
+// Revision: r11
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -171,9 +171,11 @@ function FindingListRow({
           onKeyDown={(event) => activateFindingByKey(event, () => onSelect(finding.id, true))}
         >
           <span className="finding-card-title">{findingTitle(finding)}</span>
-          <span className="finding-grade" data-severity={finding.severity ?? "unrated"}>
-            {SEVERITY_LABELS[finding.severity ?? "unrated"] ?? "未分级"}
-          </span>
+          {finding.severity && ["high", "medium", "low"].includes(finding.severity) ? (
+            <span className="finding-grade" data-severity={finding.severity}>
+              {SEVERITY_LABELS[finding.severity]}
+            </span>
+          ) : null}
           <span className="meta">
             {originLabel(finding.origin)}， {relationLabel(finding.relation)}
             {decision ? `，已记录${decisionLabel(decision.action)}` : "，待裁决"}
@@ -979,7 +981,21 @@ function WorkspaceFindingDetails({
                   </span>
                 </span>
               )}
-              {anchor.quote && <q>{anchor.quote}</q>}
+              {anchor.quote && (
+                <q>
+                  {anchor.quote
+                    .split(/(\d+(?:\.\d+)?\s*(?:个月|年|日|天|小时|分钟|元|万元|亿元|%))/g)
+                    .map((part, index) =>
+                      index % 2 ? (
+                        <span className="review-amount" key={index}>
+                          {part}
+                        </span>
+                      ) : (
+                        part
+                      ),
+                    )}
+                </q>
+              )}
             </li>
           );
         })}
@@ -1468,11 +1484,17 @@ export function FindingPanel({
                         activateFindingByKey(event, () => activateRow(finding.id, true))
                       }
                     >
-                      <span className="finding-grade" data-severity={severity}>
-                        {SEVERITY_LABELS[severity] ?? "未分级"}
-                      </span>
+                      {["high", "medium", "low"].includes(severity) ? (
+                        <span className="finding-grade" data-severity={severity}>
+                          {SEVERITY_LABELS[severity]}
+                        </span>
+                      ) : null}
                       <strong>{findingTitle(finding)}</strong>
-                      {model ? <span className="review-finding-ai">AI 建议</span> : null}
+                      {model ? (
+                        <span className="review-finding-ai">AI 建议</span>
+                      ) : finding.origin === "rule" ? (
+                        <span className="review-finding-origin">规则检查</span>
+                      ) : null}
                     </button>
                     {showBatchChoice ? (
                       <Checkbox
