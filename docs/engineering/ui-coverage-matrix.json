@@ -781,10 +781,11 @@
         "web/src/pages/workbench-module-page.css"
       ],
       "implementationIssue": 366,
+      "testRefs": ["web/src/components/app-shell.test.tsx", "web/e2e/functional/sessions.spec.ts"],
       "figmaNodeId": "8:1600",
       "screenshotRefs": ["executions.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL：#366 验证专业模式开关和主导航末尾入口，执行列表与指定审查的 Agent Studio 路径均正确高亮。完整角色与视口矩阵 NOT_RUN。",
+      "statusDetail": "PARTIAL：#366 验证专业模式开关和主导航末尾入口，执行列表与指定审查的 Agent Studio 路径均正确高亮。 #388 验证减少动态效果时头像菜单仍在视口内，并可通过鼠标或键盘切换专业模式。完整角色与视口矩阵 NOT_RUN。",
       "template": "ListPage"
     },
     {

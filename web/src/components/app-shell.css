@@ -26,6 +26,13 @@
   line-height: var(--control-height-small);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .client-account-popup {
+    /* Ant Design measures the popup by changing its inset and reading it in the same frame. */
+    transition-property: none;
+  }
+}
+
 .client-account-menu {
   display: grid;
   gap: var(--space-2);

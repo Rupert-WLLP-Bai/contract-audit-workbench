@@ -409,6 +409,7 @@ function AccountMenu({
       <Popover
         trigger="click"
         placement="bottomRight"
+        classNames={{ root: "client-account-popup" }}
         getPopupContainer={(element) => element.parentElement ?? document.body}
         open={open}
         onOpenChange={setOpen}

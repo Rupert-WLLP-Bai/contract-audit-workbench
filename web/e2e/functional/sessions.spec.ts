@@ -364,3 +364,33 @@ test(
     expect(await page.locator('script[src^="http"]').count()).toBe(0);
   },
 );
+
+test(
+  "keeps the professional switch in view with reduced motion",
+  operations("createSession", "getSession"),
+  async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await login(page.request);
+    await page.goto(`${webURL}/workbench/executions`);
+    await expect(page.getByText("请在头像菜单中打开专业模式")).toBeVisible();
+
+    const account = page.getByRole("button", { name: "头像菜单" });
+    const professional = page.getByRole("switch", { name: "专业模式" });
+    await account.click();
+    await expect(professional).toBeInViewport({ ratio: 1 });
+    await professional.click();
+    await expect(professional).toBeChecked();
+    await account.click();
+
+    await account.press("Enter");
+    await page.keyboard.press("Tab");
+    await expect(professional).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(professional).not.toBeChecked();
+    await page.keyboard.press("Escape");
+    await expect(account).toHaveAttribute("aria-expanded", "false");
+    await expect(account).toBeFocused();
+    await expect(professional).toBeHidden();
+  },
+);
