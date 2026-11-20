@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Derives selected frozen-review coverage, agent-stage, unresolved-gap and transient-retry presentation hints while preserving server authority.
+// Purpose: Derives business progress, coverage, agent-stage, gap and retry descriptions from the selected review attempt and its recorded outcome.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
