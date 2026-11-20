@@ -710,7 +710,8 @@
         "web/src/components/page-patterns.tsx",
         "web/src/components/page-patterns.css"
       ],
-      "implementationIssue": 258,
+      "implementationIssue": 376,
+      "testRefs": ["web/src/pages/workbench-module-page.test.tsx", "web/e2e/ui-matrix.ts"],
       "figmaNodeId": "8:1428",
       "screenshotRefs": [
         "reports.png",
@@ -724,7 +725,7 @@
         "../ui-redesign-20261120-v3/impl/desktop/376/11-reports-statistics-modern.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL：报告列表保留详情抽屉，统计改为可折叠面板；真实桌面截图与完整矩阵待复核。",
+      "statusDetail": "PARTIAL：#376 在 1440×900 用真实数据验证统计折叠、今天／本周／本月切换、五列汇总及三张等高白底卡。报告、会签、整改、知识、旧审查材料和主体六类列表均无横向溢出。全角色、全视口及完整矩阵 NOT_RUN。",
       "template": "ListPage"
     },
     {
