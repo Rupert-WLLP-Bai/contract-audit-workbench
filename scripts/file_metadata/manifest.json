@@ -8445,12 +8445,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "471283976027568fc7121b1bfa8cd6e8bcfe67d0",
+          "commit": "3aae597d36b96a1ba436367e5a17955dd488299c",
           "path": "docs/engineering/ui-coverage-matrix.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r14",
+      "revision": "r15",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -65868,7 +65868,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r106",
+      "revision": "r107",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -78776,15 +78776,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6f0765022ac36a03ad05db7fedf36f02a3d8479b",
+          "commit": "6e2538a17f124472d4a283296db87381ca3c4222",
           "path": "web/src/components/execution-diagram.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -78824,15 +78824,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-14",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "baa8d26ed411322c74908fbad513b1542b68e9d6",
+          "commit": "6e2538a17f124472d4a283296db87381ca3c4222",
           "path": "web/src/components/execution-diagram.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -83678,15 +83678,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-12",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "2994db6770d6fce11c0ebf3f0b5f09cde41d09c9",
+          "commit": "6e2538a17f124472d4a283296db87381ca3c4222",
           "path": "web/src/domain/execution-labels.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -87473,12 +87473,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "04e15af0cc256f187e9bd794f3d622965645450c",
+          "commit": "6e2538a17f124472d4a283296db87381ca3c4222",
           "path": "web/src/pages/agent-studio-page.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -87491,7 +87491,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/agent-studio-page.tsx": {
-      "purpose": "Renders the read-only Agent Studio for one fixed review attempt: capability relationships, a saved-event swimlane with node details, and a searchable event ledger, all projected from existing review and diagnostics APIs.",
+      "purpose": "Renders a read-only Studio for one review attempt with capability relationships, an execution diagram, recorded failure links and URL-addressable saved events.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -87521,12 +87521,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "04e15af0cc256f187e9bd794f3d622965645450c",
+          "commit": "6e2538a17f124472d4a283296db87381ca3c4222",
           "path": "web/src/pages/agent-studio-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",

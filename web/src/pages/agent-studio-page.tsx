@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders the read-only Agent Studio for one fixed review attempt: capability relationships, a saved-event swimlane with node details, and a searchable event ledger, all projected from existing review and diagnostics APIs.
+// Purpose: Renders a read-only Studio for one review attempt with capability relationships, an execution diagram, recorded failure links and URL-addressable saved events.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-06
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
