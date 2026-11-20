@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r6
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -327,7 +327,7 @@ function SubjectsList({ session }: { session: ReturnType<typeof useSession> }) {
           dataSource={visibleItems}
           loading={subjects.isLoading || subjects.isFetching}
           pagination={false}
-          scroll={{ x: 700 }}
+          tableLayout="fixed"
           locale={{
             emptyText: (
               <span aria-live="polite">

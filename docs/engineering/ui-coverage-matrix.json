@@ -710,7 +710,8 @@
         "web/src/components/page-patterns.tsx",
         "web/src/components/page-patterns.css"
       ],
-      "implementationIssue": 258,
+      "implementationIssue": 376,
+      "testRefs": ["web/src/pages/workbench-module-page.test.tsx", "web/e2e/ui-matrix.ts"],
       "figmaNodeId": "8:1428",
       "screenshotRefs": [
         "reports.png",
@@ -720,10 +721,11 @@
         "audit/round41/reports-390.png",
         "audit/round41/reports-reader-1440.png",
         "../ui-redesign-20261120-v2/impl/362/通用-reports-1440.png",
-        "../ui-redesign-20261120-v2/impl/362/通用-报告抽屉-1440.png"
+        "../ui-redesign-20261120-v2/impl/362/通用-报告抽屉-1440.png",
+        "../ui-redesign-20261120-v3/impl/desktop/376/11-reports-statistics-modern.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL：桌面真实页面复核列表、表头与空态；业务写入未执行，完整矩阵未运行。",
+      "statusDetail": "PARTIAL：#376 在 1440×900 用真实数据验证统计折叠、今天／本周／本月切换、五列汇总及三张等高白底卡。报告、会签、整改、知识、旧审查材料和主体六类列表均无横向溢出。全角色、全视口及完整矩阵 NOT_RUN。",
       "template": "ListPage"
     },
     {

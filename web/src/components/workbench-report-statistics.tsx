@@ -4,47 +4,69 @@
 // Contact: +86 13617696321
 // Created: 2026-11-20
 // Updated: 2026-11-20
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
-import { Select } from "antd";
+import { Segmented } from "antd";
+import { DownOutlined, RightOutlined } from "@ant-design/icons";
 import { Link } from "react-router";
 import type { WorkbenchPeriod, WorkbenchSnapshot } from "../api/types";
 import { businessActionLabel } from "../domain/business-labels";
-import { caseHref, formatDateTime } from "../domain/review";
+import { caseHref } from "../domain/review";
+import { compactTime } from "../domain/time";
 
 const risks = {
   high: "高风险",
   medium: "中风险",
   low: "低风险",
   info: "提示",
-  unrated: "未分级",
+  unrated: "等级待核对",
 } as const;
+const percent = (count: number, total: number) =>
+  total > 0 ? `${Math.round((count / total) * 100)}%` : "—";
 
 export function WorkbenchReportStatistics({
   snapshot,
   changePeriod,
+  expanded,
+  setExpanded,
 }: {
   snapshot: WorkbenchSnapshot;
   changePeriod: (period: WorkbenchPeriod) => void;
+  expanded: boolean;
+  setExpanded: (expanded: boolean) => void;
 }) {
   const { dashboard } = snapshot;
   const total = dashboard.progress.reduce((sum, row) => sum + row.count, 0);
-  const open = dashboard.progress.find((row) => row.status === "active")?.count ?? 0;
-  const closed = dashboard.progress.find((row) => row.status === "archived")?.count ?? 0;
-  const openShare = total > 0 ? (open / total) * 100 : 0;
-  const knownShare = total > 0 ? ((open + closed) / total) * 100 : 0;
-  const breakdown = total
-    ? `conic-gradient(var(--action-primary) 0 ${openShare}%, var(--state-compatible) ${openShare}% ${knownShare}%, var(--surface-subtle) ${knownShare}% 100%)`
-    : "var(--surface-subtle)";
   const riskCount = dashboard.risks.reduce((sum, row) => sum + row.count, 0);
+  const counts = [
+    ["可见案件", dashboard.visible_cases],
+    ["待审查案件", dashboard.pending_review_cases],
+    ["本周期完成审查", dashboard.completed_reviews],
+    [
+      "平均运行时长",
+      dashboard.average_duration_ms === null
+        ? "—"
+        : `${(dashboard.average_duration_ms / 1000).toFixed(1)} 秒`,
+    ],
+    ["逾期任务", dashboard.overdue_tasks],
+  ];
   return (
-    <section className="workbench-report-statistics" aria-label="统计概览">
-      <div className="workbench-report-statistics-content">
-        <label className="module-search">
-          统计周期
-          <Select<WorkbenchPeriod>
+    <section className="workbench-report-statistics" aria-label="审查统计与业务记录">
+      <div className="workbench-report-statistics-bar">
+        <button
+          type="button"
+          className="workbench-report-toggle"
+          aria-expanded={expanded}
+          aria-controls="workbench-statistics-content"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? <DownOutlined aria-hidden /> : <RightOutlined aria-hidden />}{" "}
+          审查统计与业务记录
+        </button>
+        {expanded ? (
+          <Segmented<WorkbenchPeriod>
             aria-label="统计周期"
             value={snapshot.period}
             onChange={changePeriod}
@@ -54,97 +76,127 @@ export function WorkbenchReportStatistics({
               { value: "month", label: "本月" },
             ]}
           />
-        </label>
-        <dl className="workbench-report-counts">
-          <div>
-            <dt>可见案件</dt>
-            <dd>{dashboard.visible_cases}</dd>
-          </div>
-          <div>
-            <dt>待审查案件</dt>
-            <dd>{dashboard.pending_review_cases}</dd>
-          </div>
-          <div>
-            <dt>本周期完成审查</dt>
-            <dd>{dashboard.completed_reviews}</dd>
-          </div>
-          <div>
-            <dt>平均运行时长</dt>
-            <dd>
-              {dashboard.average_duration_ms === null
-                ? "未报告"
-                : `${(dashboard.average_duration_ms / 1000).toFixed(1)} 秒`}
-            </dd>
-          </div>
-          <div>
-            <dt>可见案件逾期任务</dt>
-            <dd>{dashboard.overdue_tasks}</dd>
-          </div>
-        </dl>
-        <div className="workbench-report-breakdowns">
-          <section aria-label="可见案件状态">
-            <h2>案件状态</h2>
-            <div
-              className="workbench-report-donut"
-              style={{ background: breakdown }}
-              aria-hidden="true"
-            />
-            <ul>
-              {dashboard.progress.map((row) => (
-                <li key={row.status}>
-                  {row.status === "active"
-                    ? "未归档"
-                    : row.status === "archived"
-                      ? "已归档"
-                      : "状态未识别"}{" "}
-                  {row.count}
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section aria-label="审查发现分布">
-            <h2>审查发现分布</h2>
-            <p>按可见案件的最新审查统计。</p>
-            <ul>
-              {dashboard.risks.map((row) => (
-                <li key={row.severity}>
-                  <span>
-                    {risks[row.severity]} {row.count}
-                  </span>
-                  {riskCount ? (
-                    <meter
-                      min={0}
-                      max={riskCount}
-                      value={row.count}
-                      aria-label={risks[row.severity]}
-                    />
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-        <section aria-label="最近业务记录">
-          <h2>最近业务记录</h2>
-          {snapshot.audit.length ? (
-            <ul>
-              {snapshot.audit.slice(0, 5).map((event) => (
-                <li key={event.id}>
-                  <time dateTime={event.at}>{formatDateTime(event.at)}</time>
-                  {" · "}
-                  {event.case_id && event.case_title ? (
-                    <Link to={caseHref(event.case_id)}>{event.case_title}</Link>
-                  ) : null}
-                  {" · "}
-                  {businessActionLabel(event.action)} · {event.summary}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>暂无业务记录。</p>
-          )}
-        </section>
+        ) : null}
       </div>
+      {expanded ? (
+        <div id="workbench-statistics-content" className="workbench-report-statistics-content">
+          <dl className="workbench-report-counts">
+            {counts.map(([label, value], i) => (
+              <div key={label}>
+                <dt>
+                  {[1, 2, 4].includes(i) ? (
+                    <span className={`stats-dot stats-kpi-${i}`} aria-hidden />
+                  ) : null}
+                  {label}
+                </dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="workbench-report-breakdowns">
+            <section aria-label="可见案件状态">
+              <header>
+                <h2>案件状态构成</h2>
+                <span>共 {dashboard.progress.length ? total : "—"} 件</span>
+              </header>
+              <div className="stats-stack" aria-hidden="true">
+                {dashboard.progress.map((row) => (
+                  <span
+                    key={row.status}
+                    className={`stats-color-${row.status === "active" || row.status === "archived" ? row.status : "unknown"}`}
+                    style={{ width: total ? `${(row.count / total) * 100}%` : "0%" }}
+                  />
+                ))}
+              </div>
+              {dashboard.progress.length ? (
+                <div className="stats-rows">
+                  {dashboard.progress.map((row) => (
+                    <div className="stats-legend" key={row.status}>
+                      <span>
+                        <i
+                          className={`stats-dot stats-color-${row.status === "active" || row.status === "archived" ? row.status : "unknown"}`}
+                        />
+                        {row.status === "active"
+                          ? "未归档"
+                          : row.status === "archived"
+                            ? "已归档"
+                            : "状态未识别"}
+                      </span>
+                      <strong>{row.count}</strong>
+                      <small>{percent(row.count, total)}</small>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p>暂无案件状态记录。</p>
+              )}
+            </section>
+            <section aria-label="审查发现分布">
+              <header>
+                <h2>审查发现分布</h2>
+                <span>最新审查 · {dashboard.risks.length ? riskCount : "—"} 条</span>
+              </header>
+              <p>按可见案件的最新审查统计。</p>
+              {dashboard.risks.length ? (
+                <div className="stats-rows">
+                  {dashboard.risks.map((row) => (
+                    <div className="stats-risk" key={row.severity}>
+                      <span>
+                        <i className={`stats-dot stats-color-${row.severity}`} />
+                        {risks[row.severity]}
+                      </span>
+                      <div className="stats-track" aria-hidden="true">
+                        <div
+                          className={`stats-color-${row.severity}`}
+                          style={{ width: riskCount ? `${(row.count / riskCount) * 100}%` : "0%" }}
+                        />
+                      </div>
+                      <strong>{row.count}</strong>
+                      <small>{percent(row.count, riskCount)}</small>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p>暂无审查发现记录。</p>
+              )}
+            </section>
+            <section aria-label="最近业务记录">
+              <header>
+                <h2>最近业务动态</h2>
+                <span>最新 {Math.min(snapshot.audit.length, 5)} 条</span>
+              </header>
+              {snapshot.audit.length ? (
+                <ul className="stats-timeline">
+                  {snapshot.audit.slice(0, 5).map((event) => (
+                    <li key={event.id}>
+                      <i
+                        className={`stats-dot ${event.action === "report.created" ? "stats-color-archived" : event.action === "remediation.submitted" ? "stats-color-active" : event.action === "remediation.created" ? "stats-color-medium" : "stats-color-unknown"}`}
+                      />
+                      <span
+                        title={[businessActionLabel(event.action), event.case_title, event.summary]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      >
+                        <strong>{businessActionLabel(event.action)}</strong>
+                        {event.case_id && event.case_title ? (
+                          <>
+                            {" "}
+                            · <Link to={caseHref(event.case_id)}>{event.case_title}</Link>
+                          </>
+                        ) : null}
+                        {event.summary ? <> · {event.summary}</> : null}
+                      </span>
+                      <time dateTime={event.at}>{compactTime(event.at)}</time>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>暂无业务记录。</p>
+              )}
+            </section>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

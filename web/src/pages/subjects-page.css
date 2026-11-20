@@ -4,7 +4,7 @@
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-08 */
 /* Updated: 2026-11-20 */
-/* Revision: r4 */
+/* Revision: r5 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -546,4 +546,13 @@
 
 .subject-ledger-table .ant-table-placeholder td {
   color: var(--text-secondary);
+}
+
+@media (max-width: 1199px) {
+  .subject-ledger-table .ant-table-content {
+    overflow-x: auto;
+  }
+  .subject-ledger-table table {
+    min-width: 700px;
+  }
 }

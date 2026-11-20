@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-19
 // Updated: 2026-11-20
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -513,7 +513,6 @@ function ContractDeskCompatibilityPage() {
           columns={columns}
           dataSource={pageRows}
           rowKey={(row) => row.document.id}
-          scroll={{ x: 808 }}
           tableLayout="fixed"
           pagination={{
             current: page,

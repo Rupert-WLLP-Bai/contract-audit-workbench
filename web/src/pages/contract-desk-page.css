@@ -4,7 +4,7 @@
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-19 */
 /* Updated: 2026-11-20 */
-/* Revision: r2 */
+/* Revision: r3 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -90,5 +90,14 @@
 
   .contract-desk-filters {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+@media (max-width: 1199px) {
+  .contract-desk .ant-table-content {
+    overflow-x: auto;
+  }
+  .contract-desk .ant-table-content table {
+    min-width: 808px;
   }
 }

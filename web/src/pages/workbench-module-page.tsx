@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r13
+// Revision: r14
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -84,7 +84,7 @@ export const WORKBENCH_MODULES = {
   },
   reports: {
     title: "报告",
-    tabs: ["审查报告", "统计概览"],
+    tabs: ["审查报告"],
     details: ["报告预览", "发现与决定", "版本与来源", "导出记录"],
   },
   evidence: {
@@ -1433,7 +1433,8 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
       ].join("\u0000")
     : "";
   const [period, setPeriod] = useState<WorkbenchPeriod>("week");
-  const query = useWorkbench(showingStatistics ? period : "week", actorScope);
+  const [statisticsExpanded, setStatisticsExpanded] = useState(false);
+  const query = useWorkbench(module === "reports" ? period : "week", actorScope);
   const updateTask = useUpdateWorkbenchTask();
   const hasCachedModuleData = Boolean(session.data && query.data);
   const moduleRevalidating = hasCachedModuleData && (session.isFetching || query.isFetching);
@@ -1803,6 +1804,14 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
           beforeSummary={
             <>
               {module === "tools" ? <QccMcpPanel /> : null}
+              {module === "reports" ? (
+                <WorkbenchReportStatistics
+                  snapshot={snapshot}
+                  changePeriod={setPeriod}
+                  expanded={statisticsExpanded}
+                  setExpanded={setStatisticsExpanded}
+                />
+              ) : null}
               {createOpen && (canCreateTask || taskCapabilityRevalidating) ? (
                 <TaskCreateForm
                   snapshot={snapshot}
@@ -1867,7 +1876,12 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
             </p>
           ) : null}
           {showingStatistics ? (
-            <WorkbenchReportStatistics snapshot={snapshot} changePeriod={setPeriod} />
+            <WorkbenchReportStatistics
+              snapshot={snapshot}
+              changePeriod={setPeriod}
+              expanded={statisticsExpanded}
+              setExpanded={setStatisticsExpanded}
+            />
           ) : (
             <section className="module-list-panel" aria-label={`${config.title}记录`}>
               {requestedRecord !== null && !selected && !contextChanged && records.length > 0 ? (
