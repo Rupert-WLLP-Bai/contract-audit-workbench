@@ -1,3 +1,13 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles the compact case review preparation card, including its scope controls, repair rows, readiness disclosure and action footer. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-20 */
+/* Updated: 2026-11-20 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
 .review-readiness-panel {
   min-inline-size: 0;
   background: var(--surface-raised);
