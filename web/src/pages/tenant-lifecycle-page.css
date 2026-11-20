@@ -30,7 +30,7 @@
   }
   .lifecycle-summary dt {
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--font-size-small);
   }
   .lifecycle-summary dd {
     margin: 0;

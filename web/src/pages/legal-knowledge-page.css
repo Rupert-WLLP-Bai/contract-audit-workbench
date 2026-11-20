@@ -28,7 +28,7 @@
 
 .legal-reader-tabs .ant-tabs-tab {
   padding-block: var(--space-2);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 .legal-reader-notice {
@@ -47,8 +47,8 @@
 .legal-reader-directory-head h2,
 .legal-reader-toolbar h2 {
   margin: 0;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--font-size-document);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.5;
 }
 
@@ -126,7 +126,7 @@
 
 .legal-directory-button span {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .legal-directory-button[aria-current="true"] span {
@@ -160,7 +160,7 @@
 
 .legal-version-detail h3 {
   margin: 0 0 var(--space-3);
-  font-size: 18px;
+  font-size: var(--font-size-document);
   line-height: 1.5;
 }
 
@@ -173,7 +173,7 @@
 
 .legal-version-detail dt {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .legal-version-detail dd {
@@ -209,12 +209,12 @@
 
 .legal-source-capture h4 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-ui);
 }
 
 .legal-source-capture h5 {
   margin: var(--space-3) 0 0;
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 .legal-source-capture pre {

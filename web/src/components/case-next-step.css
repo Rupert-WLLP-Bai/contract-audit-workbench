@@ -22,7 +22,7 @@
   .case-next-step-eyebrow {
     margin: 0 0 var(--space-1);
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--font-size-small);
   }
 
   .case-next-step-grid {
@@ -85,7 +85,7 @@
   .case-next-step-action p {
     margin: var(--space-1) 0 0;
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--font-size-small);
   }
 
   @media (max-width: 620px) {

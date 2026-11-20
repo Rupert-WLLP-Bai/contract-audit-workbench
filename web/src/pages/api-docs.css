@@ -35,7 +35,7 @@
   background-color: var(--api-paper);
   color: var(--api-ink);
   font-family: var(--api-font);
-  font-size: 14px;
+  font-size: var(--font-size-ui);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -129,7 +129,7 @@
   align-items: center;
   gap: clamp(20px, 3vw, 48px);
   height: 64px;
-  padding: 0 24px;
+  padding: 0 var(--space-6);
   border-bottom: 1px solid var(--api-rule);
   background: var(--api-paper-raised);
 }
@@ -138,7 +138,7 @@
   display: inline-flex;
   min-width: 0;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   color: var(--api-ink);
   text-decoration: none;
 }
@@ -167,8 +167,8 @@
 .api-docs-brand strong {
   overflow: hidden;
   color: var(--api-ink);
-  font-size: 15px;
-  font-weight: 700;
+  font-size: var(--font-size-document);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.012em;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -179,11 +179,11 @@
   display: inline-flex;
   height: 18px;
   align-items: center;
-  padding-left: 12px;
+  padding-left: var(--space-3);
   border-left: 1px solid var(--api-rule-strong);
   color: var(--api-muted);
-  font-size: 10px;
-  font-weight: 700;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.12em;
   line-height: 1;
   white-space: nowrap;
@@ -238,8 +238,8 @@
   align-items: center;
   color: var(--api-muted);
   font-family: var(--api-font);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-ui);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.015em;
   line-height: 1;
   transition: color 160ms var(--api-ease);
@@ -319,35 +319,35 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 26px 22px 10px;
 }
 
 .api-explorer-sidebar-head strong {
   color: var(--api-ink);
-  font-size: 15px;
-  font-weight: 700;
+  font-size: var(--font-size-document);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.012em;
 }
 
 .api-explorer-sidebar-head span {
   color: var(--api-faint);
-  font-size: 11px;
+  font-size: var(--font-size-small);
   font-variant-numeric: tabular-nums;
 }
 
 .api-filter-label {
   display: grid;
-  gap: 8px;
-  padding: 2px 22px 16px;
+  gap: var(--space-2);
+  padding: 2px 22px var(--space-4);
   color: var(--api-muted);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.06em;
 }
 
 .api-filter-label .ant-input-affix-wrapper {
-  height: 38px;
+  height: var(--control-height);
   padding-inline: 11px;
   border-color: var(--api-rule-strong);
   border-radius: 7px;
@@ -368,13 +368,13 @@
 .api-filter-label .ant-input-prefix {
   margin-inline-end: 7px;
   color: var(--api-faint);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .api-filter-label .ant-input {
   background: transparent;
   font-family: var(--api-font);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .api-docs-page .ant-input::placeholder,
@@ -383,15 +383,15 @@
 }
 
 .api-filter-empty {
-  padding: 16px 22px;
+  padding: var(--space-4) 22px;
   margin: 0;
   color: var(--api-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.6;
 }
 
 .api-explorer-sidebar .ant-menu {
-  padding: 4px 0 28px;
+  padding: var(--space-1) 0 28px;
   border-inline-end: 0;
   background: transparent;
   color: var(--api-ink-soft);
@@ -401,8 +401,8 @@
 .api-explorer-sidebar .ant-menu-item-group-title {
   padding: 18px 22px 6px;
   color: var(--api-faint);
-  font-size: 10px;
-  font-weight: 700;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.12em;
   line-height: 1.4;
 }
@@ -412,10 +412,10 @@
   height: auto;
   min-height: 34px;
   padding: 7px 10px !important;
-  margin: 1px 12px;
+  margin: 1px var(--space-3);
   border-radius: 6px;
   color: var(--api-ink-soft);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   line-height: 1.35;
   transition:
     background-color 140ms var(--api-ease),
@@ -458,7 +458,7 @@
 }
 
 .api-explorer-sidebar .ant-menu-item-selected .api-operation-menu-label > span:last-child {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 /* Method stamps reuse the shared semantic status tokens. */
@@ -475,8 +475,8 @@
   background: var(--state-neutral-bg);
   color: var(--state-neutral);
   font-family: var(--api-mono);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.02em;
   line-height: 1;
 }
@@ -540,7 +540,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   margin: 0 0 18px;
 }
 
@@ -549,14 +549,14 @@
   min-width: 56px;
   height: 23px;
   padding: 0;
-  font-size: 10.5px;
+  font-size: var(--font-size-small);
 }
 
 .api-operation-heading code {
   color: var(--api-muted);
   font-family: var(--api-mono);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -565,8 +565,8 @@
   max-width: 20ch;
   margin: 0 0 6px;
   color: var(--api-ink);
-  font-size: clamp(28px, 2.6vw, 36px);
-  font-weight: 750;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.035em;
   line-height: 1.16;
   text-wrap: balance;
@@ -576,7 +576,7 @@
   margin: 0 0 18px;
   color: var(--api-faint);
   font-family: var(--api-mono);
-  font-size: 11px;
+  font-size: var(--font-size-small);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -585,7 +585,7 @@
   max-width: 66ch;
   margin: 0 0 20px;
   color: var(--api-ink-soft);
-  font-size: 14px;
+  font-size: var(--font-size-ui);
   line-height: 1.78;
   white-space: pre-wrap;
 }
@@ -593,7 +593,7 @@
 .api-operation-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0 0 10px;
 }
 
@@ -602,7 +602,7 @@
   border: 1px solid var(--api-rule-strong);
   border-radius: 999px;
   color: var(--api-muted);
-  font-size: 11px;
+  font-size: var(--font-size-small);
   line-height: 1.45;
 }
 
@@ -615,17 +615,17 @@
 .api-contract-section h2 {
   margin: 0 0 14px;
   color: var(--api-ink);
-  font-size: 15px;
-  font-weight: 700;
+  font-size: var(--font-size-document);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.012em;
   line-height: 1.4;
 }
 
 .api-contract-section > p {
   max-width: 70ch;
-  margin: 0 0 12px;
+  margin: 0 0 var(--space-3);
   color: var(--api-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.7;
 }
 
@@ -633,7 +633,7 @@
   margin-left: 10px;
   color: var(--api-faint);
   font-family: var(--api-mono);
-  font-size: 10px;
+  font-size: var(--font-size-small);
   white-space: nowrap;
 }
 
@@ -641,7 +641,7 @@
   padding: 0;
   margin: 0;
   color: var(--api-faint);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.7;
 }
 
@@ -658,7 +658,7 @@
   background: transparent;
   color: var(--api-ink-soft);
   font-family: var(--api-font);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 .api-parameter-table .ant-table-thead > tr > th {
@@ -666,8 +666,8 @@
   border-bottom: 1px solid var(--api-rule);
   background: var(--api-paper-raised);
   color: var(--api-muted);
-  font-size: 10px;
-  font-weight: 700;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.08em;
   line-height: 1.5;
   white-space: nowrap;
@@ -678,11 +678,11 @@
 }
 
 .api-parameter-table .ant-table-tbody > tr > td {
-  padding: 12px 14px;
+  padding: var(--space-3) 14px;
   border-bottom: 1px solid var(--api-rule);
   background: transparent;
   color: var(--api-ink-soft);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   line-height: 1.55;
 }
 
@@ -693,8 +693,8 @@
 .api-parameter-table .ant-table-tbody > tr > td:first-child {
   color: var(--api-ink);
   font-family: var(--api-mono);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
 }
 
 .api-parameter-table .ant-table-tbody > tr:hover > td {
@@ -713,7 +713,7 @@
 .api-response-list li {
   display: flex;
   align-items: baseline;
-  gap: 16px;
+  gap: var(--space-4);
   padding: 10px 2px;
   border-bottom: 1px solid var(--api-rule);
   background: transparent;
@@ -723,13 +723,13 @@
   min-width: 40px;
   color: var(--api-ink);
   font-family: var(--api-mono);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
 }
 
 .api-response-list span {
   color: var(--api-ink-soft);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   line-height: 1.6;
 }
 
@@ -740,21 +740,21 @@
 .api-section-code {
   max-width: 100%;
   overflow: auto;
-  padding: 14px 16px;
+  padding: 14px var(--space-4);
   border: 1px solid var(--api-rule);
   border-radius: 8px;
   background: var(--api-paper-raised);
   color: var(--api-ink-soft);
   font-family: var(--api-mono);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.7;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .api-code-section {
-  margin: 12px 0;
-  padding: 16px;
+  margin: var(--space-3) 0;
+  padding: var(--space-4);
   border: 1px solid var(--api-rule);
   border-radius: 8px;
   background: var(--api-paper-raised);
@@ -764,31 +764,31 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .api-code-section h2,
 .api-code-section header h2 {
   margin: 0;
   color: var(--api-ink);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0;
 }
 
 .api-code-section header p {
   margin: 5px 0 0;
   color: var(--api-muted);
-  font-size: 11px;
+  font-size: var(--font-size-small);
   line-height: 1.6;
 }
 
 .api-code-section pre {
-  margin: 12px 0 0;
+  margin: var(--space-3) 0 0;
 }
 
 .api-openapi-source {
-  margin: 12px 0;
+  margin: var(--space-3) 0;
 }
 
 .api-openapi-source.ant-collapse {
@@ -802,8 +802,8 @@
   align-items: center !important;
   padding: 11px 14px !important;
   color: var(--api-muted) !important;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
 }
 
 .api-openapi-source .ant-collapse-content-box {
@@ -830,7 +830,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   padding-bottom: 10px;
   border-bottom: 1px solid var(--api-rule);
 }
@@ -838,28 +838,28 @@
 .api-request-head h2 {
   margin: 0;
   color: var(--api-ink);
-  font-size: 18px;
-  font-weight: 750;
+  font-size: var(--font-size-document);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.025em;
   line-height: 1.2;
 }
 
 .api-request-route {
-  margin: 10px 0 16px;
+  margin: 10px 0 var(--space-4);
   color: var(--api-muted);
   font-family: var(--api-mono);
-  font-size: 11px;
+  font-size: var(--font-size-small);
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
 
 .api-request-auth {
-  margin: 12px 0 0;
-  padding: 10px 12px;
+  margin: var(--space-3) 0 0;
+  padding: 10px var(--space-3);
   border-radius: 7px;
   background: var(--api-wash);
   color: var(--api-muted);
-  font-size: 11px;
+  font-size: var(--font-size-small);
   line-height: 1.65;
 }
 
@@ -881,7 +881,7 @@
 }
 
 .api-request-panel .api-code-section .api-request-auth {
-  margin-top: 12px;
+  margin-top: var(--space-3);
   padding: 10px 0 0;
   border-top: 1px solid rgb(242 241 236 / 14%);
   border-radius: 0;
@@ -892,12 +892,12 @@
 .api-request-panel .api-code-section pre {
   min-height: 0;
   max-height: 240px;
-  padding: 12px 0 0;
+  padding: var(--space-3) 0 0;
   border: 0;
   border-radius: 0;
   background: transparent;
   color: var(--api-code-ink);
-  font-size: 10.5px;
+  font-size: var(--font-size-small);
   line-height: 1.7;
 }
 
@@ -920,8 +920,8 @@
 .api-request-body-heading h3 {
   margin: 2px 0 0;
   color: var(--api-muted);
-  font-size: 10px;
-  font-weight: 700;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.1em;
   line-height: 1.5;
 }
@@ -931,28 +931,28 @@
   min-width: 0;
   gap: 7px;
   color: var(--api-ink);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .api-request-field > span {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
-  font-weight: 600;
+  gap: var(--space-2);
+  font-weight: var(--font-weight-semibold);
 }
 
 .api-request-field > span small {
   color: var(--api-faint);
   font-family: var(--api-mono);
-  font-size: 10px;
-  font-weight: 500;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
 }
 
 .api-field-description {
   color: var(--api-muted);
-  font-size: 11px;
-  font-weight: 400;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-normal);
   line-height: 1.55;
 }
 
@@ -963,7 +963,7 @@
   border-radius: 7px;
   background: var(--api-surface);
   box-shadow: none;
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 .api-request-field .ant-input:hover,
@@ -983,7 +983,7 @@
 .api-request-body-text textarea.ant-input {
   min-height: 88px;
   font-family: var(--api-mono);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.65;
 }
 
@@ -997,7 +997,7 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   color: var(--api-muted);
 }
 
@@ -1005,7 +1005,7 @@
   min-width: 0;
   color: var(--api-faint);
   font-family: var(--api-mono);
-  font-size: 9px;
+  font-size: var(--font-size-small);
   overflow-wrap: anywhere;
   text-align: right;
 }
@@ -1014,14 +1014,14 @@
   display: grid;
   gap: 7px;
   color: var(--api-ink);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
 }
 
 .api-request-body-note {
   margin: 0;
   color: var(--api-muted);
-  font-size: 10px;
+  font-size: var(--font-size-small);
   line-height: 1.6;
 }
 
@@ -1030,31 +1030,31 @@
 }
 
 .api-request-error {
-  padding: 10px 12px;
+  padding: 10px var(--space-3);
   margin: 0;
   border: 1px solid #e2c4c2;
   border-radius: 7px;
   background: #fbf0ef;
   color: #8b1f1f;
-  font-size: 11px;
+  font-size: var(--font-size-small);
   line-height: 1.6;
 }
 
 .api-request-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .api-request-actions .ant-btn {
-  height: 38px;
+  height: var(--control-height);
   flex: 1 1 auto;
 }
 
 .api-response-panel {
   display: grid;
   gap: 10px;
-  padding-top: 16px;
+  padding-top: var(--space-4);
   margin-top: 18px;
   border-top: 1px solid var(--api-rule);
 }
@@ -1063,22 +1063,22 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .api-response-panel h3 {
   margin: 0;
   color: var(--api-muted);
-  font-size: 10px;
-  font-weight: 700;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.1em;
 }
 
 .api-response-panel > header span {
   color: var(--state-conflict);
   font-family: var(--api-mono);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
 }
 
 .api-response-panel > header span[data-ok="true"] {
@@ -1088,14 +1088,14 @@
 .api-response-body {
   max-height: 360px;
   overflow: auto;
-  padding: 12px 14px;
+  padding: var(--space-3) 14px;
   margin: 0;
   border: 1px solid var(--api-rule);
   border-radius: 8px;
   background: var(--api-surface);
   color: var(--api-ink-soft);
   font-family: var(--api-mono);
-  font-size: 10px;
+  font-size: var(--font-size-small);
   line-height: 1.65;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1115,8 +1115,8 @@
   max-width: min(100%, 720px);
   margin: 0 0 18px;
   color: var(--api-ink);
-  font-size: clamp(30px, 3.4vw, 42px);
-  font-weight: 750;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.04em;
   line-height: 1.08;
   text-wrap: balance;
@@ -1125,17 +1125,17 @@
 .api-section-page > p,
 .api-section-page > .api-section-lead {
   max-width: 64ch;
-  margin: 0 0 16px;
+  margin: 0 0 var(--space-4);
   color: var(--api-ink-soft);
-  font-size: 14px;
+  font-size: var(--font-size-ui);
   line-height: 1.8;
 }
 
 .api-section-page h2 {
-  margin: 40px 0 12px;
+  margin: 40px 0 var(--space-3);
   color: var(--api-ink);
-  font-size: 19px;
-  font-weight: 700;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.02em;
   line-height: 1.35;
 }
@@ -1143,7 +1143,7 @@
 .api-contract-facts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin: 32px 0;
+  margin: var(--space-8) 0;
   border-block: 1px solid var(--api-rule);
 }
 
@@ -1160,16 +1160,16 @@
 
 .api-section-page .api-contract-facts dt {
   color: var(--api-muted);
-  font-size: 11px;
+  font-size: var(--font-size-small);
   line-height: 1.5;
 }
 
 .api-section-page .api-contract-facts dd {
   margin: 6px 0 0;
   color: var(--api-ink);
-  font-size: 27px;
+  font-size: var(--font-size-heading);
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.035em;
   line-height: 1.15;
 }
@@ -1177,7 +1177,7 @@
 .api-section-page dl:not(.api-contract-facts) {
   display: grid;
   gap: 0;
-  margin: 20px 0 24px;
+  margin: 20px 0 var(--space-6);
 }
 
 .api-section-page dl:not(.api-contract-facts) > div {
@@ -1194,7 +1194,7 @@
 
 .api-section-page dt {
   color: var(--api-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.6;
 }
 
@@ -1202,20 +1202,20 @@
   min-width: 0;
   margin: 0;
   color: var(--api-ink-soft);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
 
 .api-section-page dd pre {
-  padding: 10px 12px;
+  padding: 10px var(--space-3);
   margin: 6px 0 0;
   border: 1px solid var(--api-rule);
   border-radius: 7px;
   background: var(--api-paper-raised);
   color: var(--api-ink-soft);
   font-family: var(--api-mono);
-  font-size: 11px;
+  font-size: var(--font-size-small);
   line-height: 1.65;
   white-space: pre-wrap;
 }
@@ -1224,7 +1224,7 @@
   display: grid;
   gap: 0;
   padding: 0;
-  margin: 8px 0 0;
+  margin: var(--space-2) 0 0;
   border-top: 1px solid var(--api-rule);
   list-style: none;
 }
@@ -1240,21 +1240,21 @@
 
 .api-docs-tag-name {
   color: var(--api-ink);
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--font-size-ui);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.5;
 }
 
 .api-docs-tag-description {
   color: var(--api-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.6;
 }
 
 .api-docs-tag-count {
   color: var(--api-faint);
   font-family: var(--api-mono);
-  font-size: 11px;
+  font-size: var(--font-size-small);
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
 }
@@ -1266,12 +1266,12 @@
   border-radius: 10px;
   background: var(--api-code);
   color: var(--api-code-ink);
-  font-size: 11px;
+  font-size: var(--font-size-small);
   line-height: 1.7;
 }
 
 .api-section-page .ant-btn-primary {
-  height: 38px;
+  height: var(--control-height);
   padding-inline: 18px;
 }
 
@@ -1281,9 +1281,9 @@
   flex: 1;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: var(--space-3);
   color: var(--api-muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   letter-spacing: 0.06em;
 }
 
@@ -1314,7 +1314,7 @@
   align-items: center;
   justify-content: center;
   gap: 28px;
-  padding: 32px;
+  padding: var(--space-8);
 }
 
 .api-docs-load-error > div {
@@ -1322,9 +1322,9 @@
 }
 
 .api-docs-load-error h1 {
-  margin: 0 0 8px;
-  font-size: clamp(24px, 2.6vw, 32px);
-  font-weight: 750;
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.03em;
   line-height: 1.2;
 }
@@ -1332,7 +1332,7 @@
 .api-docs-load-error p {
   margin: 0;
   color: var(--api-muted);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   line-height: 1.7;
 }
 
@@ -1343,13 +1343,13 @@
   }
 
   .api-operation-reference {
-    padding-inline: 32px;
+    padding-inline: var(--space-8);
   }
 }
 
 @media (max-width: 1120px) {
   .api-docs-platform-header {
-    gap: 24px;
+    gap: var(--space-6);
     padding-inline: 18px;
   }
 
@@ -1368,8 +1368,8 @@
     grid-template-rows: auto 40px;
     height: auto;
     flex: 0 0 auto;
-    gap: 4px 16px;
-    padding: 8px 18px 0;
+    gap: var(--space-1) var(--space-4);
+    padding: var(--space-2) 18px 0;
   }
 
   .api-docs-nav {
@@ -1384,7 +1384,7 @@
   }
 
   .api-docs-nav .ant-tabs-tab-btn {
-    height: 40px;
+    height: var(--control-height);
   }
 
   .api-explorer-grid {
@@ -1455,11 +1455,11 @@
   }
 
   .api-operation-reference {
-    padding: 32px 20px 48px;
+    padding: var(--space-8) 20px 48px;
   }
 
   .api-operation-reference > h1 {
-    font-size: 27px;
+    font-size: var(--font-size-heading);
   }
 
   .api-request-panel {
@@ -1473,7 +1473,7 @@
   }
 
   .api-section-page h1 {
-    font-size: 30px;
+    font-size: var(--font-size-heading);
   }
 
   .api-contract-facts {
@@ -1518,7 +1518,7 @@
 
   .api-docs-brand strong {
     max-inline-size: 100%;
-    font-size: 14px;
+    font-size: var(--font-size-ui);
   }
 
   .api-docs-nav .ant-tabs-nav-list {
@@ -1526,11 +1526,11 @@
   }
 
   .api-docs-nav .ant-tabs-tab-btn {
-    font-size: 12px;
+    font-size: var(--font-size-small);
   }
 
   .api-explorer-sidebar-head {
-    padding: 18px 18px 8px;
+    padding: 18px 18px var(--space-2);
   }
 
   .api-filter-label {
@@ -1542,21 +1542,21 @@
   }
 
   .api-explorer-sidebar .ant-menu-item {
-    margin-inline: 8px;
+    margin-inline: var(--space-2);
   }
 
   .api-operation-reference {
-    padding: 28px 16px 40px;
+    padding: 28px var(--space-4) 40px;
   }
 
   .api-operation-reference > h1 {
     max-width: none;
-    font-size: 25px;
+    font-size: var(--font-size-heading);
   }
 
   .api-section-page dl:not(.api-contract-facts) > div {
     grid-template-columns: 1fr;
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .api-docs-tag-index li {
@@ -1569,11 +1569,11 @@
   }
 
   .api-request-panel {
-    padding-inline: 16px;
+    padding-inline: var(--space-4);
   }
 
   .api-docs-load-error {
-    padding: 24px 18px;
+    padding: var(--space-6) 18px;
   }
 }
 

@@ -29,7 +29,7 @@
   border-radius: 50%;
   background: var(--action-primary-soft);
   color: var(--action-primary);
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
 }
 
 .not-found-card h2 {
@@ -52,7 +52,7 @@
 .not-found-secondary {
   display: inline-flex;
   align-items: center;
-  min-height: 36px;
+  min-height: var(--control-height-large);
   padding: 0 var(--space-4);
   border-radius: var(--radius-control);
   text-decoration: none;

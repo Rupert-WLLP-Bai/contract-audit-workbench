@@ -50,7 +50,7 @@
     white-space: nowrap;
   }
   .jurisdiction-total-row > td {
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     background: var(--surface-subtle);
   }
   @media (max-width: 640px) {

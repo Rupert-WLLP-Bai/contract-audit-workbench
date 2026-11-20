@@ -28,7 +28,7 @@
 .contract-desk-sources [aria-current] {
   border-color: var(--action-primary);
   color: var(--action-primary-active);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .contract-desk-open {

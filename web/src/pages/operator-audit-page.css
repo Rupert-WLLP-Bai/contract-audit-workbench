@@ -23,29 +23,29 @@
 .operator-page-kicker {
   margin: 0 0 2px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.5;
 }
 
 .operator-audit-page .operator-page-head h1 {
   margin: 0;
-  font-size: 24px;
-  font-weight: 600;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.02em;
 }
 
 .operator-audit-page .operator-page-head p:last-child {
   margin-top: 5px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   line-height: 1.6;
 }
 
 .operator-facts {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  margin: 20px 0 12px;
+  gap: var(--space-4);
+  margin: 20px 0 var(--space-3);
   padding: 14px 0;
   border-block: 1px solid var(--border-default);
 }
@@ -56,21 +56,21 @@
 
 .operator-facts dt {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   line-height: 1.5;
 }
 
 .operator-facts dd {
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
   overflow-wrap: anywhere;
   color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-ui);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.5;
 }
 
 .operator-audit-tabs > .ant-tabs-nav {
-  margin: 0 0 16px;
+  margin: 0 0 var(--space-4);
 }
 
 .operator-audit-tabs > .ant-tabs-nav::before {
@@ -79,11 +79,11 @@
 
 .operator-audit-tabs .ant-tabs-tab {
   padding: 10px 1px;
-  font-size: 14px;
+  font-size: var(--font-size-ui);
 }
 
 .operator-audit-tabs .ant-tabs-tab + .ant-tabs-tab {
-  margin-left: 24px;
+  margin-left: var(--space-6);
 }
 
 .operator-audit-tabs .ant-tabs-tab-btn {
@@ -92,7 +92,7 @@
 
 .operator-audit-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
   color: var(--action-primary);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .operator-audit-tabs .ant-tabs-ink-bar {
@@ -108,7 +108,7 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .operator-audit-tabs .ant-tabs-tabpane > .ant-alert {
@@ -120,7 +120,7 @@
 }
 
 .operator-check-card .ant-card-head-title {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .operator-check-card .ant-table {
@@ -130,7 +130,7 @@
 .operator-check-card .ant-table-thead > tr > th {
   background: var(--surface-subtle);
   color: var(--text-secondary);
-  font-weight: 500;
+  font-weight: var(--font-weight-semibold);
 }
 
 .operator-check-card .ant-table-tbody > tr > td {
@@ -145,7 +145,7 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .operator-records > .meta {
@@ -161,10 +161,10 @@
 @media (max-width: 560px) {
   .operator-facts {
     grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
+    gap: var(--space-3);
   }
 
   .operator-audit-tabs .ant-tabs-tab + .ant-tabs-tab {
-    margin-left: 16px;
+    margin-left: var(--space-4);
   }
 }

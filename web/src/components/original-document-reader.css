@@ -16,8 +16,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-block: 8px;
+  gap: var(--space-2);
+  margin-block: var(--space-2);
 }
 .original-reader-modes [aria-pressed="true"] {
   color: var(--action-primary);

@@ -49,8 +49,8 @@
 
 .contracts-page-list h2 {
   margin: 0 0 var(--space-3);
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--font-size-document);
+  font-weight: var(--font-weight-semibold);
 }
 
 .contracts-page-list {
@@ -93,7 +93,7 @@
 }
 
 .contracts-page-list-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .contracts-page-list-name,
@@ -103,7 +103,7 @@
 
 .contracts-page-list-meta {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .contracts-page-editor {
@@ -127,13 +127,13 @@ fieldset.contracts-page-section {
 
 .contracts-page-section legend {
   padding: 0 var(--space-2);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .contracts-page-section h3 {
   margin: var(--space-6) 0 var(--space-3);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--font-size-ui);
+  font-weight: var(--font-weight-semibold);
 }
 
 .contracts-page-fields {
@@ -147,7 +147,7 @@ fieldset.contracts-page-section {
   flex-direction: column;
   gap: var(--space-1);
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   color: var(--text-secondary);
 }
 
@@ -199,7 +199,7 @@ fieldset.contracts-page-section {
   flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 .contracts-page-materials li > strong {
@@ -209,7 +209,7 @@ fieldset.contracts-page-section {
 
 .contracts-page-hash {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
@@ -230,7 +230,7 @@ fieldset.contracts-page-section {
 
 .contracts-page .meta {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 @media (max-width: 900px) {
@@ -290,7 +290,7 @@ fieldset.contracts-page-section {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   color: var(--text-secondary);
 }
 
@@ -349,7 +349,7 @@ fieldset.contracts-page-section {
   justify-content: center;
   margin-top: var(--space-3);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 /* Contract registration uses one mounted draft across four readable sections. */
@@ -360,7 +360,7 @@ fieldset.contracts-page-section {
   margin: var(--space-4) 0;
 }
 .contracts-form-sections button {
-  min-height: 34px;
+  min-height: var(--control-height);
   padding: 0 var(--space-3);
   border: 1px solid var(--border-control);
   border-radius: var(--radius-control);
@@ -370,7 +370,7 @@ fieldset.contracts-page-section {
 }
 .contracts-form-sections button[aria-pressed="true"] {
   border-color: var(--action-primary);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .contracts-form-sections button[data-error="true"] {
   border-color: var(--state-conflict);

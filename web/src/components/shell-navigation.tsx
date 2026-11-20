@@ -124,8 +124,8 @@ export function ShellNavigation({
         <Layout.Sider
           className={`sidenav shell-sidenav ${className}`}
           theme="light"
-          width={248}
-          collapsedWidth={compact ? 56 : 72}
+          width="var(--sidebar-expanded-width)"
+          collapsedWidth="var(--sidebar-collapsed-width)"
           collapsed={compact || collapsed}
           collapsible={!compact}
           onCollapse={setCollapsed}
