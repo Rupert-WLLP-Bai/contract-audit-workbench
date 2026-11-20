@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -268,127 +268,140 @@ export function LegalKnowledgePage() {
       );
     return (
       <section className="legal-tab-panel legal-applicability-tab" aria-label="适用依据">
-        <div className="legal-reader-layout">
-          <aside className="legal-reader-directory" aria-label="内容目录">
-            <header className="legal-reader-directory-head">
-              <h2>内容目录</h2>
-              <p className="meta">本案检索到的精确版本</p>
-            </header>
-            {search.isLoading ? (
-              <p className="legal-reader-directory-status" role="status">
-                正在读取依据目录…
-              </p>
-            ) : null}
-            {search.isError ? (
-              <div className="legal-reader-directory-status">
-                <Alert
-                  type="error"
-                  showIcon
-                  title="依据目录没有加载"
-                  description={errorMessage(search.error)}
-                  action={<Button onClick={() => void search.refetch()}>重试</Button>}
-                />
-              </div>
-            ) : null}
-            {directory.length > 0 ? (
-              <ul className="legal-directory-list">
-                {directory.map((item) => {
-                  const active =
-                    selected?.knowledgeId === item.ref.knowledge_id &&
-                    selected?.versionId === item.ref.version_id;
-                  return (
-                    <li key={`${item.ref.knowledge_id}:${item.ref.version_id}`}>
-                      <button
-                        type="button"
-                        className="legal-directory-button"
-                        aria-current={active ? "true" : undefined}
-                        onClick={() => openVersion(item)}
-                      >
-                        <strong>{item.legal_metadata.norm_title}</strong>
-                        <span>
-                          {item.legal_metadata.article_label} · {item.legal_metadata.norm_version}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
-            {selected && !selectedInDirectory && detail.data ? (
-              <ul className="legal-directory-list">
-                <li>
-                  <button
-                    type="button"
-                    className="legal-directory-button"
-                    aria-current="true"
-                    onClick={openSourceDetails}
-                  >
-                    <strong>{metadata?.norm_title}</strong>
-                    <span>
-                      {metadata?.article_label} · {metadata?.norm_version}
-                    </span>
-                  </button>
-                </li>
-              </ul>
-            ) : null}
-            {!search.isLoading &&
-            !search.isError &&
-            directory.length === 0 &&
-            !(selected && detail.data) ? (
-              <p className="legal-reader-directory-status meta">尚未检索到可阅读的依据。</p>
-            ) : null}
-          </aside>
-          <section className="legal-reader-panel" aria-label="法律条文精确版本">
-            <header className="legal-reader-toolbar">
-              <div>
-                <h2>{metadata?.norm_title ?? "法律条文精确版本"}</h2>
-                <p className="meta">
-                  {metadata
-                    ? `${metadata.article_label} · ${metadata.norm_version} · 精确版本 ${detail.data?.ref.version_id}`
-                    : "所选版本只读 · 精确版本"}
+        {!search.isLoading && !search.isError && directory.length === 0 && !selected ? (
+          <div className="legal-reader-panel">
+            <Empty description="尚未选择法律依据。请先在“引用条目”中检索并选择精确版本。">
+              <Button
+                htmlType="button"
+                onClick={() => setParams(withLegalTab(params, "references"))}
+              >
+                前往引用条目
+              </Button>
+            </Empty>
+          </div>
+        ) : (
+          <div className="legal-reader-layout">
+            <aside className="legal-reader-directory" aria-label="内容目录">
+              <header className="legal-reader-directory-head">
+                <h2>内容目录</h2>
+                <p className="meta">本案检索到的精确版本</p>
+              </header>
+              {search.isLoading ? (
+                <p className="legal-reader-directory-status" role="status">
+                  正在读取依据目录…
                 </p>
-              </div>
-              {detail.isSuccess ? (
-                <Button htmlType="button" onClick={openSourceDetails}>
-                  来源详情
-                </Button>
               ) : null}
-            </header>
-            <div className="legal-reader-body">
-              {!selected ? (
-                <Empty description="尚未选择法律依据。请先在“引用条目”中检索并选择精确版本。">
-                  <Button
-                    htmlType="button"
-                    onClick={() => setParams(withLegalTab(params, "references"))}
-                  >
-                    前往引用条目
+              {search.isError ? (
+                <div className="legal-reader-directory-status">
+                  <Alert
+                    type="error"
+                    showIcon
+                    title="依据目录没有加载"
+                    description={errorMessage(search.error)}
+                    action={<Button onClick={() => void search.refetch()}>重试</Button>}
+                  />
+                </div>
+              ) : null}
+              {directory.length > 0 ? (
+                <ul className="legal-directory-list">
+                  {directory.map((item) => {
+                    const active =
+                      selected?.knowledgeId === item.ref.knowledge_id &&
+                      selected?.versionId === item.ref.version_id;
+                    return (
+                      <li key={`${item.ref.knowledge_id}:${item.ref.version_id}`}>
+                        <button
+                          type="button"
+                          className="legal-directory-button"
+                          aria-current={active ? "true" : undefined}
+                          onClick={() => openVersion(item)}
+                        >
+                          <strong>{item.legal_metadata.norm_title}</strong>
+                          <span>
+                            {item.legal_metadata.article_label} · {item.legal_metadata.norm_version}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+              {selected && !selectedInDirectory && detail.data ? (
+                <ul className="legal-directory-list">
+                  <li>
+                    <button
+                      type="button"
+                      className="legal-directory-button"
+                      aria-current="true"
+                      onClick={openSourceDetails}
+                    >
+                      <strong>{metadata?.norm_title}</strong>
+                      <span>
+                        {metadata?.article_label} · {metadata?.norm_version}
+                      </span>
+                    </button>
+                  </li>
+                </ul>
+              ) : null}
+              {!search.isLoading &&
+              !search.isError &&
+              directory.length === 0 &&
+              !(selected && detail.data) ? (
+                <p className="legal-reader-directory-status meta">尚未检索到可阅读的依据。</p>
+              ) : null}
+            </aside>
+            <section className="legal-reader-panel" aria-label="法律条文精确版本">
+              <header className="legal-reader-toolbar">
+                <div>
+                  <h2>{metadata?.norm_title ?? "法律条文精确版本"}</h2>
+                  <p className="meta">
+                    {metadata
+                      ? `${metadata.article_label} · ${metadata.norm_version} · 精确版本 ${detail.data?.ref.version_id}`
+                      : "所选版本只读 · 精确版本"}
+                  </p>
+                </div>
+                {detail.isSuccess ? (
+                  <Button htmlType="button" onClick={openSourceDetails}>
+                    来源详情
                   </Button>
-                </Empty>
-              ) : null}
-              {selected && detail.isLoading ? (
-                <PageStatus kind="loading" title="正在读取精确版本" />
-              ) : null}
-              {selected && detail.isError ? (
-                <Alert
-                  type="error"
-                  showIcon
-                  title="精确版本没有加载"
-                  description={errorMessage(detail.error)}
-                  action={<Button onClick={() => void detail.refetch()}>重试</Button>}
-                />
-              ) : null}
-              {selected && detail.isSuccess ? (
-                <LegalVersionDetail
-                  value={detail.data}
-                  capture={capture.data}
-                  captureLoading={capture.isLoading}
-                  captureError={capture.isError ? errorMessage(capture.error) : ""}
-                  onRetryCapture={() => void capture.refetch()}
-                />
-              ) : null}
-            </div>
-          </section>
-        </div>
+                ) : null}
+              </header>
+              <div className="legal-reader-body">
+                {!selected ? (
+                  <Empty description="尚未选择法律依据。请先在“引用条目”中检索并选择精确版本。">
+                    <Button
+                      htmlType="button"
+                      onClick={() => setParams(withLegalTab(params, "references"))}
+                    >
+                      前往引用条目
+                    </Button>
+                  </Empty>
+                ) : null}
+                {selected && detail.isLoading ? (
+                  <PageStatus kind="loading" title="正在读取精确版本" />
+                ) : null}
+                {selected && detail.isError ? (
+                  <Alert
+                    type="error"
+                    showIcon
+                    title="精确版本没有加载"
+                    description={errorMessage(detail.error)}
+                    action={<Button onClick={() => void detail.refetch()}>重试</Button>}
+                  />
+                ) : null}
+                {selected && detail.isSuccess ? (
+                  <LegalVersionDetail
+                    value={detail.data}
+                    capture={capture.data}
+                    captureLoading={capture.isLoading}
+                    captureError={capture.isError ? errorMessage(capture.error) : ""}
+                    onRetryCapture={() => void capture.refetch()}
+                  />
+                ) : null}
+              </div>
+            </section>
+          </div>
+        )}
       </section>
     );
   }
