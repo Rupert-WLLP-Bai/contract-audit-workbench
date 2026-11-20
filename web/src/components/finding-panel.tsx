@@ -4,14 +4,22 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r9
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Tabs } from "antd";
 import { Card } from "antd";
-import { Button, Checkbox, Input, Radio } from "antd";
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { Button, Checkbox, Input, Modal, Radio } from "antd";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import type {
   ConstraintEvaluation,
   DecisionAction,
@@ -45,6 +53,7 @@ import { businessDomainLabel } from "../domain/business-labels";
 import { findingPresentation, findingTitle } from "../domain/finding-presentation";
 import { FindingBatchControls } from "./finding-batch-controls";
 import { TechnicalDetail } from "./technical-detail";
+import { useProfessionalMode } from "./app-shell-preferences";
 import { ClauseProposalPanel, type ClauseProposalPanelContext } from "./clause-proposal-panel";
 import "./finding-panel.css";
 const FILTERS: { id: FindingFilter; label: string }[] = [
@@ -133,7 +142,7 @@ function FindingListRow({
 }: {
   finding: Finding;
   selectedId: string | null;
-  onSelect: (findingId: string) => void;
+  onSelect: (findingId: string, keyboard: boolean) => void;
   checked: boolean;
   selectionDisabled: boolean;
   selectionHint: string;
@@ -153,11 +162,13 @@ function FindingListRow({
         <Button
           htmlType="button"
           className="finding-button"
+          data-finding-control={finding.id}
           data-relation={finding.relation}
           data-severity={finding.severity ?? "unrated"}
           aria-label={`选择线索：${findingTitle(finding)}`}
           aria-current={finding.id === selectedId}
-          onClick={() => onSelect(finding.id)}
+          onClick={(event) => onSelect(finding.id, event.detail === 0)}
+          onKeyDown={(event) => activateFindingByKey(event, () => onSelect(finding.id, true))}
         >
           <span className="finding-card-title">{findingTitle(finding)}</span>
           <span className="finding-grade" data-severity={finding.severity ?? "unrated"}>
@@ -672,14 +683,25 @@ function DecisionSubmit({
   pending,
   canSubmit,
   immersive,
+  onKeyboardSubmit,
 }: {
   pending: boolean;
   canSubmit: boolean;
   immersive: boolean;
+  onKeyboardSubmit: () => void;
 }) {
   const label = pending ? "正在保存" : immersive ? "保存判断" : "保存决定";
   return (
-    <Button aria-label={label} type="primary" htmlType="submit" disabled={!canSubmit}>
+    <Button
+      aria-label={label}
+      aria-keyshortcuts="Control+Enter Meta+Enter"
+      type="primary"
+      htmlType="submit"
+      disabled={!canSubmit}
+      onClick={(event) => {
+        if (event.detail === 0) onKeyboardSubmit();
+      }}
+    >
       {label}
     </Button>
   );
@@ -719,6 +741,16 @@ function DecisionForm({
   const advanceOnSave = useRef(false);
   const submitting = useRef(false);
   const [attempted, setAttempted] = useState(false);
+  const [restoreFocus, setRestoreFocus] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (!restoreFocus || pending || restoreFocus.matches(":disabled")) return;
+    setRestoreFocus(null);
+    if (
+      restoreFocus.isConnected &&
+      (document.activeElement === document.body || document.activeElement === restoreFocus)
+    )
+      restoreFocus.focus();
+  }, [pending, restoreFocus]);
   const reasonError = attempted ? validateDecisionReason(draft.reason) : null;
   const actionAllowed =
     draft.action === "confirm_risk"
@@ -739,7 +771,11 @@ function DecisionForm({
     advanceOnSave.current = false;
     if (!canSubmit || submitting.current || draft.action === null || finding.version === null)
       return;
+    const active = document.activeElement;
+    const focusedControl =
+      active instanceof HTMLElement && event.currentTarget.contains(active) ? active : null;
     submitting.current = true;
+    setRestoreFocus(null);
     try {
       const saved = await onDecide({
         findingId: finding.id,
@@ -751,6 +787,8 @@ function DecisionForm({
         draft.clear();
         setAttempted(false);
         onSaved(finding.id, advance);
+      } else if (focusedControl) {
+        setRestoreFocus(focusedControl);
       }
     } finally {
       submitting.current = false;
@@ -760,6 +798,7 @@ function DecisionForm({
   return (
     <form
       className={immersive ? "review-decision-form" : undefined}
+      data-decision-form={finding.id}
       onSubmit={onSubmit}
       onKeyDown={(event) => {
         if (
@@ -802,7 +841,8 @@ function DecisionForm({
         }
         aria-describedby={hintId}
         rows={immersive ? 2 : 4}
-        disabled={!canDecide || pending}
+        disabled={!canDecide}
+        readOnly={pending}
       />
       <DecisionAlerts
         version={finding.version}
@@ -816,7 +856,14 @@ function DecisionForm({
             ? "Ctrl+Enter 保存并看下一条"
             : "四种决定都要写理由。保存后写入审查记录。按 Ctrl+Enter 可保存。"}
         </p>
-        <DecisionSubmit pending={pending} canSubmit={canSubmit} immersive={immersive} />
+        <DecisionSubmit
+          pending={pending}
+          canSubmit={canSubmit}
+          immersive={immersive}
+          onKeyboardSubmit={() => {
+            advanceOnSave.current = true;
+          }}
+        />
       </div>
     </form>
   );
@@ -949,6 +996,36 @@ function WorkspaceFindingDetails({
   );
 }
 
+function activateFindingByKey(event: KeyboardEvent<HTMLElement>, activate: () => void) {
+  if (
+    (event.key !== "Enter" && event.key !== " ") ||
+    event.nativeEvent.isComposing ||
+    event.repeat ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey
+  )
+    return;
+  event.preventDefault();
+  activate();
+}
+
+function findingRow(pane: HTMLElement | null, id: string) {
+  return Array.from(pane?.querySelectorAll<HTMLElement>("[data-finding-control]") ?? []).find(
+    (node) => node.dataset.findingControl === id,
+  );
+}
+
+function firstJudgmentControl(pane: HTMLElement | null, id: string) {
+  const form = Array.from(pane?.querySelectorAll<HTMLElement>("[data-decision-form]") ?? []).find(
+    (node) => node.dataset.decisionForm === id,
+  );
+  return Array.from(form?.querySelectorAll<HTMLInputElement>("input[type=radio]") ?? []).find(
+    (radio) => !radio.disabled,
+  );
+}
+
 export function FindingPanel({
   immersive = false,
   emptyFindingMessage = "本次审查还没有风险线索",
@@ -996,12 +1073,20 @@ export function FindingPanel({
   clauseProposalContext?: ClauseProposalPanelContext;
 }) {
   const [filter, setFilter] = useState<FindingFilter>("all");
+  const { enabled: professionalMode } = useProfessionalMode();
   const [workspaceFilter, setWorkspaceFilter] = useState<WorkspaceFilter>(() =>
     findings.some((finding) => finding.id === selectedId && latestDecision(finding))
       ? "all"
       : "undecided",
   );
   const [panel, setPanel] = useState("风险审查");
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const pane = useRef<HTMLElement>(null);
+  const keyboardFocus = useRef<{
+    scope: string | null;
+    id: string;
+    control: "row" | "judgment";
+  } | null>(null);
   useEffect(() => {
     if (!requestedFindingId) return;
     const match = findings.filter((finding) => finding.id === requestedFindingId);
@@ -1029,11 +1114,11 @@ export function FindingPanel({
   const submittingScopes = useRef(new Set<string | null>());
   const selectedRef = useRef(selectedId);
   const scopeRef = useRef(batch.scopeKey);
-  useEffect(() => {
+  useLayoutEffect(() => {
     selectedRef.current = selectedId;
     scopeRef.current = batch.scopeKey;
   }, [selectedId, batch.scopeKey]);
-  useEffect(
+  useLayoutEffect(
     () => () => {
       scopeEpoch.current += 1;
     },
@@ -1072,43 +1157,146 @@ export function FindingPanel({
     membersValid &&
     !needsReconfirmation &&
     batch.action !== null &&
+    (!immersive || batch.action !== "accept_residual") &&
     (batch.action !== "confirm_risk" ||
       selectedForBatch.every((finding) => canConfirmRisk(finding, documents, parsedDocumentIds))) &&
     validateDecisionReason(batch.reason) === null;
   const previousId = adjacentFindingId(visible, selectedId, -1);
   const nextId = adjacentFindingId(visible, selectedId, 1);
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.defaultPrevented ||
-        event.isComposing ||
-        event.repeat ||
-        (immersive ? event.altKey : !event.altKey) ||
-        event.ctrlKey ||
-        event.metaKey ||
-        event.shiftKey ||
-        panel !== "风险审查" ||
-        pending ||
-        batchPending
-      )
+  function selectAndFocus(id: string, control: "row" | "judgment") {
+    keyboardFocus.current = { scope: batch.scopeKey, id, control };
+    onSelect(id);
+  }
+
+  function activateRow(id: string, keyboard: boolean) {
+    if (!keyboard) {
+      keyboardFocus.current = null;
+      onSelect(id);
+    } else if (id === selectedId) {
+      const judgment = firstJudgmentControl(pane.current, id);
+      if (judgment) judgment.focus();
+      else keyboardFocus.current = { scope: batch.scopeKey, id, control: "judgment" };
+    } else {
+      selectAndFocus(id, "judgment");
+    }
+  }
+
+  useLayoutEffect(() => {
+    const target = keyboardFocus.current;
+    if (!target) return;
+    if (target.scope !== batch.scopeKey) {
+      keyboardFocus.current = null;
+      return;
+    }
+    if (target.id !== selectedId || pending || batchPending) return;
+    const row = findingRow(pane.current, target.id);
+    if (target.control === "judgment") {
+      if (document.activeElement !== document.body && document.activeElement !== row) {
+        keyboardFocus.current = null;
         return;
-      const target = event.target;
-      if (
-        target instanceof Element &&
-        target.closest(
-          "input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='dialog']",
-        )
+      }
+      const judgment = firstJudgmentControl(pane.current, target.id);
+      if (!judgment) return;
+      keyboardFocus.current = null;
+      judgment.focus();
+    } else if (row) {
+      keyboardFocus.current = null;
+      row.focus();
+    }
+  }, [batch.scopeKey, batchPending, canDecide, pending, selectedId, workspaceFilter]);
+
+  function onQueueKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (
+      event.defaultPrevented ||
+      event.nativeEvent.isComposing ||
+      event.repeat ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      !pane.current?.contains(event.target as Node)
+    )
+      return;
+    if (
+      event.target instanceof Element &&
+      event.target.closest(
+        "input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='combobox'], [role='dialog']",
       )
-        return;
-      const key = event.key.toLowerCase();
-      const targetId = key === "j" ? nextId : key === "k" ? previousId : null;
-      if (targetId === null) return;
+    )
+      return;
+    if (event.key === "?") {
       event.preventDefault();
-      onSelect(targetId);
+      setShortcutsOpen(true);
+      return;
+    }
+    if (event.shiftKey || shortcutsOpen || panel !== "风险审查" || pending || batchPending) return;
+    const key = event.key.toLowerCase();
+    const targetId = key === "j" ? nextId : key === "k" ? previousId : null;
+    if (targetId === null) return;
+    event.preventDefault();
+    selectAndFocus(targetId, "row");
+  }
+
+  const shortcutsHelp = (
+    <>
+      <Button
+        type="text"
+        size="small"
+        aria-haspopup="dialog"
+        aria-keyshortcuts="Shift+/"
+        onClick={() => setShortcutsOpen(true)}
+      >
+        快捷键
+      </Button>
+      <Modal
+        open={shortcutsOpen}
+        destroyOnHidden
+        closable={false}
+        title="线索快捷键"
+        onCancel={() => setShortcutsOpen(false)}
+        footer={<Button onClick={() => setShortcutsOpen(false)}>关闭</Button>}
+      >
+        <p>在线索区使用 J 选下一条、K 选上一条。输入或编辑文字时，这两个键照常输入。</p>
+        <p>
+          在选中的线索上按 Enter 进入判断。按 Ctrl+Enter 或 ⌘+Enter
+          保存后，焦点移到下一条未判断线索。
+        </p>
+        <p>在线索区按 ? 可重新打开这份说明。</p>
+      </Modal>
+    </>
+  );
+
+  function batchSelection(finding: Finding) {
+    const checked = batch.selectedIds.includes(finding.id);
+    const candidateGroup = findingBatchGroup(finding, evaluations);
+    const compatible =
+      candidateGroup !== null &&
+      (batch.selectedIds.length === 0 || sameFindingBatchGroup(group, candidateGroup));
+    return {
+      checked,
+      selectionDisabled:
+        pending ||
+        batchPending ||
+        (!checked && (!canDecide || !onBatchDecide || finding.version === null || !compatible)),
+      selectionHint:
+        candidateGroup === null
+          ? "缺少唯一关联规则，不能批量裁决"
+          : finding.version === null
+            ? "缺少版本号，不能批量裁决"
+            : !compatible
+              ? "只能选择同一规则、同类结论的线索"
+              : "勾选参与批量裁决",
+      onToggleSelection(nextChecked: boolean) {
+        batch.update((current) => ({
+          ...current,
+          selectedIds: nextChecked
+            ? current.selectedIds.includes(finding.id)
+              ? current.selectedIds
+              : [...current.selectedIds, finding.id]
+            : current.selectedIds.filter((id) => id !== finding.id),
+        }));
+      },
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [batchPending, immersive, nextId, onSelect, panel, pending, previousId]);
+  }
 
   async function submitBatch() {
     const action = batch.action;
@@ -1185,16 +1373,46 @@ export function FindingPanel({
       if (next !== null) onSelect(next);
     }
   }
+  const batchControls = (
+    <FindingBatchControls
+      draft={batch}
+      actions={immersive ? WORKSPACE_DECISION_ACTIONS : DECISION_ACTIONS}
+      showRuleIdentity={!immersive || professionalMode}
+      selected={selectedForBatch}
+      selectedId={selectedId}
+      group={group}
+      membersValid={membersValid}
+      retryingSingle={retryingSingle}
+      needsReconfirmation={needsReconfirmation}
+      canSubmit={canBatchSubmit}
+      canDecide={
+        Boolean(onBatchDecide) &&
+        canDecide &&
+        (!immersive ||
+          allFindings.some((finding) => findingBatchGroup(finding, evaluations) !== null))
+      }
+      pending={pending || batchPending}
+      onSelect={onSelect}
+      onSubmit={() => void submitBatch()}
+    />
+  );
+
   const selected = findings.find((finding) => finding.id === selectedId) ?? null;
   const selectedHidden =
     selected !== null && !visible.some((finding) => finding.id === selected.id);
 
   if (immersive) {
     return (
-      <section className="col-findings review-finding-panel" aria-label="风险线索">
+      <section
+        ref={pane}
+        className="col-findings review-finding-panel"
+        aria-label="风险线索"
+        aria-keyshortcuts="J K Shift+/"
+        onKeyDown={onQueueKeyDown}
+      >
         <header className="review-finding-panel-header">
           <h2>风险线索</h2>
-          <span className="meta">J / K 切换</span>
+          {shortcutsHelp}
         </header>
         <div className="review-finding-filters" role="group" aria-label="筛选线索">
           {WORKSPACE_FILTERS.map(({ id, label }) => (
@@ -1224,6 +1442,12 @@ export function FindingPanel({
               const model = isModelFinding(finding);
               const active = finding.id === selectedId;
               const severity = finding.severity ?? "unrated";
+              const choice = batchSelection(finding);
+              const showBatchChoice =
+                choice.checked ||
+                (Boolean(onBatchDecide) &&
+                  canDecide &&
+                  findingBatchGroup(finding, evaluations) !== null);
               return (
                 <li
                   key={finding.id}
@@ -1231,19 +1455,35 @@ export function FindingPanel({
                   data-source={model && !decision ? "model" : "record"}
                   data-selected={active}
                 >
-                  <button
-                    className="review-finding-select finding-button"
-                    type="button"
-                    aria-label={`选择线索：${findingTitle(finding)}`}
-                    aria-expanded={active}
-                    onClick={() => onSelect(finding.id)}
-                  >
-                    <span className="finding-grade" data-severity={severity}>
-                      {SEVERITY_LABELS[severity] ?? "未分级"}
-                    </span>
-                    <strong>{findingTitle(finding)}</strong>
-                    {model ? <span className="review-finding-ai">AI 建议</span> : null}
-                  </button>
+                  <div className="review-finding-row-actions">
+                    <button
+                      className="review-finding-select finding-button"
+                      type="button"
+                      data-finding-control={finding.id}
+                      aria-label={`选择线索：${findingTitle(finding)}`}
+                      aria-expanded={active}
+                      aria-current={active}
+                      onClick={(event) => activateRow(finding.id, event.detail === 0)}
+                      onKeyDown={(event) =>
+                        activateFindingByKey(event, () => activateRow(finding.id, true))
+                      }
+                    >
+                      <span className="finding-grade" data-severity={severity}>
+                        {SEVERITY_LABELS[severity] ?? "未分级"}
+                      </span>
+                      <strong>{findingTitle(finding)}</strong>
+                      {model ? <span className="review-finding-ai">AI 建议</span> : null}
+                    </button>
+                    {showBatchChoice ? (
+                      <Checkbox
+                        aria-label={`批量选择线索：${findingTitle(finding)}`}
+                        title={choice.selectionHint}
+                        checked={choice.checked}
+                        disabled={choice.selectionDisabled}
+                        onChange={(event) => choice.onToggleSelection(event.target.checked)}
+                      />
+                    ) : null}
+                  </div>
                   {decision ? (
                     <p className="review-finding-decision-summary">
                       已判断 · {decision.actor} ·{" "}
@@ -1267,13 +1507,14 @@ export function FindingPanel({
               );
             })}
           </ul>
+          {batchControls}
         </div>
         {selected && !selectedHidden ? (
           <DecisionForm
             key={`${batch.scopeKey ?? ""}:${selected.id}`}
             immersive
             finding={selected}
-            pending={pending}
+            pending={pending || batchPending}
             canDecide={canDecide}
             riskConfirmable={canConfirmRisk(selected, documents, parsedDocumentIds)}
             decisionDisabledReason={decisionDisabledReason}
@@ -1285,8 +1526,12 @@ export function FindingPanel({
               const next = advance ? nextUndecidedFindingId(allFindings, findingId) : null;
               if (next !== null) {
                 if (workspaceFilter === "decided") setWorkspaceFilter("undecided");
-                onSelect(next);
-              } else if (workspaceFilter === "undecided") setWorkspaceFilter("all");
+                selectAndFocus(next, "row");
+              } else if (workspaceFilter === "undecided") {
+                if (advance)
+                  keyboardFocus.current = { id: findingId, scope: batch.scopeKey, control: "row" };
+                setWorkspaceFilter("all");
+              } else if (advance) findingRow(pane.current, findingId)?.focus();
             }}
           />
         ) : null}
@@ -1295,8 +1540,14 @@ export function FindingPanel({
   }
 
   return (
-    <aside className="col-findings">
+    <aside
+      ref={pane}
+      className="col-findings"
+      aria-keyshortcuts="J K Shift+/"
+      onKeyDown={onQueueKeyDown}
+    >
       <h2 className="sr-only">审查结果</h2>
+      {shortcutsHelp}
       <Tabs
         activeKey={panel}
         onChange={setPanel}
@@ -1324,6 +1575,7 @@ export function FindingPanel({
           <Button
             htmlType="button"
             disabled={pending || batchPending || previousId === null}
+            aria-keyshortcuts="K"
             onClick={() => previousId !== null && onSelect(previousId)}
           >
             上一条
@@ -1331,71 +1583,26 @@ export function FindingPanel({
           <Button
             htmlType="button"
             disabled={pending || batchPending || nextId === null}
+            aria-keyshortcuts="J"
             onClick={() => nextId !== null && onSelect(nextId)}
           >
             下一条
           </Button>
         </div>
-        <p className="meta">待裁决优先，再按严重度排序。Alt+J 下一条，Alt+K 上一条。</p>
         {findings.length === 0 ? <p>这次审查还没有生成风险线索。</p> : null}
         {findings.length > 0 && visible.length === 0 ? <p>当前筛选条件下没有线索。</p> : null}
         <ul className="finding-list">
-          {visible.map((finding) => {
-            const checked = batch.selectedIds.includes(finding.id);
-            const candidateGroup = findingBatchGroup(finding, evaluations);
-            const compatible =
-              candidateGroup !== null &&
-              (batch.selectedIds.length === 0 || sameFindingBatchGroup(group, candidateGroup));
-            const selectionDisabled =
-              pending ||
-              batchPending ||
-              (!checked &&
-                (!canDecide || !onBatchDecide || finding.version === null || !compatible));
-            const selectionHint =
-              candidateGroup === null
-                ? "缺少唯一关联规则，不能批量裁决"
-                : finding.version === null
-                  ? "缺少版本号，不能批量裁决"
-                  : !compatible
-                    ? "只能选择同一规则、同类结论的线索"
-                    : "勾选参与批量裁决";
-            return (
-              <FindingListRow
-                key={finding.id}
-                finding={finding}
-                selectedId={selectedId}
-                onSelect={onSelect}
-                checked={checked}
-                selectionDisabled={selectionDisabled}
-                selectionHint={selectionHint}
-                onToggleSelection={(nextChecked) =>
-                  batch.update((current) => ({
-                    ...current,
-                    selectedIds: nextChecked
-                      ? current.selectedIds.includes(finding.id)
-                        ? current.selectedIds
-                        : [...current.selectedIds, finding.id]
-                      : current.selectedIds.filter((id) => id !== finding.id),
-                  }))
-                }
-              />
-            );
-          })}
+          {visible.map((finding) => (
+            <FindingListRow
+              key={finding.id}
+              finding={finding}
+              selectedId={selectedId}
+              onSelect={activateRow}
+              {...batchSelection(finding)}
+            />
+          ))}
         </ul>
-        <FindingBatchControls
-          draft={batch}
-          selected={selectedForBatch}
-          selectedId={selectedId}
-          group={group}
-          membersValid={membersValid}
-          retryingSingle={retryingSingle}
-          needsReconfirmation={needsReconfirmation}
-          canSubmit={canBatchSubmit}
-          canDecide={Boolean(onBatchDecide) && canDecide}
-          pending={pending || batchPending}
-          onSelect={onSelect}
-          onSubmit={() => void submitBatch()}
-        />
+        {batchControls}
         {selectedHidden ? <p className="meta">当前线索不在这个筛选结果里，右侧仍保留它。</p> : null}
         {selected ? (
           <FindingDetail
@@ -1412,7 +1619,7 @@ export function FindingPanel({
             onSaved={(findingId) => {
               if (scopeRef.current !== batch.scopeKey || selectedRef.current !== findingId) return;
               const next = nextUndecidedFindingId(visible, findingId);
-              if (next !== null) onSelect(next);
+              if (next !== null) selectAndFocus(next, "row");
             }}
             clauseProposalContext={clauseProposalContext}
           />

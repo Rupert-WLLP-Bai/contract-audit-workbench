@@ -3,13 +3,13 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r9
+// Updated: 2026-11-20
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
 import { useState, type ComponentProps, type PropsWithChildren, type ReactElement } from "react";
-import { screen, within, type RenderOptions } from "@testing-library/react";
+import { fireEvent, screen, within, type RenderOptions } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach } from "vitest";
@@ -320,6 +320,28 @@ describe("review workspace", () => {
     );
     expect(screen.getByRole("region", { name: "原文对照" })).toBe(reader);
     expect(screen.getByRole("region", { name: "风险线索" })).toBe(risks);
+  });
+
+  it("adjusts the immersive finding column with the existing separator", () => {
+    const value = workspace();
+    const view = render(
+      <MemoryRouter>
+        <WorkspaceHarness workspaceValue={value} layout="split" immersive onDecide={vi.fn()} />
+      </MemoryRouter>,
+    );
+    const separator = screen.getByRole("separator", { name: "调整审查结论栏宽度" });
+    const grid = separator.parentElement!;
+    Object.defineProperty(grid, "clientWidth", { configurable: true, value: 1100 });
+    fireEvent(window, new Event("resize"));
+    fireEvent.keyDown(separator, { key: "Home" });
+    expect(separator).toHaveAttribute("aria-valuenow", "300");
+    fireEvent.keyDown(separator, { key: "ArrowLeft" });
+    expect(separator).toHaveAttribute("aria-valuenow", "316");
+    expect(view.container.querySelector(".workspace-view-immersive")).toHaveStyle(
+      "--finding-column-width: 316px",
+    );
+    fireEvent.keyDown(separator, { key: "End" });
+    expect(separator).toHaveAttribute("aria-valuenow", "600");
   });
 
   it("opens the existing judgment tab when a queue target is selected", async () => {

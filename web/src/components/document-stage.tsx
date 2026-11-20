@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r12
+// Revision: r13
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -441,6 +441,21 @@ const DocSegments = memo(function DocSegments({ segments }: { segments: TextSegm
           segmentEnd <= keyClause.range.end;
         const selectedAttribute = selected ? { "data-selected-key-clause": "true" } : {};
         const marker = markerContext?.markers.find((item) => item.start === segment.start);
+        const markerText = marker
+          ? projected
+              .filter(
+                (part) =>
+                  part.start >= marker.start &&
+                  part.start < marker.end &&
+                  part.display?.kind !== "hidden" &&
+                  part.display?.kind !== "image",
+              )
+              .map((part) => part.text)
+              .join("")
+          : "";
+        const markerName = marker
+          ? `查看线索 ${marker.number}${markerText ? `：${markerText}` : ""}`
+          : undefined;
         if (segment.display?.kind === "hidden" || segment.display?.kind === "image")
           return (
             <span key={segment.start} data-offset={segment.start}>
@@ -450,7 +465,7 @@ const DocSegments = memo(function DocSegments({ segments }: { segments: TextSegm
                 className={marker ? "hit-evidence" : undefined}
                 role={marker ? "button" : undefined}
                 tabIndex={marker ? 0 : undefined}
-                aria-label={marker ? `查看线索 ${marker.number}` : undefined}
+                aria-label={markerName}
                 onClick={marker ? () => markerContext?.onSelect(marker.findingId) : undefined}
                 onKeyDown={
                   marker
@@ -490,7 +505,7 @@ const DocSegments = memo(function DocSegments({ segments }: { segments: TextSegm
               data-finding-relation={marker?.relation}
               role={marker ? "button" : undefined}
               tabIndex={marker ? 0 : undefined}
-              aria-label={marker ? `查看线索 ${marker.number}` : undefined}
+              aria-label={markerName}
               onClick={marker ? () => markerContext?.onSelect(marker.findingId) : undefined}
               onKeyDown={
                 marker
@@ -2274,6 +2289,7 @@ function ImmersiveDocumentStage({
           <Button
             key={item.id}
             aria-pressed={topic === item.id}
+            aria-label={item.id === "all" ? item.label : `${item.label}，${count(item.id)} 条线索`}
             onClick={() => selectTopic(item.id)}
           >
             {item.label}

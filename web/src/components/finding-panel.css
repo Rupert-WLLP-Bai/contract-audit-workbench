@@ -4,7 +4,7 @@
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-19 */
 /* Updated: 2026-11-20 */
-/* Revision: r3 */
+/* Revision: r4 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -292,4 +292,17 @@
     height: auto;
     overflow: visible;
   }
+}
+
+.review-finding-row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.review-finding-row-actions > .review-finding-select {
+  flex: 1;
+  min-width: 0;
+}
+.review-finding-row-actions > .ant-checkbox-wrapper {
+  margin-inline-end: var(--space-2);
 }

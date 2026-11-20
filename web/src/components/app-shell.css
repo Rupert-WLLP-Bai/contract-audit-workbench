@@ -4,7 +4,7 @@
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-20 */
 /* Updated: 2026-11-20 */
-/* Revision: r1 */
+/* Revision: r2 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -70,7 +70,7 @@
     min-block-size: 100%;
   }
 
-  .client-sidebar:not(.ant-layout-sider-collapsed) .shell-navigation > .ant-menu {
+  .client-sidebar:not(.ant-layout-sider-collapsed) .shell-navigation > .shell-nav-groups {
     display: flex;
     flex: 1;
     flex-direction: column;
@@ -82,7 +82,7 @@
 
   .client-sidebar:not(.ant-layout-sider-collapsed)
     .shell-navigation-bottom-start
-    > .ant-menu-submenu-title {
+    > .shell-nav-disclosure {
     border-block-start: 1px solid var(--border-default);
   }
 }

@@ -4,7 +4,7 @@
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-03 */
 /* Updated: 2026-11-20 */
-/* Revision: r7 */
+/* Revision: r8 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -453,15 +453,23 @@
 
 .review-workspace-layout.workspace-view-immersive {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 408px);
+  grid-template-columns: minmax(0, 1fr) 12px minmax(300px, var(--finding-column-width, 408px));
   gap: 0;
   align-items: stretch;
 }
 .workspace-view-immersive > .col-doc {
+  grid-column: 1;
+  grid-row: 1;
   min-width: 0;
   border-radius: 0;
 }
+.workspace-view-immersive > .workspace-resize-handle {
+  grid-column: 2;
+  grid-row: 1;
+}
 .workspace-view-immersive > .col-findings {
+  grid-column: 3;
+  grid-row: 1;
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -484,7 +492,12 @@
   .review-workspace-layout.workspace-view-immersive {
     grid-template-columns: minmax(0, 1fr);
   }
+  .workspace-view-immersive > .workspace-resize-handle {
+    display: none;
+  }
   .workspace-view-immersive > .col-findings {
+    grid-column: 1;
+    grid-row: auto;
     border-inline-start: 0;
     border-block-start: 1px solid var(--border-control);
   }

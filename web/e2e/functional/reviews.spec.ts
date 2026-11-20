@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -28,6 +28,8 @@ import {
   rows,
 } from "./helpers";
 import { parseReviewWorkspace } from "../../src/api/parse";
+import { findingQueue, nextUndecidedFindingId } from "../../src/domain/review";
+import { findingTitle } from "../../src/domain/finding-presentation";
 
 test(
   "real model review retains deterministic relations, exact anchors, manual decision CAS and SSE resume",
@@ -76,8 +78,26 @@ test(
         response.request().method() === "POST" &&
         response.url().includes(`/findings/${finding.id}/decisions`),
     );
-    await page.getByRole("button", { name: "保存判断", exact: true }).click();
+    await page.keyboard.press("Control+Enter");
     expect((await saved).status()).toBe(204);
+    const nextId = nextUndecidedFindingId(findingQueue(ws.findings, "all"), finding.id);
+    const nextFinding = ws.findings.find((item) => item.id === nextId);
+    expect(nextFinding).toBeDefined();
+    if (!nextFinding) throw new Error("Engineering review must have a second undecided finding");
+    const nextRow = page.getByRole("button", {
+      name: `选择线索：${findingTitle(nextFinding)}`,
+      exact: true,
+    });
+    await expect(nextRow).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("region", { name: "风险线索" }).getByRole("radio").first(),
+    ).toBeFocused();
+    const findings = page.getByRole("region", { name: "风险线索" });
+    await findings.getByRole("button", { name: "已判断", exact: true }).click();
+    await findings
+      .getByRole("button", { name: `选择线索：${findingTitle(finding)}`, exact: true })
+      .click();
     await expect(
       page.getByText("合成采购要求36个月，拟签仅24个月，确认风险。", { exact: true }),
     ).toBeVisible();

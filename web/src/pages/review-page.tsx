@@ -4,10 +4,11 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r18
+// Revision: r19
 // Copyright: See LICENSE
 // End file metadata.
 
+import { ReviewProgress } from "../components/review-progress";
 import { useProfessionalMode } from "../components/app-shell-preferences";
 import { Button, Drawer, Tabs } from "antd";
 import {
@@ -1864,28 +1865,12 @@ export function ReviewPage() {
                   <span className="review-attempt-label">第 {selectedAttempt.ordinal} 次审查</span>
                 )}
               </div>
-              <ol className="review-progress" aria-label="审查进度">
-                <li data-stage={workspace.documents.length > 0 ? "done" : "active"}>材料</li>
-                <li data-stage={terminal ? "done" : "active"}>准备</li>
-                <li
-                  data-stage={
-                    partialScope
-                      ? "warning"
-                      : terminal
-                        ? remaining === 0
-                          ? "done"
-                          : "active"
-                        : undefined
-                  }
-                >
-                  {partialScope ? "原文审查（部分完成）" : "原文审查"}
-                </li>
-                <li
-                  data-stage={!partialScope && terminal && remaining === 0 ? "active" : undefined}
-                >
-                  整改与报告
-                </li>
-              </ol>
+              <ReviewProgress
+                state={decisionState}
+                hasDocuments={workspace.documents.length > 0}
+                hasPendingJudgments={remaining > 0}
+                hasFrozenAttempt={selectedAttempt?.history_kind === "frozen"}
+              />
               <span className="review-finding-count">
                 {partialScope
                   ? partialScope.precheck
