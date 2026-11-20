@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r20
+// Revision: r21
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -123,6 +123,7 @@ import { isLegacyPaymentCoverageFinding } from "../features/review/single-contra
 import {
   canRestartUserCancelled,
   hasTransientRetryCause,
+  businessReviewProgress,
   partialReportScope,
 } from "../features/review/review-outcome";
 import {
@@ -1402,6 +1403,7 @@ export function ReviewPage() {
   }
 
   const partialScope = partialReportScope(workspace);
+  const progress = scopeMismatch ? null : businessReviewProgress(workspace);
 
   function retryCurrentReview() {
     if (
@@ -1770,18 +1772,25 @@ export function ReviewPage() {
   );
   const reviewRecord = (
     <div id="review-history-section">
-      {partialScope ? (
+      {progress ? (
         <section aria-label="本次审查状态">
           <h3>本次审查状态</h3>
-          <p>{partialScope.reason}</p>
-          <p>
-            {partialScope.ruleCoverage}。未覆盖：{partialScope.uncovered.join("、")}。
-          </p>
-          {partialRecovery}
+          <p>{progress.detail}</p>
+          {partialScope ? (
+            <p>
+              {partialScope.ruleCoverage}
+              {partialScope.precheck ? "。" : `。未覆盖：${partialScope.uncovered.join("、")}。`}
+            </p>
+          ) : null}
+          {partialScope ? partialRecovery : null}
         </section>
       ) : null}
       {reviewBasis}
-      {cloneElement(workspaceView, { surface: "coverage", immersive: false })}
+      {cloneElement(workspaceView, {
+        surface: "coverage",
+        immersive: false,
+        suppressPrecheckPreparation: Boolean(partialScope?.precheck && partialRecovery),
+      })}
       <div ref={setCoverageHost} />
       {caseContext && (
         <ReviewCaseContextPanel
@@ -1903,19 +1912,22 @@ export function ReviewPage() {
                   </span>
                 )}
               </div>
-              {partialScope ? (
-                <Button
-                  className="review-finding-count review-partial-pill"
-                  aria-haspopup="dialog"
-                  onClick={() => selectDrawer("record", "review")}
-                >
-                  {partialScope.precheck ? "单合同预审" : "智能审查未完"} · 待判断 {remaining}
-                </Button>
-              ) : (
-                <span className="review-finding-count">
-                  待判断 {remaining} / {visibleFindings.length}
+              {progress ? (
+                <span className="review-progress-status" role="status" aria-atomic="true">
+                  <Button
+                    className={
+                      partialScope
+                        ? "review-finding-count review-partial-pill"
+                        : "review-finding-count"
+                    }
+                    aria-haspopup="dialog"
+                    onClick={() => selectDrawer("record", "review")}
+                  >
+                    {progress.label} · 待判断 {remaining}
+                    {!partialScope ? ` / ${visibleFindings.length}` : null}
+                  </Button>
                 </span>
-              )}
+              ) : null}
               {!mobileActions ? (
                 <nav className="review-topbar-actions" aria-label="审查操作">
                   <Button

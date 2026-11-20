@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r17
+// Revision: r18
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -599,6 +599,7 @@ export function ReviewWorkspaceView({
   immersive = false,
   coverageHost,
   partialStatusManaged = false,
+  suppressPrecheckPreparation = false,
   emptyFindingMessage,
   onReturnToReading,
 }: {
@@ -650,6 +651,7 @@ export function ReviewWorkspaceView({
   immersive?: boolean;
   coverageHost?: HTMLElement | null;
   partialStatusManaged?: boolean;
+  suppressPrecheckPreparation?: boolean;
   emptyFindingMessage?: string;
   onReturnToReading?: () => void;
 }) {
@@ -936,7 +938,11 @@ export function ReviewWorkspaceView({
       ) : null}
       {showCoverage ? (
         <>
-          <ReviewOutcomeSummary workspace={workspace} showPartialReason={!partialStatusManaged} />
+          <ReviewOutcomeSummary
+            workspace={workspace}
+            showPartialReason={!partialStatusManaged}
+            showPrecheckPreparation={!suppressPrecheckPreparation}
+          />
           <SingleContractScopeCoverage mode="workspace" workspace={workspace} />
         </>
       ) : null}

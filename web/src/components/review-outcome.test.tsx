@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-20
-// Revision: r8
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -19,6 +19,7 @@ import { AdministrativeTechnicalDetails } from "./app-shell-preferences";
 import { CaseNextStep } from "./case-next-step";
 import { ReviewOutcomeSummary } from "./review-outcome-summary";
 import {
+  businessReviewProgress,
   canReadmitCancelledPreparation,
   canRestartUserCancelled,
   hasTransientRetryCause,
@@ -72,6 +73,72 @@ function workspace(): ReviewWorkspace {
     audit_events: [],
   });
 }
+
+describe("business review progress", () => {
+  it("uses the authorized attempt and explains verified partial scope", () => {
+    const current = workspace();
+    expect(businessReviewProgress(current)).toMatchObject({
+      label: "单合同预审已结束",
+      attemptId: "attempt-1",
+      detail: expect.stringContaining("跨材料对照、制度核对"),
+    });
+    current.review_attempts!.attempt.run_id = "other";
+    expect(businessReviewProgress(current)).toMatchObject({
+      label: "审查状态待核对",
+      attemptId: null,
+    });
+  });
+
+  it("keeps scope evidence while the parent record supplies the preparation action", () => {
+    render(
+      <ReviewOutcomeSummary
+        workspace={workspace()}
+        showPartialReason={false}
+        showPrecheckPreparation={false}
+      />,
+    );
+    const result = screen.getByRole("region", { name: "审查结果、范围与人工进度" });
+    expect(result).toHaveTextContent("跨材料对照、制度与法律依据及其他风险");
+    expect(
+      within(result).queryByRole("link", { name: "查看完整审查准备" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps a public execution failure generic when the stage is not recorded", () => {
+    const current = workspace();
+    const attempt = current.review_attempts!.attempt;
+    delete attempt.review_scope;
+    attempt.error_code = null;
+    attempt.outcome = { reason: "execution_failed", agent_stage: "unknown", retry_cause: "none" };
+    expect(businessReviewProgress(current)).toMatchObject({
+      label: "智能审查未完",
+      detail: "本次审查执行失败，具体原因未记录。",
+    });
+  });
+
+  it("distinguishes preparation, a recorded model failure, and a completed scope", () => {
+    const current = workspace();
+    const attempt = current.review_attempts!.attempt;
+    attempt.history_kind = "preparing";
+    attempt.state = "accepted";
+    expect(businessReviewProgress(current).label).toBe("准备审查中");
+    attempt.history_kind = "frozen";
+    attempt.state = "partial";
+    attempt.error_code = "model_request_failed";
+    attempt.outcome = { reason: "execution_failed", agent_stage: "unknown", retry_cause: "none" };
+    expect(businessReviewProgress(current)).toMatchObject({
+      label: "模型审查未完成",
+      detail: "本次未完成模型审查。",
+    });
+    attempt.error_code = null;
+    expect(businessReviewProgress(current).label).toBe("单合同预审未完成");
+    attempt.state = "completed";
+    expect(businessReviewProgress(current)).toMatchObject({
+      label: "本次审查已完成",
+      detail: expect.stringContaining("本次所选范围"),
+    });
+  });
+});
 
 function detail(): CaseDetail {
   return {
@@ -290,7 +357,9 @@ describe("selected review outcome", () => {
       expect(
         screen.getByText(stage === "failed" ? /智能审查执行失败/ : /智能审查存在未完成/),
       ).toBeInTheDocument();
-      expect(screen.getByText(/单合同预审已结束/)).toBeInTheDocument();
+      expect(
+        screen.getByText(stage === "failed" ? /单合同预审未完成/ : /单合同预审已结束/),
+      ).toBeInTheDocument();
       expect(hasTransientRetryCause(value)).toBe(false);
     },
   );

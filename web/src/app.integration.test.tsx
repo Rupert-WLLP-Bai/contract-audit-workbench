@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r18
+// Revision: r19
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1504,6 +1504,26 @@ describe("application routes and API contract", () => {
     expect(api.requests.some(({ key }) => key.endsWith("/retry"))).toBe(false);
   });
 
+  it("opens a historical record's exact business progress and keeps the drawer in the URL", async () => {
+    const api = new Service();
+    const older = api.addReview("partial", "r1");
+    markLimitedPrecheck(older);
+    const newer = api.addReview("completed", "r2");
+    newer.previous_run_id = "r1";
+    const { router, user } = open(api, "/cases/c1");
+    await user.click(await screen.findByRole("button", { name: "读取更早审查记录" }));
+    const link = await screen.findByRole("link", { name: /查看审查进度.*单合同预审/ });
+    expect(link).toHaveAttribute(
+      "href",
+      "/cases/c1/reviews/r1?attempt_id=attempt-r1-1&drawer=record&tab=review",
+    );
+    await user.click(link);
+    const status = await screen.findByRole("region", { name: "本次审查状态" });
+    expect(status).toHaveTextContent("跨材料对照、制度核对及范围外风险项未执行");
+    expect(router.state.location.pathname).toBe("/cases/c1/reviews/r1");
+    expect(router.state.location.search).toBe("?attempt_id=attempt-r1-1&drawer=record&tab=review");
+  });
+
   it("preflights a partial report with zero rule findings and no retry eligibility", async () => {
     const api = new Service();
     api.role = "admin";
@@ -1519,7 +1539,7 @@ describe("application routes and API contract", () => {
     };
     const { user } = open(api, "/cases/c1/reviews/r1?attempt_id=attempt-r1-1");
     const partialStatus = await screen.findByRole("button", {
-      name: "智能审查未完 · 待判断 0",
+      name: "模型审查未完成 · 待判断 0",
     });
     expect(partialStatus).toBeVisible();
     expect(screen.queryByRole("list", { name: "审查进度" })).not.toBeInTheDocument();
@@ -3497,7 +3517,7 @@ describe("application routes and API contract", () => {
     const { user } = open(api, "/cases/c1/reviews/r1");
     await openReviewSection(user, "来源与历史");
     const summary = await screen.findByRole("region", { name: "审查结果、范围与人工进度" });
-    expect(summary).toHaveTextContent("单合同预审已结束");
+    expect(summary).toHaveTextContent("单合同预审未完成");
     expect(summary).toHaveTextContent("智能审查执行失败");
     expect(summary).toHaveTextContent("其他风险不在本次单合同预审范围，未执行");
     expect(screen.queryByRole("button", { name: "重新执行未完成的审查" })).not.toBeInTheDocument();
@@ -5146,6 +5166,10 @@ describe("application routes and API contract", () => {
     await openReviewSection(user, "执行轨迹");
     expect(await screen.findByText("运行状态已连接")).toBeInTheDocument();
     await openReviewSection(user, "原文核对");
+    const progress = await screen.findByRole("button", { name: /^审查中 · 待判断 1 \/ 1$/ });
+    expect(progress.closest('[role="status"]')).toHaveAttribute("aria-atomic", "true");
+    const focused = screen.getByRole("button", { name: "补充材料" });
+    focused.focus();
     const execution = review.execution!;
     const terminal = { ...execution.attempt, state: "awaiting_human", finished_at: at };
     review.execution = { ...execution, attempt: terminal, attempts: [terminal] };
@@ -5157,6 +5181,8 @@ describe("application routes and API contract", () => {
       }),
     );
     await waitFor(() => expect(decision).toBeEnabled());
+    expect(await screen.findByRole("button", { name: /^待人工 · 待判断 1 \/ 1$/ })).toBe(progress);
+    expect(focused).toHaveFocus();
   });
 
   it("keeps the run stream connected while an event refreshes case permissions", async () => {

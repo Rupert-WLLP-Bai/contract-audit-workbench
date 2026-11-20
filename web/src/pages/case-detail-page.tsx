@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r17
+// Revision: r18
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -42,7 +42,10 @@ import { TemplateGenerationPanel } from "../components/template-generation-panel
 import { StatusText } from "../components/status-text";
 import { scenarioLabel } from "../domain/business-labels";
 import { CaseSupportGrantPanel } from "./support-grant-pages";
-import { canReadmitCancelledPreparation } from "../features/review/review-outcome";
+import {
+  businessReviewProgress,
+  canReadmitCancelledPreparation,
+} from "../features/review/review-outcome";
 import { readWorkReturn } from "../features/review/work-items";
 import { actorReadContextKey } from "../domain/actor-read-context";
 import { recordRecentCaseVisit } from "../features/home/recent-cases";
@@ -52,8 +55,6 @@ import {
   roleLabel,
   formatDateTime,
   readyDocumentCount,
-  runLabel,
-  runTone,
 } from "../domain/review";
 import { compactTime } from "../domain/time";
 import "./case-detail-page.css";
@@ -773,7 +774,7 @@ export function CaseDetailPage() {
                                     const recordedAttempt = workspace.review_attempts?.attempt;
                                     const attempt =
                                       recordedAttempt?.run_id === runId ? recordedAttempt : null;
-                                    const stage = attempt?.state ?? workspace.run.state;
+                                    const progress = businessReviewProgress(workspace);
                                     const roles = [
                                       ...new Set(
                                         workspace.documents.map((document) =>
@@ -792,13 +793,28 @@ export function CaseDetailPage() {
                                         <th scope="row">{label}</th>
                                         <td>{roles.length ? roles.join(" · ") : "—"}</td>
                                         <td>
-                                          <StatusText
-                                            tone={
-                                              stage === "partial" ? "attention" : runTone(stage)
-                                            }
+                                          <span
+                                            role={index === 0 ? "status" : undefined}
+                                            aria-atomic={index === 0 || undefined}
                                           >
-                                            {runLabel(stage)}
-                                          </StatusText>
+                                            {progress.attemptId &&
+                                            session.isSuccess &&
+                                            !session.isFetching ? (
+                                              <Link
+                                                to={`${caseHref(item.id, runId, progress.attemptId)}&drawer=record&tab=review`}
+                                                aria-label={`查看审查进度：${label}，${progress.label}`}
+                                                state={reviewNavigationState()}
+                                              >
+                                                <StatusText tone={progress.tone}>
+                                                  {progress.label} <span aria-hidden="true">›</span>
+                                                </StatusText>
+                                              </Link>
+                                            ) : (
+                                              <StatusText tone={progress.tone}>
+                                                {progress.label}
+                                              </StatusText>
+                                            )}
+                                          </span>
                                         </td>
                                         <td>
                                           {compactTime(

@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-20
-// Revision: r7
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,6 +12,7 @@ import type { ReviewWorkspace } from "../api/types";
 import { runLabel } from "../domain/review";
 import {
   agentStage,
+  businessReviewProgress,
   canReadmitCancelledPreparation,
   canRestartUserCancelled,
   hasFrozenParseFailure,
@@ -29,15 +30,19 @@ import {
 export function ReviewOutcomeSummary({
   workspace,
   showPartialReason = true,
+  showPrecheckPreparation = true,
 }: {
   workspace: ReviewWorkspace;
   showPartialReason?: boolean;
+  showPrecheckPreparation?: boolean;
 }) {
   const coverage = singleContractCoverage(workspace);
   const outcome = selectedOutcome(workspace);
   const limited = limitedPrecheck(workspace);
   const partial = partialReportScope(workspace);
   const stage = agentStage(workspace);
+  const progress = businessReviewProgress(workspace);
+  const modelIncomplete = progress.label === "模型审查未完成";
   const undecided = workspace.findings.filter(
     (finding) =>
       finding.decisions.length === 0 && !isLegacyPaymentCoverageFinding(workspace, finding),
@@ -108,7 +113,7 @@ export function ReviewOutcomeSummary({
       <p>
         <strong>执行结果：</strong>
         {limited
-          ? "单合同预审已结束，执行记录保留为部分完成。"
+          ? `${progress.label}，执行记录保留为部分完成。`
           : `所选执行记录：${runLabel(workspace.run.state)}。`}
       </p>
       {outcome?.reason === "transient_failure" ? (
@@ -148,7 +153,9 @@ export function ReviewOutcomeSummary({
       {outcome?.reason === "authorization_revoked" ? (
         <p>本次执行因授权变化而取消，请联系案件管理员核对权限。</p>
       ) : null}
-      <p>{agent}</p>
+      {showPartialReason || !partial || !modelIncomplete ? (
+        <p>{modelIncomplete ? "模型审查未完成，已有规则结果仍需人工核对。" : agent}</p>
+      ) : null}
       {gapKinds.materials ? (
         <p>智能审查存在缺少材料或字段的未解决事项，请补充相关材料并核对原文。</p>
       ) : null}
@@ -196,7 +203,7 @@ export function ReviewOutcomeSummary({
           <a href={`${casePath}#review-readiness`}>返回审查准备清单</a>
         </p>
       ) : null}
-      {limited ? (
+      {limited && showPrecheckPreparation ? (
         <p>
           <a href={`${casePath}#review-readiness`}>查看完整审查准备</a>
         </p>
