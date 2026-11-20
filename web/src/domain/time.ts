@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Provides shared Beijing-time display formatting and precise readable time labels without changing submitted or persisted timestamps.
+// Purpose: Formats stored timestamps for Beijing time, including compact same-year and cross-year labels for object lists.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 

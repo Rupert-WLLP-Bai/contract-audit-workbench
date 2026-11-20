@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders DirtyLeaveGuard, the dirty leave guard workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.
+// Purpose: Registers pending edits with a single router blocker so that a page and its intake dialog share leave and reload protection.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Hosts case intake as a route or dialog and preserves actor isolation, unsettled drafts and navigation after a successful upload.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-20
+// Updated: 2026-11-20
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Modal } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";

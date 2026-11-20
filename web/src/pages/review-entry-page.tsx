@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Lists server-visible cases with URL-backed all, actor-assigned pending-task, and recent-run views; searches case identities and opens the newest persisted run with its exact frozen attempt identity.
+// Purpose: Opens the shared case intake form for direct review entry and supports navigation to the resulting case.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-12
-// Revision: r5
+// Updated: 2026-11-20
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 

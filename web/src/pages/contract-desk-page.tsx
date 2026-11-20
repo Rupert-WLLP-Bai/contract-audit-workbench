@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Lists authorized proposed contract materials with search and status filters, opens exact frozen originals or case materials, and retains the filtered reading order.
+// Purpose: Resolves historical contract-material links and retained list contexts and directs an unqualified entry to the case list.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-19
-// Updated: 2026-11-19
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks review entry rendering, exact run/attempt navigation, actor-assigned task filtering, recent-run filtering and ordering, URL-backed tabs/search, CTA destination, empty state, summary, and refresh/error states.
+// Purpose: Checks direct and modal intake behavior, successful and failed file submissions, cancellation and guarded draft navigation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

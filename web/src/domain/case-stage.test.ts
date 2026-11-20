@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks case stage labels and actions for known, partial, missing and unauthorized review or report facts.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-20
+// Updated: 2026-11-20
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { describe, expect, it } from "vitest";
 import { caseStagePresentation, type CaseStageFacts } from "./review";
 import { compactTime } from "./time";

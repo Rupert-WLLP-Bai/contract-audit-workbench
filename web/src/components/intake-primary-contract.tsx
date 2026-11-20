@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders IntakePrimaryContract, the intake primary contract workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.
+// Purpose: Creates a case by uploading its proposed contract and optionally an accompanying procurement document, with identity-scoped continuation and independent retry receipts.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r7
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
