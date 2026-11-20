@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-08 */
-/* Updated: 2026-11-19 */
-/* Revision: r3 */
+/* Updated: 2026-11-20 */
+/* Revision: r4 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -218,9 +218,9 @@
   gap: var(--space-2);
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (min-height: 600px) {
   .review-reading-content:not([hidden]),
-  #review-document-section > .workspace {
+  .page-review #review-document-section > .workspace {
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -228,11 +228,11 @@
   .review-reading-content:not([hidden]) {
     height: 100dvh;
   }
-  #review-document-section {
+  .page-review #review-document-section {
     flex: 1 1 auto;
     min-height: 0;
   }
-  #review-document-section > .workspace {
+  .page-review #review-document-section > .workspace {
     height: 100%;
   }
 }

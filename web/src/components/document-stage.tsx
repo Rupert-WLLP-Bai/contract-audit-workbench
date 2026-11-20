@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r10
+// Revision: r11
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -19,6 +19,7 @@ import {
   useDeferredValue,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -2028,10 +2029,16 @@ function ImmersiveDocumentStage({
   onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
 }) {
   const [topic, setTopic] = useState<ImmersiveTopic>("all");
+  const stage = useRef<HTMLElement>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [mobileRole, setMobileRole] = useState("procurement");
   const [linked, setLinked] = useState(true);
   const [focuses, setFocuses] = useState<Record<string, { start: number; end: number }>>({});
+  const located = useRef<{
+    request: string;
+    focuses: typeof focuses;
+    panes: WeakSet<HTMLElement>;
+  } | null>(null);
   const roles = ["procurement", "draft_contract"] as const;
   const displayed = roles.flatMap((role) => {
     const candidates = documents.filter((item) => item.role === role);
@@ -2045,16 +2052,28 @@ function ImmersiveDocumentStage({
   const activeRole = displayed.some((item) => item.role === mobileRole)
     ? mobileRole
     : (displayed[0]?.role ?? mobileRole);
+  const externalStart = externalRange?.start;
+  const externalEnd = externalRange?.end;
+  const requestedRole = documents.find(
+    (item) => item.id === (externalDocumentId ?? sourceDocumentId),
+  )?.role;
   useEffect(() => {
-    const requested = documents.find((item) => item.id === sourceDocumentId);
-    if (requested && (requested.role === "procurement" || requested.role === "draft_contract")) {
+    if (requestedRole === "procurement" || requestedRole === "draft_contract")
+      setMobileRole(requestedRole);
+  }, [externalDocumentId, externalStart, externalEnd, sourceDocumentId, requestedRole]);
+  const selectedSourceRole = documents.find((item) => item.id === sourceDocumentId)?.role;
+  useEffect(() => {
+    if (
+      sourceDocumentId &&
+      (selectedSourceRole === "procurement" || selectedSourceRole === "draft_contract")
+    ) {
       setChosen((current) =>
-        current[requested.role] === requested.id
+        current[selectedSourceRole] === sourceDocumentId
           ? current
-          : { ...current, [requested.role]: requested.id },
+          : { ...current, [selectedSourceRole]: sourceDocumentId },
       );
     }
-  }, [sourceDocumentId, documents]);
+  }, [sourceDocumentId, selectedSourceRole]);
   const navigation = new Map(
     documents.map((document) => [document.id, keyClauseNavigationFor(quoteScope, document)]),
   );
@@ -2106,22 +2125,43 @@ function ImmersiveDocumentStage({
   useEffect(() => {
     setFocuses({});
   }, [finding?.id, quoteScope?.attemptId]);
+  const request = JSON.stringify([
+    quoteScope?.attemptId,
+    finding?.id,
+    sourceDocumentId,
+    externalDocumentId,
+    externalStart,
+    externalEnd,
+  ]);
   useEffect(() => {
-    for (const document of displayed) {
-      const pane = Array.from(
-        window.document.querySelectorAll<HTMLElement>(".immersive-document-column"),
-      ).find((item) => item.dataset.sourceId === document.id);
-      const range = document.id === externalDocumentId ? externalRange : focuses[document.id];
-      const mark = range
-        ? pane?.querySelector<HTMLElement>(`[data-offset="${range.start}"]`)
-        : pane?.querySelector<HTMLElement>(".hit-evidence");
-      if (mark && typeof mark.scrollIntoView === "function")
-        mark.scrollIntoView({ block: "center" });
+    if (located.current?.request !== request || located.current.focuses !== focuses) {
+      located.current = { request, focuses, panes: new WeakSet() };
     }
-  }, [finding?.id, focuses, chosen, externalDocumentId, externalRange?.start, externalRange?.end]);
+    const placed = located.current.panes;
+    for (const pane of stage.current?.querySelectorAll<HTMLElement>(".immersive-document-column") ??
+      []) {
+      if (!pane.dataset.sourceId || placed.has(pane)) continue;
+      const start =
+        pane.dataset.sourceId === externalDocumentId
+          ? externalStart
+          : focuses[pane.dataset.sourceId]?.start;
+      const mark =
+        start === undefined
+          ? pane.querySelector<HTMLElement>(".hit-evidence")
+          : pane.querySelector<HTMLElement>(`[data-offset="${start}"]`);
+      const scroller = mark?.closest<HTMLElement>("[data-review-document-scroll]");
+      if (mark && scroller && scroller.clientHeight > 0) {
+        scroller.scrollTop +=
+          mark.getBoundingClientRect().top -
+          scroller.getBoundingClientRect().top -
+          scroller.clientHeight / 2;
+        placed.add(pane);
+      }
+    }
+  }, [activeRole, chosen, externalDocumentId, externalStart, focuses, request]);
   const extras = documents.filter((item) => !roles.includes(item.role as (typeof roles)[number]));
   return (
-    <section className="immersive-document-stage" aria-label="原文对照">
+    <section ref={stage} className="immersive-document-stage" aria-label="原文对照">
       <div className="immersive-topics" role="group" aria-label="条款主题">
         {IMMERSIVE_TOPICS.map((item) => (
           <Button
@@ -2142,17 +2182,19 @@ function ImmersiveDocumentStage({
           按条款联动
         </label>
       </div>
-      <div className="immersive-role-switch" role="group" aria-label="切换对照材料">
-        {displayed.map((document) => (
-          <Button
-            key={document.id}
-            aria-pressed={activeRole === document.role}
-            onClick={() => setMobileRole(document.role)}
-          >
-            {roleLabel(document.role)}
-          </Button>
-        ))}
-      </div>
+      {displayed.length > 1 && (
+        <div className="immersive-role-switch" role="group" aria-label="切换对照材料">
+          {displayed.map((document) => (
+            <Button
+              key={document.id}
+              aria-pressed={activeRole === document.role}
+              onClick={() => setMobileRole(document.role)}
+            >
+              {roleLabel(document.role)}
+            </Button>
+          ))}
+        </div>
+      )}
       {roles.map((role) => {
         const choices = documents.filter((item) => item.role === role);
         if (choices.length < 2) return null;
@@ -2198,7 +2240,13 @@ function ImmersiveDocumentStage({
                 <span title={document.filename}>{document.filename}</span>
                 <span>{version}</span>
               </header>
-              <div className="immersive-document-scroll col-doc" data-review-document-scroll>
+              <div
+                className="immersive-document-scroll col-doc"
+                data-review-document-scroll
+                tabIndex={0}
+                role="region"
+                aria-label={`${roleLabel(document.role)}正文`}
+              >
                 <FindingMarkerContext.Provider
                   value={{
                     markers: findings.flatMap((item, index) =>

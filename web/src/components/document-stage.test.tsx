@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-19
-// Revision: r7
+// Updated: 2026-11-20
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1036,9 +1036,46 @@ describe("immersive document stage", () => {
     expect(within(columns[0] as HTMLElement).getByText("版本未记录")).toBeInTheDocument();
     expect(within(columns[1] as HTMLElement).getByText("第 3 版")).toBeInTheDocument();
     expect(screen.getByText("其他材料（1）")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "采购文件正文" })).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("region", { name: "拟签合同正文" })).toHaveAttribute("tabindex", "0");
   });
 
-  it("marks only an exact finding quote and does not invent a mark on the other document", () => {
+  it("activates the cited material and keeps both reading positions mounted", async () => {
+    const first = documentOf("p", "procurement", "采购.txt", "采购原文");
+    const second = documentOf("c", "draft_contract", "合同.txt", "合同原文");
+    const props = {
+      immersive: true,
+      documents: [first, second],
+      finding: null,
+      findings: [],
+      selectedFindingId: null,
+      layout: "switch" as const,
+      onSelectFinding: vi.fn(),
+    };
+    const view = render(
+      <MemoryRouter>
+        <DocumentStage {...props} />
+      </MemoryRouter>,
+    );
+    const procurement = screen.getByRole("region", { name: "采购文件正文" });
+    procurement.scrollTop = 240;
+
+    view.rerender(
+      <MemoryRouter>
+        <DocumentStage {...props} sourceDocumentId="c" />
+      </MemoryRouter>,
+    );
+
+    const switcher = screen.getByRole("group", { name: "切换对照材料", hidden: true });
+    expect(
+      within(switcher).getByRole("button", { name: "拟签合同", hidden: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("region", { name: "采购文件正文" })).toBe(procurement);
+    expect(procurement.scrollTop).toBe(240);
+  });
+
+  it("marks only an exact finding quote and preserves manual scrolling across role switches", async () => {
+    const user = userEvent.setup();
     const procurement = documentOf("p", "procurement", "采购.txt", "质保三十六个月。", {
       parsed_document_id: "pp",
     });
@@ -1073,6 +1110,19 @@ describe("immersive document stage", () => {
       "data-finding-number",
       "1",
     );
+
+    const contractText = screen.getByRole("region", { name: "拟签合同正文" });
+    Object.defineProperty(contractText, "clientHeight", { value: 100 });
+    const mark = contractText.querySelector(".hit-evidence")!;
+    vi.spyOn(mark, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 300, 40, 20));
+    const switcher = screen.getByRole("group", { name: "切换对照材料", hidden: true });
+    const { getByRole } = within(switcher);
+    await user.click(getByRole("button", { name: "拟签合同", hidden: true }));
+    expect(contractText.scrollTop).toBe(250);
+    contractText.scrollTop = 240;
+    await user.click(getByRole("button", { name: "采购文件", hidden: true }));
+    await user.click(getByRole("button", { name: "拟签合同", hidden: true }));
+    expect(contractText.scrollTop).toBe(240);
   });
 
   it("shows distinct verified finding markers and selects the requested finding", async () => {
@@ -1139,6 +1189,7 @@ describe("immersive document stage", () => {
     await user.click(screen.getByRole("checkbox", { name: "按条款联动" }));
     await user.click(screen.getByRole("button", { name: "质保" }));
     expect(container.querySelector('[data-source-id="c"] .hit-find')).toHaveTextContent("质保期");
+    expect(screen.queryByRole("group", { name: "切换对照材料", hidden: true })).toBeNull();
   });
 
   it("opens the exact requested source when a deep link changes between same-role versions", async () => {

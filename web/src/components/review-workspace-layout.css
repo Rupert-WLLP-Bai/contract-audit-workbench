@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-03 */
-/* Updated: 2026-11-19 */
-/* Revision: r5 */
+/* Updated: 2026-11-20 */
+/* Revision: r6 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -469,7 +469,7 @@
   background: var(--surface-raised);
   border-inline-start: 1px solid var(--border-control);
 }
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (min-height: 600px) {
   .workspace-view-immersive {
     flex: 1 1 auto;
     min-height: 0;
