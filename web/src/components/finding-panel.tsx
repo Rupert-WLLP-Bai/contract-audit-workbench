@@ -1298,30 +1298,6 @@ export function FindingPanel({
     };
   }
 
-  const batchControls = (
-    <FindingBatchControls
-      draft={batch}
-      actions={immersive ? WORKSPACE_DECISION_ACTIONS : DECISION_ACTIONS}
-      showRuleIdentity={!immersive || professionalMode}
-      selected={selectedForBatch}
-      selectedId={selectedId}
-      group={group}
-      membersValid={membersValid}
-      retryingSingle={retryingSingle}
-      needsReconfirmation={needsReconfirmation}
-      canSubmit={canBatchSubmit}
-      canDecide={
-        Boolean(onBatchDecide) &&
-        canDecide &&
-        (!immersive ||
-          allFindings.some((finding) => findingBatchGroup(finding, evaluations) !== null))
-      }
-      pending={pending || batchPending}
-      onSelect={onSelect}
-      onSubmit={() => void submitBatch()}
-    />
-  );
-
   async function submitBatch() {
     const action = batch.action;
     if (!canBatchSubmit || !onBatchDecide || action === null) return;
@@ -1397,6 +1373,30 @@ export function FindingPanel({
       if (next !== null) onSelect(next);
     }
   }
+  const batchControls = (
+    <FindingBatchControls
+      draft={batch}
+      actions={immersive ? WORKSPACE_DECISION_ACTIONS : DECISION_ACTIONS}
+      showRuleIdentity={!immersive || professionalMode}
+      selected={selectedForBatch}
+      selectedId={selectedId}
+      group={group}
+      membersValid={membersValid}
+      retryingSingle={retryingSingle}
+      needsReconfirmation={needsReconfirmation}
+      canSubmit={canBatchSubmit}
+      canDecide={
+        Boolean(onBatchDecide) &&
+        canDecide &&
+        (!immersive ||
+          allFindings.some((finding) => findingBatchGroup(finding, evaluations) !== null))
+      }
+      pending={pending || batchPending}
+      onSelect={onSelect}
+      onSubmit={() => void submitBatch()}
+    />
+  );
+
   const selected = findings.find((finding) => finding.id === selectedId) ?? null;
   const selectedHidden =
     selected !== null && !visible.some((finding) => finding.id === selected.id);
