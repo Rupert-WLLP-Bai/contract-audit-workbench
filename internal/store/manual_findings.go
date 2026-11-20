@@ -155,7 +155,7 @@ func (s *Store) CreateManualFinding(ctx context.Context, user accounts.User, inp
 		AND a.history_kind='frozen' AND a.input_hash IS NOT NULL AND a.input_hash<>''`,
 		item.TenantID, item.OwnerOrgID, item.ID, input.RunID, input.AttemptID).Scan(&frozenJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ManualFinding{}, fault.NotFound("没有找到对应的冻结执行记录")
+		return ManualFinding{}, fault.NotFound("没有找到对应的执行尝试")
 	}
 	if err != nil {
 		return ManualFinding{}, err

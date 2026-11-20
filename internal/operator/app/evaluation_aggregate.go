@@ -187,7 +187,7 @@ func EvaluateAggregateObjects[D executionmodel.OriginalDocument](ctx context.Con
 		objectFrozen.SourceSystem = snapshot.SourceSystem
 		objectFrozen.Facts = frozenFacts
 		if err := objectFrozen.Validate(); err != nil {
-			return nil, fault.Conflict("对象核验冻结输入不完整")
+			return nil, fault.Conflict("对象核验所用材料不完整")
 		}
 		checks, err := evaluator.Evaluate(ctx, objectFrozen, ObservationsForEvaluation(snapshot, input.BusinessAt, *base.EvidenceCutoffAt))
 		if errors.Is(err, auditext.ErrUnauthorized) {

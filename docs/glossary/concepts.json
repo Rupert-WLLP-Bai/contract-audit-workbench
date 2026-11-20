@@ -748,7 +748,7 @@
     {
       "id": "T11",
       "slug": "term-t11",
-      "user_term": "审查发现",
+      "user_term": "风险线索",
       "system_term": "store.Finding / web.Finding",
       "definition": "规则或模型审查产生的具体发现，保留来源、引用和核验信息供人工处理。",
       "boundaries": [
@@ -812,7 +812,7 @@
     {
       "id": "T12",
       "slug": "term-t12",
-      "user_term": "发现处理意见",
+      "user_term": "人工判断",
       "system_term": "store.Decision / web.HumanDecision",
       "definition": "人工对特定审查发现作出的确认、误报、证据不足或接受残余风险等处置记录。",
       "boundaries": [
@@ -2321,7 +2321,7 @@
     {
       "id": "T35",
       "slug": "attempt-snapshot",
-      "user_term": "执行尝试冻结快照",
+      "user_term": "当次审查依据",
       "system_term": "AttemptInput / RunSnapshot",
       "definition": "与一次执行尝试关联、用于解释该次输入与解析身份的不可变材料、解析选择及规则等快照。",
       "boundaries": [

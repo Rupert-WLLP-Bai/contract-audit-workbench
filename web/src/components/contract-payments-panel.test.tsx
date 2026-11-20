@@ -288,7 +288,7 @@ it("keeps plan rows and eligibility buttons bounded when the revision or permiss
       onRefresh={onRefresh}
     />,
   );
-  expect(screen.getByText("当前没有可核验的冻结合同修订。")).toBeVisible();
+  expect(screen.getByText("暂无可核验的合同定稿。")).toBeVisible();
   expect(screen.getAllByText("付款状态正在读取")).toHaveLength(2);
   expect(rowButton(1)).toBeDisabled();
   await act(async () => {});
@@ -358,7 +358,7 @@ it("shows the loading state, allows an empty payment plan, and surfaces read fai
       onRefresh={onRefresh}
     />,
   );
-  expect(screen.getByText("当前冻结修订没有付款计划。")).toBeVisible();
+  expect(screen.getByText("合同定稿中暂无付款计划。")).toBeVisible();
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
   expect(screen.queryByText("付款回执读取失败")).not.toBeInTheDocument();
 });

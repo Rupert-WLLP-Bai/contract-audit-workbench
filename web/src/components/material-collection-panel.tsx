@@ -432,7 +432,7 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId, source 
                         : "未选入本次审查"}
                   </p>
                   <TechnicalDetail
-                    label="材料状态技术详情"
+                    label="材料状态编码"
                     value={JSON.stringify({
                       role: material.role,
                       parse_status: document?.parse_status ?? null,

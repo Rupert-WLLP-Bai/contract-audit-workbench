@@ -61,7 +61,7 @@ function ReadinessCoverage({
         <h3>单合同预审范围</h3>
         <p>
           <StatusText tone="attention">范围身份待核对</StatusText>{" "}
-          服务端未返回可识别的规则身份，不能推断具体检查能力。
+          暂无可识别的规则版本，暂不能确认具体检查项目。
         </p>
       </section>
     );
@@ -164,11 +164,7 @@ function WorkspaceCoverage({ workspace }: Extract<Props, { mode: "workspace" }>)
             </StatusText>
           </div>
           <p>{descriptions[payment.status]}</p>
-          {payment.reason ? (
-            <p>
-              {payment.reason.replace("主合同没有可读取的冻结文本", "主合同没有可读取的送审文本")}
-            </p>
-          ) : null}
+          {payment.reason ? <p>{payment.reason}</p> : null}
           {version === "1" ? <PaymentExpressions /> : null}
         </li>
         {version === "1" && (

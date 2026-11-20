@@ -748,7 +748,7 @@ func anchorJSON(anchor store.Anchor, doc store.Interpreted) map[string]any {
 		return out
 	}
 	if !anchorMatchesFrozenIdentity(anchor, doc) {
-		return markAnchorUnlocatable(out, anchor, "引用解析身份与冻结正文不一致，未在正文中高亮。", false)
+		return markAnchorUnlocatable(out, anchor, "引用对应的解析版本与本次审查原文不一致，无法在正文中标出。", false)
 	}
 	page, hasPage, element, located := locateFrozenAnchor(anchor, doc)
 	if !located {

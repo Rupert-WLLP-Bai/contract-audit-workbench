@@ -239,7 +239,7 @@ export function ContractFulfillmentPanel({
       clearPendingMutationKey(pending.storageKey);
       await onRefresh();
       await fulfillmentQuery.refetch();
-      setMessage("履约事实已追加。原冻结修订、合同文本和既有事实保持不变。");
+      setMessage("已追加履约记录。");
     } catch (caught) {
       setActionError(errorMessage(caught));
     } finally {
@@ -344,7 +344,7 @@ export function ContractFulfillmentPanel({
   return (
     <section className="contracts-page-section" aria-label="合同交付、验收与整改事实">
       <h3>交付、验收与整改事实</h3>
-      <Alert type="info" showIcon title="按当前冻结修订记录履约事实。未分配数量仍为待验收。" />
+      <Alert type="info" showIcon title="请依据合同定稿登记履约。未分配的数量仍待验收。" />
       {reminderPanel}
       {loading ? <p role="status">正在读取履约事实…</p> : null}
       {error ? <Alert type="error" showIcon title={error} /> : null}
@@ -385,22 +385,22 @@ export function ContractFulfillmentPanel({
             <Alert
               type="warning"
               showIcon
-              title="部分冻结商品行缺少可核验数量或单位，服务端不会推断；此类行不能登记交付事实。"
+              title="部分商品缺少可核验的数量或单位，暂不能登记交付。"
             />
           ) : null}
           <div className="contracts-page-fields">
             <Select
-              placeholder="选择实际交付的冻结商品行"
+              placeholder="选择已交付商品"
               value={deliveryItem}
               options={frozenItems.map((item, index) => ({
                 value: itemId(item, index),
-                label: `${item.name ?? "商品行"} · 冻结计划 ${item.quantity ?? "未知"} ${item.unit ?? ""}`,
+                label: `${item.name ?? "商品行"} · 计划 ${item.quantity ?? "未知"} ${item.unit ?? ""}`,
               }))}
               onChange={setDeliveryItem}
             />
             {deliveryPlans.length ? (
               <Select
-                placeholder="选择冻结交付计划"
+                placeholder="选择交付计划"
                 value={deliveryPlan}
                 options={deliveryPlans
                   .filter((plan) => !plan.item_id || plan.item_id === deliveryItem)
@@ -595,7 +595,7 @@ export function ContractFulfillmentPanel({
             ) : null}
             {acceptancePlans.length ? (
               <Select
-                placeholder="选择冻结验收计划"
+                placeholder="选择验收计划"
                 value={acceptancePlan}
                 options={acceptancePlans.map((plan) => ({
                   value: plan.sequence,

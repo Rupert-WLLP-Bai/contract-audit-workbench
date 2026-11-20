@@ -150,7 +150,7 @@ export function ReviewReadinessPanel({
         </Button>
         {business ? (
           <TechnicalDetail
-            label="登记业务技术详情"
+            label="登记业务来源"
             value={[business.business_line, business.scenario, business.contract_type].join(" / ")}
           />
         ) : null}
@@ -241,7 +241,7 @@ export function ReviewReadinessPanel({
                           <p>规则包的声明范围未返回，请刷新清单或联系规则治理人员核对。</p>
                         )}
                         <TechnicalDetail
-                          label="规则包技术详情"
+                          label="规则包版本"
                           value={`${pack.pack_id} / ${pack.snapshot_digest}`}
                         >
                           {declaredScopes.map((declared) => (
@@ -357,7 +357,7 @@ export function ReviewReadinessPanel({
                             </Button>
                           ) : null}
                           <TechnicalDetail
-                            label="检查项目技术详情"
+                            label="检查项目编号"
                             value={[
                               check.rule_id,
                               check.comparator,
@@ -400,7 +400,7 @@ export function ReviewReadinessPanel({
                       : "状态待核对"}
                   </StatusText>
                   <TechnicalDetail
-                    label="材料状态技术详情"
+                    label="材料状态编码"
                     value={[item.role, item.parse.status, item.parse.next_action]
                       .filter(Boolean)
                       .join(" / ")}

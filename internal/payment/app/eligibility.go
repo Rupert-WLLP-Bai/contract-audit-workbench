@@ -107,7 +107,7 @@ func CheckEligibility(ctx context.Context, tenant, actor string, in ContractPaym
 		}
 	}
 	if plan == nil {
-		return result, fault.Invalid("payment_sequence 不属于冻结付款计划")
+		return result, fault.Invalid("所选付款期次不属于本次付款计划")
 	}
 	status, reasons, evidence := evaluateCondition(ctx, record, draft, *plan, c, accepted)
 	version, err := c.AdvanceFactVersion(ctx, tenant, record.ContractID, record.RowVersion)

@@ -151,11 +151,11 @@ func readEvaluationObjects(ctx context.Context, repo EvaluationReader, caseID, i
 		}
 		a, b := sha256.Sum256(r.Facts), sha256.Sum256(r.Result)
 		if hex.EncodeToString(a[:]) != r.FactsSHA || hex.EncodeToString(b[:]) != r.ResultSHA {
-			return nil, fault.New(500, "integrity_error", "核验对象冻结事实或结果摘要不匹配")
+			return nil, fault.New(500, "integrity_error", "核验对象留档事实或结果摘要不匹配")
 		}
 		var o model.OperatorEvaluationObject
 		if json.Unmarshal(r.Result, &o) != nil || o.ObjectRef != r.ObjectRef || o.FactsSHA256 != r.FactsSHA {
-			return nil, fault.New(500, "integrity_error", "核验对象冻结结果损坏")
+			return nil, fault.New(500, "integrity_error", "对象核验结果未通过完整性校验")
 		}
 		out = append(out, o)
 	}

@@ -152,12 +152,12 @@ func experiencePolicyContext(ctx context.Context, tx pgx.Tx, item Case, feedback
 	}
 	snapshot.PartyContext, err = decodePartyContext(partyContext, partyContextHash)
 	if err != nil {
-		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的主体冻结上下文无效")
+		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的主体留档信息无效")
 	}
 	snapshot.PartyContextHash = partyContextHash
 	snapshot.ServiceObjectContext, err = decodeServiceObjectReviewContext(serviceObjectContext, serviceObjectContextHash)
 	if err != nil {
-		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的服务对象冻结上下文无效")
+		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的服务对象留档信息无效")
 	}
 	snapshot.ServiceObjectContextHash = serviceObjectContextHash
 	inputHash, err := frozenInputHash(snapshot, documents)

@@ -404,7 +404,7 @@ test(
       expect(v1.pack.active_pointer_revision).toBe(disabled.pack.active_pointer_revision + 1);
       expect(JSON.stringify(v1.manifest)).toBe(v1Manifest);
 
-      const caseID = await createCase(request, "规则包冻结", true);
+      const caseID = await createCase(request, "规则版本留档", true);
       await upload(
         request,
         caseID,

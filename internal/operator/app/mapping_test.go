@@ -43,7 +43,7 @@ func TestMappingBasisResolverAndExactPins(t *testing.T) {
 	valid.err = errors.New("bad proof")
 	err = ValidateMappingBasis(context.Background(), valid, nil, association)
 	e, ok = err.(*fault.Error)
-	if !ok || e.Message != "更正依据必须引用授权案件中可见的冻结材料" {
+	if !ok || e.Message != "更正依据必须引用授权案件中可见的送审材料" {
 		t.Fatalf("proof must fail first: %v", err)
 	}
 }

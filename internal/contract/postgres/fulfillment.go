@@ -63,7 +63,7 @@ func (r *FulfillmentContracts) LoadFulfillmentRevision(ctx context.Context, tena
 	}
 	var known *fault.Error
 	if errors.As(err, &known) && known.Status == 404 {
-		return clmcontract.FrozenContractRevision{}, fault.Conflict("合同冻结修订不存在")
+		return clmcontract.FrozenContractRevision{}, fault.Conflict("合同定稿版本不存在")
 	}
 	return clmcontract.FrozenContractRevision{}, err
 }

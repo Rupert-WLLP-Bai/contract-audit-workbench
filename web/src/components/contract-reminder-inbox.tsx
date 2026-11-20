@@ -89,7 +89,7 @@ export function ContractReminderInbox({
         key: "plan",
         render: (_value: unknown, item: ContractReminderInboxItem) => planLabel(item),
       },
-      { title: "冻结计划日期", dataIndex: "planned_date", key: "planned_date" },
+      { title: "计划日期", dataIndex: "planned_date", key: "planned_date" },
       {
         title: "站内送达",
         key: "delivered_at",

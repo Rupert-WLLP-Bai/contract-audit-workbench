@@ -214,18 +214,18 @@ func validCLMHex64(value string) bool {
 func parseRestrictedFingerprints(raw []byte) (clmRestrictedFingerprintSet, error) {
 	var set clmRestrictedFingerprintSet
 	if err := json.Unmarshal(raw, &set); err != nil {
-		return clmRestrictedFingerprintSet{}, fault.Conflict("冻结版本的受限字段指纹无效")
+		return clmRestrictedFingerprintSet{}, fault.Conflict("定稿版本的受限字段指纹无效")
 	}
 	if set.Algorithm != clmRestrictedFingerprintAlgorithm && set.Algorithm != clmLegacyRestrictedFingerprintAlgorithm || len(set.Fields) != len(clmRestrictedFieldPaths) {
-		return clmRestrictedFingerprintSet{}, fault.Conflict("冻结版本的受限字段指纹无效")
+		return clmRestrictedFingerprintSet{}, fault.Conflict("定稿版本的受限字段指纹无效")
 	}
 	for _, path := range clmRestrictedFieldPaths {
 		state, ok := set.Fields[path]
 		if !ok {
-			return clmRestrictedFingerprintSet{}, fault.Conflict("冻结版本的受限字段指纹无效")
+			return clmRestrictedFingerprintSet{}, fault.Conflict("定稿版本的受限字段指纹无效")
 		}
 		if state.Present && !validCLMHex64(state.Digest) {
-			return clmRestrictedFingerprintSet{}, fault.Conflict("冻结版本的受限字段指纹无效")
+			return clmRestrictedFingerprintSet{}, fault.Conflict("定稿版本的受限字段指纹无效")
 		}
 	}
 	anyPresent := false
@@ -233,31 +233,31 @@ func parseRestrictedFingerprints(raw []byte) (clmRestrictedFingerprintSet, error
 		anyPresent = anyPresent || state.Present
 	}
 	if set.Algorithm == clmRestrictedFingerprintAlgorithm && anyPresent && set.KeyRef == nil {
-		return clmRestrictedFingerprintSet{}, fault.Conflict("冻结版本的受限字段指纹无效")
+		return clmRestrictedFingerprintSet{}, fault.Conflict("定稿版本的受限字段指纹无效")
 	}
 	if set.KeyRef != nil {
 		if set.KeyRef.Version == 0 || len(set.KeyRef.ID) == 0 || len(set.KeyRef.ID) > 128 {
-			return clmRestrictedFingerprintSet{}, fault.Conflict("冻结版本的受限字段指纹无效")
+			return clmRestrictedFingerprintSet{}, fault.Conflict("定稿版本的受限字段指纹无效")
 		}
 		for _, char := range set.KeyRef.ID {
 			if !(char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '-' || char == '_' || char == '.') {
-				return clmRestrictedFingerprintSet{}, fault.Conflict("冻结版本的受限字段指纹无效")
+				return clmRestrictedFingerprintSet{}, fault.Conflict("定稿版本的受限字段指纹无效")
 			}
 		}
 	}
 	if set.KeyID != "" {
 		// KeyID is a truncated digest: exactly 16 lowercase hex characters.
 		if len(set.KeyID) != 16 {
-			return clmRestrictedFingerprintSet{}, fault.Conflict("冻结版本的受限字段指纹无效")
+			return clmRestrictedFingerprintSet{}, fault.Conflict("定稿版本的受限字段指纹无效")
 		}
 		for _, char := range set.KeyID {
 			if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
-				return clmRestrictedFingerprintSet{}, fault.Conflict("冻结版本的受限字段指纹无效")
+				return clmRestrictedFingerprintSet{}, fault.Conflict("定稿版本的受限字段指纹无效")
 			}
 		}
 	}
 	if set.Algorithm == clmRestrictedFingerprintAlgorithm && set.KeyRef != nil && (set.KeyRef.ID == "" || set.KeyRef.Version == 0) {
-		return clmRestrictedFingerprintSet{}, fault.Conflict("冻结版本的受限字段指纹无效")
+		return clmRestrictedFingerprintSet{}, fault.Conflict("定稿版本的受限字段指纹无效")
 	}
 	return set, nil
 }

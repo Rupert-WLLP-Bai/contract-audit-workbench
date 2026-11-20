@@ -191,7 +191,7 @@ func loadContractReferenceContent(ctx context.Context, tx pgx.Tx, current accoun
 	err := tx.QueryRow(ctx, `SELECT content FROM clm_contract_drafts
 		WHERE tenant_id=$1 AND contract_id=$2`, accounts.Tenant(current), record.ContractID).Scan(&content)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, "", nil, fault.New(422, "contract_content_missing", "合同尚无可核对的草稿或冻结版本")
+		return nil, "", nil, fault.New(422, "contract_content_missing", "合同尚无可核对的草稿或定稿版本")
 	}
 	if err != nil {
 		return nil, "", nil, err
@@ -367,7 +367,7 @@ func resolveContractReferences(ctx context.Context, tx pgx.Tx, current accounts.
 		}
 		if mode == referenceModeFrozen {
 			if ref.SourceSnapshot == nil {
-				return ContractReferenceCheck{}, fault.Invalid("冻结版本缺少采购结果来源快照，不能自动补写")
+				return ContractReferenceCheck{}, fault.Invalid("定稿版本缺少采购结果来源快照，不能自动补写")
 			}
 			if err := verifyProcurementSourceSnapshot(*ref.SourceSnapshot, *ref, material); err != nil {
 				return ContractReferenceCheck{}, err
@@ -437,7 +437,7 @@ func resolveCurrentContractSubject(ctx context.Context, tx pgx.Tx, tenantID stri
 func resolveFrozenContractSubject(ctx context.Context, tx pgx.Tx, tenantID string, anchor Case, party *PartyRef) (resolvedSubjectBinding, error) {
 	pin := party.ReferenceSnapshot
 	if pin == nil {
-		return resolvedSubjectBinding{}, fault.Invalid("冻结版本缺少主体引用快照，不能自动补写")
+		return resolvedSubjectBinding{}, fault.Invalid("定稿版本缺少主体引用快照，不能自动补写")
 	}
 	if strings.TrimSpace(party.PartyID) != pin.SubjectID || pin.BindingID == "" || pin.BindingVersion < 1 ||
 		pin.SubjectVersion < 1 || pin.SubjectPayloadHash == "" || pin.CapturedAt.IsZero() ||
@@ -499,7 +499,7 @@ func verifyProcurementSourceSnapshot(pin ProcurementSourceSnapshot, ref Procurem
 }
 
 func frozenReferenceConflict() error {
-	return fault.New(409, "frozen_reference_mismatch", "冻结版本的引用与冻结原件不一致，不能自动补写或覆盖")
+	return fault.New(409, "frozen_reference_mismatch", "定稿版本的引用与留档原件不一致，不能自动补写或覆盖")
 }
 
 // contractOriginalPath returns the existing document-service route. The route

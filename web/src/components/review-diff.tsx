@@ -182,7 +182,7 @@ function SnapshotSide({ title, workspace }: { title: string; workspace: ReviewWo
               <div key={id}>
                 {doc?.filename ?? "材料未返回"}
                 <TechnicalDetail
-                  label="留档材料技术详情"
+                  label="留档材料编号"
                   value={JSON.stringify({
                     document_id: id,
                     parsed_document_id: doc?.parsed_document_id ?? null,
@@ -199,7 +199,7 @@ function SnapshotSide({ title, workspace }: { title: string; workspace: ReviewWo
         </dd>
       </dl>
       <TechnicalDetail
-        label="审查范围与规则技术详情"
+        label="审查范围与规则编号"
         value={JSON.stringify({
           run_id: workspace.run.id,
           attempt_id: attempt?.id ?? null,
@@ -336,7 +336,7 @@ function Citation({ workspace, anchor }: { workspace: ReviewWorkspace; anchor: E
         {to < characters.length ? "…" : ""}
       </blockquote>
       <TechnicalDetail
-        label="引用技术详情"
+        label="引用来源"
         value={JSON.stringify({
           document_id: document.id,
           parsed_document_id: document.parsed_document_id,
@@ -375,7 +375,7 @@ function DiffSide({ label, side }: { label: string; side: ReviewDiffSide | null 
           </p>
           <p className="meta">检查项目：{businessCapabilityLabel(evaluation.capability_id)}</p>
           <TechnicalDetail
-            label="检查记录技术详情"
+            label="检查记录编号"
             value={JSON.stringify({
               rule_id: evaluation.rule_id,
               rule_version: evaluation.rule_version,
@@ -396,7 +396,7 @@ function DiffSide({ label, side }: { label: string; side: ReviewDiffSide | null 
       )}
       {finding ? (
         <TechnicalDetail
-          label="发现类型技术详情"
+          label="发现类型编码"
           value={JSON.stringify({ origin: finding.origin, relation: finding.relation })}
         />
       ) : null}
@@ -422,7 +422,7 @@ function DiffSide({ label, side }: { label: string; side: ReviewDiffSide | null 
                 {decisionLabel(decision.action)} · {decision.actor} ·{" "}
                 {preciseTime(decision.decided_at)}：{decision.reason}
                 <InvalidTimeDetail value={decision.decided_at} label="决定时间" />
-                <TechnicalDetail label="决定类型技术详情" value={decision.action} />
+                <TechnicalDetail label="判断类型编码" value={decision.action} />
               </li>
             ))}
           </ul>

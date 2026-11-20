@@ -1861,18 +1861,18 @@ export function ReviewPage() {
           </div>
           {streamStatus === "closed" ? (
             <section className="callout" role="status" aria-live="polite">
-              <span>运行状态流已关闭，不会自动重连；请刷新页面或重新登录后再试。</span>
+              <span>实时进度连接已关闭，请刷新页面或重新登录。</span>
             </section>
           ) : null}
           {streamStatus === "exhausted" ? (
             <section className="callout" role="status" aria-live="polite">
-              <span>运行状态更新已停止，可以重新连接以同步最新审查结果。</span>
+              <span>实时进度连接已断开，请重新连接。</span>
               <Button
                 type="primary"
                 htmlType="button"
                 onClick={() => setStreamReconnectKey((key) => key + 1)}
               >
-                重新连接运行状态
+                重新连接
               </Button>
             </section>
           ) : null}

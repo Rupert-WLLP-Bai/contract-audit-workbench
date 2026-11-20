@@ -427,7 +427,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		signature = applyReviewScope(currentSignatureWithRulePack(models, reviewDocumentIDs, frozenDocs, assessment.Pack, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload), scope)
 		if adoptPlaybook {
 			if assessment.Knowledge == nil {
-				return fault.Conflict("手册需要已冻结的治理知识")
+				return fault.Conflict("采用审查手册需要保存相应的治理依据")
 			}
 			adopted, e := s.resolvePlaybookTx(ctx, tx, user, lockedCase, playbook, at)
 			if e != nil {
@@ -811,7 +811,7 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 			return nil
 		}
 		if attemptActive(last.State) && last.HistoryKind != "frozen" {
-			return fault.Conflict("原审查未冻结输入，请发起新的审查")
+			return fault.Conflict("原审查没有保存送审内容，请发起新审查")
 		}
 		frozenInput, ok := st.attemptInput(last.ID)
 		if !ok || last.HistoryKind != "frozen" || !frozenInputMatchesSnapshot(frozen, frozenInput.Documents) ||

@@ -112,7 +112,7 @@ func (s *Store) EvidenceBundleDataForReport(ctx context.Context, user accounts.U
 		return out, err
 	}
 	if *attempt.InputHash != record.InputHash || *attempt.OutputHash != record.OutputHash || !equalEvidenceJSON(report.Input, input) {
-		return out, fault.Conflict("报告的冻结输入与所选执行记录不一致")
+		return out, fault.Conflict("报告所用的审查依据与所选审查记录不一致")
 	}
 	if len(attempt.RulePackSnapshot) == 0 {
 		if report.RulePack.Availability != "unavailable" || string(report.RulePack.Snapshot) != "null" {
@@ -208,7 +208,7 @@ FROM boundary`, item.TenantID, item.OwnerOrgID, caseID, runID, attemptID).Scan(&
 			return time.Time{}, nil, nil, fault.Conflict("人工发现记录与执行身份不一致")
 		}
 		if err := verifyFeedbackEvidence(ctx, tx, item, runID, attemptID, documents, record.Evidence); err != nil {
-			return time.Time{}, nil, nil, fault.Conflict("人工发现引用未通过冻结原文校验")
+			return time.Time{}, nil, nil, fault.Conflict("人工发现的引用未对上本次审查原文")
 		}
 	}
 	fresh, err := trustedUser(current)
@@ -223,14 +223,14 @@ FROM boundary`, item.TenantID, item.OwnerOrgID, caseID, runID, attemptID).Scan(&
 
 func verifyEvidenceReportReferences(report reportEnvelope, input AttemptInput) error {
 	if len(report.Documents) != len(input.Documents) {
-		return fault.Conflict("报告材料与冻结输入不一致")
+		return fault.Conflict("报告材料与本次送审内容不一致")
 	}
 	byID := make(map[string]FrozenDocument, len(input.Documents))
 	for i, document := range input.Documents {
 		if _, exists := byID[document.Document.ID]; exists || !equalEvidenceJSON(report.Documents[i].Document, document.Document) ||
 			report.Documents[i].Parsed.ID != document.ParsedDocumentID || report.Documents[i].Parsed.ArtifactDigest != document.ParsedArtifactDigest ||
 			report.Documents[i].Parsed.Text != document.Text {
-			return fault.Conflict("报告解析结果与冻结输入不一致")
+			return fault.Conflict("报告解析结果与本次审查采用的解析版本不一致")
 		}
 		byID[document.Document.ID] = document
 	}
@@ -244,7 +244,7 @@ func verifyEvidenceReportReferences(report reportEnvelope, input AttemptInput) e
 			}
 			doc, ok := byID[anchor.DocumentID]
 			if !ok || !evidenceAnchorMatches(anchor, doc) {
-				return fault.Conflict("报告发现引用未通过冻结原文校验")
+				return fault.Conflict("报告中线索的引用未对上本次审查原文")
 			}
 		}
 	}
@@ -255,7 +255,7 @@ func verifyEvidenceReportReferences(report reportEnvelope, input AttemptInput) e
 		for _, evidence := range evaluation.Evidence {
 			doc, ok := byID[evidence.Ref.DocumentID]
 			if !ok || !evidenceReferenceMatches(evidence.Ref, doc) {
-				return fault.Conflict("报告评估引用未通过冻结原文校验")
+				return fault.Conflict("报告中检查结果的引用未对上本次审查原文")
 			}
 		}
 	}

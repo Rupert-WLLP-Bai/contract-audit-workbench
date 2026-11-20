@@ -418,7 +418,7 @@ it("renders current and historical fixed-asset facts without granting write cont
   );
   renderPanel(false);
 
-  expect(await screen.findByText("冻结修订标记为固定资产")).toBeVisible();
+  expect(await screen.findByText("定稿标记为固定资产")).toBeVisible();
   expect(screen.getByText(/计划数量：2\.000000 台 · 计划状态：已核对/)).toBeVisible();
   expect(screen.getByText(/部门计划值：信息中心（D-01） · 部门主数据核验：已核验/)).toBeVisible();
   expect(screen.getByText("计划保管人 ID：user-9 · 这不证明部门归属或移交授权。")).toBeVisible();
@@ -438,7 +438,7 @@ it("renders current and historical fixed-asset facts without granting write cont
   expect(screen.getByText("没有可见的移交证据摘要。")).toBeVisible();
   expect(screen.getByText("还没有 ERP 入账回执。")).toBeVisible();
   expect(screen.getByText(/evidence\.pdf · 版本 2 · SHA-256/)).toBeVisible();
-  expect(screen.getByText("历史冻结修订资产计划与记录")).toBeVisible();
+  expect(screen.getByText("历次定稿的资产计划与记录")).toBeVisible();
   expect(screen.getByText("未命名资产计划 · 历史修订")).toBeInTheDocument();
   expect(screen.getByText("尚无 ERP 入账回执")).toBeInTheDocument();
   expect(
@@ -454,8 +454,8 @@ it("labels unknown and not-applicable fixed-asset revisions and blocks missing p
   vi.mocked(listContractDeliveries).mockResolvedValue({ items: [], row_version: 3, summary: [] });
   vi.mocked(listContractAcceptances).mockResolvedValue({ items: [], row_version: 3, summary: [] });
   const view = renderPanel(true);
-  expect(await screen.findByText("该冻结修订明确标记为非固定资产，不适用资产移交。")).toBeVisible();
-  expect(screen.getByText("当前冻结修订没有可用的资产计划记录。")).toBeVisible();
+  expect(await screen.findByText("合同定稿标明为非固定资产，无需办理移交。")).toBeVisible();
+  expect(screen.getByText("合同定稿中暂无资产计划。")).toBeVisible();
   expect(screen.queryByRole("button", { name: "追加人工移交事实" })).not.toBeInTheDocument();
 
   vi.mocked(listContractAssets).mockResolvedValue(assetList({ fixed_asset_status: "unknown" }));
@@ -481,7 +481,7 @@ it("labels unknown and not-applicable fixed-asset revisions and blocks missing p
       onRefresh={onRefresh}
     />,
   );
-  expect(screen.getByText("当前没有合同冻结修订，资产计划不可用。")).toBeVisible();
+  expect(screen.getByText("合同尚未定稿，暂不能使用资产计划。")).toBeVisible();
   await waitFor(() =>
     expect(vi.mocked(listContractAssets).mock.calls).toHaveLength(callsBeforeMissingRevision),
   );
@@ -493,7 +493,7 @@ it("keeps facts read-only when the contract detail version is stale", async () =
   expect(
     await screen.findByText("资产或履约事实版本与合同详情不同步，暂不允许提交。请刷新合同。"),
   ).toBeVisible();
-  expect(screen.getByText("冻结修订标记为固定资产")).toBeVisible();
+  expect(screen.getByText("定稿标记为固定资产")).toBeVisible();
   expect(screen.getByRole("button", { name: "追加人工移交事实" })).toBeDisabled();
 });
 
@@ -504,7 +504,7 @@ it("surfaces receipt read failures and mismatched projection versions", async ()
   );
   const view = renderPanel(true);
   expect(await screen.findByText("资产事实读取失败")).toBeVisible();
-  expect(screen.queryByText("冻结修订标记为固定资产")).not.toBeInTheDocument();
+  expect(screen.queryByText("定稿标记为固定资产")).not.toBeInTheDocument();
 
   vi.mocked(listContractAssets).mockResolvedValue(assetList({ row_version: 2 }));
   view.rerender(
@@ -516,7 +516,7 @@ it("surfaces receipt read failures and mismatched projection versions", async ()
     />,
   );
   expect(await screen.findByText("请求没有完成")).toBeVisible();
-  expect(screen.queryByText("冻结修订标记为固定资产")).not.toBeInTheDocument();
+  expect(screen.queryByText("定稿标记为固定资产")).not.toBeInTheDocument();
 });
 
 it("registers a manual handover with idempotency and refreshes the contract", async () => {
@@ -526,7 +526,7 @@ it("registers a manual handover with idempotency and refreshes the contract", as
     handover({ handover_id: "handover-new", contract_row_version: 4, quantity: "1.000000" }),
   );
   renderPanel(true);
-  expect(await screen.findByText("冻结修订标记为固定资产")).toBeVisible();
+  expect(await screen.findByText("定稿标记为固定资产")).toBeVisible();
 
   await fillHandoverForm(user);
   await submitHandover(user);
@@ -579,7 +579,7 @@ it("keeps the safety warning when the browser cannot clear the retry marker", as
     throw new Error("storage unavailable");
   });
   renderPanel(true);
-  await screen.findByText("冻结修订标记为固定资产");
+  await screen.findByText("定稿标记为固定资产");
 
   await fillHandoverForm(user);
   await submitHandover(user);
@@ -598,7 +598,7 @@ it("keeps the registered handover visible when the contract refresh fails", asyn
   );
   onRefresh.mockRejectedValue(new ApiError("刷新失败", 500, "internal", false, null));
   renderPanel(true);
-  await screen.findByText("冻结修订标记为固定资产");
+  await screen.findByText("定稿标记为固定资产");
 
   await fillHandoverForm(user);
   await submitHandover(user);

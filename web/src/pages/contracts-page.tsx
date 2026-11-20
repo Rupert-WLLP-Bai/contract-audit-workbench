@@ -1789,7 +1789,7 @@ export function ContractsPage() {
                             >
                               <legend>四、材料与核对</legend>
                               <p className="meta">
-                                当前切片保存结构化登记内容。真实材料版本在“导入已签存量合同”时按来源案件关联并核对摘要；上传、解析与提取结果随合同材料链后续切片接入。
+                                这里保存登记信息。导入已签存量合同时，可关联来源案件的材料版本并核对摘要。
                               </p>
                               {(draft.materials ?? []).length === 0 ? (
                                 <p className="meta">尚未关联材料。</p>

@@ -655,7 +655,7 @@ function ClauseProposalCard({
       )}
       {!context.immersive ? (
         <TechnicalDetail
-          label="条款建议来源技术详情"
+          label="条款建议来源"
           value={JSON.stringify({
             input_hash: proposal.input_hash,
             evidence: proposal.evidence,
@@ -965,7 +965,7 @@ function ClauseProposalCard({
         </p>
       ) : null}
       {proposal.history.some((entry) => entry.contract_id) ? (
-        <TechnicalDetail label="处理历史技术详情" value={JSON.stringify(proposal.history)} />
+        <TechnicalDetail label="处理历史记录" value={JSON.stringify(proposal.history)} />
       ) : null}
       {history?.revision_id ? (
         <Typography.Text type="secondary">

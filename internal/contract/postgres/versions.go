@@ -40,7 +40,7 @@ func (r *VersionCommands) LoadDraftContent(ctx context.Context, tenantID, contra
 	err := r.tx.QueryRow(ctx, `SELECT content FROM clm_contract_drafts WHERE tenant_id=$1 AND contract_id=$2`,
 		tenantID, contractID).Scan(&content)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, fault.Conflict("合同草稿已不存在，无法冻结合同版本")
+		return nil, fault.Conflict("合同草稿已不存在，无法定稿")
 	}
 	return content, err
 }
@@ -220,7 +220,7 @@ func (r *VersionQueries) LoadFrozenRevision(ctx context.Context, tenantID, contr
 		&frozen.Currency, &frozen.Snapshot, &frozen.SnapshotDigest, &frozen.AmountsReconciled,
 		&frozen.FrozenBy, &frozen.FrozenAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return clmcontract.FrozenContractRevision{}, fault.NotFound("没有找到对应的冻结版本")
+		return clmcontract.FrozenContractRevision{}, fault.NotFound("没有找到对应的定稿版本")
 	}
 	return frozen, err
 }

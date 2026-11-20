@@ -1124,7 +1124,7 @@ function BindingSection({ value, onChange, issues, disabled }: SectionProps) {
         ruleOptions={options2}
       />
       <TechnicalDetail
-        label="所选规则技术详情"
+        label="所选规则来源"
         value={
           value.binding.source_spans?.length
             ? JSON.stringify(

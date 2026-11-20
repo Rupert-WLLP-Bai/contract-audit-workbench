@@ -120,7 +120,7 @@ func (s *Store) ReadFrozenLegalAuthority(ctx context.Context, user accounts.User
 	}
 	caseID, runID, attemptID = strings.TrimSpace(caseID), strings.TrimSpace(runID), strings.TrimSpace(attemptID)
 	if caseID == "" || runID == "" || attemptID == "" || !isLegalCitationID(citationID) {
-		return FrozenLegalAuthority{}, fault.Invalid("读取冻结法律依据需要完整的审查、执行和citation_id")
+		return FrozenLegalAuthority{}, fault.Invalid("读取适用法律依据需要提供审查、执行和引用编号")
 	}
 	current, err := trustedUser(user)
 	if err != nil {
@@ -155,14 +155,14 @@ func (s *Store) ReadFrozenLegalAuthority(ctx context.Context, user accounts.User
 		WHERE r.tenant_id=$1 AND r.org_id=$2 AND r.case_id=$3 AND r.id=$4 AND a.id=$5`,
 		item.TenantID, item.OwnerOrgID, caseID, runID, attemptID).Scan(&storedCase, &raw)
 	if errors.Is(err, pgx.ErrNoRows) || storedCase != caseID {
-		return FrozenLegalAuthority{}, fault.NotFound("没有找到对应的冻结审查依据")
+		return FrozenLegalAuthority{}, fault.NotFound("没有找到对应的审查依据")
 	}
 	if err != nil {
 		return FrozenLegalAuthority{}, err
 	}
 	frozen, err := decodeGovernedKnowledge(raw)
 	if err != nil || frozen == nil {
-		return FrozenLegalAuthority{}, fault.Conflict("所选审查没有有效的冻结法律依据")
+		return FrozenLegalAuthority{}, fault.Conflict("所选审查没有可核对的法律依据")
 	}
 	selected, err := knowledgeApp.SelectFrozenLegalCitation(*frozen, citationID)
 	if err != nil {

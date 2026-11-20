@@ -48,7 +48,7 @@ func ValidateEvaluationFrozen[D executionmodel.OriginalDocument](ctx context.Con
 	input, ok := f.Input(attemptID)
 	if !ok || input.RunID != runID || input.AttemptID != attemptID || input.InputHash != *attempt.InputHash {
 		if inside {
-			return zr, za, zi, zm, fault.Conflict("来源审查的冻结输入未通过校验")
+			return zr, za, zi, zm, fault.Conflict("来源审查的送审内容未通过校验")
 		}
 		return zr, za, zi, zm, fault.Conflict("这次执行保存的输入不存在或编号不匹配")
 	}
@@ -56,20 +56,20 @@ func ValidateEvaluationFrozen[D executionmodel.OriginalDocument](ctx context.Con
 	hash, err := executionmodel.FrozenInputHash(snapshot, input.Documents)
 	if err != nil || hash != input.InputHash || !executionmodel.FrozenInputMatchesSnapshot(snapshot, input.Documents) || !executionmodel.AttemptSelectionsMatchFrozen(f.Selections(attemptID), input.Documents) {
 		if inside {
-			return zr, za, zi, zm, fault.Conflict("来源审查的冻结输入未通过校验")
+			return zr, za, zi, zm, fault.Conflict("来源审查的送审内容未通过校验")
 		}
 		return zr, za, zi, zm, fault.Conflict("这次执行保存的输入未通过完整性校验")
 	}
 	if err = f.VerifyDocuments(ctx, input.Documents); err != nil {
 		if inside {
-			return zr, za, zi, zm, fault.Conflict("来源审查的冻结材料未通过校验")
+			return zr, za, zi, zm, fault.Conflict("来源审查的送审材料未通过校验")
 		}
 		return zr, za, zi, zm, fault.Conflict("这次执行使用的原件或解析结果编号未通过校验")
 	}
 	digest, err := f.AgentDigest(ctx, attemptID)
 	if err != nil {
 		if inside {
-			return zr, za, zi, zm, fault.Conflict("来源审查的冻结输出未通过校验")
+			return zr, za, zi, zm, fault.Conflict("来源审查的结果未通过校验")
 		}
 		return zr, za, zi, zm, fault.Conflict("这次执行的智能审查记录未通过校验")
 	}
@@ -77,14 +77,14 @@ func ValidateEvaluationFrozen[D executionmodel.OriginalDocument](ctx context.Con
 	hash, err = executionmodel.AttemptOutputHash(findings, evaluations, attempt.RulePackHash, attempt.RulePackSnapshotDigest, attempt.RulePackCompilerRef, digest)
 	if err != nil || hash != *attempt.OutputHash {
 		if inside {
-			return zr, za, zi, zm, fault.Conflict("来源审查的冻结输出未通过校验")
+			return zr, za, zi, zm, fault.Conflict("来源审查的结果未通过校验")
 		}
 		return zr, za, zi, zm, fault.Conflict("这次执行的规则结果摘要未通过校验")
 	}
 	manifest, err := executionmodel.FrozenRulePack(attempt, executionmodel.FrozenRulePackScope{TenantID: scope.TenantID, BusinessLine: scope.BusinessLine, Scenario: scope.Scenario, ContractType: scope.ContractType})
 	if err != nil {
 		if inside {
-			return zr, za, zi, zm, fault.Conflict("来源审查缺少有效的冻结规则包")
+			return zr, za, zi, zm, fault.Conflict("未能核对来源审查采用的规则版本")
 		}
 		return zr, za, zi, zm, fault.Conflict("之前的执行记录缺少有效的规则包记录")
 	}

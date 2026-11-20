@@ -141,7 +141,7 @@ func Decide(ctx context.Context, p PreparedDecision, current accounts.User, keyr
 		return empty, fault.Conflict("会签轮次已结束")
 	}
 	if record.CurrentRevisionID == nil || *record.CurrentRevisionID != round.ContractRevisionID {
-		return empty, fault.Conflict("审批轮次引用的不是当前冻结版本")
+		return empty, fault.Conflict("本轮会签采用的合同版本已不是当前定稿版本")
 	}
 	if round.RowVersion != p.Input.ExpectedRoundRowVersion {
 		return empty, fault.Conflict("审批轮次已变化，请刷新待办后重试")

@@ -243,7 +243,7 @@ function ContractInfoTab({
             ) : null}
           </dl>
           <TechnicalDetail
-            label="材料状态技术详情"
+            label="材料状态编码"
             value={JSON.stringify({ role: document.role, parse_status: document.parse_status })}
           />
         </section>
@@ -263,7 +263,7 @@ function ConclusionTab({ findings }: { findings: Finding[] }) {
             {originLabel(item.origin)}，{relationLabel(item.relation)}
           </p>
           <TechnicalDetail
-            label="发现类型技术详情"
+            label="发现类型编码"
             value={JSON.stringify({
               origin: item.origin,
               relation: item.relation,
@@ -277,7 +277,7 @@ function ConclusionTab({ findings }: { findings: Finding[] }) {
               <article key={decision.id}>
                 <strong>{decisionLabel(decision.action)}</strong>
                 <p>{decision.reason}</p>
-                <TechnicalDetail label="决定类型技术详情" value={decision.action} />
+                <TechnicalDetail label="判断类型编码" value={decision.action} />
                 <small>
                   {decision.actor}，{formatDateTime(decision.decided_at)}
                 </small>
@@ -356,7 +356,7 @@ function FindingDetailHeader({
         <TechnicalDetail label="规则原始结果与编号" value={presentation.raw} />
       ) : null}
       <TechnicalDetail
-        label="发现类型技术详情"
+        label="发现类型编码"
         value={JSON.stringify({
           domain: finding.domain,
           origin: finding.origin,
@@ -572,7 +572,7 @@ function DecisionHistory({ decisions }: { decisions: HumanDecision[] }) {
               <time dateTime={decision.decided_at}>{formatDateTime(decision.decided_at)}</time>
             </p>
             <p>{decision.reason}</p>
-            <TechnicalDetail label="决定类型技术详情" value={decision.action} />
+            <TechnicalDetail label="判断类型编码" value={decision.action} />
           </li>
         ))}
       </ol>

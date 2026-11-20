@@ -82,7 +82,7 @@ func NormalizeMappingBasis(raw json.RawMessage) (json.RawMessage, error) {
 func ValidateMappingBasis(ctx context.Context, facts BasisFacts, basis json.RawMessage, assoc model.ServiceObjectContractAssociation) error {
 	verified, err := facts.VerifyBasis(ctx, basis)
 	if err != nil {
-		return fault.Invalid("更正依据必须引用授权案件中可见的冻结材料")
+		return fault.Invalid("更正依据必须引用授权案件中可见的送审材料")
 	}
 	var refs []struct {
 		MaterialID       string `json:"material_id"`
@@ -132,7 +132,7 @@ func MappingTarget[D executionmodel.OriginalDocument](ctx context.Context, repo 
 		}
 	}
 	if selected == nil || selected.FactsSHA256 != input.FactsSHA256 || preview.CandidatesSHA256 != input.CandidatesSHA256 {
-		return nil, nil, fault.Conflict("目标合同对象或冻结事实已变化，请重新预览")
+		return nil, nil, fault.Conflict("目标合同对象或留档事实已变化，请重新预览")
 	}
 	assoc := model.ServiceObjectContractAssociation{MaterialID: preview.MaterialID, MaterialVersion: preview.MaterialVersion, DocumentID: preview.DocumentID, ParsedDocumentID: preview.ParsedDocumentID, SourceRunID: preview.RunID, SourceAttemptID: preview.AttemptID, ObjectRef: selected.ObjectRef, FactRefs: selected.Facts, BasisRefs: selected.BasisRefs}
 	plan, err := model.PlanServiceObjectAssociation(head, tuple.Identity, model.ServiceObjectAssociationCandidate{ExpectedObjectVersion: input.ExpectedObjectVersion, ExpectedAssociationVersion: input.ExpectedAssociationVersion, Confirmed: true, Association: assoc}, actor, clock.Now().UTC())

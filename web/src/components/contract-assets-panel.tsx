@@ -55,8 +55,8 @@ function fixedAssetLabel(status: ContractAssetList["fixed_asset_status"]): {
   text: string;
   color?: string;
 } {
-  if (status === "true") return { text: "冻结修订标记为固定资产", color: "blue" };
-  if (status === "not_applicable") return { text: "冻结修订明确不适用固定资产移交" };
+  if (status === "true") return { text: "定稿标记为固定资产", color: "blue" };
+  if (status === "not_applicable") return { text: "定稿标明不适用固定资产移交" };
   return { text: "固定资产属性未知" };
 }
 
@@ -370,11 +370,11 @@ export function ContractAssetsPanel({
     <section className="workflow-panel" aria-labelledby="contract-assets-heading">
       <h3 id="contract-assets-heading">固定资产计划、人工移交与 ERP 入账</h3>
       <p className="meta">
-        资产计划来自冻结合同修订。人工移交、组织目录身份、部门归属核验和 ERP
+        资产计划来自合同定稿。人工移交、组织目录身份、部门归属核验和 ERP
         入账回执是不同事实；本页面不会调用或写回 ERP。
       </p>
       {!revisionId ? (
-        <Alert type="warning" showIcon message="当前没有合同冻结修订，资产计划不可用。" />
+        <Alert type="warning" showIcon message="合同尚未定稿，暂不能使用资产计划。" />
       ) : null}
       {!actor ? (
         <Alert type="warning" showIcon message="访问身份不可用，资产与履约事实未读取。" />
@@ -385,7 +385,7 @@ export function ContractAssetsPanel({
         </p>
       ) : null}
       {assets?.fixed_asset_status === "not_applicable" ? (
-        <Alert type="info" showIcon message="该冻结修订明确标记为非固定资产，不适用资产移交。" />
+        <Alert type="info" showIcon message="合同定稿标明为非固定资产，无需办理移交。" />
       ) : null}
       {assets?.fixed_asset_status === "unknown" ? (
         <Alert
@@ -403,10 +403,8 @@ export function ContractAssetsPanel({
           message="资产或履约事实版本与合同详情不同步，暂不允许提交。请刷新合同。"
         />
       ) : null}
-      {loading ? <p role="status">正在读取冻结资产计划及履约事实。</p> : null}
-      {!loading && assets && currentAssets.length === 0 ? (
-        <p>当前冻结修订没有可用的资产计划记录。</p>
-      ) : null}
+      {loading ? <p role="status">正在读取资产计划和履约记录。</p> : null}
+      {!loading && assets && currentAssets.length === 0 ? <p>合同定稿中暂无资产计划。</p> : null}
       {currentAssets.map((item) => (
         <Card
           size="small"
@@ -498,7 +496,7 @@ export function ContractAssetsPanel({
       ))}
       {historicalAssets.length ? (
         <details>
-          <summary>历史冻结修订资产计划与记录</summary>
+          <summary>历次定稿的资产计划与记录</summary>
           {historicalAssets.map((item) => (
             <Card
               size="small"

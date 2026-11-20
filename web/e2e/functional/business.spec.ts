@@ -273,7 +273,9 @@ test(
       .getByLabel("选择复核的审查和执行记录", { exact: true })
       .selectOption(reviewChoiceKey(next.id, next.attempt_id));
     await expect(page.getByLabel("复核理由", { exact: true })).toBeEnabled();
-    await page.getByLabel("复核理由", { exact: true }).fill("同对象新冻结审查带宽符合，关闭整改。");
+    await page
+      .getByLabel("复核理由", { exact: true })
+      .fill("同一对象的新审查已核对带宽，符合要求，关闭整改。");
     await page.getByRole("button", { name: "提交复核", exact: true }).click();
     await expect
       .poll(async () => (await detail(api, caseID)).remediations[0].status)

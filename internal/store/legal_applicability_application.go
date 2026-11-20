@@ -47,7 +47,7 @@ func (f legalRecordFacts) VerifyBasis(ctx context.Context, raw json.RawMessage) 
 	if provided {
 		refs, err = validateSubjectBasisRefs(st, &item, raw)
 		if err != nil {
-			return nil, nil, fault.Invalid("法律适用事实依据不是本案已冻结的材料原文")
+			return nil, nil, fault.Invalid("法律适用事实依据须引用本案的送审原文")
 		}
 	}
 	obtained, err := legalFactBasisObtainedAt(st, item, refs)

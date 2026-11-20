@@ -438,7 +438,7 @@ export function ContractSigningPanel({
               setCheck(null);
             }}
           >
-            我已逐项将以上转录与所选原件及冻结修订对照；确认范围包括关键日期、附件、主体、金额、履约、资产与财务字段。此确认绑定所示材料摘要和修订，。
+            我已将转录内容逐项与原件及定稿版本核对，包括关键日期、附件、主体、金额、履约、资产和财务字段。确认记录与本次材料摘要及合同版本一同留存。
           </Checkbox>
           <div className="contracts-page-fields">
             <Button
@@ -453,7 +453,7 @@ export function ContractSigningPanel({
               }
               onClick={() => void runCheck()}
             >
-              核对转录与冻结修订
+              核对转录与合同定稿
             </Button>
             {check?.can_register ? (
               <Button

@@ -59,7 +59,7 @@ var (
 // primary contract. It does not infer compliance, a total or omitted terms.
 func ObserveSingleContractPaymentTerms(doc Source) PaymentTermsObservation {
 	if doc.ParseStatus != "ready" || doc.ir().NormalizedText == "" {
-		return PaymentTermsObservation{ReasonCode: PaymentTermsNoText, Reason: "主合同没有可读取的冻结文本，付款与结算原文核对未执行。"}
+		return PaymentTermsObservation{ReasonCode: PaymentTermsNoText, Reason: "主合同没有可读取的送审文本，付款与结算原文核对未执行。"}
 	}
 	text := doc.ir().NormalizedText
 	best := make(map[string][]Anchor)

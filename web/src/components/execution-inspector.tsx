@@ -944,7 +944,7 @@ export function ExecutionInspector({
         ) : null}
       </div>
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-        第 {selected.ordinal} 次尝试状态：{runLabel(selected.state)}。
+        第 {selected.ordinal} 次审查状态：{runLabel(selected.state)}。
       </p>
       {cancelError ? (
         <p className="execution-error" role="alert">

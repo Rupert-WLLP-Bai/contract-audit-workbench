@@ -48,13 +48,13 @@ func VerifyApprovalFreeze(ctx context.Context, tenantID, contractID, revisionID 
 		}
 	}
 	if seal == nil {
-		return nil, fault.Conflict("送审必须使用已封印的冻结版本")
+		return nil, fault.Conflict("送审须使用已完成完整性校验的定稿版本")
 	}
 	if !frozen.AmountsReconciled {
-		return nil, fault.Conflict("冻结版本未通过金额恒等核对，不能送审")
+		return nil, fault.Conflict("定稿版本的金额核对未通过，无法送审")
 	}
 	if bytesDigest(frozen.Snapshot) != seal.SnapshotDigest {
-		return nil, fault.Conflict("冻结版本摘要与封印不一致")
+		return nil, fault.Conflict("定稿版本的内容与保存时的摘要不一致")
 	}
 	first, err := codec.OpenApprovalDraft(ctx, tenantID, contractID, frozen.Snapshot)
 	if err != nil {
@@ -98,7 +98,7 @@ func VerifyApprovalFreeze(ctx context.Context, tenantID, contractID, revisionID 
 			return nil, err
 		}
 		if digest != seal.MaterialsDigest {
-			return nil, fault.Conflict("合同材料在冻结后已变化，请重新冻结版本后再送审")
+			return nil, fault.Conflict("合同材料在定稿后已有变更，请重新定稿后送审")
 		}
 		fields, restricted, err := codec.ApprovalFingerprintFacts(ctx, tenantID, contractID, candidate, seal.RestrictedFingerprints)
 		if err != nil {
@@ -112,7 +112,7 @@ func VerifyApprovalFreeze(ctx context.Context, tenantID, contractID, revisionID 
 			return nil, err
 		}
 		if digest != seal.ContentFingerprint {
-			return nil, fault.Conflict("合同内容在冻结后已变化，请重新冻结版本后再送审")
+			return nil, fault.Conflict("合同内容在定稿后已有变更，请重新定稿后送审")
 		}
 	}
 	return materials, nil

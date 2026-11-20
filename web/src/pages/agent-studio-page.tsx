@@ -88,13 +88,13 @@ const CALL_STATUS_LABELS: Record<string, string> = {
 };
 
 const HISTORY_KIND_LABELS: Record<string, string> = {
-  frozen: "冻结记录",
-  legacy_unfrozen: "历史未冻结",
+  frozen: "留档记录",
+  legacy_unfrozen: "历史记录未留档",
 };
 
 const EVIDENCE_VERIFICATION_LABELS: Record<string, string> = {
   verified: "已核验",
-  typed_semantic_and_frozen_quote_verified: "结构化语义与冻结引用已核验",
+  typed_semantic_and_frozen_quote_verified: "结构化语义与原文引用已核验",
   unknown: "核验状态未知",
   rejected: "已拒绝",
 };
@@ -534,8 +534,8 @@ export function buildCapabilityGroups(input: StudioCapabilityInput): StudioCapab
         ? `知识选择已记录（${knowledgeSelection.policy_status}）`
         : frozenSelectionKnown
           ? frozenSelections.length > 0
-            ? `已冻结 ${frozenSelections.length} 条知识选择`
-            : "已冻结知识快照"
+            ? `已留档 ${frozenSelections.length} 条知识选择`
+            : "知识选择已留档"
           : missingState("知识选择不可用", "没有知识选择记录"),
       knowledgeSelection !== null
         ? [
@@ -641,7 +641,7 @@ export function buildCapabilityGroups(input: StudioCapabilityInput): StudioCapab
   ];
 
   return [
-    capabilityGroup("model", "模型", "模型调用、已报告用量和冻结的规划配置。", modelFacts),
+    capabilityGroup("model", "模型", "模型调用、已报告用量和留档的规划配置。", modelFacts),
     capabilityGroup(
       "tools",
       "工具与 MCP",
@@ -651,13 +651,13 @@ export function buildCapabilityGroups(input: StudioCapabilityInput): StudioCapab
     capabilityGroup(
       "rules",
       "规则与知识",
-      "规则包、冻结的知识选择、知识读取和规划轮次。",
+      "规则包、留档的知识选择、知识读取和规划轮次。",
       ruleFacts,
     ),
     capabilityGroup(
       "evidence",
       "输入证据",
-      "冻结输入快照、证据条目、运行快照与已加载审查材料。",
+      "当次审查依据、证据条目、运行快照与已加载审查材料。",
       evidenceFacts,
     ),
     capabilityGroup("experience", "经验", "经验引用和已应用经验版本。", experienceFacts),
@@ -862,7 +862,7 @@ function KnowledgeRecords({
     <>
       {selections.length > 0 ? (
         <section className="studio-records" aria-labelledby="studio-knowledge-selection-records">
-          <h3 id="studio-knowledge-selection-records">冻结的知识选择</h3>
+          <h3 id="studio-knowledge-selection-records">留档的知识选择</h3>
           <ul>
             {selections.map((item) => (
               <li key={`${item.knowledge_id}-${item.version_id}`}>
@@ -1053,10 +1053,10 @@ function AgentOverview({
           <h2>Agent 执行概览</h2>
           <p>
             {agentReview
-              ? "这次尝试写入了智能体审查记录。"
+              ? "本次审查已保存智能体记录。"
               : planner
-                ? "规划配置已冻结。五域规划循环没有写入记录。"
-                : "刷新诊断后查看这次尝试保存的规划配置。"}
+                ? "规划配置已留档。五域规划循环没有写入记录。"
+                : "刷新诊断后查看本次审查保存的规划配置。"}
           </p>
         </div>
         <ObservationBadge state={agentReview === null ? "not_observed" : "observed"} />
@@ -1240,7 +1240,7 @@ function CapabilityView({
                 <dt>
                   <ObservationBadge state="observed" /> 已观测
                 </dt>
-                <dd>这次尝试保存了对应来源。</dd>
+                <dd>本次审查保存了对应来源。</dd>
               </div>
               <div>
                 <dt>
@@ -1278,7 +1278,7 @@ function CapabilityView({
             findings={findings}
           />
         ) : (
-          <p className="studio-empty-text">选择一张能力卡，查看这次尝试保存的来源。</p>
+          <p className="studio-empty-text">选择一张能力卡，查看本次审查保存的来源。</p>
         )}
       </aside>
     </div>
@@ -1900,7 +1900,7 @@ export function AgentStudioPage() {
             { label: "事件列表", value: "events" },
           ]}
         />
-        <span className="studio-readonly">只读视图 · 数据来自本次尝试已保存记录</span>
+        <span className="studio-readonly">只读视图 · 数据来自本次审查记录</span>
       </div>
 
       {view === "capabilities" ? (

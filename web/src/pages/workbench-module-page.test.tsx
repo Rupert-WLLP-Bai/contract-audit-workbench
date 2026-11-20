@@ -737,7 +737,7 @@ function expectDisplayField(label: string, value: string) {
 }
 
 async function expectTechnicalField(user: User, label: string, value: string) {
-  const toggle = details().getByText(/技术详情 · 完整标识与编码/, {
+  const toggle = details().getByText(/溯源记录/, {
     selector: "summary",
   });
   if (!(toggle.closest("details") as HTMLDetailsElement | null)?.open) await user.click(toggle);

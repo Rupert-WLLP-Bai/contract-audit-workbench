@@ -173,7 +173,7 @@ function ReviewAttemptSummary({ review }: { review: ReturnType<typeof useReview>
         <dt>执行状态</dt>
         <dd>
           <StatusText tone={runTone(runStateOf(review))}>{runLabel(runStateOf(review))}</StatusText>
-          <TechnicalDetail label="执行状态技术详情" value={runStateOf(review)} />
+          <TechnicalDetail label="执行状态编码" value={runStateOf(review)} />
         </dd>
       </div>
       <div>

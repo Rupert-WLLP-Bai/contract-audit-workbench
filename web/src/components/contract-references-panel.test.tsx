@@ -495,7 +495,7 @@ it("shows authorized business names and keeps the full frozen source chain copya
   await user.click(screen.getByRole("button", { name: "核对引用" }));
 
   expect((await screen.findByText(/来源案件：ACME-Case/)).closest("p")).toHaveTextContent(
-    "案件业务编号：BUS-1 · 冻结版本",
+    "案件业务编号：BUS-1 · 定稿版本",
   );
   expect(screen.getByText(/核对时间：/)).toHaveTextContent(
     "2026/11/05 09:02:03（北京时间 UTC+08:00）",
@@ -516,11 +516,11 @@ it("shows authorized business names and keeps the full frozen source chain copya
   );
   expect(screen.getByText("提示：存在尚未核验的主体")).toBeVisible();
 
-  const caseDetails = screen.getByText("来源与合同版本技术详情").closest("details")!;
-  const subjectDetails = screen.getByText("主体引用技术详情").closest("details")!;
-  const materialDetails = screen.getByText("材料引用技术详情").closest("details")!;
-  const procurementDetails = screen.getByText("采购来源技术详情").closest("details")!;
-  const warningDetails = screen.getByText("提示代码技术详情").closest("details")!;
+  const caseDetails = screen.getByText("来源与合同版本").closest("details")!;
+  const subjectDetails = screen.getByText("主体引用记录").closest("details")!;
+  const materialDetails = screen.getByText("材料引用记录").closest("details")!;
+  const procurementDetails = screen.getByText("采购来源记录").closest("details")!;
+  const warningDetails = screen.getByText("提示代码").closest("details")!;
   for (const details of [
     caseDetails,
     subjectDetails,
@@ -532,7 +532,7 @@ it("shows authorized business names and keeps the full frozen source chain copya
     expect(
       within(details).getByRole("button", { name: "复制完整值", hidden: true }),
     ).not.toBeVisible();
-    await user.click(within(details).getByText(/技术详情/));
+    await user.click(within(details).getByText((_, element) => element?.tagName === "SUMMARY"));
     expect(within(details).getByRole("button", { name: "复制完整值" })).toBeVisible();
   }
   expect(JSON.parse(caseDetails.querySelector("code")!.textContent!)).toEqual({
@@ -568,11 +568,11 @@ it("uses honest fallbacks when the source is absent or its name and number were 
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "核对引用" }));
   expect((await screen.findByText(/名称未在当前授权列表中/)).closest("p")).toHaveTextContent(
-    "案件业务编号：未在当前授权列表中 · 冻结版本",
+    "案件业务编号：未在当前授权列表中 · 定稿版本",
   );
-  const details = screen.getByText("来源与合同版本技术详情").closest("details")!;
+  const details = screen.getByText("来源与合同版本").closest("details")!;
   expect(details).not.toHaveAttribute("open");
-  await user.click(within(details).getByText("来源与合同版本技术详情"));
+  await user.click(within(details).getByText("来源与合同版本"));
   expect(JSON.parse(details.querySelector("code")!.textContent!).source_case_id).toBe(
     "unlisted-case-full-id",
   );
@@ -746,9 +746,9 @@ it("uses neutral fallbacks for defensive unknown enums and preserves their exact
   expect(screen.getByText(/用途：待核对/)).toBeVisible();
   expect(screen.getByText("提示：待核对")).toBeVisible();
   for (const [label, codes] of [
-    ["主体引用技术详情", ["future_party", "future_case", "future_binding", "future_verification"]],
-    ["材料引用技术详情", ["future_purpose", "future_material"]],
-    ["提示代码技术详情", ["future_warning"]],
+    ["主体引用记录", ["future_party", "future_case", "future_binding", "future_verification"]],
+    ["材料引用记录", ["future_purpose", "future_material"]],
+    ["提示代码", ["future_warning"]],
   ] as const) {
     const details = screen.getByText(label).closest("details")!;
     await user.click(within(details).getByText(label));
@@ -830,7 +830,7 @@ it("does not turn a frozen result with no warnings into an approval or authentic
   render(<ContractReferencesPanel contractID="contract-1" draft={emptyDraft()} />);
   await userEvent.setup().click(screen.getByRole("button", { name: "核对引用" }));
   const subject = await screen.findByText(/登记核验状态：已核验/);
-  expect(subject).toHaveTextContent("核验范围未提供 · 冻结引用");
+  expect(subject).toHaveTextContent("核验范围未提供 · 留档引用");
   expect(subject.closest(".contracts-page-reference-result")).not.toHaveTextContent(
     /批准|审批通过|内容真实|合法有效/,
   );

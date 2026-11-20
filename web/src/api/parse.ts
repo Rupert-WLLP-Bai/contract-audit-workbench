@@ -825,7 +825,7 @@ export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
     (legalAuthorities.run_id !== run.id ||
       legalAuthorities.attempt_id !== reviewAttempts?.attempt?.id)
   ) {
-    fail("冻结法律依据不属于当前审查及所选执行记录");
+    fail("审查法律依据不属于当前审查及所选执行记录");
   }
   return {
     run,

@@ -156,7 +156,7 @@ export function ReviewWorkItems({
               </p>
               {item.sourceRunId && item.sourceAttemptId ? (
                 <TechnicalDetail
-                  label="来源执行技术详情"
+                  label="来源审查编号"
                   value={`${item.sourceRunId} / ${item.sourceAttemptId}`}
                 />
               ) : null}

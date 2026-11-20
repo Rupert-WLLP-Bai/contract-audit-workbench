@@ -86,12 +86,12 @@ function ShadowReportView({ value, currentHash }: { value: ShadowEnvelope; curre
               ) : null}
               {sample.knowledge_sha256 ? (
                 <p className="meta">
-                  冻结知识 <code className="digest">{sample.knowledge_sha256}</code>
+                  当次适用知识 <code className="digest">{sample.knowledge_sha256}</code>
                 </p>
               ) : null}
               {sample.rule_request_sha256 ? (
                 <p className="meta">
-                  冻结规则输入 <code className="digest">{sample.rule_request_sha256}</code>
+                  当次送审内容 <code className="digest">{sample.rule_request_sha256}</code>
                 </p>
               ) : null}
               {sample.base_pack_sha256 ? (
@@ -202,7 +202,7 @@ export function RulePackShadowPanel({
       <header className="workflow-panel-head">
         <div>
           <h2 id="rulepack-shadow-title">近期审查影子对比</h2>
-          <p className="meta">使用已保存的真实规则输入和冻结审查结果；对比只作为人工批准的参考。</p>
+          <p className="meta">对比使用留档的规则输入和审查结果，供审批参考。</p>
         </div>
       </header>
       {!enabled ? <p>请先保存或刷新当前规则包，再选择样本。</p> : null}

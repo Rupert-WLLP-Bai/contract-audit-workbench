@@ -497,9 +497,7 @@ describe("HomePage snapshot consumers", () => {
       "href",
       "/cases/case-1",
     );
-    expect(
-      within(caseWork).getByText(/实际下一步及可执行动作以案件页服务端信息为准/),
-    ).toBeInTheDocument();
+    expect(within(caseWork).getByText(/具体办理步骤请进入案件查看/)).toBeInTheDocument();
 
     expect(
       within(screen.getByLabelText("工作台摘要"))

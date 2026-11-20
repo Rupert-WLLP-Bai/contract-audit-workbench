@@ -255,7 +255,7 @@ try {
   );
 
   await selectReport(page.getByLabel("归档所依据的报告", { exact: true }), secondReport.id);
-  await page.getByLabel("归档理由", { exact: true }).fill("已完成原案件复审并归档冻结报告。");
+  await page.getByLabel("归档理由", { exact: true }).fill("已完成原案件复审并归档审查报告。");
   const archiveResponse = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&

@@ -1059,7 +1059,7 @@ try {
   );
 
   await selectReportOption(page, page.getByLabel("归档所依据的报告", { exact: true }), finalReport);
-  await page.getByLabel("归档理由", { exact: true }).fill("已完成复审并归档冻结报告。");
+  await page.getByLabel("归档理由", { exact: true }).fill("已完成复审并归档审查报告。");
   const [archiveResponse] = await Promise.all([
     page.waitForResponse(
       (response) =>

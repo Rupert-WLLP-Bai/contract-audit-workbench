@@ -234,7 +234,7 @@ describe("service object panel", () => {
     expect(
       await screen.findByRole("heading", { name: "专线 A · 身份第 2 版" }),
     ).toBeInTheDocument();
-    fireEvent.change(await screen.findByLabelText("冻结服务对象候选"), {
+    fireEvent.change(await screen.findByLabelText("服务对象候选"), {
       target: { value: "LINE-A" },
     });
     expect(await screen.findByText("最低保障带宽为100 Mbit/s")).toBeInTheDocument();
@@ -254,7 +254,7 @@ describe("service object panel", () => {
     );
 
     fireEvent.click(screen.getByRole("checkbox", { name: /我已核对/ }));
-    fireEvent.click(screen.getByRole("button", { name: "确认首个冻结事实关联" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认首个事实关联" }));
     await waitFor(() =>
       expect(mocks.confirm).toHaveBeenCalledWith(
         "case-1",
@@ -291,7 +291,7 @@ describe("service object panel", () => {
     fireEvent.click(screen.getByText("身份版本历史"));
     fireEvent.click(screen.getByRole("button", { name: "读取更早身份版本" }));
     expect(await screen.findByText(/专线历史名称/)).toBeInTheDocument();
-    fireEvent.click(screen.getByText("冻结事实关联历史"));
+    fireEvent.click(screen.getByText("事实关联历史"));
     fireEvent.click(screen.getByRole("button", { name: "读取更早事实关联" }));
     await waitFor(() =>
       expect(mocks.associations).toHaveBeenCalledWith(

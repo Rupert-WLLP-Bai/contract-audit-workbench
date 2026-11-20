@@ -27,7 +27,7 @@ describe("technical value copy", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     clipboard({ writeText });
     render(<TechnicalDetail value="full-case-identity" />);
-    fireEvent.click(screen.getByText("技术详情"));
+    fireEvent.click(screen.getByText("溯源记录"));
     fireEvent.click(screen.getByRole("button", { name: "复制完整值", hidden: true }));
     expect(await screen.findByRole("status", { hidden: true })).toHaveTextContent("已复制完整值");
     expect(writeText).toHaveBeenCalledWith("full-case-identity");
@@ -39,7 +39,7 @@ describe("technical value copy", () => {
     async (api) => {
       clipboard(api);
       render(<TechnicalDetail value="manual-full-value" />);
-      fireEvent.click(screen.getByText("技术详情"));
+      fireEvent.click(screen.getByText("溯源记录"));
       fireEvent.click(screen.getByRole("button", { name: "复制完整值", hidden: true }));
       await waitFor(() =>
         expect(screen.getByRole("status", { hidden: true })).toHaveTextContent(
@@ -63,7 +63,7 @@ describe("technical value copy", () => {
       .mockRejectedValueOnce(new Error("denied"));
     clipboard({ writeText });
     const view = render(<TechnicalDetail value="first-full-value" />);
-    fireEvent.click(screen.getByText("技术详情"));
+    fireEvent.click(screen.getByText("溯源记录"));
     fireEvent.click(screen.getByRole("button", { name: "复制完整值", hidden: true }));
     view.rerender(<TechnicalDetail value="second-full-value" />);
     fireEvent.click(screen.getByRole("button", { name: "复制完整值", hidden: true }));
@@ -78,7 +78,7 @@ describe("technical value copy", () => {
   it("does not restore an old success when the same value is shown again", async () => {
     clipboard({ writeText: vi.fn().mockResolvedValue(undefined) });
     const view = render(<TechnicalDetail value="A" />);
-    fireEvent.click(screen.getByText("技术详情"));
+    fireEvent.click(screen.getByText("溯源记录"));
     fireEvent.click(screen.getByRole("button", { name: "复制完整值" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("已复制"));
     view.rerender(<TechnicalDetail value="B" />);
@@ -96,7 +96,7 @@ describe("technical value copy", () => {
         }),
     });
     const view = render(<TechnicalDetail value="removed-value" />);
-    fireEvent.click(screen.getByText("技术详情"));
+    fireEvent.click(screen.getByText("溯源记录"));
     fireEvent.click(screen.getByRole("button", { name: "复制完整值" }));
     view.unmount();
     await act(async () => finish());
@@ -115,10 +115,10 @@ describe("technical field group", () => {
         ]}
       />,
     );
-    expect(screen.getByText(/技术详情 · 完整标识与编码/)).toBeVisible();
+    expect(screen.getByText(/溯源记录/)).toBeVisible();
     expect(screen.getByText("task/server-created")).not.toBeVisible();
     expect(screen.getByText("未报告")).not.toBeVisible();
-    fireEvent.click(screen.getByText(/技术详情 · 完整标识与编码/));
+    fireEvent.click(screen.getByText(/溯源记录/));
     expect(screen.getByText("task/server-created")).toBeVisible();
     expect(screen.getByText("open")).toBeVisible();
     expect(screen.getByText("未报告")).toBeVisible();
@@ -128,7 +128,7 @@ describe("technical field group", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     clipboard({ writeText });
     render(<TechnicalFieldGroup fields={[{ label: "案件标识", value: "case/full" }]} />);
-    fireEvent.click(screen.getByText(/技术详情 · 完整标识与编码/));
+    fireEvent.click(screen.getByText(/溯源记录/));
     fireEvent.click(screen.getByRole("button", { name: "复制完整值" }));
     expect(await screen.findByRole("status", { hidden: true })).toHaveTextContent("已复制完整值");
     expect(writeText).toHaveBeenCalledWith("case/full");

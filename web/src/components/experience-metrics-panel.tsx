@@ -84,7 +84,7 @@ export function ExperienceMetricsPanel({ version }: { version: KnowledgeVersion 
       ),
     },
     {
-      title: "冻结身份",
+      title: "采用版本",
       key: "identity",
       render: (_, item) => (
         <>

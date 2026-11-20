@@ -93,7 +93,7 @@ func (s *Store) CreateClauseProposal(ctx context.Context, user accounts.User, in
 	var pack contract.ClauseRulePackRef
 	err = tx.QueryRow(ctx, `SELECT i.input_hash,i.documents,s.rule_pack_id,s.rule_pack_version,s.rule_pack_hash,s.rule_pack_digest,s.rule_pack_compiler_ref,s.governed_knowledge FROM review_runs r JOIN review_attempts a ON a.tenant_id=r.tenant_id AND a.org_id=r.org_id AND a.run_id=r.id JOIN review_attempt_inputs i ON i.tenant_id=a.tenant_id AND i.org_id=a.org_id AND i.run_id=r.id AND i.attempt_id=a.id AND i.input_hash=a.input_hash JOIN review_run_snapshots s ON s.tenant_id=r.tenant_id AND s.org_id=r.org_id AND s.run_id=r.id WHERE r.tenant_id=$1 AND r.org_id=$2 AND r.case_id=$3 AND r.id=$4 AND a.id=$5 AND a.history_kind='frozen' AND a.input_hash<>''`, item.TenantID, item.OwnerOrgID, item.ID, input.RunID, input.AttemptID).Scan(&inputHash, &documents, &pack.ID, &pack.Version, &pack.ContentHash, &pack.SnapshotDigest, &pack.CompilerRef, &knowledge)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return contract.ClauseProposal{}, fault.NotFound("没有找到对应的冻结执行记录")
+		return contract.ClauseProposal{}, fault.NotFound("没有找到对应的审查记录")
 	}
 	if err != nil {
 		return contract.ClauseProposal{}, err
@@ -105,7 +105,7 @@ func (s *Store) CreateClauseProposal(ctx context.Context, user accounts.User, in
 			return contract.ClauseProposal{}, err
 		}
 		if !exists {
-			return contract.ClauseProposal{}, fault.Invalid("发现不属于此冻结执行")
+			return contract.ClauseProposal{}, fault.Invalid("线索不属于这次审查")
 		}
 	}
 	if input.RemediationID != "" {
@@ -122,7 +122,7 @@ func (s *Store) CreateClauseProposal(ctx context.Context, user accounts.User, in
 	if err != nil {
 		return contract.ClauseProposal{}, err
 	}
-	p := contract.ClauseProposal{ID: id, CreatedBy: current.ID, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano), CaseID: item.ID, RunID: input.RunID, AttemptID: input.AttemptID, InputHash: inputHash, FindingID: input.FindingID, Evidence: input.Evidence, ProposedText: input.ProposedText, Reason: input.Reason, RemediationID: input.RemediationID, Status: "pending", Version: 1, History: []contract.ClauseProposalHistory{}, UnavailableReason: "缺少可核验的冻结原文引用"}
+	p := contract.ClauseProposal{ID: id, CreatedBy: current.ID, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano), CaseID: item.ID, RunID: input.RunID, AttemptID: input.AttemptID, InputHash: inputHash, FindingID: input.FindingID, Evidence: input.Evidence, ProposedText: input.ProposedText, Reason: input.Reason, RemediationID: input.RemediationID, Status: "pending", Version: 1, History: []contract.ClauseProposalHistory{}, UnavailableReason: "缺少可核对的原文引用"}
 	if pack.ID != "" {
 		p.RulePack = &pack
 	}
@@ -207,7 +207,7 @@ func (s *Store) ListClauseProposals(ctx context.Context, user accounts.User, cas
 
 func frozenClauseText(ctx context.Context, tx pgx.Tx, item Case, proposal contract.ClauseProposal) (string, error) {
 	if proposal.Evidence == nil || !proposal.EvidenceVerified {
-		return "", fault.Conflict("缺少可核验的冻结原文引用")
+		return "", fault.Conflict("缺少可核对的原文引用")
 	}
 	var documents, hash string
 	err := tx.QueryRow(ctx, `SELECT i.input_hash,i.documents FROM review_attempt_inputs i JOIN review_attempts a ON a.tenant_id=i.tenant_id AND a.org_id=i.org_id AND a.run_id=i.run_id AND a.id=i.attempt_id AND a.input_hash=i.input_hash JOIN review_runs r ON r.tenant_id=a.tenant_id AND r.org_id=a.org_id AND r.id=a.run_id WHERE r.tenant_id=$1 AND r.org_id=$2 AND r.case_id=$3 AND r.id=$4 AND a.id=$5 AND a.history_kind='frozen'`, item.TenantID, item.OwnerOrgID, item.ID, proposal.RunID, proposal.AttemptID).Scan(&hash, &documents)
@@ -215,7 +215,7 @@ func frozenClauseText(ctx context.Context, tx pgx.Tx, item Case, proposal contra
 		return "", err
 	}
 	if hash != proposal.InputHash {
-		return "", fault.Conflict("冻结输入摘要已变化")
+		return "", fault.Conflict("对应的审查依据摘要已变化")
 	}
 	var frozen []FrozenDocument
 	if err = json.Unmarshal([]byte(documents), &frozen); err != nil {
@@ -223,7 +223,7 @@ func frozenClauseText(ctx context.Context, tx pgx.Tx, item Case, proposal contra
 	}
 	ref := proposal.Evidence
 	if ref.Start < 0 || ref.End <= ref.Start {
-		return "", fault.Conflict("冻结引用范围无效")
+		return "", fault.Conflict("原文引用的位置无效")
 	}
 	e := ExperienceEvidenceRef{DocumentID: ref.DocumentID, ParsedDocumentID: ref.ParsedDocumentID, NormalizedDigest: ref.NormalizedDigest, Start: ref.Start, End: ref.End, Quote: ref.Quote}
 	if err := verifyFeedbackEvidence(ctx, tx, item, proposal.RunID, proposal.AttemptID, frozen, e); err != nil {
@@ -234,7 +234,7 @@ func frozenClauseText(ctx context.Context, tx pgx.Tx, item Case, proposal contra
 			return source.Text, nil
 		}
 	}
-	return "", fault.Conflict("冻结原文不可用")
+	return "", fault.Conflict("本次审查原文不可用")
 }
 
 func (s *Store) DerivedClauseText(ctx context.Context, user accounts.User, caseID, proposalID string, expectedVersion int64, editedText *string) (string, error) {

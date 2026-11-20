@@ -4776,7 +4776,7 @@ describe("application routes and API contract", () => {
     // Non-200 connect: the browser closes the stream and does not retry.
     source.readyState = 2;
     act(() => source.onerror?.());
-    expect(await screen.findByText(/运行状态流已关闭，不会自动重连/)).toBeInTheDocument();
+    expect(await screen.findByText(/实时进度连接已关闭/)).toBeInTheDocument();
     expect(screen.queryByText("连接中断，正在按游标重连")).not.toBeInTheDocument();
   });
 

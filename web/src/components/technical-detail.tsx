@@ -126,7 +126,7 @@ export interface TechnicalField {
  */
 export function TechnicalFieldGroup({
   fields,
-  label = "技术详情 · 完整标识与编码",
+  label = "溯源记录",
 }: {
   fields: readonly TechnicalField[];
   label?: string;
@@ -157,7 +157,7 @@ export function TechnicalFieldGroup({
 
 /**
  * Primary business surfaces show the human label; the raw id/digest stays in
- * `title`, in the URL/API, and behind an explicit "技术详情" disclosure.
+ * `title`, in the URL/API, and behind a traceability disclosure.
  */
 export function TechnicalDetail({
   value,
@@ -172,7 +172,7 @@ export function TechnicalDetail({
   if (!value) return null;
   return (
     <details className="caw-technical-detail">
-      <summary>{label ?? "技术详情"}</summary>
+      <summary>{label ?? "溯源记录"}</summary>
       <div className="caw-technical-detail-body">
         <code className="caw-wrap" title={value}>
           {value}

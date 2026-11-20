@@ -415,7 +415,7 @@ describe("selected review outcome", () => {
         })}
       />,
     );
-    expect(screen.getByText(/尚未冻结审查输入/)).toBeInTheDocument();
+    expect(screen.getByText(/本次送审内容尚未确定/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "重新发起新审查" })).not.toBeInTheDocument();
     view.rerender(
       <CaseNextStep

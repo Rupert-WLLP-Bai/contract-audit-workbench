@@ -254,7 +254,7 @@ describe("execution inspector", () => {
     expect(screen.getAllByText("运行中，尚无终态时长").length).toBeGreaterThan(0);
     expect(screen.getByText("4 条")).toBeInTheDocument();
     expect(screen.getByText("2 次")).toBeInTheDocument();
-    expect(screen.getByText("第 2 次尝试状态：审查中。")).toBeInTheDocument();
+    expect(screen.getByText("第 2 次审查状态：审查中。")).toBeInTheDocument();
     expect(
       screen.queryByText("较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。"),
     ).not.toBeInTheDocument();

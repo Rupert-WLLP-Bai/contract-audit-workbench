@@ -387,7 +387,7 @@ export function TenantConfigPanel({ actor }: { actor: Actor }) {
             </div>
           </dl>
           <p>
-            新配置只用于之后创建的运行；既有运行继续使用各自冻结的配置版本。实时停发是独立控制，不能被旧配置覆盖；已发出的调用仍按原预留结算。
+            新配置仅用于新审查，已发起的审查沿用当时配置。实时停发是独立控制，不能被旧配置覆盖；已发出的调用仍按原预留结算。
           </p>
 
           <section className="tenant-config-editor" aria-labelledby="tenant-config-editor-title">

@@ -14,8 +14,8 @@
 | T08 | 执行尝试 | `store.Attempt / web.ExecutionAttempt` |
 | T09 | 会签轮次 | `ApprovalRound / clm_approval_rounds` |
 | T10 | 审批待办 | `ApprovalTask / clm_approval_tasks` |
-| T11 | 审查发现 | `store.Finding / web.Finding` |
-| T12 | 发现处理意见 | `store.Decision / web.HumanDecision` |
+| T11 | 风险线索 | `store.Finding / web.Finding` |
+| T12 | 人工判断 | `store.Decision / web.HumanDecision` |
 | T13 | 会签决定 | `ApprovalDecision / approval decision history` |
 | T14 | 规则包版本 | `RulePackVersion` |
 | T15 | 知识版本 | `GovernedKnowledgeVersion` |
@@ -38,7 +38,7 @@
 | T32 | 租户成员资格 | `TenantMembership / membership (proposed)` |
 | T33 | 当前租户上下文 | `ActiveTenantContext / active context (proposed)` |
 | T34 | 授权范围 | `Grant.Scope / dbScope` |
-| T35 | 执行尝试冻结快照 | `AttemptInput / RunSnapshot` |
+| T35 | 当次审查依据 | `AttemptInput / RunSnapshot` |
 | T36 | 检索相关度 | `KnowledgeCandidate.Score / governedRelevance` |
 | T37 | 人工发现 | `store.ManualFinding` |
 
@@ -314,7 +314,7 @@ state.go 明确注释 Attempt 是 Run 内的不可变执行身份；前端 Execu
 
 ## T11 · store.Finding / web.Finding
 
-**用户词：** `审查发现`
+**用户词：** `风险线索`
 
 规则或模型审查产生的具体发现，保留来源、引用和核验信息供人工处理。
 
@@ -341,7 +341,7 @@ Finding 类型及前端映射可定位；本轮未运行规则或模型。
 
 ## T12 · store.Decision / web.HumanDecision
 
-**用户词：** `发现处理意见`
+**用户词：** `人工判断`
 
 人工对特定审查发现作出的确认、误报、证据不足或接受残余风险等处置记录。
 
@@ -965,7 +965,7 @@ access.Check 明确分开角色与范围并默认拒绝；本次未运行授权�
 
 ## T35 · AttemptInput / RunSnapshot
 
-**用户词：** `执行尝试冻结快照`
+**用户词：** `当次审查依据`
 
 与一次执行尝试关联、用于解释该次输入与解析身份的不可变材料、解析选择及规则等快照。
 

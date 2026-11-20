@@ -452,7 +452,7 @@ test(
       expect(workspace.findings.length).toBeGreaterThan(0);
       const finding = workspace.findings[0]!;
       if (finding.version === null) throw new Error("Selected finding has no version");
-      const decisionReason = `核对冻结原文差异 ${stamp}`;
+      const decisionReason = `核对送审原文差异 ${stamp}`;
       const decisionResponse = await request.post(
         `${apiURL}/api/cases/${caseID}/reviews/${accepted.id}/findings/${finding.id}/decisions`,
         {
@@ -921,7 +921,7 @@ test(
     await selectAll(laterCard.getByLabel("本次审查使用的原文", { exact: true }));
     await expect(laterCard.getByText(/已选引用：/)).toBeVisible();
     await expect(laterCard.locator("blockquote").filter({ hasText: supplementText })).toBeVisible();
-    await laterCard.getByLabel("核验理由", { exact: true }).fill(`核对回执材料与冻结原文 ${stamp}`);
+    await laterCard.getByLabel("核验理由", { exact: true }).fill(`核对回执材料与送审原文 ${stamp}`);
     const verifyButton = laterCard.getByRole("button", { name: "提交核验", exact: true });
     await expect(verifyButton).toBeEnabled({ timeout: 30_000 });
     const verifyWait = page.waitForResponse(

@@ -57,9 +57,7 @@ export function PlaybookPicker({
   return (
     <section className="workflow-panel" aria-labelledby={headingId}>
       <h3 id={headingId}>审查手册（可选）</h3>
-      <p className="meta">
-        手册只提供审查参考。选择后，服务端会把精确版本随本次审查冻结；不选择时沿用原审查流程。
-      </p>
+      <p className="meta">手册供审查参考。所选版本随本次审查留档，也可沿用默认流程。</p>
       {candidates.isError ? (
         <Alert
           type="error"

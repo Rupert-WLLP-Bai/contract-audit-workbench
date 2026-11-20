@@ -31,7 +31,7 @@ export function reviewChoiceLabel(choice: ReviewChoice): string {
 }
 
 export function reviewChoiceShortLabel(choice: ReviewChoice): string {
-  return `受理时间 ${preciseTime(choice.attempt.accepted_at)} · 第 ${choice.attempt.ordinal} 次尝试 · ${runLabel(choice.attempt.state)}`;
+  return `受理时间 ${preciseTime(choice.attempt.accepted_at)} · 第 ${choice.attempt.ordinal} 次审查 · ${runLabel(choice.attempt.state)}`;
 }
 
 export function reviewChoices(history: ReviewHistoryEntry[]): ReviewChoice[] {

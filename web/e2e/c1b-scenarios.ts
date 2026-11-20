@@ -539,7 +539,7 @@ try {
     await selectReportOption(page, page.getByLabel("归档所依据的报告", { exact: true }), report);
     await page
       .getByLabel("归档理由", { exact: true })
-      .fill(`已完成 ${scenario.id} 场景审查并归档冻结报告。`);
+      .fill(`已完成 ${scenario.id} 场景审查并归档审查报告。`);
     const archiveResponse = page.waitForResponse(
       (response) =>
         response.request().method() === "POST" &&
@@ -922,7 +922,7 @@ async function finishExistingScenario(
     );
     await currentPage
       .getByLabel("归档理由", { exact: true })
-      .fill("已完成符合场景复核并归档冻结报告。");
+      .fill("已完成符合场景复核并归档审查报告。");
     const archiveResponse = currentPage.waitForResponse(
       (response) =>
         response.request().method() === "POST" &&
@@ -1088,7 +1088,7 @@ async function finishExistingInsufficientScenario(
     );
     await currentPage
       .getByLabel("归档理由", { exact: true })
-      .fill("已记录证据不足决定并归档冻结报告。");
+      .fill("已记录证据不足决定并归档审查报告。");
     const archiveResponse = currentPage.waitForResponse(
       (response) =>
         response.request().method() === "POST" &&

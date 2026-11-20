@@ -830,7 +830,7 @@ function FixtureSuiteEditor({
       <h2 id="rulepack-fixture-title">合成样本套件</h2>
       <p className="meta">
         粘贴套件 JSON
-        并先应用到草稿，再保存。套件包含正例、反例和信息不足样本，随版本与内容摘要冻结；校验时逐样本执行。套件格式可参考仓库内的
+        并先应用到草稿，再保存。套件包含正例、反例和信息不足样本，随规则版本及内容摘要留存。校验时逐项运行。套件格式可参考仓库内的
         author-demo.json。
       </p>
       <label className="field" htmlFor="rulepack-fixture-json">
