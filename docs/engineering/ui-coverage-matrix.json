@@ -206,7 +206,7 @@
       "designId": "UI-001",
       "viewId": "home",
       "route": "/",
-      "title": "工作台",
+      "title": "我的待办",
       "site": "client",
       "kind": "route",
       "sources": [
@@ -234,12 +234,15 @@
       "designId": "UI-002",
       "viewId": "review-entry",
       "route": "/review",
-      "title": "合同审查",
+      "title": "审一份合同",
       "site": "client",
       "kind": "route",
       "sources": [
         "web/src/pages/review-entry-page.tsx",
         "web/src/pages/review-entry-page.css",
+        "web/src/features/intake/review-intake-dialog.tsx",
+        "web/src/features/intake/review-intake-dialog.css",
+        "web/src/components/intake-primary-contract.tsx",
         "web/src/components/page-patterns.tsx",
         "web/src/components/page-patterns.css"
       ],
@@ -260,7 +263,7 @@
       "designId": "UI-003",
       "viewId": "cases",
       "route": "/cases",
-      "title": "案件管理",
+      "title": "案件",
       "site": "client",
       "kind": "route",
       "sources": [
@@ -287,7 +290,7 @@
       "designId": "UI-004",
       "viewId": "contracts",
       "route": "/contracts",
-      "title": "合同登记",
+      "title": "合同台账",
       "site": "client",
       "kind": "route",
       "sources": [
@@ -312,7 +315,7 @@
       "designId": "UI-005",
       "viewId": "approvals",
       "route": "/workbench/approvals",
-      "title": "合同会签",
+      "title": "会签",
       "site": "client",
       "kind": "route",
       "sources": [
@@ -428,7 +431,7 @@
       "designId": "UI-010",
       "viewId": "subjects",
       "route": "/subjects",
-      "title": "主体台账",
+      "title": "主体",
       "site": "client",
       "kind": "route",
       "sources": [
@@ -638,7 +641,7 @@
       "designId": "UI-020",
       "viewId": "remediation",
       "route": "/workbench/remediation",
-      "title": "整改中心",
+      "title": "整改",
       "site": "client",
       "kind": "route",
       "sources": [
@@ -664,7 +667,7 @@
       "designId": "UI-021",
       "viewId": "reports",
       "route": "/workbench/reports",
-      "title": "报告中心",
+      "title": "报告",
       "site": "client",
       "kind": "route",
       "sources": [
@@ -782,7 +785,7 @@
       "designId": "UI-026",
       "viewId": "templates",
       "route": "/workbench/templates",
-      "title": "模板管理",
+      "title": "合同模板",
       "site": "client",
       "kind": "route",
       "sources": [
@@ -890,7 +893,7 @@
       "designId": "UI-032",
       "viewId": "admin-login",
       "route": "/admin/login",
-      "title": "管理端登录",
+      "title": "登录管理后台",
       "site": "admin",
       "kind": "route",
       "sources": ["web/src/pages/login-page.tsx"],

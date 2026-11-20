@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,7 +16,10 @@ test(
   operations("createCase", "listCases", "getCase"),
   async ({ page }) => {
     await uiLogin(page);
-    await page.getByRole("link", { name: "案件与材料", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "主导航" })
+      .getByRole("link", { name: "案件", exact: true })
+      .click();
     await page.getByRole("button", { name: "新建案件", exact: true }).click();
     const dialog = page.getByRole("dialog");
     const title = `Playwright 案件 ${Date.now()}`;

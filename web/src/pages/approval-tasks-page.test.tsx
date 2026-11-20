@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-01
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -388,6 +388,7 @@ afterEach(() => {
 describe("approval tasks page", () => {
   it("switches between todo, done and initiated views from the server", async () => {
     const { user, service } = open();
+    expect(await screen.findByRole("heading", { name: "会签", level: 1 })).toBeVisible();
     const todo = await screen.findByRole("region", { name: "我的待办" });
     expect(await within(todo).findByText("专线采购合同")).toBeInTheDocument();
     expect(within(todo).getByText("部门负责人")).toBeInTheDocument();

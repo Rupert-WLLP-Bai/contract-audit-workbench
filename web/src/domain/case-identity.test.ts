@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -42,15 +42,41 @@ describe("case identity", () => {
       customer: "",
       supplier: "",
     };
-    expect(caseOptionLabel(first)).toContain("案件业务编号 BUS-01");
-    expect(caseOptionLabel(second)).toContain("案件业务编号 BUS-02");
-    expect(caseOptionLabel(second)).toContain("09:02:04");
-    expect(caseOptionLabel(legacy)).toContain("业务编号未登记");
+    expect(caseOptionLabel(first)).toContain("BUS-01");
+    expect(caseOptionLabel(second)).toContain("BUS-02");
+    expect(caseOptionLabel(legacy)).not.toContain("业务编号未登记");
     expect(caseOptionLabel(legacy)).toContain("案件标识 case-full-legacy");
-    expect(caseIdentityDetails({ ...legacy, updated_at: "invalid" })).toContain(
-      "更新时间 时间格式异常",
-    );
+    expect(
+      caseIdentityDetails({
+        ...legacy,
+        contract_type: "unspecified",
+        scenario: "",
+        updated_at: "invalid",
+      }),
+    ).toBe("");
     expect(caseSearchText(first)).toContain("政企专线");
+  });
+
+  it("keeps only supplied recognized fields in list subtitles", () => {
+    expect(
+      caseIdentityDetails({
+        ...first,
+        case_number: "",
+        contract_type: "unspecified",
+        business_line: "",
+        scenario: "telecom_dedicated_line",
+      }),
+    ).toBe("政企专线");
+    expect(
+      caseIdentityDetails({
+        ...first,
+        case_number: "",
+        contract_type: "unknown",
+        business_line: "unknown",
+        scenario: "unknown",
+      }),
+    ).toBe("");
+    expect(caseIdentityDetails(first)).not.toMatch(/未登记|更新时间|北京时间|—/);
   });
 
   it("changing the number changes presentation and search, never the selected value", () => {

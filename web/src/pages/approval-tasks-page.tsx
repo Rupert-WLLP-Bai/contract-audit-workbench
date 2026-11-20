@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-01
 // Updated: 2026-11-20
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -696,7 +696,7 @@ export function ApprovalTasksPage() {
     <ListPage
       className="approval-page"
       standaloneSurface={false}
-      title="合同会签"
+      title="会签"
       summary={
         <div className="approval-summary" role="status">
           已加载 <strong>{items.length}</strong> 项

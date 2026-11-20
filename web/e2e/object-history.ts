@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r8
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1196,7 +1196,7 @@ async function run(): Promise<void> {
   await current.getByRole("button", { name: "打开主导航" }).click();
   await current.getByRole("button", { name: "头像菜单", exact: true }).click();
   await current.getByRole("button", { name: "退出", exact: true }).click();
-  await current.getByRole("heading", { name: "登录合同审查", exact: true }).waitFor();
+  await current.getByRole("heading", { name: "登录", exact: true }).waitFor();
   await signIn(current, "demo-admin", "admin-demo");
   await current.goto(retainedReviewURL);
   await frozenFindingView(current, finding, primary.id, anchor.quote, false);

@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-28
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1081,8 +1081,8 @@ test(
       const caseTitle = (await detail(request, caseID)).title;
       await uiLogin(page);
       await page.goto(`${webURL}/workbench/reports`);
-      await expect(page.getByRole("heading", { name: /报告中心/ })).toBeVisible();
-      const reportList = page.locator('section[aria-label="报告中心记录"]');
+      await expect(page.getByRole("heading", { name: /^报告$/ })).toBeVisible();
+      const reportList = page.locator('section[aria-label="报告记录"]');
       const reportTitle = `${caseTitle}，审查报告 v${report.version}`;
       await reportList
         .getByRole("button", { name: reportTitle, exact: true })

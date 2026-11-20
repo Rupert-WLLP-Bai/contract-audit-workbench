@@ -1,13 +1,14 @@
 // File metadata (manifest mirror):
-// Purpose: Renders IntakePrimaryContract, the intake primary contract workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.
+// Purpose: Creates a case by uploading its proposed contract and optionally an accompanying procurement document, with identity-scoped continuation and independent retry receipts.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r7
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
+import { UploadOutlined } from "@ant-design/icons";
 import { Alert, Button, Input, Progress, Select } from "antd";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
@@ -34,6 +35,7 @@ import {
   type IntakeResult,
 } from "../api/intakes";
 import type { Actor } from "../api/types";
+import { uploadIntakeProcurement } from "../features/intake/procurement-upload";
 import { caseHref, formatBytes, formatDateTime, validateCaseTitle } from "../domain/review";
 import {
   clearIntakeContinuation,
@@ -150,12 +152,19 @@ export function IntakePrimaryContract({
   actor,
   selectedContinuation = null,
   compact = false,
+  sheet,
 }: {
   actor: Actor | null;
+  sheet?: {
+    onComplete: (caseId: string) => void;
+    onCancel: () => void;
+    onStateChange: (dirty: boolean, busy: boolean) => void;
+  };
   compact?: boolean;
   selectedContinuation?: IntakeContinuationSelection | null;
 }) {
   const navigate = useNavigate();
+  const sheetMode = Boolean(sheet);
   const headingId = useId();
   const titleInputId = useId();
   const fileInputId = useId();
@@ -165,6 +174,18 @@ export function IntakePrimaryContract({
   const fileErrorId = useId();
 
   const quickFileInput = useRef<HTMLInputElement>(null);
+  const procurementInput = useRef<HTMLInputElement>(null);
+  const automaticTitle = useRef("");
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [procurementFile, setProcurementFile] = useState<File | null>(null);
+  const [procurementError, setProcurementError] = useState<string | null>(null);
+  const [procurementCase, setProcurementCase] = useState<string | null>(null);
   const [newFormOpen, setNewFormOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [draft, setDraft] = useState<IntakeContinuation | null>(null);
@@ -230,6 +251,7 @@ export function IntakePrimaryContract({
       (continuation.scope.context_version === "legacy" ||
         isCommandContextVersionCurrent(continuation.scope.context_version)) &&
       isSessionIdentityCurrent(actorSessionIdentityRef.current) &&
+      mounted.current &&
       activeContinuationKeyRef.current === continuation.idempotency_key
     );
   }
@@ -270,10 +292,14 @@ export function IntakePrimaryContract({
     setConflict(null);
     setConfirmNew(false);
     setTitle("");
+    automaticTitle.current = "";
     setScenario(DEFAULT_SCENARIO);
     setContractType("service");
     setFile(null);
     setResumeFile(null);
+    setProcurementFile(null);
+    setProcurementError(null);
+    setProcurementCase(null);
     setTitleError(null);
     setFileError(null);
     setFormError(null);
@@ -294,6 +320,7 @@ export function IntakePrimaryContract({
         stored = null;
       }
       if (controller.signal.aborted || selectionAtStart !== selectedOperationRef.current) return;
+      if (sheetMode && stored?.receipt.state === "completed") stored = null;
       activeContinuationKeyRef.current = stored?.idempotency_key ?? null;
       setDraft(stored);
       setHydrated(true);
@@ -361,7 +388,7 @@ export function IntakePrimaryContract({
       }
     })();
     return () => controller.abort();
-  }, [actorKey]);
+  }, [actorKey, sheetMode]);
 
   useEffect(() => {
     if (actor === null || selectedContinuation === null) return;
@@ -392,11 +419,69 @@ export function IntakePrimaryContract({
     );
   }, [actorKey, selectedContinuation]);
 
+  const onSheetStateChange = sheet?.onStateChange;
+  const sheetDirty = Boolean(
+    file ||
+    resumeFile ||
+    procurementFile ||
+    title.trim() ||
+    scenario !== DEFAULT_SCENARIO ||
+    contractType !== "service",
+  );
+  useEffect(() => {
+    onSheetStateChange?.(sheetDirty, busy === "hashing" || busy === "uploading");
+  }, [onSheetStateChange, sheetDirty, busy]);
+
+  function chooseSheetFile(chosen: File | null) {
+    setFile(chosen);
+    setFileError(null);
+    if (!title.trim() || title === automaticTitle.current) {
+      const name = chosen?.name ?? "";
+      automaticTitle.current = (name.replace(/\.[^.]+$/, "") || name).slice(0, 120);
+      setTitle(automaticTitle.current);
+      setTitleError(null);
+    }
+  }
+
+  async function completeCase(caseId: string, context: ReturnType<typeof captureCommandContext>) {
+    if (!sheet || !actor) {
+      navigate(caseHref(caseId));
+      return;
+    }
+    if (procurementFile) {
+      setProcurementCase(caseId);
+      setProcurementError(null);
+      setBusy("uploading");
+      try {
+        await uploadIntakeProcurement(actor, caseId, procurementFile, context);
+      } catch (error) {
+        if (isSessionIdentityCurrent(context.identity)) setProcurementError(errorMessage(error));
+        return;
+      } finally {
+        setBusy(null);
+      }
+    }
+    if (!mounted.current) return;
+    assertCommandContextCurrent(context);
+    setProcurementCase(null);
+    setProcurementFile(null);
+    setFile(null);
+    setTitle("");
+    setResumeFile(null);
+    sheet.onComplete(caseId);
+  }
+
   async function submitNew(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (actor === null || !canCreate || busy !== null || submitting.current) return;
     const actorKeyAtSubmit = actorKey;
-    const commandContext = captureCommandContext(actor);
+    let commandContext: ReturnType<typeof captureCommandContext>;
+    try {
+      commandContext = captureCommandContext(actor);
+    } catch (error) {
+      setFormError(errorMessage(error));
+      return;
+    }
     const titleProblem = validateCaseTitle(title);
     setTitleError(titleProblem);
     if (titleProblem !== null) return;
@@ -406,6 +491,10 @@ export function IntakePrimaryContract({
     }
     if (file.size > INTAKE_MAX_FILE_BYTES) {
       setFileError("主合同文件不能超过 32 MiB");
+      return;
+    }
+    if (procurementFile && procurementFile.size > INTAKE_MAX_FILE_BYTES) {
+      setProcurementError("采购文件不能超过 32 MiB");
       return;
     }
     submitting.current = true;
@@ -534,7 +623,7 @@ export function IntakePrimaryContract({
       setBusy(null);
       if (result.state === "completed") {
         if (stored) {
-          navigate(caseHref(result.case_id, null));
+          await completeCase(result.case_id, commandContext);
           return;
         }
         setProblem({
@@ -658,7 +747,8 @@ export function IntakePrimaryContract({
           }
           if (!isCurrentContinuation(next)) return;
           setNotice("已按同一幂等键从服务器恢复该操作。");
-          if (recovered.state === "completed") navigate(caseHref(recovered.case_id, null));
+          if (recovered.state === "completed")
+            await completeCase(recovered.case_id, commandContext);
           return;
         } catch (recoverError) {
           if (isAbortError(recoverError) || !isCurrentContinuation(continuation)) return;
@@ -948,6 +1038,144 @@ export function IntakePrimaryContract({
           </dd>
         </div>
       </dl>
+    );
+  }
+
+  function renderSheetForm() {
+    return (
+      <form className="review-intake-form" onSubmit={submitNew} noValidate>
+        <div
+          className="review-intake-dropzone"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            if (event.dataTransfer.files.length !== 1) {
+              setFileError("请一次选择一份主合同。");
+              return;
+            }
+            chooseSheetFile(event.dataTransfer.files[0] ?? null);
+          }}
+        >
+          <Button
+            type="text"
+            className="review-intake-picker"
+            data-intake-primary-picker
+            icon={<UploadOutlined aria-hidden="true" />}
+            onClick={() => quickFileInput.current?.click()}
+          >
+            拖入拟签合同，或选择文件
+          </Button>
+          <span className="meta">Word · PDF · 图片 · 文本，单份不超过 32 MiB</span>
+          <input
+            ref={quickFileInput}
+            type="file"
+            hidden
+            aria-label="选择主合同文件"
+            onChange={(event) => {
+              chooseSheetFile(event.target.files?.[0] ?? null);
+              event.target.value = "";
+            }}
+          />
+        </div>
+        {file && (
+          <div className="review-intake-file">
+            <span className="review-intake-file-kind">主合同</span>
+            <strong>{file.name}</strong>
+            <Button
+              type="text"
+              size="small"
+              onClick={() => chooseSheetFile(null)}
+              aria-label="移除主合同"
+            >
+              移除
+            </Button>
+          </div>
+        )}
+        {fileError ? <p role="alert">{fileError}</p> : null}
+        <label className="home-intake-field" htmlFor={titleInputId}>
+          案件名称
+          <Input
+            id={titleInputId}
+            value={title}
+            maxLength={120}
+            required
+            aria-invalid={titleError !== null}
+            aria-describedby={titleError ? titleErrorId : undefined}
+            onChange={(event) => {
+              setTitle(event.target.value);
+              setTitleError(null);
+            }}
+          />
+        </label>
+        {titleError ? (
+          <p role="alert" id={titleErrorId}>
+            {titleError}
+          </p>
+        ) : null}
+        <div className="review-intake-fields">
+          <label className="home-intake-field">
+            业务场景
+            <Select<string>
+              aria-label="业务场景"
+              value={scenario}
+              onChange={(value) => {
+                setScenario(value);
+                if (value === "cloud_services") setContractType("service");
+              }}
+              options={[...SCENARIOS]}
+            />
+          </label>
+          <label className="home-intake-field">
+            合同类型
+            <Select<string>
+              aria-label="合同类型"
+              value={contractType}
+              disabled={scenario === "cloud_services"}
+              onChange={setContractType}
+              options={[...CONTRACT_TYPES]}
+            />
+          </label>
+        </div>
+        <div className="review-intake-file review-intake-option">
+          <span>{procurementFile?.name ?? "采购文件 / 招标书（可选）"}</span>
+          <input
+            ref={procurementInput}
+            type="file"
+            hidden
+            aria-label="选择采购文件"
+            onChange={(event) => {
+              setProcurementFile(event.target.files?.[0] ?? null);
+              setProcurementError(null);
+              event.target.value = "";
+            }}
+          />
+          {procurementFile ? (
+            <Button
+              type="text"
+              size="small"
+              onClick={() => {
+                setProcurementFile(null);
+                setProcurementError(null);
+              }}
+              aria-label="移除采购文件"
+            >
+              移除
+            </Button>
+          ) : (
+            <Button type="link" size="small" onClick={() => procurementInput.current?.click()}>
+              添加文件
+            </Button>
+          )}
+        </div>
+        {procurementError ? <p role="alert">{procurementError}</p> : null}
+        {formError ? <p role="alert">{formError}</p> : null}
+        <div className="review-intake-actions">
+          <Button onClick={sheet?.onCancel}>取消</Button>
+          <Button type="primary" htmlType="submit" disabled={busy !== null}>
+            开始建档
+          </Button>
+        </div>
+      </form>
     );
   }
 
@@ -1394,6 +1622,51 @@ export function IntakePrimaryContract({
           </Button>
         </div>
       </div>
+    );
+  }
+
+  if (sheet) {
+    if (!hydrated || actor === null) return <p role="status">正在读取办理状态…</p>;
+    if (procurementCase) {
+      return (
+        <div className="review-intake-form">
+          <p>案件与主合同已登记。</p>
+          {busy ? <p role="status">正在上传采购文件…</p> : null}
+          {procurementError ? (
+            <Alert type="error" title="采购文件未能上传" description={procurementError} />
+          ) : null}
+          <div className="review-intake-actions">
+            <Button disabled={busy !== null} onClick={() => sheet.onComplete(procurementCase)}>
+              打开案件
+            </Button>
+            <Button
+              type="primary"
+              disabled={busy !== null}
+              onClick={() => {
+                try {
+                  void completeCase(procurementCase, captureCommandContext(actor));
+                } catch (error) {
+                  setProcurementError(errorMessage(error));
+                }
+              }}
+            >
+              重试采购文件
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <>
+        {renderProblem()}
+        {draft
+          ? renderContinuation()
+          : busy === "hashing" || busy === "uploading"
+            ? renderProgress()
+            : canCreate
+              ? renderSheetForm()
+              : renderNewForm()}
+      </>
     );
   }
 

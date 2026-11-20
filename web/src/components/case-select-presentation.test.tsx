@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks same-name case selectors expose full secondary identity, accept Chinese scene or exact identifier searches and submit the selected stable case ID.
+// Purpose: Checks case option labels and Chinese or exact-identifier searches without displaying empty business profile fields.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -44,7 +44,7 @@ describe("case selector identity", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("combobox", { name: "关联案件" }));
     const option = screen.getByRole("option", { name: /case-complete-beta/ });
-    expect(option).toHaveTextContent("业务编号未登记");
+    expect(option).not.toHaveTextContent("业务编号未登记");
     expect(option).toHaveTextContent("框架协议");
     expect(option.querySelector('[style*="overflow-wrap"]')).toHaveStyle({
       whiteSpace: "normal",

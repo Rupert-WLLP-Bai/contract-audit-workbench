@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-02
 // Updated: 2026-11-20
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -53,7 +53,9 @@ try {
   await page.getByRole("heading", { name: "选择组织身份" }).waitFor();
   await page.getByRole("radio", { name: /合成租户 A/ }).check();
   await page.getByRole("button", { name: "进入工作台" }).click();
-  await page.getByRole("heading", { name: "审一份新合同" }).waitFor();
+  await page.waitForURL(`${web}/`);
+  await page.goto(`${web}/review`);
+  await page.getByRole("heading", { name: "审一份合同" }).waitFor();
 
   // Capture the form's original authority once. The stale command below keeps
   // these exact values; it must not refresh or recapture after switching.
@@ -116,8 +118,8 @@ try {
     mimeType: "text/plain",
     buffer: Buffer.from("拟签合同约定质保24个月。合同总价100万元。"),
   });
-  await page.getByLabel("案件标题").fill("合成租户 B 的嵌入式审查");
-  await page.getByRole("button", { name: "上传主合同并建立案件" }).click();
+  await page.getByLabel("案件名称").fill("合成租户 B 的嵌入式审查");
+  await page.getByRole("button", { name: "开始建档" }).click();
   await page.waitForURL(/\/cases\/[^/]+(?:\?|$)/, { timeout: 60_000 });
   const homeCaseID = new URL(page.url()).pathname.split("/").at(-1);
   if (!homeCaseID) throw new Error("embedded intake did not navigate to its case");

@@ -1,10 +1,10 @@
 /* File metadata (manifest mirror): */
-/* Purpose: Styles the client identity menu and keeps utility navigation at the bottom of the scrollable expanded sidebar. */
+/* Purpose: Styles the client top bar, global search, outlined intake entry and responsive object navigation. */
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-20 */
 /* Updated: 2026-11-20 */
-/* Revision: r2 */
+/* Revision: r3 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -85,4 +85,106 @@
     > .shell-nav-disclosure {
     border-block-start: 1px solid var(--border-default);
   }
+}
+
+.client-brand-mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 var(--space-6);
+  height: var(--space-6);
+  color: var(--text-inverse);
+  background: var(--action-primary);
+  border-radius: var(--radius-tag);
+  font-size: var(--font-size-small);
+}
+
+.client-topbar .global-search {
+  justify-self: start;
+  width: 100%;
+  max-width: 360px;
+}
+
+.client-topbar .header-search-input {
+  background-color: var(--surface-rail-raised);
+  font-size: var(--font-size-small);
+}
+
+.client-search-shortcut {
+  padding-inline: var(--space-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-tag);
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  white-space: nowrap;
+  font: inherit;
+}
+
+.shell-navigation .client-intake-action {
+  width: calc(100% - 2 * var(--space-3));
+  min-height: 34px;
+  margin: var(--space-1) var(--space-3) var(--space-3);
+  border-radius: var(--radius-control);
+  font-weight: var(--font-weight-semibold);
+}
+
+.client-intake-icon {
+  color: var(--action-primary);
+}
+
+.shell-nav--collapsed .client-intake-label {
+  display: none;
+}
+
+.shell-navigation .shell-navigation-primary-item {
+  font-weight: var(--font-weight-normal);
+}
+
+.shell-navigation .shell-navigation-primary-item[aria-current="page"] {
+  font-weight: var(--font-weight-semibold);
+}
+
+@media (min-width: 992px) {
+  .client-topbar:not(.topbar--without-search) {
+    grid-template-columns: calc(var(--sidebar-expanded-width) - var(--space-4)) minmax(0, 1fr) auto;
+    gap: var(--space-4);
+    padding-inline: var(--space-4);
+  }
+}
+
+@media (max-width: 991px) {
+  .client-topbar .global-search {
+    max-width: none;
+  }
+}
+
+.client-topbar .global-search {
+  position: relative;
+}
+
+.client-search-results {
+  position: absolute;
+  z-index: 1;
+  inset: calc(100% + var(--space-1)) 0 auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+}
+
+.client-search-alternate {
+  display: block;
+  width: 100%;
+  min-height: var(--control-height);
+  padding-inline: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-tag);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: start;
+  cursor: pointer;
+}
+
+.client-search-alternate:hover,
+.client-search-alternate:focus-visible {
+  background: var(--surface-hover);
 }

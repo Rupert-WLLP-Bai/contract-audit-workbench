@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r14
+// Revision: r15
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1330,7 +1330,7 @@ async function openReviewSection(
 async function navigateFromReviewToCases(user: ReturnType<typeof userEvent.setup>) {
   await openReviewSection(user, "原文核对");
   const navigation = await screen.findByRole("navigation", { name: "主导航" });
-  await user.click(within(navigation).getByRole("link", { name: "案件与材料" }));
+  await user.click(within(navigation).getByRole("link", { name: "案件" }));
 }
 
 async function selectBusinessTime() {
@@ -3273,7 +3273,7 @@ describe("application routes and API contract", () => {
         void client.invalidateQueries({ queryKey: queryKeys.session });
       });
       if (status === 401)
-        expect(await screen.findByRole("heading", { name: "登录合同审查" })).toBeVisible();
+        expect(await screen.findByRole("heading", { name: "登录" })).toBeVisible();
       else expect(await screen.findByRole("heading", { name: "无法连接审查服务" })).toBeVisible();
       expect(screen.queryByLabelText("需要补充的问题")).not.toBeInTheDocument();
       expect(api.requests.filter((entry) => entry.key === "POST /api/cases/c1/tasks")).toHaveLength(
@@ -3508,7 +3508,7 @@ describe("application routes and API contract", () => {
     api.signedIn = false;
     api.cases.clear();
     const { user } = open(api, "/cases");
-    expect(await screen.findByRole("heading", { name: "登录合同审查" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "登录" })).toBeInTheDocument();
     await user.type(screen.getByLabelText("账号"), "demo-admin");
     await user.type(screen.getByLabelText("密码"), "wrong");
     await user.click(screen.getByRole("button", { name: "登录" }));
@@ -3613,7 +3613,7 @@ describe("application routes and API contract", () => {
     await openReviewSection(user, "原文核对");
     await openClientAccountMenu(user);
     await user.click(screen.getByRole("button", { name: "退出" }));
-    expect(await screen.findByRole("heading", { name: "登录合同审查" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "登录" })).toBeInTheDocument();
     expect(api.signedIn).toBe(false);
     const session = api.session();
     const writes = api.requests.filter(
@@ -4753,7 +4753,7 @@ describe("application routes and API contract", () => {
     const api = new Service();
     api.adminSignedIn = false;
     const { user } = open(api, "/admin/rulepacks");
-    expect(await screen.findByRole("heading", { name: "登录管理工作台" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "登录管理后台" })).toBeInTheDocument();
     expect(
       api.requests.filter((entry) => entry.key === "GET /api/session?audience=admin").length,
     ).toBeLessThanOrEqual(2);
@@ -4780,7 +4780,7 @@ describe("application routes and API contract", () => {
     const adminSession = api.session("admin");
     expect(adminSession.csrf_token).not.toBe(api.session("client").csrf_token);
     await user.click(screen.getByRole("button", { name: "退出" }));
-    expect(await screen.findByRole("heading", { name: "登录管理工作台" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "登录管理后台" })).toBeInTheDocument();
     expect(api.requests.some((entry) => entry.key === "DELETE /api/session?audience=admin")).toBe(
       true,
     );
@@ -4801,8 +4801,8 @@ describe("application routes and API contract", () => {
   });
 
   it.each([
-    ["client", "/cases", "案件", "登录合同审查"],
-    ["admin", "/admin/rulepacks", "规则库 / RulePack 治理", "登录管理工作台"],
+    ["client", "/cases", "案件", "登录"],
+    ["admin", "/admin/rulepacks", "规则库 / RulePack 治理", "登录管理后台"],
   ] as const)(
     "switches the %s context with its own version and CSRF token",
     async (audience, path, heading, loginHeading) => {
@@ -4876,7 +4876,17 @@ describe("application routes and API contract", () => {
     },
   );
 
-  it("preserves manual sidebar collapse and expansion across Compare and other routes", async () => {
+  it("searches from the shared header with the keyboard", async () => {
+    const { user, router } = open(new Service(), "/");
+    const search = await screen.findByRole("searchbox", { name: "全局搜索" });
+    await user.keyboard("{Control>}k{/Control}");
+    expect(search).toHaveFocus();
+    await user.type(search, "接入{Enter}");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/cases"));
+    expect(new URLSearchParams(router.state.location.search).get("q")).toBe("接入");
+  });
+
+  it("preserves sidebar collapse and expansion across case and contract routes", async () => {
     const { user } = open(new Service(), "/cases");
     await screen.findByRole("heading", { name: "案件", level: 1 });
     await user.click(screen.getByRole("button", { name: "收合侧栏" }));
@@ -4884,42 +4894,37 @@ describe("application routes and API contract", () => {
       "aria-expanded",
       "false",
     );
-
-    async function openCompareFromCurrentSidebar(collapsed: boolean) {
-      const navigation = within(screen.getByRole("navigation", { name: "主导航" }));
-      const destinations = collapsed ? screen : navigation;
-      if (!destinations.queryByRole("link", { name: "版本对照" })) {
-        await user.click(navigation.getByText("更多业务"));
-      }
-      await user.click(await destinations.findByRole("link", { name: "版本对照" }));
-    }
-    await openCompareFromCurrentSidebar(true);
-    await screen.findByRole("heading", { name: /版本对照/ });
+    const nav = within(screen.getByRole("navigation", { name: "主导航" }));
+    await user.click(nav.getByRole("link", { name: "合同台账" }));
+    await screen.findByRole("heading", { name: "合同台账", level: 1 });
     expect(screen.getByRole("button", { name: "展开侧栏" })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
-
     await user.click(screen.getByRole("button", { name: "展开侧栏" }));
-    await user.click(screen.getAllByRole("link", { name: "案件与材料" })[0]!);
-    await waitFor(() =>
-      expect(
-        screen
-          .getAllByRole("link", { name: "案件与材料" })
-          .some((link) => link.getAttribute("aria-current") === "page"),
-      ).toBe(true),
-    );
+    await user.click(nav.getByRole("link", { name: "案件" }));
+    await screen.findByRole("heading", { name: "案件", level: 1 });
     expect(screen.getByRole("button", { name: "收合侧栏" })).toHaveAttribute(
       "aria-expanded",
       "true",
     );
+  });
 
-    await openCompareFromCurrentSidebar(false);
-    await screen.findByRole("heading", { name: /版本对照/ });
-    expect(screen.getByRole("button", { name: "收合侧栏" })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
+  it("keeps the legacy review and contract material routes without duplicate case lists", async () => {
+    const api = new Service();
+    api.role = "admin";
+    const { router } = open(api, "/review");
+    expect(await screen.findByRole("heading", { name: "审一份合同", level: 1 })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "案件列表" })).not.toBeInTheDocument();
+    await act(async () => {
+      await router.navigate("/contract-desk");
+    });
+    await waitFor(() => expect(router.state.location.pathname).toBe("/cases"));
+    await act(async () => {
+      await router.navigate("/contract-desk?open_material=doc-missing");
+    });
+    await waitFor(() => expect(router.state.location.pathname).toBe("/contract-desk"));
+    expect(router.state.location.search).toContain("open_material=doc-missing");
   });
 
   it("preserves the active session observer through the login transition", async () => {
@@ -4927,7 +4932,7 @@ describe("application routes and API contract", () => {
     api.signedIn = false;
     api.cases.clear();
     const { user } = open(api, "/cases");
-    await screen.findByRole("heading", { name: "登录合同审查" });
+    await screen.findByRole("heading", { name: "登录" });
     await user.type(screen.getByLabelText("账号"), "demo-admin");
     await user.type(screen.getByLabelText("密码"), "admin-demo");
     await user.click(screen.getByRole("button", { name: "登录" }));
@@ -5095,7 +5100,7 @@ describe("application routes and API contract", () => {
     const source = Stream.latest!;
     source.readyState = 2;
     act(() => source.onerror?.());
-    expect(await screen.findByRole("heading", { name: "登录合同审查" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "登录" })).toBeInTheDocument();
     expect(screen.queryByText("质保期限不一致")).not.toBeInTheDocument();
   });
 

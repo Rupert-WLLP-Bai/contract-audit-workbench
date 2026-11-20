@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-19
 // Updated: 2026-11-20
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -91,10 +91,12 @@ function NavigationMenu({
   title,
   groups,
   collapsed = false,
+  action,
 }: {
   title: string;
   groups: ShellNavGroup[];
   collapsed?: boolean;
+  action?: ReactNode;
 }) {
   const id = useId();
   const [visibility, setVisibility] = useState<Record<string, boolean>>({});
@@ -104,6 +106,7 @@ function NavigationMenu({
       aria-label={title}
       onKeyDown={focusNavigationControl}
     >
+      {action}
       <ul className="shell-nav-groups">
         {groups.map((group) => {
           const expanded = visibility[group.key] ?? group.links.some((link) => link.current);
@@ -162,6 +165,7 @@ export function ShellNavigation({
   className = "",
   compact = false,
   drawerFooter,
+  action,
 }: {
   title: string;
   groups: ShellNavGroup[];
@@ -171,6 +175,7 @@ export function ShellNavigation({
   className?: string;
   compact?: boolean;
   drawerFooter?: ReactNode;
+  action?: (afterDrawerClosed?: (callback: () => void) => void) => ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [openedAt, setOpenedAt] = useState<string | null>(null);
@@ -179,13 +184,22 @@ export function ShellNavigation({
   const drawerId = useId();
   const opener = useRef<HTMLButtonElement | HTMLAnchorElement>(null);
   const restoreFocus = useRef(false);
+  const afterClose = useRef<(() => void) | null>(null);
   const drawerOpen = openedAt === key && (drawerOnly || compact || !screens.lg);
   if (openedAt !== null && !drawerOpen) setOpenedAt(null);
 
   useEffect(() => {
-    if (drawerOpen || !restoreFocus.current) return;
-    restoreFocus.current = false;
-    opener.current?.focus({ preventScroll: true });
+    if (drawerOpen) return;
+    const callback = afterClose.current;
+    afterClose.current = null;
+    if (callback) {
+      const frame = requestAnimationFrame(callback);
+      return () => cancelAnimationFrame(frame);
+    }
+    if (restoreFocus.current) {
+      restoreFocus.current = false;
+      opener.current?.focus({ preventScroll: true });
+    }
   }, [drawerOpen]);
 
   return (
@@ -214,7 +228,6 @@ export function ShellNavigation({
           {compact && (
             <Button
               ref={opener}
-              type="primary"
               className="review-rail-opener"
               icon={<MenuOutlined />}
               aria-label={`打开${title}`}
@@ -233,15 +246,18 @@ export function ShellNavigation({
               onKeyDown={focusNavigationControl}
             >
               {groups
-                .flatMap((group) =>
-                  group.links.filter((link) => group.key === "primary" || link.compact),
-                )
+                .flatMap((group) => group.links.filter((link) => link.compact))
                 .map((link) => (
                   <NavigationLink key={link.href} link={link} />
                 ))}
             </nav>
           ) : (
-            <NavigationMenu title={title} groups={groups} collapsed={collapsed} />
+            <NavigationMenu
+              title={title}
+              groups={groups}
+              collapsed={collapsed}
+              action={action?.()}
+            />
           )}
           {compact || collapsed ? null : footer}
         </Layout.Sider>
@@ -287,7 +303,14 @@ export function ShellNavigation({
         classNames={{ body: "shell-navigation-body" }}
         footer={drawerFooter}
       >
-        <NavigationMenu title={title} groups={groups} />
+        <NavigationMenu
+          title={title}
+          groups={groups}
+          action={action?.((callback) => {
+            afterClose.current = callback;
+            setOpenedAt(null);
+          })}
+        />
       </Drawer>
     </>
   );

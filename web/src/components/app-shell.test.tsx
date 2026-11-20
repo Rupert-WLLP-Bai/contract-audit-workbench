@@ -4,11 +4,12 @@
 // Contact: +86 13617696321
 // Created: 2026-10-30
 // Updated: 2026-11-20
-// Revision: r9
+// Revision: r10
 // Copyright: See LICENSE
 // End file metadata.
 
 import { screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,6 +34,19 @@ vi.mock("../api/queries", () => ({
   useCaseDetail: mocks.useCaseDetail,
   useContextChoices: mocks.useContextChoices,
   useSwitchContext: mocks.useSwitchContext,
+}));
+
+vi.mock("./dirty-leave-guard", () => ({
+  DirtyLeaveGuardProvider: ({ children }: { children: ReactNode }) => children,
+}));
+
+vi.mock("../features/intake/review-intake-dialog", () => ({
+  ReviewIntakeDialog: ({ open, onClose }: { open: boolean; onClose: () => void }) =>
+    open ? (
+      <dialog open aria-label="审一份合同">
+        <button onClick={onClose}>取消建档</button>
+      </dialog>
+    ) : null,
 }));
 
 const mutateAsync = vi.fn<() => Promise<void>>();
@@ -83,7 +97,20 @@ function renderShell(path = "/", state?: unknown) {
           <Route path="/login" element={<LocationEcho />} />
           <Route element={<AppShell />}>
             <Route path="/contract-desk" element={<LocationEcho />} />
+            <Route path="/contracts" element={<LocationEcho />} />
             <Route path="/cases" element={<LocationEcho />} />
+            <Route
+              path="/review"
+              element={
+                <>
+                  <LocationEcho />
+                  <button data-intake-primary-picker>选择主合同</button>
+                </>
+              }
+            />
+            <Route path="/compare" element={<LocationEcho />} />
+            <Route path="/support" element={<LocationEcho />} />
+            <Route path="/workbench/*" element={<LocationEcho />} />
             <Route path="/cases/:caseId/reviews/:runId/agent" element={<LocationEcho />} />
             <Route path="*" element={<p>页面内容</p>} />
           </Route>
@@ -122,7 +149,7 @@ describe("app shell", () => {
     renderShell();
     expect(screen.getByRole("link", { name: "合同审计工作台首页" })).toHaveAttribute("href", "/");
     expect(screen.queryByText(/黄桷树/)).not.toBeInTheDocument();
-    expect(screen.getByLabelText("全局搜索案件")).toBeInTheDocument();
+    expect(screen.getByLabelText("全局搜索")).toBeInTheDocument();
     expect(within(screen.getByLabelText("当前身份")).getByText("审查员甲")).toBeInTheDocument();
     expect(screen.queryByText("租户一")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "头像菜单" }));
@@ -154,17 +181,24 @@ describe("app shell", () => {
   });
 
   it.each([
-    ["/review", ["我的待办", "合同审查"]],
-    ["/compare", ["我的待办", "版本对照"]],
-    ["/cases", ["我的待办", "案件管理"]],
-    ["/workbench/tasks", ["我的待办", "业务管理", "审查任务"]],
-    ["/workbench/unknown", ["我的待办", "业务管理", "工作区"]],
-    ["/api-docs", ["开发者", "API 接入"]],
-    ["/elsewhere", ["开发者", "API 接入"]],
-  ])("builds the breadcrumb for %s", (path, labels) => {
+    ["/review", "审一份合同"],
+    ["/compare", "版本对照"],
+    ["/cases", "案件"],
+    ["/contracts", "合同台账"],
+    ["/subjects", "主体"],
+    ["/workbench/approvals", "会签"],
+    ["/workbench/remediation", "整改"],
+    ["/workbench/reports", "报告"],
+    ["/workbench/tasks", "审查任务"],
+    ["/workbench/unknown", "工作区"],
+    ["/api-docs", "API 文档"],
+    ["/elsewhere", "未找到页面"],
+  ])("builds a two-level breadcrumb for %s", (path, label) => {
     renderShell(path);
     const nav = breadcrumbs();
-    for (const label of labels) expect(nav).toHaveTextContent(label);
+    expect(nav).toHaveTextContent(label);
+    expect(nav).not.toHaveTextContent("业务管理");
+    expect(within(nav).getByRole("link", { name: "我的待办" })).toHaveAttribute("href", "/");
   });
 
   it("uses the case title and adds the review workspace crumb outside focused reading", () => {
@@ -219,10 +253,10 @@ describe("app shell", () => {
   it("searches cases and clears the selection and page parameters", async () => {
     const user = userEvent.setup();
     renderShell("/cases?run=needs_human&selected=c1&page=2");
-    const search = screen.getByLabelText("全局搜索案件");
+    const search = screen.getByLabelText("全局搜索");
     await user.clear(search);
     await user.type(search, "  基站  ");
-    await user.click(screen.getByRole("button", { name: "搜索" }));
+    await user.keyboard("{Enter}");
     await waitFor(() =>
       expect(screen.getByTestId("location")).toHaveTextContent(
         "/cases?run=needs_human&q=%E5%9F%BA%E7%AB%99",
@@ -233,27 +267,63 @@ describe("app shell", () => {
   it("removes the query when the search is cleared", async () => {
     const user = userEvent.setup();
     renderShell("/cases?q=old&run=active");
-    const search = screen.getByLabelText("全局搜索案件");
+    const search = screen.getByLabelText("全局搜索");
     await user.clear(search);
-    await user.click(screen.getByRole("button", { name: "搜索" }));
+    await user.keyboard("{Enter}");
     await waitFor(() =>
       expect(screen.getByTestId("location")).toHaveTextContent("/cases?run=active"),
     );
   });
 
-  it("leaves the contract desk query to its own search", () => {
-    renderShell("/contract-desk?q=园区");
-    expect(screen.queryByLabelText("全局搜索案件")).not.toBeInTheDocument();
+  it("keeps global search available on legacy pages without reusing their search params", async () => {
+    const user = userEvent.setup();
+    renderShell("/contract-desk?q=园区&open_material=doc-1");
+    const search = screen.getByLabelText("全局搜索");
+    expect(search).toHaveValue("");
+    await user.keyboard("{Control>}k{/Control}");
+    expect(search).toHaveFocus();
+    expect(search).toHaveAttribute("aria-keyshortcuts", expect.stringMatching(/K$/));
+    expect(screen.queryByRole("button", { name: "搜索" })).not.toBeInTheDocument();
     expect(within(breadcrumbs()).getByRole("link", { name: "我的待办" })).toHaveAttribute(
       "href",
       "/",
     );
-    expect(screen.getByTestId("location")).toHaveTextContent("/contract-desk?q=园区");
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/contract-desk?q=园区&open_material=doc-1",
+    );
+    await user.type(search, "基站{Enter}");
+    expect(screen.getByTestId("location")).toHaveTextContent("/cases?q=%E5%9F%BA%E7%AB%99");
+    expect(screen.getByTestId("location")).not.toHaveTextContent("open_material");
+  });
+
+  it("switches from the default case search to the contract ledger by keyboard", async () => {
+    const user = userEvent.setup();
+    renderShell();
+    const search = screen.getByLabelText("全局搜索");
+    await user.type(search, "网联");
+    const alternative = screen.getByRole("button", { name: "在合同台账搜索" });
+    await user.keyboard("{ArrowDown}");
+    expect(alternative).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByTestId("location")).toHaveTextContent("/contracts?q=%E7%BD%91%E8%81%94");
+    expect(search).toHaveValue("网联");
+  });
+
+  it("defaults Enter to contract filtering on the ledger and offers cases", async () => {
+    const user = userEvent.setup();
+    renderShell("/contracts?q=before");
+    const search = screen.getByLabelText("全局搜索");
+    expect(search).toHaveValue("before");
+    await user.clear(search);
+    await user.type(search, "CGHT202603008");
+    expect(screen.getByRole("button", { name: "在案件搜索" })).toBeVisible();
+    await user.keyboard("{Enter}");
+    expect(screen.getByTestId("location")).toHaveTextContent("/contracts?q=CGHT202603008");
   });
 
   it("keeps the search box in sync with the URL", async () => {
     renderShell("/cases?q=基站");
-    expect(screen.getByLabelText("全局搜索案件")).toHaveValue("基站");
+    expect(screen.getByLabelText("全局搜索")).toHaveValue("基站");
   });
 
   it("keeps the full navigation available in a drawer on the review reading route", async () => {
@@ -261,11 +331,8 @@ describe("app shell", () => {
     renderShell("/cases/case-1/reviews/run-1");
     const rail = screen.getByRole("navigation", { name: "主导航" });
     expect(within(rail).getByRole("link", { name: "我的待办" })).toHaveAttribute("href", "/");
-    expect(within(rail).getByRole("link", { name: "案件与材料" })).toHaveAttribute(
-      "href",
-      "/cases",
-    );
-    expect(screen.queryByLabelText("全局搜索案件")).not.toBeInTheDocument();
+    expect(within(rail).getByRole("link", { name: "案件" })).toHaveAttribute("href", "/cases");
+    expect(screen.queryByLabelText("全局搜索")).not.toBeInTheDocument();
     expect(document.querySelector(".app")).toHaveClass("app--review");
     const trigger = screen.getByRole("button", { name: "打开主导航" });
     trigger.focus();
@@ -274,7 +341,7 @@ describe("app shell", () => {
     expect(screen.getAllByRole("navigation", { name: "主导航" })).toEqual([
       within(drawer).getByRole("navigation", { name: "主导航" }),
     ]);
-    expect(within(drawer).getByRole("link", { name: "案件与材料" })).toHaveAttribute(
+    expect(within(drawer).getByRole("link", { name: "案件" })).toHaveAttribute(
       "aria-current",
       "page",
     );
@@ -290,15 +357,26 @@ describe("app shell", () => {
     expect(document.querySelector(".app")).toHaveClass(className);
   });
 
-  it("selects the parent navigation entry for nested module routes", () => {
-    renderShell("/workbench/tasks/123");
-    expect(screen.getByRole("link", { name: "任务管理" })).toHaveClass("active");
+  it.each([
+    "/review",
+    "/compare",
+    "/contract-desk",
+    "/workbench/tasks/123",
+    "/workbench/evidence",
+    "/workbench/evidence-sla",
+    "/support",
+  ])("keeps legacy %s reachable without a main nav entry", (path) => {
+    renderShell(path);
+    const nav = within(screen.getByRole("navigation", { name: "主导航" }));
+    expect(nav.getAllByRole("link")).toHaveLength(7);
+    expect(nav.getAllByRole("link").map((link) => link.getAttribute("href"))).not.toContain(path);
+    expect(screen.getByTestId("location")).toHaveTextContent(path);
   });
 
   it("keeps unknown module and external paths unselected but readable", () => {
     renderShell("/workbench/unknown");
     expect(
-      within(screen.getByLabelText("主导航")).getByRole("link", { name: "合同清单" }),
+      within(screen.getByLabelText("主导航")).getByRole("link", { name: "合同台账" }),
     ).not.toHaveAttribute("aria-current", "page");
   });
 
@@ -307,10 +385,10 @@ describe("app shell", () => {
     renderShell("/cases");
     const nav = within(screen.getByRole("navigation", { name: "主导航" }));
     const home = nav.getByRole("link", { name: "我的待办" });
-    const review = nav.getByRole("link", { name: "发起审查" });
+    const review = nav.getByRole("link", { name: "案件" });
     expect(nav.queryAllByRole("menuitem")).toHaveLength(0);
     expect(nav.getAllByRole("link", { name: "我的待办" })).toEqual([home]);
-    expect(review).toHaveAttribute("href", "/review");
+    expect(review).toHaveAttribute("href", "/cases");
     home.focus();
     await user.tab();
     expect(review).toHaveFocus();
@@ -324,9 +402,9 @@ describe("app shell", () => {
     const nav = within(screen.getByRole("navigation", { name: "主导航" }));
     expect(nav.getAllByRole("link")[0]).toHaveAttribute("href", "/");
     expect(nav.getByRole("link", { name: "我的待办" })).toHaveAttribute("aria-current", "page");
-    expect(nav.getByRole("link", { name: "合同清单" })).toHaveAttribute("href", "/contract-desk");
-    expect(nav.getByRole("link", { name: "案件与材料" })).toHaveAttribute("href", "/cases");
-    await user.click(nav.getByRole("button", { name: "更多工具" }));
+    expect(nav.getByRole("link", { name: "合同台账" })).toHaveAttribute("href", "/contracts");
+    expect(nav.getByRole("link", { name: "案件" })).toHaveAttribute("href", "/cases");
+    await user.click(nav.getByRole("button", { name: "知识与设置" }));
     expect(nav.queryByRole("link", { name: "Agent Studio" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "头像菜单" }));
     expect(screen.getByRole("switch", { name: "专业模式" })).not.toBeChecked();
@@ -393,62 +471,72 @@ describe("app shell", () => {
   });
 
   it.each([
-    ["/review", "发起审查", "/review"],
-    ["/compare", "版本对照", "/compare"],
-    ["/cases", "案件与材料", "/cases"],
-    ["/support", "案件支援访问", "/support"],
-    ["/contracts", "合同登记与履约", "/contracts"],
-    ["/workbench/approvals", "合同会签", "/workbench/approvals"],
-    ["/subjects", "主体台账", "/subjects"],
-    ["/workbench/tasks", "任务管理", "/workbench/tasks"],
-    ["/workbench/remediation", "整改中心", "/workbench/remediation"],
-    ["/workbench/reports", "报告中心", "/workbench/reports"],
-    ["/workbench/evidence", "证据中心", "/workbench/evidence"],
-    ["/workbench/evidence-sla", "补证时效", "/workbench/evidence-sla"],
-    ["/workbench/knowledge", "知识库", "/workbench/knowledge"],
-    ["/", "我的待办", "/"],
-    ["/contract-desk", "合同清单", "/contract-desk"],
-    ["/workbench/templates", "模板管理", "/workbench/templates"],
-    ["/workbench/organization", "组织与权限", "/workbench/organization"],
-    ["/workbench/tools", "工具网关", "/workbench/tools"],
-    ["/workbench/executions", "Agent Studio", "/workbench/executions"],
-    ["/docs/", "使用手册", "/docs/"],
-    ["/api-docs", "API 文档", "/api-docs"],
-  ])("keeps %s reachable from its selected entry group", async (path, label, href) => {
+    ["/cases", "案件"],
+    ["/contracts", "合同台账"],
+    ["/workbench/approvals", "会签"],
+    ["/workbench/remediation", "整改"],
+    ["/workbench/reports", "报告"],
+    ["/subjects", "主体"],
+    ["/workbench/knowledge", "知识库"],
+    ["/workbench/templates", "合同模板"],
+    ["/workbench/tools", "工具网关"],
+    ["/workbench/executions", "Agent Studio"],
+    ["/api-docs", "API 文档"],
+  ])("matches the navigation and breadcrumb for %s", (path, label) => {
     if (["/workbench/tools", "/workbench/executions", "/api-docs"].includes(path)) {
       localStorage.setItem("caw:professional-mode:" + browserIdentityKey(actor), "true");
     }
     renderShell(path);
     const nav = within(screen.getByRole("navigation", { name: "主导航" }));
-    if (path === "/docs/") {
-      await userEvent.click(nav.getByRole("button", { name: "知识与规则" }));
-    }
-    expect(nav.getByRole("link", { name: label })).toHaveAttribute("href", href);
+    expect(nav.getByRole("link", { name: label })).toHaveAttribute("href", path);
+    expect(nav.getByRole("link", { name: label })).toHaveAttribute("aria-current", "page");
+    expect(breadcrumbs()).toHaveTextContent(label);
   });
 
-  it("keeps public references and read-only directories visible while hiding admin operations", async () => {
-    const user = userEvent.setup();
+  it("keeps the reference disclosure available while hiding administrative links from reviewers", () => {
     renderShell("/workbench/knowledge");
     const nav = within(screen.getByRole("navigation", { name: "主导航" }));
     expect(nav.getByRole("link", { name: "知识库" })).toHaveAttribute(
       "href",
       "/workbench/knowledge",
     );
-    expect(nav.getByRole("link", { name: "模板管理" })).toHaveAttribute(
+    expect(nav.getByRole("link", { name: "合同模板" })).toHaveAttribute(
       "href",
       "/workbench/templates",
     );
-    await user.click(nav.getByRole("button", { name: "更多工具" }));
     expect(nav.getByRole("link", { name: "使用手册" })).toHaveAttribute("href", "/docs/");
-    expect(nav.queryByRole("link", { name: "API 文档" })).not.toBeInTheDocument();
-    expect(nav.getByRole("link", { name: "组织与权限" })).toHaveAttribute(
-      "href",
-      "/workbench/organization",
-    );
-    expect(nav.queryByRole("link", { name: "工具网关" })).not.toBeInTheDocument();
-    for (const label of ["系统设置", "系统健康", "审计日志", "规则包治理"]) {
+    for (const label of [
+      "组织与权限",
+      "API 文档",
+      "工具网关",
+      "系统设置",
+      "系统健康",
+      "审计日志",
+      "规则包治理",
+    ]) {
       expect(nav.queryByRole("link", { name: label })).not.toBeInTheDocument();
     }
+  });
+
+  it("opens the intake dialog from the shell and drops its presentation when identity changes", async () => {
+    const user = userEvent.setup();
+    const refresh = renderShell();
+    await user.click(screen.getByRole("button", { name: "审一份合同" }));
+    expect(screen.getByRole("dialog", { name: "审一份合同" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "取消建档" }));
+    expect(screen.queryByRole("dialog", { name: "审一份合同" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "审一份合同" }));
+    mocks.useSession.mockReturnValue({ data: { ...actor, id: "different-actor" } });
+    refresh();
+    expect(screen.queryByRole("dialog", { name: "审一份合同" })).not.toBeInTheDocument();
+  });
+
+  it("focuses the embedded intake surface when the sidebar action is used on /review", async () => {
+    const user = userEvent.setup();
+    renderShell("/review");
+    await user.click(screen.getByRole("button", { name: "审一份合同" }));
+    expect(screen.getByRole("button", { name: "选择主合同" })).toHaveFocus();
+    expect(screen.queryByRole("dialog", { name: "审一份合同" })).not.toBeInTheDocument();
   });
 
   it("keeps an attempt-specific professional route intact while its view is disabled", async () => {
@@ -460,7 +548,7 @@ describe("app shell", () => {
     await user.click(screen.getByRole("switch", { name: "专业模式" }));
     const nav = within(screen.getByLabelText("主导航"));
     if (!nav.queryByRole("link", { name: "Agent Studio" })) {
-      await user.click(nav.getByRole("button", { name: "更多工具" }));
+      await user.click(nav.getByRole("button", { name: "知识与设置" }));
     }
     expect(nav.getByRole("link", { name: "Agent Studio" })).toHaveAttribute("aria-current", "page");
     expect(nav.getByRole("link", { name: "Agent Studio" })).toHaveAttribute(
@@ -485,7 +573,7 @@ describe("app shell", () => {
       "aria-expanded",
       "false",
     );
-    expect(screen.getByRole("link", { name: "合同会签" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "会签" })).toHaveAttribute(
       "href",
       "/workbench/approvals",
     );
@@ -520,10 +608,10 @@ describe("app shell", () => {
     mocks.useSession.mockReturnValue({ data: { ...actor, role: "admin" } });
     renderShell();
     const utility = within(screen.getByRole("navigation", { name: "主导航" }));
-    await userEvent.click(utility.getByRole("button", { name: "更多工具" }));
-    expect(utility.getByRole("link", { name: "系统设置" })).toHaveAttribute(
+    await userEvent.click(utility.getByRole("button", { name: "知识与设置" }));
+    expect(utility.getByRole("link", { name: "组织与权限" })).toHaveAttribute(
       "href",
-      "/workbench/settings",
+      "/workbench/organization",
     );
     expect(utility.queryByRole("link", { name: "系统健康" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "头像菜单" }));

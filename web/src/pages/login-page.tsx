@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -17,7 +17,7 @@ import { useLogin, useSession } from "../api/queries";
 import type { SessionAudience } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { CircuitMark } from "../components/circuit-mark";
-import { CompetitionIdentity } from "../components/competition-identity";
+import "./login-page.css";
 
 export function LoginPage({ audience = "client" }: { audience?: SessionAudience }) {
   const login = useLogin(audience);
@@ -73,67 +73,57 @@ export function LoginPage({ audience = "client" }: { audience?: SessionAudience 
 
   return (
     <main className="login-screen" id="main">
-      <form className="login-card" onSubmit={onSubmit}>
-        <div className="login-brand competition-brand">
-          {audience === "client" ? (
-            <CompetitionIdentity />
-          ) : (
-            <>
-              <CircuitMark size={34} />
-              <strong>合同智能审计工作台</strong>
-            </>
-          )}
-        </div>
-        <header className="login-heading">
-          <h1>{audience === "admin" ? "登录管理工作台" : "登录合同审查"}</h1>
-          <p>使用组织分配的账号登录。</p>
-        </header>
-        <label className="field">
-          账号
-          <Input
-            size="large"
-            name="username"
-            autoComplete="username"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            required
-          />
-        </label>
-        <label className="field">
-          密码
-          <Input.Password
-            size="large"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
-        </label>
-        {login.isError ? (
-          <p className="login-error" role="alert">
-            {errorMessage(login.error)}
-          </p>
+      <div className="login-layout">
+        <form className="login-card" onSubmit={onSubmit}>
+          <div className="login-brand">
+            <CircuitMark size={34} />
+            <strong>{audience === "admin" ? "合同智能审计工作台" : "合同审计工作台"}</strong>
+          </div>
+          <header className="login-heading">
+            <h1>{audience === "admin" ? "登录管理后台" : "登录"}</h1>
+          </header>
+          <label className="field">
+            账号
+            <Input
+              name="username"
+              autoComplete="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              required
+            />
+          </label>
+          <label className="field">
+            密码
+            <Input.Password
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+          </label>
+          {login.isError ? (
+            <p className="login-error" role="alert">
+              {errorMessage(login.error)}
+            </p>
+          ) : null}
+          <Button
+            aria-label={String(login.isPending ? "正在登录" : "登录")}
+            type="primary"
+            htmlType="submit"
+            disabled={login.isPending}
+          >
+            {login.isPending ? "正在登录" : "登录"}
+          </Button>
+          <Button aria-label={"企业单点登录"} type="text" href={paths.oidcLogin(audience)}>
+            企业单点登录
+          </Button>
+        </form>
+        {audience === "client" ? (
+          <p className="login-competition-name">第一届黄桷树AI智能体开发大赛</p>
         ) : null}
-        <Button
-          aria-label={String(login.isPending ? "正在登录" : "登录")}
-          type="primary"
-          size="large"
-          htmlType="submit"
-          disabled={login.isPending}
-        >
-          {login.isPending ? "正在登录" : "登录"}
-        </Button>
-        <Button
-          aria-label={"通过组织身份提供方登录"}
-          type="text"
-          size="large"
-          href={paths.oidcLogin(audience)}
-        >
-          通过组织身份提供方登录
-        </Button>
-      </form>
+      </div>
     </main>
   );
 }

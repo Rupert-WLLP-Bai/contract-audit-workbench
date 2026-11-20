@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-12
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -209,7 +209,7 @@ export function SubjectsPage() {
   return (
     <ListPage
       className="subjects-page"
-      title="主体台账"
+      title="主体"
       description="管理合同往来主体，查看身份信息、核验状态与关联案件。"
       actions={
         <Button
