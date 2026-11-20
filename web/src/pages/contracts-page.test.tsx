@@ -581,7 +581,7 @@ it("uses an accessible step header and offers the standard draft classifications
   ] as const) {
     const input = screen.getByRole("combobox", { name: label });
     await user.click(input);
-    await user.click(await screen.findByRole("option", { name: option, exact: true }));
+    await user.click(await screen.findByRole("option", { name: option }));
     expect(input.parentElement?.parentElement).toHaveTextContent(option);
   }
   await user.click(screen.getByRole("button", { name: "下一步：相关方与标的" }));
