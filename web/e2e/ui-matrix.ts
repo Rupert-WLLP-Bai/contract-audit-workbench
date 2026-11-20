@@ -139,6 +139,27 @@ const targets: Target[] = [
     },
   },
   {
+    id: "case-review-readiness",
+    site: "client",
+    path: casePath === null ? null : `${casePath}#review-readiness`,
+    needs: "E2E_CASE_ID",
+    ready: async (page) => {
+      const preparation = page.locator("#case-review-preparation[open] #review-readiness");
+      await preparation.getByRole("heading", { name: "审查准备", exact: true }).waitFor({
+        state: "visible",
+        timeout: readyTimeout,
+      });
+      await preparation.getByRole("status").filter({ hasText: "正在核对" }).waitFor({
+        state: "hidden",
+        timeout: readyTimeout,
+      });
+      assert.equal(
+        await preparation.getByRole("alert").filter({ hasText: "审查准备未能读取" }).count(),
+        0,
+      );
+    },
+  },
+  {
     id: "review-workspace",
     site: "client",
     path: reviewPath,

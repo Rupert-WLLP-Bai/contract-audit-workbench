@@ -352,19 +352,30 @@
       "kind": "route",
       "sources": [
         "web/src/pages/case-detail-page.tsx",
+        "web/src/pages/case-detail-page.css",
+        "web/src/components/review-readiness-panel.tsx",
+        "web/src/components/review-readiness-panel.css",
+        "web/src/components/single-contract-scope-coverage.tsx",
         "web/src/components/page-patterns.tsx",
         "web/src/components/page-patterns.css"
       ],
-      "implementationIssue": 257,
+      "implementationIssue": 374,
+      "testRefs": [
+        "web/src/components/review-readiness-panel.test.tsx",
+        "web/src/components/single-contract-scope-coverage.test.tsx",
+        "web/src/app.integration.test.tsx",
+        "web/e2e/ui-matrix.ts"
+      ],
       "figmaNodeId": "6:112",
       "screenshotRefs": [
         "audit/case-detail-ui2-1440.png",
         "audit/case-detail-ui2-1280.png",
         "audit/case-detail-ui2-1024.png",
-        "audit/case-detail-ui2-390.png"
+        "audit/case-detail-ui2-390.png",
+        "../ui-redesign-20261120-v3/impl/desktop/374/08-case-readiness.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：#374 定点覆盖默认折叠、重复深链展开、缺项修复、规则核对、预审转完整审查及提交校验。全角色与全视口矩阵 NOT_RUN。",
       "template": "ObjectDetailPage"
     },
     {

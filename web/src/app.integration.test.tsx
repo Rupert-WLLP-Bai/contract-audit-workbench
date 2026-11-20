@@ -1333,11 +1333,18 @@ async function navigateFromReviewToCases(user: ReturnType<typeof userEvent.setup
   await user.click(within(navigation).getByRole("link", { name: "案件" }));
 }
 
+async function openCaseReadiness() {
+  const user = userEvent.setup();
+  const tab = await screen.findByRole("tab", { name: "审查记录" });
+  if (tab.getAttribute("aria-selected") !== "true") await user.click(tab);
+  const disclosure = document.querySelector<HTMLDetailsElement>("#case-review-preparation");
+  const summary = disclosure?.querySelector("summary");
+  if (disclosure && !disclosure.open && summary) await user.click(summary);
+}
+
 async function selectBusinessTime() {
+  await openCaseReadiness();
   const input = await screen.findByLabelText("审查业务时间（北京时间）");
-  const details = input.closest("details");
-  const summary = details?.querySelector("summary");
-  if (details && !details.open && summary) await userEvent.setup().click(summary);
   fireEvent.change(input, { target: { value: "2026-10-21T08:00" } });
 }
 
@@ -3417,6 +3424,23 @@ describe("application routes and API contract", () => {
     await waitFor(() => expect(document.activeElement).toBe(requestCard));
   });
 
+  it("opens preparation by deep link or repeated action while keeping history collapsed by default", async () => {
+    const api = new Service();
+    api.addReview();
+    const { user, router } = open(api, "/cases/c1");
+    await screen.findByRole("table", { name: "历次审查" });
+    const card = document.querySelector<HTMLDetailsElement>("#case-review-preparation")!;
+    expect(card.open).toBe(false);
+    const entry = screen.getByRole("link", { name: "发起新审查" });
+    await user.click(entry);
+    await waitFor(() => expect(card.open).toBe(true));
+    expect(router.state.location.hash).toBe("#review-readiness");
+    await user.click(card.querySelector("summary")!);
+    await waitFor(() => expect(card.open).toBe(false));
+    await user.click(entry);
+    await waitFor(() => expect(card.open).toBe(true));
+  });
+
   it("shows a limited precheck in the case and starts a full review only after readiness", async () => {
     const api = new Service();
     const prior = api.addReview("partial");
@@ -3510,6 +3534,11 @@ describe("application routes and API contract", () => {
     await selectBusinessTime();
     expect(screen.queryByRole("button", { name: "开始审查" })).not.toBeInTheDocument();
     expect(
+      within(screen.getByRole("region", { name: "审查准备清单" })).getByRole("button", {
+        name: "发起新审查",
+      }),
+    ).toBeDisabled();
+    expect(
       await screen.findByRole("heading", { name: "先确认后续审查使用的材料" }),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: "确认材料集合" }));
@@ -3523,6 +3552,7 @@ describe("application routes and API contract", () => {
     expect(confirmation?.input).toEqual({ version: 8, document_ids: ["legacy-a", "native-b"] });
     expect(confirmation?.headers.has("If-Match")).toBe(false);
     expect(confirmation?.headers.has("Idempotency-Key")).toBe(false);
+    await openCaseReadiness();
     await waitFor(() => expect(screen.getByRole("button", { name: "开始审查" })).toBeEnabled());
   });
 
@@ -3820,7 +3850,8 @@ describe("application routes and API contract", () => {
     await user.click(screen.getByRole("tab", { name: "审查记录" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "开始审查" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "开始审查" }));
-    expect(await screen.findByText(/受控失败 503/)).toBeInTheDocument();
+    const readiness = screen.getByRole("region", { name: "审查准备清单" });
+    expect(await within(readiness).findByText("受控失败 503", { exact: true })).toBeVisible();
     await user.click(screen.getByRole("tab", { name: "材料" }));
     await user.upload(
       screen.getByLabelText("文件"),
@@ -4238,7 +4269,7 @@ describe("application routes and API contract", () => {
     expect(
       await screen.findByRole("heading", { name: "需要重新核对审查准备状态" }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "刷新准备清单" }));
+    await user.click(screen.getByRole("button", { name: "刷新准备清单", exact: true }));
     expect(await screen.findByRole("button", { name: "重新发起新审查" })).toBeEnabled();
     expect(
       api.requests.filter((entry) => entry.key === "GET /api/cases/c1").length,
@@ -4557,6 +4588,7 @@ describe("application routes and API contract", () => {
     item.scenario = "general";
     item.documents = [doc("d1", "procurement"), doc("d2", "draft_contract")];
     const { user } = open(api, "/cases/c1");
+    await openCaseReadiness();
     const start = await screen.findByRole("button", { name: "开始审查" });
     expect(screen.queryByLabelText("审查业务时间（北京时间）")).not.toBeInTheDocument();
     await waitFor(() => expect(start).toBeEnabled());

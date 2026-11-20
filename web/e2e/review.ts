@@ -931,7 +931,15 @@ async function fill(page: Page, session: string, selector: string, value: string
 }
 
 async function fillReviewBusinessTime(page: Page, session: string): Promise<void> {
-  const selector = 'input[aria-label="审查业务时间（本地时区）"]';
+  await openSection(page, session, "案件详情分区", "审查记录");
+  await page.eval(
+    session,
+    `(() => {
+    const preparation = document.querySelector("details#case-review-preparation");
+    if (preparation && !preparation.open) preparation.querySelector("summary")?.click();
+  })()`,
+  );
+  const selector = 'input[aria-label="审查业务时间（北京时间）"]';
   const present = await page.eval(
     session,
     `Boolean(document.querySelector(${JSON.stringify(selector)}))`,

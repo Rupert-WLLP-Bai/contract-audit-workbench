@@ -182,6 +182,7 @@ test(
         String(material.filename),
         String(material.text),
       );
+    await page.goto(new URL("#review-readiness", page.url()).href);
     await page.reload();
     await page.getByRole("button", { name: "开始审查", exact: true }).click();
     await expect(page).toHaveURL(/\/reviews\/run_/);

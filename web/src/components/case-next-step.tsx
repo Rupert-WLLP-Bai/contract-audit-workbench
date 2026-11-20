@@ -943,7 +943,7 @@ export function CaseNextStep(props: Props) {
     );
     const canStartPrepared =
       props.preparationActionTarget &&
-      plan.showPreparationStart &&
+      (plan.showPreparationStart || action.kind === "start") &&
       !props.suppressWriteAction &&
       props.sessionReady &&
       Object.hasOwn(CAN_START_REVIEW_ROLES, actorRole) &&
@@ -983,18 +983,30 @@ export function CaseNextStep(props: Props) {
         }
         aria-labelledby="case-next-step-title"
       >
-        {props.actionTarget ? createPortal(mainAction, props.actionTarget) : null}
-        {canStartPrepared && props.preparationActionTarget
+        {props.actionTarget
+          ? createPortal(
+              action.kind === "start" &&
+                props.preparationActionTarget &&
+                !props.suppressWriteAction ? (
+                <Button href="#review-readiness">审查准备</Button>
+              ) : (
+                mainAction
+              ),
+              props.actionTarget,
+            )
+          : null}
+        {props.preparationActionTarget
           ? createPortal(
               <div className="case-next-step-preparation">
                 {props.startError ? <p role="alert">{errorMessage(props.startError)}</p> : null}
                 {props.startControls}
                 <Button
                   loading={props.startPending}
-                  disabled={props.startPending || props.startDisabled}
+                  type="primary"
+                  disabled={!canStartPrepared || props.startPending || props.startDisabled}
                   onClick={props.onStartReview}
                 >
-                  发起新审查
+                  {action.kind === "start" ? action.label : "发起新审查"}
                 </Button>
               </div>,
               props.preparationActionTarget,

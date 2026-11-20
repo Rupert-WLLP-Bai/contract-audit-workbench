@@ -55,57 +55,34 @@ function ReadinessCoverage({
   disabled,
 }: Extract<Props, { mode: "readiness" }>) {
   const version = singleContractVersion(scope?.rule_set);
-  if (!version) {
-    return (
-      <section className="single-contract-coverage" aria-label="单合同预审范围">
-        <h3>单合同预审范围</h3>
-        <p>
-          <StatusText tone="attention">范围身份待核对</StatusText>{" "}
-          暂无可识别的规则版本，暂不能确认具体检查项目。
-        </p>
-      </section>
-    );
-  }
   const payment = scope?.checks.find(
     (check) =>
       check.rule_id === (version === "1" ? "single-payment-sum-v1" : "single-payment-terms-v2"),
   );
   return (
-    <section className="single-contract-coverage" aria-label="单合同预审范围">
-      <h3>单合同预审范围</h3>
-      <p className="single-contract-coverage-summary">
-        这一次新审查尚未开始，以下检查尚未执行。可否开始仍以服务端准备清单和权限校验为准。
-      </p>
-      <ul className="single-contract-coverage-list">
+    <section className="single-contract-coverage-readiness" aria-label="单合同预审范围">
+      <ul>
         <li>
-          <div className="single-contract-coverage-row">
-            <strong>{version === "1" ? "主合同付款比例识别" : "付款与结算原文"}</strong>
-            <StatusText tone={payment?.status === "ready" ? "neutral" : "attention"}>
-              {payment?.status === "ready" ? "检查已准备，尚未执行" : "尚未执行，准备状态见清单"}
-            </StatusText>
-          </div>
-          {version === "1" ? <PaymentExpressions /> : <p>识别付款与结算的原文位置。</p>}
+          <strong>{version === "1" ? "主合同付款比例识别" : "付款与结算原文定位"}</strong>
+          <StatusText tone={payment?.status === "ready" ? "neutral" : "attention"}>
+            {!version
+              ? "规则版本待核对"
+              : payment?.status === "ready"
+                ? "检查已准备，尚未执行"
+                : "尚未就绪"}
+          </StatusText>
         </li>
-        {version === "1" && (
-          <li>
-            <div className="single-contract-coverage-row">
-              <strong>付款比例的完整性与共同基数</strong>
-              <StatusText tone="attention">无法确认</StatusText>
-            </div>
-            <p>
-              不能确认是否遗漏付款条款、各比例是否使用共同基数；即使识别合计为100%，也不是一致或合规结论。
-            </p>
-          </li>
-        )}
-        <ScopeLimits started={false} />
+        <li>
+          <strong>跨材料对照与制度依据</strong>
+          <span>预审不执行。补齐采购、审批材料后可切换完整审查。</span>
+          <div className="single-contract-coverage-actions">
+            <a href="#case-materials">补齐或确认对照材料</a>
+            <Button type="link" htmlType="button" onClick={onSelectFullReview} disabled={disabled}>
+              查看完整审查准备
+            </Button>
+          </div>
+        </li>
       </ul>
-      <p>需补齐采购、审批等对照材料，选择完整审查并按页面下一步提示发起新审查。</p>
-      <div className="single-contract-coverage-actions">
-        <a href="#case-materials">补齐或确认对照材料</a>
-        <Button type="link" htmlType="button" onClick={onSelectFullReview} disabled={disabled}>
-          查看完整审查准备
-        </Button>
-      </div>
     </section>
   );
 }

@@ -168,7 +168,7 @@ describe("single contract coverage", () => {
       />,
     );
     const coverage = screen.getByRole("region", { name: "单合同预审范围" });
-    expect(within(coverage).getByText("付款与结算原文")).toBeInTheDocument();
+    expect(within(coverage).getByText("付款与结算原文定位")).toBeInTheDocument();
     expect(within(coverage).queryByText(/预付款20%/)).not.toBeInTheDocument();
   });
 
@@ -184,7 +184,7 @@ describe("single contract coverage", () => {
       .setup()
       .click(within(coverage).getByRole("button", { name: "查看完整审查准备" }));
     expect(screen.getByRole("radio", { name: "完整审查" })).toBeChecked();
-    expect(screen.getByText("所选范围需要先补齐以下事项")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "待处理事项" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "单合同预审范围" })).not.toBeInTheDocument();
   });
 
@@ -203,7 +203,7 @@ describe("single contract coverage", () => {
       />,
     );
     const coverage = screen.getByRole("region", { name: "单合同预审范围" });
-    expect(within(coverage).getByText("范围身份待核对")).toBeInTheDocument();
+    expect(within(coverage).getByText("规则版本待核对")).toBeInTheDocument();
     expect(within(coverage).queryByText(/预付款20%/)).not.toBeInTheDocument();
     expect(screen.queryByText("主合同中可识别的付款比例合计")).not.toBeInTheDocument();
   });

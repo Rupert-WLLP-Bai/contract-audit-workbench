@@ -1,0 +1,145 @@
+.review-readiness-panel {
+  min-inline-size: 0;
+  background: var(--surface-raised);
+}
+
+.review-preflight-head,
+.review-preflight-row,
+.review-preflight-time,
+.review-preflight-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding-inline: var(--space-4);
+}
+
+.review-preflight-head {
+  min-block-size: 48px;
+  padding-block: var(--space-1);
+  border-block-end: 1px solid var(--border-default);
+  background: var(--surface-subtle);
+}
+
+.review-preflight-head h2 {
+  font-size: var(--font-size-ui);
+  margin: 0;
+}
+
+.review-preflight-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+.review-preflight-time {
+  min-block-size: 44px;
+  border-block-end: 1px solid var(--border-default);
+}
+
+.review-preflight-time input {
+  inline-size: auto;
+}
+
+.review-preflight-message {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+}
+
+.review-preflight-issues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.review-preflight-row {
+  min-block-size: 44px;
+  padding-block: var(--space-2);
+  border-block-end: 1px solid var(--border-default);
+}
+
+.review-preflight-dot {
+  flex: 0 0 7px;
+  block-size: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  color: var(--state-insufficient);
+}
+
+.review-preflight-ready .review-preflight-dot {
+  color: var(--state-compatible);
+}
+
+.review-preflight-text {
+  display: flex;
+  flex: 1 1 26ch;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  overflow-wrap: anywhere;
+}
+
+.review-preflight-text > span,
+.review-preflight-caption {
+  color: var(--text-secondary);
+}
+
+.review-preflight-ready > summary {
+  display: flex;
+  list-style: none;
+  cursor: pointer;
+}
+
+.review-preflight-ready > summary::-webkit-details-marker {
+  display: none;
+}
+
+.review-preflight-expand::before {
+  content: "展开 ▾";
+}
+
+.review-preflight-ready[open] .review-preflight-expand::before {
+  content: "收起 ▴";
+}
+
+.review-preflight-ready > ul {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4) var(--space-2) calc(var(--space-4) + 18px);
+  margin: 0;
+  border-block-end: 1px solid var(--border-default);
+}
+
+.review-preflight-foot {
+  min-block-size: 52px;
+  padding-block: var(--space-2);
+  background: var(--surface-subtle);
+}
+
+.review-preflight-actions {
+  flex: 1 1 100%;
+}
+
+.review-preflight-actions .case-next-step-preparation,
+.review-preflight-playbook label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.review-preflight-playbook label {
+  flex-direction: row;
+  justify-content: flex-start;
+}
+
+.review-preflight-playbook label > div {
+  min-inline-size: 150px;
+}
+
+.review-readiness-panel > .caw-technical-detail {
+  margin: var(--space-2) var(--space-4);
+}

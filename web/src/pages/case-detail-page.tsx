@@ -486,13 +486,6 @@ export function CaseDetailPage() {
     { label: "编号", value: item.case_number?.trim() },
     { label: "负责人", value: item.owner_name?.trim() },
   ].filter((property) => property.value);
-  const readinessScope = readiness.data?.scopes.find((entry) => entry.id === reviewScope);
-  const readinessReady =
-    !readiness.isFetching &&
-    !readiness.isError &&
-    readinessScope?.can_start === true &&
-    !readinessScope.blockers.length &&
-    (!requiresBusinessAt || validBusinessAt);
   const loadedReviews = (history.data ?? []).filter(
     ({ workspace }) => workspace.run.case_id === item.id,
   );
@@ -660,6 +653,7 @@ export function CaseDetailPage() {
               startControls={
                 !archived ? (
                   <PlaybookPicker
+                    compact
                     caseId={item.id}
                     value={playbookRef}
                     onChange={setPlaybookRef}
@@ -860,37 +854,27 @@ export function CaseDetailPage() {
                           <p>尚未发起审查。</p>
                         )}
                         <CollapsibleSection
+                          key={`${item.id}:${Boolean(loadedReviews.length)}`}
                           id="case-review-preparation"
                           title="审查准备"
-                          meta={
-                            readinessReady ? (
-                              <StatusText tone="good">材料与规则已就绪</StatusText>
-                            ) : undefined
+                          defaultOpen={
+                            !loadedReviews.length ||
+                            ["#review-readiness", "#review-business-time"].includes(location.hash)
                           }
                         >
-                          {requiresBusinessAt ? (
-                            <label className="field" id="review-business-time">
-                              审查业务时间（北京时间）
-                              <Input
-                                aria-label="审查业务时间（北京时间）"
-                                type="datetime-local"
-                                required
-                                disabled={archived}
-                                value={businessAt}
-                                onChange={(event) => setBusinessAt(event.target.value)}
-                              />
-                              <span className="meta">选择材料与规则适用的业务时点。</span>
-                              {businessAt !== "" && !validBusinessAt ? (
-                                <span role="alert">请输入有效的北京时间。</span>
-                              ) : null}
-                            </label>
-                          ) : null}
                           <ReviewReadinessPanel
                             caseId={item.id}
                             data={readiness.data}
                             loading={readiness.isFetching}
                             error={readiness.isError ? readiness.error : null}
-                            onRefresh={() => void readiness.refetch()}
+                            onRefresh={() => {
+                              start.reset();
+                              void Promise.all([
+                                readiness.refetch(),
+                                detail.refetch(),
+                                ...(item.latest_run ? [history.refetch()] : []),
+                              ]);
+                            }}
                             selectedScope={reviewScope}
                             onSelectScope={setReviewScope}
                             business={{
@@ -898,8 +882,33 @@ export function CaseDetailPage() {
                               scenario: item.scenario,
                               contract_type: item.contract_type,
                             }}
+                            businessTime={
+                              requiresBusinessAt ? (
+                                <label className="review-preflight-time" id="review-business-time">
+                                  审查业务时间（北京时间）
+                                  <Input
+                                    aria-label="审查业务时间（北京时间）"
+                                    type="datetime-local"
+                                    required
+                                    disabled={archived}
+                                    value={businessAt}
+                                    onChange={(event) => setBusinessAt(event.target.value)}
+                                  />
+                                  {businessAt !== "" && !validBusinessAt ? (
+                                    <span role="alert">请输入有效的北京时间。</span>
+                                  ) : null}
+                                </label>
+                              ) : null
+                            }
+                            footer={
+                              !archived && ["admin", "clerk", "reviewer"].includes(actorRole) ? (
+                                <div
+                                  className="review-preflight-actions"
+                                  ref={setPreparationActionTarget}
+                                />
+                              ) : null
+                            }
                           />
-                          <div ref={setPreparationActionTarget} />
                         </CollapsibleSection>
                       </section>
                     ),
