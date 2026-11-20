@@ -45,6 +45,11 @@ function deskHref(params: URLSearchParams) {
   return query ? `${deskPath}?${query}` : deskPath;
 }
 
+function deskListParams(params = new URLSearchParams()) {
+  if (params.size === 0) params.set("page", "1");
+  return params;
+}
+
 export function ContractDeskSources({
   active,
   materialsHref = deskPath,
@@ -90,7 +95,7 @@ export function contractDeskReturnHref(state: unknown, actorScope: string) {
     const value = saved.get(key);
     if (value) params.set(key, value);
   }
-  return deskHref(params);
+  return deskHref(deskListParams(params));
 }
 
 function contractDocuments(snapshot: WorkbenchSnapshot, actorId: string) {
@@ -284,6 +289,11 @@ function OpenContractMaterial({
 }
 
 export function ContractDeskPage() {
+  const [params] = useSearchParams();
+  return params.size === 0 ? <Navigate to="/cases" replace /> : <ContractDeskCompatibilityPage />;
+}
+
+function ContractDeskCompatibilityPage() {
   const [params, setParams] = useSearchParams();
   const compactFilters = Grid.useBreakpoint().md === false;
   const session = useSession();
@@ -336,7 +346,7 @@ export function ContractDeskPage() {
     if (value) next.set(key, value);
     else next.delete(key);
     next.delete("page");
-    setParams(next, { replace: true });
+    setParams(deskListParams(next), { replace: true });
   }
 
   const openIndex = requestedOpen
@@ -346,7 +356,7 @@ export function ContractDeskPage() {
   const previous = filtered[openIndex - 1];
   const next = filtered[openIndex + 1];
   const ready = actorScope && workbench.isSuccess && !workbench.isFetching;
-  const returnTo = deskHref(listParams);
+  const returnTo = deskHref(deskListParams(new URLSearchParams(listParams)));
 
   const offset = (page - 1) * pageSize;
   const pageRows = filtered.slice(offset, offset + pageSize).map((row, index) => ({
@@ -434,7 +444,7 @@ export function ContractDeskPage() {
       >
         我有待办的案件
       </Checkbox>
-      <Button onClick={() => setParams(new URLSearchParams(), { replace: true })}>重置</Button>
+      <Button onClick={() => setParams(deskListParams(), { replace: true })}>重置</Button>
     </>
   );
   const activeFilters = Number(Boolean(status)) + Number(mine);
@@ -516,7 +526,7 @@ export function ContractDeskPage() {
               const next = new URLSearchParams(listParams);
               if (value > 1) next.set("page", String(value));
               else next.delete("page");
-              setParams(next);
+              setParams(deskListParams(next));
             },
           }}
         />

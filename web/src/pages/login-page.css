@@ -1,0 +1,10 @@
+.login-layout {
+  width: min(100%, 440px);
+}
+
+.login-competition-name {
+  margin: var(--space-4) 0 0;
+  color: var(--text-secondary);
+  text-align: center;
+  font-size: var(--font-size-small);
+}

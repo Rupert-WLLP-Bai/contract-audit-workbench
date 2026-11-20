@@ -8,35 +8,36 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate, type NavigateFunction } from "react-router";
 import { useCaseDetail, useLogout, useSession } from "../api/queries";
 import { presentedPersonName } from "../domain/organization";
 import { actorReadContextKey } from "../domain/actor-read-context";
 import { readCaseListReturn } from "./section-navigation";
 import { actorRoleLabel } from "../domain/review";
-import { Avatar, Breadcrumb, Button, Input, Layout, Popover, Switch } from "antd";
+import { Avatar, Breadcrumb, Button, Input, Layout, Popover, Switch, type InputRef } from "antd";
 import {
   ApiOutlined,
   AuditOutlined,
   BookOutlined,
   CheckSquareOutlined,
-  ClockCircleOutlined,
-  ContainerOutlined,
+  CloseCircleOutlined,
   DownOutlined,
   FileDoneOutlined,
-  FileSearchOutlined,
+  FolderOutlined,
+  PlusOutlined,
+  SearchOutlined,
   ProfileOutlined,
   FileTextOutlined,
-  HomeOutlined,
   LogoutOutlined,
   SafetyCertificateOutlined,
-  SettingOutlined,
   TeamOutlined,
   ToolOutlined,
 } from "@ant-design/icons";
 import type { ReactNode } from "react";
 import type { Actor } from "../api/types";
+import { DirtyLeaveGuardProvider } from "./dirty-leave-guard";
+import { ReviewIntakeDialog } from "../features/intake/review-intake-dialog";
 import { ProfessionalModeProvider, useProfessionalMode } from "./app-shell-preferences";
 import "./app-shell.css";
 import { ContextSwitcher } from "./context-switcher";
@@ -47,131 +48,78 @@ type NavLinkItem = {
   label: string;
   icon: string;
   external?: boolean;
-  href?: string;
   adminRoleOnly?: boolean;
   professionalOnly?: boolean;
   compact?: boolean;
 };
 
-const NAV_GROUPS: {
-  key: string;
-  title: string;
-  icon?: ReactNode;
-  links: NavLinkItem[];
-  bottomStart?: boolean;
-}[] = [
+const CORE_NAV: NavLinkItem[] = [
+  { to: "/", label: "我的待办", icon: "home", compact: true },
+  { to: "/cases", label: "案件", icon: "case", compact: true },
+  { to: "/contracts", label: "合同台账", icon: "ledger", compact: true },
+  { to: "/workbench/approvals", label: "会签", icon: "approvals" },
+  { to: "/workbench/remediation", label: "整改", icon: "remediation" },
+  { to: "/workbench/reports", label: "报告", icon: "reports" },
+  { to: "/subjects", label: "主体", icon: "subjects" },
+];
+
+const KNOWLEDGE_NAV: NavLinkItem[] = [
+  { to: "/workbench/knowledge", label: "知识库", icon: "knowledge" },
+  { to: "/workbench/templates", label: "合同模板", icon: "templates" },
+  { to: "/docs/", label: "使用手册", icon: "knowledge", external: true },
+  { to: "/workbench/organization", label: "组织与权限", icon: "subjects", adminRoleOnly: true },
+  { to: "/workbench/audit", label: "审计日志", icon: "audit", adminRoleOnly: true },
   {
-    key: "primary",
-    title: "工作台",
-    links: [{ to: "/", label: "我的待办", icon: "home" }],
+    to: "/admin/rulepacks",
+    label: "规则包治理",
+    icon: "rules",
+    external: true,
+    adminRoleOnly: true,
   },
+  { to: "/workbench/executions", label: "Agent Studio", icon: "audit", professionalOnly: true },
+  { to: "/workbench/tools", label: "工具网关", icon: "tools", professionalOnly: true },
+  { to: "/api-docs", label: "API 文档", icon: "api", professionalOnly: true },
   {
-    key: "review",
-    title: "审查",
-    links: [
-      { to: "/review", label: "发起审查", icon: "review" },
-      { to: "/cases", label: "案件与材料", icon: "case", compact: true },
-      { to: "/compare", label: "版本对照", icon: "compare" },
-      { to: "/workbench/remediation", label: "整改中心", icon: "remediation" },
-      { to: "/workbench/reports", label: "报告中心", icon: "reports" },
-    ],
-  },
-  {
-    key: "contracts",
-    title: "合同履约",
-    links: [
-      { to: "/contract-desk", label: "合同清单", icon: "contracts", compact: true },
-      { to: "/workbench/approvals", label: "合同会签", icon: "approvals" },
-      { to: "/contracts", label: "合同登记与履约", icon: "fulfillment" },
-      { to: "/subjects", label: "主体台账", icon: "subjects" },
-    ],
-  },
-  {
-    key: "knowledge",
-    title: "知识与规则",
-    bottomStart: true,
-    icon: <BookOutlined aria-hidden="true" />,
-    links: [
-      { to: "/workbench/knowledge", label: "知识库", icon: "knowledge" },
-      { to: "/workbench/templates", label: "模板管理", icon: "templates" },
-      { to: "rules", label: "规则包治理", icon: "rules", external: true, adminRoleOnly: true },
-      { to: "/docs/", label: "使用手册", icon: "knowledge", external: true, href: "/docs/" },
-    ],
-  },
-  {
-    key: "management-tools",
-    title: "更多工具",
-    icon: <ToolOutlined aria-hidden="true" />,
-    links: [
-      { to: "/workbench/tasks", label: "任务管理", icon: "tasks" },
-      { to: "/workbench/evidence", label: "证据中心", icon: "evidence" },
-      { to: "/support", label: "案件支援访问", icon: "support" },
-      { to: "/workbench/evidence-sla", label: "补证时效", icon: "evidence-sla" },
-      { to: "/workbench/organization", label: "组织与权限", icon: "organization" },
-      {
-        to: "/workbench/executions",
-        label: "Agent Studio",
-        icon: "executions",
-        professionalOnly: true,
-      },
-      { to: "/workbench/tools", label: "工具网关", icon: "tools", professionalOnly: true },
-      { to: "/api-docs", label: "API 文档", icon: "api", professionalOnly: true },
-      { to: "/workbench/settings", label: "系统设置", icon: "settings", adminRoleOnly: true },
-      {
-        to: "/workbench/health",
-        label: "系统健康",
-        icon: "health",
-        adminRoleOnly: true,
-        professionalOnly: true,
-      },
-      { to: "/workbench/audit", label: "审计日志", icon: "audit", adminRoleOnly: true },
-    ],
+    to: "/workbench/health",
+    label: "系统健康",
+    icon: "health",
+    adminRoleOnly: true,
+    professionalOnly: true,
   },
 ];
 
 const NAV_ICONS: Record<string, ReactNode> = {
-  home: <HomeOutlined />,
-  review: <FileSearchOutlined />,
-  compare: <FileTextOutlined />,
-  rules: <SafetyCertificateOutlined />,
-  case: <FileTextOutlined />,
-  support: <SafetyCertificateOutlined />,
-  contracts: <ContainerOutlined />,
+  home: <CheckSquareOutlined />,
+  case: <FolderOutlined />,
+  ledger: <ProfileOutlined />,
   approvals: <FileDoneOutlined />,
-  fulfillment: <ProfileOutlined />,
-  subjects: <TeamOutlined />,
-  tasks: <CheckSquareOutlined />,
   remediation: <SafetyCertificateOutlined />,
   reports: <FileTextOutlined />,
-  evidence: <FileSearchOutlined />,
-  "evidence-sla": <ClockCircleOutlined />,
-  executions: <AuditOutlined />,
+  subjects: <TeamOutlined />,
   knowledge: <BookOutlined />,
-  organization: <TeamOutlined />,
-  templates: <FileTextOutlined />,
+  templates: <ProfileOutlined />,
+  audit: <AuditOutlined />,
+  rules: <SafetyCertificateOutlined />,
   tools: <ToolOutlined />,
   health: <CheckSquareOutlined />,
-  audit: <AuditOutlined />,
-  settings: <SettingOutlined />,
   api: <ApiOutlined />,
 };
 
-const MODULE_TITLES: Record<string, string> = {
-  tasks: "审查任务",
-  remediation: "整改中心",
-  reports: "报告中心",
-  evidence: "证据中心",
-  "evidence-sla": "补充材料时效",
-  executions: "Agent Studio",
-  knowledge: "知识库",
-  organization: "组织与权限",
-  templates: "模板管理",
-  models: "模型服务",
-  tools: "工具网关",
-  health: "系统健康",
-  audit: "审计日志",
-  settings: "系统设置",
+const LEGACY_TITLES: Record<string, string> = {
+  "/contract-desk": "合同清单",
+  "/review": "审一份合同",
+  "/compare": "版本对照",
+  "/support": "案件支援访问",
+  "/workbench/tasks": "审查任务",
+  "/workbench/evidence": "证据中心",
+  "/workbench/evidence-sla": "补充材料时效",
+  "/workbench/models": "模型服务",
+  "/workbench/settings": "系统设置",
 };
+
+function currentLink(pathname: string, to: string) {
+  return pathname === to || (to !== "/" && pathname.startsWith(`${to}/`));
+}
 
 interface Crumb {
   label: string;
@@ -181,48 +129,15 @@ interface Crumb {
 
 function staticBreadcrumb(pathname: string): Crumb[] | null {
   if (pathname === "/") return [];
-  if (pathname === "/contract-desk")
-    return [
-      { label: "我的待办", to: "/" },
-      { label: "合同清单", to: null },
-    ];
-  if (pathname === "/review")
-    return [
-      { label: "我的待办", to: "/" },
-      { label: "合同审查", to: null },
-    ];
-  if (pathname === "/compare")
-    return [
-      { label: "我的待办", to: "/" },
-      { label: "版本对照", to: null },
-    ];
-  if (pathname === "/cases")
-    return [
-      { label: "我的待办", to: "/" },
-      { label: "案件管理", to: null },
-    ];
-  if (pathname === "/contracts")
-    return [
-      { label: "我的待办", to: "/" },
-      { label: "合同登记", to: null },
-    ];
-  if (pathname === "/workbench/approvals")
-    return [
-      { label: "我的待办", to: "/" },
-      { label: "合同会签", to: null },
-    ];
-  if (pathname === "/subjects")
-    return [
-      { label: "我的待办", to: "/" },
-      { label: "主体台账", to: null },
-    ];
-  if (pathname.startsWith("/subjects/"))
-    return [
-      { label: "我的待办", to: "/" },
-      { label: "主体台账", to: "/subjects" },
-      { label: "主体详情", to: null },
-    ];
-  return null;
+  const home: Crumb = { label: "我的待办", to: "/" };
+  if (pathname.startsWith("/subjects/")) {
+    return [home, { label: "主体", to: "/subjects" }, { label: "主体详情", to: null }];
+  }
+  const label =
+    CORE_NAV.find((item) => item.to === pathname)?.label ??
+    KNOWLEDGE_NAV.find((item) => !item.external && currentLink(pathname, item.to))?.label ??
+    Object.entries(LEGACY_TITLES).find(([path]) => currentLink(pathname, path))?.[1];
+  return label ? [home, { label, to: null }] : null;
 }
 
 function caseBreadcrumbs(
@@ -239,19 +154,6 @@ function caseBreadcrumbs(
       to: inReview ? `/cases/${encodeURIComponent(caseId)}` : null,
     },
     ...(inReview ? [{ label: "审查工作区", to: null }] : []),
-  ];
-}
-
-function moduleTitle(moduleKey: string): string {
-  return Object.hasOwn(MODULE_TITLES, moduleKey) ? MODULE_TITLES[moduleKey]! : "工作区";
-}
-
-function workbenchBreadcrumbs(pathname: string): Crumb[] {
-  const moduleKey = pathname.slice("/workbench/".length).split("/")[0]!;
-  return [
-    { label: "我的待办", to: "/" },
-    { label: "业务管理", to: null },
-    { label: moduleTitle(moduleKey), to: null },
   ];
 }
 
@@ -273,10 +175,9 @@ function breadcrumbsFor(
       ? [...crumbs, { label: "主体更正复核", to: null }]
       : crumbs;
   }
-  if (pathname.startsWith("/workbench/")) return workbenchBreadcrumbs(pathname);
   return [
-    { label: "开发者", to: null },
-    { label: "API 接入", to: null },
+    { label: "我的待办", to: "/" },
+    { label: pathname.startsWith("/workbench/") ? "工作区" : "未找到页面", to: null },
   ];
 }
 
@@ -295,19 +196,24 @@ function caseTitleOf(title: string | undefined): string {
   return title === undefined ? "案件" : title;
 }
 
+type SearchDestination = "/cases" | "/contracts";
+
 function navigateSearch(
   navigate: NavigateFunction,
   location: ReturnType<typeof useLocation>,
   query: string,
+  destination: SearchDestination,
 ) {
   const trimmed = query.trim();
-  const params = new URLSearchParams(location.search);
+  const params = new URLSearchParams(
+    location.pathname === destination && destination === "/cases" ? location.search : "",
+  );
   if (trimmed === "") params.delete("q");
   else params.set("q", trimmed);
   params.delete("page");
   params.delete("selected");
   const suffix = params.toString();
-  void navigate(`/cases${suffix === "" ? "" : `?${suffix}`}`);
+  void navigate(`${destination}${suffix === "" ? "" : `?${suffix}`}`);
 }
 
 function caseIdOf(pathname: string): string {
@@ -345,21 +251,52 @@ function AppTopbar({
   actor,
   search,
   showCaseSearch,
+  searchDestination,
   logoutPending,
   onSearchChange,
   onSearchSubmit,
+  onSearchClear,
   onLogout,
   onContextTransition,
 }: {
   actor: Actor | undefined;
   search: string;
   showCaseSearch: boolean;
+  searchDestination: SearchDestination;
   logoutPending: boolean;
   onSearchChange: (value: string) => void;
-  onSearchSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSearchSubmit: (destination: SearchDestination) => void;
+  onSearchClear: () => void;
   onLogout: () => void;
   onContextTransition: (pending: boolean) => void;
 }) {
+  const searchInput = useRef<InputRef>(null);
+  const alternateButton = useRef<HTMLButtonElement>(null);
+  const [showAlternate, setShowAlternate] = useState(false);
+  const alternate = searchDestination === "/contracts" ? "/cases" : "/contracts";
+  const alternateVisible = showAlternate && search.trim() !== "";
+  const usesMeta = /Mac|iPhone|iPad/.test(navigator.platform);
+  const shortcut = usesMeta ? "Meta+K" : "Control+K";
+  useEffect(() => {
+    if (!showCaseSearch) return;
+    const focusSearch = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.shiftKey ||
+        event.altKey ||
+        (event.target instanceof Element && Boolean(event.target.closest('[role="dialog"]'))) ||
+        !(event.ctrlKey || event.metaKey) ||
+        event.key.toLowerCase() !== "k"
+      )
+        return;
+      event.preventDefault();
+      searchInput.current?.focus({ cursor: "all" });
+    };
+    window.addEventListener("keydown", focusSearch);
+    return () => window.removeEventListener("keydown", focusSearch);
+  }, [showCaseSearch]);
+
   return (
     <Layout.Header
       className={
@@ -367,24 +304,79 @@ function AppTopbar({
       }
     >
       <Link className="brand client-brand" to="/" aria-label="合同审计工作台首页">
+        <span className="client-brand-mark" aria-hidden="true">
+          <FileDoneOutlined />
+        </span>
         合同审计工作台
       </Link>
       {showCaseSearch ? (
-        <form className="global-search" role="search" onSubmit={onSearchSubmit}>
+        <form
+          className="global-search"
+          role="search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setShowAlternate(false);
+            onSearchSubmit(searchDestination);
+          }}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setShowAlternate(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && alternateVisible) {
+              event.preventDefault();
+              searchInput.current?.focus();
+              setShowAlternate(false);
+            }
+            if (
+              event.key === "ArrowDown" &&
+              alternateVisible &&
+              event.target === searchInput.current?.input
+            ) {
+              event.preventDefault();
+              alternateButton.current?.focus();
+            }
+          }}
+        >
           <label className="sr-only" htmlFor="global-case-search">
-            全局搜索案件
+            全局搜索
           </label>
           <Input
             className="header-search-input"
             id="global-case-search"
+            ref={searchInput}
             type="search"
+            aria-keyshortcuts={shortcut}
+            allowClear={{ clearIcon: <CloseCircleOutlined aria-label="清空搜索" /> }}
+            onClear={onSearchClear}
+            prefix={<SearchOutlined aria-hidden="true" />}
+            suffix={
+              <kbd className="client-search-shortcut" aria-hidden="true">
+                {usesMeta ? "⌘K" : "Ctrl+K"}
+              </kbd>
+            }
             value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="搜索案件标题或编号"
+            onFocus={() => setShowAlternate(true)}
+            onChange={(event) => {
+              onSearchChange(event.target.value);
+              setShowAlternate(true);
+            }}
+            placeholder="搜索案件、合同或编号"
           />
-          <Button className="header-action" aria-label={"搜索"} htmlType="submit" ghost>
-            搜索
-          </Button>
+          {alternateVisible ? (
+            <div className="client-search-results">
+              <button
+                type="button"
+                className="client-search-alternate"
+                ref={alternateButton}
+                onClick={() => {
+                  setShowAlternate(false);
+                  onSearchSubmit(alternate);
+                }}
+              >
+                在{alternate === "/contracts" ? "合同台账" : "案件"}搜索
+              </button>
+            </div>
+          ) : null}
         </form>
       ) : null}
       <AccountMenu
@@ -491,37 +483,45 @@ function AppSidebar({
   adminRulePacksUrl,
   focusedReading,
   context,
+  onStartReview,
+  intakeAvailable,
 }: {
   actor: Actor | undefined;
   pathname: string;
   adminRulePacksUrl: string;
   focusedReading: boolean;
   context?: ReactNode;
+  onStartReview: (opener: HTMLElement, afterDrawerClosed?: (callback: () => void) => void) => void;
+  intakeAvailable: boolean;
 }) {
   const { enabled: professional } = useProfessionalMode();
   const canSeeManagementLinks = actor?.role === "admin";
   const selectedPath = navigationPath(pathname);
-  const groups: ShellNavGroup[] = NAV_GROUPS.map(({ key, title, icon, links, bottomStart }) => ({
-    key,
-    title,
-    disclosureIcon: icon,
-    bottomStart,
-    links: links
+  const visibleLinks = (items: NavLinkItem[]): ShellNavLink[] =>
+    items
       .filter(
         (item) =>
           (!item.adminRoleOnly || canSeeManagementLinks) &&
           (!item.professionalOnly || professional),
       )
-      .map((item): ShellNavLink => ({
-        href: item.external ? (item.href ?? adminRulePacksUrl) : item.to,
+      .map((item) => ({
+        href: item.to === "/admin/rulepacks" ? adminRulePacksUrl : item.to,
         label: item.label,
         icon: NAV_ICONS[item.icon],
         external: item.external,
         compact: item.compact,
-        current:
-          !item.external && (selectedPath === item.to || selectedPath.startsWith(`${item.to}/`)),
-      })),
-  }));
+        current: !item.external && currentLink(selectedPath, item.to),
+      }));
+  const groups: ShellNavGroup[] = [
+    { key: "primary", title: "工作台", links: visibleLinks(CORE_NAV) },
+    {
+      key: "knowledge",
+      title: "知识与设置",
+      disclosureIcon: <BookOutlined />,
+      bottomStart: true,
+      links: visibleLinks(KNOWLEDGE_NAV),
+    },
+  ];
 
   return (
     <ShellNavigation
@@ -530,6 +530,18 @@ function AppSidebar({
       groups={groups}
       compact={focusedReading}
       drawerFooter={context}
+      action={(afterDrawerClosed) => (
+        <Button
+          className="client-intake-action"
+          icon={<PlusOutlined className="client-intake-icon" aria-hidden="true" />}
+          disabled={!intakeAvailable}
+          aria-label="审一份合同"
+          aria-haspopup="dialog"
+          onClick={(event) => onStartReview(event.currentTarget, afterDrawerClosed)}
+        >
+          <span className="client-intake-label">审一份合同</span>
+        </Button>
+      )}
     />
   );
 }
@@ -537,11 +549,8 @@ function AppSidebar({
 function ClientOutlet({ pathname }: { pathname: string }) {
   const { enabled } = useProfessionalMode();
   const selected = navigationPath(pathname);
-  const requiresProfessionalMode = NAV_GROUPS.some(({ links }) =>
-    links.some(
-      ({ professionalOnly, to }) =>
-        professionalOnly && (selected === to || selected.startsWith(`${to}/`)),
-    ),
+  const requiresProfessionalMode = KNOWLEDGE_NAV.some(
+    ({ professionalOnly, to }) => professionalOnly && currentLink(selected, to),
   );
   if (requiresProfessionalMode && !enabled) {
     return <PageStatus kind="empty" title="请在头像菜单中打开专业模式" />;
@@ -550,6 +559,14 @@ function ClientOutlet({ pathname }: { pathname: string }) {
 }
 
 export function AppShell() {
+  return (
+    <DirtyLeaveGuardProvider>
+      <AppShellContent />
+    </DirtyLeaveGuardProvider>
+  );
+}
+
+function AppShellContent() {
   const session = useSession();
   const logout = useLogout();
   const navigate = useNavigate();
@@ -561,10 +578,16 @@ export function AppShell() {
   }, []);
   const [search, setSearch] = useState("");
   const [contextTransition, setContextTransition] = useState(false);
+  const [intakeScope, setIntakeScope] = useState("");
+  const intakeOpener = useRef<{ scope: string; element: HTMLElement } | null>(null);
   const caseId = caseIdOf(location.pathname);
   const caseDetail = useCaseDetail(caseId);
   useEffect(() => {
-    setSearch(searchFromLocation(location.search));
+    setSearch(
+      location.pathname === "/cases" || location.pathname === "/contracts"
+        ? searchFromLocation(location.search)
+        : "",
+    );
   }, [location.pathname, location.search]);
   const reviewMatch = location.pathname.match(/^\/cases\/([^/]+)\/reviews\/([^/]+)/);
   const focusedReading = /^\/cases\/[^/]+\/reviews\/[^/]+\/?$/.test(location.pathname);
@@ -591,13 +614,16 @@ export function AppShell() {
     <AppTopbar
       actor={actor}
       search={search}
-      showCaseSearch={!focusedReading && location.pathname !== "/contract-desk"}
+      showCaseSearch={!focusedReading}
+      searchDestination={location.pathname === "/contracts" ? "/contracts" : "/cases"}
       logoutPending={logout.isPending}
       onSearchChange={setSearch}
-      onSearchSubmit={(event) => {
-        event.preventDefault();
-        navigateSearch(navigate, location, search);
+      onSearchClear={() => {
+        if (location.pathname === "/cases" || location.pathname === "/contracts") {
+          navigateSearch(navigate, location, "", location.pathname);
+        }
       }}
+      onSearchSubmit={(destination) => navigateSearch(navigate, location, search, destination)}
       onLogout={() => {
         void logout.mutateAsync().finally(() => {
           void navigate("/login", {
@@ -625,6 +651,20 @@ export function AppShell() {
             adminRulePacksUrl={adminRulePacksUrl}
             focusedReading={focusedReading}
             context={focusedReading ? topbar : undefined}
+            onStartReview={(opener, afterDrawerClosed) => {
+              if (location.pathname === "/review") {
+                const focusPrimary = () =>
+                  document
+                    .querySelector<HTMLButtonElement>("#main [data-intake-primary-picker]")
+                    ?.focus();
+                if (afterDrawerClosed) afterDrawerClosed(focusPrimary);
+                else focusPrimary();
+                return;
+              }
+              intakeOpener.current = { scope: returnScope, element: opener };
+              setIntakeScope(returnScope);
+            }}
+            intakeAvailable={Boolean(returnScope)}
           />
           <Layout.Content className="content-column">
             {focusedReading ? null : breadcrumbNav}
@@ -637,6 +677,21 @@ export function AppShell() {
             </main>
           </Layout.Content>
         </Layout>
+        {returnScope ? (
+          <ReviewIntakeDialog
+            key={returnScope}
+            open={intakeScope === returnScope}
+            onClose={() => {
+              setIntakeScope((current) => (current === returnScope ? "" : current));
+              const opener = intakeOpener.current;
+              if (opener?.scope !== returnScope) return;
+              intakeOpener.current = null;
+              requestAnimationFrame(() => {
+                if (opener.element.isConnected) opener.element.focus({ preventScroll: true });
+              });
+            }}
+          />
+        ) : null}
       </Layout>
     </ProfessionalModeProvider>
   );

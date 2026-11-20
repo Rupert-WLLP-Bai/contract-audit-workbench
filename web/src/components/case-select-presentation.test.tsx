@@ -44,7 +44,7 @@ describe("case selector identity", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("combobox", { name: "关联案件" }));
     const option = screen.getByRole("option", { name: /case-complete-beta/ });
-    expect(option).toHaveTextContent("业务编号未登记");
+    expect(option).not.toHaveTextContent("业务编号未登记");
     expect(option).toHaveTextContent("框架协议");
     expect(option.querySelector('[style*="overflow-wrap"]')).toHaveStyle({
       whiteSpace: "normal",

@@ -472,3 +472,118 @@ export function caseHref(
   const review = `${base}/reviews/${encodeURIComponent(runId)}`;
   return attemptId === null ? review : `${review}?attempt_id=${encodeURIComponent(attemptId)}`;
 }
+
+/** Explicit facts only: callers retain responsibility for authorization and navigation. */
+export interface CaseStageFacts {
+  archived: boolean | null;
+  documentCount: number | null;
+  parsing: "ready" | "pending" | "failed" | "unknown";
+  runKnown: boolean;
+  runState: string | null;
+  pendingDecisions: number | null;
+  pendingRemediation: boolean | null;
+  reportAvailable: boolean | null;
+  canUpload: boolean;
+  canStartReview: boolean;
+  startEligible: boolean;
+  preparationAvailable: boolean;
+  retryEligible: boolean;
+  canRetry: boolean;
+  canReview: boolean;
+  canRemediate: boolean;
+  canCreateReport: boolean;
+  reportEligible: boolean;
+  canReadReport: boolean;
+}
+export type CaseStageAction =
+  | "upload"
+  | "materials"
+  | "start"
+  | "progress"
+  | "judge"
+  | "prepare"
+  | "retry"
+  | "remediation"
+  | "report"
+  | "view-report"
+  | "view";
+export interface CaseStagePresentation {
+  label: string;
+  action: CaseStageAction;
+  actionLabel: string;
+  aiIncomplete: boolean;
+}
+
+export function caseStagePresentation(facts: CaseStageFacts): CaseStagePresentation {
+  const result = (
+    label: string,
+    action: CaseStageAction,
+    actionLabel: string,
+    aiIncomplete = false,
+  ): CaseStagePresentation => ({ label, action, actionLabel, aiIncomplete });
+  if (facts.archived === null) return result("案件状态待确认", "view", "查看");
+  if (facts.archived)
+    return facts.reportAvailable === true && facts.canReadReport
+      ? result("已归档", "view-report", "查看报告")
+      : result("已归档", "view", "查看");
+  if (
+    facts.documentCount === null ||
+    !Number.isInteger(facts.documentCount) ||
+    facts.documentCount < 0
+  )
+    return result("材料状态待确认", "view", "查看");
+  if (facts.documentCount === 0)
+    return facts.canUpload
+      ? result("待传材料", "upload", "上传材料")
+      : result("待传材料", "materials", "查看材料");
+  if (facts.parsing === "failed") return result("材料解析失败", "materials", "查看材料");
+  if (facts.parsing === "pending") return result("解析中", "materials", "查看材料");
+  if (facts.parsing === "unknown") return result("材料状态待确认", "materials", "查看材料");
+  if (!facts.runKnown) return result("审查状态待确认", "view", "查看");
+  if (facts.runState === null)
+    return facts.canStartReview && facts.preparationAvailable && facts.startEligible
+      ? result("待开始审查", "start", "开始审查")
+      : result("待开始审查", "view", "查看");
+  if (["accepted", "queued", "started", "running"].includes(facts.runState))
+    return result("审查中", "progress", "查看进度");
+  if (!["partial", "failed", "interrupted", "completed", "awaiting_human"].includes(facts.runState))
+    return result("审查状态待确认", "view", "查看");
+  const incomplete = ["partial", "failed", "interrupted"].includes(facts.runState);
+  if (
+    facts.pendingDecisions === null ||
+    !Number.isInteger(facts.pendingDecisions) ||
+    facts.pendingDecisions < 0
+  )
+    return result("判断状态待确认", "view", "查看", incomplete);
+  if (facts.pendingDecisions > 0)
+    return facts.canReview
+      ? result(
+          `待判断 ${facts.pendingDecisions} 条`,
+          "judge",
+          `去判断 (${facts.pendingDecisions})`,
+          incomplete,
+        )
+      : result(`待判断 ${facts.pendingDecisions} 条`, "view", "查看", incomplete);
+  if (incomplete) {
+    if (facts.retryEligible && facts.canRetry)
+      return result("智能审查未完成", "retry", "重新审查", true);
+    if (facts.preparationAvailable && facts.canStartReview)
+      return result("智能审查未完成", "prepare", "重新审查", true);
+    return result("智能审查未完成", "view", "查看原因", true);
+  }
+  if (facts.runState === "awaiting_human") return result("判断状态待确认", "view", "查看");
+  if (facts.runState !== "completed") return result("审查状态待确认", "view", "查看");
+  if (facts.pendingRemediation === null) return result("整改状态待确认", "view", "查看");
+  if (facts.pendingRemediation)
+    return facts.canRemediate
+      ? result("待整改", "remediation", "去整改")
+      : result("待整改", "view", "查看");
+  if (facts.reportAvailable === null) return result("报告状态待确认", "view", "查看");
+  if (facts.reportAvailable)
+    return facts.canReadReport
+      ? result("已完成", "view-report", "查看报告")
+      : result("已完成", "view", "查看");
+  return facts.canCreateReport && facts.reportEligible
+    ? result("可出报告", "report", "出报告")
+    : result("审查已完成", "view", "查看");
+}

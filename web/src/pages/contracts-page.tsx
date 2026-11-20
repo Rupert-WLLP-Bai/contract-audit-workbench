@@ -266,8 +266,10 @@ export function ContractsPage() {
     queryFn: ({ signal }) => listMyContractDrafts(signal),
     enabled: actor !== null,
   });
-  const [ledgerForm, setLedgerForm] = useState<ContractLedgerFilter>({});
-  const [ledgerFilter, setLedgerFilter] = useState<ContractLedgerFilter>({});
+  const routeText = new URLSearchParams(location.search).get("q")?.trim() || undefined;
+  const previousRouteText = useRef(routeText);
+  const [ledgerForm, setLedgerForm] = useState<ContractLedgerFilter>({ text: routeText });
+  const [ledgerFilter, setLedgerFilter] = useState<ContractLedgerFilter>({ text: routeText });
   const [ledgerColumns, setLedgerColumns] = useState<ContractLedgerColumn[]>([
     ...CONTRACT_LEDGER_DEFAULT_COLUMNS,
   ]);
@@ -305,6 +307,15 @@ export function ContractsPage() {
   const [saving, setSaving] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [workspaceTab, setWorkspaceTab] = useState<"ledger" | "drafts" | "exports">("ledger");
+  useEffect(() => {
+    if (!routeText && !previousRouteText.current) return;
+    previousRouteText.current = routeText;
+    setLedgerForm((current) => ({ ...current, text: routeText }));
+    setLedgerFilter((current) => ({ ...current, text: routeText }));
+    setSelectedViewId(null);
+    setSelectedViewVersion(null);
+    setWorkspaceTab("ledger");
+  }, [location.key, routeText]);
   const [formSection, setFormSection] = useState<ContractFormSection>("basic");
   const [errorSection, setErrorSection] = useState<ContractFormSection | null>(null);
 
@@ -678,7 +689,7 @@ export function ContractsPage() {
     <ListPage
       className="contracts-page"
       standaloneSurface={false}
-      title="合同登记"
+      title="合同台账"
       beforeSummary={
         <ContractDeskSources
           active="registered"

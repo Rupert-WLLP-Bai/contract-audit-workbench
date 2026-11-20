@@ -78,13 +78,13 @@ export const WORKBENCH_MODULES = {
     details: ["任务详情", "处理记录", "关联材料", "协作成员"],
   },
   remediation: {
-    title: "整改中心",
+    title: "整改",
     description: "跟踪整改事项、相关材料和复核进度。",
     tabs: ["待整改", "待复核", "已关闭"],
     details: ["整改详情", "材料与版本", "复核记录", "操作历史"],
   },
   reports: {
-    title: "报告中心",
+    title: "报告",
     description: "查看已保存的报告版本与摘要。",
     tabs: ["审查报告", "版本对比", "导出记录"],
     details: ["报告预览", "发现与决定", "版本与来源", "导出记录"],
@@ -116,7 +116,7 @@ export const WORKBENCH_MODULES = {
     details: ["成员信息", "角色与权限", "案件授权", "活动记录"],
   },
   templates: {
-    title: "模板管理",
+    title: "合同模板",
     description: "查看服务端当前模板版本及结构化字段。",
     tabs: ["模板库", "字段配置", "生成记录"],
     details: ["模板预览", "字段定义", "使用记录", "版本记录"],

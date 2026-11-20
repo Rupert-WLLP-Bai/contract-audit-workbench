@@ -9,8 +9,7 @@
 // End file metadata.
 
 import type { CaseProfile, CaseSummary, WorkbenchMember } from "../api/types";
-import { businessLineLabel, businessScopeLabel, scenarioLabel } from "./business-labels";
-import { preciseTime } from "./time";
+import { businessLineLabel, scenarioLabel } from "./business-labels";
 
 type CaseIdentity = CaseSummary & { profile?: CaseProfile | null };
 
@@ -26,29 +25,27 @@ export function contractTypeLabel(value: string): string {
   return Object.hasOwn(CONTRACT_LABELS, value) ? CONTRACT_LABELS[value]! : "合同类型待核对";
 }
 
-export function caseIdentityDetails(item: CaseIdentity, members: WorkbenchMember[] = []): string {
-  const profile = item.profile;
-  const number = item.case_number ?? profile?.number;
-  const customer = item.customer ?? profile?.customer;
-  const supplier = item.supplier ?? profile?.supplier;
-  const owner =
-    item.owner_name || members.find((member) => member.id === profile?.owner_id)?.display_name;
-  return [
-    number?.trim() ? `案件业务编号 ${number}` : "业务编号未登记",
-    customer?.trim() && customer !== "unspecified" ? `客户 ${customer}` : "",
-    supplier?.trim() && supplier !== "unspecified" ? `供应商 ${supplier}` : "",
-    owner ? `负责人 ${owner}` : "",
-    businessScopeLabel(item.business_line, item.scenario),
-    contractTypeLabel(item.contract_type),
-    `更新时间 ${preciseTime(item.updated_at)}`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+export function caseIdentityDetails(item: CaseIdentity, _members: WorkbenchMember[] = []): string {
+  const number = (item.case_number || item.profile?.number || "").trim();
+  const type =
+    item.contract_type && item.contract_type !== "unspecified"
+      ? contractTypeLabel(item.contract_type)
+      : "";
+  const scope = [item.business_line, item.scenario]
+    .filter((value) => value && value !== "unspecified")
+    .map((value, index) =>
+      index === 0 && value === item.business_line ? businessLineLabel(value) : scenarioLabel(value),
+    )
+    .filter((value) => value !== "—" && !value.endsWith("待核对"))
+    .join(" / ");
+  return [number, type === "合同类型待核对" ? "" : type, scope].filter(Boolean).join(" · ");
 }
 
 // Full machine identity is secondary and never used as a business number.
 export function caseOptionLabel(item: CaseIdentity, members: WorkbenchMember[] = []): string {
-  return `${item.title} · ${caseIdentityDetails(item, members)} · 案件标识 ${item.id}`;
+  return [item.title, caseIdentityDetails(item, members), `案件标识 ${item.id}`]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 export function caseSearchText(item: CaseIdentity): string {

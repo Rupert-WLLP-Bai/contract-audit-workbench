@@ -51,3 +51,26 @@ export function preciseTime(value: string | null | undefined): string {
     ?.value.replace(/^GMT/, "UTC");
   return `${formatDateTime(value, true)}（北京时间${offset ? ` ${offset}` : ""}）`;
 }
+
+/** Compact list timestamp, in the existing business time zone. */
+export function compactTime(value: string | null | undefined, now = new Date()): string {
+  if (!value || isInvalidTime(value) || Number.isNaN(now.getTime())) return "—";
+  const parts = (date: Date) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Shanghai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date);
+  const read = (items: Intl.DateTimeFormatPart[], type: string) =>
+    items.find((part) => part.type === type)?.value ?? "";
+  const input = parts(new Date(value));
+  const year = read(input, "year"),
+    monthDay = `${read(input, "month")}-${read(input, "day")}`;
+  return year === read(parts(now), "year")
+    ? `${monthDay} ${read(input, "hour")}:${read(input, "minute")}`
+    : `${year}-${monthDay}`;
+}

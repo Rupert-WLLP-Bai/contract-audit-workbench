@@ -11,12 +11,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
+import { Link, MemoryRouter } from "react-router";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   CONTRACT_LEDGER_COLUMNS,
   contractLedgerExportColumns,
   parseContractExport,
+  type ContractLedgerFilter,
 } from "../api/contracts";
 import { setSessionIdentity } from "../api/http";
 import { idempotencyActorScope, pendingMutationKey } from "../api/idempotency";
@@ -25,6 +27,7 @@ import { ContractsPage } from "./contracts-page";
 import labelCases from "./contracts-ledger-labels.fixture.json";
 
 const source = vi.hoisted(() => ({
+  ledgerFilter: vi.fn<(filter: ContractLedgerFilter) => void>(),
   rows: [] as Array<Record<string, unknown>>,
   drafts: [] as Array<Record<string, unknown>>,
   realSavedViews: false,
@@ -54,12 +57,15 @@ vi.mock("../api/queries", async (importOriginal) => {
   return {
     ...actual,
     useSession: () => ({ data: source.actor }),
-    useContractLedger: () => ({
-      data: { pages: [{ items: source.rows }] },
-      isLoading: false,
-      isError: false,
-      hasNextPage: false,
-    }),
+    useContractLedger: (filter: ContractLedgerFilter) => {
+      source.ledgerFilter(filter);
+      return {
+        data: { pages: [{ items: source.rows }] },
+        isLoading: false,
+        isError: false,
+        hasNextPage: false,
+      };
+    },
     useContractSavedViews: (scope: string, enabled: boolean) =>
       source.realSavedViews
         ? actual.useContractSavedViews(scope, enabled)
@@ -103,16 +109,24 @@ function row(overrides: Record<string, string>) {
   };
 }
 
-function renderPage() {
+function renderPage(path = "/", entry?: ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[path]}>
+        {entry}
         <ContractsPage />
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
+
+it("uses the route text with the existing ledger query and clears a previous route filter", async () => {
+  renderPage("/contracts?q=CGHT202603008", <Link to="/contracts">清空路由搜索</Link>);
+  expect(source.ledgerFilter).toHaveBeenLastCalledWith({ text: "CGHT202603008" });
+  await userEvent.click(screen.getByRole("link", { name: "清空路由搜索" }));
+  await waitFor(() => expect(source.ledgerFilter).toHaveBeenLastCalledWith({ text: undefined }));
+});
 
 beforeEach(() => {
   source.rows = [row({})];
@@ -174,6 +188,7 @@ it("uses the submitted readable columns and obtains the CSV from the ledger rout
   });
   vi.stubGlobal("fetch", fetch);
   renderPage();
+  expect(await screen.findByRole("heading", { name: "合同台账", level: 1 })).toBeVisible();
   await userEvent.setup().click(screen.getByRole("button", { name: "导出 CSV" }));
   const exportCalls = () => fetch.mock.calls.filter(([, init]) => init?.method === "POST");
   await waitFor(() => expect(exportCalls()).toHaveLength(1));

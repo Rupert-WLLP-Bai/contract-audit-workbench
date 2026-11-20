@@ -92,9 +92,7 @@ async function captureFailurePages(contexts: BrowserContext[], output: string): 
 async function logout(page: Page): Promise<void> {
   await page.getByRole("button", { name: "头像菜单", exact: true }).click();
   await page.getByRole("button", { name: "退出", exact: true }).click();
-  await page
-    .getByRole("heading", { name: "登录合同审查", exact: true })
-    .waitFor({ state: "visible" });
+  await page.getByRole("heading", { name: "登录", exact: true }).waitFor({ state: "visible" });
 }
 
 async function openSection(page: Page, navigation: string, section: string): Promise<void> {
@@ -554,9 +552,7 @@ async function run(): Promise<void> {
     );
 
     await admin.getByRole("link", { name: "打开主体台账", exact: true }).click();
-    await admin
-      .getByRole("heading", { name: "主体台账", exact: true })
-      .waitFor({ state: "visible" });
+    await admin.getByRole("heading", { name: "主体", exact: true }).waitFor({ state: "visible" });
     await admin.getByRole("link", { name: subjectName, exact: true }).click();
     await admin
       .getByRole("heading", { name: subjectName, exact: true })

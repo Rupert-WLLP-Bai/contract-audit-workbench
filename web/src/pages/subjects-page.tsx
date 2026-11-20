@@ -209,7 +209,7 @@ export function SubjectsPage() {
   return (
     <ListPage
       className="subjects-page"
-      title="主体台账"
+      title="主体"
       description="管理合同往来主体，查看身份信息、核验状态与关联案件。"
       actions={
         <Button

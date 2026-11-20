@@ -205,12 +205,13 @@ function Registration() {
   );
 }
 
-function openPage(path = "/contract-desk") {
+function openPage(path = "/contract-desk?page=1") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter(
     [
       { path: "/contract-desk", element: <ContractDeskPage /> },
       { path: "/contracts", element: <Registration /> },
+      { path: "/cases", element: <h1>案件</h1> },
       { path: "/cases/:caseId", element: <div>案件材料入口</div> },
       { path: "/cases/:caseId/reviews/:runId", element: <div>冻结原文入口</div> },
     ],
@@ -223,6 +224,13 @@ function openPage(path = "/contract-desk") {
   );
   return router;
 }
+
+it("replaces bare legacy contract desk visits with the cases page", async () => {
+  const router = openPage("/contract-desk");
+  expect(await screen.findByRole("heading", { name: "案件" })).toBeVisible();
+  expect(router.state.location.pathname).toBe("/cases");
+  expect(router.state.historyAction).toBe("REPLACE");
+});
 
 beforeEach(() => {
   vi.resetAllMocks();

@@ -344,9 +344,7 @@ try {
       })
       .catch(() => "");
     findingsCleared = (await page.locator("[data-finding-id]").count()) === 0;
-    loginVisible = await page
-      .getByRole("heading", { name: "登录合同审查", exact: true })
-      .isVisible();
+    loginVisible = await page.getByRole("heading", { name: "登录", exact: true }).isVisible();
     if (streamEnded && findingsCleared && (observedLabel === closedLabel || loginVisible)) break;
     await page.waitForTimeout(500);
   }

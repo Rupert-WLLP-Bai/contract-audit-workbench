@@ -28,6 +28,7 @@ import type {
   WorkbenchTaskUpdateInput,
 } from "../api/types";
 import { WorkbenchModulePage } from "./workbench-module-page";
+import { AdministrativeTechnicalDetails } from "../components/app-shell-preferences";
 
 const at = "2026-10-21T06:00:00Z";
 const later = "2026-10-21T07:00:00Z";
@@ -709,7 +710,9 @@ function open(module: string, service = new WorkbenchService(), search = "") {
   );
   const view = render(
     <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
+      <AdministrativeTechnicalDetails>
+        <RouterProvider router={router} />
+      </AdministrativeTechnicalDetails>
     </QueryClientProvider>,
   );
   return { ...view, service, router, client, user: userEvent.setup() };
@@ -1660,7 +1663,7 @@ describe("workbench knowledge", () => {
 describe("workbench remediation and frozen artifacts", () => {
   it("routes remediation status groups to their real materials, original run and verification run", async () => {
     const { user } = open("remediation");
-    const rows = await list("整改中心");
+    const rows = await list("整改");
     expect(rows.getByRole("button", { name: /补充付款材料/ })).toBeInTheDocument();
     expect(rows.getByRole("button", { name: /重新整改付款条款/ })).toBeInTheDocument();
     expect(
@@ -1693,7 +1696,7 @@ describe("workbench remediation and frozen artifacts", () => {
       "/cases/case%2Falpha/reviews/run%2Foriginal",
     );
     expect(details().queryByRole("link", { name: "打开复核审查" })).not.toBeInTheDocument();
-    await category(user, "整改中心", "待复核");
+    await category(user, "整改", "待复核");
     expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(1);
     expect(rows.getByRole("button", { name: /等待复核签章/ })).toBeInTheDocument();
     expectField("复核尝试", "attempt/verification");
@@ -1705,7 +1708,7 @@ describe("workbench remediation and frozen artifacts", () => {
     await detailTab(user, "操作历史");
     expect(details().getByText(/提交签章材料/)).toBeInTheDocument();
     await expectTechnicalField(user, "事件 2 操作编码", "remediation.submitted");
-    await category(user, "整改中心", "已关闭");
+    await category(user, "整改", "已关闭");
     expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(1);
     expect(rows.getByRole("button", { name: /已关闭签章整改/ })).toBeInTheDocument();
   });
@@ -1722,7 +1725,7 @@ describe("workbench remediation and frozen artifacts", () => {
       }),
     ];
     const { user } = open("remediation", service);
-    await list("整改中心");
+    await list("整改");
     expectDisplayField("责任人", "姓名未提供");
     await expectTechnicalField(user, "责任人标识", "former-assignee");
     await expectTechnicalField(user, "案件标识", "case-empty");
@@ -1736,17 +1739,17 @@ describe("workbench remediation and frozen artifacts", () => {
 
   it("moves workbench statistics and business activity into the reports module", async () => {
     const { user } = open("reports");
-    await list("报告中心");
+    await list("报告");
     await user.click(screen.getByText("审查统计与业务记录", { exact: true }));
     expect(screen.getByRole("heading", { name: "审查发现分布" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "最近业务记录" })).toBeVisible();
     expect(screen.getByLabelText("统计周期")).toHaveValue("week");
-    expect(screen.getByRole("region", { name: "报告中心记录" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "报告记录" })).toBeVisible();
   });
 
   it("shows frozen report versions without exposing raw IDs or digests in the business view", async () => {
     const { user } = open("reports");
-    const rows = await list("报告中心");
+    const rows = await list("报告");
     expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(3);
     expect(within(rows.getByRole("table")).getAllByText("已生成")).toHaveLength(3);
     expect(details().queryByText("报告 ID")).not.toBeInTheDocument();
@@ -1786,7 +1789,7 @@ describe("workbench remediation and frozen artifacts", () => {
     ]) {
       expect(details().queryByText(digest)).not.toBeInTheDocument();
     }
-    await category(user, "报告中心", "版本对比");
+    await category(user, "报告", "版本对比");
     expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(2);
     expect(rows.queryByRole("button", { name: /独立单版案件/ })).not.toBeInTheDocument();
     await user.type(screen.getByRole("searchbox"), "  审查报告 V1  ");
@@ -1794,7 +1797,7 @@ describe("workbench remediation and frozen artifacts", () => {
     expectField("报告版本", "1");
     expect(details().queryByText("report-v1-sha256")).not.toBeInTheDocument();
     await user.clear(screen.getByRole("searchbox"));
-    await category(user, "报告中心", "导出记录");
+    await category(user, "报告", "导出记录");
     await selectRecord(user, /独立单版案件/);
     await detailTab(user, "导出记录");
     expect(details().queryByText("run-single")).not.toBeInTheDocument();
@@ -2208,7 +2211,7 @@ describe("workbench public directory, templates and audit", () => {
 
   it("renders returned template field definitions and current version without fabricating generated documents", async () => {
     const { user } = open("templates");
-    await list("模板管理");
+    await list("合同模板");
     expectField("ID", "template/line");
     expectField("版本", "3.0.0");
     expectField("摘要", "template-sha256");
@@ -2217,7 +2220,7 @@ describe("workbench public directory, templates and audit", () => {
     expect(placeholders).toHaveTextContent("{{供应商}}");
     expect(placeholders).toHaveTextContent("{{金额}}");
     expect(placeholders).toHaveTextContent("文本 · 必填");
-    await category(user, "模板管理", "字段配置");
+    await category(user, "合同模板", "字段配置");
     await detailTab(user, "字段定义");
     expectDisplayField("供应商", "文本，必填");
     expectDisplayField("金额", "小数，必填");
@@ -2225,7 +2228,7 @@ describe("workbench public directory, templates and audit", () => {
     expectDisplayField("备注", "类型待核对，选填");
     await expectTechnicalField(user, "字段 1 标识", "supplier");
     await expectTechnicalField(user, "字段 4 类型编码", "textarea");
-    await category(user, "模板管理", "生成记录");
+    await category(user, "合同模板", "生成记录");
     await detailTab(user, "使用记录");
     expectField("当前身份可见案件", "2");
     expect(details().getByText(/不包含按模板汇总的生成日志/)).toBeInTheDocument();
@@ -2250,7 +2253,7 @@ describe("workbench public directory, templates and audit", () => {
       },
     ];
     const { user } = open("templates", service);
-    await list("模板管理");
+    await list("合同模板");
     await detailTab(user, "字段定义");
     expect(details().getByRole("heading", { name: "空字段模板" })).toBeInTheDocument();
     expect(details().queryByRole("definition")).not.toBeInTheDocument();
@@ -2436,7 +2439,7 @@ describe("workbench snapshot boundaries", () => {
 
   it("does not retain a selected record when a refreshed snapshot no longer contains it", async () => {
     const { user, service } = open("reports");
-    await list("报告中心");
+    await list("报告");
     expect(details().getByRole("link", { name: "打开报告" })).toBeInTheDocument();
     service.snapshot.reports = [];
     await user.click(screen.getByRole("button", { name: "刷新数据" }));
