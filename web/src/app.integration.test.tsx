@@ -3441,6 +3441,36 @@ describe("application routes and API contract", () => {
     await waitFor(() => expect(card.open).toBe(true));
   });
 
+  it("uses one primary action as the ready partial preparation opens and closes", async () => {
+    const api = new Service();
+    const item = api.cases.get("c1")!;
+    item.scenario = "general";
+    const review = api.addReview("partial");
+    review.findings = [];
+    review.execution!.attempt.frozen_result_available = true;
+    review.execution!.attempt.outcome = {
+      reason: "execution_failed",
+      agent_stage: "unknown",
+      retry_cause: "none",
+    };
+    item.finding_counts = { total: 0, conflict: 0, insufficient: 0, undecided: 0 };
+    const { user } = open(api, "/cases/c1");
+    await screen.findByRole("table", { name: "历次审查" });
+    const next = await screen.findByRole("link", { name: "重新审查" });
+    expect(next).toHaveClass("ant-btn-primary");
+    const disclosure = document.querySelector<HTMLDetailsElement>("#case-review-preparation")!;
+    expect(disclosure.open).toBe(false);
+    await user.click(next);
+    const footerAction = await screen.findByRole("button", { name: "发起新审查" });
+    await waitFor(() => expect(next).not.toHaveClass("ant-btn-primary"));
+    expect(footerAction).toBeEnabled();
+    expect(footerAction).toHaveClass("ant-btn-primary");
+    expect(disclosure.open).toBe(true);
+    await user.click(disclosure.querySelector("summary")!);
+    await waitFor(() => expect(next).toHaveClass("ant-btn-primary"));
+    expect(api.requests.some(({ key }) => key === "POST /api/cases/c1/reviews")).toBe(false);
+  });
+
   it("shows a limited precheck in the case and starts a full review only after readiness", async () => {
     const api = new Service();
     const prior = api.addReview("partial");

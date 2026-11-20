@@ -63,6 +63,7 @@ interface Props {
   actionTarget?: HTMLElement | null;
   stageTarget?: HTMLElement | null;
   preparationActionTarget?: HTMLElement | null;
+  preparationVisible?: boolean;
   onNavigateReview?: (href: string) => void;
 }
 
@@ -866,11 +867,39 @@ export function CaseNextStep(props: Props) {
   const action = plan.action;
   const latestWorkspace = currentWorkspace(props);
   const actionLabel = action.label;
+  const preparationScope = props.readiness?.scopes.find(
+    (scope) => scope.id === props.selectedScope,
+  );
+  const canStartPrepared =
+    props.preparationActionTarget &&
+    (plan.showPreparationStart || action.kind === "start") &&
+    !props.suppressWriteAction &&
+    props.sessionReady &&
+    Object.hasOwn(CAN_START_REVIEW_ROLES, actorRole) &&
+    props.caseDetail.archived_at === null &&
+    props.caseDetail.materials &&
+    props.caseDetail.material_versions &&
+    props.caseDetail.material_selection &&
+    props.caseDetail.material_selection.status !== "pending_confirmation" &&
+    props.caseDetail.subject_context_changed_after_latest_run !== undefined &&
+    (!props.businessAtInput || props.validBusinessAt) &&
+    !props.readinessLoading &&
+    !props.readinessError &&
+    props.readiness?.case_id === props.caseDetail.id &&
+    preparationScope?.status === "ready" &&
+    preparationScope.can_start &&
+    preparationScope.blockers.length === 0;
+  const prioritizePreparation =
+    props.preparationVisible && canStartPrepared && !props.startDisabled;
+  const actionType =
+    prioritizePreparation && plan.showPreparationStart && action.href === "#review-readiness"
+      ? "default"
+      : "primary";
   const actionProps = {
     className: "case-next-step-button",
     "aria-label":
       props.suppressWriteAction && action.kind === "start" ? "打开案件继续" : actionLabel,
-    type: "primary" as const,
+    type: actionType,
     htmlType: "button" as const,
     loading: action.loading,
     disabled: action.disabled || (action.kind === "start" && props.startDisabled === true),
@@ -938,28 +967,6 @@ export function CaseNextStep(props: Props) {
   }
 
   if (props.compact) {
-    const preparationScope = props.readiness?.scopes.find(
-      (scope) => scope.id === props.selectedScope,
-    );
-    const canStartPrepared =
-      props.preparationActionTarget &&
-      (plan.showPreparationStart || action.kind === "start") &&
-      !props.suppressWriteAction &&
-      props.sessionReady &&
-      Object.hasOwn(CAN_START_REVIEW_ROLES, actorRole) &&
-      props.caseDetail.archived_at === null &&
-      props.caseDetail.materials &&
-      props.caseDetail.material_versions &&
-      props.caseDetail.material_selection &&
-      props.caseDetail.material_selection.status !== "pending_confirmation" &&
-      props.caseDetail.subject_context_changed_after_latest_run !== undefined &&
-      (!props.businessAtInput || props.validBusinessAt) &&
-      !props.readinessLoading &&
-      !props.readinessError &&
-      props.readiness?.case_id === props.caseDetail.id &&
-      preparationScope?.status === "ready" &&
-      preparationScope.can_start &&
-      preparationScope.blockers.length === 0;
     const stage = <StatusText tone={plan.tone}>{plan.stage}</StatusText>;
     const currentAttempt = latestWorkspace?.review_attempts?.attempt;
     const exception =
@@ -988,7 +995,12 @@ export function CaseNextStep(props: Props) {
               action.kind === "start" &&
                 props.preparationActionTarget &&
                 !props.suppressWriteAction ? (
-                <Button href="#review-readiness">审查准备</Button>
+                <Button
+                  type={prioritizePreparation ? "default" : "primary"}
+                  href="#review-readiness"
+                >
+                  审查准备
+                </Button>
               ) : (
                 mainAction
               ),

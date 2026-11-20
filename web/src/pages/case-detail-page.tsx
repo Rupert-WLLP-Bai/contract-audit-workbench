@@ -94,6 +94,7 @@ export function CaseDetailPage() {
   const [preparationActionTarget, setPreparationActionTarget] = useState<HTMLDivElement | null>(
     null,
   );
+  const [preparationOpen, setPreparationOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -633,6 +634,7 @@ export function CaseDetailPage() {
               actionTarget={actionTarget}
               stageTarget={stageTarget}
               preparationActionTarget={preparationActionTarget}
+              preparationVisible={activeSection === "reviews" && preparationOpen}
               caseDetail={item}
               actorRole={actorRole}
               sessionReady={session.isSuccess}
@@ -856,6 +858,7 @@ export function CaseDetailPage() {
                         <CollapsibleSection
                           key={`${item.id}:${Boolean(loadedReviews.length)}`}
                           id="case-review-preparation"
+                          onOpenChange={setPreparationOpen}
                           title="审查准备"
                           defaultOpen={
                             !loadedReviews.length ||
