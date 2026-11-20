@@ -24,10 +24,12 @@ import {
 } from "./issue-253-fixtures";
 
 const web = process.env.E2E_WEB ?? "http://127.0.0.1:5173";
+const widths = process.env.E2E_DESKTOP_ONLY === "1" ? [1440] : [1440, 1280, 1024, 390];
 
 async function openEditor(page: Page, mode: FixtureMode, references = false) {
   const fixture = await installContractFixture(page, mode, references);
   await page.goto(`${web}/contracts`);
+  await page.getByRole("tab", { name: "我的草稿", exact: true }).click();
   await expect(page.locator("fieldset.contracts-page-section")).toHaveCount(4);
   if (mode !== "empty") {
     await page.locator(".contracts-page-list button").click();
@@ -77,7 +79,7 @@ async function geometry(page: Page, info: TestInfo, label: string) {
         controls:
           ".contracts-page-section input, .contracts-page-section textarea, .contracts-page-section select, .contracts-page-section button, .contracts-page-section [role='combobox']",
         tables: ".contracts-page-section .ant-table-content",
-        itemInputs: "fieldset.contracts-page-section input[aria-label*='行']",
+        itemInputs: "fieldset.contracts-page-section:not([hidden]) input[aria-label*='行']",
       }).map(([key, selector]) => [key, Array.from(document.querySelectorAll(selector), describe)]),
     );
     const root = document.documentElement;
@@ -99,7 +101,7 @@ async function geometry(page: Page, info: TestInfo, label: string) {
     if (list.scrollWidth > list.clientWidth + 1)
       issues.push(`list scroll ${list.scrollWidth} > ${list.clientWidth}`);
     document
-      .querySelectorAll<HTMLElement>("fieldset.contracts-page-section")
+      .querySelectorAll<HTMLElement>("fieldset.contracts-page-section:not([hidden])")
       .forEach((section, index) => {
         if (!inside(section, editor)) issues.push(`section ${index + 1} outside editor`);
         if (section.scrollWidth > section.clientWidth + 1)
@@ -135,7 +137,9 @@ async function geometry(page: Page, info: TestInfo, label: string) {
           });
       });
     document
-      .querySelectorAll<HTMLElement>("fieldset.contracts-page-section input[aria-label*='行']")
+      .querySelectorAll<HTMLElement>(
+        "fieldset.contracts-page-section:not([hidden]) input[aria-label*='行']",
+      )
       .forEach((input) => {
         if (rect(input).width < 70)
           issues.push(`item input too narrow: ${Math.round(rect(input).width)}px`);
@@ -187,45 +191,54 @@ for (const mode of ["empty", "editable"] as const) {
   test(`${mode} sections stay within the editor across viewport widths`, async ({ page }, info) => {
     const fixture = await openEditor(page, mode);
     const issues: string[] = [];
-    for (const width of [1440, 1280, 1024, 390]) {
+    const sectionNames = ["合同基本信息", "相关方与标的", "资金与付款", "材料与核对"];
+    for (const width of widths) {
       await page.setViewportSize({ width, height: 900 });
-      const result = await geometry(page, info, `${mode}-${width}`);
-      issues.push(...result.issues.map((issue) => `${width}: ${issue}`));
-      if (mode === "empty") {
-        const issue = await emptyMessageIssue(page);
-        if (issue) issues.push(`${width}: ${issue}`);
-      }
-      if (mode === "editable" && width === 390) {
-        const table = page
-          .locator("fieldset.contracts-page-section")
-          .nth(1)
-          .locator(".ant-table-content");
-        const dimensions = await table.evaluate((element) => ({
-          clientWidth: element.clientWidth,
-          scrollWidth: element.scrollWidth,
-        }));
-        if (dimensions.scrollWidth <= dimensions.clientWidth)
-          issues.push(
-            `390: item table does not offer local scrolling (${dimensions.scrollWidth}/${dimensions.clientWidth})`,
-          );
-        await page.getByLabel("第 1 行明细金额", { exact: true }).focus();
-        await expect(page.getByLabel("第 1 行明细金额", { exact: true })).toBeFocused();
-        if ((await table.evaluate((element) => element.scrollLeft)) <= 0)
-          issues.push("390: keyboard focus cannot reach the right side of the item table");
-        await page.getByLabel("第 1 行明细金额", { exact: true }).fill("12345.67");
+      for (const sectionName of sectionNames) {
+        await page.getByRole("button", { name: sectionName, exact: true }).click();
+        const result = await geometry(page, info, `${mode}-${width}-${sectionName}`);
+        issues.push(...result.issues.map((issue) => `${width}/${sectionName}: ${issue}`));
+        if (mode === "empty" && sectionName === "相关方与标的") {
+          const issue = await emptyMessageIssue(page);
+          if (issue) issues.push(`${width}: ${issue}`);
+        }
+        if (mode === "editable" && width === 390 && sectionName === "相关方与标的") {
+          const table = page
+            .locator("fieldset.contracts-page-section:not([hidden]) .ant-table-content")
+            .first();
+          const dimensions = await table.evaluate((element) => ({
+            clientWidth: element.clientWidth,
+            scrollWidth: element.scrollWidth,
+          }));
+          if (dimensions.scrollWidth <= dimensions.clientWidth)
+            issues.push(
+              `390: item table does not offer local scrolling (${dimensions.scrollWidth}/${dimensions.clientWidth})`,
+            );
+          await page.getByLabel("第 1 行明细金额", { exact: true }).focus();
+          await expect(page.getByLabel("第 1 行明细金额", { exact: true })).toBeFocused();
+          if ((await table.evaluate((element) => element.scrollLeft)) <= 0)
+            issues.push("390: keyboard focus cannot reach the right side of the item table");
+          await page.getByLabel("第 1 行明细金额", { exact: true }).fill("12345.67");
+        }
       }
       if (width === 1280 || width === 390)
         await page.screenshot({ path: info.outputPath(`${mode}-${width}.png`), fullPage: true });
     }
     if (mode === "editable") {
+      if (process.env.E2E_DESKTOP_ONLY === "1") {
+        await page.getByRole("button", { name: "相关方与标的", exact: true }).click();
+        await page.getByLabel("第 1 行明细金额", { exact: true }).fill("12345.67");
+      }
       await expect(page.getByLabel("合同编号", { exact: true })).toHaveValue(longNumber);
       await expect(page.getByLabel("供应商全称", { exact: true })).toHaveValue(longSupplier);
       await expect(page.getByLabel("开户行", { exact: true })).toHaveValue(longBank);
       await expect(
         page.locator("fieldset.contracts-page-section .field-wide textarea").first(),
       ).toHaveValue(longUrl);
+      await page.getByRole("button", { name: "合同基本信息", exact: true }).click();
       await page.getByLabel("合同名称", { exact: true }).fill(`${longName}X`);
-      await page.setViewportSize({ width: 1280, height: 900 });
+      if (process.env.E2E_DESKTOP_ONLY !== "1")
+        await page.setViewportSize({ width: 1280, height: 900 });
       await expect(page.getByLabel("合同名称", { exact: true })).toHaveValue(`${longName}X`);
       await expect(page.getByLabel("第 1 行明细金额", { exact: true })).toHaveValue("12345.67");
       await expect(page.getByText("有未保存的修改", { exact: true })).toBeVisible();
@@ -288,9 +301,11 @@ for (const mode of ["empty", "editable"] as const) {
 test("masked read-only draft stays masked and cannot be edited", async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 900 });
   const fixture = await openEditor(page, "readonly");
+  await page.getByRole("button", { name: "相关方与标的", exact: true }).click();
   await expect(page.getByLabel("开户行", { exact: true })).toHaveValue("••••");
   await expect(page.getByLabel("开户行", { exact: true })).toHaveAttribute("readonly");
   await expect(page.getByLabel("账号", { exact: true })).toHaveValue("••••••••");
+  await page.getByRole("button", { name: "合同基本信息", exact: true }).click();
   await expect(page.getByLabel("合同名称", { exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "保存草稿" })).toBeDisabled();
   const result = await geometry(page, info, "readonly-390");
@@ -301,6 +316,7 @@ test("masked read-only draft stays masked and cannot be edited", async ({ page }
 
 async function openReferenceResults(page: Page) {
   const fixture = await openEditor(page, "editable", true);
+  await page.getByRole("button", { name: "材料与核对", exact: true }).click();
   const panel = page.locator(".contracts-page-references");
   await panel.getByRole("combobox").click();
   await page.getByRole("option", { name: /合成来源案件/ }).click();
@@ -404,7 +420,7 @@ test("reference results wrap long subject and material names at responsive width
 }, info) => {
   const fixture = await openReferenceResults(page);
   const issues: string[] = [];
-  for (const width of [1440, 1280, 1024, 390]) {
+  for (const width of widths) {
     await page.setViewportSize({ width, height: 900 });
     const layout = await geometry(page, info, `references-layout-${width}`);
     const result = await referenceGeometry(page, info, `references-${width}`);

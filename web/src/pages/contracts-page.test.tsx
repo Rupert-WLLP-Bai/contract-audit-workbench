@@ -24,6 +24,7 @@ import { setSessionIdentity } from "../api/http";
 import { idempotencyActorScope, pendingMutationKey } from "../api/idempotency";
 import { renderWithAntd as render } from "../test/antd";
 import { ContractsPage } from "./contracts-page";
+import { AdministrativeTechnicalDetails } from "../components/app-shell-preferences";
 import labelCases from "./contracts-ledger-labels.fixture.json";
 
 const source = vi.hoisted(() => ({
@@ -45,6 +46,7 @@ const source = vi.hoisted(() => ({
 vi.mock("../api/contracts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/contracts")>()),
   listMyContractDrafts: vi.fn(async () => source.drafts),
+  listMyContractReminderInbox: vi.fn(async () => ({ items: [] })),
 }));
 
 vi.mock("../api/idempotency", async (importOriginal) => {
@@ -109,13 +111,19 @@ function row(overrides: Record<string, string>) {
   };
 }
 
-function renderPage(path = "/", entry?: ReactNode) {
+function renderPage(path = "/", entry?: ReactNode, showTechnical = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
         {entry}
-        <ContractsPage />
+        {showTechnical ? (
+          <AdministrativeTechnicalDetails>
+            <ContractsPage />
+          </AdministrativeTechnicalDetails>
+        ) : (
+          <ContractsPage />
+        )}
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -145,6 +153,62 @@ beforeEach(() => {
 afterEach(() => {
   setSessionIdentity(null);
   vi.unstubAllGlobals();
+});
+
+it("shows six ledger columns and applies field visibility without changing the draft state", async () => {
+  renderPage();
+  const user = userEvent.setup();
+  const table = within(screen.getByRole("region", { name: "合同台账" })).getByRole("table");
+  expect(
+    within(table)
+      .getAllByRole("columnheader")
+      .map((cell) => cell.textContent),
+  ).toEqual(["合同名称与编号", "对方主体", "合同金额", "状态", "会签", "更新时间"]);
+  expect(within(table).getByText("草稿")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "字段" }));
+  const fields = screen.getByRole("dialog", { name: "显示字段" });
+  await user.click(within(fields).getByRole("checkbox", { name: "供应商" }));
+  expect(within(table).queryByRole("columnheader", { name: "对方主体" })).not.toBeInTheDocument();
+  expect(within(table).getByText("草稿")).toBeVisible();
+});
+
+it("opens the authorized ID from a data cell and keeps a keyboard action when identity columns are hidden", async () => {
+  source.rows = [row({ supplier_name: "对方主体", amount: "74514600.00", currency: "CNY" })];
+  const fetch = vi.fn(
+    async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify({ error: "forbidden" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  renderPage();
+  const user = userEvent.setup();
+  const table = within(screen.getByRole("region", { name: "合同台账" })).getByRole("table");
+  expect(within(table).getByText("CNY 74,514,600.00")).toBeVisible();
+  const amountCell = within(table).getByText("CNY 74,514,600.00").closest("td")!;
+  expect(amountCell).toHaveClass("contracts-ledger-amount");
+  await user.click(within(table).getByRole("cell", { name: "对方主体" }));
+  await waitFor(() =>
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/contracts/11111111-1111-4111-8111-111111111111"),
+      expect.objectContaining({ method: "GET" }),
+    ),
+  );
+  await user.click(screen.getByRole("button", { name: "字段" }));
+  const fields = screen.getByRole("dialog", { name: "显示字段" });
+  await user.click(within(fields).getByRole("checkbox", { name: "合同名称" }));
+  await user.click(within(fields).getByRole("checkbox", { name: "合同编号" }));
+  const action = within(table).getByRole("button", { name: "查看详情" });
+  action.focus();
+  await user.keyboard("{Enter}");
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.filter(([url]) =>
+        String(url).includes("/api/contracts/11111111-1111-4111-8111-111111111111"),
+      ),
+    ).toHaveLength(2),
+  );
 });
 
 it("uses the submitted readable columns and obtains the CSV from the ledger routes", async () => {
@@ -207,12 +271,11 @@ it("uses the submitted readable columns and obtains the CSV from the ledger rout
   expect(payload).toEqual({
     filter: {},
     columns: [
-      "contract_number",
       "contract_name",
+      "contract_number",
       "supplier_name",
       "amount",
       "currency",
-      "department_id",
       "contract_state_label",
       "contract_state_code",
       "workflow_state_label",
@@ -291,25 +354,44 @@ it("saves, reapplies, updates and deletes a view through the ledger API", async 
   vi.stubGlobal("fetch", fetch);
   renderPage();
   const user = userEvent.setup();
-  const search = screen.getByPlaceholderText("名称、服务端编号或内容编号");
+  await user.click(screen.getByRole("button", { name: "筛选" }));
+  const filters = screen.getByRole("dialog", { name: "合同台账筛选" });
+  await user.type(within(filters).getByLabelText("合同名称或编号"), "设备");
+  await user.type(within(filters).getByLabelText("供应商"), "供应商甲");
+  await user.click(within(filters).getByRole("button", { name: "查询" }));
+  await user.click(screen.getByRole("button", { name: "视图" }));
   const name = screen.getByPlaceholderText("视图名称（最多 60 字）");
-  await user.type(search, "设备");
-  await user.click(screen.getByRole("button", { name: "查询" }));
   await user.type(name, "设备视图");
   await user.click(screen.getByRole("button", { name: "保存视图" }));
   expect(await screen.findByText("视图已保存")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "重置" }));
-  await user.click(screen.getByText("应用已保存视图"));
+  await user.click(screen.getByRole("button", { name: /筛选/ }));
+  await user.click(
+    within(screen.getByRole("dialog", { name: "合同台账筛选" })).getByRole("button", {
+      name: "重置",
+    }),
+  );
+  await user.click(screen.getByRole("button", { name: "视图" }));
+  await user.click(
+    within(screen.getByRole("dialog", { name: "已保存视图" })).getByRole("combobox", {
+      name: "应用已保存视图",
+    }),
+  );
   await user.click(await screen.findByRole("option", { name: "设备视图" }));
-  expect(search).toHaveValue("设备");
+  expect(screen.getByRole("searchbox", { name: "搜索合同" })).toHaveValue("设备");
+  expect(source.ledgerFilter).toHaveBeenLastCalledWith({ text: "设备", supplier_name: "供应商甲" });
   expect(name).toHaveValue("设备视图");
   await user.clear(name);
   await user.type(name, "更新视图");
   await user.click(await screen.findByRole("button", { name: /更新视图/ }));
   expect(await screen.findByText("视图已更新")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "删除视图" }));
-  const dialog = await screen.findByRole("dialog");
+  await waitFor(() => expect(document.querySelector(".ant-modal-confirm")).not.toBeNull());
+  const dialog = document.querySelector<HTMLElement>(".ant-modal-confirm")!;
+  expect(dialog).toHaveTextContent("删除这个台账视图？");
   await user.click(within(dialog).getByRole("button", { name: "删除视图" }));
+  await waitFor(() => expect(saved).toBeNull());
+  const viewButton = screen.getByRole("button", { name: "视图" });
+  if (viewButton.getAttribute("aria-expanded") !== "true") await user.click(viewButton);
   expect(await screen.findByText("视图已删除")).toBeInTheDocument();
   const writes = fetch.mock.calls.filter(([, init]) => init?.method !== "GET");
   expect(writes.map(([url, init]) => [String(url), init?.method])).toEqual([
@@ -319,11 +401,11 @@ it("saves, reapplies, updates and deletes a view through the ledger API", async 
   ]);
   expect(JSON.parse(String(writes[0]![1]?.body))).toMatchObject({
     name: "设备视图",
-    filter: { text: "设备" },
+    filter: { text: "设备", supplier_name: "供应商甲" },
   });
   expect(JSON.parse(String(writes[1]![1]?.body))).toMatchObject({
     name: "更新视图",
-    filter: { text: "设备" },
+    filter: { text: "设备", supplier_name: "供应商甲" },
     expected_row_version: 1,
   });
   expect(saved).toBeNull();
@@ -389,10 +471,15 @@ it("shows ledger labels and discloses unknown codes only in copyable technical d
       workflow_state: item.workflow,
     }),
   );
-  renderPage();
+  renderPage("/", undefined, true);
   const user = userEvent.setup();
   const writeText = vi.spyOn(navigator.clipboard, "writeText");
-  await user.click(screen.getByText("应用已保存视图"));
+  await user.click(screen.getByRole("button", { name: "视图" }));
+  await user.click(
+    within(screen.getByRole("dialog", { name: "已保存视图" })).getByRole("combobox", {
+      name: "应用已保存视图",
+    }),
+  );
   await user.click(await screen.findByRole("option", { name: "状态对照" }));
   const table = within(screen.getByRole("region", { name: "合同台账" })).getByRole("table");
   for (const item of labelCases) {
@@ -421,8 +508,8 @@ it("shows ledger labels and discloses unknown codes only in copyable technical d
 it("keeps an unknown draft state behind technical details outside the draft button", async () => {
   // This deliberately bypasses the strict wire contract to exercise the display fallback.
   source.drafts = [row({ name: "状态待核对草稿", contract_state: "future_draft_state" })];
-  renderPage();
-  await userEvent.setup().click(screen.getByRole("tab", { name: "草稿" }));
+  renderPage("/", undefined, true);
+  await userEvent.setup().click(screen.getByRole("tab", { name: "我的草稿" }));
   const draft = (await screen.findByText("状态待核对草稿")).closest("li")!;
   const button = within(draft).getByRole("button", { name: /状态待核对草稿/ });
   expect(button).toHaveTextContent("待核对");
@@ -438,7 +525,7 @@ it("keeps an unknown draft state behind technical details outside the draft butt
 it("preserves the contract editor draft when switching workspace tabs", async () => {
   renderPage();
   const user = userEvent.setup();
-  const ledgerTab = screen.getByRole("tab", { name: "合同台账" });
+  const ledgerTab = screen.getByRole("tab", { name: "全部合同" });
   ledgerTab.focus();
   await user.keyboard("{ArrowRight}");
   const draftsTab = screen.getByRole("tab", { name: /草稿/ });
@@ -460,6 +547,17 @@ it("preserves the contract editor draft when switching workspace tabs", async ()
   expect(draftsTab).toHaveAttribute("aria-selected", "true");
   expect(name).toBeVisible();
   expect(name).toHaveValue("切换分区仍保留的草稿名称");
+});
+
+it("shows one primary action while editing a new draft", async () => {
+  renderPage();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("tab", { name: "我的草稿" }));
+  await user.type(screen.getByLabelText("合同名称"), "需要保存的草稿");
+  const save = screen.getByRole("button", { name: "保存草稿" });
+  const create = screen.getByRole("button", { name: "新建合同草稿" });
+  expect(save).toHaveClass("ant-btn-primary");
+  expect(create).not.toHaveClass("ant-btn-primary");
 });
 
 it("keeps one draft while switching among the four contract form sections", async () => {

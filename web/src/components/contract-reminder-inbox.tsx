@@ -8,12 +8,14 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { Alert, Button, Empty, Table, type TableColumnsType } from "antd";
-import { useMemo } from "react";
+import { Alert, Button, Drawer, Table, type TableColumnsType } from "antd";
+import { useEffect, useRef, useState } from "react";
 import { type ContractLedgerItem, type ContractReminderInboxItem } from "../api/contracts";
 import { ApiError, errorMessage } from "../api/http";
 import type { Actor } from "../api/types";
+import { actorReadContextKey } from "../domain/actor-read-context";
 import { useContractReminderInboxQuery } from "../features/contracts/queries";
+import "./contract-reminder-inbox.css";
 
 function planLabel(item: ContractReminderInboxItem): string {
   const kind =
@@ -39,104 +41,142 @@ function zonedInstant(value: string, timezone: string): string {
 function inboxError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 401) return "登录状态已失效，请重新登录后查看。";
-    if (error.status === 403) return "当前身份无权读取此收件箱；请检查登录账号和组织。";
-    if (error.status === 503) return "站内提醒暂时无法读取，请联系管理员检查服务状态。";
+    if (error.status === 403) return "当前身份无权查看提醒，请核对账号和组织。";
+    if (error.status === 503) return "提醒暂时无法读取。";
   }
   return errorMessage(error);
 }
 
-export function ContractReminderInbox({
-  actor,
-  contracts,
-  onOpenContract,
-}: {
+interface Props {
   actor: Actor | null;
   contracts: ContractLedgerItem[];
   onOpenContract: (contractId: string) => Promise<void>;
-}) {
+}
+
+export function ContractReminderInbox({ actor, ...props }: Props) {
+  const scope = actorReadContextKey(actor);
+  if (!actor || !scope) return null;
+  return <ScopedReminderInbox key={scope} actor={actor} {...props} />;
+}
+
+function ScopedReminderInbox({ actor, contracts, onOpenContract }: Props) {
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement | HTMLAnchorElement>(null);
+  const restoreFocus = useRef(false);
+  const close = () => {
+    restoreFocus.current = true;
+    setOpen(false);
+  };
+  useEffect(() => {
+    if (open || !restoreFocus.current) return;
+    restoreFocus.current = false;
+    trigger.current?.focus({ preventScroll: true });
+  }, [open]);
   const inbox = useContractReminderInboxQuery(actor);
   const items = inbox.isError ? [] : (inbox.data?.items ?? []);
-  const loading = inbox.isFetching;
-  const error = inbox.error ? inboxError(inbox.error) : null;
-  const contractByID = useMemo(
-    () => new Map(contracts.map((item) => [item.contract_id, item])),
-    [contracts],
-  );
+  const error = inbox.isError ? inboxError(inbox.error) : null;
+  if (!open && !items.length && !error) return null;
 
-  const columns = useMemo<TableColumnsType<ContractReminderInboxItem>>(
-    () => [
-      {
-        title: "合同",
-        key: "contract",
-        render: (_value: unknown, item: ContractReminderInboxItem) => {
-          const contract = contractByID.get(item.contract_id);
-          const title = contract?.name?.trim() || "合同名称未在当前台账页加载";
-          return (
-            <div>
-              <Button type="link" onClick={() => void onOpenContract(item.contract_id)}>
-                {title}
-              </Button>
-              <div className="meta">
-                {contract?.number ? `编号 ${contract.number}` : "合同编号未提供"}
-              </div>
-            </div>
-          );
-        },
-      },
-      {
-        title: "计划事项",
-        dataIndex: "plan_kind",
-        key: "plan",
-        render: (_value: unknown, item: ContractReminderInboxItem) => planLabel(item),
-      },
-      { title: "计划日期", dataIndex: "planned_date", key: "planned_date" },
-      {
-        title: "站内送达",
-        key: "delivered_at",
-        render: (_value: unknown, item: ContractReminderInboxItem) => (
+  const contractByID = new Map(contracts.map((item) => [item.contract_id, item]));
+  const columns: TableColumnsType<ContractReminderInboxItem> = [
+    {
+      title: "合同",
+      key: "contract",
+      width: "37%",
+      render: (_value: unknown, item: ContractReminderInboxItem) => {
+        const contract = contractByID.get(item.contract_id);
+        return (
           <>
-            {zonedInstant(item.delivered_at, item.timezone)}
-            <div className="meta">{item.timezone} · 已送达（不提供已读状态）</div>
+            <Button
+              className="contract-reminder-open-contract"
+              type="link"
+              onClick={() => {
+                close();
+                void onOpenContract(item.contract_id);
+              }}
+            >
+              {contract?.name.trim() || "查看合同"}
+            </Button>
+            {contract?.number ? (
+              <span className="contract-reminder-caption">{contract.number}</span>
+            ) : null}
           </>
-        ),
+        );
       },
-    ],
-    [contractByID, onOpenContract],
+    },
+    {
+      title: "计划事项",
+      key: "plan",
+      width: "19%",
+      render: (_value: unknown, item: ContractReminderInboxItem) => planLabel(item),
+    },
+    {
+      title: "计划日期",
+      dataIndex: "planned_date",
+      key: "planned_date",
+      width: "21%",
+      render: (date: string) => <time dateTime={date}>{date}</time>,
+    },
+    {
+      title: "送达时间",
+      key: "delivered_at",
+      width: "23%",
+      render: (_value: unknown, item: ContractReminderInboxItem) => (
+        <time dateTime={item.delivered_at}>
+          {zonedInstant(item.delivered_at, item.timezone)}
+          <span className="contract-reminder-caption">
+            {item.timezone === "Asia/Shanghai" ? "北京时间" : item.timezone}
+          </span>
+        </time>
+      ),
+    },
+  ];
+
+  const refresh = (
+    <Button onClick={() => void inbox.refetch()} loading={inbox.isFetching}>
+      {error ? "重试读取提醒" : "刷新提醒"}
+    </Button>
   );
 
   return (
-    <section className="contracts-page-section" aria-label="我的履约提醒收件箱">
-      <div className="contracts-ledger-head">
-        <div>
-          <h2>我的履约提醒</h2>
-          <p>仅显示已成功保存的站内投递，并再次按当前身份和合同读取权限过滤；不表示已读。</p>
-        </div>
-        <Button onClick={() => void inbox.refetch()} loading={loading} disabled={!actor}>
-          刷新提醒
-        </Button>
-      </div>
-      {!actor ? (
-        <Alert type="info" showIcon title="登录后可查看分配给当前登录人的站内提醒。" />
+    <>
+      {items.length > 0 ? (
+        <section className="contract-reminder-notice" aria-label="履约提醒">
+          <span>
+            有 <strong>{items.length}</strong> 项履约或付款提醒
+          </span>
+          <Button ref={trigger} type="link" aria-haspopup="dialog" onClick={() => setOpen(true)}>
+            查看提醒
+          </Button>
+        </section>
+      ) : error && !open ? (
+        <Alert className="contract-reminder-notice" type="error" title={error} action={refresh} />
       ) : null}
-      {error ? <Alert type="error" showIcon title={error} /> : null}
-      {actor ? (
-        <Table<ContractReminderInboxItem>
-          rowKey="reminder_id"
-          columns={columns}
-          dataSource={items}
-          loading={loading}
-          pagination={{ pageSize: 5, hideOnSinglePage: true, showSizeChanger: false }}
-          size="small"
-          scroll={{ x: "max-content" }}
-          locale={{
-            emptyText: (
-              <Empty
-                description={error ? "收件箱暂不可用" : "当前没有已成功送达且仍可读取的站内提醒"}
-              />
-            ),
-          }}
-        />
-      ) : null}
-    </section>
+      <Drawer
+        title="我的履约提醒"
+        size="min(520px, 100vw)"
+        open={open}
+        onClose={close}
+        focusable={{ focusTriggerAfterClose: false }}
+        extra={refresh}
+        destroyOnHidden
+      >
+        {error ? (
+          <Alert type="error" title={error} />
+        ) : (
+          <Table<ContractReminderInboxItem>
+            className="contract-reminder-table"
+            rowKey="reminder_id"
+            columns={columns}
+            dataSource={items}
+            loading={inbox.isFetching}
+            pagination={{ pageSize: 5, hideOnSinglePage: true, showSizeChanger: false }}
+            size="small"
+            tableLayout="fixed"
+            locale={{ emptyText: "暂无提醒" }}
+          />
+        )}
+      </Drawer>
+    </>
   );
 }

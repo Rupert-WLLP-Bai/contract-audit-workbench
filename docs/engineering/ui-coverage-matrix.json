@@ -297,7 +297,8 @@
         "web/src/pages/contracts-page.tsx",
         "web/src/components/page-patterns.tsx",
         "web/src/components/page-patterns.css",
-        "web/src/pages/contracts-page.css"
+        "web/src/pages/contracts-page.css",
+        "web/src/components/contract-reminder-inbox.tsx"
       ],
       "implementationIssue": 257,
       "figmaNodeId": "8:258",
@@ -305,10 +306,11 @@
         "audit/contracts-ui2-1440.png",
         "audit/contracts-ui2-1280.png",
         "audit/contracts-ui2-1024.png",
-        "audit/contracts-ui2-390.png"
+        "audit/contracts-ui2-390.png",
+        "../ui-redesign-20261120-v2/impl/361/after-ledger-real-1440.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：隔离副本 1440 使用真实网联草稿，完成组合视图增删与 CSV 下载；已签合同及完整矩阵 NOT_RUN。",
       "template": "ListPage with embedded contract editor"
     },
     {
@@ -1180,10 +1182,11 @@
         "audit/round41/contracts-ui2-geometry-1440.png",
         "audit/round41/contracts-ui2-geometry-1280.png",
         "audit/round41/contracts-ui2-geometry-1024.png",
-        "audit/round41/contracts-ui2-geometry-390.png"
+        "audit/round41/contracts-ui2-geometry-390.png",
+        "../ui-redesign-20261120-v2/impl/361/after-drafts-real-1440.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：1440 图为隔离副本真实网联草稿；未保存或签署，完整矩阵 NOT_RUN。",
       "template": "embedded contract editor"
     },
     {
@@ -1391,7 +1394,7 @@
         "audit/round41/contracts-ui2-geometry-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：历史截图保留；本批真实草稿的付款计划未保存或签署，完整矩阵 NOT_RUN。",
       "template": "embedded contract payment panel"
     }
   ]

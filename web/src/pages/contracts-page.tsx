@@ -8,7 +8,20 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { Alert, Button, Empty, Input, InputNumber, Modal, Select, Table, Tabs, Tag } from "antd";
+import {
+  Alert,
+  Button,
+  Checkbox,
+  Empty,
+  Input,
+  InputNumber,
+  Modal,
+  Popover,
+  Select,
+  Table,
+  Tabs,
+  Tag,
+} from "antd";
 import { actorReadContextKey } from "../domain/actor-read-context";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -21,7 +34,6 @@ import {
 } from "../api/http";
 import {
   CONTRACT_LEDGER_COLUMNS,
-  CONTRACT_LEDGER_DEFAULT_COLUMNS,
   contractLedgerExportColumns,
   createContractDraft,
   createContractExport,
@@ -62,6 +74,7 @@ import {
 import type { Actor } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { ListPage } from "../components/page-patterns";
+import { StatusText } from "../components/status-text";
 import { TechnicalDetail } from "../components/technical-detail";
 import { ContractReferencesPanel } from "../components/contract-references-panel";
 import { caseSelectPresentation } from "../components/case-select-presentation";
@@ -73,9 +86,9 @@ import { ContractAssetsPanel } from "../components/contract-assets-panel";
 import { ContractLifecycleOverviewPanel } from "../components/contract-lifecycle-overview-panel";
 import { ContractSourceCapabilityPanel } from "../components/contract-source-capability-panel";
 import { formatDateTime } from "../domain/review";
-import { caseOptionLabel } from "../domain/case-identity";
-import { ContractDeskSources, contractDeskReturnHref } from "./contract-desk-page";
+import { compactTime } from "../domain/time";
 import "./contracts-page.css";
+import type { InputRef, TableColumnsType } from "antd";
 
 const DRAFTING_PARTIES = [
   { value: "buyer", label: "采购方拟定" },
@@ -117,6 +130,13 @@ function emptyFunding(): DraftFunding {
 function amountLabel(amount: string | null, currency: string | null): string {
   if (amount === null || currency === null) return "金额未知";
   return `${currency} ${amount}`;
+}
+
+function groupedLedgerAmount(amount: string): string {
+  const decimal = /^([+-]?)(\d+)(\.\d+)?$/.exec(amount);
+  if (!decimal) return amount;
+  const [, sign, digits, fraction] = decimal;
+  return `${sign}${digits!.replace(/\B(?=(?:\d{3})+(?!\d))/g, ",")}${fraction ?? ""}`;
 }
 
 const CONTRACT_FORM_SECTIONS = [
@@ -170,6 +190,64 @@ const LEDGER_COLUMN_OPTIONS = CONTRACT_LEDGER_COLUMNS.map((column) => ({
   label: column.label,
 }));
 
+const LEDGER_DEFAULT_COLUMNS: ContractLedgerColumn[] = [
+  "contract_name",
+  "contract_number",
+  "supplier_name",
+  "amount",
+  "currency",
+  "contract_state",
+  "workflow_state",
+  "updated_at",
+];
+
+type LedgerSearchField = "text" | "supplier_name";
+const LEDGER_SEARCH_FIELDS = [
+  { value: "text", label: "名称或编号" },
+  { value: "supplier_name", label: "供应商" },
+] as const;
+
+function LedgerTool({
+  label,
+  accessibleName,
+  children,
+  disabled,
+}: {
+  label: string;
+  accessibleName: string;
+  children: ReactNode;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className="contracts-ledger-tool"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || !open || event.defaultPrevented) return;
+        setOpen(false);
+        event.currentTarget.querySelector("button")?.focus();
+      }}
+    >
+      <Popover
+        trigger="click"
+        placement="bottomRight"
+        open={open}
+        onOpenChange={setOpen}
+        getPopupContainer={(trigger) => trigger.parentElement ?? document.body}
+        content={
+          <div role="dialog" aria-label={accessibleName}>
+            {children}
+          </div>
+        }
+      >
+        <Button aria-haspopup="dialog" aria-expanded={open} disabled={disabled}>
+          {label}
+        </Button>
+      </Popover>
+    </div>
+  );
+}
+
 function stateLabel(state: string): string {
   return enumLabel(state, CONTRACT_STATE_OPTIONS);
 }
@@ -212,7 +290,7 @@ function ledgerCellValue(item: ContractLedgerItem, column: ContractLedgerColumn)
     case "supplier_name":
       return item.supplier_name ?? "—";
     case "amount":
-      return item.amount ?? "未知";
+      return item.amount === null ? "未知" : groupedLedgerAmount(item.amount);
     case "currency":
       return item.currency ?? "—";
     case "department_id":
@@ -222,9 +300,35 @@ function ledgerCellValue(item: ContractLedgerItem, column: ContractLedgerColumn)
     case "procurement_method":
       return item.procurement_method ?? "—";
     case "contract_state":
-      return enumPresentation(item.contract_state, CONTRACT_STATE_OPTIONS, "合同状态技术详情");
+      return (
+        <>
+          <StatusText
+            tone={
+              item.contract_state === "registered"
+                ? "good"
+                : item.contract_state === "performing"
+                  ? "progress"
+                  : item.contract_state === "ready_to_sign"
+                    ? "attention"
+                    : item.contract_state === "terminated"
+                      ? "bad"
+                      : "neutral"
+            }
+          >
+            {stateLabel(item.contract_state)}
+          </StatusText>
+          {unknownEnumDetail(item.contract_state, CONTRACT_STATE_OPTIONS, "合同状态技术详情")}
+        </>
+      );
     case "workflow_state":
-      return enumPresentation(item.workflow_state, WORKFLOW_DISPLAY_OPTIONS, "会签状态技术详情");
+      return (
+        <>
+          <StatusText tone={item.workflow_state === "in_review" ? "progress" : "neutral"}>
+            {enumLabel(item.workflow_state, WORKFLOW_DISPLAY_OPTIONS)}
+          </StatusText>
+          {unknownEnumDetail(item.workflow_state, WORKFLOW_DISPLAY_OPTIONS, "会签状态技术详情")}
+        </>
+      );
     case "signing_date":
       return item.signing_date ?? "—";
     case "source_system":
@@ -232,7 +336,7 @@ function ledgerCellValue(item: ContractLedgerItem, column: ContractLedgerColumn)
     case "created_at":
       return formatDateTime(item.created_at);
     case "updated_at":
-      return formatDateTime(item.updated_at);
+      return compactTime(item.updated_at);
   }
 }
 
@@ -271,9 +375,9 @@ export function ContractsPage() {
   const [ledgerForm, setLedgerForm] = useState<ContractLedgerFilter>({ text: routeText });
   const [ledgerFilter, setLedgerFilter] = useState<ContractLedgerFilter>({ text: routeText });
   const [ledgerColumns, setLedgerColumns] = useState<ContractLedgerColumn[]>([
-    ...CONTRACT_LEDGER_DEFAULT_COLUMNS,
+    ...LEDGER_DEFAULT_COLUMNS,
   ]);
-  const [ledgerAdvanced, setLedgerAdvanced] = useState(false);
+  const [searchField, setSearchField] = useState<LedgerSearchField>("text");
   const [selectedViewId, setSelectedViewId] = useState<string | null>(null);
   const [selectedViewVersion, setSelectedViewVersion] = useState<number | null>(null);
   const [viewName, setViewName] = useState("");
@@ -306,12 +410,23 @@ export function ContractsPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [workspaceTab, setWorkspaceTab] = useState<"ledger" | "drafts" | "exports">("ledger");
+  const [workspaceTab, setWorkspaceTab] = useState<"ledger" | "drafts">("ledger");
+  const draftName = useRef<InputRef>(null);
+  const [draftFocusRequest, setDraftFocusRequest] = useState(0);
+  useEffect(() => {
+    if (!draftFocusRequest || workspaceTab !== "drafts") return;
+    const frame = requestAnimationFrame(() => {
+      draftName.current?.focus();
+      setDraftFocusRequest(0);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [draftFocusRequest, workspaceTab]);
   useEffect(() => {
     if (!routeText && !previousRouteText.current) return;
     previousRouteText.current = routeText;
-    setLedgerForm((current) => ({ ...current, text: routeText }));
-    setLedgerFilter((current) => ({ ...current, text: routeText }));
+    setSearchField("text");
+    setLedgerForm((current) => ({ ...current, text: routeText, supplier_name: undefined }));
+    setLedgerFilter((current) => ({ ...current, text: routeText, supplier_name: undefined }));
     setSelectedViewId(null);
     setSelectedViewVersion(null);
     setWorkspaceTab("ledger");
@@ -455,6 +570,7 @@ export function ContractsPage() {
     resetEditor(null);
     setMessage(null);
     setWorkspaceTab("drafts");
+    setDraftFocusRequest((count) => count + 1);
   }
 
   function update(patch: Partial<DraftContent["contract"]>) {
@@ -519,10 +635,18 @@ export function ContractsPage() {
     setViewMessage(null);
   }
 
+  function applySearch(text: string) {
+    const search = { [searchField]: text.trim() || undefined };
+    setLedgerForm((current) => ({ ...current, ...search }));
+    setLedgerFilter((current) => ({ ...current, ...search }));
+    setSelectedViewId(null);
+    setSelectedViewVersion(null);
+    setViewMessage(null);
+  }
+
   function resetLedgerForm() {
     setLedgerForm({});
     setLedgerFilter({});
-    setLedgerColumns([...CONTRACT_LEDGER_DEFAULT_COLUMNS]);
     setSelectedViewId(null);
     setSelectedViewVersion(null);
     setViewName("");
@@ -536,11 +660,10 @@ export function ContractsPage() {
     setSelectedViewId(view.view_id);
     setSelectedViewVersion(view.row_version);
     setViewName(view.name);
+    setSearchField(!view.filter.text && view.filter.supplier_name ? "supplier_name" : "text");
     setLedgerForm(view.filter);
     setLedgerFilter(view.filter);
-    setLedgerColumns(
-      view.columns.length === 0 ? [...CONTRACT_LEDGER_DEFAULT_COLUMNS] : view.columns,
-    );
+    setLedgerColumns(view.columns.length === 0 ? [...LEDGER_DEFAULT_COLUMNS] : view.columns);
     setViewMessage(null);
   }
 
@@ -563,7 +686,7 @@ export function ContractsPage() {
         });
         setSelectedViewVersion(updated.row_version);
         setLedgerColumns(
-          updated.columns.length === 0 ? [...CONTRACT_LEDGER_DEFAULT_COLUMNS] : updated.columns,
+          updated.columns.length === 0 ? [...LEDGER_DEFAULT_COLUMNS] : updated.columns,
         );
         setViewMessage("视图已更新");
       } else {
@@ -575,7 +698,7 @@ export function ContractsPage() {
         setSelectedViewId(created.view_id);
         setSelectedViewVersion(created.row_version);
         setLedgerColumns(
-          created.columns.length === 0 ? [...CONTRACT_LEDGER_DEFAULT_COLUMNS] : created.columns,
+          created.columns.length === 0 ? [...LEDGER_DEFAULT_COLUMNS] : created.columns,
         );
         setViewMessage("视图已保存");
       }
@@ -656,31 +779,100 @@ export function ContractsPage() {
     () => ledger.data?.pages.flatMap((page) => page.items) ?? [],
     [ledger.data],
   );
-  const ledgerTableColumns = useMemo(
-    () => [
-      ...ledgerColumns.map((column) => ({
-        title: LEDGER_COLUMN_OPTIONS.find((option) => option.value === column)?.label ?? column,
-        dataIndex: column,
-        key: column,
-        render: (_: unknown, item: ContractLedgerItem) => ledgerCellValue(item, column),
-      })),
-      {
-        title: "操作",
-        key: "contract_detail_action",
-        fixed: "right" as const,
-        render: (_: unknown, item: ContractLedgerItem) => (
-          <Button
-            type="link"
-            disabled={loading}
-            onClick={() => void openContractDetail(item.contract_id)}
-          >
-            查看详情
-          </Button>
-        ),
-      },
-    ],
-    [ledgerColumns, loading, dirty],
+  const hasIdentity =
+    ledgerColumns.includes("contract_name") || ledgerColumns.includes("contract_number");
+  const firstIdentity = ledgerColumns.find(
+    (column) => column === "contract_name" || column === "contract_number",
   );
+  const hasName = ledgerColumns.includes("contract_name");
+  const hasNumber = ledgerColumns.includes("contract_number");
+  const showAmountWithCurrency =
+    ledgerColumns.includes("amount") && ledgerColumns.includes("currency");
+  const firstAmount = ledgerColumns.find((column) => column === "amount" || column === "currency");
+  const columns: TableColumnsType<ContractLedgerItem> = ledgerColumns.flatMap(
+    (column): TableColumnsType<ContractLedgerItem> => {
+      if (column === "contract_name" || column === "contract_number") {
+        if (column !== firstIdentity) return [];
+        return [
+          {
+            key: column,
+            title: hasName && hasNumber ? "合同名称与编号" : hasName ? "合同名称" : "合同编号",
+            render: (_: unknown, item: ContractLedgerItem) => {
+              const name = item.name?.trim() || "未命名合同";
+              const label = hasName ? name : (item.number ?? "查看详情");
+              return (
+                <div className="contracts-ledger-identity">
+                  <Button
+                    type="link"
+                    className="contracts-ledger-detail"
+                    disabled={loading}
+                    aria-label={`查看合同详情：${hasName ? name : (item.number ?? "未编号合同")}`}
+                    onClick={() => void openContractDetail(item.contract_id)}
+                  >
+                    {label}
+                  </Button>
+                  {hasName && hasNumber && item.number ? (
+                    <div className="meta">{item.number}</div>
+                  ) : null}
+                </div>
+              );
+            },
+          },
+        ];
+      }
+      if (showAmountWithCurrency && (column === "amount" || column === "currency")) {
+        if (column !== firstAmount) return [];
+        return [
+          {
+            key: column,
+            title: "合同金额",
+            width: 156,
+            align: "right",
+            className: "contracts-ledger-amount",
+            render: (_: unknown, item: ContractLedgerItem) =>
+              item.amount === null
+                ? "—"
+                : [item.currency, groupedLedgerAmount(item.amount)].filter(Boolean).join(" "),
+          },
+        ];
+      }
+      const title =
+        column === "supplier_name"
+          ? "对方主体"
+          : column === "contract_state"
+            ? "状态"
+            : column === "workflow_state"
+              ? "会签"
+              : LEDGER_COLUMN_OPTIONS.find((option) => option.value === column)?.label;
+      const width = column === "supplier_name" ? 220 : column === "updated_at" ? 132 : 122;
+      return [
+        {
+          key: column,
+          title,
+          width,
+          align: column === "amount" ? "right" : undefined,
+          className: column === "amount" ? "contracts-ledger-amount" : undefined,
+          render: (_: unknown, item: ContractLedgerItem) => ledgerCellValue(item, column),
+        },
+      ];
+    },
+  );
+  if (!hasIdentity) {
+    columns.push({
+      key: "detail",
+      title: "操作",
+      width: 100,
+      render: (_: unknown, item: ContractLedgerItem) => (
+        <Button
+          type="link"
+          disabled={loading}
+          onClick={() => void openContractDetail(item.contract_id)}
+        >
+          查看详情
+        </Button>
+      ),
+    });
+  }
   const activeLedgerFilters = Object.values(ledgerFilter).filter(
     (value) => value !== undefined && value !== "",
   ).length;
@@ -690,18 +882,25 @@ export function ContractsPage() {
       className="contracts-page"
       standaloneSurface={false}
       title="合同台账"
-      beforeSummary={
-        <ContractDeskSources
-          active="registered"
-          materialsHref={contractDeskReturnHref(location.state, scope)}
-        />
+      beforeFilters={
+        workspaceTab === "ledger" ? (
+          <ContractReminderInbox
+            actor={actor}
+            contracts={ledgerItems}
+            onOpenContract={openContractDetail}
+          />
+        ) : undefined
       }
       actions={
         <div className="contracts-page-actions">
-          <Button type="text" onClick={() => setImportOpen(true)} disabled={actor === null}>
-            导入已签存量合同
+          <Button onClick={() => setImportOpen(true)} disabled={actor === null}>
+            导入存量合同
           </Button>
-          <Button type="primary" onClick={() => void startNew()} disabled={actor === null}>
+          <Button
+            type={workspaceTab === "drafts" && canSave && dirty ? "default" : "primary"}
+            onClick={() => void startNew()}
+            disabled={actor === null}
+          >
             新建合同草稿
           </Button>
         </div>
@@ -709,332 +908,338 @@ export function ContractsPage() {
     >
       <Tabs
         activeKey={workspaceTab}
-        onChange={(key) => setWorkspaceTab(key as typeof workspaceTab)}
+        onChange={(key) => {
+          if (key === "ledger" || key === "drafts") setWorkspaceTab(key);
+        }}
         destroyOnHidden={false}
+        classNames={{ header: "contracts-workspace-header", item: "contracts-workspace-tab" }}
+        tabBarGutter={16}
+        tabBarExtraContent={
+          workspaceTab === "ledger" ? (
+            <div className="contracts-ledger-toolbar" aria-label="合同台账工具">
+              <Select<LedgerSearchField>
+                aria-label="搜索范围"
+                className="contracts-search-scope"
+                value={searchField}
+                onChange={setSearchField}
+                options={LEDGER_SEARCH_FIELDS.map((option) => ({ ...option }))}
+              />
+              <Input.Search
+                aria-label="搜索合同"
+                placeholder={searchField === "text" ? "搜索名称或编号" : "搜索供应商"}
+                value={ledgerForm[searchField] ?? ""}
+                onChange={(event) => updateLedgerForm(searchField, event.target.value)}
+                onSearch={applySearch}
+                maxLength={200}
+                allowClear
+                className="contracts-ledger-search"
+              />
+              <LedgerTool
+                label={activeLedgerFilters ? `筛选 (${activeLedgerFilters})` : "筛选"}
+                accessibleName="合同台账筛选"
+                disabled={actor === null}
+              >
+                {ledgerForm.text && ledgerForm.supplier_name ? (
+                  <p className="meta">同时匹配名称或编号和供应商。</p>
+                ) : null}
+                <div className="contracts-ledger-filters">
+                  <label className="field">
+                    合同名称或编号
+                    <Input
+                      value={ledgerForm.text ?? ""}
+                      maxLength={200}
+                      onChange={(event) => updateLedgerForm("text", event.target.value)}
+                      onPressEnter={applyLedgerForm}
+                    />
+                  </label>
+                  <label className="field">
+                    供应商
+                    <Input
+                      value={ledgerForm.supplier_name ?? ""}
+                      maxLength={200}
+                      onChange={(event) => updateLedgerForm("supplier_name", event.target.value)}
+                      onPressEnter={applyLedgerForm}
+                    />
+                  </label>
+                  <label className="field">
+                    合同状态
+                    <Select
+                      value={ledgerForm.contract_state ?? undefined}
+                      allowClear
+                      placeholder="全部状态"
+                      options={CONTRACT_STATE_OPTIONS}
+                      onChange={(value) => updateLedgerForm("contract_state", value ?? "")}
+                    />
+                  </label>
+                  <label className="field">
+                    申请部门
+                    <Input
+                      value={ledgerForm.department_id ?? ""}
+                      maxLength={100}
+                      onChange={(event) => updateLedgerForm("department_id", event.target.value)}
+                      onPressEnter={applyLedgerForm}
+                    />
+                  </label>
+                  <label className="field">
+                    会签状态
+                    <Select
+                      value={ledgerForm.workflow_state ?? undefined}
+                      allowClear
+                      placeholder="全部会签状态"
+                      options={WORKFLOW_STATE_OPTIONS}
+                      onChange={(value) => updateLedgerForm("workflow_state", value ?? "")}
+                    />
+                  </label>
+                  <label className="field">
+                    来源类型
+                    <Select
+                      value={ledgerForm.authority_mode ?? undefined}
+                      allowClear
+                      placeholder="全部来源类型"
+                      options={AUTHORITY_MODE_OPTIONS}
+                      onChange={(value) => updateLedgerForm("authority_mode", value ?? "")}
+                    />
+                  </label>
+                </div>
+                <details className="contracts-ledger-advanced">
+                  <summary>更多条件</summary>
+                  <div className="contracts-ledger-filters">
+                    <label className="field">
+                      有效性
+                      <Select
+                        value={ledgerForm.validity_state ?? undefined}
+                        allowClear
+                        placeholder="全部"
+                        options={VALIDITY_STATE_OPTIONS}
+                        onChange={(value) => updateLedgerForm("validity_state", value ?? "")}
+                      />
+                    </label>
+                    <label className="field">
+                      项目类型
+                      <Input
+                        value={ledgerForm.project_type ?? ""}
+                        maxLength={100}
+                        onChange={(event) => updateLedgerForm("project_type", event.target.value)}
+                      />
+                    </label>
+                    <label className="field">
+                      采购方式
+                      <Input
+                        value={ledgerForm.procurement_method ?? ""}
+                        maxLength={100}
+                        onChange={(event) =>
+                          updateLedgerForm("procurement_method", event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      金额下限
+                      <Input
+                        value={ledgerForm.amount_min ?? ""}
+                        placeholder="0.00"
+                        inputMode="decimal"
+                        onChange={(event) => updateLedgerForm("amount_min", event.target.value)}
+                      />
+                    </label>
+                    <label className="field">
+                      金额上限
+                      <Input
+                        value={ledgerForm.amount_max ?? ""}
+                        placeholder="0.00"
+                        inputMode="decimal"
+                        onChange={(event) => updateLedgerForm("amount_max", event.target.value)}
+                      />
+                    </label>
+                    <label className="field">
+                      签订日期从
+                      <Input
+                        type="date"
+                        value={ledgerDateInput(ledgerForm.signing_date_from)}
+                        onChange={(event) =>
+                          updateLedgerForm("signing_date_from", event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      签订日期至
+                      <Input
+                        type="date"
+                        value={ledgerDateInput(ledgerForm.signing_date_to)}
+                        onChange={(event) =>
+                          updateLedgerForm("signing_date_to", event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      创建日期从
+                      <Input
+                        type="date"
+                        value={ledgerDateInput(ledgerForm.created_from)}
+                        onChange={(event) =>
+                          updateLedgerForm("created_from", ledgerDayToIso(event.target.value) ?? "")
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      创建日期至
+                      <Input
+                        type="date"
+                        value={ledgerDateInput(ledgerForm.created_to)}
+                        onChange={(event) =>
+                          updateLedgerForm("created_to", ledgerDayToIso(event.target.value) ?? "")
+                        }
+                      />
+                    </label>
+                  </div>
+                </details>
+                <div className="contracts-ledger-filter-actions">
+                  <Button onClick={applyLedgerForm}>查询</Button>
+                  <Button onClick={resetLedgerForm}>重置</Button>
+                </div>
+              </LedgerTool>
+              <LedgerTool label="字段" accessibleName="显示字段" disabled={actor === null}>
+                <div className="contracts-ledger-field-menu">
+                  {LEDGER_COLUMN_OPTIONS.map(({ value, label }) => (
+                    <Checkbox
+                      key={value}
+                      checked={ledgerColumns.includes(value)}
+                      onChange={(event) =>
+                        setLedgerColumns((current) =>
+                          event.target.checked
+                            ? [...current, value]
+                            : current.filter((column) => column !== value),
+                        )
+                      }
+                    >
+                      {label}
+                    </Checkbox>
+                  ))}
+                </div>
+              </LedgerTool>
+              <LedgerTool label="视图" accessibleName="已保存视图" disabled={actor === null}>
+                <div className="contracts-ledger-view-menu">
+                  <Select
+                    value={selectedViewId ?? undefined}
+                    allowClear
+                    aria-label="应用已保存视图"
+                    placeholder="应用已保存视图"
+                    options={(savedViews.data ?? []).map((view) => ({
+                      value: view.view_id,
+                      label: view.name,
+                    }))}
+                    onChange={(value) => {
+                      if (typeof value === "string") applySavedView(value);
+                      else {
+                        setSelectedViewId(null);
+                        setSelectedViewVersion(null);
+                        setViewName("");
+                      }
+                    }}
+                    className="contracts-ledger-view-select"
+                  />
+                  <Input
+                    value={viewName}
+                    maxLength={60}
+                    placeholder="视图名称（最多 60 字）"
+                    onChange={(event) => setViewName(event.target.value)}
+                    className="contracts-ledger-view-name"
+                  />
+                  <Button
+                    onClick={() => void saveLedgerView()}
+                    loading={viewSaving}
+                    disabled={actor === null}
+                  >
+                    {selectedViewId === null ? "保存视图" : "更新视图"}
+                  </Button>
+                  <Button
+                    danger
+                    onClick={() => void deleteLedgerView()}
+                    disabled={selectedViewId === null || selectedViewVersion === null}
+                  >
+                    删除视图
+                  </Button>
+                  {viewMessage !== null ? <p role="status">{viewMessage}</p> : null}
+                </div>
+              </LedgerTool>
+              <Button
+                onClick={() => void exportLedger()}
+                loading={exporting}
+                disabled={actor === null || ledgerColumns.length === 0}
+              >
+                导出 CSV
+              </Button>
+            </div>
+          ) : undefined
+        }
         items={[
           {
             key: "ledger",
-            label: "合同台账",
+            label: "全部合同",
             forceRender: true,
             children: (
-              <>
-                <ContractReminderInbox
-                  actor={actor}
-                  contracts={ledgerItems}
-                  onOpenContract={openContractDetail}
-                />
-                <div className="contracts-ledger-summary" aria-label="合同台账摘要">
-                  <span>生效筛选</span>
-                  <strong>{activeLedgerFilters}</strong>
-                  <span>已加载</span>
-                  <strong>{ledgerItems.length}</strong>
-                  <span>还有更多</span>
-                  <strong>{ledger.hasNextPage ? "是" : "否"}</strong>
-                </div>
-
-                <section
-                  className="contracts-ledger contracts-ledger--list page-pattern-surface"
-                  aria-label="合同台账"
-                >
-                  <div className="page-pattern-filters" role="group" aria-label="合同台账筛选">
-                    <div className="contracts-ledger-actions">
-                      <Button onClick={() => setLedgerAdvanced((current) => !current)}>
-                        {ledgerAdvanced ? "收起高级条件" : "高级条件"}
-                      </Button>
-                      <Button
-                        onClick={() => void exportLedger()}
-                        loading={exporting}
-                        disabled={actor === null || ledgerColumns.length === 0}
-                      >
-                        导出 CSV
-                      </Button>
-                    </div>
-
-                    <div className="contracts-ledger-filters">
-                      <label className="field">
-                        合同名称或编号
-                        <Input
-                          value={ledgerForm.text ?? ""}
-                          maxLength={200}
-                          placeholder="名称、服务端编号或内容编号"
-                          onChange={(event) => updateLedgerForm("text", event.target.value)}
-                          onPressEnter={applyLedgerForm}
-                        />
-                      </label>
-                      <label className="field">
-                        供应商
-                        <Input
-                          value={ledgerForm.supplier_name ?? ""}
-                          maxLength={200}
-                          placeholder="供应商名称子串"
-                          onChange={(event) =>
-                            updateLedgerForm("supplier_name", event.target.value)
-                          }
-                          onPressEnter={applyLedgerForm}
-                        />
-                      </label>
-                      <label className="field">
-                        合同状态
-                        <Select
-                          value={ledgerForm.contract_state ?? undefined}
-                          allowClear
-                          placeholder="全部状态"
-                          options={CONTRACT_STATE_OPTIONS}
-                          onChange={(value) => updateLedgerForm("contract_state", value ?? "")}
-                        />
-                      </label>
-                      <label className="field">
-                        申请部门
-                        <Input
-                          value={ledgerForm.department_id ?? ""}
-                          maxLength={100}
-                          onChange={(event) =>
-                            updateLedgerForm("department_id", event.target.value)
-                          }
-                          onPressEnter={applyLedgerForm}
-                        />
-                      </label>
-                      <label className="field">
-                        会签状态
-                        <Select
-                          value={ledgerForm.workflow_state ?? undefined}
-                          allowClear
-                          placeholder="全部会签状态"
-                          options={WORKFLOW_STATE_OPTIONS}
-                          onChange={(value) => updateLedgerForm("workflow_state", value ?? "")}
-                        />
-                      </label>
-                      <label className="field">
-                        来源类型
-                        <Select
-                          value={ledgerForm.authority_mode ?? undefined}
-                          allowClear
-                          placeholder="全部来源类型"
-                          options={AUTHORITY_MODE_OPTIONS}
-                          onChange={(value) => updateLedgerForm("authority_mode", value ?? "")}
-                        />
-                      </label>
-                    </div>
-
-                    {ledgerAdvanced ? (
-                      <div className="contracts-ledger-advanced">
-                        <label className="field">
-                          有效性
-                          <Select
-                            value={ledgerForm.validity_state ?? undefined}
-                            allowClear
-                            placeholder="全部"
-                            options={VALIDITY_STATE_OPTIONS}
-                            onChange={(value) => updateLedgerForm("validity_state", value ?? "")}
-                          />
-                        </label>
-                        <label className="field">
-                          项目类型
-                          <Input
-                            value={ledgerForm.project_type ?? ""}
-                            maxLength={100}
-                            onChange={(event) =>
-                              updateLedgerForm("project_type", event.target.value)
-                            }
-                          />
-                        </label>
-                        <label className="field">
-                          采购方式
-                          <Input
-                            value={ledgerForm.procurement_method ?? ""}
-                            maxLength={100}
-                            onChange={(event) =>
-                              updateLedgerForm("procurement_method", event.target.value)
-                            }
-                          />
-                        </label>
-                        <label className="field">
-                          金额下限
-                          <Input
-                            value={ledgerForm.amount_min ?? ""}
-                            placeholder="0.00"
-                            inputMode="decimal"
-                            onChange={(event) => updateLedgerForm("amount_min", event.target.value)}
-                          />
-                        </label>
-                        <label className="field">
-                          金额上限
-                          <Input
-                            value={ledgerForm.amount_max ?? ""}
-                            placeholder="0.00"
-                            inputMode="decimal"
-                            onChange={(event) => updateLedgerForm("amount_max", event.target.value)}
-                          />
-                        </label>
-                        <label className="field">
-                          签订日期从
-                          <Input
-                            type="date"
-                            value={ledgerDateInput(ledgerForm.signing_date_from)}
-                            onChange={(event) =>
-                              updateLedgerForm("signing_date_from", event.target.value)
-                            }
-                          />
-                        </label>
-                        <label className="field">
-                          签订日期至
-                          <Input
-                            type="date"
-                            value={ledgerDateInput(ledgerForm.signing_date_to)}
-                            onChange={(event) =>
-                              updateLedgerForm("signing_date_to", event.target.value)
-                            }
-                          />
-                        </label>
-                        <label className="field">
-                          创建日期从
-                          <Input
-                            type="date"
-                            value={ledgerDateInput(ledgerForm.created_from)}
-                            onChange={(event) =>
-                              updateLedgerForm(
-                                "created_from",
-                                ledgerDayToIso(event.target.value) ?? "",
-                              )
-                            }
-                          />
-                        </label>
-                        <label className="field">
-                          创建日期至
-                          <Input
-                            type="date"
-                            value={ledgerDateInput(ledgerForm.created_to)}
-                            onChange={(event) =>
-                              updateLedgerForm(
-                                "created_to",
-                                ledgerDayToIso(event.target.value) ?? "",
-                              )
-                            }
-                          />
-                        </label>
-                      </div>
-                    ) : null}
-
-                    <div className="contracts-ledger-filter-actions">
-                      <Button type="primary" onClick={applyLedgerForm} disabled={actor === null}>
-                        查询
-                      </Button>
-                      <Button onClick={resetLedgerForm} disabled={actor === null}>
-                        重置
-                      </Button>
-                    </div>
-
-                    <div className="contracts-ledger-viewbar">
-                      <Select
-                        value={selectedViewId ?? undefined}
-                        allowClear
-                        placeholder="应用已保存视图"
-                        options={(savedViews.data ?? []).map((view) => ({
-                          value: view.view_id,
-                          label: view.name,
-                        }))}
-                        onChange={(value) => {
-                          if (typeof value === "string") applySavedView(value);
-                          else {
-                            setSelectedViewId(null);
-                            setSelectedViewVersion(null);
-                            setViewName("");
-                          }
-                        }}
-                        className="contracts-ledger-view-select"
-                      />
-                      <Input
-                        value={viewName}
-                        maxLength={60}
-                        placeholder="视图名称（最多 60 字）"
-                        onChange={(event) => setViewName(event.target.value)}
-                        className="contracts-ledger-view-name"
-                      />
-                      <Button
-                        onClick={() => void saveLedgerView()}
-                        loading={viewSaving}
-                        disabled={actor === null}
-                      >
-                        {selectedViewId === null ? "保存视图" : "更新视图"}
-                      </Button>
-                      <Button
-                        danger
-                        onClick={() => void deleteLedgerView()}
-                        disabled={selectedViewId === null || selectedViewVersion === null}
-                      >
-                        删除视图
-                      </Button>
-                      <Select
-                        mode="multiple"
-                        value={ledgerColumns}
-                        maxTagCount="responsive"
-                        options={LEDGER_COLUMN_OPTIONS}
-                        onChange={(values: ContractLedgerColumn[]) => setLedgerColumns(values)}
-                        className="contracts-ledger-columns"
-                        placeholder="选择导出与表格列"
-                      />
-                    </div>
-
-                    {viewMessage !== null ? (
-                      <Alert
-                        type="info"
-                        showIcon
-                        message={viewMessage}
-                        closable
-                        onClose={() => setViewMessage(null)}
-                      />
-                    ) : null}
-                    {exportMessage !== null ? (
-                      <Alert
-                        type="info"
-                        showIcon
-                        message={exportMessage}
-                        closable
-                        onClose={() => setExportMessage(null)}
-                      />
-                    ) : null}
-
-                    {ledger.isError ? (
-                      <Alert
-                        type="error"
-                        showIcon
-                        message="合同台账没有加载"
-                        description={errorMessage(ledger.error)}
-                      />
-                    ) : null}
-                  </div>
-
-                  <Table<ContractLedgerItem>
-                    rowKey="contract_id"
-                    columns={ledgerTableColumns}
-                    dataSource={ledgerItems}
-                    loading={ledger.isLoading}
-                    pagination={false}
-                    size="small"
-                    scroll={{ x: "max-content" }}
-                    className="contracts-ledger-table"
-                    locale={{ emptyText: <Empty description="当前条件下没有可见合同" /> }}
+              <section
+                className="contracts-ledger contracts-ledger--list page-pattern-surface"
+                aria-label="合同台账"
+              >
+                {exportMessage !== null ? (
+                  <Alert
+                    type="info"
+                    showIcon
+                    title={exportMessage}
+                    closable={{ onClose: () => setExportMessage(null) }}
                   />
+                ) : null}
 
-                  <footer className="contracts-ledger-more page-pattern-pagination">
-                    {ledger.hasNextPage ? (
-                      <Button
-                        onClick={() => void ledger.fetchNextPage()}
-                        loading={ledger.isFetchingNextPage}
-                      >
-                        加载更多
-                      </Button>
-                    ) : (
-                      <span>已加载全部可见合同</span>
-                    )}
+                {ledger.isError ? (
+                  <Alert
+                    type="error"
+                    showIcon
+                    title="合同台账没有加载"
+                    description={errorMessage(ledger.error)}
+                  />
+                ) : null}
+
+                <Table<ContractLedgerItem>
+                  rowKey="contract_id"
+                  columns={columns}
+                  onRow={(item) => ({
+                    className: loading ? undefined : "contracts-ledger-row",
+                    onClick: (event) => {
+                      if (
+                        loading ||
+                        !(event.target instanceof Element) ||
+                        event.target.closest("a,button,input,select,textarea,summary,[role=button]")
+                      )
+                        return;
+                      void openContractDetail(item.contract_id);
+                    },
+                  })}
+                  dataSource={ledgerItems}
+                  loading={ledger.isLoading}
+                  pagination={false}
+                  size="small"
+                  tableLayout="fixed"
+                  scroll={columns.length > 6 ? { x: columns.length * 156 } : undefined}
+                  className="contracts-ledger-table"
+                  classNames={{ header: { cell: "contracts-ledger-header-cell" } }}
+                  locale={{ emptyText: <Empty description="当前条件下没有可见合同" /> }}
+                />
+                {ledger.hasNextPage ? (
+                  <footer className="page-pattern-pagination">
+                    <Button
+                      onClick={() => void ledger.fetchNextPage()}
+                      loading={ledger.isFetchingNextPage}
+                    >
+                      加载更多
+                    </Button>
                   </footer>
-                </section>
-              </>
+                ) : null}
+              </section>
             ),
           },
           {
             key: "drafts",
-            label: "草稿",
+            label: "我的草稿",
             forceRender: true,
             children: (
               <>
@@ -1216,6 +1421,7 @@ export function ContractsPage() {
                                 <label className="field">
                                   合同名称
                                   <Input
+                                    ref={draftName}
                                     value={draft.contract.name ?? ""}
                                     maxLength={200}
                                     placeholder="例如：2026 年传输设备采购合同"
@@ -1509,7 +1715,7 @@ export function ContractsPage() {
                                   {
                                     title: "单位",
                                     key: "unit",
-                                    width: 90,
+                                    width: 96,
                                     render: (_, row, index) => (
                                       <Input
                                         value={row.unit ?? ""}
@@ -1884,26 +2090,6 @@ export function ContractsPage() {
               </>
             ),
           },
-          {
-            key: "exports",
-            label: "导出记录",
-            children: (
-              <section
-                className="contracts-ledger contracts-export-history"
-                aria-labelledby="contracts-export-history-title"
-              >
-                <h2 id="contracts-export-history-title">导出记录</h2>
-                <p>
-                  这里展示本次页面操作的结果。已完成导出清单由服务端在下载时生成，当前接口不提供历史导出记录查询。
-                </p>
-                {exportMessage !== null ? (
-                  <Alert type="info" showIcon message={exportMessage} />
-                ) : (
-                  <Empty description="当前会话尚无导出结果" />
-                )}
-              </section>
-            ),
-          },
         ]}
         className="contracts-workspace-tabs"
       />
@@ -2077,7 +2263,7 @@ function LegacyImportDialog({
     <Modal
       open={open}
       onCancel={onClose}
-      title="导入已签存量合同"
+      title="导入存量合同"
       width={720}
       footer={[
         <Button key="cancel" onClick={onClose}>
@@ -2129,13 +2315,21 @@ function LegacyImportDialog({
           来源案件
           <Select
             {...caseSelectPresentation}
-            showSearch={{ optionFilterProp: "label" }}
+            showSearch={{
+              filterOption: (query, option) =>
+                Boolean(
+                  option &&
+                  [option.label, option.value].some((value) =>
+                    value.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
+                  ),
+                ),
+            }}
             value={caseVisible ? caseID : undefined}
             placeholder="选择有权访问的案件"
             loading={cases.isLoading}
             options={(cases.isError ? [] : (cases.data ?? [])).map((item) => ({
               value: item.id,
-              label: caseOptionLabel(item),
+              label: [item.title, item.case_number?.trim()].filter(Boolean).join(" · "),
             }))}
             onChange={(value) => {
               setCaseID(value);

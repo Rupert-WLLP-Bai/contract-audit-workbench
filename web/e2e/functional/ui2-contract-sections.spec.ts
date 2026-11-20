@@ -13,10 +13,11 @@ import { writeFileSync } from "node:fs";
 import { installContractFixture, longName, type FixtureMode } from "./issue-253-fixtures";
 
 const web = process.env.E2E_WEB ?? "http://127.0.0.1:5173";
+const widths = process.env.E2E_DESKTOP_ONLY === "1" ? [1440] : [1440, 1280, 1024, 390];
 const sections = ["合同基本信息", "相关方与标的", "资金与付款", "材料与核对"] as const;
 
 /**
- * UI2 /contracts uses workspace tabs (合同台账 / 草稿 / 导出记录) and four
+ * The contract workspace uses tabs (全部合同 / 我的草稿) and four
  * mounted-but-hidden section fieldsets. The shared #253 spec targets main's
  * older DOM and cannot drive these controls. This spec drives the UI2 controls
  * while reusing the same synthetic authorized fixture and geometry intent.
@@ -24,10 +25,9 @@ const sections = ["合同基本信息", "相关方与标的", "资金与付款",
 async function openDraft(page: Page, mode: FixtureMode) {
   const fixture = await installContractFixture(page, mode);
   await page.goto(`${web}/contracts`);
+  await page.getByRole("tab", { name: "我的草稿", exact: true }).click();
   if (mode !== "empty") {
     await expect(page.locator("fieldset.contracts-page-section")).toHaveCount(4);
-    const draftsTab = page.getByRole("tab", { name: /草稿/ });
-    if (await draftsTab.count()) await draftsTab.click();
     await page.locator(".contracts-page-list button").first().click();
     await expect(page.getByLabel("合同名称", { exact: true })).toHaveValue(longName);
   }
@@ -84,7 +84,7 @@ for (const mode of ["empty", "editable"] as const) {
     const issues: string[] = [];
     const localScrolls: string[] = [];
     if (mode === "empty") {
-      for (const width of [1440, 1280, 1024, 390]) {
+      for (const width of widths) {
         await page.setViewportSize({ width, height: 900 });
         const root = await page.evaluate(() => ({
           scroll: document.documentElement.scrollWidth,
@@ -98,7 +98,7 @@ for (const mode of ["empty", "editable"] as const) {
       expect(issues).toEqual([]);
       return;
     }
-    for (const width of [1440, 1280, 1024, 390]) {
+    for (const width of widths) {
       await page.setViewportSize({ width, height: 900 });
       const sectionButtons = page.locator(".contracts-form-sections button");
       const availableSections = (await sectionButtons.count()) ? sections : [sections[0]];
@@ -143,7 +143,7 @@ for (const mode of ["empty", "editable"] as const) {
         });
       }
     }
-    if (mode === "editable") {
+    if (mode === "editable" && process.env.E2E_DESKTOP_ONLY !== "1") {
       // Local table scrolling is an explicit, allowed layout, not a root-overflow failure.
       expect(localScrolls.length).toBeGreaterThan(0);
       await page.setViewportSize({ width: 390, height: 900 });
