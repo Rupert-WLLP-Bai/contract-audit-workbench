@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-30
 // Updated: 2026-11-20
-// Revision: r10
+// Revision: r11
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -404,7 +404,6 @@ describe("app shell", () => {
     expect(nav.getByRole("link", { name: "我的待办" })).toHaveAttribute("aria-current", "page");
     expect(nav.getByRole("link", { name: "合同台账" })).toHaveAttribute("href", "/contracts");
     expect(nav.getByRole("link", { name: "案件" })).toHaveAttribute("href", "/cases");
-    await user.click(nav.getByRole("button", { name: "知识与设置" }));
     expect(nav.queryByRole("link", { name: "Agent Studio" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "头像菜单" }));
     expect(screen.getByRole("switch", { name: "专业模式" })).not.toBeChecked();
@@ -413,6 +412,8 @@ describe("app shell", () => {
       "href",
       "/workbench/executions",
     );
+    expect(nav.getAllByRole("link").at(-1)).toHaveAccessibleName("Agent Studio");
+    expect(nav.queryByRole("link", { name: "工具网关" })).not.toBeInTheDocument();
     expect(screen.getByText("审查员 · reviewer")).toBeInTheDocument();
     expect(nav.queryByRole("link", { name: "系统健康" })).not.toBeInTheDocument();
   });
@@ -539,26 +540,27 @@ describe("app shell", () => {
     expect(screen.queryByRole("dialog", { name: "审一份合同" })).not.toBeInTheDocument();
   });
 
-  it("keeps an attempt-specific professional route intact while its view is disabled", async () => {
-    const user = userEvent.setup();
-    renderShell("/cases/case-1/reviews/run-1/agent?attempt=attempt-7");
-    expect(screen.getByText("请在头像菜单中打开专业模式")).toBeInTheDocument();
-    expect(screen.queryByTestId("location")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "头像菜单" }));
-    await user.click(screen.getByRole("switch", { name: "专业模式" }));
-    const nav = within(screen.getByLabelText("主导航"));
-    if (!nav.queryByRole("link", { name: "Agent Studio" })) {
-      await user.click(nav.getByRole("button", { name: "知识与设置" }));
-    }
-    expect(nav.getByRole("link", { name: "Agent Studio" })).toHaveAttribute("aria-current", "page");
-    expect(nav.getByRole("link", { name: "Agent Studio" })).toHaveAttribute(
-      "href",
-      "/workbench/executions",
-    );
-    expect(screen.getByTestId("location")).toHaveTextContent(
-      "/cases/case-1/reviews/run-1/agent?attempt=attempt-7|POP",
-    );
-  });
+  it.each(["/workbench/executions", "/cases/case-1/reviews/run-1/agent?attempt=attempt-7"])(
+    "keeps professional route %s intact while its view is disabled",
+    async (path) => {
+      const user = userEvent.setup();
+      renderShell(path);
+      expect(screen.getByText("请在头像菜单中打开专业模式")).toBeInTheDocument();
+      expect(screen.queryByTestId("location")).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "头像菜单" }));
+      await user.click(screen.getByRole("switch", { name: "专业模式" }));
+      const nav = within(screen.getByLabelText("主导航"));
+      expect(nav.getByRole("link", { name: "Agent Studio" })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      expect(nav.getByRole("link", { name: "Agent Studio" })).toHaveAttribute(
+        "href",
+        "/workbench/executions",
+      );
+      expect(screen.getByTestId("location")).toHaveTextContent(path + "|POP");
+    },
+  );
 
   it("keeps the main landmark programmatically focusable", () => {
     renderShell();

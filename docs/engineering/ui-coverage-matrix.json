@@ -155,6 +155,8 @@
       {
         "key": "agent-studio",
         "label": "Agent Studio",
+        "placement": "主导航末尾",
+        "professionalOnly": true,
         "route": "/workbench/executions",
         "detailRoute": "/cases/:caseId/reviews/:runId/agent?attempt=:attemptId"
       }
@@ -769,11 +771,11 @@
         "web/src/components/page-patterns.css",
         "web/src/pages/workbench-module-page.css"
       ],
-      "implementationIssue": 258,
+      "implementationIssue": 366,
       "figmaNodeId": "8:1600",
       "screenshotRefs": ["executions.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：#366 验证专业模式开关和主导航末尾入口，执行列表与指定审查的 Agent Studio 路径均正确高亮。完整角色与视口矩阵 NOT_RUN。",
       "template": "ListPage"
     },
     {

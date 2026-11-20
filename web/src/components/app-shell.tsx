@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r8
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -61,6 +61,7 @@ const CORE_NAV: NavLinkItem[] = [
   { to: "/workbench/remediation", label: "整改", icon: "remediation" },
   { to: "/workbench/reports", label: "报告", icon: "reports" },
   { to: "/subjects", label: "主体", icon: "subjects" },
+  { to: "/workbench/executions", label: "Agent Studio", icon: "audit", professionalOnly: true },
 ];
 
 const KNOWLEDGE_NAV: NavLinkItem[] = [
@@ -76,7 +77,6 @@ const KNOWLEDGE_NAV: NavLinkItem[] = [
     external: true,
     adminRoleOnly: true,
   },
-  { to: "/workbench/executions", label: "Agent Studio", icon: "audit", professionalOnly: true },
   { to: "/workbench/tools", label: "工具网关", icon: "tools", professionalOnly: true },
   { to: "/api-docs", label: "API 文档", icon: "api", professionalOnly: true },
   {
@@ -549,7 +549,7 @@ function AppSidebar({
 function ClientOutlet({ pathname }: { pathname: string }) {
   const { enabled } = useProfessionalMode();
   const selected = navigationPath(pathname);
-  const requiresProfessionalMode = KNOWLEDGE_NAV.some(
+  const requiresProfessionalMode = [...CORE_NAV, ...KNOWLEDGE_NAV].some(
     ({ professionalOnly, to }) => professionalOnly && currentLink(selected, to),
   );
   if (requiresProfessionalMode && !enabled) {
