@@ -64,7 +64,7 @@ PR 快速门禁只把本次变更且仍存在的源文件交给对应 lint/forma
 | 内容 | 位置 |
 | --- | --- |
 | 本轮工作 | 开放 Issue，挂当前 Milestone（以下一个产品版本命名，如 `v0.1.2`）；正常情况下只有一个开放 Milestone |
-| 以后可能做的事 | GitHub Project「合同审计待办池」：<https://github.com/users/Rupert-WLLP-Bai/projects/2>（编号 `2`），字段「状态」（`待办池` / `下一轮候选` / `等外部条件`）和「来源」 |
+| 以后可能做的事 | GitHub Project「合同审计待办池」：[https://github.com/users/Rupert-WLLP-Bai/projects/2](https://github.com/users/Rupert-WLLP-Bai/projects/2)（编号 `2`），字段「状态」（`待办池` / `下一轮候选` / `等外部条件`）和「来源」 |
 | 质量状态 | 每轮 GitHub Release 与 `CHANGELOG.md` |
 
 `gh` 读写 Project 需要 `project` 权限。缺少时报告负责人执行 `gh auth refresh -h github.com -s project`，Agent 不自行发起授权。
