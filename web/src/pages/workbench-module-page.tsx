@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders authorized workbench lists, direct task and report navigation, and report-center statistics for the selected period.
+// Purpose: Displays scoped workbench lists and a record drawer for tasks, remediation, reports, templates and other modules, with authorized record actions and navigation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r11
+// Revision: r12
 // Copyright: See LICENSE
 // End file metadata.
 

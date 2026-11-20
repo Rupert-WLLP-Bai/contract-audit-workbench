@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Registers pending edits with a single router blocker so that a page and its intake dialog share leave and reload protection.
+// Purpose: Registers pending edits with a single router blocker for route exits, reloads and optionally selection changes that would discard a draft.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Provides the authorized admin frame, contextual breadcrumbs, identity and shared responsive navigation while keeping case permissions in the client workbench.
+// Purpose: Provides the administrative shell with compact navigation for configuration, rules, knowledge governance, tenants, operations and service status.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 

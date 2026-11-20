@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Lists subjects visible to the case and opens case-scoped subject details, verification and binding history; case roles and permissions come from server projections.
+// Purpose: Displays the authorized subject ledger, page-scoped verification filters, and draft-safe creation and subject management views.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 

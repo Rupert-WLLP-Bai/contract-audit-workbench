@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Presents the authorized approval inbox, relevant record detail and server-backed processing or retries across the three approval views.
+// Purpose: Displays the signed-in actor’s approval lists and a URL-addressable round or task drawer with guarded opinions, history, and authorized decisions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
 // Updated: 2026-11-20
-// Revision: r6
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 

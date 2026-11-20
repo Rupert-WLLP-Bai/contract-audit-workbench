@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Verifies subject list columns, page-scoped status filtering and the authorized new-subject drawer with its draft and identity boundaries.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-20
+// Updated: 2026-11-20
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
