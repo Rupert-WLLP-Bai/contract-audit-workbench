@@ -153,7 +153,7 @@ export function ManualFindingsPanel(props: ManualFindingsPanelProps) {
       <p>人工记录会保留作者和本次执行尝试的原文依据，独立于自动发现与已有审查判断。</p>
       {attemptId && canCreate ? (
         <form onSubmit={(event) => void submit(event)}>
-          <p>在上方冻结正文中选择文字，再用于新增人工发现。</p>
+          <p>在上方原文中选择文字，再用于新增人工发现。</p>
           <Button
             htmlType="button"
             disabled={!currentSource || pending}

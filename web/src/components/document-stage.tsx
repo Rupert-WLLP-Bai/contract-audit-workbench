@@ -76,6 +76,7 @@ import { StatusText } from "./status-text";
 import {
   OriginalDocumentReader,
   OriginalSourceContext,
+  OpenOriginalContext,
   supportsOriginalPreview,
 } from "./original-document-reader";
 import { businessScopeLabel } from "../domain/business-labels";
@@ -252,6 +253,14 @@ function publishQuoteSelection(
     return;
   }
   const range = selection.getRangeAt(0);
+  if (
+    [...container.querySelectorAll("[data-projection-hidden]")].some((node) =>
+      range.intersectsNode(node),
+    )
+  ) {
+    onQuoteSelectionChange(null);
+    return;
+  }
   const index =
     providedTextIndex?.text === source.text ? providedTextIndex : createTextIndex(source.text);
   const startUtf16 = textOffsetWithin(container, range.startContainer, range.startOffset);
@@ -357,12 +366,70 @@ const FindingMarkerContext = createContext<{
   onSelect: (id: string) => void;
 } | null>(null);
 
+type DisplaySpan = { start: number; end: number; kind: "hidden" | "image" | "heading" };
+function displaySpans(text: string): DisplaySpan[] {
+  const spans: DisplaySpan[] = [];
+  const offsets = createTextIndex(text).utf16Offsets;
+  const positions = new Map(offsets.map((offset, index) => [offset, index]));
+  const point = (offset: number) => positions.get(offset)!;
+  for (const match of text.matchAll(/^(#{1,6})[ \t]+([^\n]*)/gm)) {
+    const start = match.index,
+      prefixEnd = start + match[0].length - match[2]!.length;
+    spans.push(
+      { start: point(start), end: point(prefixEnd), kind: "hidden" },
+      { start: point(prefixEnd), end: point(start + match[0].length), kind: "heading" },
+    );
+  }
+  for (const match of text.matchAll(/!\[[^\]\n]*\]\([^\n)]*\)/g))
+    spans.push({
+      start: point(match.index),
+      end: point(match.index + match[0].length),
+      kind: "image",
+    });
+  for (const match of text.matchAll(/(?:\.{3,}|…{2,}|[·．。]{3,})(?=\s*\d+\s*$)/gm))
+    spans.push({
+      start: point(match.index),
+      end: point(match.index + match[0].length),
+      kind: "hidden",
+    });
+  return spans;
+}
 const DocSegments = memo(function DocSegments({ segments }: { segments: TextSegment[] }) {
   const { findRange, selected: keyClause, ranges: keyRanges } = useContext(ClauseContext);
   const markerContext = useContext(FindingMarkerContext);
+  const openOriginal = useContext(OpenOriginalContext);
+  const projected = useMemo(() => {
+    const spans = displaySpans(segments.map((segment) => segment.text).join(""));
+    return segments.flatMap((segment) => {
+      const chars = Array.from(segment.text),
+        end = segment.start + chars.length;
+      const points = [
+        ...new Set([
+          segment.start,
+          end,
+          ...spans
+            .flatMap((span) => [span.start, span.end])
+            .filter((point) => point > segment.start && point < end),
+        ]),
+      ].sort((a, b) => a - b);
+      return points.slice(0, -1).map((start, i) => {
+        const stop = points[i + 1]!;
+        const display =
+          spans.find(
+            (span) => start >= span.start && stop <= span.end && span.kind !== "heading",
+          ) ?? spans.find((span) => start >= span.start && stop <= span.end);
+        return {
+          ...segment,
+          start,
+          text: chars.slice(start - segment.start, stop - segment.start).join(""),
+          display,
+        };
+      });
+    });
+  }, [segments]);
   return (
     <>
-      {segments.map((segment) => {
+      {projected.map((segment) => {
         const segmentEnd = segment.start + Array.from(segment.text).length;
         const range = keyRangeAt(keyRanges, segment.start);
         const inKeyClause = Boolean(
@@ -374,6 +441,46 @@ const DocSegments = memo(function DocSegments({ segments }: { segments: TextSegm
           segmentEnd <= keyClause.range.end;
         const selectedAttribute = selected ? { "data-selected-key-clause": "true" } : {};
         const marker = markerContext?.markers.find((item) => item.start === segment.start);
+        if (segment.display?.kind === "hidden" || segment.display?.kind === "image")
+          return (
+            <span key={segment.start} data-offset={segment.start}>
+              <span
+                data-finding-number={marker?.number}
+                data-finding-relation={marker?.relation}
+                className={marker ? "hit-evidence" : undefined}
+                role={marker ? "button" : undefined}
+                tabIndex={marker ? 0 : undefined}
+                aria-label={marker ? `查看线索 ${marker.number}` : undefined}
+                onClick={marker ? () => markerContext?.onSelect(marker.findingId) : undefined}
+                onKeyDown={
+                  marker
+                    ? (event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          markerContext?.onSelect(marker.findingId);
+                        }
+                      }
+                    : undefined
+                }
+              >
+                <span data-projection-hidden="true" style={{ display: "none" }}>
+                  {segment.text}
+                </span>
+              </span>
+              {segment.display.kind === "image" &&
+                segment.start === segment.display.start &&
+                (openOriginal ? (
+                  <button
+                    type="button"
+                    className="doc-image-reference"
+                    aria-label="查看原件中的图片"
+                    onClick={openOriginal}
+                  />
+                ) : (
+                  <span className="doc-image-reference" aria-label="图片" />
+                ))}
+            </span>
+          );
         if (segment.highlighted === "evidence") {
           return (
             <mark
@@ -396,7 +503,7 @@ const DocSegments = memo(function DocSegments({ segments }: { segments: TextSegm
                   : undefined
               }
               {...selectedAttribute}
-              className={`hit-evidence${inKeyClause ? " key-clause-overlap" : ""}${selected ? " key-clause-selected" : ""}${findRange && segment.start >= findRange.start && segmentEnd <= findRange.end ? " evidence-find" : ""}`}
+              className={`hit-evidence${segment.display?.kind === "heading" ? " doc-projection-heading" : ""}${inKeyClause ? " key-clause-overlap" : ""}${selected ? " key-clause-selected" : ""}${findRange && segment.start >= findRange.start && segmentEnd <= findRange.end ? " evidence-find" : ""}`}
             >
               {segment.text}
             </mark>
@@ -408,7 +515,7 @@ const DocSegments = memo(function DocSegments({ segments }: { segments: TextSegm
               key={segment.start}
               data-offset={segment.start}
               {...selectedAttribute}
-              className={`hit-key-clause reading-${range!.group}${segment.highlighted === "find" ? " hit-find" : ""}${selected ? " key-clause-selected" : ""}`}
+              className={`hit-key-clause${segment.display?.kind === "heading" ? " doc-projection-heading" : ""} reading-${range!.group}${segment.highlighted === "find" ? " hit-find" : ""}${selected ? " key-clause-selected" : ""}`}
             >
               {segment.text}
             </mark>
@@ -420,7 +527,7 @@ const DocSegments = memo(function DocSegments({ segments }: { segments: TextSegm
             data-offset={
               segment.anchor || segment.highlighted === "find" ? segment.start : undefined
             }
-            className={segment.highlighted === "find" ? "hit-find" : undefined}
+            className={`${segment.highlighted === "find" ? "hit-find" : ""}${segment.display?.kind === "heading" ? " doc-projection-heading" : ""}`}
           >
             {segment.text}
           </span>

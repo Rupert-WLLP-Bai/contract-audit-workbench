@@ -68,6 +68,7 @@ import type {
 import type { FrozenQuoteScope, FrozenQuoteSelection } from "../domain/frozen-quote";
 import { PageStatus } from "../components/page-status";
 import { ReviewWorkspaceView } from "../components/review-workspace";
+import { ReportPreflight, useReportPreflight } from "../components/report-preflight";
 import { ReviewWorkItems } from "../components/review-work-items";
 import { DirtyLeaveGuard } from "../components/dirty-leave-guard";
 
@@ -118,7 +119,11 @@ import {
 import { useReviewLayout } from "../hooks/use-viewport-layout";
 import { OriginalSourceContext } from "../components/original-document-reader";
 import { isLegacyPaymentCoverageFinding } from "../features/review/single-contract-coverage";
-import { canRestartUserCancelled, hasTransientRetryCause } from "../features/review/review-outcome";
+import {
+  canRestartUserCancelled,
+  hasTransientRetryCause,
+  partialReportScope,
+} from "../features/review/review-outcome";
 import {
   projectReviewWork,
   readWorkReturn,
@@ -539,6 +544,12 @@ export function ReviewPage() {
         : null,
     [session.data, caseId, runId, selectedAttempt?.id],
   );
+  const reportCommandScope = JSON.stringify([
+    navigationActorScope,
+    caseId,
+    runId,
+    selectedAttempt?.id,
+  ]);
   const decisionDraftsDirty = useDecisionDraftsDirty(
     session.data === undefined
       ? null
@@ -604,6 +615,9 @@ export function ReviewPage() {
     selectedAttemptIsLatest &&
     terminal &&
     retryableState;
+  const reportPreflight = useReportPreflight(
+    currentWorkContext && !scopeMismatch && !review.isFetching ? reportCommandScope : "",
+  );
   const canCancel =
     caseDetailReady &&
     !caseArchived &&
@@ -1367,6 +1381,22 @@ export function ReviewPage() {
     }
   }
 
+  const partialScope = partialReportScope(workspace);
+
+  function retryCurrentReview() {
+    if (!canRetry || retry.isPending) return;
+    retry.mutate(undefined, {
+      onSuccess: (accepted) => {
+        const next = new URLSearchParams(params);
+        next.set("attempt_id", accepted.attempt_id);
+        next.delete("citation");
+        next.delete("work_kind");
+        next.delete("work_item");
+        setParams(next, { state: navigationState });
+      },
+    });
+  }
+
   const workspaceView = (
     <ReviewWorkspaceView
       sourceDocumentId={sourceVerified ? requestedSourceDocument : null}
@@ -1448,19 +1478,9 @@ export function ReviewPage() {
       }}
       onDecide={onDecide}
       onBatchDecide={onBatchDecide}
-      onRetry={() => {
-        if (!canRetry) return;
-        retry.mutate(undefined, {
-          onSuccess: (accepted) => {
-            const next = new URLSearchParams(params);
-            next.set("attempt_id", accepted.attempt_id);
-            next.delete("citation");
-            next.delete("work_kind");
-            next.delete("work_item");
-            setParams(next, { state: navigationState });
-          },
-        });
-      }}
+      onRetry={retryCurrentReview}
+      partialStatusManaged={partialScope !== null}
+      emptyFindingMessage={partialScope?.emptyMessage}
       onCancel={() => {
         if (canCancel) cancel.mutate();
       }}
@@ -1480,18 +1500,13 @@ export function ReviewPage() {
   const canCreateReport = session.data?.role === "admin" || session.data?.role === "clerk";
   const reportReady =
     currentWorkContext &&
+    !scopeMismatch &&
     canCreateReport &&
     (selectedAttempt?.state === "completed" || selectedAttempt?.state === "partial") &&
     Boolean(selectedAttempt.finished_at) &&
     selectedAttempt.frozen_result_available === true &&
     Boolean(workspace.snapshot?.document_ids.length) &&
     remaining === 0;
-  const reportCommandScope = JSON.stringify([
-    navigationActorScope,
-    caseId,
-    runId,
-    selectedAttempt?.id,
-  ]);
   const reportResultVisible =
     canCreateReport && !scopeMismatch && submittedReportScope === reportCommandScope;
   const reportRecord =
@@ -1508,7 +1523,45 @@ export function ReviewPage() {
     createReport.mutate({ run_id: runId, attempt_id: selectedAttempt.id });
   }
 
+  function requestReport() {
+    if (!reportReady || createReport.isPending) return;
+    if (selectedAttempt?.state === "partial") {
+      if (partialScope) reportPreflight.show();
+    } else {
+      submitReport();
+    }
+  }
+
   const casePath = `/cases/${encodeURIComponent(caseId)}`;
+  const prepareReview = (
+    <Button
+      type="primary"
+      href={`${casePath}#review-readiness`}
+      onClick={(event) => {
+        event.preventDefault();
+        reportPreflight.dismiss();
+        void navigate(`${casePath}#review-readiness`, { state: caseNavigationState });
+      }}
+    >
+      {partialScope?.precheck ? "查看完整审查准备" : "查看重新审查准备"}
+    </Button>
+  );
+  const partialRecovery =
+    hasTransientRetryCause(workspace) && !partialScope?.precheck ? (
+      <Button
+        type="primary"
+        disabled={!canRetry || retry.isPending}
+        onClick={() => {
+          reportPreflight.dismiss();
+          retryCurrentReview();
+        }}
+      >
+        {retry.isPending ? "正在受理重试" : "重新执行智能审查"}
+      </Button>
+    ) : latestRun && selectedAttemptIsLatest && !caseArchived ? (
+      prepareReview
+    ) : null;
+
   const agentReview = workspace.agent_review;
   const agentRuleVersion =
     agentReview && selectedAttempt && agentReview.attempt_id === selectedAttempt.id
@@ -1659,6 +1712,16 @@ export function ReviewPage() {
   );
   const reviewRecord = (
     <div id="review-history-section">
+      {partialScope ? (
+        <section aria-label="本次审查状态">
+          <h3>本次审查状态</h3>
+          <p>{partialScope.reason}</p>
+          <p>
+            {partialScope.ruleCoverage}。未覆盖：{partialScope.uncovered.join("、")}。
+          </p>
+          {partialRecovery}
+        </section>
+      ) : null}
       {reviewBasis}
       {cloneElement(workspaceView, { surface: "coverage", immersive: false })}
       <div ref={setCoverageHost} />
@@ -1775,13 +1838,35 @@ export function ReviewPage() {
               <ol className="review-progress" aria-label="审查进度">
                 <li data-stage={workspace.documents.length > 0 ? "done" : "active"}>材料</li>
                 <li data-stage={terminal ? "done" : "active"}>准备</li>
-                <li data-stage={terminal ? (remaining === 0 ? "done" : "active") : undefined}>
-                  原文审查
+                <li
+                  data-stage={
+                    partialScope
+                      ? "warning"
+                      : terminal
+                        ? remaining === 0
+                          ? "done"
+                          : "active"
+                        : undefined
+                  }
+                >
+                  {partialScope ? "原文审查（部分完成）" : "原文审查"}
                 </li>
-                <li data-stage={terminal && remaining === 0 ? "active" : undefined}>整改与报告</li>
+                <li
+                  data-stage={!partialScope && terminal && remaining === 0 ? "active" : undefined}
+                >
+                  整改与报告
+                </li>
               </ol>
               <span className="review-finding-count">
-                {visibleFindings.length} 条线索 · 还有 {remaining} 条待判断
+                {partialScope
+                  ? partialScope.precheck
+                    ? `单合同预审 · ${visibleFindings.length} 条线索`
+                    : `规则检查 ${partialScope.ruleFindings} 条 · ${partialScope.executionLabel}`
+                  : `${visibleFindings.length} 条线索 · 还有 ${remaining} 条待判断`}
+                {partialScope && partialScope.modelFindings > 0
+                  ? ` · AI 建议 ${partialScope.modelFindings} 条`
+                  : null}
+                {partialScope && remaining > 0 ? ` · 还有 ${remaining} 条待判断` : null}
               </span>
               <nav className="review-topbar-actions" aria-label="审查操作">
                 <Button
@@ -1819,13 +1904,35 @@ export function ReviewPage() {
                     type="primary"
                     disabled={!reportReady}
                     loading={createReport.isPending}
-                    onClick={submitReport}
+                    onClick={requestReport}
                   >
                     {remaining ? "判断完再出报告" : "出报告"}
                   </Button>
                 )}
               </nav>
             </header>
+            {partialScope ? (
+              <div className="review-partial-status">
+                <span role="status">
+                  {partialScope.precheck
+                    ? "单合同预审已结束，仅保留预审范围内结果。"
+                    : `部分完成 · ${partialScope.executionLabel}`}
+                </span>
+                {partialRecovery}
+                <Button size="small" onClick={() => selectDrawer("record", "review")}>
+                  查看原因
+                </Button>
+              </div>
+            ) : null}
+            {partialScope ? (
+              <ReportPreflight
+                summary={partialScope}
+                open={reportReady && reportPreflight.open}
+                onConfirm={() => reportPreflight.confirm(submitReport)}
+                onCancel={reportPreflight.dismiss}
+                recovery={partialRecovery}
+              />
+            ) : null}
             {reportError && (
               <p className="callout" role="alert">
                 {reportError}

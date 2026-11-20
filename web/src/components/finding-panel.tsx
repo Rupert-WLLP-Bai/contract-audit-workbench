@@ -951,6 +951,7 @@ function WorkspaceFindingDetails({
 
 export function FindingPanel({
   immersive = false,
+  emptyFindingMessage = "本次审查还没有风险线索",
   findings,
   evaluations = [],
   documents,
@@ -970,6 +971,7 @@ export function FindingPanel({
   clauseProposalContext,
 }: {
   immersive?: boolean;
+  emptyFindingMessage?: string;
   findings: Finding[];
   evaluations?: ConstraintEvaluation[];
   documents: ReviewDocument[];
@@ -1214,9 +1216,7 @@ export function FindingPanel({
         </div>
         <div className="review-finding-queue">
           {visible.length === 0 ? (
-            <p className="meta">
-              {findings.length ? "当前筛选没有线索" : "本次审查还没有风险线索"}
-            </p>
+            <p className="meta">{findings.length ? "当前筛选没有线索" : emptyFindingMessage}</p>
           ) : null}
           <ul>
             {visible.map((finding) => {

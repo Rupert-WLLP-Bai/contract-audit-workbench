@@ -207,6 +207,44 @@ describe("report creation with public attempt history", () => {
     expect(await screen.findByText("报告已创建，版本 1。")).toBeInTheDocument();
   });
 
+  it("requires explicit confirmation when generating a selected partial report", async () => {
+    const source = publicWorkspace("attempt-2", "partial");
+    const { requests, user } = open(source, parseReviewWorkspace(source));
+    const submit = await screen.findByRole("button", { name: "生成报告" });
+    await waitFor(() => expect(submit).toBeEnabled());
+    await user.click(submit);
+    const first = await screen.findByRole("dialog");
+    expect(within(first).getByText("部分报告预检")).toBeInTheDocument();
+    expect(first).toHaveTextContent("已判断 0 / 0 条线索");
+    expect(requests.filter(({ init }) => init?.method === "POST")).toHaveLength(0);
+    await user.click(within(first).getByRole("button", { name: "取消" }));
+    await user.click(submit);
+    const second = await screen.findByRole("dialog");
+    await user.click(within(second).getByRole("button", { name: "仍出部分报告" }));
+    await screen.findByText("报告已创建，版本 1。");
+    const writes = requests.filter(({ init }) => init?.method === "POST");
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(String(writes[0]?.init?.body))).toEqual({
+      run_id: "run-1",
+      attempt_id: "attempt-2",
+    });
+  });
+
+  it("discards partial confirmation if the authenticated context changes", async () => {
+    const source = publicWorkspace("attempt-2", "partial");
+    const { requests, user } = open(source, parseReviewWorkspace(source));
+    const submit = await screen.findByRole("button", { name: "生成报告" });
+    await waitFor(() => expect(submit).toBeEnabled());
+    await user.click(submit);
+    const dialog = await screen.findByRole("dialog");
+    setSessionIdentity({
+      ...actor,
+      active_context: { ...actor.active_context!, context_version: "2" },
+    });
+    await user.click(within(dialog).getByRole("button", { name: "仍出部分报告" }));
+    expect(requests.filter(({ init }) => init?.method === "POST")).toHaveLength(0);
+  });
+
   it("shows report and archive versions without technical identifiers or hashes", () => {
     open(publicWorkspace(), parseReviewWorkspace(publicWorkspace()), {
       ...detail,

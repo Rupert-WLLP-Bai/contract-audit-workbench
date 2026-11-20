@@ -13,7 +13,7 @@ import { Link } from "react-router";
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
 import { errorMessage } from "../api/http";
 import { paths } from "../api/paths";
-import { useArchiveCase, useCreateReport, useReview } from "../api/queries";
+import { useArchiveCase, useCreateReport, useReview, useSession } from "../api/queries";
 import type { CaseDetail, ReviewHistoryEntry } from "../api/types";
 import {
   caseHref,
@@ -22,7 +22,10 @@ import {
   runLabel,
   runTone,
 } from "../domain/review";
+import { actorReadContextKey } from "../domain/actor-read-context";
 import { reviewChoiceForKey, reviewChoices } from "../domain/workflow";
+import { hasTransientRetryCause, partialReportScope } from "../features/review/review-outcome";
+import { ReportPreflight, useReportPreflight } from "./report-preflight";
 import { ReviewChoiceSelect } from "./review-choice-select";
 import { StatusText } from "./status-text";
 import { TechnicalDetail } from "./technical-detail";
@@ -580,16 +583,57 @@ export function ReportArchivePanel({
   useFocusOnError(archive.error, archiveErrorRef);
 
   const reportReady = reportPrepared(canCreateReport, archived, selectedChoice, selectedReview);
+  const actorSession = useSession();
+  const activeReportSession =
+    actorSession.isSuccess && !actorSession.isFetching
+      ? actorReadContextKey(actorSession.data)
+      : null;
+  const partialScope = selectedReview.data ? partialReportScope(selectedReview.data) : null;
+  const canConfirmPartial =
+    Boolean(activeReportSession && partialScope && selectedChoice) &&
+    reportReady &&
+    !selectedReview.isFetching &&
+    selectedReview.data?.run.case_id === caseId;
+  const reportPreflight = useReportPreflight(
+    JSON.stringify([
+      activeReportSession,
+      caseId,
+      selectedChoice?.runId,
+      selectedChoice?.attempt.id,
+    ]),
+  );
 
-  function onCreateReport(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedChoice) return;
+  function submitReport() {
+    if (!selectedChoice || !reportReady || createReport.isPending) return;
+    if (selectedReview.data?.review_attempts?.attempt.state === "partial" && !canConfirmPartial)
+      return;
     createReport.mutate({
       run_id: selectedChoice.runId,
       attempt_id: selectedChoice.attempt.id,
     });
   }
 
+  function onCreateReport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!reportReady || createReport.isPending) return;
+    if (selectedReview.data?.review_attempts?.attempt.state === "partial") {
+      if (canConfirmPartial) reportPreflight.show();
+    } else {
+      submitReport();
+    }
+  }
+
+  const isCurrentChoice =
+    selectedChoice !== null &&
+    detail.latest_run?.id === selectedChoice.runId &&
+    selectedReview.data?.review_attempts?.attempts.every(
+      (attempt) => attempt.ordinal <= selectedChoice.attempt.ordinal,
+    ) === true;
+  const canOpenRetry =
+    isCurrentChoice &&
+    partialScope?.precheck === false &&
+    selectedReview.data &&
+    hasTransientRetryCause(selectedReview.data);
   function onArchive(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     archive.mutate(
@@ -627,12 +671,41 @@ export function ReportArchivePanel({
           historyHasOlder={historyHasOlder}
           review={selectedReview}
           caseId={caseId}
-          ready={reportReady}
+          ready={
+            reportReady &&
+            (selectedReview.data?.review_attempts?.attempt.state !== "partial" || canConfirmPartial)
+          }
           pending={createReport.isPending}
           error={createReport.error}
           data={createReport.data}
           errorRef={reportErrorRef}
           onSubmit={onCreateReport}
+        />
+      ) : null}
+      {partialScope && selectedChoice ? (
+        <ReportPreflight
+          summary={partialScope}
+          open={canConfirmPartial && reportPreflight.open}
+          onConfirm={() => reportPreflight.confirm(submitReport)}
+          onCancel={reportPreflight.dismiss}
+          recovery={
+            isCurrentChoice ? (
+              <Link
+                to={
+                  canOpenRetry
+                    ? caseHref(caseId, selectedChoice.runId, selectedChoice.attempt.id)
+                    : `${caseHref(caseId)}#review-readiness`
+                }
+                onClick={reportPreflight.dismiss}
+              >
+                {canOpenRetry
+                  ? "打开本次审查重试"
+                  : partialScope.precheck
+                    ? "查看完整审查准备"
+                    : "查看重新审查准备"}
+              </Link>
+            ) : null
+          }
         />
       ) : null}
       <ReportHistory caseId={caseId} reports={detail.reports} canReadReports={canReadReports} />

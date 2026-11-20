@@ -74,3 +74,14 @@
   margin-block-start: var(--space-2);
   white-space: pre-wrap;
 }
+
+.doc-image-reference::before {
+  content: "[图片]";
+}
+.doc-image-reference {
+  color: var(--action-primary);
+  cursor: pointer;
+}
+.doc-projection-heading {
+  font-weight: 600;
+}

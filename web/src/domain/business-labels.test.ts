@@ -53,8 +53,8 @@ describe("business and export labels", () => {
     expect(businessActionLabel("case.relation.created")).toBe("关联案件");
     expect(businessActionLabel("case.relation.created·")).toBe("已记录一项操作，类型待核对");
     expect(businessActionLabel("constructor")).toBe("已记录一项操作，类型待核对");
-    expect(businessLineLabel("")).toBe("业务条线未设置");
-    expect(scenarioLabel(null)).toBe("业务场景未设置");
+    expect(businessLineLabel("")).toBe("—");
+    expect(scenarioLabel(null)).toBe("—");
     expect(businessSourceTypeLabel("reference")).toBe("参考资料");
     expect(suppliedBusinessName(" ENT（测试）股份有限公司 ", "名称未提供")).toBe(
       " ENT（测试）股份有限公司 ",

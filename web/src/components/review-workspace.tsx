@@ -587,6 +587,8 @@ export function ReviewWorkspaceView({
   surface = "full",
   immersive = false,
   coverageHost,
+  partialStatusManaged = false,
+  emptyFindingMessage,
   onReturnToReading,
 }: {
   workspace: ReviewWorkspace;
@@ -636,6 +638,8 @@ export function ReviewWorkspaceView({
   surface?: "full" | "document" | "trace" | "coverage";
   immersive?: boolean;
   coverageHost?: HTMLElement | null;
+  partialStatusManaged?: boolean;
+  emptyFindingMessage?: string;
   onReturnToReading?: () => void;
 }) {
   const { run } = workspace;
@@ -921,14 +925,14 @@ export function ReviewWorkspaceView({
       ) : null}
       {showCoverage ? (
         <>
-          <ReviewOutcomeSummary workspace={workspace} />
+          <ReviewOutcomeSummary workspace={workspace} showPartialReason={!partialStatusManaged} />
           <SingleContractScopeCoverage mode="workspace" workspace={workspace} />
         </>
       ) : null}
-      {surface === "full" || surface === "document" ? (
+      {!partialStatusManaged && (surface === "full" || surface === "document") ? (
         <RunCallouts run={run} compact={surface === "document"} />
       ) : null}
-      {surface === "document" && showRetry ? (
+      {surface === "document" && showRetry && !partialStatusManaged ? (
         <RetryButton
           retrying={retrying}
           canRetry={canRetry}
@@ -978,6 +982,7 @@ export function ReviewWorkspaceView({
             )}
             <FindingPanel
               immersive={immersive}
+              emptyFindingMessage={emptyFindingMessage}
               findings={reviewFindings}
               evaluations={workspace.evaluations ?? []}
               documents={readingDocuments}

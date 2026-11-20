@@ -236,3 +236,16 @@
     height: 100%;
   }
 }
+
+.review-progress li[data-stage="warning"] {
+  color: var(--state-insufficient);
+}
+.review-partial-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-1) var(--space-4);
+  background: var(--state-insufficient-bg);
+  color: var(--state-insufficient);
+}
