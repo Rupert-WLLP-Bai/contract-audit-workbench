@@ -38,6 +38,7 @@ const draft = {
   contract: {
     name: longName,
     number: longNumber,
+    grade: "历史归档等级",
     remark: longUrl,
     related_parties: [
       {

@@ -35,7 +35,7 @@ async function openEditor(page: Page, mode: FixtureMode, references = false) {
     await page.locator(".contracts-page-list button").click();
     await expect(page.locator(".contracts-page-list-name")).toHaveText(longName);
     await expect(page.getByLabel("合同名称", { exact: true })).toHaveValue(longName);
-    await expect(page.getByText("版本 7", { exact: true })).toBeVisible();
+    await expect(page.getByText("草稿版本 v7", { exact: true })).toBeVisible();
     await expect(page.locator(".contracts-page-row")).toHaveCount(6);
     await expect(page.locator(".contracts-page-materials > li")).toHaveCount(3);
   }
@@ -190,6 +190,17 @@ async function emptyMessageIssue(page: Page): Promise<string | null> {
 for (const mode of ["empty", "editable"] as const) {
   test(`${mode} sections stay within the editor across viewport widths`, async ({ page }, info) => {
     const fixture = await openEditor(page, mode);
+    if (mode === "editable") {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      const stepNavigation = page.getByRole("navigation", { name: "合同登记分区" });
+      const lifecycleOverview = page.getByText("履约进度", { exact: true }).first();
+      await expect(stepNavigation).toBeInViewport();
+      await expect(page.getByLabel("合同名称", { exact: true })).toBeInViewport();
+      await expect(lifecycleOverview).toBeVisible();
+      expect((await stepNavigation.boundingBox())?.y).toBeLessThan(
+        (await lifecycleOverview.boundingBox())?.y ?? 0,
+      );
+    }
     const issues: string[] = [];
     const sectionNames = ["合同基本信息", "相关方与标的", "资金与付款", "材料与核对"];
     for (const width of widths) {
@@ -198,6 +209,13 @@ for (const mode of ["empty", "editable"] as const) {
         await page.getByRole("button", { name: sectionName, exact: true }).click();
         const result = await geometry(page, info, `${mode}-${width}-${sectionName}`);
         issues.push(...result.issues.map((issue) => `${width}/${sectionName}: ${issue}`));
+        if (width === 1440 && sectionName === "相关方与标的") {
+          const hasTableOverflow = await page
+            .locator("fieldset.contracts-page-section:not([hidden]) .ant-table-content")
+            .first()
+            .evaluate((element) => element.scrollWidth > element.clientWidth);
+          if (hasTableOverflow) issues.push("1440: item table overflows the editor");
+        }
         if (mode === "empty" && sectionName === "相关方与标的") {
           const issue = await emptyMessageIssue(page);
           if (issue) issues.push(`${width}: ${issue}`);
@@ -236,13 +254,22 @@ for (const mode of ["empty", "editable"] as const) {
         page.locator("fieldset.contracts-page-section .field-wide textarea").first(),
       ).toHaveValue(longUrl);
       await page.getByRole("button", { name: "合同基本信息", exact: true }).click();
+      const legacyGrade = page.getByText("历史归档等级", { exact: true });
+      await expect(legacyGrade).toBeVisible();
+      const grade = page.getByRole("combobox", { name: "合同等级" });
+      await grade.focus();
+      await grade.press("Tab");
+      const clearGrade = page.getByRole("button", { name: "清除合同等级" });
+      await expect(clearGrade).toBeFocused();
+      await clearGrade.press("Enter");
+      await expect(legacyGrade).toHaveCount(0);
       await page.getByLabel("合同名称", { exact: true }).fill(`${longName}X`);
       if (process.env.E2E_DESKTOP_ONLY !== "1")
         await page.setViewportSize({ width: 1280, height: 900 });
       await expect(page.getByLabel("合同名称", { exact: true })).toHaveValue(`${longName}X`);
       await expect(page.getByLabel("第 1 行明细金额", { exact: true })).toHaveValue("12345.67");
       await expect(page.getByText("有未保存的修改", { exact: true })).toBeVisible();
-      await expect(page.getByText("版本 7", { exact: true })).toBeVisible();
+      await expect(page.getByText("草稿版本 v7", { exact: true })).toBeVisible();
     }
     expect(fixture.unmatched).toEqual([]);
     expect(fixture.blocked).toEqual([]);

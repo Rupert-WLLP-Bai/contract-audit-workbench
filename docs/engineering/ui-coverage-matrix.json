@@ -307,10 +307,12 @@
         "audit/contracts-ui2-1280.png",
         "audit/contracts-ui2-1024.png",
         "audit/contracts-ui2-390.png",
-        "../ui-redesign-20261120-v2/impl/361/after-ledger-real-1440.png"
+        "../ui-redesign-20261120-v2/impl/361/after-ledger-real-1440.png",
+        "../ui-redesign-20261120-v3/impl/desktop/375/09-contracts-draft-modern.png",
+        "../ui-redesign-20261120-v3/impl/desktop/375/10-contracts-export-modal.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL：隔离副本 1440 使用真实网联草稿，完成组合视图增删与 CSV 下载；已签合同及完整矩阵 NOT_RUN。",
+      "statusDetail": "PARTIAL：隔离副本 1440 使用真实网联草稿，完成组合视图增删与 CSV 下载。#375 候选用真实网联草稿验看 1440、390 与原生 200% 下的编辑器。已签合同及完整矩阵 NOT_RUN。",
       "template": "ListPage with embedded contract editor"
     },
     {

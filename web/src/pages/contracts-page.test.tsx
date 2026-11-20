@@ -253,11 +253,18 @@ it("uses the submitted readable columns and obtains the CSV from the ledger rout
   vi.stubGlobal("fetch", fetch);
   renderPage();
   expect(await screen.findByRole("heading", { name: "合同台账", level: 1 })).toBeVisible();
-  await userEvent.setup().click(screen.getByRole("button", { name: "导出 CSV" }));
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "导出 CSV" }));
+  const dialog = within(await screen.findByRole("dialog"));
+  expect(dialog.getByText("导出合同台账")).toBeVisible();
   const exportCalls = () => fetch.mock.calls.filter(([, init]) => init?.method === "POST");
+  expect(exportCalls()).toHaveLength(0);
+  expect(dialog.getByRole("radio", { name: "当前表格显示字段（10 列）" })).toBeChecked();
+  await user.click(dialog.getByRole("button", { name: "下载 CSV" }));
   await waitFor(() => expect(exportCalls()).toHaveLength(1));
   expect(String(exportCalls()[0]?.[0])).toBe("/api/contracts/ledger/exports");
-  await within(screen.getByRole("region", { name: "合同台账" })).findByText("已导出 1 行");
+  await dialog.findByText("已导出 1 行");
+  expect(dialog.getByText(`contracts-${exportID}.csv`)).toBeVisible();
   await waitFor(() =>
     expect(
       fetch.mock.calls.some(
@@ -288,11 +295,20 @@ it("uses the submitted readable columns and obtains the CSV from the ledger rout
   const pending = await vi.mocked(pendingMutationKey).mock.results[0]!.value;
   expect(new Headers(request!.headers).get("Idempotency-Key")).toBe(pending.key);
   expect(new Headers(request!.headers).get("X-Context-Version")).toBe("1");
+  await user.click(await dialog.findByRole("radio", { name: "全部台账标准字段（18 列）" }));
+  await waitFor(() => expect(dialog.getByRole("button", { name: "下载 CSV" })).toBeEnabled());
+  await user.click(dialog.getByRole("button", { name: "下载 CSV" }));
+  await waitFor(() => expect(exportCalls()).toHaveLength(2));
+  expect(JSON.parse(String(exportCalls()[1]?.[1]?.body))).toEqual({
+    filter: {},
+    columns: contractLedgerExportColumns(CONTRACT_LEDGER_COLUMNS.map(({ key }) => key)),
+    format: "csv",
+  });
   expect(new Headers(request!.headers).get("X-CSRF-Token")).toBe(source.actor.csrf_token);
   const blob = vi.mocked(URL.createObjectURL).mock.calls[0]?.[0] as Blob;
   expect(blob).toBeInstanceOf(Blob);
   expect(Array.from(new Uint8Array(await blob.arrayBuffer()))).toEqual(Array.from(csv));
-  expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(2));
 });
 
 it("saves, reapplies, updates and deletes a view through the ledger API", async () => {
@@ -547,6 +563,61 @@ it("preserves the contract editor draft when switching workspace tabs", async ()
   expect(draftsTab).toHaveAttribute("aria-selected", "true");
   expect(name).toBeVisible();
   expect(name).toHaveValue("切换分区仍保留的草稿名称");
+});
+
+it("uses an accessible step header and offers the standard draft classifications", async () => {
+  renderPage();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("tab", { name: "我的草稿" }));
+  const steps = within(screen.getByRole("navigation", { name: "合同登记分区" }));
+  const basic = steps.getByRole("button", { name: "合同基本信息" });
+  expect(basic).toHaveAttribute("aria-current", "step");
+  expect(document.getElementById(basic.getAttribute("aria-controls") ?? "")).toBeVisible();
+  expect(document.querySelector("fieldset.contracts-page-section legend")).toBeNull();
+  for (const [label, option] of [
+    ["合同分类", "支出类合同"],
+    ["合同类别", "ICT 与信息化采购"],
+    ["合同等级", "重点合同"],
+  ] as const) {
+    const input = screen.getByRole("combobox", { name: label });
+    await user.click(input);
+    await user.click(await screen.findByRole("option", { name: option, exact: true }));
+    expect(input.parentElement?.parentElement).toHaveTextContent(option);
+  }
+  await user.click(screen.getByRole("button", { name: "下一步：相关方与标的" }));
+  expect(steps.getByRole("button", { name: "相关方与标的" })).toHaveAttribute(
+    "aria-current",
+    "step",
+  );
+});
+
+it("focuses the draft error summary and exposes the affected step", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ message: "付款金额超过合同金额" }), {
+          status: 422,
+          headers: { "Content-Type": "application/json" },
+        }),
+    ),
+  );
+  renderPage();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("tab", { name: "我的草稿" }));
+  await user.type(screen.getByLabelText("合同名称"), "校验付款的草稿");
+  await user.click(screen.getByRole("button", { name: "保存草稿" }));
+  expect(await screen.findByText("付款金额超过合同金额")).toBeVisible();
+  const summary = screen.getByRole("group", { name: "错误定位" });
+  await waitFor(() => expect(summary).toHaveFocus());
+  const steps = within(screen.getByRole("navigation", { name: "合同登记分区" }));
+  const funding = steps.getByRole("button", { name: /资金与付款/ });
+  expect(funding).toHaveAttribute("aria-current", "step");
+  expect(funding).toHaveAttribute("data-error", "true");
+  await user.click(within(summary).getByRole("button", { name: "资金与付款" }));
+  await waitFor(() =>
+    expect(document.getElementById(funding.getAttribute("aria-controls") ?? "")).toHaveFocus(),
+  );
 });
 
 it("shows one primary action while editing a new draft", async () => {

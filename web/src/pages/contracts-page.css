@@ -33,20 +33,6 @@
   padding-block: 0;
 }
 
-.contracts-page-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-6);
-  align-items: baseline;
-  margin: 0 0 var(--space-4);
-  color: var(--text-secondary);
-}
-
-.contracts-page-summary strong {
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
 .contracts-page-actions {
   display: flex;
   gap: var(--space-2);
@@ -136,12 +122,13 @@
 }
 
 fieldset.contracts-page-section {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
   min-inline-size: 0;
-}
-
-.contracts-page-section legend {
-  padding: 0 var(--space-2);
-  font-weight: var(--font-weight-semibold);
+  padding: 0;
+  background: transparent;
+  scroll-margin-block-start: var(--header-height);
 }
 
 .contracts-page-section h3 {
@@ -319,7 +306,7 @@ fieldset.contracts-page-section {
 }
 
 .contracts-ledger-filters {
-  width: 384px;
+  width: min(384px, calc(100vw - 48px));
 }
 
 .contracts-ledger-filters .field {
@@ -368,30 +355,273 @@ fieldset.contracts-page-section {
   max-width: 100%;
 }
 
-/* Contract registration uses one mounted draft across four readable sections. */
+/* The draft steps, active fields and save actions share one editor card. */
+.contracts-draft-card,
+.contracts-page-list {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
+}
+.contracts-page-layout {
+  --draft-min-height: max(480px, calc(100dvh - 188px));
+  grid-template-columns: minmax(210px, 24%) minmax(0, 1fr);
+  gap: var(--space-4);
+}
+.contracts-page-list {
+  min-height: var(--draft-min-height);
+}
+.contracts-draft-rail-head,
+.contracts-draft-steps {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--header-height);
+  padding-inline: var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-subtle);
+  border-start-start-radius: inherit;
+  border-start-end-radius: inherit;
+}
+.contracts-draft-rail-head h2 {
+  margin: 0;
+  font-size: var(--font-size-ui);
+}
+.contracts-draft-rail-head > span {
+  color: var(--text-secondary);
+  font-size: var(--font-size-small);
+}
+.contracts-page-list ul {
+  padding: var(--space-2);
+}
+.contracts-page-list button {
+  font: inherit;
+}
+.contracts-page-list-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.contracts-draft-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: var(--draft-min-height);
+}
+.contracts-draft-steps {
+  align-items: stretch;
+  padding-inline: var(--space-6);
+}
+.contracts-draft-steps > .ant-tag {
+  align-self: center;
+  margin: 0;
+}
 .contracts-form-sections {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
-  margin: var(--space-4) 0;
+  gap: var(--space-2) var(--space-4);
+  min-width: 0;
 }
 .contracts-form-sections button {
-  min-height: var(--control-height);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border-control);
-  border-radius: var(--radius-control);
-  background: var(--surface-page);
-  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: calc(var(--header-height) - 2px);
+  padding: 0;
+  border: 0;
+  border-block-end: 2px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
   cursor: pointer;
+  font: inherit;
+  white-space: nowrap;
 }
-.contracts-form-sections button[aria-pressed="true"] {
-  border-color: var(--action-primary);
+.contracts-form-sections button[aria-current="step"] {
+  border-block-end-color: var(--action-primary);
+  color: var(--action-primary);
   font-weight: var(--font-weight-semibold);
 }
-.contracts-form-sections button[data-error="true"] {
-  border-color: var(--state-conflict);
-  color: var(--state-conflict);
+.contracts-step-number {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+  font-size: var(--font-size-small);
 }
+.contracts-form-sections button[aria-current="step"] .contracts-step-number {
+  background: var(--action-primary);
+  color: var(--button-primary-fg);
+}
+.contracts-step-error {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--state-conflict);
+}
+.contracts-draft-content {
+  padding: var(--space-6);
+}
+.contracts-draft-basics {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.contracts-draft-span-6 {
+  grid-column: span 6;
+}
+.contracts-draft-span-4 {
+  grid-column: span 4;
+}
+.contracts-draft-span-3 {
+  grid-column: span 3;
+}
+.contracts-draft-card .contracts-page-savebar {
+  position: static;
+  margin-block-start: auto;
+  padding: var(--space-3) var(--space-6);
+  border: 0;
+  border-block-start: 1px solid var(--border-default);
+  border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+  background: var(--surface-subtle);
+  box-shadow: none;
+}
+.contracts-draft-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.contracts-draft-item-table {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.contracts-draft-item-table .ant-table-content {
+  overflow-x: auto;
+}
+.contracts-draft-item-table-populated table {
+  min-inline-size: 740px;
+}
+.contracts-ledger-table td {
+  overflow-wrap: anywhere;
+}
+.contracts-ledger-table .contracts-ledger-identity button,
+.contracts-ledger-table .contracts-ledger-identity button > span {
+  display: block;
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.contracts-ledger-table .contracts-ledger-identity .meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.contracts-export-scope {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
+}
+.contracts-export-scope {
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-subtle);
+}
+.contracts-export-options {
+  display: grid;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+.contracts-export-options label {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+}
+.contracts-export-description {
+  display: block;
+  color: var(--text-secondary);
+  font-size: var(--font-size-small);
+}
+.contracts-export-receipt {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+}
+.contracts-export-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.contracts-export-options label:has(input:checked) {
+  border-color: var(--action-primary);
+  background: var(--action-primary-soft);
+}
+@media (max-width: 960px) {
+  .contracts-page-layout {
+    --draft-min-height: auto;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .contracts-draft-basics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .contracts-draft-basics
+    > :is(.contracts-draft-span-3, .contracts-draft-span-4, .contracts-draft-span-6) {
+    grid-column: auto;
+  }
+  .contracts-page .contracts-workspace-header,
+  .contracts-ledger-toolbar {
+    flex-wrap: wrap;
+  }
+  .contracts-workspace-header > .ant-tabs-extra-content {
+    display: contents;
+  }
+  .contracts-workspace-header > .ant-tabs-nav-wrap {
+    flex-basis: 100%;
+  }
+  .contracts-ledger-toolbar {
+    flex-basis: 100%;
+    margin-inline-start: 0;
+    max-inline-size: calc(100vw - 2 * var(--page-padding-inline-mobile));
+  }
+  .contracts-ledger-table .ant-table-content {
+    overflow-x: auto;
+  }
+  .contracts-ledger-table table {
+    min-inline-size: 760px;
+  }
+}
+@media (max-width: 540px) {
+  .contracts-draft-basics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .contracts-draft-steps,
+  .contracts-draft-card .contracts-page-savebar {
+    align-items: start;
+    flex-direction: column;
+    padding: var(--space-2) var(--space-3);
+  }
+  .contracts-draft-steps > .ant-tag {
+    align-self: start;
+  }
+  .contracts-draft-content {
+    padding: var(--space-3);
+  }
+  .contracts-ledger-toolbar {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: min(100%, 355px);
+  }
+}
+
 .contracts-form-sections button:focus-visible,
 .contracts-form-error-summary button:focus-visible {
   outline: 2px solid var(--action-primary);
