@@ -8,7 +8,7 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { Button } from "antd";
+import { Button, type ButtonProps } from "antd";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { CaseDetail, Remediation, ReviewWorkspace } from "../api/types";
@@ -895,12 +895,12 @@ export function CaseNextStep(props: Props) {
     prioritizePreparation && plan.showPreparationStart && action.href === "#review-readiness"
       ? "default"
       : "primary";
-  const actionProps = {
+  const actionProps: ButtonProps = {
     className: "case-next-step-button",
     "aria-label":
       props.suppressWriteAction && action.kind === "start" ? "打开案件继续" : actionLabel,
     type: actionType,
-    htmlType: "button" as const,
+    htmlType: "button",
     loading: action.loading,
     disabled: action.disabled || (action.kind === "start" && props.startDisabled === true),
   };
