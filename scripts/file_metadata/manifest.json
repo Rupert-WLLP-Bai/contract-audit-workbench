@@ -183,6 +183,7 @@
       "internal/documentparse/ocr_source_test.go",
       "internal/documentservice/intake_authority_client.go",
       "internal/documentservice/intake_authority_client_test.go",
+      "internal/engine/demo_contract_fixture_test.go",
       "internal/engine/single_contract_payment_terms.go",
       "internal/engine/single_contract_payment_terms_test.go",
       "internal/evidencebundle/bundle_test.go",
@@ -613,6 +614,8 @@
       "scripts/trusted_gate_runner.py",
       "scripts/ui-terminology/policy.json",
       "scripts/ui_style_scan.py",
+      "testdata/demo-contract/draft-contract.txt",
+      "testdata/demo-contract/procurement-spec.txt",
       "web/.prettierignore",
       "web/.prettierrc.json",
       "web/build/original-reader-assets.ts",
@@ -1565,7 +1568,7 @@
       "header_state": "pending-header-application"
     },
     "README.md": {
-      "purpose": "介绍合同智能审计工作台和本地体验入口，示范从合同或案件找到冻结原文、核对条款并处理材料版本。",
+      "purpose": "介绍合同智能审计工作台的核心功能、技术架构、内置示例合同快速体验方式与文档入口。",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -1592,15 +1595,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-19",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "af463f5aa7da15df8fecd3d91bcdcfc20d71086f",
+          "commit": "c39503948e061e9da6e9ea335abce9b7e0188be9",
           "path": "README.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -65860,7 +65863,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r96",
+      "revision": "r97",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -96865,6 +96868,160 @@
       ],
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
+    },
+    "internal/engine/demo_contract_fixture_test.go": {
+      "purpose": "Verifies that the README demo contract fixtures under testdata/demo-contract still trigger the documented amount, payment, schedule and warranty rule detections.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-20",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c39503948e061e9da6e9ea335abce9b7e0188be9",
+          "path": "internal/engine/demo_contract_fixture_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-20",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c39503948e061e9da6e9ea335abce9b7e0188be9",
+          "path": "internal/engine/demo_contract_fixture_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "testdata/demo-contract/procurement-spec.txt": {
+      "purpose": "内置示例采购文件节选，写明政务云网络扩容项目的金额、付款、验收、质保和转包要求；README 体验流程与 engine 规则检出测试以它作为采购方基准原文。",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-20",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c39503948e061e9da6e9ea335abce9b7e0188be9",
+          "path": "testdata/demo-contract/procurement-spec.txt",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-20",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c39503948e061e9da6e9ea335abce9b7e0188be9",
+          "path": "testdata/demo-contract/procurement-spec.txt",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "manifest-only",
+      "header_state": "manifest-only",
+      "exception": {
+        "rule_id": "frozen-test-fixtures",
+        "source": "testdata/demo-contract/procurement-spec.txt",
+        "reason": "testdata/demo-contract/procurement-spec.txt: Frozen demo procurement fixture consumed byte-for-byte by the demo-contract rule-detection test and README walkthrough; keep its text unchanged."
+      }
+    },
+    "testdata/demo-contract/draft-contract.txt": {
+      "purpose": "内置示例合同初稿，埋入金额上浮、付款节点偷换、工作日改自然日、质保例外限定等风险；README 体验流程与 engine 规则检出测试以它作为乙方送审文本。",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-20",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "c39503948e061e9da6e9ea335abce9b7e0188be9",
+          "path": "testdata/demo-contract/draft-contract.txt",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-20",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "c39503948e061e9da6e9ea335abce9b7e0188be9",
+          "path": "testdata/demo-contract/draft-contract.txt",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "manifest-only",
+      "header_state": "manifest-only",
+      "exception": {
+        "rule_id": "frozen-test-fixtures",
+        "source": "testdata/demo-contract/draft-contract.txt",
+        "reason": "testdata/demo-contract/draft-contract.txt: Frozen demo draft-contract fixture consumed byte-for-byte by the demo-contract rule-detection test and README walkthrough; keep its text unchanged."
+      }
     }
   }
 }
