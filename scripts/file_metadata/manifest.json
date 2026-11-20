@@ -8444,12 +8444,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "04e15af0cc256f187e9bd794f3d622965645450c",
+          "commit": "9033ab82b41b059940aa7476893ef460cc8b4fcd",
           "path": "docs/engineering/ui-coverage-matrix.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r9",
+      "revision": "r10",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -65867,7 +65867,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r100",
+      "revision": "r101",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -71509,12 +71509,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "81e4ef6ead608fcdfd31f2ca5c00a4a5716d220a",
+          "commit": "9033ab82b41b059940aa7476893ef460cc8b4fcd",
           "path": "web/e2e/functional/issue-253-contract-overflow.spec.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -71557,12 +71557,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "81e4ef6ead608fcdfd31f2ca5c00a4a5716d220a",
+          "commit": "9033ab82b41b059940aa7476893ef460cc8b4fcd",
           "path": "web/e2e/functional/issue-253-fixtures.ts",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -88293,12 +88293,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "23d5715dd1969d036b96e4a12e60bedb93185dc2",
+          "commit": "9033ab82b41b059940aa7476893ef460cc8b4fcd",
           "path": "web/src/pages/contracts-page.css",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r8",
+      "revision": "r9",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -88341,12 +88341,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "81e4ef6ead608fcdfd31f2ca5c00a4a5716d220a",
+          "commit": "b1678ce78fc4c5b62353e1f6ea9d297ecb514c0f",
           "path": "web/src/pages/contracts-page.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r7",
+      "revision": "r8",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -88389,12 +88389,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "04e15af0cc256f187e9bd794f3d622965645450c",
+          "commit": "9033ab82b41b059940aa7476893ef460cc8b4fcd",
           "path": "web/src/pages/contracts-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r15",
+      "revision": "r16",
       "copyright": [
         {
           "holder": "Bai Junhao",
