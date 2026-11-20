@@ -79238,7 +79238,7 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6b287437ddd2fb6dd66dcc9b39d72f6141543fc6",
+          "commit": "6921f76067a314ca0dfaac254412d8b3734aa46c",
           "path": "web/src/components/finding-panel.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
