@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-01
 // Updated: 2026-11-20
-// Revision: r14
+// Revision: r15
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -2325,7 +2325,7 @@ function LegacyImportDialog({
                 ),
             }}
             value={caseVisible ? caseID : undefined}
-            placeholder="选择有权访问的案件"
+            placeholder="选择案件"
             loading={cases.isLoading}
             options={(cases.isError ? [] : (cases.data ?? [])).map((item) => ({
               value: item.id,

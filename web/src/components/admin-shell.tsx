@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Provides the authorized admin frame, contextual breadcrumbs, identity and shared responsive navigation while keeping case permissions in the client workbench.
+// Purpose: Provides the administrative shell with compact navigation for configuration, rules, knowledge governance, tenants, operations and service status.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,7 +14,7 @@ import { useLogout, useSession } from "../api/queries";
 import { actorRoleLabel } from "../domain/review";
 import { PageStatus } from "./page-status";
 import { CircuitMark } from "./circuit-mark";
-import { Avatar, Breadcrumb, Button, Layout } from "antd";
+import { Avatar, Breadcrumb, Button, Layout, Popover } from "antd";
 import {
   ApiOutlined,
   BookOutlined,
@@ -69,46 +69,36 @@ function adminMenuKey(pathname: string): string {
 
 const ADMIN_MENU_GROUPS: ShellNavGroup[] = [
   {
-    key: "organization",
-    title: "组织管理",
+    key: "system",
+    title: "系统与模型",
+    links: [{ href: "/admin/settings", icon: <SettingOutlined />, label: "设置与运行状态" }],
+  },
+  {
+    key: "rules",
+    title: "规则库",
+    links: [{ href: "/admin/rulepacks", icon: <SafetyCertificateOutlined />, label: "规则库" }],
+  },
+  {
+    key: "knowledge",
+    title: "知识治理",
+    links: [{ href: "/admin/governed-knowledge", icon: <BookOutlined />, label: "知识治理" }],
+  },
+  {
+    key: "tenant",
+    title: "租户管理",
+    links: [{ href: "/admin/tenant-lifecycle", icon: <TeamOutlined />, label: "租户生命周期" }],
+  },
+  {
+    key: "statistics",
+    title: "运营统计",
     links: [
-      {
-        href: "/admin/settings",
-        icon: <SettingOutlined />,
-        label: "设置与运行状态",
-      },
-      {
-        href: "/admin/rulepacks",
-        icon: <SafetyCertificateOutlined />,
-        label: "规则库",
-      },
-      {
-        href: "/admin/governed-knowledge",
-        icon: <BookOutlined />,
-        label: "知识治理",
-      },
-      {
-        href: "/admin/infrastructure",
-        icon: <ApiOutlined />,
-        label: "基础设施与中间件",
-      },
+      { href: "/admin/jurisdiction-operations", icon: <ApiOutlined />, label: "辖区运营统计" },
     ],
   },
   {
-    key: "tenant-operations",
-    title: "租户运营",
-    links: [
-      {
-        href: "/admin/tenant-lifecycle",
-        icon: <TeamOutlined />,
-        label: "租户生命周期",
-      },
-      {
-        href: "/admin/jurisdiction-operations",
-        icon: <ApiOutlined />,
-        label: "辖区运营统计",
-      },
-    ],
+    key: "service",
+    title: "服务状态",
+    links: [{ href: "/admin/infrastructure", icon: <ApiOutlined />, label: "基础设施与中间件" }],
   },
 ];
 
@@ -130,33 +120,34 @@ function AdminTopbar({
           <CircuitMark />
         </span>
         <span className="brand-copy">
-          <strong>合同智能审计工作台</strong>
+          <strong>合同审计 · 管理后台</strong>
         </span>
       </NavLink>
-      <ContextSwitcher actor={actor} audience="admin" onTransition={onContextTransition} />
-      <div className="who" aria-label="当前管理身份">
-        {actor ? (
-          <>
-            <Avatar className="header-avatar">{Array.from(actor.display_name)[0]}</Avatar>
-            <span className="identity-copy">
-              <strong>{actor.display_name}</strong>
-              <span className="meta">{actorRoleLabel(actor.role)}</span>
-            </span>
-          </>
-        ) : (
-          <span>身份未知</span>
-        )}
+      <Popover
+        trigger="click"
+        placement="bottomRight"
+        content={
+          <div aria-label="当前管理身份">
+            <p>{actor ? `${actor.display_name} · ${actorRoleLabel(actor.role)}` : "身份未知"}</p>
+            <ContextSwitcher actor={actor} audience="admin" onTransition={onContextTransition} />
+            <Button
+              aria-label="退出"
+              icon={<LogoutOutlined aria-hidden />}
+              disabled={logoutPending}
+              onClick={onLogout}
+            >
+              退出
+            </Button>
+          </div>
+        }
+      >
         <Button
-          className="header-action"
-          ghost
-          aria-label={"退出"}
-          icon={<LogoutOutlined />}
-          disabled={logoutPending}
-          onClick={onLogout}
+          aria-label="管理个人菜单"
+          icon={<Avatar size="small">{actor ? Array.from(actor.display_name)[0] : "?"}</Avatar>}
         >
-          退出
+          {actor?.display_name ?? "身份未知"}
         </Button>
-      </div>
+      </Popover>
     </Layout.Header>
   );
 }
@@ -171,12 +162,6 @@ function AdminSidebar({ pathname }: { pathname: string }) {
         ...group,
         links: group.links.map((link) => ({ ...link, current: link.href === selected })),
       }))}
-      footer={
-        <div className="nav-footer">
-          <div>规则版本与发布历史</div>
-          <div>此工作区不授予案件正文访问权限。</div>
-        </div>
-      }
     />
   );
 }

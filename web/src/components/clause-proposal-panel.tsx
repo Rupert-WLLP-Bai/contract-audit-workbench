@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-14
 // Updated: 2026-11-20
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -674,7 +674,7 @@ function ClauseProposalCard({
           title="引用未核验：不能接受为合同修改。"
           description={
             proposal.unavailable_reason ??
-            "服务端无法确认该建议与本次审查留档的原文位置一致；可以查看或拒绝此候选。"
+            "无法确认该建议与本次审查留档的原文位置一致；可以查看或拒绝此候选。"
           }
         />
       ) : null}
@@ -823,7 +823,7 @@ function ClauseProposalCard({
                         !acceptedTextValid
                       }
                     >
-                      生成服务端派生 TXT 预览
+                      生成文字预览
                     </Button>
                     <Button onClick={downloadDerivedText} disabled={derivedText === null}>
                       下载 TXT 预览
@@ -859,7 +859,7 @@ function ClauseProposalCard({
                         uploadedMatches
                           ? uploadedParseReady
                             ? `已上传且解析就绪：材料 ${savedUpload.material_id} v${savedUpload.material_version}；尚未形成合同修订。`
-                            : `已上传材料 ${savedUpload.material_id} v${savedUpload.material_version}；等待服务端返回可验证的解析结果。`
+                            : `已上传材料 ${savedUpload.material_id} v${savedUpload.material_version}；等待可核对的解析结果。`
                           : "已有上传材料，但它不匹配当前候选、合同或替换文本；不能改绑或重复上传，请刷新候选和授权合同后核对。"
                       }
                       description={

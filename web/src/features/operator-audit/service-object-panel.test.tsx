@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -321,7 +321,7 @@ describe("service object panel", () => {
       </QueryClientProvider>,
     );
     expect(await screen.findByText("本案尚未登记服务对象。")).toBeInTheDocument();
-    expect(screen.getByText(/服务端没有返回空列表写入权限/)).toBeInTheDocument();
+    expect(screen.getByText(/未确认新增服务对象的权限/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "登记待确认服务对象" })).not.toBeInTheDocument();
   });
 });

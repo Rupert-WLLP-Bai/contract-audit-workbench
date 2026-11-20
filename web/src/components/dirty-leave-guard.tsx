@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Registers pending edits with a single router blocker so that a page and its intake dialog share leave and reload protection.
+// Purpose: Registers pending edits with a single router blocker for route exits, reloads and optionally selection changes that would discard a draft.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -21,7 +21,7 @@ import {
 } from "react";
 import { useBlocker } from "react-router";
 
-type Draft = { description?: string; onDiscard?: () => void };
+type Draft = { description?: string; onDiscard?: () => void; blockSearchChange?: boolean };
 type GuardProps = Draft & { dirty: boolean };
 type RegisterDraft = (draft: Draft) => () => void;
 
@@ -37,13 +37,17 @@ export function DirtyLeaveGuardProvider({ children }: { children: ReactNode }) {
     return () => current.delete(draft);
   }, []);
   const [descriptions, setDescriptions] = useState<string[]>([]);
+  const blockedDrafts = useRef<Draft[]>([]);
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
-    if (currentLocation.pathname === nextLocation.pathname || drafts.current.size === 0)
-      return false;
+    const leavesPage = currentLocation.pathname !== nextLocation.pathname;
+    const changesSearch = currentLocation.search !== nextLocation.search;
+    const affected = Array.from(drafts.current).filter(
+      (draft) => leavesPage || (changesSearch && draft.blockSearchChange),
+    );
+    if (affected.length === 0) return false;
+    blockedDrafts.current = affected;
     setDescriptions(
-      Array.from(
-        new Set(Array.from(drafts.current, ({ description }) => description ?? defaultDescription)),
-      ),
+      Array.from(new Set(affected.map(({ description }) => description ?? defaultDescription))),
     );
     return true;
   });
@@ -69,11 +73,15 @@ export function DirtyLeaveGuardProvider({ children }: { children: ReactNode }) {
         okButtonProps={{ danger: true }}
         okText="离开"
         onCancel={() => {
-          if (blocker.state === "blocked") blocker.reset();
+          if (blocker.state !== "blocked") return;
+          blockedDrafts.current = [];
+          blocker.reset();
         }}
         onOk={() => {
           if (blocker.state !== "blocked") return;
-          for (const { onDiscard } of Array.from(drafts.current)) onDiscard?.();
+          const affected = blockedDrafts.current;
+          blockedDrafts.current = [];
+          for (const { onDiscard } of affected) onDiscard?.();
           blocker.proceed();
         }}
         open={blocker.state === "blocked"}
@@ -87,11 +95,11 @@ export function DirtyLeaveGuardProvider({ children }: { children: ReactNode }) {
   );
 }
 
-function RegisterDirtyDraft({ dirty, description, onDiscard }: GuardProps) {
+function RegisterDirtyDraft({ dirty, description, onDiscard, blockSearchChange }: GuardProps) {
   const register = useContext(DirtyLeaveContext);
   useLayoutEffect(() => {
-    if (dirty) return register?.({ description, onDiscard });
-  }, [description, dirty, onDiscard, register]);
+    if (dirty) return register?.({ description, onDiscard, blockSearchChange });
+  }, [blockSearchChange, description, dirty, onDiscard, register]);
   return null;
 }
 

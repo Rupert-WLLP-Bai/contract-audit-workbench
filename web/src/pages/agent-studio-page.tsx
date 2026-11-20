@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-06
 // Updated: 2026-11-20
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -657,7 +657,7 @@ export function buildCapabilityGroups(input: StudioCapabilityInput): StudioCapab
     capabilityGroup(
       "evidence",
       "输入证据",
-      "当次审查依据、证据条目、运行快照与已加载审查材料。",
+      "当次审查依据、证据条目、运行快照与审查材料。",
       evidenceFacts,
     ),
     capabilityGroup("experience", "经验", "经验引用和已应用经验版本。", experienceFacts),
@@ -1569,11 +1569,11 @@ function EventsView({
           <header className="studio-panel-head">
             <div>
               <h2>事件列表</h2>
-              <p>按权威序号排列；搜索只筛选本页已加载的事件。</p>
+              <p>按序号排列；搜索仅筛选当前事件。</p>
             </div>
             <span className="studio-count" role="status">
               {execution
-                ? `当前匹配 ${filtered.length} / 已加载 ${events.length}`
+                ? `匹配 ${filtered.length} 条 · 当前 ${events.length} 条`
                 : "事件数据未加载"}
             </span>
           </header>
@@ -1780,7 +1780,7 @@ export function AgentStudioPage() {
       <PageStatus
         kind="error"
         title="审查身份无法确认"
-        detail="服务端返回的审查或尝试记录与当前地址不一致，请返回审查记录重新选择。"
+        detail="审查或尝试记录与当前地址不一致，请返回审查记录重新选择。"
       />
     );
   }

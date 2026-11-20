@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -49,17 +49,27 @@ export function useApprovalInbox(view: ApprovalInboxView, actorScope: string, en
   });
 }
 
-export function useApprovalTaskDetail(taskId: string | null) {
+export function useApprovalTaskDetail(taskId: string | null, actorScope?: string) {
   return useQuery<ApprovalTaskReadDetail>({
-    queryKey: approvalQueryKeys.task(taskId ?? ""),
+    queryKey:
+      actorScope === undefined
+        ? approvalQueryKeys.task(taskId ?? "")
+        : [...approvalQueryKeys.task(taskId ?? ""), actorScope],
     queryFn: ({ signal }) => getApprovalTask(taskId as string, signal),
     enabled: taskId !== null,
   });
 }
 
-export function useContractApprovalRounds(contractId: string | null, enabled: boolean) {
+export function useContractApprovalRounds(
+  contractId: string | null,
+  enabled: boolean,
+  actorScope?: string,
+) {
   return useInfiniteQuery({
-    queryKey: approvalQueryKeys.rounds(contractId ?? ""),
+    queryKey:
+      actorScope === undefined
+        ? approvalQueryKeys.rounds(contractId ?? "")
+        : [...approvalQueryKeys.rounds(contractId ?? ""), actorScope],
     queryFn: ({ pageParam, signal }) =>
       listContractApprovalRounds(contractId as string, pageParam, 20, signal),
     initialPageParam: null as string | null,
@@ -69,9 +79,16 @@ export function useContractApprovalRounds(contractId: string | null, enabled: bo
   });
 }
 
-export function useContractApprovalRound(contractId: string | null, roundId: string | null) {
+export function useContractApprovalRound(
+  contractId: string | null,
+  roundId: string | null,
+  actorScope?: string,
+) {
   return useQuery<ApprovalRoundReadDetail>({
-    queryKey: approvalQueryKeys.round(contractId ?? "", roundId ?? ""),
+    queryKey:
+      actorScope === undefined
+        ? approvalQueryKeys.round(contractId ?? "", roundId ?? "")
+        : [...approvalQueryKeys.round(contractId ?? "", roundId ?? ""), actorScope],
     queryFn: ({ signal }) =>
       getContractApprovalRound(contractId as string, roundId as string, signal),
     enabled: contractId !== null && roundId !== null,

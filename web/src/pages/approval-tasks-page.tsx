@@ -1,15 +1,16 @@
 // File metadata (manifest mirror):
-// Purpose: Presents the authorized approval inbox, relevant record detail and server-backed processing or retries across the three approval views.
+// Purpose: Displays the signed-in actor’s approval lists and a URL-addressable round or task drawer with guarded opinions, history, and authorized decisions.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
 // Updated: 2026-11-20
-// Revision: r6
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
-import { Alert, Button, Empty, Input, Table, Tabs, type TableColumnsType } from "antd";
-import { useMemo, useState } from "react";
+import { Alert, Button, Drawer, Input, Table, Tabs, type TableColumnsType } from "antd";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -28,7 +29,9 @@ import type {
 } from "../api/approvals";
 import { errorMessage, isConflict } from "../api/http";
 import { useSession } from "../api/queries";
-import type { Actor } from "../api/types";
+import { DirtyLeaveGuard } from "../components/dirty-leave-guard";
+import { actorReadContextKey } from "../domain/actor-read-context";
+import { compactTime } from "../domain/time";
 import { PageStatus } from "../components/page-status";
 import { ListPage } from "../components/page-patterns";
 import { StatusText } from "../components/status-text";
@@ -44,25 +47,20 @@ import {
   approvalTaskTone,
 } from "../domain/approval";
 import { formatDateTime } from "../domain/review";
+import "../components/workbench-side-peek.css";
 import "./approval-tasks-page.css";
 
 type Selection =
   { kind: "task"; taskId: string } | { kind: "round"; contractId: string; roundId: string } | null;
 
 const VIEW_LABELS: Record<ApprovalInboxView, string> = {
-  todo: "我的待办",
+  todo: "待我审批",
   done: "我已审批",
   initiated: "我发起的",
 };
 
 function parseView(value: string | null): ApprovalInboxView {
   return value === "done" || value === "initiated" ? value : "todo";
-}
-
-function actorScope(actor: Actor | null): string {
-  return actor === null
-    ? ""
-    : [actor.audience, actor.tenant_id, actor.org_id, actor.id].join("\u0000");
 }
 
 function selectionKey(selection: Selection): string {
@@ -113,21 +111,25 @@ function itemStatus(item: ApprovalInboxItem) {
   );
 }
 
-function itemTime(item: ApprovalInboxItem): string {
-  const value =
-    item.view === "done"
-      ? item.decision_decided_at
-      : item.view === "initiated"
-        ? item.round_started_at
-        : item.task_activated_at;
-  return value === null ? "时间未记录" : formatDateTime(value);
+const EMPTY_TEXT: Record<ApprovalInboxView, string> = {
+  todo: "当前没有待你审批的合同",
+  done: "暂无已审批记录",
+  initiated: "暂无你发起的会签",
+};
+
+function itemTime(item: ApprovalInboxItem) {
+  if (item.view === "todo") return { value: item.task_activated_at, label: "" };
+  if (item.view === "done") return { value: item.decision_decided_at, label: "审批" };
+  return { value: item.round_started_at, label: "发起" };
 }
 
 function ApprovalInboxList({
   view,
   items,
   loading,
+  failed,
   hasNext,
+  selected,
   loadingMore,
   onLoadMore,
   onOpen,
@@ -135,89 +137,107 @@ function ApprovalInboxList({
   view: ApprovalInboxView;
   items: ApprovalInboxItem[];
   loading: boolean;
+  failed: boolean;
   hasNext: boolean;
+  selected: Selection;
   loadingMore: boolean;
   onLoadMore: () => void;
-  onOpen: (selection: Selection) => void;
+  onOpen: (selection: Selection, trigger: HTMLElement | null) => void;
 }) {
-  const columns: TableColumnsType<ApprovalInboxItem> = useMemo(
-    () => [
-      {
-        title: "合同",
-        key: "contract",
-        render: (_: unknown, item) => (
-          <div className="approval-contract-cell">
-            <strong>{item.contract_name}</strong>
-            <span className="approval-mono">{item.contract_number ?? item.contract_id}</span>
-          </div>
-        ),
+  const columns: TableColumnsType<ApprovalInboxItem> = [
+    {
+      title: "合同",
+      key: "contract",
+      width: "42%",
+      render: (_: unknown, item) => (
+        <div className="approval-contract-cell">
+          <strong>{item.contract_name}</strong>
+          {item.contract_number ? (
+            <span className="approval-muted">{item.contract_number}</span>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      title: "当前节点",
+      key: "round",
+      render: (_: unknown, item) => (
+        <span>
+          第 {item.round_number} 轮
+          {item.node_code === null ? "" : ` · ${approvalNodeLabel(item.node_code)}`}
+        </span>
+      ),
+    },
+    {
+      title: "状态",
+      key: "state",
+      render: (_: unknown, item) => itemStatus(item),
+    },
+    {
+      title: "送达时间",
+      key: "time",
+      render: (_: unknown, item) => {
+        const { value, label } = itemTime(item);
+        return value ? (
+          <time dateTime={value}>
+            {label ? `${label} · ` : ""}
+            {compactTime(value)}
+          </time>
+        ) : (
+          "—"
+        );
       },
-      {
-        title: "轮次与节点",
-        key: "round",
-        render: (_: unknown, item) => (
-          <div className="approval-round-cell">
-            <span>第 {item.round_number} 轮</span>
-            <span className="approval-muted">
-              {item.node_code === null ? "未返回节点" : approvalNodeLabel(item.node_code)}
-            </span>
-          </div>
-        ),
-      },
-      {
-        title: "状态",
-        key: "state",
-        render: (_: unknown, item) => itemStatus(item),
-      },
-      {
-        title: "时间",
-        key: "time",
-        render: (_: unknown, item) => itemTime(item),
-      },
-      {
-        title: "",
-        key: "action",
-        render: (_: unknown, item) => (
+    },
+    {
+      title: "操作",
+      key: "action",
+      align: "right",
+      render: (_: unknown, item) => {
+        const label = item.view === "todo" && item.allowed_actions.length ? "审批" : "查看";
+        return (
           <Button
             type="link"
-            onClick={() => onOpen(itemSelection(item))}
-            aria-label={`查看 ${item.contract_name} 第 ${item.round_number} 轮`}
+            data-approval-row-action
+            aria-haspopup="dialog"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpen(itemSelection(item), event.currentTarget);
+            }}
+            aria-label={`${label} ${item.contract_name} 第 ${item.round_number} 轮`}
           >
-            查看
+            {label}
           </Button>
-        ),
+        );
       },
-    ],
-    [onOpen],
-  );
+    },
+  ];
 
-  if (loading) {
-    return <PageStatus kind="loading" title="正在加载会签列表" />;
-  }
-  if (items.length === 0) {
-    return (
-      <PageStatus
-        kind="empty"
-        title="当前视图没有记录"
-        detail={
-          view === "todo"
-            ? "只有仍在审轮次中由当前身份受理的活动任务会出现在这里。"
-            : view === "done"
-              ? "这里只显示当前身份实际作出的通过或退回决定。"
-              : "这里只显示当前身份发起的会签轮次。"
-        }
-      />
-    );
-  }
   return (
-    <div className="approval-list">
+    <>
       <Table<ApprovalInboxItem>
         rowKey={(item) => `${item.view}:${item.task_id ?? item.approval_round_id}`}
         columns={columns}
         dataSource={items}
         pagination={false}
         size="middle"
-        scroll={{ x: 760 }}
+        loading={loading}
+        locale={{
+          emptyText:
+            failed || loading ? null : <span className="approval-empty">{EMPTY_TEXT[view]}</span>,
+        }}
+        tableLayout="fixed"
+        rowClassName={(item) =>
+          selectionKey(selected) === selectionKey(itemSelection(item))
+            ? "approval-row-selected"
+            : ""
+        }
+        onRow={(item) => ({
+          onClick: (event: React.MouseEvent<HTMLTableRowElement>) =>
+            onOpen(
+              itemSelection(item),
+              event.currentTarget.querySelector<HTMLElement>("[data-approval-row-action]"),
+            ),
+        })}
       />
       {hasNext ? (
         <div className="approval-list-more">
@@ -226,21 +246,23 @@ function ApprovalInboxList({
           </Button>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }
 
 function RoundHistory({
+  actorScope,
   contractId,
   currentRoundId,
   onSelect,
 }: {
+  actorScope: string;
   contractId: string;
   currentRoundId: string;
   onSelect: (contractId: string, round: ApprovalRoundReadSummary) => void;
 }) {
-  const history = useContractApprovalRounds(contractId, true);
-  const items = history.data?.pages.flatMap((page) => page.items) ?? [];
+  const history = useContractApprovalRounds(contractId, true, actorScope);
+  const items = history.isError ? [] : (history.data?.pages.flatMap((page) => page.items) ?? []);
   return (
     <section className="approval-detail-section" aria-label="轮次历史">
       <h3>轮次历史</h3>
@@ -253,8 +275,8 @@ function RoundHistory({
         />
       ) : null}
       {history.isLoading ? <p className="approval-muted">正在加载轮次历史…</p> : null}
-      {!history.isLoading && items.length === 0 ? (
-        <p className="approval-muted">没有返回历史轮次。</p>
+      {!history.isError && !history.isLoading && items.length === 0 ? (
+        <p className="approval-muted">暂无历史轮次。</p>
       ) : null}
       <ul className="approval-round-history">
         {items.map((item) => (
@@ -297,21 +319,26 @@ function RoundHistory({
 function DecisionForm({
   detail,
   activeTask,
+  opinion,
+  onChange,
+  onSuccess,
+  footer,
+  refreshing,
 }: {
   detail: ApprovalRoundReadDetail;
-  activeTask: ApprovalRoundReadDetail["tasks"][number] | undefined;
+  activeTask: ApprovalRoundReadDetail["tasks"][number];
+  opinion: string;
+  onChange: (opinion: string) => void;
+  onSuccess: (notice: string) => void;
+  footer: HTMLElement | null;
+  refreshing: boolean;
 }) {
   const queryClient = useQueryClient();
   const mutation = useDecideApprovalTask();
-  const [opinion, setOpinion] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
 
-  if (activeTask === undefined || detail.allowed_actions.length === 0) {
-    return null;
-  }
-
   function submit(action: ApprovalDecisionAction) {
-    if (activeTask === undefined) return;
+    if (refreshing || mutation.isPending || !detail.allowed_actions.includes(action)) return;
     const trimmed = opinion.trim();
     if (trimmed === "") {
       setNotice("请填写审批意见或退回理由。");
@@ -327,17 +354,17 @@ function DecisionForm({
       },
       {
         onSuccess: (result) => {
-          setNotice(
-            `服务端已确认：第 ${result.round.round_number} 轮 ${approvalRoundStateLabel(result.round.state)}，` +
+          onSuccess(
+            `已保存审批决定：第 ${result.round.round_number} 轮 ${approvalRoundStateLabel(result.round.state)}，` +
               `当前节点 ${result.task.node_order} 为${approvalTaskStateLabel(result.task.state)}。`,
           );
-          setOpinion("");
+          onChange("");
         },
         onError: (error) => {
           setNotice(
             isConflict(error)
-              ? "当前任务或轮次已经变化，没有提交新决定；请刷新后重新确认。"
-              : `决定没有提交成功：${errorMessage(error)}。使用同一意见重试会复用同一幂等键。`,
+              ? "当前任务或轮次已经变化，没有提交新决定。请核对最新状态后重试。"
+              : `决定没有提交成功：${errorMessage(error)}`,
           );
           void queryClient.invalidateQueries({ queryKey: ["approvals"] });
         },
@@ -347,10 +374,6 @@ function DecisionForm({
 
   return (
     <section className="approval-decision" aria-label="提交审批决定">
-      <h3>当前节点：{approvalNodeLabel(activeTask.node_code)}</h3>
-      <p className="approval-muted">
-        决定由服务端重新检查活动任务、角色与职责分离；页面不会在响应前显示已通过。
-      </p>
       <label className="field">
         审批意见或退回理由
         <Input.TextArea
@@ -359,20 +382,37 @@ function DecisionForm({
           maxLength={2000}
           showCount
           autoSize={{ minRows: 3, maxRows: 8 }}
-          onChange={(event) => setOpinion(event.target.value)}
+          onChange={(event) => onChange(event.target.value)}
         />
       </label>
-      {notice !== null ? (
-        <Alert type={mutation.isError ? "error" : "info"} showIcon message={notice} />
-      ) : null}
-      <div className="approval-decision-actions">
-        <Button type="primary" loading={mutation.isPending} onClick={() => submit("approve")}>
-          通过
-        </Button>
-        <Button danger loading={mutation.isPending} onClick={() => submit("return")}>
-          退回修改
-        </Button>
-      </div>
+      {notice ? <Alert type={mutation.isError ? "error" : "info"} title={notice} /> : null}
+      {footer
+        ? createPortal(
+            <div className="approval-decision-actions">
+              {detail.allowed_actions.includes("return") ? (
+                <Button
+                  danger
+                  disabled={refreshing}
+                  loading={mutation.isPending}
+                  onClick={() => submit("return")}
+                >
+                  退回修改
+                </Button>
+              ) : null}
+              {detail.allowed_actions.includes("approve") ? (
+                <Button
+                  type="primary"
+                  disabled={refreshing}
+                  loading={mutation.isPending}
+                  onClick={() => submit("approve")}
+                >
+                  同意通过
+                </Button>
+              ) : null}
+            </div>,
+            footer,
+          )
+        : null}
     </section>
   );
 }
@@ -504,15 +544,18 @@ function RoundTimeline({
 }
 
 function ApprovalDetailBody({
+  actorScope,
   detail,
+  children,
   selectedTaskId,
   onSelectRound,
 }: {
+  actorScope: string;
   detail: ApprovalRoundReadDetail;
+  children?: ReactNode;
   selectedTaskId: string | null;
   onSelectRound: (contractId: string, round: ApprovalRoundReadSummary) => void;
 }) {
-  const activeTask = detail.tasks.find((task) => task.task_id === detail.active_task_id);
   return (
     <>
       <header className="approval-detail-head">
@@ -564,11 +607,14 @@ function ApprovalDetailBody({
           <dd className="approval-mono">{detail.round.contract_revision_id}</dd>
         </div>
       </dl>
-      <FrozenPlaybookPanel adoption={detail.adopted_playbook} heading="本轮采用的审查手册" />
+      {detail.adopted_playbook ? (
+        <FrozenPlaybookPanel adoption={detail.adopted_playbook} heading="本轮采用的审查手册" />
+      ) : null}
       <RoundTimeline detail={detail} selectedTaskId={selectedTaskId} />
-      <DecisionForm detail={detail} activeTask={activeTask} />
+      {children}
       <RevisionDiff detail={detail} />
       <RoundHistory
+        actorScope={actorScope}
         contractId={detail.contract_id}
         currentRoundId={detail.round.approval_round_id}
         onSelect={onSelectRound}
@@ -578,118 +624,159 @@ function ApprovalDetailBody({
 }
 
 function ApprovalDetailPanel({
+  actorScope,
+  view,
   selection,
+  ready,
   onSelectRound,
   onClose,
 }: {
-  selection: Selection;
+  actorScope: string;
+  view: ApprovalInboxView;
+  selection: NonNullable<Selection>;
+  ready: boolean;
   onSelectRound: (contractId: string, round: ApprovalRoundReadSummary) => void;
   onClose: () => void;
 }) {
-  const taskId = selection?.kind === "task" ? selection.taskId : null;
-  const roundContractId = selection?.kind === "round" ? selection.contractId : null;
-  const roundId = selection?.kind === "round" ? selection.roundId : null;
-  const task = useApprovalTaskDetail(taskId);
-  const round = useContractApprovalRound(roundContractId, roundId);
-  const active = selection?.kind === "task" ? task : round;
-  if (selection === null) {
-    return (
-      <aside className="approval-detail" aria-label="会签详情">
-        <PageStatus
-          kind="empty"
-          title="选择一条记录查看详情"
-          detail="待办、已办和轮次可以在这里查看节点意见与留档版本差异。"
-        />
-      </aside>
-    );
-  }
-  if (active.isLoading) {
-    return (
-      <aside className="approval-detail" aria-label="会签详情">
-        <PageStatus kind="loading" title="正在加载会签详情" />
-      </aside>
-    );
-  }
-  if (active.error) {
-    return (
-      <aside className="approval-detail" aria-label="会签详情">
-        <Alert
-          type="error"
-          showIcon
-          message="会签详情没有加载"
-          description={errorMessage(active.error)}
-        />
-        <Button type="link" onClick={onClose}>
-          关闭
-        </Button>
-      </aside>
-    );
-  }
-  const detail: ApprovalRoundReadDetail | null =
-    selection.kind === "task" ? (task.data?.round_detail ?? null) : (round.data ?? null);
-  const selectedTaskId = selection.kind === "task" ? (task.data?.selected_task_id ?? null) : null;
-  if (detail === null) {
-    return (
-      <aside className="approval-detail" aria-label="会签详情">
-        <Empty description="没有返回会签详情" />
-      </aside>
-    );
-  }
+  const [opinion, setOpinion] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [footer, setFooter] = useState<HTMLDivElement | null>(null);
+  const taskId = ready && selection.kind === "task" ? selection.taskId : null;
+  const contractId = ready && selection.kind === "round" ? selection.contractId : null;
+  const roundId = ready && selection.kind === "round" ? selection.roundId : null;
+  const task = useApprovalTaskDetail(taskId, actorScope);
+  const round = useContractApprovalRound(contractId, roundId, actorScope);
+  const active = selection.kind === "task" ? task : round;
+  const detail =
+    selection.kind === "task"
+      ? task.data?.selected_task_id === taskId
+        ? task.data?.round_detail
+        : undefined
+      : round.data?.contract_id === contractId && round.data?.round.approval_round_id === roundId
+        ? round.data
+        : undefined;
+  const activeTask =
+    view === "todo" &&
+    selection.kind === "task" &&
+    detail?.round.state === "in_review" &&
+    detail.active_task_id === taskId
+      ? detail.tasks.find((entry) => entry.task_id === taskId && entry.state === "active")
+      : undefined;
+  const canAct = ready && !active.isError && Boolean(detail?.allowed_actions.length) && activeTask;
   return (
-    <aside className="approval-detail" aria-label="会签详情">
-      <div className="approval-detail-close">
-        <Button type="link" onClick={onClose}>
-          关闭
-        </Button>
-      </div>
-      <ApprovalDetailBody
-        detail={detail}
-        selectedTaskId={selectedTaskId}
-        onSelectRound={onSelectRound}
+    <>
+      <DirtyLeaveGuard
+        dirty={opinion.trim() !== ""}
+        blockSearchChange
+        onDiscard={() => setOpinion("")}
+        description="这条审批意见尚未提交。离开会丢失所填内容。"
       />
-    </aside>
+      <Drawer
+        title="会签详情"
+        size="min(520px, 100vw)"
+        open={ready}
+        onClose={onClose}
+        focusable={{ focusTriggerAfterClose: false }}
+        rootClassName="workbench-side-peek"
+        classNames={{
+          mask: "workbench-side-peek-mask",
+          wrapper: "workbench-side-peek-wrapper",
+          body: "approval-drawer-body",
+        }}
+        footer={canAct ? <div ref={setFooter} /> : undefined}
+      >
+        {active.isLoading ? <PageStatus kind="loading" title="正在读取会签详情" /> : null}
+        {active.isError ? (
+          <Alert
+            type="error"
+            showIcon
+            title="会签详情没有加载"
+            description={errorMessage(active.error)}
+            action={<Button onClick={() => void active.refetch()}>重试</Button>}
+          />
+        ) : ready && detail ? (
+          <>
+            <ApprovalDetailBody
+              actorScope={actorScope}
+              detail={detail}
+              selectedTaskId={taskId}
+              onSelectRound={onSelectRound}
+            >
+              {notice ? <Alert type="info" title={notice} /> : null}
+              {canAct ? (
+                <DecisionForm
+                  detail={detail}
+                  activeTask={canAct}
+                  opinion={opinion}
+                  onChange={setOpinion}
+                  onSuccess={setNotice}
+                  footer={footer}
+                  refreshing={active.isFetching}
+                />
+              ) : null}
+            </ApprovalDetailBody>
+          </>
+        ) : ready && !active.isLoading ? (
+          <Alert type="warning" title="无法确认这条会签记录" />
+        ) : null}
+      </Drawer>
+    </>
   );
 }
 
-export function ApprovalTasksPage() {
+function readSelection(params: URLSearchParams): Selection {
+  const taskId = params.get("task")?.trim();
+  const contractId = params.get("contract")?.trim();
+  const roundId = params.get("round")?.trim();
+  if (taskId && !contractId && !roundId) return { kind: "task", taskId };
+  if (!taskId && contractId && roundId) return { kind: "round", contractId, roundId };
+  return null;
+}
+
+function clearSelection(params: URLSearchParams) {
+  params.delete("task");
+  params.delete("contract");
+  params.delete("round");
+  return params;
+}
+
+function ApprovalWorkspace({ scope, ready }: { scope: string; ready: boolean }) {
   const [params, setParams] = useSearchParams();
   const view = parseView(params.get("view"));
-  const session = useSession();
-  const actor = session.data ?? null;
-  const inbox = useApprovalInbox(view, actorScope(actor), actor !== null);
-  const items = useMemo(() => inbox.data?.pages.flatMap((page) => page.items) ?? [], [inbox.data]);
-  const [selection, setSelection] = useState<Selection>(null);
-  const requestedTask = view === "todo" ? params.get("task")?.trim() : null;
-  const activeSelection =
-    session.isSuccess && !session.isFetching
-      ? requestedTask
-        ? { kind: "task" as const, taskId: requestedTask }
-        : selection
-      : null;
-
-  function openSelection(next: Selection) {
-    if (params.has("task")) {
-      const scope = new URLSearchParams(params);
-      scope.delete("task");
-      setParams(scope, { replace: true });
+  const inbox = useApprovalInbox(view, scope, ready);
+  const items =
+    ready && !inbox.isError ? (inbox.data?.pages.flatMap((page) => page.items) ?? []) : [];
+  const selection = readSelection(params);
+  const opener = useRef<HTMLElement | null>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const selected = useRef(false);
+  useEffect(() => {
+    if (selection) {
+      selected.current = true;
+      return;
     }
-    setSelection(next);
+    if (!selected.current) return;
+    selected.current = false;
+    const element = opener.current?.isConnected ? opener.current : list.current;
+    element?.focus({ preventScroll: true });
+    opener.current = null;
+  }, [selection]);
+
+  function openSelection(next: Selection, trigger: HTMLElement | null = null) {
+    const search = clearSelection(new URLSearchParams(params));
+    if (next?.kind === "task") search.set("task", next.taskId);
+    if (next?.kind === "round") {
+      search.set("contract", next.contractId);
+      search.set("round", next.roundId);
+    }
+    if (trigger) opener.current = trigger;
+    setParams(search, { replace: next === null });
   }
 
   function changeView(next: string) {
-    const scope = new URLSearchParams(params);
-    scope.set("view", next);
-    scope.delete("task");
-    setParams(scope, { replace: true });
-    setSelection(null);
-  }
-
-  function selectRound(contractId: string, round: ApprovalRoundReadSummary) {
-    openSelection({
-      kind: "round",
-      contractId,
-      roundId: round.approval_round_id,
-    });
+    const search = clearSelection(new URLSearchParams(params));
+    search.set("view", next);
+    setParams(search, { replace: true });
   }
 
   return (
@@ -697,13 +784,13 @@ export function ApprovalTasksPage() {
       className="approval-page"
       standaloneSurface={false}
       title="会签"
-      summary={
-        <div className="approval-summary" role="status">
-          已加载 <strong>{items.length}</strong> 项
-        </div>
-      }
       filters={
         <Tabs
+          classNames={{
+            header: "approval-view-header",
+            item: "approval-view-tab",
+            indicator: "approval-view-indicator",
+          }}
           activeKey={view}
           onChange={changeView}
           items={(["todo", "done", "initiated"] as const).map((key) => ({
@@ -713,33 +800,68 @@ export function ApprovalTasksPage() {
         />
       }
     >
-      {inbox.error ? (
+      {inbox.isError ? (
         <Alert
           type="error"
           showIcon
-          message="会签列表没有加载"
+          title="会签列表没有加载"
           description={errorMessage(inbox.error)}
+          action={<Button onClick={() => void inbox.refetch()}>重试</Button>}
         />
       ) : null}
-      <div className="approval-layout">
-        <section className="approval-inbox" aria-label={VIEW_LABELS[view]}>
+      <section className="approval-inbox" aria-label={VIEW_LABELS[view]}>
+        <div tabIndex={-1} ref={list} aria-label={VIEW_LABELS[view] + "列表"}>
           <ApprovalInboxList
             view={view}
             items={items}
-            loading={inbox.isLoading}
-            hasNext={inbox.hasNextPage}
+            loading={!ready || inbox.isLoading}
+            failed={inbox.isError}
+            hasNext={ready && !inbox.isError && inbox.hasNextPage}
             loadingMore={inbox.isFetchingNextPage}
             onLoadMore={() => void inbox.fetchNextPage()}
             onOpen={openSelection}
+            selected={selection}
           />
-        </section>
+        </div>
+      </section>
+      {selection ? (
         <ApprovalDetailPanel
-          key={selectionKey(activeSelection)}
-          selection={activeSelection}
-          onSelectRound={selectRound}
+          key={selectionKey(selection)}
+          actorScope={scope}
+          view={view}
+          selection={selection}
+          ready={ready}
+          onSelectRound={(contractId, round) =>
+            openSelection({ kind: "round", contractId, roundId: round.approval_round_id })
+          }
           onClose={() => openSelection(null)}
         />
-      </div>
+      ) : null}
     </ListPage>
   );
+}
+
+export function ApprovalTasksPage() {
+  const [, setParams] = useSearchParams();
+  const session = useSession();
+  const scope = actorReadContextKey(session.data ?? null);
+  const lastScope = useRef("");
+  const ready = session.isSuccess && !session.isFetching && !!scope;
+  useEffect(() => {
+    if (!ready) return;
+    const previous = lastScope.current;
+    lastScope.current = scope;
+    if (previous && previous !== scope)
+      setParams((params) => clearSelection(new URLSearchParams(params)), { replace: true });
+  }, [ready, scope, setParams]);
+  if (session.isError)
+    return (
+      <PageStatus
+        kind="error"
+        title="当前身份没有加载"
+        detail={errorMessage(session.error)}
+        action={<Button onClick={() => void session.refetch()}>重试</Button>}
+      />
+    );
+  return <ApprovalWorkspace key={scope} scope={scope} ready={ready} />;
 }

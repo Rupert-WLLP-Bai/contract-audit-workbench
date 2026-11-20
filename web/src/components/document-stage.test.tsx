@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-30
 // Updated: 2026-11-20
-// Revision: r10
+// Revision: r11
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -534,7 +534,7 @@ describe("document stage case context", () => {
       canEditRelations: true,
     });
     await user.click(screen.getByRole("tab", { name: /相关案件/ }));
-    expect(screen.getByText("当前身份可见范围内没有可新增的案件。")).toBeInTheDocument();
+    expect(screen.getByText("暂无可添加的案件。")).toBeInTheDocument();
     second.unmount();
     renderStage({ caseContext });
     await user.click(screen.getByRole("tab", { name: /相关案件/ }));

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Lists subjects visible to the case and opens case-scoped subject details, verification and binding history; case roles and permissions come from server projections.
+// Purpose: Displays the authorized subject ledger, page-scoped verification filters, and draft-safe creation and subject management views.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -18,12 +18,14 @@ import {
   RightOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
-import { Alert, Button, Card, Empty, Form, Input, Table } from "antd";
+import { Alert, Button, Card, Drawer, Empty, Form, Input, Select, Table } from "antd";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import type { ColumnsType } from "antd/es/table";
 import type { SubjectCreateFormValues } from "../components/subject-create-fields";
 import { SubjectCreateFields, subjectCreateInput } from "../components/subject-create-fields";
+import { DirtyLeaveGuard } from "../components/dirty-leave-guard";
+import { browserIdentityKey } from "../domain/browser-identity";
 import { PageStatus } from "../components/page-status";
 import { ListPage, ObjectDetailPage } from "../components/page-patterns";
 import { StatusText } from "../components/status-text";
@@ -84,11 +86,19 @@ function verificationTone(
 
 export function SubjectsPage() {
   const session = useSession();
+  return <SubjectsList key={browserIdentityKey(session.data)} session={session} />;
+}
+
+function SubjectsList({ session }: { session: ReturnType<typeof useSession> }) {
   const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState("");
+  const [pageVerification, setPageVerification] = useState<
+    "all" | "pending_verification" | "verified"
+  >("all");
   const [cursor, setCursor] = useState<string | null>(null);
   const [cursorStack, setCursorStack] = useState<Array<string | null>>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [form] = Form.useForm<SubjectCreateFormValues>();
   const [formError, setFormError] = useState<string | null>(null);
   const [formNote, setFormNote] = useState<string | null>(null);
@@ -96,6 +106,10 @@ export function SubjectsPage() {
   const create = useCreateSubject();
   const subjects = useSubjects(query, cursor);
   const items = subjects.data?.items ?? [];
+  const visibleItems =
+    pageVerification === "all"
+      ? items
+      : items.filter((item) => item.verification_state === pageVerification);
 
   function search(value: string) {
     setQuery(value.trim());
@@ -122,6 +136,7 @@ export function SubjectsPage() {
       const result = await create.mutateAsync({ subject: input, idempotencyKey: pending.key });
       setCreated(result);
       form.resetFields();
+      setDirty(false);
       try {
         clearPendingMutationKey(pending.storageKey);
       } catch {
@@ -177,32 +192,11 @@ export function SubjectsPage() {
       ),
     },
     {
-      title: "身份版本",
-      dataIndex: "current_version",
-      key: "current_version",
-      width: 88,
-      render: (value: number) => <span className="subject-version">v{value}</span>,
-    },
-    {
       title: "登记时间",
       dataIndex: "created_at",
       key: "created_at",
       width: 170,
       render: (value: string) => <span className="subject-muted">{formatDateTime(value)}</span>,
-    },
-    {
-      title: "操作",
-      key: "action",
-      width: 88,
-      render: (_value, subject) => (
-        <Link
-          className="subject-view-link"
-          aria-label={`查看${subject.display_name}详情`}
-          to={`/subjects/${encodeURIComponent(subject.subject_id)}`}
-        >
-          详情 <ArrowRightOutlined aria-hidden />
-        </Link>
-      ),
     },
   ];
 
@@ -210,93 +204,20 @@ export function SubjectsPage() {
     <ListPage
       className="subjects-page"
       title="主体"
-      description="管理合同往来主体，查看身份信息、核验状态与关联案件。"
       actions={
         <Button
           type="primary"
-          icon={<PlusOutlined />}
+          icon={<PlusOutlined aria-hidden />}
           onClick={() => {
-            setShowCreate((visible) => !visible);
+            setShowCreate(true);
             setFormError(null);
           }}
         >
-          {showCreate ? "收起新建" : "新建待核验主体"}
+          新建主体
         </Button>
-      }
-      summary={
-        <dl className="subject-ledger-summary" aria-label="本页主体概况">
-          <div>
-            <dt>本页主体</dt>
-            <dd>
-              {subjects.data ? items.length : "—"}
-              <span>家</span>
-            </dd>
-          </div>
-          <div>
-            <dt>
-              <span className="subject-status-dot subject-status-dot-pending" />
-              本页待核验
-            </dt>
-            <dd>
-              {subjects.data
-                ? items.filter((item) => item.verification_state === "pending_verification").length
-                : "—"}
-              <span>家</span>
-            </dd>
-          </div>
-          <div>
-            <dt>
-              <span className="subject-status-dot subject-status-dot-verified" />
-              本页已核验
-            </dt>
-            <dd>
-              {subjects.data
-                ? items.filter((item) => item.verification_state === "verified").length
-                : "—"}
-              <span>家</span>
-            </dd>
-          </div>
-        </dl>
-      }
-      beforeFilters={
-        showCreate ? (
-          <Card title="新建主体" className="subject-create-card">
-            <Form form={form} layout="vertical" onFinish={(values) => void onCreate(values)}>
-              <SubjectCreateFields />
-              {formError ? <Alert type="error" showIcon title={formError} /> : null}
-              {formNote ? <Alert type="warning" showIcon title={formNote} /> : null}
-              {created ? (
-                <Alert
-                  type="success"
-                  showIcon
-                  title="主体已登记，当前状态为待核验。"
-                  description={
-                    <Link to={`/subjects/${encodeURIComponent(created.subject_id)}`}>
-                      查看主体详情
-                    </Link>
-                  }
-                />
-              ) : null}
-              <Form.Item>
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  loading={create.isPending}
-                  disabled={!session.data}
-                >
-                  登记主体
-                </Button>
-              </Form.Item>
-            </Form>
-          </Card>
-        ) : null
       }
       filters={
         <div className="subject-ledger-toolbar">
-          <div>
-            <h2>主体目录</h2>
-            <p>仅展示当前账号有权查看的主体</p>
-          </div>
           <form
             className="subject-ledger-search"
             role="search"
@@ -315,9 +236,7 @@ export function SubjectsPage() {
               onClear={() => search("")}
               allowClear
             />
-            <Button htmlType="submit" type="primary">
-              查询
-            </Button>
+            <Button htmlType="submit">查询</Button>
             {query ? (
               <Button
                 onClick={() => {
@@ -329,9 +248,63 @@ export function SubjectsPage() {
               </Button>
             ) : null}
           </form>
+          <Select
+            aria-label="本页核验状态"
+            value={pageVerification}
+            onChange={setPageVerification}
+            options={[
+              { value: "all", label: "本页全部状态" },
+              { value: "pending_verification", label: "本页待核验" },
+              { value: "verified", label: "本页已核验" },
+            ]}
+          />
         </div>
       }
     >
+      {dirty ? <DirtyLeaveGuard dirty description="主体草稿尚未登记。离开后输入将丢失。" /> : null}
+      <Drawer
+        title="新建主体"
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        size="min(520px, 100vw)"
+      >
+        <Form
+          form={form}
+          layout="vertical"
+          onValuesChange={(_changed, values) =>
+            setDirty(
+              Object.values(values).some(
+                (value) => typeof value === "string" && value.trim() !== "",
+              ),
+            )
+          }
+          onFinish={(values) => void onCreate(values)}
+        >
+          <SubjectCreateFields />
+          {formError ? <Alert type="error" showIcon title={formError} /> : null}
+          {formNote ? <Alert type="warning" showIcon title={formNote} /> : null}
+          {created ? (
+            <Alert
+              type="success"
+              showIcon
+              title="主体已登记，当前状态为待核验。"
+              description={
+                <Link to={`/subjects/${encodeURIComponent(created.subject_id)}`}>查看主体详情</Link>
+              }
+            />
+          ) : null}
+          <Form.Item>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={create.isPending}
+              disabled={!session.data}
+            >
+              登记主体
+            </Button>
+          </Form.Item>
+        </Form>
+      </Drawer>
       <Card className="subject-ledger-card" styles={{ body: { padding: 0 } }}>
         {query ? (
           <p className="subject-search-result" role="status">
@@ -351,15 +324,23 @@ export function SubjectsPage() {
           rowKey="subject_id"
           className="subject-ledger-table"
           columns={columns}
-          dataSource={items}
+          dataSource={visibleItems}
           loading={subjects.isLoading || subjects.isFetching}
           pagination={false}
-          scroll={{ x: 1000 }}
+          scroll={{ x: 700 }}
           locale={{
-            emptyText: <Empty description={query ? "没有可见的匹配主体" : "当前没有可见主体"} />,
+            emptyText: (
+              <span aria-live="polite">
+                {pageVerification !== "all"
+                  ? "本页没有符合条件的主体"
+                  : query
+                    ? "没有可见的匹配主体"
+                    : "当前没有可见主体"}
+              </span>
+            ),
           }}
         />
-        {subjects.data ? (
+        {subjects.data && (cursorStack.length > 0 || subjects.data.next_cursor) ? (
           <nav className="subject-ledger-pagination" aria-label="主体列表分页">
             <span className="subject-muted">本页 {items.length} 项</span>
             <div className="subject-pagination-controls">
@@ -723,7 +704,7 @@ export function SubjectDetailPage() {
                 <Link
                   to={`/cases/${encodeURIComponent(event.case_id)}/subject-changes/${encodeURIComponent(event.request_id)}`}
                 >
-                  查看有权访问的案件记录
+                  查看案件记录
                 </Link>
               </div>
               <time dateTime={event.created_at}>{formatDateTime(event.created_at)}</time>

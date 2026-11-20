@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-28
 // Updated: 2026-11-20
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1085,9 +1085,9 @@ test(
       const reportList = page.locator('section[aria-label="报告记录"]');
       const reportTitle = `${caseTitle}，审查报告 v${report.version}`;
       await reportList
-        .getByRole("button", { name: reportTitle, exact: true })
+        .getByRole("button", { name: `查看：${reportTitle}`, exact: true })
         .click({ timeout: 60_000 });
-      const aside = page.locator('aside[aria-label="所选记录详情"]');
+      const aside = page.getByRole("dialog", { name: reportTitle, exact: true });
       await expect(aside.getByRole("heading", { name: reportTitle, exact: true })).toBeVisible();
       await expect(aside.getByText("报告版本", { exact: true })).toBeVisible();
       await expect(aside).toContainText(caseTitle);

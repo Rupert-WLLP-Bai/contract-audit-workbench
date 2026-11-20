@@ -1,58 +1,73 @@
 /* File metadata (manifest mirror): */
-/* Purpose: Defines visual tokens and component/page rules, including .approval-page, .approval-summary, .approval-summary strong, .approval-layout; the stylesheet is imported by the web shell and carries no application state. */
+/* Purpose: Styles the compact approval toolbar, full-width inbox, task and round details, timelines and decision controls. */
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-01 */
 /* Updated: 2026-11-20 */
-/* Revision: r4 */
+/* Revision: r5 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
 .approval-page {
   min-width: 0;
+  padding-block-start: var(--space-2);
 }
-
-.approval-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-6);
-  align-items: baseline;
-  margin: 0 0 var(--space-3);
-  color: var(--text-secondary);
-  background: transparent;
-}
-
-.approval-summary strong {
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.approval-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 1fr);
-  gap: var(--space-6);
-  align-items: start;
-}
-
-.approval-inbox,
-.approval-detail {
+.approval-inbox {
   min-width: 0;
-}
-
-.approval-detail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  border: 1px solid var(--card-border);
+  overflow: hidden;
+  border: 1px solid var(--border-default);
   border-radius: var(--panel-radius);
   background: var(--surface-raised);
 }
 
-.approval-detail-close {
+.approval-inbox tr:has([data-approval-row-action]) {
+  cursor: pointer;
+}
+
+.approval-inbox .approval-row-selected > td {
+  background: var(--action-primary-soft);
+}
+
+.approval-page > .page-pattern-heading {
+  margin-block-end: var(--space-2);
+  padding-block-end: 0;
+  border-block-end: 0;
+}
+
+.approval-page > .page-pattern-heading h1 {
+  margin: 0;
+}
+
+.approval-page .page-pattern-filters {
+  padding: 0 0 var(--space-2);
+}
+
+.approval-page .approval-view-header {
+  margin: 0;
+}
+
+.approval-view-header .approval-view-tab {
+  min-block-size: var(--control-height);
+  padding-block: 0;
+}
+
+.approval-inbox .approval-empty {
+  color: var(--text-secondary);
+}
+
+.approval-view-indicator {
+  display: none;
+}
+
+.approval-view-tab:has([aria-selected="true"]) {
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+}
+
+.approval-drawer-body {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: calc(var(--space-2) * -1);
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
 .approval-detail-head {
@@ -197,10 +212,8 @@
 }
 
 .approval-decision {
-  padding: var(--space-3);
-  border: 1px solid var(--border-default);
-  border-radius: var(--panel-radius);
-  background: var(--surface-subtle);
+  padding-block: var(--space-3);
+  border-block-start: 1px solid var(--border-default);
 }
 
 .approval-decision .field {
@@ -261,10 +274,4 @@
 .approval-round-history button.is-current {
   border-color: var(--action-primary);
   background: var(--action-primary-soft);
-}
-
-@media (max-width: 1200px) {
-  .approval-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }

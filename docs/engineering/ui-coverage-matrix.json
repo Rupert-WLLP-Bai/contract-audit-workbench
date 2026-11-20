@@ -333,10 +333,12 @@
         "audit/round41/approvals-1440.png",
         "audit/round41/approvals-1280.png",
         "audit/round41/approvals-1024.png",
-        "audit/round41/approvals-390.png"
+        "audit/round41/approvals-390.png",
+        "../ui-redesign-20261120-v2/impl/362/approval-empty-tenant-2-1440.png",
+        "../ui-redesign-20261120-v2/impl/362/approval-empty-default-1440.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：会签列表与详情抽屉已更新；真实授权待办、已办与发起均为空，真实任务与审批写入未运行；抽屉键盘交互仅用工程夹具验证。",
       "template": "ListPage"
     },
     {
@@ -380,7 +382,7 @@
       "figmaNodeId": "8:333",
       "screenshotRefs": ["support-ui2.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：本批精简说明或管理导航及规则包展示；该路由桌面浏览器验收未运行，沿用历史覆盖。",
       "template": "ListPage"
     },
     {
@@ -426,7 +428,7 @@
         "audit/round41/legal-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：法律依据说明已精简，保留权限与依据；真实桌面浏览器验收未运行。",
       "template": "specialized legal reader with admin list"
     },
     {
@@ -449,10 +451,13 @@
         "audit/round41/subjects-1440.png",
         "audit/round41/subjects-1280.png",
         "audit/round41/subjects-1024.png",
-        "audit/round41/subjects-390.png"
+        "audit/round41/subjects-390.png",
+        "../ui-redesign-20261120-v2/impl/362/subjects-real-1440.png",
+        "../ui-redesign-20261120-v2/impl/362/subjects-drawer-real-1440.png",
+        "../ui-redesign-20261120-v2/impl/362/subjects-final-1440.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：主体列表与新建抽屉已按真实桌面核对；核验状态仅筛选当前页，完整矩阵未运行。",
       "template": "ListPage"
     },
     {
@@ -472,7 +477,7 @@
       "figmaNodeId": "8:654",
       "screenshotRefs": ["subject-detail.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：主体详情保留登记与关联信息；链接文案经定点测试，真实桌面浏览器验收未运行。",
       "template": "ObjectDetailPage"
     },
     {
@@ -493,7 +498,7 @@
         "audit/round41/operator-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：服务对象保留权限与关联；固定文案经定点测试，真实桌面浏览器验收未运行。",
       "template": "specialized operator audit workspace"
     },
     {
@@ -606,7 +611,7 @@
       "figmaNodeId": "8:1081",
       "screenshotRefs": ["evidence-sla.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：本批精简说明或管理导航及规则包展示；该路由桌面浏览器验收未运行，沿用历史覆盖。",
       "template": "specialized evidence SLA dashboard"
     },
     {
@@ -644,10 +649,11 @@
         "audit/round41/tasks-1440.png",
         "audit/round41/tasks-1280.png",
         "audit/round41/tasks-1024.png",
-        "audit/round41/tasks-390.png"
+        "audit/round41/tasks-390.png",
+        "../ui-redesign-20261120-v2/impl/362/通用-tasks-1440.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：桌面真实页面复核列表、表头与空态；业务写入未执行，完整矩阵未运行。",
       "template": "ListPage"
     },
     {
@@ -670,10 +676,11 @@
         "audit/round41/remediation-1440.png",
         "audit/round41/remediation-1280.png",
         "audit/round41/remediation-1024.png",
-        "audit/round41/remediation-390.png"
+        "audit/round41/remediation-390.png",
+        "../ui-redesign-20261120-v2/impl/362/通用-remediation-1440.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：桌面真实页面复核列表、表头与空态；业务写入未执行，完整矩阵未运行。",
       "template": "ListPage"
     },
     {
@@ -698,10 +705,12 @@
         "audit/round41/reports-1280.png",
         "audit/round41/reports-1024.png",
         "audit/round41/reports-390.png",
-        "audit/round41/reports-reader-1440.png"
+        "audit/round41/reports-reader-1440.png",
+        "../ui-redesign-20261120-v2/impl/362/通用-reports-1440.png",
+        "../ui-redesign-20261120-v2/impl/362/通用-报告抽屉-1440.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：桌面真实页面复核列表、表头与空态；业务写入未执行，完整矩阵未运行。",
       "template": "ListPage"
     },
     {
@@ -724,10 +733,11 @@
         "audit/round41/evidence-1440.png",
         "audit/round41/evidence-1280.png",
         "audit/round41/evidence-1024.png",
-        "audit/round41/evidence-390.png"
+        "audit/round41/evidence-390.png",
+        "../ui-redesign-20261120-v2/impl/362/通用-evidence-1440.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：桌面真实页面复核列表、表头与空态；业务写入未执行，完整矩阵未运行。",
       "template": "ListPage"
     },
     {
@@ -768,10 +778,11 @@
       "figmaNodeId": "8:1698",
       "screenshotRefs": [
         "knowledge.png",
-        "audit/round41/knowledge-reader-1440.png"
+        "audit/round41/knowledge-reader-1440.png",
+        "../ui-redesign-20261120-v2/impl/362/通用-knowledge-1440.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：桌面真实页面复核列表、表头与空态；业务写入未执行，完整矩阵未运行。",
       "template": "ListPage"
     },
     {
@@ -789,9 +800,12 @@
       ],
       "implementationIssue": 259,
       "figmaNodeId": "8:1784",
-      "screenshotRefs": ["organization.png"],
+      "screenshotRefs": [
+        "organization.png",
+        "../ui-redesign-20261120-v2/impl/362/通用-organization-1440.png"
+      ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：桌面真实页面复核列表、表头与空态；业务写入未执行，完整矩阵未运行。",
       "template": "ListPage"
     },
     {
@@ -811,10 +825,11 @@
       "figmaNodeId": "8:1881",
       "screenshotRefs": [
         "templates.png",
-        "audit/round41/templates-reader-1440.png"
+        "audit/round41/templates-reader-1440.png",
+        "../ui-redesign-20261120-v2/impl/362/通用-templates-1440.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：桌面真实页面复核列表、表头与空态；业务写入未执行，完整矩阵未运行。",
       "template": "ListPage"
     },
     {
@@ -852,9 +867,12 @@
       ],
       "implementationIssue": 259,
       "figmaNodeId": "8:2064",
-      "screenshotRefs": ["audit-log.png"],
+      "screenshotRefs": [
+        "audit-log.png",
+        "../ui-redesign-20261120-v2/impl/362/通用-audit-1440.png"
+      ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：桌面真实页面复核列表、表头与空态；业务写入未执行，完整矩阵未运行。",
       "template": "ListPage"
     },
     {
@@ -948,7 +966,7 @@
         "audit/round41/admin-infrastructure-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：本批精简说明或管理导航及规则包展示；该路由桌面浏览器验收未运行，沿用历史覆盖。",
       "template": "specialized infrastructure dashboard"
     },
     {
@@ -967,7 +985,7 @@
         "audit/round41/admin-settings-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：本批精简说明或管理导航及规则包展示；该路由桌面浏览器验收未运行，沿用历史覆盖。",
       "template": "specialized settings forms"
     },
     {
@@ -987,7 +1005,7 @@
       "figmaNodeId": "8:2603",
       "screenshotRefs": ["admin-tenant-lifecycle-mock.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：本批精简说明或管理导航及规则包展示；该路由桌面浏览器验收未运行，沿用历史覆盖。",
       "template": "ListPage and ObjectDetailPage"
     },
     {
@@ -1002,7 +1020,7 @@
       "figmaNodeId": "8:2675",
       "screenshotRefs": ["admin-jurisdiction-mock.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：本批精简说明或管理导航及规则包展示；该路由桌面浏览器验收未运行，沿用历史覆盖。",
       "template": "specialized jurisdiction operations dashboard"
     },
     {
@@ -1022,10 +1040,12 @@
       "screenshotRefs": [
         "admin-rulepacks.png",
         "audit/round41/admin-rulepacks-1440.png",
-        "audit/round41/admin-rulepacks-390.png"
+        "audit/round41/admin-rulepacks-390.png",
+        "../ui-redesign-20261120-v2/impl/362/admin-final-1440.png",
+        "../ui-redesign-20261120-v2/impl/362/admin-menu-final-1440.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：真实桌面复核规则库列表与紧凑管理身份菜单；完整矩阵及写操作未运行。",
       "template": "ListPage"
     },
     {
@@ -1063,7 +1083,7 @@
       "figmaNodeId": "6:478",
       "screenshotRefs": ["admin-rulepack-detail.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：本批精简说明或管理导航及规则包展示；该路由桌面浏览器验收未运行，沿用历史覆盖。",
       "template": "ObjectDetailPage"
     },
     {
@@ -1087,7 +1107,7 @@
         "audit/round41/admin-governed-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：本批精简说明或管理导航及规则包展示；该路由桌面浏览器验收未运行，沿用历史覆盖。",
       "template": "ListPage"
     },
     {
@@ -1111,7 +1131,7 @@
         "audit/round41/admin-governed-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：本批精简说明或管理导航及规则包展示；该路由桌面浏览器验收未运行，沿用历史覆盖。",
       "template": "VersionEditorPage"
     },
     {
@@ -1135,7 +1155,7 @@
         "audit/round41/admin-governed-390.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：本批精简说明或管理导航及规则包展示；该路由桌面浏览器验收未运行，沿用历史覆盖。",
       "template": "ObjectDetailPage"
     },
     {
@@ -1250,7 +1270,7 @@
       "figmaNodeId": "8:3289",
       "screenshotRefs": ["admin-not-found.png"],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL",
+      "statusDetail": "PARTIAL：本批精简说明或管理导航及规则包展示；该路由桌面浏览器验收未运行，沿用历史覆盖。",
       "template": "specialized admin not-found result"
     },
     {

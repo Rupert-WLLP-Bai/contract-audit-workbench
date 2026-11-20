@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-12
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -303,7 +303,7 @@ export function SupportGrantsPage() {
     <ListPage
       className="support-grants-page"
       title="案件支援访问"
-      description="仅显示授予当前成员的案件级只读支援。当前登录身份与租户不会改变。"
+      description="查看已授予的案件支援。"
       filters={
         <Tabs
           activeKey={activeTab}

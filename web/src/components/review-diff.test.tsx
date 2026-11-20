@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-19
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -18,6 +18,7 @@ import { ReviewDiff } from "./review-diff";
 
 const api = vi.hoisted(() => ({ getReview: vi.fn(), getReviewHistoryPage: vi.fn() }));
 vi.mock("../api/endpoints", () => api);
+vi.mock("./app-shell-preferences", () => ({ useProfessionalMode: () => ({ enabled: true }) }));
 
 function workspace(runId: string) {
   const attempt = {

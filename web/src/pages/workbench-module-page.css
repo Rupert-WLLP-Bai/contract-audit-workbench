@@ -1,135 +1,110 @@
 /* File metadata (manifest mirror): */
-/* Purpose: Styles white workbench lists, transparent result counts and adaptive record or document detail for the shared task, report, evidence and support modules. */
+/* Purpose: Styles full-width workbench tables, report statistics and record drawer content. */
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
 /* Updated: 2026-11-20 */
-/* Revision: r6 */
+/* Revision: r7 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
-/* Hallmark · built: the project · redesign: restyle · theme: ant-monochrome (by request) · genre: modern-minimal · scope: app · surface: absolute · shape: app screen · nav: black grouped menu · footer: none */
-/* Hallmark · pre-emit critique: the list and detail split depends on scan order; keep counts and record labels visible as columns stack */
 .module-page {
-  padding: 20px var(--space-6) var(--space-6);
-  background: var(--surface-page);
+  padding: var(--space-2) var(--page-padding-inline) var(--space-8);
 }
-.module-page-head {
-  padding-bottom: var(--space-4);
+
+.module-page .module-page-head {
+  align-items: center;
+  margin-block-end: var(--space-2);
+  padding-block-end: 0;
+  border-block-end: 0;
 }
+
 .module-page-head h1 {
+  margin: 0;
+}
+
+.module-page .page-pattern-filters {
+  padding: 0 0 var(--space-2);
+}
+
+.module-toolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
 }
 
-.module-page .page-pattern-summary {
+.module-toolbar .module-tabs-header {
   margin: 0;
 }
-.module-toolbar {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: 0 var(--space-4) var(--space-3);
-  border: 1px solid var(--border-default);
-  border-bottom: 0;
-  border-radius: 6px 6px 0 0;
-  background: var(--surface-raised);
+
+.module-toolbar .module-tab {
+  min-block-size: var(--control-height);
+  padding-block: 0;
 }
-.module-tabs {
-  display: flex;
-  min-width: 0;
-  gap: var(--space-6);
-  overflow-x: auto;
-}
+
 .module-toolbar-title {
   margin: 0;
-  padding-bottom: var(--space-1);
-  color: var(--text-primary);
   font-size: var(--font-size-ui);
   font-weight: var(--font-weight-semibold);
-  line-height: 1.5;
 }
+
 .module-search {
   display: grid;
-  flex: 0 1 270px;
-  min-width: 180px;
+  flex: 0 1 240px;
+  min-width: 0;
   gap: var(--space-1);
   color: var(--text-secondary);
   font-size: var(--font-size-small);
 }
+
 .module-note {
   margin: 0;
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--border-default);
-  border-top: 0;
-  background: var(--surface-subtle);
+  padding: var(--space-2) var(--space-3);
   color: var(--text-secondary);
   font-size: var(--font-size-small);
 }
-.module-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.9fr);
-  align-items: stretch;
-  border: 1px solid var(--border-default);
-  border-radius: 0 0 6px 6px;
-  background: var(--surface-raised);
-}
+
 .module-list-panel {
   min-width: 0;
-  max-height: calc(100vh - var(--header-height) - 56px);
-  overflow: auto;
-  border-right: 1px solid var(--border-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
+  background: var(--surface-raised);
+  overflow-wrap: anywhere;
 }
-.module-record-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+
+.module-table-header {
+  height: var(--table-header-height);
 }
-.module-record-list li + li {
-  border-top: 1px solid var(--border-default);
+
+.module-row-selected {
+  background: var(--surface-subtle);
 }
-.module-record {
-  display: grid;
-  width: 100%;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
-  text-align: left;
-}
-.module-record-main {
-  display: grid;
-  min-width: 0;
-  gap: var(--space-1);
-}
-.module-record-main strong {
-  overflow: hidden;
-  color: var(--text-primary);
-  font-size: var(--font-size-ui);
+
+.module-record-title {
   font-weight: var(--font-weight-semibold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.module-record-main small,
-.module-record-time {
-  overflow: hidden;
-  color: var(--text-secondary);
-  font-size: var(--font-size-small);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+
+.module-list-panel tbody tr {
+  cursor: pointer;
 }
-.module-record-time {
-  grid-column: 1 / -1;
+
+.module-list-panel tbody tr:has(.module-empty) {
+  cursor: default;
 }
-.module-detail-panel {
-  position: sticky;
-  top: calc(var(--header-height) + 12px);
-  min-width: 0;
-  max-height: calc(100vh - var(--header-height) - 56px);
-  overflow: auto;
+
+.module-drawer-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-document);
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.module-drawer-body {
   padding: var(--space-4);
 }
+
 .module-detail-head {
   display: flex;
   align-items: flex-start;
@@ -152,7 +127,7 @@
   color: var(--text-primary);
   font-size: var(--font-size-document);
 }
-.module-detail-head span {
+.module-detail-head > div > span {
   color: var(--text-secondary);
   font-size: var(--font-size-small);
 }
@@ -264,38 +239,24 @@
 .module-complete-task {
   margin-top: var(--space-2);
 }
-@media (max-width: 1150px) {
-  .module-workspace {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .module-list-panel {
-    max-height: none;
-    border-right: 0;
-    border-bottom: 1px solid var(--border-default);
-  }
-  .module-detail-panel {
-    position: static;
-    max-height: none;
-  }
-}
 @media (max-width: 760px) {
   .module-page {
-    padding: var(--space-4);
+    padding-inline: var(--page-padding-inline-mobile);
   }
+
   .module-toolbar {
     align-items: stretch;
     flex-direction: column;
-    padding: 0 var(--space-3) var(--space-3);
   }
-  .module-tabs {
-    gap: var(--space-4);
-  }
+
   .module-search {
     flex: 1;
   }
+
   .module-create-form {
     grid-template-columns: minmax(0, 1fr);
   }
+
   .module-create-form h2,
   .module-create-form .module-form-wide,
   .module-create-form > [role="alert"],
@@ -304,115 +265,6 @@
   }
 }
 
-/* Hallmark · restyle: ruled module ledger with an explicit detail pane */
-.module-page {
-  padding: 20px var(--space-6) var(--space-8);
-  background: var(--surface-page);
-}
-.module-page-head {
-  border-bottom: 1px solid var(--border-strong);
-  padding-bottom: var(--space-3);
-}
-.module-page-head h1 {
-  font-size: var(--font-size-heading);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: -0.02em;
-}
-.module-page-head > div > p:last-child {
-  color: var(--text-secondary);
-}
-.module-toolbar {
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-.module-tabs .ant-tabs-nav {
-  margin-bottom: 0;
-}
-.module-search {
-  color: var(--text-secondary);
-}
-.module-note {
-  padding: var(--space-2) 0;
-  border: 0;
-  border-bottom: 1px solid var(--border-default);
-  background: transparent;
-  color: var(--text-secondary);
-}
-.module-workspace {
-  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.85fr);
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-.module-list-panel {
-  border-right: 1px solid var(--border-strong);
-  background: var(--surface-raised);
-}
-.module-list-panel .ant-table {
-  background: transparent;
-}
-.module-record-list li + li {
-  border-top: 1px solid var(--border-default);
-}
-.module-record-main strong {
-  color: var(--text-primary);
-}
-.module-record-main small,
-.module-record-time {
-  color: var(--text-secondary);
-}
-.module-detail-panel {
-  background: transparent;
-}
-.module-detail-head {
-  border-bottom-color: var(--border-strong);
-}
-.module-detail-head p {
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-small);
-}
-.module-detail-head h2 {
-  font-size: var(--font-size-document);
-  letter-spacing: -0.01em;
-}
-.module-empty {
-  margin: 0;
-  padding: var(--space-6) var(--space-4);
-  color: var(--text-secondary);
-}
-@media (max-width: 900px) {
-  .module-workspace {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .module-list-panel {
-    border-right: 0;
-    border-bottom: 1px solid var(--border-strong);
-    max-height: none;
-  }
-}
-@media (max-width: 560px) {
-  .module-page {
-    padding: var(--space-4);
-  }
-}
-
-/* Audit keeps selection available above the selected event's full-width detail. */
-.module-workspace-audit {
-  grid-template-columns: minmax(0, 1fr);
-}
-.module-workspace-audit .module-list-panel {
-  max-height: 360px;
-  border-right: 0;
-  border-bottom: 1px solid var(--border-strong);
-}
-.module-workspace-audit .module-detail-panel {
-  position: static;
-  max-height: none;
-  padding: var(--space-6) 0;
-}
 .audit-event-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -463,24 +315,6 @@
   .workbench-record-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
-
-/* Record rows read as a ruled ledger, not centred link cells. */
-.module-list-panel .ant-table-tbody .ant-btn-link {
-  height: auto;
-  min-height: 0;
-  justify-content: flex-start;
-  padding: 0;
-  text-align: left;
-  white-space: normal;
-}
-.module-list-panel .ant-table-tbody .ant-btn-link > span {
-  text-align: left;
-}
-.module-list-panel .ant-table-container,
-.module-list-panel .ant-table-content {
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
 }
 
 .module-report-frame {
@@ -552,56 +386,18 @@
   font-size: var(--font-size-small);
 }
 
-/* Reader modules keep a compact record rail and give documents the workspace width. */
-.module-workspace-reader {
-  grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
-}
-
-.module-workspace-reader .module-detail-panel {
-  min-width: 0;
-}
-
-.module-workspace-reader .module-knowledge-body {
-  max-width: 88ch;
-  line-height: 1.75;
-  white-space: pre-wrap;
-}
-
-@media (max-width: 1100px) {
-  .module-workspace-reader {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.module-result-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: start;
-  gap: var(--space-2) var(--space-4);
-  margin-block-end: var(--space-3);
-}
-
-.module-result-summary summary {
-  color: var(--action-primary);
-  cursor: pointer;
-}
-
-.module-result-summary p {
-  max-inline-size: 65ch;
-  margin: var(--space-1) 0;
-}
-
-.module-detail-panel:focus-visible {
-  outline-offset: -2px;
+.module-knowledge-body {
+  line-height: var(--line-height-document);
 }
 
 .workbench-report-statistics {
   margin-block-end: var(--space-4);
 }
-.workbench-report-statistics summary {
-  cursor: pointer;
-  color: var(--action-primary);
+
+.workbench-report-statistics .module-search {
+  max-inline-size: 160px;
 }
+
 .workbench-report-statistics-content {
   display: grid;
   gap: var(--space-4);
