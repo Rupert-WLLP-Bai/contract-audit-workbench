@@ -4,7 +4,7 @@
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
 /* Updated: 2026-11-20 */
-/* Revision: r5 */
+/* Revision: r6 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -710,6 +710,7 @@
   border-bottom: 1px solid var(--ant-color-border-secondary);
 }
 .compare-view-tabs button {
+  font-size: var(--font-size-ui);
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
