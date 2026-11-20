@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-05
 // Updated: 2026-11-20
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -38,6 +38,7 @@ const draft = {
   contract: {
     name: longName,
     number: longNumber,
+    grade: "历史归档等级",
     remark: longUrl,
     related_parties: [
       {

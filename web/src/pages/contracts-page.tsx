@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-01
 // Updated: 2026-11-20
-// Revision: r15
+// Revision: r16
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -17,6 +17,7 @@ import {
   InputNumber,
   Modal,
   Popover,
+  Radio,
   Select,
   Table,
   Tabs,
@@ -139,6 +140,27 @@ function groupedLedgerAmount(amount: string): string {
   return `${sign}${digits!.replace(/\B(?=(?:\d{3})+(?!\d))/g, ",")}${fraction ?? ""}`;
 }
 
+const DRAFT_CLASSIFICATIONS = ["支出类合同", "收入类合同", "收支双向合同", "无金额框架协议"];
+const DRAFT_CATEGORIES = [
+  "ICT 与信息化采购",
+  "通信与网络工程",
+  "维保与技术服务",
+  "云网与专线服务",
+  "综合行政采购",
+  "其他类别",
+];
+const DRAFT_GRADES = ["重大合同", "重点合同", "一般合同", "标准制式合同"];
+const ALL_LEDGER_EXPORT_COLUMNS = contractLedgerExportColumns(
+  CONTRACT_LEDGER_COLUMNS.map(({ key }) => key),
+);
+
+function withLegacyOption(options: readonly string[], value: string | null | undefined) {
+  const values = value && !options.includes(value) ? [...options, value] : options;
+  return values.map((item) => ({ label: item, value: item }));
+}
+
+type ExportMode = "visible" | "all";
+
 const CONTRACT_FORM_SECTIONS = [
   { key: "basic", label: "合同基本信息" },
   { key: "parties", label: "相关方与标的" },
@@ -151,7 +173,7 @@ function contractErrorSection(text: string): ContractFormSection | null {
   if (/资金|付款|金额|预付款|币种/.test(text)) return "funding";
   if (/当事方|相关方|标的|对方|供应方/.test(text)) return "parties";
   if (/材料|核对|摘要/.test(text)) return "materials";
-  if (/名称|编号|类型|期限|日期/.test(text)) return "basic";
+  if (/名称|编号|类型|分类|类别|等级|期限|日期/.test(text)) return "basic";
   return null;
 }
 
@@ -384,7 +406,15 @@ export function ContractsPage() {
   const [viewMessage, setViewMessage] = useState<string | null>(null);
   const [viewSaving, setViewSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exportScope, setExportScope] = useState<string | null>(null);
+  const [exportMode, setExportMode] = useState<ExportMode>("visible");
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportReceipt, setExportReceipt] = useState<{
+    scope: string;
+    fileName: string;
+    rows: number;
+    at: string;
+  } | null>(null);
   const ledger = useContractLedger(ledgerFilter, scope, actor !== null);
   const savedViews = useContractSavedViews(scope, actor !== null);
   const createSavedView = useCreateContractSavedView();
@@ -433,6 +463,27 @@ export function ContractsPage() {
   }, [location.key, routeText]);
   const [formSection, setFormSection] = useState<ContractFormSection>("basic");
   const [errorSection, setErrorSection] = useState<ContractFormSection | null>(null);
+  const errorSummary = useRef<HTMLDivElement>(null);
+  const nextSection =
+    CONTRACT_FORM_SECTIONS[CONTRACT_FORM_SECTIONS.findIndex(({ key }) => key === formSection) + 1];
+
+  useEffect(() => {
+    if (message?.kind !== "error" || workspaceTab !== "drafts") return;
+    const frame = requestAnimationFrame(() => {
+      errorSummary.current?.focus({ preventScroll: true });
+      errorSummary.current?.scrollIntoView?.({ block: "nearest" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [message, workspaceTab]);
+
+  function focusSection(section: ContractFormSection) {
+    setFormSection(section);
+    requestAnimationFrame(() => {
+      const panel = document.getElementById(`contract-draft-panel-${section}`);
+      panel?.focus({ preventScroll: true });
+      panel?.scrollIntoView?.({ block: "nearest" });
+    });
+  }
 
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(loaded), [draft, loaded]);
   const isEditableDraft = contractID === null || contractDetail?.summary.contract_state === "draft";
@@ -651,7 +702,7 @@ export function ContractsPage() {
     setSelectedViewVersion(null);
     setViewName("");
     setViewMessage(null);
-    setExportMessage(null);
+    setExportError(null);
   }
 
   function applySavedView(viewId: string) {
@@ -740,16 +791,20 @@ export function ContractsPage() {
   }
 
   async function exportLedger() {
-    if (actor === null || exporting) return;
-    const commandContext = captureCommandContext(actor);
+    if (actor === null || exporting || exportScope !== currentActorScope) return;
     setExporting(true);
-    setExportMessage(null);
+    setExportError(null);
     try {
+      const commandContext = captureCommandContext(actor);
       const payload: ContractExportRequest = {
         filter: ledgerFilter,
-        columns: contractLedgerExportColumns(ledgerColumns),
+        columns:
+          exportMode === "all"
+            ? ALL_LEDGER_EXPORT_COLUMNS
+            : contractLedgerExportColumns(ledgerColumns),
         format: "csv",
       };
+      if (!payload.columns.length) return;
       const pending = await pendingMutationKey(
         "clm-contract-export",
         idempotencyActorScope(actor),
@@ -761,14 +816,17 @@ export function ContractsPage() {
       const blob = await downloadContractExport(created.export_id, commandContext);
       clearPendingMutationKey(pending.storageKey);
       assertCommandContextCurrent(commandContext);
-      saveDownload(blob, `contracts-${created.export_id}.csv`);
-      setExportMessage(
-        created.replayed
-          ? `已重放同一导出，共 ${created.row_count} 行`
-          : `已导出 ${created.row_count} 行`,
-      );
+      const fileName = `contracts-${created.export_id}.csv`;
+      saveDownload(blob, fileName);
+      setExportReceipt({
+        scope: currentActorScope,
+        fileName,
+        rows: created.row_count,
+        at: new Date().toISOString(),
+      });
     } catch (error) {
-      setExportMessage(errorMessage(error));
+      if (editorIdentityRef.current.actorScope === currentActorScope)
+        setExportError(errorMessage(error));
     } finally {
       setExporting(false);
     }
@@ -876,6 +934,18 @@ export function ContractsPage() {
   const activeLedgerFilters = Object.values(ledgerFilter).filter(
     (value) => value !== undefined && value !== "",
   ).length;
+
+  const lifecycleOverview =
+    contractID !== null && contractDetail !== null ? (
+      <ContractLifecycleOverviewPanel
+        key={`${contractID}-lifecycle-${currentActorScope}`}
+        detail={contractDetail}
+        actor={actor}
+        onAccessDenied={() =>
+          invalidateSourceAccess(contractDetail.summary.contract_id, currentActorScope)
+        }
+      />
+    ) : null;
 
   return (
     <ListPage
@@ -1162,9 +1232,12 @@ export function ContractsPage() {
                 </div>
               </LedgerTool>
               <Button
-                onClick={() => void exportLedger()}
-                loading={exporting}
-                disabled={actor === null || ledgerColumns.length === 0}
+                onClick={() => {
+                  setExportScope(currentActorScope);
+                  setExportMode(ledgerColumns.length ? "visible" : "all");
+                  setExportError(null);
+                }}
+                disabled={actor === null || exporting}
               >
                 导出 CSV
               </Button>
@@ -1181,15 +1254,6 @@ export function ContractsPage() {
                 className="contracts-ledger contracts-ledger--list page-pattern-surface"
                 aria-label="合同台账"
               >
-                {exportMessage !== null ? (
-                  <Alert
-                    type="info"
-                    showIcon
-                    title={exportMessage}
-                    closable={{ onClose: () => setExportMessage(null) }}
-                  />
-                ) : null}
-
                 {ledger.isError ? (
                   <Alert
                     type="error"
@@ -1219,7 +1283,7 @@ export function ContractsPage() {
                   pagination={false}
                   size="small"
                   tableLayout="fixed"
-                  scroll={columns.length > 6 ? { x: columns.length * 156 } : undefined}
+                  scroll={columns.length > 7 ? { x: columns.length * 156 } : undefined}
                   className="contracts-ledger-table"
                   classNames={{ header: { cell: "contracts-ledger-header-cell" } }}
                   locale={{ emptyText: <Empty description="当前条件下没有可见合同" /> }}
@@ -1243,18 +1307,12 @@ export function ContractsPage() {
             forceRender: true,
             children: (
               <>
-                <div className="contracts-page-summary" aria-label="合同草稿摘要">
-                  <span>我的草稿</span>
-                  <strong>{draftsData.length}</strong>
-                  <span>本页状态</span>
-                  <strong>{contractID === null ? "新建" : `版本 ${rowVersion ?? "?"}`}</strong>
-                  <span>未保存修改</span>
-                  <strong>{dirty ? "有" : "无"}</strong>
-                </div>
-
                 <div className="contracts-page-layout">
                   <aside className="contracts-page-list" aria-label="我的合同草稿">
-                    <h2>我的草稿</h2>
+                    <header className="contracts-draft-rail-head">
+                      <h2>草稿列表</h2>
+                      {drafts.isSuccess ? <span>{draftsData.length} 份</span> : null}
+                    </header>
                     {drafts.isLoading ? (
                       <p role="status">正在读取草稿</p>
                     ) : drafts.isError ? (
@@ -1275,17 +1333,22 @@ export function ContractsPage() {
                               className={item.contract_id === contractID ? "is-current" : undefined}
                               onClick={() => void openDraft(item.contract_id)}
                               disabled={loading}
+                              aria-current={item.contract_id === contractID ? "true" : undefined}
                             >
                               <span className="contracts-page-list-name">
                                 {item.name || "未命名合同"}
                               </span>
                               <span className="contracts-page-list-meta">
-                                {item.number ?? "尚无编号"} ·{" "}
-                                {amountLabel(item.amount, item.currency)} ·{" "}
-                                {stateLabel(item.contract_state)}
-                              </span>
-                              <span className="contracts-page-list-meta">
-                                更新 {formatDateTime(item.updated_at ?? item.created_at)}
+                                <span>
+                                  {amountLabel(
+                                    item.amount === null ? null : groupedLedgerAmount(item.amount),
+                                    item.currency,
+                                  )}
+                                </span>
+                                <span>{compactTime(item.updated_at ?? item.created_at)}</span>
+                                {item.contract_state !== "draft" ? (
+                                  <span>{stateLabel(item.contract_state)}</span>
+                                ) : null}
                               </span>
                             </button>
                             {unknownEnumDetail(
@@ -1359,671 +1422,747 @@ export function ContractsPage() {
                                 description="没有编辑权限，敏感字段已隐藏。"
                               />
                             ) : null}
-                            {contractID !== null && contractDetail !== null ? (
-                              <ContractLifecycleOverviewPanel
-                                key={`${contractID}-lifecycle-${currentActorScope}`}
-                                detail={contractDetail}
-                                actor={actor}
-                                onAccessDenied={() =>
-                                  invalidateSourceAccess(
-                                    contractDetail.summary.contract_id,
-                                    currentActorScope,
-                                  )
-                                }
-                              />
-                            ) : null}
+                            {readOnly ? lifecycleOverview : null}
 
-                            <nav className="contracts-form-sections" aria-label="合同登记分区">
-                              {CONTRACT_FORM_SECTIONS.map((item) => (
-                                <button
-                                  key={item.key}
-                                  type="button"
-                                  aria-pressed={formSection === item.key}
-                                  data-error={errorSection === item.key ? "true" : undefined}
-                                  onClick={() => setFormSection(item.key)}
-                                >
-                                  {item.label}
-                                </button>
-                              ))}
-                            </nav>
-                            {message?.kind === "error" ? (
-                              <div
-                                className="contracts-form-error-summary"
-                                role="group"
-                                aria-label="错误定位"
-                              >
-                                <strong>错误定位</strong>
-                                <span>
-                                  {errorSection
-                                    ? "已定位到相关分区，请检查该分区字段。"
-                                    : "服务端未返回字段位置，请逐区检查。"}
-                                </span>
-                                <div>
-                                  {CONTRACT_FORM_SECTIONS.map((item) => (
+                            <div className="contracts-draft-card">
+                              <header className="contracts-draft-steps">
+                                <nav className="contracts-form-sections" aria-label="合同登记分区">
+                                  {CONTRACT_FORM_SECTIONS.map((item, index) => (
                                     <button
+                                      id={`contract-draft-step-${item.key}`}
                                       key={item.key}
                                       type="button"
+                                      aria-pressed={formSection === item.key}
+                                      aria-current={formSection === item.key ? "step" : undefined}
+                                      aria-controls={`contract-draft-panel-${item.key}`}
+                                      data-error={errorSection === item.key ? "true" : undefined}
                                       onClick={() => setFormSection(item.key)}
                                     >
+                                      <span className="contracts-step-number" aria-hidden="true">
+                                        {index + 1}
+                                      </span>
                                       {item.label}
+                                      {errorSection === item.key ? (
+                                        <span
+                                          className="contracts-step-error"
+                                          role="img"
+                                          aria-label="此分区需核对"
+                                        />
+                                      ) : null}
                                     </button>
                                   ))}
+                                </nav>
+                                {rowVersion !== null && isEditableDraft ? (
+                                  <Tag>草稿版本 v{rowVersion}</Tag>
+                                ) : null}
+                              </header>
+                              {message?.kind === "error" ? (
+                                <div
+                                  ref={errorSummary}
+                                  tabIndex={-1}
+                                  className="contracts-form-error-summary"
+                                  role="group"
+                                  aria-label="错误定位"
+                                >
+                                  <strong>错误定位</strong>
+                                  <span>
+                                    {errorSection
+                                      ? "已定位到相关分区，请检查该分区字段。"
+                                      : "请选择需要检查的分区。"}
+                                  </span>
+                                  <div>
+                                    {CONTRACT_FORM_SECTIONS.map((item) => (
+                                      <button
+                                        key={item.key}
+                                        type="button"
+                                        onClick={() => focusSection(item.key)}
+                                      >
+                                        {item.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+                              <div className="contracts-draft-content">
+                                <fieldset
+                                  className="contracts-page-section"
+                                  disabled={readOnly}
+                                  hidden={formSection !== "basic"}
+                                  id="contract-draft-panel-basic"
+                                  aria-labelledby="contract-draft-step-basic"
+                                  tabIndex={-1}
+                                >
+                                  <div className="contracts-page-fields contracts-draft-basics">
+                                    <label className="field contracts-draft-span-6">
+                                      合同名称
+                                      <Input
+                                        ref={draftName}
+                                        value={draft.contract.name ?? ""}
+                                        maxLength={200}
+                                        placeholder="例如：2026 年传输设备采购合同"
+                                        onChange={(event) => update({ name: event.target.value })}
+                                      />
+                                    </label>
+                                    <label className="field contracts-draft-span-3">
+                                      合同编号
+                                      <Input
+                                        value={draft.contract.number ?? ""}
+                                        maxLength={100}
+                                        placeholder="可稍后填写"
+                                        onChange={(event) =>
+                                          update({ number: optionalText(event.target.value) })
+                                        }
+                                      />
+                                    </label>
+                                    <label className="field contracts-draft-span-3">
+                                      项目号
+                                      <Input
+                                        value={draft.contract.project_number ?? ""}
+                                        maxLength={100}
+                                        onChange={(event) =>
+                                          update({
+                                            project_number: optionalText(event.target.value),
+                                          })
+                                        }
+                                      />
+                                    </label>
+                                    <label className="field contracts-draft-span-4">
+                                      合同分类
+                                      <Select<string>
+                                        aria-label="合同分类"
+                                        disabled={readOnly}
+                                        allowClear={{ label: "清除合同分类" }}
+                                        value={draft.contract.classification || undefined}
+                                        options={withLegacyOption(
+                                          DRAFT_CLASSIFICATIONS,
+                                          draft.contract.classification,
+                                        )}
+                                        onChange={(value) => update({ classification: value })}
+                                      />
+                                    </label>
+                                    <label className="field contracts-draft-span-4">
+                                      合同类别
+                                      <Select<string>
+                                        aria-label="合同类别"
+                                        disabled={readOnly}
+                                        allowClear={{ label: "清除合同类别" }}
+                                        value={draft.contract.category || undefined}
+                                        options={withLegacyOption(
+                                          DRAFT_CATEGORIES,
+                                          draft.contract.category,
+                                        )}
+                                        onChange={(value) => update({ category: value })}
+                                      />
+                                    </label>
+                                    <label className="field contracts-draft-span-4">
+                                      合同等级
+                                      <Select<string>
+                                        aria-label="合同等级"
+                                        disabled={readOnly}
+                                        allowClear={{ label: "清除合同等级" }}
+                                        value={draft.contract.grade || undefined}
+                                        options={withLegacyOption(
+                                          DRAFT_GRADES,
+                                          draft.contract.grade,
+                                        )}
+                                        onChange={(value) => update({ grade: value })}
+                                      />
+                                    </label>
+                                    <label className="field contracts-draft-span-3">
+                                      合同拟定方
+                                      <Select
+                                        allowClear
+                                        value={draft.contract.drafting_party}
+                                        options={DRAFTING_PARTIES}
+                                        onChange={(value) => update({ drafting_party: value })}
+                                        placeholder="选择拟定方"
+                                      />
+                                    </label>
+                                    <label className="field contracts-draft-span-3">
+                                      申请部门
+                                      <Input
+                                        value={draft.contract.department_id ?? ""}
+                                        maxLength={100}
+                                        onChange={(event) =>
+                                          update({
+                                            department_id: optionalText(event.target.value),
+                                          })
+                                        }
+                                      />
+                                    </label>
+                                    <label className="field contracts-draft-span-3">
+                                      部门经办人
+                                      <Input
+                                        value={draft.contract.handler_user_id ?? ""}
+                                        maxLength={100}
+                                        onChange={(event) =>
+                                          update({
+                                            handler_user_id: optionalText(event.target.value),
+                                          })
+                                        }
+                                      />
+                                    </label>
+                                    <label className="field contracts-draft-span-3">
+                                      经办人联系方式
+                                      <Input
+                                        value={draft.contract.handler_contact ?? ""}
+                                        maxLength={100}
+                                        onChange={(event) =>
+                                          update({
+                                            handler_contact: optionalText(event.target.value),
+                                          })
+                                        }
+                                      />
+                                    </label>
+                                    <label className="field field-wide">
+                                      备注
+                                      <Input.TextArea
+                                        value={draft.contract.remark ?? ""}
+                                        maxLength={4000}
+                                        autoSize={{ minRows: 2, maxRows: 4 }}
+                                        onChange={(event) =>
+                                          update({ remark: optionalText(event.target.value) })
+                                        }
+                                      />
+                                    </label>
+                                  </div>
+                                </fieldset>
+
+                                <fieldset
+                                  className="contracts-page-section"
+                                  disabled={readOnly}
+                                  hidden={formSection !== "parties"}
+                                  id="contract-draft-panel-parties"
+                                  aria-labelledby="contract-draft-step-parties"
+                                  tabIndex={-1}
+                                >
+                                  <div className="contracts-page-fields">
+                                    <label className="field">
+                                      供应商全称
+                                      <Input
+                                        value={draft.supplier?.name ?? ""}
+                                        maxLength={200}
+                                        onChange={(event) =>
+                                          updateSupplier({ name: event.target.value })
+                                        }
+                                      />
+                                    </label>
+                                    <label className="field">
+                                      社会信用代码
+                                      <Input
+                                        value={draft.supplier?.credit_code ?? ""}
+                                        maxLength={100}
+                                        onChange={(event) =>
+                                          updateSupplier({ credit_code: event.target.value })
+                                        }
+                                      />
+                                    </label>
+                                    <label className="field">
+                                      供应方联系人
+                                      <Input
+                                        value={draft.supplier?.contact_name ?? ""}
+                                        maxLength={100}
+                                        onChange={(event) =>
+                                          updateSupplier({ contact_name: event.target.value })
+                                        }
+                                      />
+                                    </label>
+                                    <label className="field">
+                                      供应方联系电话
+                                      <Input
+                                        value={draft.supplier?.contact_phone ?? ""}
+                                        maxLength={100}
+                                        onChange={(event) =>
+                                          updateSupplier({ contact_phone: event.target.value })
+                                        }
+                                      />
+                                    </label>
+                                    <label className="field">
+                                      收款方
+                                      <Input
+                                        value={draft.supplier?.payee_name ?? ""}
+                                        maxLength={200}
+                                        readOnly={isMaskedRestricted(draft.supplier?.payee_name)}
+                                        onChange={(event) =>
+                                          updateSupplier({ payee_name: event.target.value })
+                                        }
+                                      />
+                                    </label>
+                                    <label className="field">
+                                      开户行
+                                      <Input
+                                        value={draft.supplier?.bank_name ?? ""}
+                                        maxLength={200}
+                                        readOnly={isMaskedRestricted(draft.supplier?.bank_name)}
+                                        onChange={(event) =>
+                                          updateSupplier({ bank_name: event.target.value })
+                                        }
+                                      />
+                                    </label>
+                                    <label className="field">
+                                      账号
+                                      <Input
+                                        value={draft.supplier?.bank_account ?? ""}
+                                        maxLength={64}
+                                        readOnly={isMaskedRestricted(draft.supplier?.bank_account)}
+                                        onChange={(event) =>
+                                          updateSupplier({ bank_account: event.target.value })
+                                        }
+                                      />
+                                    </label>
+                                    <label className="field">
+                                      纳税人识别号
+                                      <Input
+                                        value={draft.supplier?.tax_identifier ?? ""}
+                                        maxLength={100}
+                                        readOnly={isMaskedRestricted(
+                                          draft.supplier?.tax_identifier,
+                                        )}
+                                        onChange={(event) =>
+                                          updateSupplier({ tax_identifier: event.target.value })
+                                        }
+                                      />
+                                    </label>
+                                    <label className="field">
+                                      合同金额
+                                      <Input
+                                        value={draft.contract.amount ?? ""}
+                                        placeholder="例如 100000.00"
+                                        onChange={(event) =>
+                                          update({ amount: optionalText(event.target.value) })
+                                        }
+                                      />
+                                    </label>
+                                    <label className="field">
+                                      币种
+                                      <Input
+                                        value={draft.contract.currency ?? ""}
+                                        maxLength={3}
+                                        placeholder="CNY"
+                                        onChange={(event) =>
+                                          update({
+                                            currency: optionalText(
+                                              event.target.value.toUpperCase(),
+                                            ),
+                                          })
+                                        }
+                                      />
+                                    </label>
+                                    <label className="field">
+                                      结算模式
+                                      <Select
+                                        allowClear
+                                        value={draft.contract.settlement_mode}
+                                        options={SETTLEMENT_MODES}
+                                        onChange={(value) => update({ settlement_mode: value })}
+                                        placeholder="固定总价、框架或按量"
+                                      />
+                                    </label>
+                                    <label className="field">
+                                      单价是否含税
+                                      <Select
+                                        allowClear
+                                        value={draft.contract.prices_include_tax}
+                                        options={[
+                                          { value: true, label: "含税" },
+                                          { value: false, label: "不含税" },
+                                        ]}
+                                        onChange={(value) => update({ prices_include_tax: value })}
+                                        placeholder="未知时留空"
+                                      />
+                                    </label>
+                                  </div>
+
+                                  <h3>商品或服务明细</h3>
+                                  <Table<DraftItem>
+                                    size="small"
+                                    rowKey="item_id"
+                                    dataSource={draft.items ?? []}
+                                    pagination={false}
+                                    className={
+                                      draft.items?.length
+                                        ? "contracts-draft-item-table contracts-draft-item-table-populated"
+                                        : "contracts-draft-item-table"
+                                    }
+                                    tableLayout="fixed"
+                                    locale={{ emptyText: "还没有明细行" }}
+                                    columns={[
+                                      {
+                                        title: "名称",
+                                        key: "name",
+                                        render: (_, row, index) => (
+                                          <Input
+                                            value={row.name ?? ""}
+                                            maxLength={200}
+                                            aria-label={`第 ${index + 1} 行名称`}
+                                            onChange={(event) =>
+                                              patchItem(index, { name: event.target.value })
+                                            }
+                                          />
+                                        ),
+                                      },
+                                      {
+                                        title: "数量",
+                                        key: "quantity",
+                                        width: draft.items?.length ? 130 : undefined,
+                                        render: (_, row, index) => (
+                                          <Input
+                                            value={row.quantity ?? ""}
+                                            placeholder="10.000000"
+                                            aria-label={`第 ${index + 1} 行数量`}
+                                            onChange={(event) =>
+                                              patchItem(index, {
+                                                quantity: optionalText(event.target.value),
+                                              })
+                                            }
+                                          />
+                                        ),
+                                      },
+                                      {
+                                        title: "单位",
+                                        key: "unit",
+                                        width: draft.items?.length ? 96 : undefined,
+                                        render: (_, row, index) => (
+                                          <Input
+                                            value={row.unit ?? ""}
+                                            maxLength={40}
+                                            aria-label={`第 ${index + 1} 行单位`}
+                                            onChange={(event) =>
+                                              patchItem(index, {
+                                                unit: optionalText(event.target.value),
+                                              })
+                                            }
+                                          />
+                                        ),
+                                      },
+                                      {
+                                        title: "单价",
+                                        key: "unit_price",
+                                        width: draft.items?.length ? 150 : undefined,
+                                        render: (_, row, index) => (
+                                          <Input
+                                            value={row.unit_price ?? ""}
+                                            placeholder="10000.0000"
+                                            aria-label={`第 ${index + 1} 行单价`}
+                                            onChange={(event) =>
+                                              patchItem(index, {
+                                                unit_price: optionalText(event.target.value),
+                                              })
+                                            }
+                                          />
+                                        ),
+                                      },
+                                      {
+                                        title: "明细金额",
+                                        key: "line_amount",
+                                        width: draft.items?.length ? 150 : undefined,
+                                        render: (_, row, index) => (
+                                          <Input
+                                            value={row.line_amount ?? ""}
+                                            placeholder="100000.00"
+                                            aria-label={`第 ${index + 1} 行明细金额`}
+                                            onChange={(event) =>
+                                              patchItem(index, {
+                                                line_amount: optionalText(event.target.value),
+                                              })
+                                            }
+                                          />
+                                        ),
+                                      },
+                                      {
+                                        title: "",
+                                        key: "remove",
+                                        width: draft.items?.length ? 70 : undefined,
+                                        render: (_, row) => (
+                                          <Button
+                                            type="link"
+                                            size="small"
+                                            aria-label={`删除第 ${(draft.items ?? []).indexOf(row) + 1} 行`}
+                                            onClick={() => removeItem(row.item_id)}
+                                          >
+                                            删除
+                                          </Button>
+                                        ),
+                                      },
+                                    ]}
+                                  />
+                                  <Button
+                                    type="dashed"
+                                    size="small"
+                                    onClick={() =>
+                                      setDraft((current) => ({
+                                        ...current,
+                                        items: [...(current.items ?? []), emptyItem()],
+                                      }))
+                                    }
+                                  >
+                                    添加明细行
+                                  </Button>
+                                </fieldset>
+
+                                <fieldset
+                                  className="contracts-page-section"
+                                  disabled={readOnly}
+                                  hidden={formSection !== "funding"}
+                                  id="contract-draft-panel-funding"
+                                  aria-labelledby="contract-draft-step-funding"
+                                  tabIndex={-1}
+                                >
+                                  <h3>资金来源</h3>
+                                  {(draft.funding ?? []).length === 0 ? (
+                                    <p className="meta">
+                                      还没有资金来源。固定总价合同在提交时必须与合同金额一致。
+                                    </p>
+                                  ) : null}
+                                  <div className="contracts-page-rows">
+                                    {(draft.funding ?? []).map((row, index) => (
+                                      <div className="contracts-page-row" key={`funding-${index}`}>
+                                        <Input
+                                          value={row.nature ?? ""}
+                                          placeholder="资金性质"
+                                          aria-label={`第 ${index + 1} 项资金性质`}
+                                          onChange={(event) =>
+                                            patchFunding(index, {
+                                              nature: optionalText(event.target.value),
+                                            })
+                                          }
+                                        />
+                                        <Input
+                                          value={row.channel ?? ""}
+                                          placeholder="支付渠道"
+                                          aria-label={`第 ${index + 1} 项支付渠道`}
+                                          onChange={(event) =>
+                                            patchFunding(index, {
+                                              channel: optionalText(event.target.value),
+                                            })
+                                          }
+                                        />
+                                        <Input
+                                          value={row.amount ?? ""}
+                                          placeholder="金额 50000.00"
+                                          aria-label={`第 ${index + 1} 项资金金额`}
+                                          onChange={(event) =>
+                                            patchFunding(index, {
+                                              amount: optionalText(event.target.value),
+                                            })
+                                          }
+                                        />
+                                        <InputNumber
+                                          value={row.funding_year ?? null}
+                                          min={1900}
+                                          max={2999}
+                                          placeholder="年度"
+                                          aria-label={`第 ${index + 1} 项资金年度`}
+                                          onChange={(value) =>
+                                            patchFunding(index, {
+                                              funding_year: value ?? undefined,
+                                            })
+                                          }
+                                        />
+                                        <Input
+                                          value={row.cost_center ?? ""}
+                                          placeholder="成本中心"
+                                          aria-label={`第 ${index + 1} 项成本中心`}
+                                          onChange={(event) =>
+                                            patchFunding(index, {
+                                              cost_center: optionalText(event.target.value),
+                                            })
+                                          }
+                                        />
+                                        <Button
+                                          type="link"
+                                          size="small"
+                                          onClick={() => removeFunding(index)}
+                                        >
+                                          删除
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <Button
+                                    type="dashed"
+                                    size="small"
+                                    onClick={() =>
+                                      setDraft((current) => ({
+                                        ...current,
+                                        funding: [...(current.funding ?? []), emptyFunding()],
+                                      }))
+                                    }
+                                  >
+                                    添加资金来源
+                                  </Button>
+
+                                  <h3>付款期次</h3>
+                                  <div className="contracts-page-rows">
+                                    {(draft.payments ?? []).map((row, index) => (
+                                      <div className="contracts-page-row" key={`payment-${index}`}>
+                                        <InputNumber
+                                          value={row.sequence}
+                                          min={1}
+                                          max={1000}
+                                          aria-label={`第 ${index + 1} 期期次`}
+                                          onChange={(value) =>
+                                            patchPayment(index, { sequence: value ?? index + 1 })
+                                          }
+                                        />
+                                        <Select
+                                          value={row.is_advance ?? false}
+                                          aria-label={`第 ${index + 1} 期是否预付`}
+                                          options={[
+                                            { value: false, label: "非预付" },
+                                            { value: true, label: "预付款" },
+                                          ]}
+                                          onChange={(value) =>
+                                            patchPayment(index, { is_advance: value })
+                                          }
+                                        />
+                                        <Input
+                                          value={row.amount ?? ""}
+                                          placeholder="本期金额 80000.00"
+                                          aria-label={`第 ${index + 1} 期金额`}
+                                          onChange={(event) =>
+                                            patchPayment(index, {
+                                              amount: optionalText(event.target.value),
+                                            })
+                                          }
+                                        />
+                                        <Input
+                                          value={row.advance_amount ?? ""}
+                                          placeholder="预付款金额 0.00"
+                                          aria-label={`第 ${index + 1} 期预付款金额`}
+                                          onChange={(event) =>
+                                            patchPayment(index, {
+                                              advance_amount: optionalText(event.target.value),
+                                            })
+                                          }
+                                        />
+                                        <Input
+                                          value={row.unit_amount ?? ""}
+                                          placeholder="单位支付 80000.00"
+                                          aria-label={`第 ${index + 1} 期单位支付金额`}
+                                          onChange={(event) =>
+                                            patchPayment(index, {
+                                              unit_amount: optionalText(event.target.value),
+                                            })
+                                          }
+                                        />
+                                        <Input
+                                          value={row.fiscal_amount ?? ""}
+                                          placeholder="财政支付 0.00"
+                                          aria-label={`第 ${index + 1} 期财政支付金额`}
+                                          onChange={(event) =>
+                                            patchPayment(index, {
+                                              fiscal_amount: optionalText(event.target.value),
+                                            })
+                                          }
+                                        />
+                                        <Input
+                                          value={row.ratio ?? ""}
+                                          placeholder="比例 0.200000"
+                                          aria-label={`第 ${index + 1} 期比例`}
+                                          onChange={(event) =>
+                                            patchPayment(index, {
+                                              ratio: optionalText(event.target.value),
+                                            })
+                                          }
+                                        />
+                                        <Input
+                                          value={row.ratio_base ?? ""}
+                                          placeholder="比例基数说明"
+                                          aria-label={`第 ${index + 1} 期比例基数`}
+                                          onChange={(event) =>
+                                            patchPayment(index, {
+                                              ratio_base: optionalText(event.target.value),
+                                            })
+                                          }
+                                        />
+                                        <Button
+                                          type="link"
+                                          size="small"
+                                          onClick={() => removePayment(index)}
+                                        >
+                                          删除
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <Button
+                                    type="dashed"
+                                    size="small"
+                                    onClick={() =>
+                                      setDraft((current) => ({
+                                        ...current,
+                                        payments: [
+                                          ...(current.payments ?? []),
+                                          {
+                                            sequence: (current.payments?.length ?? 0) + 1,
+                                            is_advance: false,
+                                          },
+                                        ],
+                                      }))
+                                    }
+                                  >
+                                    添加付款期次
+                                  </Button>
+                                  <p className="meta">
+                                    预付款是本期的分类值，不重复计入单位支付与财政支付合计；金额恒等式在提交时由服务端校验。
+                                  </p>
+                                </fieldset>
+
+                                <fieldset
+                                  className="contracts-page-section"
+                                  disabled={readOnly}
+                                  hidden={formSection !== "materials"}
+                                  id="contract-draft-panel-materials"
+                                  aria-labelledby="contract-draft-step-materials"
+                                  tabIndex={-1}
+                                >
+                                  <p className="meta">
+                                    这里保存登记信息。导入已签存量合同时，可关联来源案件的材料版本并核对摘要。
+                                  </p>
+                                  {(draft.materials ?? []).length === 0 ? (
+                                    <p className="meta">尚未关联材料。</p>
+                                  ) : (
+                                    <ul className="contracts-page-materials">
+                                      {(draft.materials ?? []).map((ref: MaterialRef) => (
+                                        <li key={`${ref.material_id}-${ref.material_version_id}`}>
+                                          <Tag>{ref.purpose}</Tag>
+                                          <span>{ref.material_id}</span>
+                                          <span className="contracts-page-hash">{ref.sha256}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                  <ContractReferencesPanel contractID={contractID} draft={draft} />
+                                </fieldset>
+                              </div>
+                              <div className="contracts-page-savebar">
+                                <span role="status">
+                                  {dirty
+                                    ? "有未保存的修改"
+                                    : contractID === null
+                                      ? "尚未创建草稿"
+                                      : "与服务端一致"}
+                                </span>
+                                <div className="contracts-draft-footer-actions">
+                                  {nextSection ? (
+                                    <Button onClick={() => focusSection(nextSection.key)}>
+                                      下一步：{nextSection.label}
+                                    </Button>
+                                  ) : null}
+                                  <Button
+                                    type="primary"
+                                    loading={saving}
+                                    disabled={!canSave || !dirty}
+                                    onClick={() => void save()}
+                                  >
+                                    保存草稿
+                                  </Button>
                                 </div>
                               </div>
-                            ) : null}
-                            <fieldset
-                              className="contracts-page-section"
-                              disabled={readOnly}
-                              hidden={formSection !== "basic"}
-                            >
-                              <legend>一、合同基本信息</legend>
-                              <div className="contracts-page-fields">
-                                <label className="field">
-                                  合同名称
-                                  <Input
-                                    ref={draftName}
-                                    value={draft.contract.name ?? ""}
-                                    maxLength={200}
-                                    placeholder="例如：2026 年传输设备采购合同"
-                                    onChange={(event) => update({ name: event.target.value })}
-                                  />
-                                </label>
-                                <label className="field">
-                                  合同编号
-                                  <Input
-                                    value={draft.contract.number ?? ""}
-                                    maxLength={100}
-                                    placeholder="可稍后填写"
-                                    onChange={(event) =>
-                                      update({ number: optionalText(event.target.value) })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  项目号
-                                  <Input
-                                    value={draft.contract.project_number ?? ""}
-                                    maxLength={100}
-                                    onChange={(event) =>
-                                      update({ project_number: optionalText(event.target.value) })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  合同分类
-                                  <Input
-                                    value={draft.contract.classification ?? ""}
-                                    maxLength={100}
-                                    onChange={(event) =>
-                                      update({ classification: optionalText(event.target.value) })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  合同类别
-                                  <Input
-                                    value={draft.contract.category ?? ""}
-                                    maxLength={100}
-                                    onChange={(event) =>
-                                      update({ category: optionalText(event.target.value) })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  合同等级
-                                  <Input
-                                    value={draft.contract.grade ?? ""}
-                                    maxLength={100}
-                                    onChange={(event) =>
-                                      update({ grade: optionalText(event.target.value) })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  合同拟定方
-                                  <Select
-                                    allowClear
-                                    value={draft.contract.drafting_party}
-                                    options={DRAFTING_PARTIES}
-                                    onChange={(value) => update({ drafting_party: value })}
-                                    placeholder="选择拟定方"
-                                  />
-                                </label>
-                                <label className="field">
-                                  申请部门
-                                  <Input
-                                    value={draft.contract.department_id ?? ""}
-                                    maxLength={100}
-                                    onChange={(event) =>
-                                      update({ department_id: optionalText(event.target.value) })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  部门经办人
-                                  <Input
-                                    value={draft.contract.handler_user_id ?? ""}
-                                    maxLength={100}
-                                    onChange={(event) =>
-                                      update({ handler_user_id: optionalText(event.target.value) })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  经办人联系方式
-                                  <Input
-                                    value={draft.contract.handler_contact ?? ""}
-                                    maxLength={100}
-                                    onChange={(event) =>
-                                      update({ handler_contact: optionalText(event.target.value) })
-                                    }
-                                  />
-                                </label>
-                                <label className="field field-wide">
-                                  备注
-                                  <Input.TextArea
-                                    value={draft.contract.remark ?? ""}
-                                    maxLength={4000}
-                                    autoSize={{ minRows: 2, maxRows: 5 }}
-                                    onChange={(event) =>
-                                      update({ remark: optionalText(event.target.value) })
-                                    }
-                                  />
-                                </label>
-                              </div>
-                            </fieldset>
+                            </div>
 
-                            <fieldset
-                              className="contracts-page-section"
-                              disabled={readOnly}
-                              hidden={formSection !== "parties"}
-                            >
-                              <legend>二、相关方与标的</legend>
-                              <div className="contracts-page-fields">
-                                <label className="field">
-                                  供应商全称
-                                  <Input
-                                    value={draft.supplier?.name ?? ""}
-                                    maxLength={200}
-                                    onChange={(event) =>
-                                      updateSupplier({ name: event.target.value })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  社会信用代码
-                                  <Input
-                                    value={draft.supplier?.credit_code ?? ""}
-                                    maxLength={100}
-                                    onChange={(event) =>
-                                      updateSupplier({ credit_code: event.target.value })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  供应方联系人
-                                  <Input
-                                    value={draft.supplier?.contact_name ?? ""}
-                                    maxLength={100}
-                                    onChange={(event) =>
-                                      updateSupplier({ contact_name: event.target.value })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  供应方联系电话
-                                  <Input
-                                    value={draft.supplier?.contact_phone ?? ""}
-                                    maxLength={100}
-                                    onChange={(event) =>
-                                      updateSupplier({ contact_phone: event.target.value })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  收款方
-                                  <Input
-                                    value={draft.supplier?.payee_name ?? ""}
-                                    maxLength={200}
-                                    readOnly={isMaskedRestricted(draft.supplier?.payee_name)}
-                                    onChange={(event) =>
-                                      updateSupplier({ payee_name: event.target.value })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  开户行
-                                  <Input
-                                    value={draft.supplier?.bank_name ?? ""}
-                                    maxLength={200}
-                                    readOnly={isMaskedRestricted(draft.supplier?.bank_name)}
-                                    onChange={(event) =>
-                                      updateSupplier({ bank_name: event.target.value })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  账号
-                                  <Input
-                                    value={draft.supplier?.bank_account ?? ""}
-                                    maxLength={64}
-                                    readOnly={isMaskedRestricted(draft.supplier?.bank_account)}
-                                    onChange={(event) =>
-                                      updateSupplier({ bank_account: event.target.value })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  纳税人识别号
-                                  <Input
-                                    value={draft.supplier?.tax_identifier ?? ""}
-                                    maxLength={100}
-                                    readOnly={isMaskedRestricted(draft.supplier?.tax_identifier)}
-                                    onChange={(event) =>
-                                      updateSupplier({ tax_identifier: event.target.value })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  合同金额
-                                  <Input
-                                    value={draft.contract.amount ?? ""}
-                                    placeholder="例如 100000.00"
-                                    onChange={(event) =>
-                                      update({ amount: optionalText(event.target.value) })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  币种
-                                  <Input
-                                    value={draft.contract.currency ?? ""}
-                                    maxLength={3}
-                                    placeholder="CNY"
-                                    onChange={(event) =>
-                                      update({
-                                        currency: optionalText(event.target.value.toUpperCase()),
-                                      })
-                                    }
-                                  />
-                                </label>
-                                <label className="field">
-                                  结算模式
-                                  <Select
-                                    allowClear
-                                    value={draft.contract.settlement_mode}
-                                    options={SETTLEMENT_MODES}
-                                    onChange={(value) => update({ settlement_mode: value })}
-                                    placeholder="固定总价、框架或按量"
-                                  />
-                                </label>
-                                <label className="field">
-                                  单价是否含税
-                                  <Select
-                                    allowClear
-                                    value={draft.contract.prices_include_tax}
-                                    options={[
-                                      { value: true, label: "含税" },
-                                      { value: false, label: "不含税" },
-                                    ]}
-                                    onChange={(value) => update({ prices_include_tax: value })}
-                                    placeholder="未知时留空"
-                                  />
-                                </label>
-                              </div>
-
-                              <h3>商品或服务明细</h3>
-                              <Table<DraftItem>
-                                size="small"
-                                rowKey="item_id"
-                                dataSource={draft.items ?? []}
-                                pagination={false}
-                                scroll={{ x: 800 }}
-                                locale={{ emptyText: "还没有明细行" }}
-                                columns={[
-                                  {
-                                    title: "名称",
-                                    key: "name",
-                                    render: (_, row, index) => (
-                                      <Input
-                                        value={row.name ?? ""}
-                                        maxLength={200}
-                                        aria-label={`第 ${index + 1} 行名称`}
-                                        onChange={(event) =>
-                                          patchItem(index, { name: event.target.value })
-                                        }
-                                      />
-                                    ),
-                                  },
-                                  {
-                                    title: "数量",
-                                    key: "quantity",
-                                    width: 130,
-                                    render: (_, row, index) => (
-                                      <Input
-                                        value={row.quantity ?? ""}
-                                        placeholder="10.000000"
-                                        aria-label={`第 ${index + 1} 行数量`}
-                                        onChange={(event) =>
-                                          patchItem(index, {
-                                            quantity: optionalText(event.target.value),
-                                          })
-                                        }
-                                      />
-                                    ),
-                                  },
-                                  {
-                                    title: "单位",
-                                    key: "unit",
-                                    width: 96,
-                                    render: (_, row, index) => (
-                                      <Input
-                                        value={row.unit ?? ""}
-                                        maxLength={40}
-                                        aria-label={`第 ${index + 1} 行单位`}
-                                        onChange={(event) =>
-                                          patchItem(index, {
-                                            unit: optionalText(event.target.value),
-                                          })
-                                        }
-                                      />
-                                    ),
-                                  },
-                                  {
-                                    title: "单价",
-                                    key: "unit_price",
-                                    width: 150,
-                                    render: (_, row, index) => (
-                                      <Input
-                                        value={row.unit_price ?? ""}
-                                        placeholder="10000.0000"
-                                        aria-label={`第 ${index + 1} 行单价`}
-                                        onChange={(event) =>
-                                          patchItem(index, {
-                                            unit_price: optionalText(event.target.value),
-                                          })
-                                        }
-                                      />
-                                    ),
-                                  },
-                                  {
-                                    title: "明细金额",
-                                    key: "line_amount",
-                                    width: 150,
-                                    render: (_, row, index) => (
-                                      <Input
-                                        value={row.line_amount ?? ""}
-                                        placeholder="100000.00"
-                                        aria-label={`第 ${index + 1} 行明细金额`}
-                                        onChange={(event) =>
-                                          patchItem(index, {
-                                            line_amount: optionalText(event.target.value),
-                                          })
-                                        }
-                                      />
-                                    ),
-                                  },
-                                  {
-                                    title: "",
-                                    key: "remove",
-                                    width: 70,
-                                    render: (_, row) => (
-                                      <Button
-                                        type="link"
-                                        size="small"
-                                        aria-label={`删除第 ${(draft.items ?? []).indexOf(row) + 1} 行`}
-                                        onClick={() => removeItem(row.item_id)}
-                                      >
-                                        删除
-                                      </Button>
-                                    ),
-                                  },
-                                ]}
-                              />
-                              <Button
-                                type="dashed"
-                                size="small"
-                                onClick={() =>
-                                  setDraft((current) => ({
-                                    ...current,
-                                    items: [...(current.items ?? []), emptyItem()],
-                                  }))
-                                }
-                              >
-                                添加明细行
-                              </Button>
-                            </fieldset>
-
-                            <fieldset
-                              className="contracts-page-section"
-                              disabled={readOnly}
-                              hidden={formSection !== "funding"}
-                            >
-                              <legend>三、资金与付款计划</legend>
-                              <h3>资金来源</h3>
-                              {(draft.funding ?? []).length === 0 ? (
-                                <p className="meta">
-                                  还没有资金来源。固定总价合同在提交时必须与合同金额一致。
-                                </p>
-                              ) : null}
-                              <div className="contracts-page-rows">
-                                {(draft.funding ?? []).map((row, index) => (
-                                  <div className="contracts-page-row" key={`funding-${index}`}>
-                                    <Input
-                                      value={row.nature ?? ""}
-                                      placeholder="资金性质"
-                                      aria-label={`第 ${index + 1} 项资金性质`}
-                                      onChange={(event) =>
-                                        patchFunding(index, {
-                                          nature: optionalText(event.target.value),
-                                        })
-                                      }
-                                    />
-                                    <Input
-                                      value={row.channel ?? ""}
-                                      placeholder="支付渠道"
-                                      aria-label={`第 ${index + 1} 项支付渠道`}
-                                      onChange={(event) =>
-                                        patchFunding(index, {
-                                          channel: optionalText(event.target.value),
-                                        })
-                                      }
-                                    />
-                                    <Input
-                                      value={row.amount ?? ""}
-                                      placeholder="金额 50000.00"
-                                      aria-label={`第 ${index + 1} 项资金金额`}
-                                      onChange={(event) =>
-                                        patchFunding(index, {
-                                          amount: optionalText(event.target.value),
-                                        })
-                                      }
-                                    />
-                                    <InputNumber
-                                      value={row.funding_year ?? null}
-                                      min={1900}
-                                      max={2999}
-                                      placeholder="年度"
-                                      aria-label={`第 ${index + 1} 项资金年度`}
-                                      onChange={(value) =>
-                                        patchFunding(index, { funding_year: value ?? undefined })
-                                      }
-                                    />
-                                    <Input
-                                      value={row.cost_center ?? ""}
-                                      placeholder="成本中心"
-                                      aria-label={`第 ${index + 1} 项成本中心`}
-                                      onChange={(event) =>
-                                        patchFunding(index, {
-                                          cost_center: optionalText(event.target.value),
-                                        })
-                                      }
-                                    />
-                                    <Button
-                                      type="link"
-                                      size="small"
-                                      onClick={() => removeFunding(index)}
-                                    >
-                                      删除
-                                    </Button>
-                                  </div>
-                                ))}
-                              </div>
-                              <Button
-                                type="dashed"
-                                size="small"
-                                onClick={() =>
-                                  setDraft((current) => ({
-                                    ...current,
-                                    funding: [...(current.funding ?? []), emptyFunding()],
-                                  }))
-                                }
-                              >
-                                添加资金来源
-                              </Button>
-
-                              <h3>付款期次</h3>
-                              <div className="contracts-page-rows">
-                                {(draft.payments ?? []).map((row, index) => (
-                                  <div className="contracts-page-row" key={`payment-${index}`}>
-                                    <InputNumber
-                                      value={row.sequence}
-                                      min={1}
-                                      max={1000}
-                                      aria-label={`第 ${index + 1} 期期次`}
-                                      onChange={(value) =>
-                                        patchPayment(index, { sequence: value ?? index + 1 })
-                                      }
-                                    />
-                                    <Select
-                                      value={row.is_advance ?? false}
-                                      aria-label={`第 ${index + 1} 期是否预付`}
-                                      options={[
-                                        { value: false, label: "非预付" },
-                                        { value: true, label: "预付款" },
-                                      ]}
-                                      onChange={(value) =>
-                                        patchPayment(index, { is_advance: value })
-                                      }
-                                    />
-                                    <Input
-                                      value={row.amount ?? ""}
-                                      placeholder="本期金额 80000.00"
-                                      aria-label={`第 ${index + 1} 期金额`}
-                                      onChange={(event) =>
-                                        patchPayment(index, {
-                                          amount: optionalText(event.target.value),
-                                        })
-                                      }
-                                    />
-                                    <Input
-                                      value={row.advance_amount ?? ""}
-                                      placeholder="预付款金额 0.00"
-                                      aria-label={`第 ${index + 1} 期预付款金额`}
-                                      onChange={(event) =>
-                                        patchPayment(index, {
-                                          advance_amount: optionalText(event.target.value),
-                                        })
-                                      }
-                                    />
-                                    <Input
-                                      value={row.unit_amount ?? ""}
-                                      placeholder="单位支付 80000.00"
-                                      aria-label={`第 ${index + 1} 期单位支付金额`}
-                                      onChange={(event) =>
-                                        patchPayment(index, {
-                                          unit_amount: optionalText(event.target.value),
-                                        })
-                                      }
-                                    />
-                                    <Input
-                                      value={row.fiscal_amount ?? ""}
-                                      placeholder="财政支付 0.00"
-                                      aria-label={`第 ${index + 1} 期财政支付金额`}
-                                      onChange={(event) =>
-                                        patchPayment(index, {
-                                          fiscal_amount: optionalText(event.target.value),
-                                        })
-                                      }
-                                    />
-                                    <Input
-                                      value={row.ratio ?? ""}
-                                      placeholder="比例 0.200000"
-                                      aria-label={`第 ${index + 1} 期比例`}
-                                      onChange={(event) =>
-                                        patchPayment(index, {
-                                          ratio: optionalText(event.target.value),
-                                        })
-                                      }
-                                    />
-                                    <Input
-                                      value={row.ratio_base ?? ""}
-                                      placeholder="比例基数说明"
-                                      aria-label={`第 ${index + 1} 期比例基数`}
-                                      onChange={(event) =>
-                                        patchPayment(index, {
-                                          ratio_base: optionalText(event.target.value),
-                                        })
-                                      }
-                                    />
-                                    <Button
-                                      type="link"
-                                      size="small"
-                                      onClick={() => removePayment(index)}
-                                    >
-                                      删除
-                                    </Button>
-                                  </div>
-                                ))}
-                              </div>
-                              <Button
-                                type="dashed"
-                                size="small"
-                                onClick={() =>
-                                  setDraft((current) => ({
-                                    ...current,
-                                    payments: [
-                                      ...(current.payments ?? []),
-                                      {
-                                        sequence: (current.payments?.length ?? 0) + 1,
-                                        is_advance: false,
-                                      },
-                                    ],
-                                  }))
-                                }
-                              >
-                                添加付款期次
-                              </Button>
-                              <p className="meta">
-                                预付款是本期的分类值，不重复计入单位支付与财政支付合计；金额恒等式在提交时由服务端校验。
-                              </p>
-                            </fieldset>
-
-                            <fieldset
-                              className="contracts-page-section"
-                              disabled={readOnly}
-                              hidden={formSection !== "materials"}
-                            >
-                              <legend>四、材料与核对</legend>
-                              <p className="meta">
-                                这里保存登记信息。导入已签存量合同时，可关联来源案件的材料版本并核对摘要。
-                              </p>
-                              {(draft.materials ?? []).length === 0 ? (
-                                <p className="meta">尚未关联材料。</p>
-                              ) : (
-                                <ul className="contracts-page-materials">
-                                  {(draft.materials ?? []).map((ref: MaterialRef) => (
-                                    <li key={`${ref.material_id}-${ref.material_version_id}`}>
-                                      <Tag>{ref.purpose}</Tag>
-                                      <span>{ref.material_id}</span>
-                                      <span className="contracts-page-hash">{ref.sha256}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                              <ContractReferencesPanel contractID={contractID} draft={draft} />
-                            </fieldset>
-
+                            {readOnly ? null : lifecycleOverview}
                             {contractID !== null && contractDetail !== null ? (
                               <ContractSigningPanel
                                 key={contractID}
@@ -2063,24 +2202,6 @@ export function ContractsPage() {
                                 }
                               />
                             ) : null}
-
-                            <div className="contracts-page-savebar">
-                              <span role="status">
-                                {dirty
-                                  ? "有未保存的修改"
-                                  : contractID === null
-                                    ? "尚未创建草稿"
-                                    : "与服务端一致"}
-                              </span>
-                              <Button
-                                type="primary"
-                                loading={saving}
-                                disabled={!canSave || !dirty}
-                                onClick={() => void save()}
-                              >
-                                保存草稿
-                              </Button>
-                            </div>
                           </>
                         )}
                       </>
@@ -2094,6 +2215,87 @@ export function ContractsPage() {
         className="contracts-workspace-tabs"
       />
 
+      <Modal
+        title="导出合同台账"
+        width={440}
+        centered
+        open={exportScope !== null && exportScope === currentActorScope}
+        onCancel={() => setExportScope(null)}
+        footer={[
+          <Button key="cancel" onClick={() => setExportScope(null)}>
+            取消
+          </Button>,
+          <Button
+            key="download"
+            type="primary"
+            loading={exporting}
+            aria-label="下载 CSV"
+            disabled={exporting || (exportMode === "visible" && !ledgerColumns.length)}
+            onClick={() => void exportLedger()}
+          >
+            下载 CSV
+          </Button>,
+        ]}
+      >
+        <div className="contracts-export-scope">
+          <span>
+            导出范围：<strong>当前筛选条件</strong>
+          </span>
+          <span>
+            {ledger.isPending || ledger.isError
+              ? "条数暂未确认"
+              : ledger.hasNextPage
+                ? `已列出 ${ledgerItems.length} 份`
+                : `共 ${ledgerItems.length} 份合同`}
+          </span>
+        </div>
+        <Radio.Group
+          aria-label="导出字段"
+          value={exportMode}
+          onChange={(event) => setExportMode(event.target.value === "all" ? "all" : "visible")}
+          className="contracts-export-options"
+        >
+          <Radio
+            value="visible"
+            disabled={!ledgerColumns.length}
+            aria-label={`当前表格显示字段（${contractLedgerExportColumns(ledgerColumns).length} 列）`}
+            aria-describedby="contract-export-visible-description"
+          >
+            当前表格显示字段（{contractLedgerExportColumns(ledgerColumns).length} 列）
+            <span id="contract-export-visible-description" className="contracts-export-description">
+              {CONTRACT_LEDGER_COLUMNS.filter(({ key }) => ledgerColumns.includes(key))
+                .map(({ label }) => label)
+                .join("、") || "请先选择要显示的字段"}
+            </span>
+          </Radio>
+          <Radio
+            value="all"
+            aria-label={`全部台账标准字段（${ALL_LEDGER_EXPORT_COLUMNS.length} 列）`}
+            aria-describedby="contract-export-all-description"
+          >
+            全部台账标准字段（{ALL_LEDGER_EXPORT_COLUMNS.length} 列）
+            <span id="contract-export-all-description" className="contracts-export-description">
+              含申请部门、采购方式、签订日期与来源信息，类型及状态附原始编码
+            </span>
+          </Radio>
+        </Radio.Group>
+        {exportError ? <Alert type="error" showIcon title={exportError} /> : null}
+        {exportReceipt?.scope === currentActorScope ? (
+          <Alert
+            type="success"
+            showIcon
+            title={
+              <span className="contracts-export-receipt">
+                <span className="contracts-export-file" title={exportReceipt.fileName}>
+                  {exportReceipt.fileName}
+                </span>
+                <span>已导出 {exportReceipt.rows} 行</span>
+                <time dateTime={exportReceipt.at}>{compactTime(exportReceipt.at)}</time>
+              </span>
+            }
+          />
+        ) : null}
+      </Modal>
       <LegacyImportDialog
         open={importOpen}
         onClose={() => setImportOpen(false)}
