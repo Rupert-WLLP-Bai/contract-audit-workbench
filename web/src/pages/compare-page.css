@@ -710,6 +710,7 @@
   border-bottom: 1px solid var(--ant-color-border-secondary);
 }
 .compare-view-tabs button {
+  font-size: var(--font-size-ui);
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;

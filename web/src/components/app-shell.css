@@ -127,6 +127,12 @@
   font-weight: var(--font-weight-semibold);
 }
 
+@media (min-width: 992px) {
+  .shell-navigation:not(.shell-nav--collapsed) .client-intake-action {
+    min-height: var(--control-height);
+  }
+}
+
 .client-intake-icon {
   color: var(--action-primary);
 }

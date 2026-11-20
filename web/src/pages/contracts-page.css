@@ -80,6 +80,7 @@
 }
 
 .contracts-page-list button {
+  font-size: var(--font-size-ui);
   display: flex;
   flex-direction: column;
   gap: 2px;
