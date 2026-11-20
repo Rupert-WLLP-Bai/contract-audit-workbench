@@ -268,6 +268,9 @@
 }
 .review-finding-count {
   flex: 0 0 auto;
+}
+.review-progress-status {
+  flex: 0 0 auto;
   margin-inline-start: auto;
 }
 .review-partial-pill.ant-btn {

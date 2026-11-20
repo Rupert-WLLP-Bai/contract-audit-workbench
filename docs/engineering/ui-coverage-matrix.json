@@ -361,11 +361,12 @@
         "web/src/components/page-patterns.tsx",
         "web/src/components/page-patterns.css"
       ],
-      "implementationIssue": 374,
+      "implementationIssue": 383,
       "testRefs": [
         "web/src/components/review-readiness-panel.test.tsx",
         "web/src/components/single-contract-scope-coverage.test.tsx",
         "web/src/app.integration.test.tsx",
+        "web/src/components/review-outcome.test.tsx",
         "web/e2e/ui-matrix.ts"
       ],
       "figmaNodeId": "6:112",
@@ -374,10 +375,12 @@
         "audit/case-detail-ui2-1280.png",
         "audit/case-detail-ui2-1024.png",
         "audit/case-detail-ui2-390.png",
-        "../ui-redesign-20261120-v3/impl/desktop/374/08-case-readiness.png"
+        "../ui-redesign-20261120-v3/impl/desktop/374/08-case-readiness.png",
+        "../ux-agent-20261121/ux/383/henan-case.png",
+        "../ux-agent-20261121/ux/383/network-case.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL：#374 定点覆盖默认折叠、重复深链展开、缺项修复、规则核对、预审转完整审查及提交校验。全角色与全视口矩阵 NOT_RUN。",
+      "statusDetail": "PARTIAL：#383 核对同次审查的业务状态、范围与历史深链。#374 定点覆盖默认折叠、重复深链展开、缺项修复、规则核对、预审转完整审查及提交校验。全角色与全视口矩阵 NOT_RUN。",
       "template": "ObjectDetailPage"
     },
     {
@@ -533,7 +536,8 @@
         "web/src/components/finding-panel.tsx",
         "web/src/components/finding-panel.css"
       ],
-      "implementationIssue": 339,
+      "implementationIssue": 383,
+      "testRefs": ["web/src/app.integration.test.tsx", "web/src/components/review-outcome.test.tsx"],
       "figmaNodeId": "6:206",
       "screenshotRefs": [
         "review-workspace.png",
@@ -549,10 +553,12 @@
         "../ui-redesign-20261120-v2/impl/360/henan-drawer.png",
         "../ui-redesign-20261120-v2/impl/360/henan-390-workspace.png",
         "../ui-redesign-20261120-v2/impl/360/henan-390-actions.png",
-        "../ui-redesign-20261120-v2/impl/360/net-workspace.png"
+        "../ui-redesign-20261120-v2/impl/360/net-workspace.png",
+        "../ux-agent-20261121/ux/383/henan-review-record.png",
+        "../ux-agent-20261121/ux/383/network-review-record.png"
       ],
       "status": "PARTIAL",
-      "statusDetail": "PARTIAL：旧截图为确定性夹具；本批为河南和网联公开原件，均零线索。非零线索由工程测试覆盖，完整视口和角色矩阵 NOT_RUN。",
+      "statusDetail": "PARTIAL：#383 核对同次审查的业务状态、范围与历史深链。旧截图为确定性夹具；本批为河南和网联公开原件，均零线索。非零线索由工程测试覆盖，完整视口和角色矩阵 NOT_RUN。",
       "template": "双文档原文、线索判断与审查记录抽屉"
     },
     {

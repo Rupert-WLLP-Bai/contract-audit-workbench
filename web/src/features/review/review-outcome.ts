@@ -10,6 +10,7 @@
 
 import type { ReviewWorkspace } from "../../api/types";
 import { businessCapabilityLabel } from "../../domain/business-labels";
+import { runLabel, runTone } from "../../domain/review";
 import { isLegacyPaymentCoverageFinding, singleContractCoverage } from "./single-contract-coverage";
 
 /** The selected attempt and the workspace must describe the same execution. */
@@ -228,5 +229,98 @@ export function partialReportScope(workspace: ReviewWorkspace) {
     emptyMessage: precheck
       ? "本次单合同预审未产生风险线索。其他检查不在预审范围内。"
       : `${ruleEvaluationSaved ? "规则检查未发现线索" : "当前没有已保存的规则线索"}；${executionLabel}，不能据此认定没有风险。`,
+  };
+}
+
+/** Business status for the same attempt already authorized by the workspace read. */
+export function businessReviewProgress(workspace: ReviewWorkspace) {
+  const attempt = workspace.review_attempts?.attempt;
+  if (!attempt?.id || attempt.run_id !== workspace.run.id) {
+    return {
+      tone: "attention" as const,
+      label: "审查状态待核对",
+      detail: "这条记录缺少可核对的审查尝试，无法确认本次进度。",
+      attemptId: null,
+    };
+  }
+  if (!["frozen", "preparing"].includes(attempt.history_kind)) {
+    return {
+      tone: "attention" as const,
+      label: "审查状态待核对",
+      detail: "这次历史审查缺少可核对的记录，无法确认执行范围。",
+      attemptId: attempt.id,
+    };
+  }
+  const outcome = selectedOutcome(workspace);
+  const stage = agentStage(workspace);
+  const projection =
+    workspace.agent_review?.attempt_id === attempt.id ? workspace.agent_review : null;
+  const partial = partialReportScope(workspace);
+  const modelError = [
+    "model_request_failed",
+    "model_not_configured",
+    "model_evidence_rejected",
+    "model_output_unusable",
+  ].includes(attempt.error_code ?? "");
+  // The public attempt projection derives this message from that attempt's error code.
+  const modelFailed =
+    modelError ||
+    (outcome?.reason === "execution_failed" &&
+      [
+        "调用审查模型失败，",
+        "审查模型未配置，",
+        "模型输出无法解析成质保结论，",
+        "模型输出不能对应到材料原文，",
+      ].some((prefix) => workspace.run.partial_reason?.startsWith(prefix)));
+  let label = runLabel(attempt.state);
+  let detail = "按所选审查记录显示。";
+  if (["accepted", "queued", "started", "running"].includes(attempt.state)) {
+    label = attempt.history_kind === "preparing" ? "准备审查中" : "审查中";
+    detail =
+      attempt.history_kind === "preparing"
+        ? "正在准备本次审查所需的材料与依据。"
+        : "本次审查仍在进行，已保存的原文和结果可继续查阅。";
+  } else if (
+    partial?.precheck &&
+    outcome?.reason === "scope_limited" &&
+    !modelFailed &&
+    stage !== "failed"
+  ) {
+    label = "单合同预审已结束";
+    detail = "本次仅执行单合同预审。跨材料对照、制度核对及范围外风险项未执行。";
+  } else if ((attempt.state === "partial" || attempt.state === "failed") && modelFailed) {
+    label = "模型审查未完成";
+    detail =
+      (attempt.state === workspace.run.state && workspace.run.partial_reason?.trim()) ||
+      "本次未完成模型审查。";
+  } else if (
+    ["partial", "failed"].includes(attempt.state) &&
+    (projection?.plan?.status === "not_planned" || projection?.plan?.status === "guard_rejected")
+  ) {
+    label = "智能审查计划未就绪";
+    detail =
+      projection?.plan?.status === "guard_rejected"
+        ? "本次审查计划未通过检查。"
+        : "本次未生成可执行的审查计划。";
+  } else if (attempt.state === "partial") {
+    label = partial?.precheck ? "单合同预审未完成" : "智能审查未完";
+    detail =
+      (partial?.precheck
+        ? stage === "failed"
+          ? "本次单合同预审的智能审查执行失败。跨材料对照、制度核对及范围外风险项未执行。"
+          : "本次单合同预审未完成。跨材料对照、制度核对及范围外风险项未执行。"
+        : partial?.reason) ??
+      (stage === "failed"
+        ? "智能审查未完成，具体失败阶段未记录。"
+        : "尚无法确认本次未完成的具体阶段。");
+  } else if (attempt.state === "completed") {
+    label = "本次审查已完成";
+    detail = "本次所选范围已完成。请查看已保存结果及待判断事项。";
+  }
+  return {
+    tone: attempt.state === "partial" ? ("attention" as const) : runTone(attempt.state),
+    label,
+    detail,
+    attemptId: attempt.id,
   };
 }
