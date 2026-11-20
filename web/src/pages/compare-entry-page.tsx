@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Lets a user choose distinct saved reviews of one authorized case and provides shortcuts for verified recent pairs.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-11-20
+// Revision: r7
+// Copyright: See LICENSE
+// End file metadata.
+
 // Version selection uses only authorized review history; it never creates a review.
 import { Button, Select } from "antd";
 import { useQueries } from "@tanstack/react-query";

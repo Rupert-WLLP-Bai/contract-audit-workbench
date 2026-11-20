@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders the cases workbench table with stable identity links, responsive summary details and locally scrollable columns; server-derived state does not establish business authorization or evidence validity.
+// Purpose: Renders the responsive five-column case table with scoped row actions, concise case attributes and server-derived stage information.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r6
+// Updated: 2026-11-20
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 

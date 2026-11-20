@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks case-table behavior, including stable case links, sort actions, explicit run states, mobile summary facts and the horizontal scroll hint for narrow layouts.
+// Purpose: Checks case rows, stage actions, scope-safe links, sorting and responsive summaries across case states.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r5
+// Updated: 2026-11-20
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 

@@ -1,3 +1,13 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Lays out the case and revision selectors and the shortcuts to pairs of verified review records. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-10-28 */
+/* Updated: 2026-11-20 */
+/* Revision: r4 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
 .compare-entry-page {
   padding: var(--space-6);
 }

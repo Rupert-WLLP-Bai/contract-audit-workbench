@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Projects assigned tasks, exact-attempt evidence requests and actionable approvals into distinct personal inbox rows.
+// Purpose: Projects personal tasks and evidence requests, actionable approvals, visible cases pending judgment and submitted remediation into distinct inbox rows.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-20
 // Updated: 2026-11-20
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 

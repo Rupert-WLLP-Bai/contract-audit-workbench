@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Presents the signed-in person's assigned work, separately labeled visible case activity, contract intake and authorized recent visits.
+// Purpose: Presents personal assignments, visible team work, approvals and remediation in separate inbox views, alongside available continuations and identity-scoped recent cases.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r11
+// Revision: r12
 // Copyright: See LICENSE
 // End file metadata.
 

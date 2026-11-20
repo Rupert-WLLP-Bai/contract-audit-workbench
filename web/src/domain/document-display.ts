@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Projects parsing and Markdown presentation markers for display while keeping the exact stored text and source character offsets intact.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-20
+// Updated: 2026-11-20
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { createTextIndex } from "./text";
 
 type DisplaySpan = { start: number; end: number; kind: "hidden" | "image" | "heading" };
