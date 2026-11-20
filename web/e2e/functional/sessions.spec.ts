@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks client and admin sessions, the contract landing and deep-link return, responsive keyboard navigation, authorized case access and session cleanup.
+// Purpose: Checks client and admin sessions, personal workbench landing and deep-link return, responsive keyboard navigation, authorized case access and logout.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 

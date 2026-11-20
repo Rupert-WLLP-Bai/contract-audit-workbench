@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Presents the report center's server-derived case, risk and review summaries and recent business records.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-20
+// Updated: 2026-11-20
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Link } from "react-router";
 import type { WorkbenchPeriod, WorkbenchSnapshot } from "../api/types";
 import { businessActionLabel } from "../domain/business-labels";

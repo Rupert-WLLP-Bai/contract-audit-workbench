@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders RunProvenance, the run provenance workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.
+// Purpose: Shows frozen review provenance and prior decisions, with internal configuration values reserved for professional presentation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 

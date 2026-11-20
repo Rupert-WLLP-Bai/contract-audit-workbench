@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Builds browser preference and recent-case storage keys from the stable effective account, tenant, organization, role and membership.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-20
+// Updated: 2026-11-20
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { Actor } from "../api/types";
 
 /** Browser history and display preferences follow the stable effective identity. */

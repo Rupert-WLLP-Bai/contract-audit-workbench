@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders the contract-first client shell and authorized route groups, using a compact drawer and breadcrumb return path on the focused review reading route.
+// Purpose: Renders the personal workbench shell, identity menu, professional navigation preference and scoped case list return links.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r6
+// Updated: 2026-11-20
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 

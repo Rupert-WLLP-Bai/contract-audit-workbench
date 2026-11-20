@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Verifies full technical values remain available for manual copy and clipboard success, denial, missing API, value switches and unmount do not report another request result.
+// Purpose: Verifies business views omit raw identifiers and that enabled technical views preserve complete values and safe clipboard feedback.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 

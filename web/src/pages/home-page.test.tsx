@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks the workbench title and contract entry, assigned tasks and permissions, evidence intake and server-reported metrics.
+// Purpose: Verifies inbox assignments and visible case work stay distinct, approval and intake actions work, and recent visits follow the authorized identity.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r12
+// Revision: r13
 // Copyright: See LICENSE
 // End file metadata.
 

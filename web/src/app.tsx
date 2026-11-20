@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Defines the client and admin route entry points, lazy-loads the contract desk, and keeps the case, registration and overview routes behind their session boundaries.
+// Purpose: Defines the client home, compatibility redirects and authorized routes, and hands the independent administration tree to AdminApp.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r5
+// Updated: 2026-11-20
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 

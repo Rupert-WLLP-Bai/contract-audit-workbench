@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Presents the authorized case with next actions before case facts and preserves deep links, original material order and decision history.
+// Purpose: Presents authorized case actions and facts in navigable tabs while preserving deep links, unsaved work and scoped reading returns.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r14
+// Revision: r15
 // Copyright: See LICENSE
 // End file metadata.
 

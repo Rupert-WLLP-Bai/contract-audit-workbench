@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Checks contract-first navigation, role-specific routes, accessible branding, contract search isolation and the focused reader drawer with keyboard focus restoration.
+// Purpose: Verifies personal home links, navigation, case return scoping, avatar actions and professional preference isolation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-19
-// Revision: r7
+// Updated: 2026-11-20
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 

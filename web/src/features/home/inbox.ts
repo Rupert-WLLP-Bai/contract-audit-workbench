@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Projects assigned tasks, exact-attempt evidence requests and actionable approvals into distinct personal inbox rows.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-20
+// Updated: 2026-11-20
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { ApprovalInboxItem } from "../../api/approvals";
 import type { EvidenceRequest } from "../../api/evidence-workflow";
 import type { WorkbenchSnapshot } from "../../api/types";

@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Orchestrates a scoped review attempt, the document-and-judgment workspace, authorized report actions, and drawers for history, evidence and execution with legacy-link continuity.
+// Purpose: Coordinates review of the selected execution, including judgment and report actions, readable history and conditional access to technical presentation.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r17
+// Revision: r18
 // Copyright: See LICENSE
 // End file metadata.
 

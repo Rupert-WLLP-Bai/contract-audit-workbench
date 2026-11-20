@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Stores only case identifiers and visit times for recent case navigation, scoped to the effective browser identity.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-20
+// Updated: 2026-11-20
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { Actor } from "../../api/types";
 import { browserIdentityKey } from "../../domain/browser-identity";
 

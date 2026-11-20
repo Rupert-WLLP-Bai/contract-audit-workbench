@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Defines the admin route tree and lazy-loads settings, health, rule-pack and governed-knowledge pages behind the admin session gate.
+// Purpose: Defines the independent administration routes behind the admin session gate and preserves their technical details apart from client preferences.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
