@@ -1,0 +1,48 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles the contract reminder summary and the reminder drawer with its delivery and plan information. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-20 */
+/* Updated: 2026-11-20 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+.contract-reminder-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+  margin-block-end: var(--space-3);
+  padding-inline: var(--space-3);
+}
+
+section.contract-reminder-notice {
+  padding-block: var(--space-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--action-primary-soft);
+}
+
+.contract-reminder-notice button {
+  flex-shrink: 0;
+}
+
+.contract-reminder-table {
+  overflow-wrap: anywhere;
+}
+
+.contract-reminder-open-contract {
+  width: 100%;
+  height: auto;
+  padding: 0;
+  text-align: start;
+  justify-content: flex-start;
+  white-space: normal;
+}
+
+.contract-reminder-caption {
+  display: block;
+  color: var(--text-secondary);
+}

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-05
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -139,6 +139,7 @@ export async function installContractFixture(page: Page, mode: FixtureMode, refe
     if (url.pathname === "/api/contracts/drafts")
       return json(route, { items: mode === "empty" ? [] : [summary] });
     if (url.pathname === "/api/contracts/ledger/views") return json(route, { items: [] });
+    if (url.pathname === "/api/reminders") return json(route, { items: [] });
     if (url.pathname === "/api/cases")
       return json(route, {
         items: references
@@ -170,6 +171,13 @@ export async function installContractFixture(page: Page, mode: FixtureMode, refe
                 supplier: { ...draft.supplier, bank_name: "••••", bank_account: "••••••••" },
               }
             : draft,
+      });
+    if (url.pathname === `/api/contracts/${contractId}/reminders`)
+      return json(route, {
+        contract_revision_id: "synthetic-revision",
+        contract_row_version: 7,
+        plans: [],
+        reminders: [],
       });
     if (url.pathname === `/api/contracts/${contractId}/lifecycle-overview`)
       return json(route, {

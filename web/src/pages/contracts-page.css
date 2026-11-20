@@ -1,23 +1,36 @@
 /* File metadata (manifest mirror): */
-/* Purpose: Defines visual tokens and component/page rules for the contract ledger, state-preserving workspace tabs, and export result panel; the stylesheet is imported by the web shell and carries no application state. */
+/* Purpose: Styles the contract ledger toolbar, column and filter panels, contract table, draft editor and lifecycle controls. */
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-01 */
 /* Updated: 2026-11-20 */
-/* Revision: r6 */
+/* Revision: r7 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
-.contracts-workspace-tabs {
-  margin-top: var(--space-4);
+.contracts-page {
+  padding-block-start: var(--space-2);
 }
 
-.contracts-export-history {
-  max-width: 960px;
+.contracts-page > .page-pattern-heading {
+  align-items: center;
+  gap: var(--space-2);
+  margin-block-end: var(--space-2);
+  padding-block-end: 0;
+  border-block-end: 0;
 }
 
-.contracts-export-history .contracts-ledger {
-  background: var(--surface-raised);
+.contracts-page > .page-pattern-heading h1 {
+  margin: 0;
+}
+
+.contracts-page .contracts-workspace-header {
+  margin-block-end: var(--space-2);
+}
+
+.contracts-page .contracts-workspace-tab {
+  min-block-size: var(--control-height);
+  padding-block: 0;
 }
 
 .contracts-page-summary {
@@ -239,54 +252,76 @@ fieldset.contracts-page-section {
   }
 }
 
-/* Contract ledger: list surface stays white; its summary stays transparent. */
+/* Contract ledger */
 .contracts-ledger {
+  min-width: 0;
   margin: 0 0 var(--space-8);
-  padding: var(--space-4);
-  border: 1px solid var(--card-border);
-  border-radius: var(--panel-radius);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
   background: var(--surface-raised);
 }
 
-.contracts-ledger--list {
-  padding: 0;
+.contracts-ledger-table {
+  overflow-wrap: anywhere;
 }
 
-.contracts-ledger--list > .contracts-ledger-table {
-  margin-top: 0;
+.contracts-ledger-header-cell {
+  height: var(--table-header-height);
 }
 
-.contracts-ledger--list > .contracts-ledger-more {
-  justify-content: flex-end;
-  margin-top: 0;
+.contracts-ledger-row {
+  cursor: pointer;
 }
 
-.contracts-ledger-actions,
-.contracts-ledger-filter-actions,
-.contracts-ledger-viewbar,
-.contracts-ledger-more {
+.contracts-ledger-amount {
+  font-variant-numeric: tabular-nums;
+}
+
+.contracts-ledger-identity {
+  min-width: 0;
+}
+
+.contracts-ledger-identity .contracts-ledger-detail {
+  max-width: 100%;
+  height: auto;
+  min-height: var(--control-height-small);
+  padding-inline: 0;
+  white-space: normal;
+  text-align: left;
+  font-weight: var(--font-weight-semibold);
+}
+
+.contracts-ledger-toolbar,
+.contracts-ledger-filter-actions {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
 }
 
+.contracts-ledger-toolbar {
+  margin-inline-start: var(--space-2);
+}
+
+.contracts-search-scope {
+  width: 112px;
+}
+
+.contracts-ledger-search {
+  width: min(20vw, 248px);
+}
+
 .contracts-ledger-filters,
-.contracts-ledger-advanced {
+.contracts-ledger-field-menu {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--space-3) var(--space-4);
-  margin-top: var(--space-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-4);
 }
 
-.contracts-ledger-advanced {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border-default);
+.contracts-ledger-filters {
+  width: 384px;
 }
 
-.contracts-ledger-filters .field,
-.contracts-ledger-advanced .field {
+.contracts-ledger-filters .field {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -294,47 +329,34 @@ fieldset.contracts-page-section {
   color: var(--text-secondary);
 }
 
-.contracts-ledger-filter-actions,
-.contracts-ledger-viewbar {
-  margin-top: var(--space-3);
+.contracts-ledger-advanced {
+  margin-block: var(--space-2);
 }
 
-.contracts-ledger-view-select {
-  min-width: 180px;
+.contracts-ledger-advanced summary {
+  cursor: pointer;
 }
 
-.contracts-ledger-view-name {
-  min-width: 200px;
-  flex: 1 1 200px;
+.contracts-ledger-advanced .contracts-ledger-filters {
+  margin-block-start: var(--space-2);
 }
 
-.contracts-ledger-columns {
-  min-width: 240px;
-  flex: 2 1 260px;
+.contracts-ledger-filter-actions {
+  margin-block-start: var(--space-2);
 }
 
-.contracts-ledger-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-6);
-  align-items: baseline;
-  margin: var(--space-4) 0 var(--space-2);
-  color: var(--text-secondary);
-  background: transparent;
+.contracts-ledger-view-menu {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-2);
+  min-width: 268px;
 }
 
-.contracts-ledger-summary strong {
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
+.contracts-ledger-view-menu
+  > :is(.contracts-ledger-view-select, .contracts-ledger-view-name, [role="status"]) {
+  grid-column: 1 / -1;
 }
 
-.contracts-ledger .ant-table-wrapper {
-  margin-top: var(--space-2);
-  min-width: 0;
-  max-width: 100%;
-}
-
-.contracts-ledger .ant-table-content,
 .contracts-page-section .ant-table-content {
   overflow-x: auto;
   overscroll-behavior-x: contain;
@@ -343,13 +365,6 @@ fieldset.contracts-page-section {
 .contracts-page-section .ant-table-wrapper {
   min-width: 0;
   max-width: 100%;
-}
-
-.contracts-ledger-more {
-  justify-content: center;
-  margin-top: var(--space-3);
-  color: var(--text-secondary);
-  font-size: var(--font-size-ui);
 }
 
 /* Contract registration uses one mounted draft across four readable sections. */
