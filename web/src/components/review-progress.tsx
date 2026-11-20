@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Presents the selected review attempt's business progress with one accessible current step and warning states for unfinished execution.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-20
+// Updated: 2026-11-20
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 export function ReviewProgress({
   state,
   hasDocuments,

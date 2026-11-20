@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the accessible current step and visual state across preparation, partial, completed and halted review attempts.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-20
+// Updated: 2026-11-20
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ReviewProgress } from "./review-progress";

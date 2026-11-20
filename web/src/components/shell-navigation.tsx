@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Shares grouped client and admin navigation and keyboard focus restoration across a collapsible sidebar and the mobile or focused reading drawer.
+// Purpose: Renders one native link per navigation destination and shared disclosure, keyboard focus and responsive drawer behavior for the client and administration shells.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-19
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
