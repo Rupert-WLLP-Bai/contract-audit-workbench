@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-05
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -245,7 +245,10 @@ test("list, review, citation and return retain selection and actual reading posi
   );
   await page.getByRole("link", { name: "返回案件", exact: true }).click();
   await expect.poll(() => page.evaluate(() => scrollY)).toBe(caseScroll);
-  await page.getByRole("link", { name: "返回案件列表" }).click();
+  await page
+    .getByRole("navigation", { name: "面包屑导航" })
+    .getByRole("link", { name: "案件", exact: true })
+    .click();
   await expect(page).toHaveURL(/page=2/);
   await expect(page).toHaveURL(new RegExp(`selected=${caseId}`));
   await expect(page.getByRole("searchbox", { name: "搜索案件", exact: true })).toHaveValue(
@@ -293,7 +296,10 @@ test("a tenant switch discards the former citation and list return state", async
   await expect.poll(() => new URL(page.url()).searchParams.has("citation")).toBe(false);
   await expect(page.locator(".frozen-citation-reader")).toHaveCount(0);
   await page.getByRole("link", { name: "返回案件", exact: true }).click();
-  await page.getByRole("link", { name: "返回案件列表" }).click();
+  await page
+    .getByRole("navigation", { name: "面包屑导航" })
+    .getByRole("link", { name: "案件", exact: true })
+    .click();
   await expect(page).toHaveURL(`${web}/cases`);
 });
 

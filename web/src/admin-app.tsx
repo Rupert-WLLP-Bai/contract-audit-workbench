@@ -1,13 +1,14 @@
 // File metadata (manifest mirror):
-// Purpose: Defines the admin route tree and lazy-loads settings, health, rule-pack and governed-knowledge pages behind the admin session gate.
+// Purpose: Defines the independent administration routes behind the admin session gate and preserves their technical details apart from client preferences.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
+import { AdministrativeTechnicalDetails } from "./components/app-shell-preferences";
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import { AdminShell } from "./components/admin-shell";
@@ -74,37 +75,45 @@ const PendingMembershipPage = lazy(() =>
 
 export function AdminApp() {
   return (
-    <Suspense fallback={<PageStatus kind="loading" title="正在加载管理工作台" />}>
-      <Routes>
-        <Route
-          path="/admin/login/membership"
-          element={<PendingMembershipPage audience="admin" />}
-        />
-        <Route path="/admin/login" element={<LoginPage audience="admin" />} />
-        <Route element={<SessionGate audience="admin" loginPath="/admin/login" />}>
-          <Route element={<AdminShell />}>
-            <Route index element={<Navigate to="/admin/settings" replace />} />
-            <Route path="/admin" element={<Navigate to="/admin/settings" replace />} />
-            <Route path="/admin/infrastructure" element={<SystemHealthPage audience="admin" />} />
-            <Route path="/admin/settings" element={<SettingsPage audience="admin" />} />
-            <Route path="/admin/tenant-lifecycle" element={<TenantLifecyclePage />} />
-            <Route path="/admin/jurisdiction-operations" element={<JurisdictionOperationsPage />} />
-            <Route path="/admin/rulepacks" element={<RulePacksPage />} />
-            <Route path="/admin/rulepacks/new" element={<RulePackCreatePage />} />
-            <Route
-              path="/admin/rulepacks/:packId/versions/:version"
-              element={<RulePackDetailPage />}
-            />
-            <Route path="/admin/governed-knowledge" element={<GovernedKnowledgeListPage />} />
-            <Route path="/admin/governed-knowledge/new" element={<GovernedKnowledgeCreatePage />} />
-            <Route
-              path="/admin/governed-knowledge/:knowledgeId/versions/:versionId"
-              element={<GovernedKnowledgeDetailPage />}
-            />
-            <Route path="*" element={<AdminNotFoundPage />} />
+    <AdministrativeTechnicalDetails>
+      <Suspense fallback={<PageStatus kind="loading" title="正在加载管理工作台" />}>
+        <Routes>
+          <Route
+            path="/admin/login/membership"
+            element={<PendingMembershipPage audience="admin" />}
+          />
+          <Route path="/admin/login" element={<LoginPage audience="admin" />} />
+          <Route element={<SessionGate audience="admin" loginPath="/admin/login" />}>
+            <Route element={<AdminShell />}>
+              <Route index element={<Navigate to="/admin/settings" replace />} />
+              <Route path="/admin" element={<Navigate to="/admin/settings" replace />} />
+              <Route path="/admin/infrastructure" element={<SystemHealthPage audience="admin" />} />
+              <Route path="/admin/settings" element={<SettingsPage audience="admin" />} />
+              <Route path="/admin/tenant-lifecycle" element={<TenantLifecyclePage />} />
+              <Route
+                path="/admin/jurisdiction-operations"
+                element={<JurisdictionOperationsPage />}
+              />
+              <Route path="/admin/rulepacks" element={<RulePacksPage />} />
+              <Route path="/admin/rulepacks/new" element={<RulePackCreatePage />} />
+              <Route
+                path="/admin/rulepacks/:packId/versions/:version"
+                element={<RulePackDetailPage />}
+              />
+              <Route path="/admin/governed-knowledge" element={<GovernedKnowledgeListPage />} />
+              <Route
+                path="/admin/governed-knowledge/new"
+                element={<GovernedKnowledgeCreatePage />}
+              />
+              <Route
+                path="/admin/governed-knowledge/:knowledgeId/versions/:versionId"
+                element={<GovernedKnowledgeDetailPage />}
+              />
+              <Route path="*" element={<AdminNotFoundPage />} />
+            </Route>
           </Route>
-        </Route>
-      </Routes>
-    </Suspense>
+        </Routes>
+      </Suspense>
+    </AdministrativeTechnicalDetails>
   );
 }

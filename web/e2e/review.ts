@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r5
+// Updated: 2026-11-20
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -954,12 +954,16 @@ async function openSection(
   navigation: string,
   section: string,
 ): Promise<void> {
-  const active = `document.querySelector('nav[aria-label=${JSON.stringify(navigation)}] button[aria-pressed="true"]')?.textContent.trim() === ${JSON.stringify(section)}`;
+  const isCase = navigation === "案件详情分区";
+  const name =
+    isCase && (section === "主体与对象" || section === "适用依据") ? "主体与依据" : section;
+  const selector = isCase ? '[role="tab"][aria-selected="true"]' : 'button[aria-pressed="true"]';
+  const active = `document.querySelector('nav[aria-label=${JSON.stringify(navigation)}] ${selector}')?.textContent.trim() === ${JSON.stringify(name)}`;
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
     if ((await page.eval(session, active)) === "true") return;
     try {
-      await clickText(page, session, "button", section);
+      await clickText(page, session, isCase ? "[role=tab]" : "button", name);
     } catch (error) {
       // A pending command can replace the page between the wait and the
       // click; re-check the freshly rendered section instead of failing.
@@ -992,6 +996,34 @@ async function openReviewSection(page: Page, session: string, section: string): 
   );
   if (existing === "true")
     await page.eval(session, "document.querySelector('[role=dialog] .ant-drawer-close')?.click()");
+  if (drawer === "执行过程") {
+    const hasExecution = await page.eval(
+      session,
+      `[...document.querySelectorAll('button')].some((node) => node.textContent.trim() === '执行过程')`,
+    );
+    if (hasExecution !== "true") {
+      await page.eval(
+        session,
+        `document.querySelector('button[aria-label="打开主导航"]')?.click()`,
+      );
+      await page.wait(session, `document.querySelector('button[aria-label="头像菜单"]')`);
+      await page.eval(session, `document.querySelector('button[aria-label="头像菜单"]')?.click()`);
+      await page.wait(session, `document.querySelector('[role=switch][aria-label="专业模式"]')`);
+      await page.eval(
+        session,
+        `document.querySelector('[role=switch][aria-label="专业模式"][aria-checked=false]')?.click()`,
+      );
+      await page.eval(session, `document.querySelector('button[aria-label="头像菜单"]')?.click()`);
+      await page.eval(
+        session,
+        `document.querySelector('[role=dialog] .ant-drawer-close')?.click()`,
+      );
+      await page.wait(
+        session,
+        `[...document.querySelectorAll('button')].some((node) => node.textContent.trim() === '执行过程')`,
+      );
+    }
+  }
   if (drawer) {
     await clickText(page, session, "button", drawer);
     await page.wait(session, `Boolean(document.querySelector('[role="dialog"]'))`);

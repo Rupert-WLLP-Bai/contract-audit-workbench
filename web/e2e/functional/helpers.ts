@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -67,7 +67,9 @@ export async function uiLogin(page: Page, audience = "client") {
   await page.getByLabel("账号", { exact: true }).fill("demo-admin");
   await page.getByLabel("密码", { exact: true }).fill("admin-demo");
   await page.getByRole("button", { name: "登录", exact: true }).click();
-  await expect(page.getByRole("button", { name: "退出", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: audience === "admin" ? "退出" : "头像菜单", exact: true }),
+  ).toBeVisible();
 }
 export async function createCase(api: APIRequestContext, title = "功能验收", telecom = false) {
   const created = await body(

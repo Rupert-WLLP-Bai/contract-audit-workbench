@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r6
+// Updated: 2026-11-20
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -149,8 +149,10 @@ const ARCHIVED_NOTICE = CONTINUATION_REASON_LABELS.archived ?? "该办理已归�
 export function IntakePrimaryContract({
   actor,
   selectedContinuation = null,
+  compact = false,
 }: {
   actor: Actor | null;
+  compact?: boolean;
   selectedContinuation?: IntakeContinuationSelection | null;
 }) {
   const navigate = useNavigate();
@@ -162,6 +164,8 @@ export function IntakePrimaryContract({
   const titleErrorId = useId();
   const fileErrorId = useId();
 
+  const quickFileInput = useRef<HTMLInputElement>(null);
+  const [newFormOpen, setNewFormOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [draft, setDraft] = useState<IntakeContinuation | null>(null);
 
@@ -1194,7 +1198,7 @@ export function IntakePrimaryContract({
       : completed
         ? CONTINUATION_REASON_LABELS.completed
         : (CONTINUATION_REASON_LABELS[reasonCode] ??
-          "尚未取得服务器续办授权。请从“我的未完成办理”重新选择，或查看原案件。");
+          "尚未取得服务器续办授权。请从未完成办理列表重新选择，或查看原案件。");
     return (
       <div className="home-intake-state">
         <Alert
@@ -1402,15 +1406,21 @@ export function IntakePrimaryContract({
       <header className="home-panel-head">
         <div className="home-section-title">
           <span aria-hidden="true" />
-          <h2 id={headingId}>登记主合同并建案</h2>
+          <h2 id={headingId}>{compact ? "审一份新合同" : "登记主合同并建案"}</h2>
         </div>
-        <span className="home-panel-meta">一次一份主合同</span>
+        {!compact ? <span className="home-panel-meta">一次一份主合同</span> : null}
       </header>
-      <p className="home-intake-summary">
-        上传一份主合同即可建立案件，服务器固定按「新增 · 草稿合同 ·
-        主合同」登记。需要登记多份材料、主体或关联案件时，请前往
-        <Link to="/cases">案件中心完整建案</Link>。
-      </p>
+      {compact ? (
+        <p className="home-intake-summary">
+          上传一份主合同建立案件。采购文件等其他材料可在案件页补充。
+        </p>
+      ) : (
+        <p className="home-intake-summary">
+          上传一份主合同即可建立案件，服务器固定按「新增 · 草稿合同 ·
+          主合同」登记。需要登记多份材料、主体或关联案件时，请前往
+          <Link to="/cases">案件中心完整建案</Link>。
+        </p>
+      )}
       {hydrated ? null : (
         <p className="home-intake-loading" role="status">
           正在检查本机的续办记录…
@@ -1424,7 +1434,46 @@ export function IntakePrimaryContract({
       {hydrated && actor !== null && draft === null ? (
         <div className="home-intake-body">
           {renderProblem()}
-          {busy === "hashing" || busy === "uploading" ? renderProgress() : renderNewForm()}
+          {busy === "hashing" || busy === "uploading" ? (
+            renderProgress()
+          ) : compact && canCreate && !newFormOpen ? (
+            <div
+              className="home-intake-drop"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (event.dataTransfer.files.length !== 1) {
+                  setFileError("请一次选择一份主合同。");
+                  return;
+                }
+                setFile(event.dataTransfer.files[0] ?? null);
+                setFileError(null);
+                setNewFormOpen(true);
+              }}
+            >
+              <p>拖入一份主合同，或</p>
+              <input
+                ref={quickFileInput}
+                type="file"
+                aria-label="选择主合同文件"
+                hidden
+                onChange={(event) => {
+                  const first = event.target.files?.[0];
+                  if (first) {
+                    setFile(first);
+                    setFileError(null);
+                    setNewFormOpen(true);
+                  }
+                }}
+              />
+              <Button type="primary" onClick={() => quickFileInput.current?.click()}>
+                选择文件
+              </Button>
+              {fileError ? <p role="alert">{fileError}</p> : null}
+            </div>
+          ) : (
+            renderNewForm()
+          )}
         </div>
       ) : null}
       {hydrated && actor !== null ? renderContinuation() : null}

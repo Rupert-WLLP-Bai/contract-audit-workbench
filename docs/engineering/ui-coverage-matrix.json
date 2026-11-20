@@ -211,20 +211,24 @@
       "kind": "route",
       "sources": [
         "web/src/pages/home-page.tsx",
+        "web/src/pages/home-page.css",
+        "web/src/features/home/inbox.ts",
+        "web/src/features/home/recent-cases.ts",
         "web/src/components/app-shell.tsx"
       ],
-      "implementationIssue": 257,
+      "implementationIssue": 349,
       "figmaNodeId": "6:2",
       "screenshotRefs": [
         "home.png",
         "audit/round41/home-1440.png",
         "audit/round41/home-1280.png",
         "audit/round41/home-1024.png",
-        "audit/round41/home-390.png"
+        "audit/round41/home-390.png",
+        "ui-redesign-20261119/impl-20261120/349/after-home-1440.png"
       ],
       "status": "PARTIAL",
       "statusDetail": "PARTIAL",
-      "template": "specialized dashboard"
+      "template": "personal inbox"
     },
     {
       "designId": "UI-002",
@@ -665,6 +669,7 @@
       "kind": "route",
       "sources": [
         "web/src/pages/workbench-module-page.tsx",
+        "web/src/components/workbench-report-statistics.tsx",
         "web/src/pages/workbench-module-page.css",
         "web/src/components/page-patterns.tsx",
         "web/src/components/page-patterns.css"

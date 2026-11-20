@@ -1,16 +1,34 @@
 // File metadata (manifest mirror):
-// Purpose: Verifies full technical values remain available for manual copy and clipboard success, denial, missing API, value switches and unmount do not report another request result.
+// Purpose: Verifies business views omit raw identifiers and that enabled technical views preserve complete values and safe clipboard feedback.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render as renderDOM, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { AdministrativeTechnicalDetails } from "./app-shell-preferences";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TechnicalDetail, TechnicalFieldGroup, technicalLabel } from "./technical-detail";
+
+function render(children: ReactNode) {
+  return renderDOM(children, { wrapper: AdministrativeTechnicalDetails });
+}
+
+it("keeps raw identifiers and copy controls out of an unconfigured business view", () => {
+  renderDOM(
+    <>
+      <TechnicalDetail value="case_unexposed" />
+      <TechnicalFieldGroup fields={[{ label: "角色编码", value: "reviewer" }]} />
+    </>,
+  );
+  expect(screen.queryByText("case_unexposed")).not.toBeInTheDocument();
+  expect(screen.queryByText("reviewer")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "复制完整值" })).not.toBeInTheDocument();
+});
 
 const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
 function clipboard(value: unknown) {

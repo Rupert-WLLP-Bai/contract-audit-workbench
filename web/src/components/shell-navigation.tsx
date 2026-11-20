@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-19
 // Updated: 2026-11-20
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -19,12 +19,14 @@ export type ShellNavLink = {
   icon: ReactNode;
   current?: boolean;
   external?: boolean;
+  compact?: boolean;
 };
 
 export type ShellNavGroup = {
   key: string;
   title: string;
   disclosureIcon?: ReactNode;
+  bottomStart?: boolean;
   links: ShellNavLink[];
 };
 
@@ -35,6 +37,7 @@ function NavigationMenu({ title, groups }: { title: string; groups: ShellNavGrou
     ...(group.disclosureIcon ? { icon: group.disclosureIcon } : { type: "group" as const }),
     key: group.key,
     label: group.title,
+    className: group.bottomStart ? "shell-navigation-bottom-start" : undefined,
     children: group.links.map((link) => {
       const attributes = {
         "aria-label": link.label,
@@ -157,8 +160,9 @@ export function ShellNavigation({
           {compact ? (
             <nav className="review-rail-navigation" aria-label={title}>
               {groups
-                .filter((group) => group.key === "primary")
-                .flatMap((group) => group.links)
+                .flatMap((group) =>
+                  group.links.filter((link) => group.key === "primary" || link.compact),
+                )
                 .map((link) => (
                   <Link
                     key={link.href}

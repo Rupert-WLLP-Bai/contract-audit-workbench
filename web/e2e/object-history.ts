@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r7
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -168,25 +168,29 @@ async function signIn(target: Page, username: string, password: string): Promise
   await target.waitForURL((url) => url.origin === new URL(web).origin && url.pathname !== "/login");
 }
 async function openSection(page: Page, navigation: string, section: string): Promise<void> {
+  const caseNavigation = navigation === "案件详情分区";
+  const name =
+    caseNavigation && (section === "主体与对象" || section === "适用依据") ? "主体与依据" : section;
   const button = page
     .getByRole("navigation", { name: navigation })
-    .getByRole("button", { name: section, exact: true });
+    .getByRole(caseNavigation ? "tab" : "button", { name, exact: true });
   await button.waitFor({ state: "visible" });
   // A click can land before the router finishes the preceding navigation; the
   // page then restores its default section. Re-select until the choice
   // survives a render instead of trusting the first aria-pressed update.
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
-    if ((await button.getAttribute("aria-pressed")) !== "true")
+    if ((await button.getAttribute(caseNavigation ? "aria-selected" : "aria-pressed")) !== "true")
       await button.click().catch(() => {});
     await page.waitForTimeout(200);
-    if ((await button.getAttribute("aria-pressed")) === "true") {
+    if ((await button.getAttribute(caseNavigation ? "aria-selected" : "aria-pressed")) === "true") {
       await page.waitForTimeout(400);
-      if ((await button.getAttribute("aria-pressed")) === "true") return;
+      if ((await button.getAttribute(caseNavigation ? "aria-selected" : "aria-pressed")) === "true")
+        return;
     }
   }
   assert.equal(
-    await button.getAttribute("aria-pressed"),
+    await button.getAttribute(caseNavigation ? "aria-selected" : "aria-pressed"),
     "true",
     `${navigation} ${section} did not open`,
   );
@@ -1189,6 +1193,8 @@ async function run(): Promise<void> {
   await frozenFindingView(current, finding, primary.id, anchor.quote, false);
   await frozenLegalView(current, frozenLegal, frozenArticle.canonical_full_article_body);
   const retainedReviewURL = `${web}/cases/${caseID}/reviews/${runA}?attempt_id=${encodeURIComponent(attemptA)}`;
+  await current.getByRole("button", { name: "打开主导航" }).click();
+  await current.getByRole("button", { name: "头像菜单", exact: true }).click();
   await current.getByRole("button", { name: "退出", exact: true }).click();
   await current.getByRole("heading", { name: "登录合同审查", exact: true }).waitFor();
   await signIn(current, "demo-admin", "admin-demo");

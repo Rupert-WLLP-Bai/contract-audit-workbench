@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -30,7 +30,10 @@ test(
     expect(created.title).toBe(title);
     expect(created.business_line).toBe("ENT");
     expect(created.scenario).toBe("telecom_dedicated_line");
-    await page.getByRole("link", { name: "返回案件列表", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "面包屑导航" })
+      .getByRole("link", { name: "案件", exact: true })
+      .click();
     await page.getByLabel("搜索案件", { exact: true }).fill(title);
     await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
     await page.getByLabel("运行状态", { exact: true }).selectOption("failed");

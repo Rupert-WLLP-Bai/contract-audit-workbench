@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Presents focused client and admin sign-in with authorized return links, session boundaries and the contract desk default.
+// Purpose: Presents client and admin sign-in, validates return routes, and sends an ordinary client login to the personal workbench.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -40,7 +40,7 @@ export function LoginPage({ audience = "client" }: { audience?: SessionAudience 
       ? from
       : audience === "admin"
         ? "/admin/settings"
-        : "/contract-desk";
+        : "/";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 

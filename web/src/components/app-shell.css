@@ -1,0 +1,88 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles the client identity menu and keeps utility navigation at the bottom of the scrollable expanded sidebar. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-20 */
+/* Updated: 2026-11-20 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
+.client-topbar .client-brand {
+  font-size: var(--font-size-ui);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+.client-account-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.client-account-trigger .header-avatar {
+  width: var(--control-height-small);
+  height: var(--control-height-small);
+  line-height: var(--control-height-small);
+}
+
+.client-account-menu {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 200px;
+}
+
+.client-professional-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.client-topbar .client-account-trigger .header-avatar {
+  display: inline-block;
+}
+
+@media (min-width: 901px) {
+  .client-topbar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .client-topbar > .who {
+    grid-column: 3;
+  }
+
+  .app--focused-review .client-topbar {
+    padding-inline: var(--space-2);
+  }
+}
+
+@media (max-width: 760px) {
+  .client-topbar .client-account-trigger .identity-copy {
+    display: none;
+  }
+}
+
+@media (min-width: 992px) {
+  .client-sidebar:not(.ant-layout-sider-collapsed) .shell-navigation {
+    display: flex;
+    flex-direction: column;
+    min-block-size: 100%;
+  }
+
+  .client-sidebar:not(.ant-layout-sider-collapsed) .shell-navigation > .ant-menu {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .client-sidebar:not(.ant-layout-sider-collapsed) .shell-navigation-bottom-start {
+    margin-block-start: auto;
+  }
+
+  .client-sidebar:not(.ant-layout-sider-collapsed)
+    .shell-navigation-bottom-start
+    > .ant-menu-submenu-title {
+    border-block-start: 1px solid var(--border-default);
+  }
+}

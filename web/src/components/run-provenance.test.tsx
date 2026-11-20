@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -84,6 +84,7 @@ describe("run provenance", () => {
               playbook_hash: "playbook-hash",
               model_ref: "model-v1",
               comparator_ref: "comparator-v1",
+              adopted_tenant_config: { version_id: "config_abcd", digest: "digest_abcd" },
             },
             evaluations: [evaluation],
           })}
@@ -94,6 +95,9 @@ describe("run provenance", () => {
     expect(screen.getByText("请核对本次审查的材料与引用。")).toBeInTheDocument();
     expect(screen.getByText("履约，冲突")).toBeInTheDocument();
     expect(screen.getByText("期限不一致")).toBeInTheDocument();
+    expect(screen.getByText("已记录本次采用的配置")).toBeInTheDocument();
+    expect(screen.queryByText("config_abcd")).not.toBeInTheDocument();
+    expect(screen.queryByText("digest_abcd")).not.toBeInTheDocument();
     expect(screen.queryByText("rule-1")).not.toBeInTheDocument();
     expect(screen.queryByText(/业务对象/)).not.toBeInTheDocument();
   });

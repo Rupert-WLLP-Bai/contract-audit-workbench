@@ -4,7 +4,7 @@
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-31 */
 /* Updated: 2026-11-20 */
-/* Revision: r2 */
+/* Revision: r3 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -101,4 +101,29 @@
       width: 100%;
     }
   }
+}
+
+.case-next-step-compact {
+  padding: var(--space-3) 0;
+}
+.case-next-step-line {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.case-next-step-line details {
+  position: relative;
+}
+.case-next-step-line summary {
+  color: var(--action-primary);
+  cursor: pointer;
+}
+.case-next-step-line details[open] {
+  flex-basis: 100%;
+}
+
+.case-next-step-line h2 {
+  margin: 0;
+  font-size: inherit;
 }

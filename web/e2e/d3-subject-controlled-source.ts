@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -36,7 +36,7 @@ async function signIn(page: Page, username: string, credential: string): Promise
   await page.getByLabel("账号", { exact: true }).fill(username);
   await page.getByLabel("密码", { exact: true }).fill(credential);
   await page.getByRole("button", { name: "登录", exact: true }).click();
-  await page.getByRole("button", { name: "退出", exact: true }).waitFor({ state: "visible" });
+  await page.getByRole("button", { name: "头像菜单", exact: true }).waitFor({ state: "visible" });
 }
 
 async function login(
@@ -90,6 +90,7 @@ async function captureFailurePages(contexts: BrowserContext[], output: string): 
 }
 
 async function logout(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "头像菜单", exact: true }).click();
   await page.getByRole("button", { name: "退出", exact: true }).click();
   await page
     .getByRole("heading", { name: "登录合同审查", exact: true })
@@ -97,25 +98,29 @@ async function logout(page: Page): Promise<void> {
 }
 
 async function openSection(page: Page, navigation: string, section: string): Promise<void> {
+  const caseNavigation = navigation === "案件详情分区";
+  const name =
+    caseNavigation && (section === "主体与对象" || section === "适用依据") ? "主体与依据" : section;
   const button = page
     .getByRole("navigation", { name: navigation })
-    .getByRole("button", { name: section, exact: true });
+    .getByRole(caseNavigation ? "tab" : "button", { name, exact: true });
   await button.waitFor({ state: "visible" });
   // A click can land before the router finishes the preceding navigation; the
   // page then restores its default section. Re-select until the choice
   // survives a render instead of trusting the first aria-pressed update.
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
-    if ((await button.getAttribute("aria-pressed")) !== "true")
+    if ((await button.getAttribute(caseNavigation ? "aria-selected" : "aria-pressed")) !== "true")
       await button.click().catch(() => {});
     await page.waitForTimeout(200);
-    if ((await button.getAttribute("aria-pressed")) === "true") {
+    if ((await button.getAttribute(caseNavigation ? "aria-selected" : "aria-pressed")) === "true") {
       await page.waitForTimeout(400);
-      if ((await button.getAttribute("aria-pressed")) === "true") return;
+      if ((await button.getAttribute(caseNavigation ? "aria-selected" : "aria-pressed")) === "true")
+        return;
     }
   }
   assert.equal(
-    await button.getAttribute("aria-pressed"),
+    await button.getAttribute(caseNavigation ? "aria-selected" : "aria-pressed"),
     "true",
     `${navigation} ${section} did not open`,
   );

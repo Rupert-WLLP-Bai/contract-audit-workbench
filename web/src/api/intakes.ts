@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -294,8 +294,9 @@ function parseIntakeArchiveResult(value: unknown): IntakeArchiveResult {
 export function listPendingIntakes(
   cursor: string | null,
   signal?: AbortSignal,
+  pageSize = 10,
 ): Promise<PendingIntakesPage> {
-  const params = new URLSearchParams({ limit: "10" });
+  const params = new URLSearchParams({ limit: String(pageSize) });
   if (cursor !== null) params.set("cursor", cursor);
   return requestJson(
     `${INTAKES_PATH}/pending?${params}`,

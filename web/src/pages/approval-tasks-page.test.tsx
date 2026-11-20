@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -414,6 +414,19 @@ describe("approval tasks page", () => {
         (call) => call.path === "/api/approval-tasks" && call.view === "initiated",
       ),
     ).toBe(true);
+  });
+
+  it("opens the exact pending approval from a task link and clears it on close", async () => {
+    const { user, service, router } = open("?view=todo&task=task-1");
+    expect(await screen.findByRole("button", { name: "通过" })).toBeInTheDocument();
+    const panel = screen.getByRole("complementary", { name: "会签详情" });
+    expect(
+      service.calls.some(
+        (call) => call.path === "/api/approval-tasks/task-1" && call.method === "GET",
+      ),
+    ).toBe(true);
+    await user.click(within(panel).getByRole("button", { name: "关闭" }));
+    expect(router.state.location.search).toBe("?view=todo");
   });
 
   it("keeps a failed decision unapproved and retries with the same idempotency key", async () => {

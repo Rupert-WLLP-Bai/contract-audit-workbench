@@ -4,7 +4,7 @@
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
 /* Updated: 2026-11-20 */
-/* Revision: r5 */
+/* Revision: r6 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -593,4 +593,46 @@
 
 .module-detail-panel:focus-visible {
   outline-offset: -2px;
+}
+
+.workbench-report-statistics {
+  margin-block-end: var(--space-4);
+}
+.workbench-report-statistics summary {
+  cursor: pointer;
+  color: var(--action-primary);
+}
+.workbench-report-statistics-content {
+  display: grid;
+  gap: var(--space-4);
+  padding-block: var(--space-4);
+}
+.workbench-report-counts,
+.workbench-report-breakdowns {
+  display: flex;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+  margin: 0;
+}
+.workbench-report-counts dd {
+  margin-inline-start: 0;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
+}
+.workbench-report-donut {
+  inline-size: 64px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.workbench-report-donut::after {
+  content: "";
+  inline-size: 62%;
+  aspect-ratio: 1;
+  border-radius: inherit;
+  background: var(--surface-page);
+}
+.workbench-report-breakdowns meter {
+  margin-inline-start: var(--space-2);
 }

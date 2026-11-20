@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -32,6 +32,7 @@ import {
 } from "../domain/evidence-sla";
 import { caseHref, formatDateTime } from "../domain/review";
 import { StatusText } from "./status-text";
+import { withEvidenceReadSlot } from "../features/review/evidence-read-slot";
 import "./evidence-sla-dashboard.css";
 
 export interface EvidenceSLACase {
@@ -51,25 +52,6 @@ interface EvidenceSLARow {
 }
 
 type PanelMode = "dashboard" | "reminder";
-
-const maximumConcurrentSLAReads = 8;
-let activeSLAReads = 0;
-const queuedSLAReads: (() => void)[] = [];
-
-async function withSLASlot<T>(read: () => Promise<T>): Promise<T> {
-  if (activeSLAReads >= maximumConcurrentSLAReads) {
-    await new Promise<void>((resolve) => queuedSLAReads.push(resolve));
-  } else {
-    activeSLAReads++;
-  }
-  try {
-    return await read();
-  } finally {
-    const next = queuedSLAReads.shift();
-    if (next) next();
-    else activeSLAReads--;
-  }
-}
 
 const statusTones: Record<string, "attention" | "progress" | "good" | "neutral"> = {
   open: "attention",
@@ -113,7 +95,7 @@ export function EvidenceSLADashboard({
     queries: cases.map((item) => ({
       queryKey: ["evidence-requests", item.id] as const,
       queryFn: ({ signal }: { signal: AbortSignal }) =>
-        withSLASlot(() => listEvidenceRequests(item.id, signal)),
+        withEvidenceReadSlot(signal, () => listEvidenceRequests(item.id, signal)),
       retry: false,
     })),
   });
@@ -131,7 +113,9 @@ export function EvidenceSLADashboard({
     queries: historyItems.map((item) => ({
       queryKey: ["evidence-requests", item.caseId, item.request.id, "history"] as const,
       queryFn: ({ signal }: { signal: AbortSignal }) =>
-        withSLASlot(() => listEvidenceHistory(item.caseId, item.request.id, signal)),
+        withEvidenceReadSlot(signal, () =>
+          listEvidenceHistory(item.caseId, item.request.id, signal),
+        ),
       retry: false,
     })),
   });
@@ -156,7 +140,9 @@ export function EvidenceSLADashboard({
   const selectedHistory = useQuery({
     queryKey: ["evidence-requests", selection?.caseId, selection?.requestId, "history"],
     queryFn: ({ signal }) =>
-      withSLASlot(() => listEvidenceHistory(selection!.caseId, selection!.requestId, signal)),
+      withEvidenceReadSlot(signal, () =>
+        listEvidenceHistory(selection!.caseId, selection!.requestId, signal),
+      ),
     enabled: mode === "dashboard" && !!selectedRow,
     retry: false,
   });

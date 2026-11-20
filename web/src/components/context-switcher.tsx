@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: 实现 `ContextSwitcher`, `choices`, `switching`, `queryClient` 等界面组件或状态处理，呈现服务端返回的业务数据并提交受控用户操作。
+// Purpose: Presents authorized work-context choices and revalidation, and suppresses the client selector when no alternate context is available.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-15
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -30,10 +30,12 @@ export function ContextSwitcher({
   actor,
   audience,
   onTransition,
+  hideSingle = false,
 }: {
   actor: Actor | undefined;
   audience: SessionAudience;
   onTransition: (pending: boolean) => void;
+  hideSingle?: boolean;
 }) {
   const choices = useContextChoices(audience);
   const switching = useSwitchContext(audience);
@@ -86,6 +88,9 @@ export function ContextSwitcher({
   }
 
   const enabled = actor.context_switch_enabled && choices.data?.context_switch_enabled !== false;
+  if (hideSingle && (!enabled || (choices.data?.memberships.length ?? 0) < 2)) {
+    return null;
+  }
   if (!enabled) {
     return (
       <span className="organization-badge" title={actor.active_context.org_name}>

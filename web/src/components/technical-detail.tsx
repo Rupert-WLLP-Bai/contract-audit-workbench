@@ -1,13 +1,14 @@
 // File metadata (manifest mirror):
-// Purpose: Renders machine identifiers and digests as human-readable text while keeping the full value available on demand for audit and troubleshooting.
+// Purpose: Shows raw technical identifiers and clipboard controls within an explicitly enabled technical presentation scope.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
 // Updated: 2026-11-20
-// Revision: r5
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
+import { useProfessionalMode } from "./app-shell-preferences";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 /** Short, non-technical stand-in for a raw `case_...` / `run_...` style id. */
@@ -131,7 +132,8 @@ export function TechnicalFieldGroup({
   fields: readonly TechnicalField[];
   label?: string;
 }) {
-  if (fields.length === 0) return null;
+  const { enabled } = useProfessionalMode();
+  if (!enabled || fields.length === 0) return null;
   return (
     <details className="caw-technical-detail caw-technical-group">
       <summary>
@@ -168,8 +170,9 @@ export function TechnicalDetail({
   label?: string;
   children?: ReactNode;
 }) {
-  const { status, copy } = useCopyTechnicalValue(value);
-  if (!value) return null;
+  const { enabled } = useProfessionalMode();
+  const { status, copy } = useCopyTechnicalValue(enabled ? value : null);
+  if (!enabled || !value) return null;
   return (
     <details className="caw-technical-detail">
       <summary>{label ?? "溯源记录"}</summary>
