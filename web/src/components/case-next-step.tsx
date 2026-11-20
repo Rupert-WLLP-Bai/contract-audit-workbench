@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Renders CaseNextStep, the case next step workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.
+// Purpose: Selects and displays one authorized case action and an optional exception notice using the latest review, undecided findings, material state and readiness facts.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r10
+// Revision: r11
 // Copyright: See LICENSE
 // End file metadata.
 

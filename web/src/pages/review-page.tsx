@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: Coordinates review of the selected execution, including judgment and report actions, readable history and conditional access to technical presentation.
+// Purpose: Coordinates the review workspace, its single command bar, finding decisions, original evidence and contextual drawers under the selected case, run, attempt and actor.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r19
+// Revision: r20
 // Copyright: See LICENSE
 // End file metadata.
 
