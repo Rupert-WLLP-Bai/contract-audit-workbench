@@ -65867,7 +65867,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r101",
+      "revision": "r102",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -88914,15 +88914,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-15",
+        "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "f46de6767c51dac40465f99db0cd126d7f838ad6",
+          "commit": "516b76751746d0a79c71043001f033a32af3ab7c",
           "path": "web/src/pages/legal-knowledge-page.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -88965,12 +88965,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "04e15af0cc256f187e9bd794f3d622965645450c",
+          "commit": "516b76751746d0a79c71043001f033a32af3ab7c",
           "path": "web/src/pages/legal-knowledge-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -90693,12 +90693,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "04e15af0cc256f187e9bd794f3d622965645450c",
+          "commit": "516b76751746d0a79c71043001f033a32af3ab7c",
           "path": "web/src/pages/workbench-module-page.test.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r12",
+      "revision": "r13",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -90741,12 +90741,12 @@
         "value": "2026-11-20",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "04e15af0cc256f187e9bd794f3d622965645450c",
+          "commit": "516b76751746d0a79c71043001f033a32af3ab7c",
           "path": "web/src/pages/workbench-module-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r12",
+      "revision": "r13",
       "copyright": [
         {
           "holder": "Bai Junhao",
