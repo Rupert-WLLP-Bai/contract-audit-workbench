@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r3
+// Updated: 2026-11-20
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -71,7 +71,7 @@ async function uiUpload(
 }
 
 async function uiReview(page: Page, api: APIRequestContext, caseID: string, recheck = false) {
-  await page.goto(`${webURL}/cases/${caseID}`);
+  await page.goto(`${webURL}/cases/${caseID}#review-readiness`);
   const response = page.waitForResponse(
     (item) =>
       item.request().method() === "POST" && item.url().endsWith(`/api/cases/${caseID}/reviews`),

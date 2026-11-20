@@ -4,7 +4,7 @@
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-01 */
 /* Updated: 2026-11-20 */
-/* Revision: r2 */
+/* Revision: r3 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -61,4 +61,28 @@
   .single-contract-coverage-actions {
     margin-top: var(--space-2);
   }
+}
+
+.single-contract-coverage-readiness > ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.single-contract-coverage-readiness li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  min-block-size: 42px;
+  padding: var(--space-2) var(--space-4);
+  border-block-end: 1px solid var(--border-default);
+}
+
+.single-contract-coverage-readiness li > span {
+  color: var(--text-secondary);
+}
+
+.single-contract-coverage-readiness .single-contract-coverage-actions {
+  margin: 0 0 0 auto;
 }

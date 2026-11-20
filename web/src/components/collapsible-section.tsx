@@ -3,12 +3,20 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-04
-// Updated: 2026-11-19
-// Revision: r4
+// Updated: 2026-11-20
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useNavigableSection, useSectionNavigationAvailable } from "./section-navigation";
 
 export interface SectionAnchor {
@@ -29,6 +37,7 @@ export function CollapsibleSection({
   defaultOpen = false,
   mountOnOpen = false,
   openRequest,
+  onOpenChange,
   summaryLabel,
   children,
 }: {
@@ -43,6 +52,7 @@ export function CollapsibleSection({
   mountOnOpen?: boolean;
   /** A changed request opens this section without remounting its contents. */
   openRequest?: string | number;
+  onOpenChange?: (open: boolean) => void;
   /** Used when the inner content already has a heading with `title`, to avoid
    *  duplicate text matches in assistive technology and tests. */
   summaryLabel?: string;
@@ -55,6 +65,9 @@ export function CollapsibleSection({
   const sectionRef = useRef<HTMLDetailsElement>(null);
   const openSection = useCallback(() => setOpen(true), []);
   useNavigableSection(sectionRef, openSection);
+  useLayoutEffect(() => {
+    onOpenChange?.(open);
+  }, [onOpenChange, open]);
   useEffect(() => {
     if (openRequest !== undefined) setOpen(true);
   }, [openRequest]);

@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -182,6 +182,7 @@ test(
         String(material.filename),
         String(material.text),
       );
+    await page.goto(new URL("#review-readiness", page.url()).href);
     await page.reload();
     await page.getByRole("button", { name: "开始审查", exact: true }).click();
     await expect(page).toHaveURL(/\/reviews\/run_/);

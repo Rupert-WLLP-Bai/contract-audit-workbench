@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -136,6 +136,27 @@ const targets: Target[] = [
         .first()
         .waitFor({ state: "visible", timeout: readyTimeout });
       await waitForText(page, ".page-head h1");
+    },
+  },
+  {
+    id: "case-review-readiness",
+    site: "client",
+    path: casePath === null ? null : `${casePath}#review-readiness`,
+    needs: "E2E_CASE_ID",
+    ready: async (page) => {
+      const preparation = page.locator("#case-review-preparation[open] #review-readiness");
+      await preparation.getByRole("heading", { name: "审查准备", exact: true }).waitFor({
+        state: "visible",
+        timeout: readyTimeout,
+      });
+      await preparation.getByRole("status").filter({ hasText: "正在核对" }).waitFor({
+        state: "hidden",
+        timeout: readyTimeout,
+      });
+      assert.equal(
+        await preparation.getByRole("alert").filter({ hasText: "审查准备未能读取" }).count(),
+        0,
+      );
     },
   },
   {

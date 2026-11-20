@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-20
-// Revision: r10
+// Revision: r11
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -258,7 +258,10 @@ async function startReview(
   target: Page,
   button: "开始审查" | "开始复审",
 ): Promise<{ run: string; attempt: string; workspace: ReviewWorkspace }> {
-  await openCaseSection(target, "审查记录", "case-review-preparation");
+  await openCaseSection(target, "审查记录");
+  const preparation = target.locator("details#case-review-preparation");
+  if ((await preparation.getAttribute("open")) === null)
+    await preparation.locator(":scope > summary").click();
   const input = target.getByLabel("审查业务时间（北京时间）", { exact: true });
   const local = shanghaiInput(new Date()).slice(0, 16);
   await input.fill(local);

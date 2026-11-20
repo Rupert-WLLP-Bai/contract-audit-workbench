@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-02
 // Updated: 2026-11-20
-// Revision: r4
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -167,6 +167,7 @@ try {
   await page.getByLabel("材料角色").waitFor();
   await addMaterial("采购文件", "purchase.txt", "采购文件要求质保36个月。合同总价100万元。");
   await addMaterial("拟签合同", "draft.txt", "拟签合同约定质保24个月。合同总价100万元。");
+  await page.goto(`${web}/cases/${legacyCaseID}#review-readiness`);
   await page.getByRole("button", { name: "开始审查" }).click();
   await page.getByRole("heading", { name: "审查工作区" }).waitFor();
 

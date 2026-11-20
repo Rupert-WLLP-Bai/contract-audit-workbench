@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-14
 // Updated: 2026-11-20
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -27,12 +27,14 @@ export function PlaybookPicker({
   onChange,
   onAvailabilityChange,
   disabled = false,
+  compact = false,
 }: {
   caseId: string;
   value: PlaybookRef | undefined;
   onChange: (value: PlaybookRef | undefined) => void;
   onAvailabilityChange?: (available: boolean) => void;
   disabled?: boolean;
+  compact?: boolean;
 }) {
   const instanceId = useId();
   const headingId = `${instanceId}-playbook-heading`;
@@ -55,9 +57,17 @@ export function PlaybookPicker({
   }, [onAvailabilityChange, selectionAvailable]);
 
   return (
-    <section className="workflow-panel" aria-labelledby={headingId}>
-      <h3 id={headingId}>审查手册（可选）</h3>
-      <p className="meta">手册供审查参考。所选版本随本次审查留档，也可沿用默认流程。</p>
+    <section
+      className={compact ? "review-preflight-playbook" : "workflow-panel"}
+      aria-label={compact ? "审查手册" : undefined}
+      aria-labelledby={compact ? undefined : headingId}
+    >
+      {!compact ? (
+        <>
+          <h3 id={headingId}>审查手册（可选）</h3>
+          <p className="meta">手册供审查参考。所选版本随本次审查留档，也可沿用默认流程。</p>
+        </>
+      ) : null}
       {candidates.isError ? (
         <Alert
           type="error"
@@ -92,10 +102,10 @@ export function PlaybookPicker({
           description="当前不会提交该手册。可重试读取，或清除本次选择后按原审查流程继续。"
         />
       ) : null}
-      {catalogReady && candidates.data.reason ? (
+      {!compact && catalogReady && candidates.data.reason ? (
         <Alert type="info" showIcon title={candidates.data.reason} />
       ) : null}
-      {catalogReady && items.length === 0 && !candidates.data.reason ? (
+      {!compact && catalogReady && items.length === 0 && !candidates.data.reason ? (
         <Alert
           type="info"
           showIcon
@@ -114,13 +124,13 @@ export function PlaybookPicker({
         />
       ) : null}
       <label className="field" htmlFor={selectId}>
-        采用的手册
+        {compact ? "审查手册" : "采用的手册"}
         <Select
           id={selectId}
           aria-label="采用的审查手册"
           allowClear
           showSearch={{ optionFilterProp: "label" }}
-          placeholder="不采用手册"
+          placeholder={compact ? "默认规则审查" : "不采用手册"}
           value={value && catalogReady ? selectionKey(value) : undefined}
           loading={session.isLoading || candidates.isLoading}
           disabled={disabled || candidates.isError || !session.isSuccess || !catalogReady}
