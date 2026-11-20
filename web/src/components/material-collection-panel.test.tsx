@@ -174,7 +174,14 @@ describe("material collection behavior", () => {
     const detail = {
       ...emptyDetail,
       documents: [document],
-      materials: [material({ current_document_id: document.id })],
+      materials: [
+        material({
+          material_id: "primary-material",
+          role: "draft_contract",
+          purpose: "primary_contract",
+          current_document_id: document.id,
+        }),
+      ],
     };
     const panel = <MaterialCollectionPanel caseDetail={detail} canWrite actorId="actor-1" />;
     const view = render(panel);

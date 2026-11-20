@@ -256,7 +256,7 @@ describe("selected review outcome", () => {
     const item = detail();
     item.latest_run!.state = "future.state·";
     const view = render(<CaseNextStep {...props({ caseDetail: item })} />);
-    expect(screen.getByText(/服务端返回了未识别的运行状态/)).toBeVisible();
+    expect(screen.getByText(/暂时无法识别这次审查的状态/)).toBeVisible();
     expect(screen.queryByText(/future.state·/)).not.toBeInTheDocument();
     view.rerender(
       <AdministrativeTechnicalDetails>

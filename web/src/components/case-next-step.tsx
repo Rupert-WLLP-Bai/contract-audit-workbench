@@ -282,7 +282,7 @@ function planFor(props: Props): CaseNextStepPlan {
       stage: "状态未识别",
       title: "暂不能确认下一项写入操作",
       tone: "attention",
-      reason: "服务端返回了未识别的运行状态。为避免创建错误的后续记录，请先查看这次审查。",
+      reason: "暂时无法识别这次审查的状态，请先打开审查记录核对。",
       technicalDetail: JSON.stringify({ run_id: run.id, state: run.state }),
       missingItems: ["可识别的审查运行状态"],
       owner: "审查员或案件管理员",
@@ -395,7 +395,7 @@ function planFor(props: Props): CaseNextStepPlan {
         title: "请修正审查业务时间",
         tone: "attention",
         reason: "已输入的北京时间无法转换为有效时点；当前不会提交该值。",
-        missingItems: ["有效的北京时间（UTC+08:00）"],
+        missingItems: ["有效的北京时间"],
         owner: "经办或审查员",
         action: { kind: "link", href: "#review-business-time", label: "修正业务时间" },
       };
@@ -419,7 +419,7 @@ function planFor(props: Props): CaseNextStepPlan {
     if (readinessLoading) {
       return {
         stage: "正在核对准备状态",
-        title: "等待服务端返回最新准备清单",
+        title: "正在核对最新准备清单",
         tone: "progress",
         reason: "准备清单刷新期间不启用发起操作；服务端仍会在受理请求时重新校验。",
         missingItems: ["最新材料、规则与依赖核对结果"],
