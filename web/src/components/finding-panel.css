@@ -4,7 +4,7 @@
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-19 */
 /* Updated: 2026-11-20 */
-/* Revision: r2 */
+/* Revision: r3 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -38,7 +38,7 @@
 .review-finding-panel .review-finding-panel-header h2 {
   margin: 0;
   padding: 0;
-  font-size: 1rem;
+  font-size: var(--font-size-document);
   border: 0;
   color: var(--text-primary);
 }
@@ -50,7 +50,8 @@
 
 .review-finding-filters button {
   font: inherit;
-  padding: var(--space-2);
+  min-height: var(--control-height);
+  padding: 0 var(--space-2);
   border: 0;
   border-block-end: 2px solid transparent;
   background: transparent;
@@ -61,7 +62,7 @@
 .review-finding-filters button[aria-pressed="true"] {
   border-block-end-color: var(--action-primary);
   color: var(--action-primary);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .review-finding-filters button span {
@@ -100,6 +101,7 @@
   display: flex;
   align-items: baseline;
   width: 100%;
+  min-height: var(--control-height);
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border: 0;
@@ -119,9 +121,9 @@
 .review-finding-select .finding-grade,
 .review-finding-ai {
   white-space: nowrap;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-tag);
   padding: 0 var(--space-1);
-  font-size: 0.75rem;
+  font-size: var(--font-size-small);
 }
 
 .review-finding-select .finding-grade[data-severity="high"] {
@@ -157,7 +159,7 @@
 .review-finding-decision-summary {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 0.8125rem;
+  font-size: var(--font-size-ui);
 }
 
 .review-finding-detail {
@@ -175,12 +177,13 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-control);
   background: var(--surface-raised);
-  font-size: 0.8125rem;
+  font-size: var(--font-size-ui);
 }
 
 .review-finding-citations button {
   background: transparent;
   border: 0;
+  min-height: var(--control-height-small);
   padding: 0;
   color: var(--action-primary);
   text-align: start;
@@ -223,13 +226,13 @@
 .review-decision-choices legend {
   padding: 0;
   margin-bottom: var(--space-2);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .review-decision-choices > div {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
 .review-decision-choices .choice {
@@ -246,7 +249,7 @@
 
 .review-decision-choices .choice .ant-radio-wrapper {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--font-size-ui);
 }
 
 .review-clause-proposal,

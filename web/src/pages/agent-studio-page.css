@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-06 */
-/* Updated: 2026-11-12 */
-/* Revision: r2 */
+/* Updated: 2026-11-20 */
+/* Revision: r3 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -45,8 +45,8 @@
 
 .studio-back {
   color: var(--action-primary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-ui);
+  font-weight: var(--font-weight-semibold);
   text-decoration: none;
 }
 
@@ -59,13 +59,13 @@
   padding-left: var(--space-3);
   border-left: 1px solid var(--border-default);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   letter-spacing: 0.02em;
 }
 
 .studio-head h1 {
   margin: 0;
-  font-size: 24px;
+  font-size: var(--font-size-heading);
   line-height: 1.35;
 }
 
@@ -76,12 +76,12 @@
   gap: var(--space-2) var(--space-4);
   margin-top: var(--space-3);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 .studio-meta-item strong {
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .studio-head-actions {
@@ -94,14 +94,14 @@
 .studio-inline-note {
   margin: var(--space-2) 0 0;
   color: var(--state-insufficient);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .studio-technical-inline {
   display: grid;
   gap: var(--space-1);
   margin: var(--space-1) 0 0;
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 
 .studio-technical-inline > div {
@@ -128,7 +128,7 @@
   border-radius: var(--radius-control);
   background: var(--surface-subtle);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 .studio-notice-warning {
@@ -152,7 +152,7 @@
 
 .studio-readonly {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 /* Shared panels ---------------------------------------------------------- */
@@ -184,7 +184,7 @@
   max-width: var(--text-measure);
   margin: var(--space-1) 0 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .studio-empty-state {
@@ -201,7 +201,7 @@
 .studio-empty-text {
   margin: var(--space-2) 0 0;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 /* Execution summary ------------------------------------------------------ */
@@ -228,13 +228,13 @@
 
 .studio-summary-grid dt {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .studio-summary-grid dd {
   margin: var(--space-1) 0 0;
   color: var(--text-primary);
-  font-size: 15px;
+  font-size: var(--font-size-document);
   font-variant-numeric: tabular-nums;
 }
 
@@ -272,15 +272,15 @@
   padding: var(--space-2);
   border-right: 1px solid var(--border-default);
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
   overflow-wrap: anywhere;
 }
 
 .studio-lane-label small {
   color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 400;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-normal);
   font-variant-numeric: tabular-nums;
 }
 
@@ -380,15 +380,15 @@
 .studio-node-seq {
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--font-size-small);
   font-variant-numeric: tabular-nums;
 }
 
 .studio-node-title {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-ui);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.35;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
@@ -401,7 +401,7 @@
   gap: var(--space-1);
   margin-top: auto;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 
 .studio-node-dot {
@@ -426,7 +426,7 @@
 .studio-lane-hint {
   margin: var(--space-3) 0 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 /* Event detail ----------------------------------------------------------- */
@@ -448,7 +448,7 @@
 .studio-detail-seq {
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-variant-numeric: tabular-nums;
 }
 
@@ -469,14 +469,14 @@
 
 .studio-detail-list dt {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .studio-detail-list dd {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 .studio-token-block {
@@ -485,7 +485,7 @@
 
 .studio-token-block h3 {
   margin: 0 0 var(--space-2);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 .studio-token-grid {
@@ -501,12 +501,12 @@
 
 .studio-token-grid dt {
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 
 .studio-token-grid dd {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
@@ -520,7 +520,7 @@
 
 .studio-count {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -535,7 +535,7 @@
   width: 100%;
   min-width: 720px;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 .studio-event-table th {
@@ -543,8 +543,8 @@
   border-bottom: 1px solid var(--border-default);
   background: var(--surface-subtle);
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
   text-align: left;
 }
 
@@ -565,7 +565,7 @@
 .studio-event-seq {
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -690,7 +690,7 @@
   border-radius: 50%;
   background: var(--action-primary-soft);
   color: var(--action-primary);
-  font-size: 17px;
+  font-size: var(--font-size-document);
 }
 
 .studio-capability-copy {
@@ -701,13 +701,13 @@
 }
 
 .studio-capability-title {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--font-size-ui);
+  font-weight: var(--font-weight-semibold);
 }
 
 .studio-capability-summary {
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 
 /* Observation pills ------------------------------------------------------ */
@@ -717,7 +717,7 @@
   align-items: center;
   padding: 1px var(--space-2);
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--font-size-small);
   line-height: 18px;
   white-space: nowrap;
 }
@@ -802,25 +802,25 @@
   border-radius: 50%;
   background: rgb(255 255 255 / 14%);
   color: var(--text-inverse);
-  font-size: 26px;
+  font-size: var(--font-size-heading);
 }
 
 .studio-agent-eyebrow {
   margin-top: var(--space-2);
   color: rgb(255 255 255 / 72%);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   letter-spacing: 0.04em;
 }
 
 .studio-agent-name {
-  font-size: 32px;
+  font-size: var(--font-size-heading);
   line-height: 1.1;
   letter-spacing: -0.02em;
 }
 
 .studio-agent-sub {
   color: rgb(255 255 255 / 84%);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 .studio-agent-stats {
@@ -842,12 +842,12 @@
 
 .studio-agent-stat-label {
   color: rgb(255 255 255 / 66%);
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 
 .studio-agent-stat-value {
   color: var(--text-inverse);
-  font-size: 14px;
+  font-size: var(--font-size-ui);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
@@ -856,7 +856,7 @@
   margin-top: auto;
   padding-top: var(--space-4);
   color: rgb(255 255 255 / 72%);
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 
 /* Legend ---------------------------------------------------------------- */
@@ -870,7 +870,7 @@
 
 .studio-legend h3 {
   margin: 0 0 var(--space-2);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .studio-legend dl {
@@ -884,14 +884,14 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
 }
 
 .studio-legend dd {
   margin: 2px 0 0;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 
 /* Capability detail ------------------------------------------------------ */
@@ -935,7 +935,7 @@
 
 .studio-fact dt {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .studio-fact dd {
@@ -945,7 +945,7 @@
   gap: var(--space-2);
   min-width: 0;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   overflow-wrap: anywhere;
 }
 
@@ -957,7 +957,7 @@
 
 .studio-records h3 {
   margin: 0 0 var(--space-2);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
 }
 
 .studio-records ul {
@@ -978,20 +978,20 @@
 }
 
 .studio-record-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-ui);
+  font-weight: var(--font-weight-semibold);
 }
 
 .studio-record-meta {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .studio-record-summary {
   flex-basis: 100%;
   margin: var(--space-1) 0 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   overflow-wrap: anywhere;
 }
 
@@ -1001,7 +1001,7 @@
   border-left: 3px solid var(--state-neutral);
   background: var(--surface-subtle);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 /* Kind badges ------------------------------------------------------------ */
@@ -1013,7 +1013,7 @@
   border-radius: 4px;
   background: var(--state-neutral-bg);
   color: var(--state-neutral);
-  font-size: 10px;
+  font-size: var(--font-size-small);
   line-height: 18px;
   white-space: nowrap;
 }

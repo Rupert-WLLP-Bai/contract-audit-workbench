@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-31 */
-/* Updated: 2026-11-15 */
-/* Revision: r3 */
+/* Updated: 2026-11-20 */
+/* Revision: r4 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -55,8 +55,8 @@
 .evidence-sla-summary dd {
   margin: 0;
   color: var(--text-primary);
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
   overflow-wrap: anywhere;
 }
 
@@ -91,7 +91,7 @@
 
 .evidence-sla-request strong {
   overflow-wrap: anywhere;
-  font-weight: 500;
+  font-weight: var(--font-weight-semibold);
 }
 
 .evidence-sla-deadline {
@@ -103,7 +103,7 @@
 
 .evidence-sla-response strong {
   color: var(--text-primary);
-  font-weight: 500;
+  font-weight: var(--font-weight-semibold);
 }
 
 .evidence-sla-pre-review {
@@ -148,7 +148,7 @@
   outline-offset: 3px;
 }
 .evidence-sla-select[aria-pressed="true"] {
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
 }
 .evidence-sla-detail {
   min-width: 0;

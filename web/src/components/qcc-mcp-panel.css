@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-08 */
-/* Updated: 2026-11-15 */
-/* Revision: r2 */
+/* Updated: 2026-11-20 */
+/* Revision: r3 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -28,7 +28,7 @@
 
 .qcc-mcp-head h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-size-document);
 }
 
 .qcc-mcp-head p {
@@ -38,7 +38,7 @@
 
 .qcc-mcp-eyebrow {
   color: var(--action-primary) !important;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   letter-spacing: 0.04em;
 }
 
@@ -59,19 +59,19 @@
 
 .qcc-mcp-summary dt {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .qcc-mcp-summary dd {
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
   color: var(--text-primary);
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
 }
 
 .qcc-mcp-summary dd.qcc-mcp-switch {
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--font-size-ui);
 }
 
 .qcc-mcp-grid {
@@ -99,19 +99,19 @@
 
 .qcc-mcp-server h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-ui);
 }
 
 .qcc-mcp-server code {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   overflow-wrap: anywhere;
 }
 
 .qcc-mcp-skills {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .qcc-mcp-skills span {
@@ -120,12 +120,12 @@
   border-radius: var(--radius-control);
   background: var(--surface-raised);
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 
 .qcc-mcp-server details {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .qcc-mcp-server summary {
@@ -135,13 +135,13 @@
 .qcc-mcp-error {
   margin: 0;
   color: var(--state-conflict);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .qcc-mcp-note {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 @media (max-width: 1100px) {
@@ -166,13 +166,13 @@
   border-radius: var(--radius-control);
   background: var(--surface-page);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .qcc-mcp-sample summary {
   cursor: pointer;
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .qcc-mcp-sample dl {
@@ -184,7 +184,7 @@
 
 .qcc-mcp-sample dt {
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 
 .qcc-mcp-sample dd {

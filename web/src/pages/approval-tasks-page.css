@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-01 */
-/* Updated: 2026-11-15 */
-/* Revision: r3 */
+/* Updated: 2026-11-20 */
+/* Revision: r4 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -74,8 +74,8 @@
 
 .approval-detail-head h2 {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: var(--font-size-document);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -98,13 +98,13 @@
 
 .approval-muted {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .approval-mono {
   color: var(--text-secondary);
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   overflow-wrap: anywhere;
 }
 
@@ -127,7 +127,7 @@
 
 .approval-facts dt {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .approval-facts dd {
@@ -142,8 +142,8 @@
 .approval-detail-section h3,
 .approval-decision h3 {
   margin: 0 0 var(--space-2);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--font-size-ui);
+  font-weight: var(--font-weight-semibold);
 }
 
 .approval-timeline {
@@ -187,7 +187,7 @@
 
 .approval-opinion span {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .approval-opinion p {
@@ -219,8 +219,8 @@
 
 .approval-restricted h4 {
   margin: 0 0 var(--space-1);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-ui);
+  font-weight: var(--font-weight-semibold);
 }
 
 .approval-restricted ul {

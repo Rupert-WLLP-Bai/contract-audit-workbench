@@ -3,24 +3,24 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-10-25 */
-/* Updated: 2026-11-19 */
-/* Revision: r4 */
+/* Updated: 2026-11-20 */
+/* Revision: r5 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
 /* Hallmark · built: the project · redesign: restyle · theme: ant-monochrome (by request) · genre: modern-minimal · scope: app · surface: absolute · shape: app screen · nav: black grouped menu · footer: none */
 /* Hallmark · pre-emit critique: the list and detail split depends on scan order; keep counts and record labels visible as columns stack */
 .module-page {
-  padding: 20px 24px 24px;
+  padding: 20px var(--space-6) var(--space-6);
   background: var(--surface-page);
 }
 .module-page-head {
-  padding-bottom: 16px;
+  padding-bottom: var(--space-4);
 }
 .module-page-head h1 {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .module-page .page-pattern-summary {
@@ -30,8 +30,8 @@
   display: flex;
   align-items: end;
   justify-content: space-between;
-  gap: 12px;
-  padding: 0 16px 12px;
+  gap: var(--space-3);
+  padding: 0 var(--space-4) var(--space-3);
   border: 1px solid var(--border-default);
   border-bottom: 0;
   border-radius: 6px 6px 0 0;
@@ -40,33 +40,33 @@
 .module-tabs {
   display: flex;
   min-width: 0;
-  gap: 24px;
+  gap: var(--space-6);
   overflow-x: auto;
 }
 .module-toolbar-title {
   margin: 0;
-  padding-bottom: 4px;
+  padding-bottom: var(--space-1);
   color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--font-size-ui);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.5;
 }
 .module-search {
   display: grid;
   flex: 0 1 270px;
   min-width: 180px;
-  gap: 4px;
+  gap: var(--space-1);
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 .module-note {
   margin: 0;
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-4);
   border: 1px solid var(--border-default);
   border-top: 0;
   background: var(--surface-subtle);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 .module-workspace {
   display: grid;
@@ -95,19 +95,19 @@
   width: 100%;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px 12px;
+  gap: var(--space-2) var(--space-3);
   text-align: left;
 }
 .module-record-main {
   display: grid;
   min-width: 0;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .module-record-main strong {
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-ui);
+  font-weight: var(--font-weight-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -115,7 +115,7 @@
 .module-record-time {
   overflow: hidden;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-small);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -128,49 +128,49 @@
   min-width: 0;
   max-height: calc(100vh - var(--header-height) - 56px);
   overflow: auto;
-  padding: 16px;
+  padding: var(--space-4);
 }
 .module-detail-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
-  padding-bottom: 12px;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border-default);
 }
 .module-detail-head > div {
   min-width: 0;
 }
 .module-detail-head p {
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-1);
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: var(--font-size-small);
   overflow-wrap: anywhere;
 }
 .module-detail-head h2 {
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-1);
   color: var(--text-primary);
-  font-size: 15px;
+  font-size: var(--font-size-document);
 }
 .module-detail-head span {
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 .module-detail-tabs {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
   overflow-x: auto;
   border-bottom: 1px solid var(--border-default);
 }
 .module-detail-content {
   display: grid;
-  gap: 12px;
-  padding: 16px 2px;
+  gap: var(--space-3);
+  padding: var(--space-4) 2px;
 }
 .module-detail-note {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.8;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -179,11 +179,11 @@
   max-height: 46vh;
   overflow: auto;
   margin: 0;
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--border-default);
   border-radius: 4px;
   background: var(--surface-subtle);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.9;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -196,10 +196,10 @@
 .module-detail-fields > div {
   display: grid;
   grid-template-columns: minmax(95px, 0.6fr) minmax(0, 1fr);
-  gap: 8px;
-  padding: 8px 2px;
+  gap: var(--space-2);
+  padding: var(--space-2) 2px;
   border-bottom: 1px solid var(--border-default);
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 .module-detail-fields dt {
   color: var(--text-secondary);
@@ -213,15 +213,15 @@
 .module-detail-links {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 16px;
-  font-size: 12px;
+  gap: var(--space-2) var(--space-4);
+  font-size: var(--font-size-small);
 }
 .module-create-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  padding: 16px;
-  margin: 0 0 16px;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  margin: 0 0 var(--space-4);
   border: 1px solid var(--border-default);
   border-radius: 6px;
   background: var(--surface-raised);
@@ -234,35 +234,35 @@
 }
 .module-create-form h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--font-size-document);
 }
 .module-create-form label {
   display: grid;
   min-width: 0;
-  gap: 4px;
+  gap: var(--space-1);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 .module-create-form [role="alert"],
 .module-error {
   margin: 0;
   color: var(--state-conflict);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 .module-form-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .module-empty {
-  padding: 32px 16px;
+  padding: var(--space-8) var(--space-4);
   margin: 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   text-align: center;
 }
 .module-complete-task {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 @media (max-width: 1150px) {
   .module-workspace {
@@ -280,15 +280,15 @@
 }
 @media (max-width: 760px) {
   .module-page {
-    padding: 16px;
+    padding: var(--space-4);
   }
   .module-toolbar {
     align-items: stretch;
     flex-direction: column;
-    padding: 0 12px 12px;
+    padding: 0 var(--space-3) var(--space-3);
   }
   .module-tabs {
-    gap: 16px;
+    gap: var(--space-4);
   }
   .module-search {
     flex: 1;
@@ -306,16 +306,16 @@
 
 /* Hallmark · restyle: ruled module ledger with an explicit detail pane */
 .module-page {
-  padding: 20px 24px 32px;
+  padding: 20px var(--space-6) var(--space-8);
   background: var(--surface-page);
 }
 .module-page-head {
   border-bottom: 1px solid var(--border-strong);
-  padding-bottom: 12px;
+  padding-bottom: var(--space-3);
 }
 .module-page-head h1 {
-  font-size: 24px;
-  font-weight: 600;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: -0.02em;
 }
 .module-page-head > div > p:last-child {
@@ -334,7 +334,7 @@
   color: var(--text-secondary);
 }
 .module-note {
-  padding: 8px 0;
+  padding: var(--space-2) 0;
   border: 0;
   border-bottom: 1px solid var(--border-default);
   background: transparent;
@@ -372,15 +372,15 @@
 .module-detail-head p {
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--font-size-small);
 }
 .module-detail-head h2 {
-  font-size: 17px;
+  font-size: var(--font-size-document);
   letter-spacing: -0.01em;
 }
 .module-empty {
   margin: 0;
-  padding: 24px 16px;
+  padding: var(--space-6) var(--space-4);
   color: var(--text-secondary);
 }
 @media (max-width: 900px) {
@@ -395,7 +395,7 @@
 }
 @media (max-width: 560px) {
   .module-page {
-    padding: 16px;
+    padding: var(--space-4);
   }
 }
 
@@ -411,19 +411,19 @@
 .module-workspace-audit .module-detail-panel {
   position: static;
   max-height: none;
-  padding: 24px 0;
+  padding: var(--space-6) 0;
 }
 .audit-event-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
   margin: 0;
   padding: 18px 0;
   border-bottom: 1px solid var(--border-default);
 }
 .audit-event-summary dt {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 .audit-event-summary dd {
   margin: 6px 0 0;
@@ -431,7 +431,7 @@
   overflow-wrap: anywhere;
 }
 .module-detail-content.audit-detail-card {
-  margin-top: 8px;
+  margin-top: var(--space-2);
   padding: 20px;
   border: 1px solid var(--border-default);
   border-radius: 6px;
@@ -439,19 +439,19 @@
 }
 .audit-detail-card h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-document);
 }
 .workbench-record-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
   margin: 0;
-  padding: 16px 0;
+  padding: var(--space-4) 0;
   border-bottom: 1px solid var(--border-default);
 }
 .workbench-record-summary dt {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 .workbench-record-summary dd {
   margin: 6px 0 0;
@@ -526,7 +526,7 @@
 .module-evidence-note {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .module-template-preview ul {
@@ -549,7 +549,7 @@
 
 .module-template-preview code {
   color: var(--action-primary);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 /* Reader modules keep a compact record rail and give documents the workspace width. */

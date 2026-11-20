@@ -3,8 +3,8 @@
 /* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-01 */
-/* Updated: 2026-11-01 */
-/* Revision: r1 */
+/* Updated: 2026-11-20 */
+/* Revision: r2 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -23,7 +23,7 @@
   .single-contract-coverage h2,
   .single-contract-coverage h3 {
     margin: 0;
-    font-size: 1rem;
+    font-size: var(--font-size-document);
   }
 
   .single-contract-coverage-summary {

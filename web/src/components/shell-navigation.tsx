@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-19
-// Updated: 2026-11-19
-// Revision: r2
+// Updated: 2026-11-20
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -124,8 +124,8 @@ export function ShellNavigation({
         <Layout.Sider
           className={`sidenav shell-sidenav ${className}`}
           theme="light"
-          width={248}
-          collapsedWidth={compact ? 56 : 72}
+          width="var(--sidebar-expanded-width)"
+          collapsedWidth="var(--sidebar-collapsed-width)"
           collapsed={compact || collapsed}
           collapsible={!compact}
           onCollapse={setCollapsed}

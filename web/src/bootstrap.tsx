@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r7
+// Updated: 2026-11-20
+// Revision: r8
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -23,6 +23,12 @@ import { ApplicationError } from "./components/application-error";
 
 const rootStyle = getComputedStyle(document.documentElement);
 const cssToken = (name: string) => rootStyle.getPropertyValue(name).trim();
+const uiMetric = (name: string) => Number.parseFloat(cssToken(name));
+const tableCellPadding =
+  (uiMetric("--table-header-height") -
+    uiMetric("--font-size-ui") * uiMetric("--line-height-ui") -
+    1) /
+  2;
 const uiTheme: ThemeConfig = {
   token: {
     colorPrimary: cssToken("--action-primary"),
@@ -45,10 +51,24 @@ const uiTheme: ThemeConfig = {
     colorBgLayout: cssToken("--surface-page"),
     colorBgContainer: cssToken("--surface-raised"),
     colorBgElevated: cssToken("--surface-raised"),
-    borderRadius: Number.parseFloat(cssToken("--radius-control")),
+    borderRadius: uiMetric("--radius-control"),
     fontFamily: cssToken("--font-ui"),
-    fontSize: Number.parseFloat(cssToken("--font-size-ui")),
-    controlHeight: Number.parseFloat(cssToken("--control-height")),
+    fontSize: uiMetric("--font-size-ui"),
+    controlHeight: uiMetric("--control-height"),
+    controlHeightSM: uiMetric("--control-height-small"),
+    controlHeightLG: uiMetric("--control-height-large"),
+    fontSizeSM: uiMetric("--font-size-small"),
+    fontSizeLG: uiMetric("--font-size-document"),
+    fontSizeXL: uiMetric("--font-size-heading"),
+    fontSizeHeading1: uiMetric("--font-size-heading"),
+    fontSizeHeading2: uiMetric("--font-size-heading"),
+    fontSizeHeading3: uiMetric("--font-size-heading"),
+    fontSizeHeading4: uiMetric("--font-size-document"),
+    fontSizeHeading5: uiMetric("--font-size-document"),
+    fontWeightStrong: uiMetric("--font-weight-semibold"),
+    lineHeight: uiMetric("--line-height-ui"),
+    borderRadiusSM: uiMetric("--radius-tag"),
+    borderRadiusLG: uiMetric("--radius-panel"),
     motion: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   },
   components: {
@@ -57,11 +77,12 @@ const uiTheme: ThemeConfig = {
       primaryShadow: "none",
       defaultShadow: "none",
       textHoverBg: cssToken("--surface-hover"),
-      fontWeight: 500,
+      fontWeight: uiMetric("--font-weight-normal"),
     },
     Layout: {
       bodyBg: cssToken("--surface-page"),
       headerBg: cssToken("--surface-rail"),
+      headerHeight: uiMetric("--header-height"),
       headerColor: cssToken("--text-primary"),
       lightSiderBg: cssToken("--surface-rail"),
       lightTriggerBg: cssToken("--surface-rail-raised"),
@@ -69,8 +90,8 @@ const uiTheme: ThemeConfig = {
     },
     Menu: {
       itemBg: cssToken("--surface-rail"),
-      collapsedWidth: 72,
-      itemHeight: 40,
+      collapsedWidth: uiMetric("--sidebar-collapsed-width"),
+      itemHeight: uiMetric("--nav-item-height"),
       popupBg: cssToken("--surface-raised"),
       subMenuItemBg: cssToken("--surface-rail"),
       itemColor: cssToken("--text-secondary"),
@@ -79,12 +100,12 @@ const uiTheme: ThemeConfig = {
       itemSelectedColor: cssToken("--nav-item-selected-fg"),
       itemHoverBg: cssToken("--surface-rail-raised"),
       itemHoverColor: cssToken("--text-primary"),
-      itemBorderRadius: Number.parseFloat(cssToken("--radius-control")),
-      groupTitleFontSize: 13,
+      itemBorderRadius: uiMetric("--radius-control"),
+      groupTitleFontSize: uiMetric("--font-size-small"),
     },
     Form: {
       labelColor: cssToken("--text-primary"),
-      labelFontSize: Number.parseFloat(cssToken("--font-size-ui")),
+      labelFontSize: uiMetric("--font-size-ui"),
       itemMarginBottom: Number.parseFloat(cssToken("--space-4")),
     },
     Input: {
@@ -98,11 +119,11 @@ const uiTheme: ThemeConfig = {
     Table: {
       headerBg: cssToken("--surface-subtle"),
       borderColor: cssToken("--border-default"),
-      cellPaddingBlock: Number.parseFloat(cssToken("--space-3")),
+      cellPaddingBlock: tableCellPadding,
       cellPaddingInline: Number.parseFloat(cssToken("--space-4")),
-      cellPaddingBlockMD: Number.parseFloat(cssToken("--space-3")),
+      cellPaddingBlockMD: tableCellPadding,
       cellPaddingInlineMD: Number.parseFloat(cssToken("--space-4")),
-      cellPaddingBlockSM: Number.parseFloat(cssToken("--space-2")),
+      cellPaddingBlockSM: tableCellPadding,
       cellPaddingInlineSM: Number.parseFloat(cssToken("--space-3")),
       headerColor: cssToken("--text-secondary"),
       rowHoverBg: cssToken("--surface-hover"),

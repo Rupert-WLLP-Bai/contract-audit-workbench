@@ -4,7 +4,7 @@
 /* Contact: +86 13617696321 */
 /* Created: 2026-11-19 */
 /* Updated: 2026-11-20 */
-/* Revision: r2 */
+/* Revision: r3 */
 /* Copyright: See LICENSE */
 /* End file metadata. */
 
@@ -17,13 +17,13 @@
 .immersive-topics {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1);
+  gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
   background: var(--surface-raised);
   border-bottom: 1px solid var(--border-default);
 }
 .immersive-topics .ant-btn {
-  border-radius: 999px;
+  border-radius: var(--radius-control);
 }
 .immersive-topics .ant-btn[aria-pressed="true"] {
   color: var(--action-primary);
@@ -70,7 +70,7 @@
   gap: var(--space-2);
   min-width: 0;
   min-height: 44px;
-  padding: var(--space-2) 102px var(--space-2) var(--space-4);
+  padding: var(--space-2) 110px var(--space-2) var(--space-4);
   background: var(--surface-raised);
   border-bottom: 1px solid var(--border-default);
 }
@@ -114,12 +114,16 @@
   top: 4px;
   right: var(--space-2);
   z-index: 1;
-  gap: 0;
+  gap: var(--space-2);
 }
 .immersive-document-scroll .original-reader-modes .ant-btn {
-  height: 28px;
+  height: var(--control-height-small);
+  border-radius: var(--radius-control);
   padding-inline: var(--space-2);
-  font-size: 12px;
+  font-size: var(--font-size-small);
+}
+.immersive-source-choice select {
+  min-height: var(--control-height);
 }
 .immersive-document-scroll .original-reader-modes .ant-btn:nth-last-child(1) {
   order: -1;
@@ -137,7 +141,7 @@
   border-radius: 50%;
   background: var(--state-conflict);
   color: var(--text-inverse);
-  font-size: 0.8em;
+  font-size: var(--font-size-ui);
 }
 .review-workspace-layout .immersive-document-column .doc-text .hit-key-clause {
   background: transparent;
