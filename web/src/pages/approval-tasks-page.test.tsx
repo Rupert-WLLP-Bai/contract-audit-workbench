@@ -548,7 +548,7 @@ describe("approval tasks page", () => {
       ["待我审批", "当前没有待你审批的合同"],
       ["我已审批", "暂无已审批记录"],
       ["我发起的", "暂无你发起的会签"],
-    ]) {
+    ] as const) {
       await user.click(await screen.findByRole("tab", { name: new RegExp(label + "$") }));
       expect(await screen.findByText(empty, { exact: true })).toBeVisible();
       const headers = within(screen.getByRole("table")).getAllByRole("columnheader");
