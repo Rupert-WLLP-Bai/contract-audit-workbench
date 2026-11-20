@@ -313,7 +313,7 @@ describe("page section navigation", () => {
 
 it("accepts return positions only for the same actor, case and attempt", () => {
   const list = {
-    returnTo: "/cases?q=示例&page=2&selected=c1",
+    returnTo: "/cases?q=示例&page=2&view=recent&contract_type=service&selected=c1",
     scrollY: 220,
     selectedId: "c1",
     actorScope: "actor-a",
@@ -323,6 +323,9 @@ it("accepts return positions only for the same actor, case and attempt", () => {
   expect(new URL(restored!.returnTo, "https://navigation.invalid").searchParams.get("q")).toBe(
     "示例",
   );
+  const filters = new URL(restored!.returnTo, "https://navigation.invalid").searchParams;
+  expect(filters.get("view")).toBe("recent");
+  expect(filters.get("contract_type")).toBe("service");
   expect(readCaseListReturn(list, "c1", "actor-b")).toBeNull();
   expect(
     readCaseListReturn(

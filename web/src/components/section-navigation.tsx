@@ -84,6 +84,8 @@ export function readCaseListReturn(
       "q",
       "run",
       "business_status",
+      "contract_type",
+      "view",
       "sort",
       "direction",
       "page",

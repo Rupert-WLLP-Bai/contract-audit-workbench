@@ -12,7 +12,8 @@ import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithAntd as render } from "../test/antd";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
-import type { CaseSummary } from "../api/types";
+import type { CaseSummary, WorkbenchSnapshot } from "../api/types";
+import { AdministrativeTechnicalDetails } from "./app-shell-preferences";
 import { CasesTable, sortFieldOf } from "./cases-table";
 
 const item: CaseSummary = {
@@ -36,6 +37,22 @@ const tableProps = {
   onSort: vi.fn(),
 };
 
+function caseSnapshot(summary: CaseSummary, parseStatus: "ready" | "failed" = "ready") {
+  return {
+    cases: [summary],
+    runs: summary.latest_run
+      ? [{ ...summary.latest_run, case_id: summary.id, attempt_id: "a1" }]
+      : [],
+    remediations: [],
+    reports: [],
+    documents: Array.from({ length: summary.document_count }, (_, index) => ({
+      case_id: summary.id,
+      parse_status: index === 0 ? parseStatus : "ready",
+      superseded: false,
+    })),
+  } as unknown as WorkbenchSnapshot;
+}
+
 function LocationState() {
   const location = useLocation();
   return <output>{JSON.stringify(location.state)}</output>;
@@ -45,34 +62,74 @@ describe("cases table", () => {
   it("reports malformed update times and preserves the precise raw value for diagnostics", async () => {
     render(
       <MemoryRouter>
-        <CasesTable items={[{ ...item, updated_at: "bad-case-time" }]} {...tableProps} />
+        <AdministrativeTechnicalDetails>
+          <CasesTable items={[{ ...item, updated_at: "bad-case-time" }]} {...tableProps} />
+        </AdministrativeTechnicalDetails>
       </MemoryRouter>,
     );
-    expect(screen.getAllByText(/时间格式异常/).length).toBeGreaterThan(0);
+    expect(screen.getByText("—")).toBeVisible();
     await userEvent.setup().click(screen.getByText("案件更新时间原始值"));
     expect(screen.getByText("bad-case-time")).toBeVisible();
   });
-  it("opens a case from the row title and shows the run in words", () => {
+  it("links once to the known review attempt and gives a single canonical stage", () => {
     render(
       <MemoryRouter initialEntries={["/cases?q=network&run=needs_human"]}>
-        <CasesTable items={[item]} {...tableProps} />
+        <CasesTable items={[item]} snapshot={caseSnapshot(item)} role="reviewer" {...tableProps} />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("link", { name: "基站质保" })).toHaveAttribute("href", "/cases/c1");
-    expect(screen.getByRole("cell", { name: "待人工" })).toBeInTheDocument();
-    expect(screen.getByRole("cell", { name: "2" })).toBeInTheDocument();
-    expect(screen.getByText("材料 3")).toBeInTheDocument();
-    expect(screen.getByText("最新运行：待人工")).toBeInTheDocument();
-    expect(screen.getByText("表格列较多时可横向滚动查看其余字段。")).toBeInTheDocument();
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "去判断 (2)：基站质保" })).toHaveAttribute(
+      "href",
+      "/cases/c1/reviews/r1?attempt_id=a1",
+    );
+    expect(screen.getByRole("cell", { name: "待判断 2 条" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "3 份" })).toBeInTheDocument();
   });
 
-  it("says when a case has not been reviewed instead of calling it clean", () => {
+  it("shows a failure with material navigation before starting a never-reviewed case", () => {
+    const unreviewed = { ...item, latest_run: null, pending_decisions: 0 };
     render(
       <MemoryRouter>
-        <CasesTable items={[{ ...item, latest_run: null, pending_decisions: 0 }]} {...tableProps} />
+        <CasesTable
+          items={[unreviewed]}
+          snapshot={caseSnapshot(unreviewed, "failed")}
+          {...tableProps}
+        />
       </MemoryRouter>,
     );
-    expect(screen.getByText("尚未审查")).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "材料解析失败" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "3 份 1 份解析失败" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看材料：基站质保" })).toHaveAttribute(
+      "href",
+      "/cases/c1#case-materials",
+    );
+  });
+
+  it("opens review preparation for active partial cases without claiming retry permission", () => {
+    const partial = {
+      ...item,
+      pending_decisions: 0,
+      latest_run: { ...item.latest_run!, state: "partial" },
+    };
+    const snapshot = caseSnapshot(partial);
+    const view = render(
+      <MemoryRouter>
+        <CasesTable items={[partial]} snapshot={snapshot} role="reviewer" {...tableProps} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("link", { name: "重新审查：基站质保" })).toHaveAttribute(
+      "href",
+      "/cases/c1#review-readiness",
+    );
+    view.rerender(
+      <MemoryRouter>
+        <CasesTable items={[partial]} snapshot={snapshot} role="viewer" {...tableProps} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("link", { name: "查看：基站质保" })).toHaveAttribute(
+      "href",
+      "/cases/c1/reviews/r1?attempt_id=a1&drawer=record&tab=review",
+    );
   });
 
   it("exposes sorting as a keyboard-operable table action", async () => {
@@ -104,7 +161,7 @@ describe("cases table", () => {
         </Routes>
       </MemoryRouter>,
     );
-    await user.click(screen.getByRole("link", { name: "基站质保" }));
+    await user.click(screen.getByRole("link", { name: "查看材料：基站质保" }));
     expect(await screen.findByText(/"selectedId":"c1"/)).toHaveTextContent(
       '"returnTo":"/cases?q=network&run=needs_human&selected=c1"',
     );
@@ -145,9 +202,8 @@ describe("cases table", () => {
         />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("cell", { name: "政企业务 / 政企专线" })).toBeInTheDocument();
-    expect(screen.getByRole("cell", { name: "进行中" })).toBeInTheDocument();
-    expect(screen.getByRole("cell", { name: "业务范围未设置" })).toBeInTheDocument();
+    expect(screen.getByText("网络工程 · 政企业务 / 政企专线")).toBeInTheDocument();
+    expect(screen.queryByText("业务范围未设置")).not.toBeInTheDocument();
     expect(screen.getAllByText("已归档").length).toBeGreaterThan(0);
   });
 
@@ -162,7 +218,7 @@ describe("cases table", () => {
 
   it.each([
     ["材料", "document_count"],
-    ["待决定", "pending_decisions"],
+    ["当前状态", "pending_decisions"],
     ["更新时间", "updated_at"],
     ["案件", "title"],
   ])("reports sorting for the %s column", async (column, field) => {
@@ -189,7 +245,7 @@ describe("cases table", () => {
       "aria-sort",
       "ascending",
     );
-    await user.click(screen.getByRole("columnheader", { name: "业务线 / 场景" }));
+    await user.click(screen.getByRole("columnheader", { name: "操作" }));
     expect(onSort).not.toHaveBeenCalled();
   });
 
@@ -228,7 +284,7 @@ describe("cases table sorting helper and scroll", () => {
         </Routes>
       </MemoryRouter>,
     );
-    await user.click(screen.getByRole("link", { name: "基站质保" }));
+    await user.click(screen.getByRole("link", { name: "查看材料：基站质保" }));
     expect(await screen.findByText(/"scrollY":321/)).toBeInTheDocument();
     Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
   });
@@ -248,12 +304,12 @@ describe("cases table sorting helper and scroll", () => {
     expect(screen.getByText("案件 11")).toBeInTheDocument();
   });
 
-  it("labels a missing business status without inventing a value", () => {
+  it("does not infer material readiness when the material breakdown is absent", () => {
     render(
       <MemoryRouter>
         <CasesTable items={[{ ...item, business_status: undefined }]} {...tableProps} />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("cell", { name: "业务状态未提供" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "材料状态待确认" })).toBeInTheDocument();
   });
 });

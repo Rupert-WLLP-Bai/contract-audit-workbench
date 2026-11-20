@@ -20,13 +20,13 @@ test(
       .getByRole("navigation", { name: "主导航" })
       .getByRole("link", { name: "案件", exact: true })
       .click();
-    await page.getByRole("button", { name: "新建案件", exact: true }).click();
+    await page.getByRole("button", { name: "新建空白案件", exact: true }).click();
     const dialog = page.getByRole("dialog");
     const title = `Playwright 案件 ${Date.now()}`;
-    await dialog.getByLabel("标题", { exact: true }).fill(title);
-    await dialog.getByLabel("合同类型", { exact: true }).selectOption("service");
+    await dialog.getByLabel("案件名称", { exact: true }).fill(title);
+    await expect(dialog.getByText("服务合同", { exact: true })).toBeVisible();
     await dialog.getByRole("button", { name: "创建", exact: true }).click();
-    await expect(page).toHaveURL(/\/cases\/case_[^/?]+$/);
+    await expect(page).toHaveURL(/\/cases\/case_[^/?#]+$/);
     await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
     const caseID = new URL(page.url()).pathname.split("/").at(-1)!;
     const created = await detail(page.request, caseID);
@@ -38,15 +38,21 @@ test(
       .getByRole("link", { name: "案件", exact: true })
       .click();
     await page.getByLabel("搜索案件", { exact: true }).fill(title);
-    await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
-    await page.getByLabel("运行状态", { exact: true }).selectOption("failed");
-    await expect(page.getByRole("link", { name: title, exact: true })).toHaveCount(0);
-    await page.getByLabel("运行状态", { exact: true }).selectOption("all");
-    await page.getByRole("button", { name: /按案件排序/ }).click();
+    const row = page.getByRole("row").filter({ hasText: title });
+    await expect(row.getByRole("link")).toHaveCount(1);
+    await page.getByRole("button", { name: "状态与类型" }).click();
+    const run = page.getByRole("combobox", { name: "运行状态" });
+    await run.click();
+    await page.getByTitle("失败", { exact: true }).click();
+    await expect(row).toHaveCount(0);
+    await run.click();
+    await page.getByTitle("全部运行状态", { exact: true }).click();
+    await page.getByRole("button", { name: "状态与类型" }).click();
+    await page.getByRole("columnheader", { name: /案件/ }).click();
     await expect(page.locator('th[aria-sort="ascending"]')).toContainText("案件");
-    await page.getByRole("button", { name: /按案件排序/ }).click();
+    await page.getByRole("columnheader", { name: /案件/ }).click();
     await expect(page.locator('th[aria-sort="descending"]')).toContainText("案件");
-    await page.getByRole("link", { name: title, exact: true }).click();
+    await row.getByRole("link").click();
     await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
     const list = parseCaseList(await body(await page.request.get(`${apiURL}/api/cases`)));
     expect(list.find((item) => item.id === caseID)?.title).toBe(title);

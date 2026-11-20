@@ -1,223 +1,257 @@
-// File metadata (manifest mirror):
-// Purpose: Resolves the selected case and comparison target, then routes into a side-by-side comparison of persisted review runs without creating a new review.
-// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
-// Contact: +86 13617696321
-// Created: 2026-10-28
-// Updated: 2026-11-20
-// Revision: r6
-// Copyright: See LICENSE
-// End file metadata.
-
-import { Button, Input, Table, type TableColumnsType } from "antd";
-import { useState } from "react";
-import { Link } from "react-router";
+// Version selection uses only authorized review history; it never creates a review.
+import { Button, Select } from "antd";
+import { useQueries } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
+import { getReview } from "../api/endpoints";
 import { errorMessage, isForbidden, isUnauthenticated } from "../api/http";
-import { useWorkbench } from "../api/queries";
-import type { WorkbenchCase, WorkbenchRun } from "../api/types";
+import { useCaseReviewHistory, useSession, useWorkbench } from "../api/queries";
+import type { ReviewWorkspace, WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
-import { ListPage } from "../components/page-patterns";
-import { StatusText } from "../components/status-text";
-import { TechnicalDetail } from "../components/technical-detail";
-import { InvalidTimeDetail } from "../components/invalid-time-detail";
-import { caseIdentityDetails, caseSearchText } from "../domain/case-identity";
-import {
-  businessStatusLabel,
-  businessStatusTone,
-  formatDateTime,
-  latestRun,
-  runLabel,
-  runTone,
-} from "../domain/review";
+import { actorReadContextKey } from "../domain/actor-read-context";
+import { caseIdentityDetails } from "../domain/case-identity";
+import { compactTime } from "../domain/time";
+import { runLabel } from "../domain/review";
+import { frozenWorkspaceProblem } from "../domain/review-diff";
 import "./compare-entry-page.css";
 
+function frozenReview(
+  caseId: string,
+  runId: string,
+  workspace: ReviewWorkspace,
+  expectedAttempt?: string | null,
+) {
+  const attempt = workspace.review_attempts?.attempt;
+  return Boolean(
+    attempt?.id &&
+    (!expectedAttempt || attempt.id === expectedAttempt) &&
+    !frozenWorkspaceProblem(workspace, caseId, runId, attempt.id),
+  );
+}
+function recentFirst(a: WorkbenchRun, b: WorkbenchRun) {
+  return b.updated_at.localeCompare(a.updated_at) || b.id.localeCompare(a.id);
+}
+
 export function CompareEntryPage() {
-  const query = useWorkbench("week");
-  const [search, setSearch] = useState("");
-  if (query.isLoading) return <PageStatus kind="loading" title="正在读取案件列表" />;
-  if (query.isError || !query.data)
+  const session = useSession();
+  const actorScope =
+    session.isSuccess && !session.isFetching ? actorReadContextKey(session.data) : "";
+  const query = useWorkbench("week", actorScope);
+  const navigate = useNavigate();
+  const [selection, setSelection] = useState({ scope: "", caseId: "", left: "", right: "" });
+  const current =
+    selection.scope === actorScope
+      ? selection
+      : { scope: actorScope, caseId: "", left: "", right: "" };
+  const snapshot = query.isSuccess && !query.isFetching && actorScope ? query.data : undefined;
+  const selected = snapshot?.cases.find((item) => item.id === current.caseId);
+  const history = useCaseReviewHistory(selected?.id ?? "", selected?.latest_run?.id ?? null);
+  const olderRequested = useRef("");
+  const historyKey = JSON.stringify([actorScope, selected?.id, selected?.latest_run?.id]);
+  useEffect(() => {
+    if (
+      selected &&
+      history.data?.length === 1 &&
+      history.hasOlder &&
+      !history.isFetching &&
+      !history.isLoadingOlder &&
+      olderRequested.current !== historyKey
+    ) {
+      olderRequested.current = historyKey;
+      void history.fetchOlder();
+    }
+  }, [
+    selected,
+    history.data,
+    history.hasOlder,
+    history.isFetching,
+    history.isLoadingOlder,
+    history.fetchOlder,
+    historyKey,
+  ]);
+  const candidates = useMemo(() => {
+    if (!snapshot) return [];
+    return snapshot.cases
+      .flatMap((item) => {
+        const runs = snapshot.runs
+          .filter((run) => run.case_id === item.id && run.attempt_id)
+          .sort(recentFirst);
+        return runs.length >= 2 ? [{ item, runs: runs.slice(0, 2) }] : [];
+      })
+      .slice(0, 6);
+  }, [snapshot]);
+  const checks = useQueries({
+    queries: candidates.map(({ item, runs }) => ({
+      queryKey: [
+        "compare-entry-verified",
+        actorScope,
+        item.id,
+        ...runs.flatMap((run) => [run.id, run.attempt_id]),
+      ],
+      enabled: Boolean(actorScope),
+      retry: false,
+      queryFn: async ({ signal }: { signal: AbortSignal }) => {
+        const results = await Promise.all(
+          runs.map((run) => getReview(item.id, run.id, run.attempt_id, signal)),
+        );
+        return runs.every((run, index) =>
+          frozenReview(item.id, run.id, results[index]!, run.attempt_id),
+        );
+      },
+    })),
+  });
+  const entries =
+    history.data?.filter(
+      ({ runId, workspace }) => selected && frozenReview(selected.id, runId, workspace),
+    ) ?? [];
+  const left = entries.find((entry) => entry.runId === current.left);
+  const right = entries.find((entry) => entry.runId === current.right);
+  function chooseCase(caseId: string) {
+    setSelection({ scope: actorScope, caseId, left: "", right: "" });
+  }
+  function startComparison() {
+    if (!selected || !left || !right || left.runId === right.runId) return;
+    const leftAttempt = left.workspace.review_attempts?.attempt.id;
+    const rightAttempt = right.workspace.review_attempts?.attempt.id;
+    if (!leftAttempt || !rightAttempt) return;
+    const params = new URLSearchParams({
+      case_id: selected.id,
+      left_run_id: left.runId,
+      left_attempt_id: leftAttempt,
+      right_run_id: right.runId,
+      right_attempt_id: rightAttempt,
+    });
+    void navigate(`/compare?${params}`);
+  }
+  if (session.isLoading || query.isLoading || query.isFetching)
+    return <PageStatus kind="loading" title="正在读取案件" />;
+  if (session.isError || query.isError || !snapshot) {
+    const error = session.error ?? query.error;
     return (
       <PageStatus
-        kind={isForbidden(query.error) || isUnauthenticated(query.error) ? "denied" : "error"}
+        kind={isForbidden(error) || isUnauthenticated(error) ? "denied" : "error"}
         title={
-          isForbidden(query.error) || isUnauthenticated(query.error)
+          isForbidden(error) || isUnauthenticated(error)
             ? "没有权限读取案件列表"
             : "版本对照数据没有加载"
         }
-        detail={errorMessage(query.error)}
+        detail={errorMessage(error)}
         action={
-          <Button
-            aria-label={"重试"}
-            type="primary"
-            htmlType="button"
-            onClick={() => void query.refetch()}
-          >
+          <Button onClick={() => void Promise.all([session.refetch(), query.refetch()])}>
             重试
           </Button>
         }
       />
     );
-
-  const snapshot = query.data;
-  const runsByCase = new Map<string, WorkbenchRun[]>();
-  for (const run of snapshot.runs) {
-    const runs = runsByCase.get(run.case_id) ?? [];
-    runs.push(run);
-    runsByCase.set(run.case_id, runs);
   }
-  const needle = search.trim().toLowerCase();
-  const visibleCases = snapshot.cases.filter((item) => caseSearchText(item).includes(needle));
-  const columns: TableColumnsType<WorkbenchCase> = [
-    {
-      title: "合同",
-      key: "case",
-      render: (_, item) => (
-        <div className="compare-entry-case">
-          <strong>{item.title}</strong>
-          <span>{caseIdentityDetails(item, snapshot.members)}</span>
-          <TechnicalDetail value={item.id} label="案件标识" />
-        </div>
-      ),
-    },
-    {
-      title: "状态",
-      key: "status",
-      width: 220,
-      render: (_, item) => (
-        <div className="compare-entry-status">
-          <StatusText tone={businessStatusTone(item.business_status ?? "")}>
-            {businessStatusLabel(item.business_status ?? "")}
-          </StatusText>
-          <TechnicalDetail value={item.business_status} label="业务状态编码" />
-        </div>
-      ),
-    },
-    {
-      title: "最近运行",
-      key: "run",
-      width: 220,
-      render: (_, item) => {
-        const latest = latestRun(runsByCase.get(item.id) ?? []);
-        const runCount = runsByCase.get(item.id)?.length ?? 0;
-        if (!latest) return <span className="compare-entry-muted">本周未返回运行记录</span>;
-        return (
-          <div className="compare-entry-run">
-            <TechnicalDetail value={latest.id} label="运行标识" />
-            <StatusText tone={runTone(latest.state)}>{runLabel(latest.state)}</StatusText>
-            <TechnicalDetail value={latest.state} label="运行状态编码" />
-            <span className="compare-entry-muted">本周返回 {runCount} 次运行</span>
-          </div>
-        );
-      },
-    },
-    {
-      title: "更新时间",
-      key: "updated",
-      width: 165,
-      render: (_, item) => (
-        <div>
-          <time dateTime={item.updated_at}>{formatDateTime(item.updated_at)}</time>
-          <InvalidTimeDetail value={item.updated_at} label="案件更新时间" />
-        </div>
-      ),
-    },
-    {
-      title: "操作",
-      key: "actions",
-      width: 170,
-      align: "right",
-      render: (_, item) => {
-        const latest = latestRun(runsByCase.get(item.id) ?? []);
-        return (
-          <div className="compare-entry-actions">
-            <Link to={`/compare?case_id=${encodeURIComponent(item.id)}`}>选择审查</Link>
-            <Link
-              to={
-                latest
-                  ? `/cases/${encodeURIComponent(item.id)}/reviews/${encodeURIComponent(latest.id)}${latest.attempt_id ? `?attempt_id=${encodeURIComponent(latest.attempt_id)}` : ""}`
-                  : `/cases/${encodeURIComponent(item.id)}`
-              }
-            >
-              {latest ? "打开审查" : "案件详情"}
-            </Link>
-          </div>
-        );
-      },
-    },
-  ];
-
   return (
-    <ListPage
-      className="compare-entry-page"
-      title="版本对照"
-      description="先选择同一案件及两次已留档的审查记录，再进入结果对照。"
-      actions={
-        <Button aria-label={"案件列表"} type="text" href="/cases">
-          案件列表
+    <section className="page compare-entry-page">
+      <h1>版本对照</h1>
+      <section className="compare-selector-card" aria-label="选择对照版本">
+        <label>
+          选择案件
+          <Select
+            aria-label="选择案件"
+            showSearch={{ optionFilterProp: "label" }}
+            value={selected?.id}
+            placeholder="选择案件"
+            onChange={chooseCase}
+            options={snapshot.cases.map((item) => ({
+              value: item.id,
+              label: [item.title, caseIdentityDetails(item)].filter(Boolean).join(" · "),
+            }))}
+          />
+        </label>
+        <label>
+          当前版本
+          <Select
+            aria-label="当前版本"
+            value={left?.runId}
+            placeholder="选择审查记录"
+            disabled={!selected || history.isFetching}
+            onChange={(value) => setSelection({ ...current, left: value })}
+            options={entries.map(({ runId, workspace }, index) => ({
+              value: runId,
+              label: `记录 ${index + 1} · ${runLabel(workspace.run.state)} · ${compactTime(workspace.run.updated_at)}`,
+            }))}
+          />
+        </label>
+        <label>
+          原留档版本
+          <Select
+            aria-label="原留档版本"
+            value={right?.runId}
+            placeholder="选择审查记录"
+            disabled={!selected || history.isFetching}
+            onChange={(value) => setSelection({ ...current, right: value })}
+            options={entries.map(({ runId, workspace }, index) => ({
+              value: runId,
+              label: `记录 ${index + 1} · ${runLabel(workspace.run.state)} · ${compactTime(workspace.run.updated_at)}`,
+            }))}
+          />
+        </label>
+        <Button
+          type="primary"
+          disabled={!left || !right || left.runId === right.runId}
+          onClick={startComparison}
+        >
+          开始对照
         </Button>
-      }
-      summary={
-        <>
-          <ol className="compare-entry-summary" aria-label="版本对照摘要">
-            <li data-state={snapshot.cases.length > 0 ? "filled" : "empty"}>
-              <span className="compare-entry-summary-mark" aria-hidden="true" />
-              <span>本周返回案件</span>
-              <strong>{snapshot.cases.length}</strong>
-            </li>
-            <li data-state={snapshot.runs.length > 0 ? "filled" : "empty"}>
-              <span className="compare-entry-summary-mark" aria-hidden="true" />
-              <span>本周返回运行</span>
-              <strong>{snapshot.runs.length}</strong>
-            </li>
-          </ol>
-          <p className="compare-entry-note">
-            本周返回的运行数量不能确认审查记录是否已留档或可比；请进入案件选择并核对两次执行。
+        {selected && history.isLoading ? <p role="status">正在读取审查记录…</p> : null}
+        {selected && history.isError ? (
+          <p role="alert">
+            审查记录暂时无法读取。<Button onClick={() => void history.refetch()}>重试</Button>
           </p>
-        </>
-      }
-      filters={
-        snapshot.cases.length > 0 ? (
-          <div className="compare-entry-toolbar">
-            <label>
-              搜索合同
-              <Input
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="案件标题、业务编号、中文场景或完整案件标识"
-              />
-            </label>
-            <span>共 {visibleCases.length} 份合同</span>
-          </div>
-        ) : undefined
-      }
-    >
-      {snapshot.cases.length === 0 ? (
-        <PageStatus
-          kind="empty"
-          title="本周未返回案件"
-          detail="列表按当前服务端授权和工作台数据范围返回。"
-        />
-      ) : (
-        <>
-          <div className="compare-entry-table">
-            <Table<WorkbenchCase>
-              rowKey="id"
-              columns={columns}
-              dataSource={visibleCases}
-              size="middle"
-              tableLayout="fixed"
-              scroll={{ x: 960 }}
-              locale={{ emptyText: "没有匹配的合同" }}
-              pagination={{
-                defaultPageSize: 10,
-                pageSizeOptions: [10, 20, 50],
-                showSizeChanger: true,
-                showTotal: (total) => `共 ${total} 份合同`,
-              }}
-            />
-          </div>
-        </>
-      )}
-    </ListPage>
+        ) : null}
+        {selected && history.olderError ? (
+          <p role="alert">
+            更早的审查记录暂时无法读取。
+            <Button onClick={() => void history.fetchOlder()}>重试</Button>
+          </p>
+        ) : null}
+        {selected && history.cycleDetected ? (
+          <p role="alert">审查历史存在循环，不能继续读取更早记录。</p>
+        ) : null}
+        {selected &&
+        !history.isLoading &&
+        !history.isError &&
+        !history.hasOlder &&
+        entries.length < 2 ? (
+          <p>还没有两次可选择的留档审查。</p>
+        ) : null}
+        {selected && history.hasOlder && entries.length >= 2 ? (
+          <Button onClick={() => void history.fetchOlder()} loading={history.isLoadingOlder}>
+            查看更早审查
+          </Button>
+        ) : null}
+      </section>
+      {candidates.some((_, i) => checks[i]?.data === true && !checks[i]?.isFetching) ? (
+        <section className="compare-quick-cases" aria-label="可选择的案件">
+          <h2>可选择的案件</h2>
+          {candidates.map(({ item }, i) =>
+            checks[i]?.data === true && !checks[i]?.isFetching ? (
+              <div key={item.id}>
+                <span>{item.title}</span>
+                <Button onClick={() => chooseCase(item.id)}>选择对照</Button>
+              </div>
+            ) : null,
+          )}
+        </section>
+      ) : null}
+      {checks.some((item) => item.isError) ? (
+        <p role="alert">
+          部分审查记录暂时无法读取。
+          <Button
+            onClick={() =>
+              checks.forEach((item) => {
+                if (item.isError) void item.refetch();
+              })
+            }
+          >
+            重试
+          </Button>
+        </p>
+      ) : null}
+    </section>
   );
 }

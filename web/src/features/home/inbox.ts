@@ -14,13 +14,14 @@ import type { WorkbenchSnapshot } from "../../api/types";
 import { caseHref } from "../../domain/review";
 import { writeReviewDrawer } from "../review/work-items";
 
-export type InboxKind = "decision" | "evidence" | "approval" | "task";
+export type InboxKind = "decision" | "evidence" | "approval" | "task" | "team" | "remediation";
 export interface InboxRow {
   key: string;
   kind: InboxKind;
   title: string;
   caseTitle?: string;
   due: string | null;
+  updatedAt: string | null;
   action: string;
   href: string;
 }
@@ -67,6 +68,7 @@ export function inboxRows(
       title: request.question,
       caseTitle: cases.get(request.case_id)?.title,
       due: request.due_at,
+      updatedAt: request.updated_at,
       action: "查看补件",
       href: `${caseHref(request.case_id, request.source_run_id)}?${params}`,
     });
@@ -90,6 +92,7 @@ export function inboxRows(
       title: task.title,
       caseTitle: item.title,
       due: task.due_at,
+      updatedAt: task.updated_at,
       action: "查看任务",
       href: `/workbench/tasks?task=${encodeURIComponent(task.id)}`,
     });
@@ -109,6 +112,7 @@ export function inboxRows(
       kind: "approval",
       title: approval.contract_name,
       due: null,
+      updatedAt: approval.task_activated_at,
       action: "查看会签",
       href: `/workbench/approvals?view=todo&task=${encodeURIComponent(approval.task_id)}`,
     });
@@ -116,4 +120,51 @@ export function inboxRows(
   return [...rows.values()].sort((left, right) =>
     (left.due ?? "9999").localeCompare(right.due ?? "9999"),
   );
+}
+
+export function visibleCaseRows(snapshot: WorkbenchSnapshot | undefined) {
+  const cases = new Map(
+    snapshot?.cases.filter((item) => !item.archived_at).map((item) => [item.id, item]),
+  );
+  const team: InboxRow[] = [];
+  const remediation = new Map<string, InboxRow>();
+  for (const item of cases.values()) {
+    if (!(item.pending_decisions > 0)) continue;
+    const run = item.latest_run;
+    team.push({
+      key: item.id,
+      kind: "team",
+      title: item.title,
+      caseTitle: `${item.pending_decisions} 条线索待判断`,
+      due: null,
+      updatedAt: run?.updated_at ?? item.updated_at,
+      action: run ? "去判断" : "查看案件",
+      href: caseHref(item.id, run?.id),
+    });
+  }
+  for (const item of snapshot?.remediations ?? []) {
+    const relatedCase = cases.get(item.case_id);
+    if (!relatedCase || item.status !== "submitted" || !item.id) continue;
+    const key = JSON.stringify([item.case_id, item.id]);
+    const query = new URLSearchParams({ work_kind: "remediation", work_item: item.id });
+    remediation.set(key, {
+      key,
+      kind: "remediation",
+      title: item.measure || relatedCase.title,
+      caseTitle: item.measure ? relatedCase.title : undefined,
+      due: item.due_at,
+      updatedAt: item.updated_at,
+      action: "查看整改",
+      href: `${caseHref(item.case_id)}?${query}`,
+    });
+  }
+  const newestFirst = (left: InboxRow, right: InboxRow) =>
+    (right.updatedAt ?? "").localeCompare(left.updatedAt ?? "");
+  return {
+    team: team.sort(newestFirst),
+    remediation: [...remediation.values()].sort(newestFirst),
+    teamComplete:
+      snapshot !== undefined &&
+      Array.from(cases.values()).every((item) => typeof item.pending_decisions === "number"),
+  };
 }

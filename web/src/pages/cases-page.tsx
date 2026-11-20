@@ -8,11 +8,15 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { Button, Input, Modal, Pagination, Select, Tabs } from "antd";
+import { Button, Input, Modal, Pagination, Popover, Select, Tabs } from "antd";
+import { useQueries } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { errorMessage, isForbidden } from "../api/http";
-import { useCases, useCreateCase, useSession } from "../api/queries";
+import { useCases, useCreateCase, useSession, useWorkbench } from "../api/queries";
+import { evidenceRequestsKey, listEvidenceRequests } from "../api/evidence-workflow";
+import { withEvidenceReadSlot } from "../features/review/evidence-read-slot";
+import "./cases-page.css";
 import { CasesTable } from "../components/cases-table";
 import { isReadingInteraction } from "../components/section-navigation";
 import { ListPage } from "../components/page-patterns";
@@ -20,6 +24,7 @@ import { actorReadContextKey } from "../domain/actor-read-context";
 import { PageStatus } from "../components/page-status";
 import {
   businessStatusLabel,
+  contractTypeLabel,
   filterCases,
   parseRunFilter,
   validateCaseTitle,
@@ -40,10 +45,10 @@ const FILTERS: { id: RunFilter; label: string }[] = [
 ];
 
 const PAGE_SIZES = [10, 25, 50] as const;
-type CaseView = "all" | "mine" | "archived";
+type CaseView = "all" | "mine" | "recent" | "archived";
 
 function parseCaseView(value: string | null): CaseView {
-  return value === "mine" || value === "archived" ? value : "all";
+  return value === "mine" || value === "recent" || value === "archived" ? value : "all";
 }
 
 const collator = new Intl.Collator("zh-CN", {
@@ -62,6 +67,7 @@ export function CasesPage() {
   const query = params.get("q") ?? "";
   const run = parseRunFilter(params.get("run"));
   const businessStatus = params.get("business_status") ?? "all";
+  const typeFilter = params.get("contract_type") ?? "";
   const view = parseCaseView(params.get("view"));
   const requestedSort = params.get("sort");
   const sort: CaseSortField =
@@ -112,6 +118,51 @@ export function CasesPage() {
   const [customScope, setCustomScope] = useState(false);
   const [titleError, setTitleError] = useState<string | null>(null);
 
+  const visibleCases = cases.data ?? [];
+  const workbench = useWorkbench("week", confirmedActorScope);
+  const snapshot = workbench.isSuccess && !workbench.isFetching ? workbench.data : undefined;
+  const actorId = confirmedActorScope ? session.data?.id : undefined;
+  const personalCaseIds = new Set(
+    snapshot?.tasks
+      .filter(
+        (task) =>
+          actorId && task.assignee_id === actorId && ["open", "in_progress"].includes(task.status),
+      )
+      .map((task) => task.case_id),
+  );
+  for (const profile of snapshot?.profiles ?? []) {
+    if (actorId && profile.owner_id === actorId) personalCaseIds.add(profile.case_id);
+  }
+  const unconfirmedAssignments =
+    view === "mine" && actorId && confirmedCases && !returnMismatch
+      ? visibleCases.filter((item) => !item.archived_at && !personalCaseIds.has(item.id))
+      : [];
+  const supplements = useQueries({
+    queries: unconfirmedAssignments.map((item) => ({
+      queryKey: [...evidenceRequestsKey(item.id), "cases", confirmedActorScope] as const,
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        withEvidenceReadSlot(signal, async () => {
+          const entries = await listEvidenceRequests(item.id, signal);
+          if (entries.some((entry) => entry.case_id !== item.id))
+            throw new Error("补件记录与当前案件不一致");
+          return entries;
+        }),
+      retry: false,
+      staleTime: 30_000,
+    })),
+  });
+  for (const query of supplements) {
+    if (!query.isSuccess || query.isFetching) continue;
+    for (const item of query.data) {
+      if (item.status === "open" && item.assignee_id === actorId) personalCaseIds.add(item.case_id);
+    }
+  }
+  const assignmentsPending =
+    view === "mine" &&
+    (!!workbench.isFetching || supplements.some((query) => query.isPending || query.isFetching));
+  const assignmentsIncomplete =
+    view === "mine" && (!!workbench.isError || supplements.some((query) => query.isError));
+
   useLayoutEffect(() => {
     if (returnMismatch) {
       void navigate("/cases", { replace: true, state: null });
@@ -153,7 +204,14 @@ export function CasesPage() {
     if (previousActorScope.current && previousActorScope.current !== actorScope)
       scrollPositions.clear();
     previousActorScope.current = actorScope;
-    if (!confirmedActorScope || !confirmedCases || returnPending || returnMismatch) return;
+    if (
+      !confirmedActorScope ||
+      !confirmedCases ||
+      returnPending ||
+      returnMismatch ||
+      assignmentsPending
+    )
+      return;
     const saved = scrollPositions.get(location.key);
     const visit = JSON.stringify([location.key, actorScope]);
     const declared =
@@ -184,6 +242,7 @@ export function CasesPage() {
     confirmedCases,
     returnPending,
     returnMismatch,
+    assignmentsPending,
   ]);
 
   function updateParam(
@@ -195,6 +254,10 @@ export function CasesPage() {
     if (value === "") next.delete(key);
     else next.set(key, value);
     if (resetPage) next.delete("page");
+    if (key === "view" && value === "recent") {
+      next.delete("sort");
+      next.delete("direction");
+    }
     if (clearSelection) next.delete("selected");
     setParams(next, { replace: true });
   }
@@ -238,17 +301,24 @@ export function CasesPage() {
         .filter((value): value is string => Boolean(value)),
     ),
   ].sort(collator.compare);
-  const visibleCases = cases.data ?? [];
   const caseViewItems = visibleCases.filter((item) => {
     if (view === "archived") return Boolean(item.archived_at);
-    if (view === "mine") {
-      const actorName = session.data?.display_name?.trim();
-      return Boolean(actorName && item.owner_name?.trim() === actorName);
-    }
+    if (view === "mine") return !item.archived_at && personalCaseIds.has(item.id);
+    if (view === "recent") return Boolean(item.latest_run);
     return true;
   });
-  const filtered = filterCases(caseViewItems, query, run, businessStatus);
+  const contractTypes = [
+    ...new Set(visibleCases.flatMap((item) => (item.contract_type ? [item.contract_type] : []))),
+  ].sort(collator.compare);
+  const filtered = filterCases(caseViewItems, query, run, businessStatus).filter(
+    (item) => !typeFilter || item.contract_type === typeFilter,
+  );
   const sorted = [...filtered].sort((left, right) => {
+    if (view === "recent" && !requestedSort)
+      return (
+        (right.latest_run?.updated_at ?? "").localeCompare(left.latest_run?.updated_at ?? "") ||
+        collator.compare(left.id, right.id)
+      );
     let comparison = 0;
     if (sort === "title") comparison = collator.compare(left.title, right.title);
     if (sort === "document_count") comparison = left.document_count - right.document_count;
@@ -265,6 +335,8 @@ export function CasesPage() {
       !confirmedCases ||
       returnPending ||
       returnMismatch ||
+      assignmentsPending ||
+      assignmentsIncomplete ||
       !selectedId ||
       sorted.some((item) => item.id === selectedId)
     )
@@ -278,6 +350,8 @@ export function CasesPage() {
     returnPending,
     returnMismatch,
     selectedId,
+    assignmentsPending,
+    assignmentsIncomplete,
     sorted,
     params,
     setParams,
@@ -317,83 +391,104 @@ export function CasesPage() {
       contentRef={readingContent}
       className="cases-page"
       title="案件"
+      standaloneSurface={false}
       actions={
         <Button
-          aria-label={"新建案件"}
-          type="primary"
+          aria-label="新建空白案件"
           htmlType="button"
           disabled={!canCreate}
           title={canCreate ? undefined : "当前角色仅可查看案件；新建案件需要管理员或经办人角色。"}
           onClick={() => setOpen(true)}
         >
-          新建案件
+          新建空白案件
         </Button>
       }
       filters={
-        <div className="cases-filters" aria-label="案件筛选">
+        <div className="case-list-toolbar" aria-label="案件筛选">
           <Tabs
             activeKey={view}
-            style={{ gridColumn: "1 / -1" }}
+            classNames={{ header: "case-list-tabs", item: "case-list-tab" }}
             onChange={(key) => {
-              if (key === "all" || key === "mine" || key === "archived")
-                updateParam("view", key === "all" ? "" : key, { clearSelection: true });
+              updateParam("view", key === "all" ? "" : key, { clearSelection: true });
             }}
             items={[
-              { key: "all", label: "全部案件" },
-              { key: "mine", label: "我负责的" },
+              { key: "all", label: "全部" },
+              { key: "mine", label: "待我处理" },
+              { key: "recent", label: "最近审查" },
               { key: "archived", label: "已归档" },
             ]}
           />
-          <label className="field cases-search">
-            搜索案件
+          <div className="case-list-search">
             <Input
+              aria-label="搜索案件"
               value={query}
               onChange={(event) => updateParam("q", event.target.value, { clearSelection: true })}
-              placeholder="标题、业务编号、中文场景或完整案件标识"
+              placeholder="搜索名称或编号"
               type="search"
+              allowClear
             />
-          </label>
-          <label className="field">
-            业务状态
-            <Select<string>
-              aria-label="业务状态"
-              value={String(businessStatus)}
-              onChange={(selectedValue) =>
-                updateParam("business_status", selectedValue, {
-                  clearSelection: true,
-                })
+            <Popover
+              trigger="click"
+              placement="bottomRight"
+              content={
+                <div className="case-list-filter-fields">
+                  <label className="field">
+                    业务状态
+                    <Select
+                      aria-label="业务状态"
+                      value={businessStatus}
+                      onChange={(value) =>
+                        updateParam("business_status", value === "all" ? "" : value, {
+                          clearSelection: true,
+                        })
+                      }
+                      options={[
+                        { value: "all", label: "全部业务状态" },
+                        ...businessStatuses.map((status) => ({
+                          value: status,
+                          label: businessStatusLabel(status),
+                        })),
+                      ]}
+                    />
+                  </label>
+                  <label className="field">
+                    运行状态
+                    <Select
+                      aria-label="运行状态"
+                      value={run}
+                      onChange={(value) =>
+                        updateParam("run", value === "all" ? "" : value, { clearSelection: true })
+                      }
+                      options={FILTERS.map(({ id, label }) => ({ value: id, label }))}
+                    />
+                  </label>
+                  <label className="field">
+                    合同类型
+                    <Select
+                      aria-label="合同类型"
+                      value={typeFilter}
+                      onChange={(value) =>
+                        updateParam("contract_type", value, { clearSelection: true })
+                      }
+                      options={[
+                        { value: "", label: "全部合同类型" },
+                        ...contractTypes.map((value) => ({
+                          value,
+                          label: contractTypeLabel(value),
+                        })),
+                      ]}
+                    />
+                  </label>
+                </div>
               }
-              options={[
-                { value: "all", label: "全部业务状态" },
-                ...businessStatuses.map((status) => ({
-                  value: String(status),
-                  label: businessStatusLabel(status),
-                })),
-              ]}
-            />
-          </label>
-          <label className="field">
-            运行状态
-            <Select<string>
-              aria-label="运行状态"
-              value={String(run)}
-              onChange={(selectedValue) =>
-                updateParam("run", selectedValue === "all" ? "" : selectedValue, {
-                  clearSelection: true,
-                })
-              }
-              options={[
-                ...FILTERS.map((item) => ({
-                  value: String(item.id),
-                  label: String(item.label ?? ""),
-                })),
-              ]}
-            />
-          </label>
+            >
+              <Button aria-label="状态与类型">状态与类型</Button>
+            </Popover>
+          </div>
         </div>
       }
       pagination={
-        filtered.length > 0 ? (
+        pageCount > 1 ? (
           <Pagination
             current={page}
             total={sorted.length}
@@ -412,16 +507,25 @@ export function CasesPage() {
         ) : null
       }
     >
+      {assignmentsPending || assignmentsIncomplete ? (
+        <p role="status">
+          {assignmentsPending ? "正在核对分派与补件请求" : "部分分派或补件请求未能核对"}
+        </p>
+      ) : null}
       {cases.data?.length === 0 ? (
         <PageStatus
           kind="empty"
           title="还没有案件"
           detail="新建案件，登记材料并完成解析后开始审查。"
         />
-      ) : filtered.length === 0 ? (
+      ) : filtered.length === 0 &&
+        (assignmentsPending || assignmentsIncomplete) ? null : filtered.length === 0 ? (
         <section className="page-status page-status-empty" role="status">
-          <h2>没有匹配的案件</h2>
-          <p>当前搜索或筛选条件下没有可见结果。</p>
+          <h2>
+            {view === "mine" && !query && !typeFilter && run === "all" && businessStatus === "all"
+              ? "暂无待我处理的案件"
+              : "没有匹配的案件"}
+          </h2>
           <Button
             aria-label={"清除筛选"}
             type="text"
@@ -439,30 +543,24 @@ export function CasesPage() {
           selectedId={selectedId}
           actorScope={actorScope}
           onSort={sortBy}
+          snapshot={snapshot}
+          role={confirmedActorScope ? session.data?.role : undefined}
         />
       )}
 
       {open ? (
-        <Modal open title="新建案件" footer={null} onCancel={() => setOpen(false)} destroyOnHidden>
+        <Modal
+          open
+          title="新建空白案件"
+          footer={null}
+          onCancel={() => setOpen(false)}
+          destroyOnHidden
+        >
           <form onSubmit={onCreate}>
             <label className="field">
-              标题
+              案件名称
               <Input value={title} onChange={(event) => setTitle(event.target.value)} required />
             </label>
-            <Button
-              type="link"
-              htmlType="button"
-              onClick={() => {
-                setCustomScope(!customScope);
-                if (customScope) {
-                  setBusinessLine("ENT");
-                  setScenario("telecom_dedicated_line");
-                  setContractType("service");
-                }
-              }}
-            >
-              {customScope ? "选择常用业务场景" : "使用其他已发布业务范围"}
-            </Button>
             {customScope ? (
               <>
                 <label className="field">
@@ -516,9 +614,6 @@ export function CasesPage() {
                       { value: "cloud_services", label: "云服务采购" },
                     ]}
                   />
-                  <span className="meta">
-                    请核对场景是否适用于本合同；实际检查范围以审查准备清单为准。
-                  </span>
                 </label>
                 <label className="field">
                   合同类型
@@ -537,6 +632,22 @@ export function CasesPage() {
                 </label>
               </>
             )}
+            <Button
+              type="link"
+              className="case-scope-toggle"
+              aria-expanded={customScope}
+              htmlType="button"
+              onClick={() => {
+                setCustomScope(!customScope);
+                if (customScope) {
+                  setBusinessLine("ENT");
+                  setScenario("telecom_dedicated_line");
+                  setContractType("service");
+                }
+              }}
+            >
+              {customScope ? "选择常用业务场景" : "自定义规则范围编码"}
+            </Button>
             {titleError ? <p role="alert">{titleError}</p> : null}
             {createCase.isError ? <p role="alert">{errorMessage(createCase.error)}</p> : null}
             <div className="dialog-actions">
