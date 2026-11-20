@@ -1,10 +1,10 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: 说明合同清单、案件材料、冻结原文和条款识别的办理流程，以及原文件核对、人工决定、补件、整改和报告的边界。 -->
+<!-- Purpose: 说明从案件准备、原文核对和追加人工判断，到补件、整改、生成报告、合同会签与履约提醒的办理流程。 -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
-<!-- Updated: 2026-11-19 -->
-<!-- Revision: r11 -->
+<!-- Updated: 2026-11-20 -->
+<!-- Revision: r12 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
