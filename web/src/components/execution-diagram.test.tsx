@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-20
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -27,7 +27,8 @@ vi.mock("@logicflow/core", () => ({
   RectNode: class {},
   RectNodeModel: class {},
 }));
-import { ExecutionDiagram } from "./execution-diagram";
+import { ExecutionDiagram, diagramNodeStatus } from "./execution-diagram";
+import { buildExecutionDiagram } from "../domain/execution-diagram";
 
 const events: ExecutionEvent[] = Array.from({ length: 7 }, (_, index) => ({
   seq: index + 1,
@@ -47,6 +48,83 @@ const events: ExecutionEvent[] = Array.from({ length: 7 }, (_, index) => ({
 
 describe("execution diagram selection", () => {
   beforeEach(() => mocks.setProperties.mockClear());
+  it("labels framework closure without claiming an agent or fact result", () => {
+    const base = events[0]!;
+    const records: ExecutionEvent[] = [
+      {
+        ...base,
+        seq: 8,
+        attempt_id: "a",
+        span_id: "facts",
+        phase: "single_contract_facts",
+        status: "running",
+        event_type: "span_started",
+      },
+      {
+        ...base,
+        seq: 9,
+        attempt_id: "a",
+        span_id: "facts",
+        phase: "single_contract_facts",
+        status: "completed",
+      },
+      {
+        ...base,
+        seq: 10,
+        attempt_id: "a",
+        span_id: "agent",
+        phase: "agent_review",
+        status: "running",
+        event_type: "span_started",
+      },
+      {
+        ...base,
+        seq: 11,
+        attempt_id: "a",
+        span_id: null,
+        node_kind: "agent_review",
+        phase: "agent_review_result",
+        status: "skipped",
+        event_type: "agent_review_event",
+        error_code: "agent_review_unavailable",
+      },
+      {
+        ...base,
+        seq: 12,
+        attempt_id: "a",
+        span_id: "agent",
+        phase: "agent_review",
+        status: "completed",
+      },
+      {
+        ...base,
+        seq: 13,
+        attempt_id: "other",
+        span_id: "other",
+        phase: "agent_review_result",
+        status: "completed",
+      },
+    ];
+    const nodes = buildExecutionDiagram(records);
+    const agent = nodes.find(
+      (n) => n.event.attempt_id === "a" && n.event.phase === "agent_review",
+    )!;
+    const facts = nodes.find((n) => n.event.phase === "single_contract_facts")!;
+    expect(agent.title).toBe("智能体审查框架步骤");
+    expect(diagramNodeStatus(agent)).toBe("阶段已结束");
+    expect(agent.events.map((e) => e.seq)).toEqual([10, 12]);
+    expect(facts.title).toBe("合同事实处理阶段");
+    expect(diagramNodeStatus(facts)).toBe("阶段已结束");
+    expect(buildExecutionDiagram([])).toEqual([]);
+    const ordinary = buildExecutionDiagram([
+      { ...base, phase: "input_preparation", status: "completed" },
+    ])[0]!;
+    expect(diagramNodeStatus(ordinary)).toBe("已完成");
+    render(<ExecutionDiagram events={records} selectedSeq={null} onSelectSeq={vi.fn()} />);
+    fireEvent.click(screen.getByText("按顺序选择节点（键盘可用）"));
+    expect(screen.getByRole("button", { name: /智能体审查框架步骤.*阶段已结束/ })).toBeVisible();
+  });
+
   it("opens the selected segment, allows manual paging, and restores highlight after rebuilding", () => {
     const onSelectSeq = vi.fn();
     const view = render(

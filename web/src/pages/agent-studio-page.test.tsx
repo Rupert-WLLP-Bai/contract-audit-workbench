@@ -4,14 +4,14 @@
 // Contact: +86 13617696321
 // Created: 2026-11-06
 // Updated: 2026-11-20
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   Execution,
@@ -194,6 +194,18 @@ function query<T>(data: T, overrides: Record<string, unknown> = {}) {
   };
 }
 
+function NavigationProbe() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="location">{location.search}</output>
+      <button onClick={() => navigate(-1)}>测试返回</button>
+      <button onClick={() => navigate(1)}>测试前进</button>
+    </>
+  );
+}
+
 function renderPage(path = "/cases/case-1/reviews/run-1/agent") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -201,6 +213,7 @@ function renderPage(path = "/cases/case-1/reviews/run-1/agent") {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
+        <NavigationProbe />
         <Routes>
           <Route path="/cases/:caseId/reviews/:runId/agent" element={<AgentStudioPage />} />
         </Routes>
@@ -253,6 +266,135 @@ describe("AgentStudioPage", () => {
     expect(screen.queryByText(/0 次真实调用/)).not.toBeInTheDocument();
   });
 
+  it("opens a scoped failure and restores view and event through browser history", async () => {
+    const failure = event({
+      seq: 9,
+      phase: "model_review",
+      event_type: "node_failed",
+      status: "failed",
+      error_code: "eino_error",
+    });
+    const foreign = event({
+      seq: 10,
+      attempt_id: "other-attempt",
+      phase: "model_review",
+      event_type: "node_failed",
+      status: "failed",
+    });
+    mocks.useReviewDiagnostics.mockReturnValue(query(diagnostics(execution([failure, foreign]))));
+    renderPage();
+    expect(screen.getByText("已记录模型调用节点").parentElement).toHaveTextContent("0 个");
+    expect(screen.queryByRole("button", { name: /#10/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /查看失败记录：模型审查 #9/ }));
+    expect(screen.getByTestId("location")).toHaveTextContent("attempt_id=attempt-1");
+    expect(screen.getByTestId("location")).toHaveTextContent("event=9");
+    expect(screen.getByText("eino_error")).toBeInTheDocument();
+    expect(screen.getByText("原因未报告。")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "测试返回" }));
+    expect(screen.getByRole("radio", { name: "本次执行" })).toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "测试前进" }));
+    expect(screen.getByText("eino_error")).toBeInTheDocument();
+  });
+
+  it("shows each recorded agent result independently and never borrows another attempt", async () => {
+    const saved = [
+      event({
+        seq: 11,
+        phase: "agent_review_result",
+        node_kind: "agent_review",
+        event_type: "agent_review_event",
+        status: "skipped",
+        error_code: "agent_review_unavailable",
+      }),
+      event({
+        seq: 12,
+        phase: "agent_review_result",
+        node_kind: "agent_review",
+        event_type: "agent_review_event",
+        status: "completed",
+      }),
+      event({
+        seq: 13,
+        attempt_id: "other-attempt",
+        phase: "agent_review_result",
+        node_kind: "agent_review",
+        event_type: "agent_review_event",
+        status: "failed",
+      }),
+    ];
+    mocks.useReviewDiagnostics.mockReturnValue(query(diagnostics(execution(saved))));
+    renderPage();
+    const skipped = screen.getByRole("button", { name: "智能体结果 · 已跳过 #11" });
+    expect(screen.getByRole("button", { name: "智能体结果 · 已完成 #12" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /#13/ })).not.toBeInTheDocument();
+    await userEvent.click(skipped);
+    expect(screen.getByTestId("location")).toHaveTextContent("event=11");
+    expect(screen.getByText("agent_review_unavailable")).toBeInTheDocument();
+  });
+
+  it("restores a valid event from a shared URL", () => {
+    mocks.useReviewDiagnostics.mockReturnValue(
+      query(
+        diagnostics(
+          execution([
+            event({
+              seq: 9,
+              phase: "single_contract_rules",
+              status: "failed",
+              event_type: "node_failed",
+              error_code: "eino_error",
+            }),
+          ]),
+        ),
+      ),
+    );
+    renderPage("/cases/case-1/reviews/run-1/agent?attempt_id=attempt-1&view=events&event=9");
+    expect(screen.getByRole("radio", { name: "事件列表" })).toBeChecked();
+    expect(screen.getByText("eino_error")).toBeInTheDocument();
+    expect(screen.getAllByText("单合同规则预审").length).toBeGreaterThan(0);
+  });
+
+  it("does not select an event from an unscoped URL", () => {
+    mocks.useReviewDiagnostics.mockReturnValue(
+      query(
+        diagnostics(
+          execution([
+            event({
+              seq: 9,
+              status: "failed",
+              event_type: "node_failed",
+              error_code: "eino_error",
+            }),
+          ]),
+        ),
+      ),
+    );
+    renderPage("/cases/case-1/reviews/run-1/agent?view=events&event=9");
+    expect(screen.queryByText("eino_error")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("点击泳道节点或事件列表中的事件，查看保存的字段。"),
+    ).toBeInTheDocument();
+  });
+
+  it("restores a valid saved event but rejects a foreign event and unknown phase is neutral", () => {
+    mocks.useReviewDiagnostics.mockReturnValue(
+      query(
+        diagnostics(
+          execution([
+            event({ seq: 9, phase: "custom_phase", status: "failed", event_type: "node_failed" }),
+            event({ seq: 10, attempt_id: "other-attempt", status: "failed" }),
+          ]),
+        ),
+      ),
+    );
+    renderPage("/cases/case-1/reviews/run-1/agent?attempt_id=attempt-1&view=events&event=10");
+    expect(
+      screen.getByText("点击泳道节点或事件列表中的事件，查看保存的字段。"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("阶段待识别").length).toBeGreaterThan(0);
+    expect(screen.queryByText("custom_phase")).not.toBeInTheDocument();
+  });
+
   it("keeps missing token usage unknown instead of displaying zero", () => {
     const value = execution([]);
     value.usage = null;
@@ -300,7 +442,7 @@ describe("AgentStudioPage", () => {
     expect(screen.getByRole("heading", { name: "节点详情" })).toBeInTheDocument();
     expect(screen.getAllByText("模型调用").length).toBeGreaterThan(0);
     expect(screen.getByText("provider_response.usage")).toBeInTheDocument();
-    expect(screen.getByText("父 Span span-stage")).toBeInTheDocument();
+    expect(screen.queryByText("父 Span span-stage")).not.toBeInTheDocument();
     expect(screen.getByText("1.00 秒")).toBeInTheDocument();
   });
 
@@ -515,7 +657,7 @@ describe("AgentStudioPage", () => {
       }),
     ];
     const lanes = buildStudioLanes(shuffled);
-    expect(lanes.map((lane) => lane.label)).toEqual(["输入准备", "模型请求", "custom_phase"]);
+    expect(lanes.map((lane) => lane.label)).toEqual(["输入准备", "模型请求", "阶段待识别"]);
     expect(lanes[1]?.events.map((item) => item.seq)).toEqual([2, 3]);
     expect(filterStudioEvents(shuffled, "custom_event").map((item) => item.seq)).toEqual([4]);
   });
