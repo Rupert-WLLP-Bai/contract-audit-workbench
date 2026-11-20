@@ -249,3 +249,97 @@
   background: var(--state-insufficient-bg);
   color: var(--state-insufficient);
 }
+/* The action bar stays on one line; narrow screens can scroll it horizontally. */
+.review-topbar {
+  height: 48px;
+  min-height: 48px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+.review-topbar-identity {
+  flex: 1 0 auto;
+}
+.review-topbar-identity h1 {
+  max-width: min(30vw, 360px);
+}
+.review-topbar-actions {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+.review-finding-count {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+.review-partial-pill.ant-btn {
+  color: var(--state-insufficient);
+  border-color: var(--state-insufficient);
+  background: var(--state-insufficient-bg);
+}
+@media (max-width: 760px) {
+  .review-topbar {
+    align-items: center;
+  }
+  .review-topbar-actions {
+    margin-inline-start: 0;
+  }
+  .review-topbar-identity h1 {
+    max-width: 58px;
+  }
+  .review-topbar-identity {
+    gap: var(--space-1);
+  }
+  .review-partial-pill.ant-btn {
+    padding-inline: var(--space-1);
+  }
+}
+.review-mobile-actions,
+.review-attempt-short {
+  display: none;
+}
+@media (max-width: 760px) {
+  .review-topbar {
+    overflow: visible;
+    gap: var(--space-1);
+  }
+  .review-topbar-identity {
+    flex: 1 1 0;
+  }
+  .review-topbar-identity h1 {
+    max-width: 48px;
+  }
+  .review-attempt-full {
+    display: none;
+  }
+  .review-attempt-short {
+    display: inline;
+  }
+  .review-topbar-actions {
+    display: none;
+  }
+  .review-mobile-actions {
+    display: block;
+    position: relative;
+    flex: 0 0 auto;
+  }
+  .review-mobile-actions summary {
+    cursor: pointer;
+    padding: var(--space-1);
+    color: var(--action-primary);
+  }
+  .review-mobile-action-list {
+    position: absolute;
+    z-index: 30;
+    top: 100%;
+    right: 0;
+    display: grid;
+    min-width: 144px;
+    padding: var(--space-2);
+    background: var(--surface-raised);
+    border: 1px solid var(--border-control);
+    border-radius: var(--radius-control);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+  }
+  .review-mobile-action-list .ant-btn {
+    justify-content: flex-start;
+  }
+}

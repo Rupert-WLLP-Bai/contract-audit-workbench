@@ -8,7 +8,6 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { ReviewProgress } from "../components/review-progress";
 import { useProfessionalMode } from "../components/app-shell-preferences";
 import { Button, Drawer, Tabs } from "antd";
 import {
@@ -140,6 +139,7 @@ import {
   type ReviewDrawer,
   type ReviewRecordTab,
 } from "../features/review/work-items";
+import { retryAttemptIsConfirmedLatest } from "./review-retry-identity";
 import "./review-page.css";
 
 interface ContractDeskReturn {
@@ -256,6 +256,16 @@ function drawerTargetPending(id: string) {
 }
 
 export function ReviewPage() {
+  const [mobileActions, setMobileActions] = useState(
+    () => typeof window !== "undefined" && window.innerWidth <= 760,
+  );
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 760px)");
+    const update = () => setMobileActions(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   const { caseId = "", runId = "" } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -622,6 +632,7 @@ export function ReviewPage() {
     latestRun &&
     roleCanManageRun &&
     selectedAttemptIsLatest &&
+    retryAttemptIsConfirmedLatest(execution, runId) &&
     terminal &&
     retryableState;
   const reportPreflight = useReportPreflight(
@@ -958,7 +969,7 @@ export function ReviewPage() {
       <PageStatus
         kind="error"
         title="审查身份无法确认"
-        detail="服务端返回的审查或执行记录与当前页面不一致，请返回案件重新选择。"
+        detail="审查或执行记录与当前页面不一致，请返回案件重新选择。"
       />
     );
   }
@@ -1393,7 +1404,14 @@ export function ReviewPage() {
   const partialScope = partialReportScope(workspace);
 
   function retryCurrentReview() {
-    if (!canRetry || retry.isPending) return;
+    if (
+      !canRetry ||
+      !currentWorkContext ||
+      scopeMismatch ||
+      (decisionState === "partial" && pendingFindings.length > 0) ||
+      retry.isPending
+    )
+      return;
     retry.mutate(undefined, {
       onSuccess: (accepted) => {
         const next = new URLSearchParams(params);
@@ -1449,7 +1467,12 @@ export function ReviewPage() {
       retrying={retry.isPending}
       canDecide={canDecide}
       decisionDisabledReason={decisionDisabledReason}
-      canRetry={canRetry}
+      canRetry={
+        canRetry &&
+        currentWorkContext &&
+        !scopeMismatch &&
+        (decisionState !== "partial" || pendingFindings.length === 0)
+      }
       canCancel={canCancel}
       cancelling={cancel.isPending}
       cancelError={cancel.isError ? errorMessage(cancel.error) : null}
@@ -1558,10 +1581,15 @@ export function ReviewPage() {
     </Button>
   );
   const partialRecovery =
-    hasTransientRetryCause(workspace) && !partialScope?.precheck ? (
+    remaining > 0 ||
+    !currentWorkContext ||
+    scopeMismatch ||
+    !roleCanManageRun ? null : hasTransientRetryCause(workspace) &&
+      !partialScope?.precheck &&
+      canRetry ? (
       <Button
         type="primary"
-        disabled={!canRetry || retry.isPending}
+        disabled={retry.isPending}
         onClick={() => {
           reportPreflight.dismiss();
           retryCurrentReview();
@@ -1862,88 +1890,145 @@ export function ReviewPage() {
                   {caseDetail.data?.title ?? "审查工作区"}
                 </h1>
                 {selectedAttempt && (
-                  <span className="review-attempt-label">第 {selectedAttempt.ordinal} 次审查</span>
+                  <span
+                    className="review-attempt-label"
+                    aria-label={`第 ${selectedAttempt.ordinal} 次审查`}
+                  >
+                    <span className="review-attempt-full" aria-hidden="true">
+                      第 {selectedAttempt.ordinal} 次审查
+                    </span>
+                    <span className="review-attempt-short" aria-hidden="true">
+                      {selectedAttempt.ordinal}次
+                    </span>
+                  </span>
                 )}
               </div>
-              <ReviewProgress
-                state={decisionState}
-                hasDocuments={workspace.documents.length > 0}
-                hasPendingJudgments={remaining > 0}
-                hasFrozenAttempt={selectedAttempt?.history_kind === "frozen"}
-              />
-              <span className="review-finding-count">
-                {partialScope
-                  ? partialScope.precheck
-                    ? `单合同预审 · ${visibleFindings.length} 条线索`
-                    : `规则检查 ${partialScope.ruleFindings} 条 · ${partialScope.executionLabel}`
-                  : `${visibleFindings.length} 条线索 · 还有 ${remaining} 条待判断`}
-                {partialScope && partialScope.modelFindings > 0
-                  ? ` · AI 建议 ${partialScope.modelFindings} 条`
-                  : null}
-                {partialScope && remaining > 0 ? ` · 还有 ${remaining} 条待判断` : null}
-              </span>
-              <nav className="review-topbar-actions" aria-label="审查操作">
+              {partialScope ? (
                 <Button
-                  type="text"
+                  className="review-finding-count review-partial-pill"
                   aria-haspopup="dialog"
-                  onClick={() => selectDrawer("record", "supplement")}
+                  onClick={() => selectDrawer("record", "review")}
                 >
-                  补充材料
+                  {partialScope.precheck ? "单合同预审" : "智能审查未完"} · 待判断 {remaining}
                 </Button>
-                <Button
-                  type="text"
-                  aria-haspopup="dialog"
-                  onClick={() => selectDrawer("record", "finding")}
-                >
-                  审查记录
-                </Button>
-                {professional ? (
+              ) : (
+                <span className="review-finding-count">
+                  待判断 {remaining} / {visibleFindings.length}
+                </span>
+              )}
+              {!mobileActions ? (
+                <nav className="review-topbar-actions" aria-label="审查操作">
                   <Button
                     type="text"
                     aria-haspopup="dialog"
-                    onClick={() => selectDrawer("execution")}
+                    onClick={() => selectDrawer("record", "supplement")}
                   >
-                    执行过程
+                    补充材料
                   </Button>
-                ) : canCancel ? (
-                  <Button type="text" loading={cancel.isPending} onClick={() => cancel.mutate()}>
-                    取消本次执行
-                  </Button>
-                ) : null}
-                {reportRecord ? (
                   <Button
-                    type="primary"
-                    href={paths.report(caseId, reportRecord.id, "html")}
-                    target="_blank"
-                    rel="noreferrer"
+                    type="text"
+                    aria-haspopup="dialog"
+                    onClick={() => selectDrawer("record", "finding")}
                   >
-                    查看报告
+                    审查记录
                   </Button>
-                ) : (
-                  <Button
-                    type="primary"
-                    disabled={!reportReady}
-                    loading={createReport.isPending}
-                    onClick={requestReport}
-                  >
-                    {remaining ? "判断完再出报告" : "出报告"}
-                  </Button>
-                )}
-              </nav>
+                  {professional ? (
+                    <Button
+                      type="text"
+                      aria-haspopup="dialog"
+                      onClick={() => selectDrawer("execution")}
+                    >
+                      执行过程
+                    </Button>
+                  ) : canCancel ? (
+                    <Button type="text" loading={cancel.isPending} onClick={() => cancel.mutate()}>
+                      取消本次执行
+                    </Button>
+                  ) : null}
+                  {reportRecord ? (
+                    <Button
+                      type="primary"
+                      href={paths.report(caseId, reportRecord.id, "html")}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      查看报告
+                    </Button>
+                  ) : (
+                    <Button
+                      type="primary"
+                      disabled={!reportReady}
+                      loading={createReport.isPending}
+                      onClick={requestReport}
+                    >
+                      {remaining ? "判断完再出报告" : "出报告"}
+                    </Button>
+                  )}
+                </nav>
+              ) : (
+                <details
+                  className="review-mobile-actions"
+                  onClick={(event) => {
+                    if ((event.target as HTMLElement).closest("button, a"))
+                      event.currentTarget.open = false;
+                  }}
+                >
+                  <summary>更多</summary>
+                  <nav className="review-mobile-action-list" aria-label="更多审查操作">
+                    <Button
+                      type="text"
+                      aria-haspopup="dialog"
+                      onClick={() => selectDrawer("record", "supplement")}
+                    >
+                      补充材料
+                    </Button>
+                    <Button
+                      type="text"
+                      aria-haspopup="dialog"
+                      onClick={() => selectDrawer("record", "finding")}
+                    >
+                      审查记录
+                    </Button>
+                    {professional ? (
+                      <Button
+                        type="text"
+                        aria-haspopup="dialog"
+                        onClick={() => selectDrawer("execution")}
+                      >
+                        执行过程
+                      </Button>
+                    ) : canCancel ? (
+                      <Button
+                        type="text"
+                        loading={cancel.isPending}
+                        onClick={() => cancel.mutate()}
+                      >
+                        取消本次执行
+                      </Button>
+                    ) : null}
+                    {reportRecord ? (
+                      <Button
+                        type="primary"
+                        href={paths.report(caseId, reportRecord.id, "html")}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        查看报告
+                      </Button>
+                    ) : (
+                      <Button
+                        type="primary"
+                        disabled={!reportReady}
+                        loading={createReport.isPending}
+                        onClick={requestReport}
+                      >
+                        {remaining ? "判断完再出报告" : "出报告"}
+                      </Button>
+                    )}
+                  </nav>
+                </details>
+              )}
             </header>
-            {partialScope ? (
-              <div className="review-partial-status">
-                <span role="status">
-                  {partialScope.precheck
-                    ? "单合同预审已结束，仅保留预审范围内结果。"
-                    : `部分完成 · ${partialScope.executionLabel}`}
-                </span>
-                {partialRecovery}
-                <Button size="small" onClick={() => selectDrawer("record", "review")}>
-                  查看原因
-                </Button>
-              </div>
-            ) : null}
             {partialScope ? (
               <ReportPreflight
                 summary={partialScope}

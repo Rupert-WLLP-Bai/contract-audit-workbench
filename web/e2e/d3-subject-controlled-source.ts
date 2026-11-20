@@ -98,7 +98,7 @@ async function logout(page: Page): Promise<void> {
 async function openSection(page: Page, navigation: string, section: string): Promise<void> {
   const caseNavigation = navigation === "案件详情分区";
   const name =
-    caseNavigation && (section === "主体与对象" || section === "适用依据") ? "主体与依据" : section;
+    caseNavigation && (section === "主体与对象" || section === "适用依据") ? "主体与活动" : section;
   const button = page
     .getByRole("navigation", { name: navigation })
     .getByRole(caseNavigation ? "tab" : "button", { name, exact: true });

@@ -15,6 +15,7 @@ import { parseReviewWorkspace } from "../api/parse";
 import type { CaseDetail, ReviewWorkspace } from "../api/types";
 import type { ReviewReadiness } from "../api/review-readiness";
 import { renderWithAntd as render } from "../test/antd";
+import { AdministrativeTechnicalDetails } from "./app-shell-preferences";
 import { CaseNextStep } from "./case-next-step";
 import { ReviewOutcomeSummary } from "./review-outcome-summary";
 import {
@@ -90,7 +91,7 @@ function detail(): CaseDetail {
     },
     members: [],
     latest_run: { id: "run-1", state: "partial", updated_at: "" },
-    finding_counts: null,
+    finding_counts: { total: 0, conflict: 0, insufficient: 0, undecided: 0 },
     activity: [],
     subject_context_changed_after_latest_run: false,
     business_line: "ENT",
@@ -164,6 +165,66 @@ function props(
   };
 }
 
+describe("case stage for partial review", () => {
+  it.each([
+    ["reviewer", "去判断 (2)"],
+    ["admin", "去判断 (2)"],
+    ["clerk", "查看审查"],
+    ["viewer", "查看审查"],
+  ])("gives %s the appropriate action on the exact partial attempt", (actorRole, label) => {
+    const item = detail();
+    item.finding_counts = { total: 2, conflict: 2, insufficient: 0, undecided: 2 };
+    item.revision_pending = true;
+    render(<CaseNextStep {...props({ caseDetail: item, actorRole })} />);
+    expect(screen.getByRole("link", { name: label })).toHaveAttribute(
+      "href",
+      "/cases/case-1/reviews/run-1?attempt_id=attempt-1",
+    );
+    expect(screen.queryByRole("link", { name: "重新审查" })).not.toBeInTheDocument();
+  });
+
+  it("keeps an unknown count read-only even with a verified timeout", () => {
+    const item = detail();
+    item.finding_counts = null;
+    const value = workspace();
+    value.review_attempts!.attempt.outcome = {
+      reason: "transient_failure",
+      agent_stage: "unknown",
+      retry_cause: "model_timeout",
+    };
+    render(<CaseNextStep {...props({ caseDetail: item, latestWorkspace: value })} />);
+    expect(screen.getByRole("link", { name: "查看审查原因" })).toHaveAttribute(
+      "href",
+      "/cases/case-1/reviews/run-1?attempt_id=attempt-1&drawer=record&tab=review",
+    );
+    expect(screen.queryByRole("link", { name: "重新审查" })).not.toBeInTheDocument();
+  });
+
+  it("links a known zero to authorized preparation without submitting a retry", () => {
+    const value = workspace();
+    value.review_attempts!.attempt.outcome = {
+      reason: "execution_failed",
+      agent_stage: "failed",
+      retry_cause: "none",
+    };
+    const start = vi.fn();
+    const view = render(
+      <CaseNextStep {...props({ latestWorkspace: value, onStartReview: start })} />,
+    );
+    expect(screen.getByRole("link", { name: "重新审查" })).toHaveAttribute(
+      "href",
+      "#review-readiness",
+    );
+    expect(start).not.toHaveBeenCalled();
+    view.rerender(<CaseNextStep {...props({ latestWorkspace: value, actorRole: "viewer" })} />);
+    expect(screen.queryByRole("link", { name: "重新审查" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看审查原因" })).toHaveAttribute(
+      "href",
+      "/cases/case-1/reviews/run-1?attempt_id=attempt-1&drawer=record&tab=review",
+    );
+  });
+});
+
 describe("selected review outcome", () => {
   it("describes scope by known fields without promoting source identities to names", () => {
     const value = workspace();
@@ -194,8 +255,14 @@ describe("selected review outcome", () => {
   it("keeps unknown run status available for diagnosis without authorizing an action", () => {
     const item = detail();
     item.latest_run!.state = "future.state·";
-    render(<CaseNextStep {...props({ caseDetail: item })} />);
+    const view = render(<CaseNextStep {...props({ caseDetail: item })} />);
     expect(screen.getByText(/服务端返回了未识别的运行状态/)).toBeVisible();
+    expect(screen.queryByText(/future.state·/)).not.toBeInTheDocument();
+    view.rerender(
+      <AdministrativeTechnicalDetails>
+        <CaseNextStep {...props({ caseDetail: item })} />
+      </AdministrativeTechnicalDetails>,
+    );
     expect(screen.getByText(/future.state·/)).not.toBeVisible();
     expect(screen.queryByRole("button", { name: "开始完整审查" })).not.toBeInTheDocument();
   });

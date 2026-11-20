@@ -956,7 +956,7 @@ async function openSection(
 ): Promise<void> {
   const isCase = navigation === "案件详情分区";
   const name =
-    isCase && (section === "主体与对象" || section === "适用依据") ? "主体与依据" : section;
+    isCase && (section === "主体与对象" || section === "适用依据") ? "主体与活动" : section;
   const selector = isCase ? '[role="tab"][aria-selected="true"]' : 'button[aria-pressed="true"]';
   const active = `document.querySelector('nav[aria-label=${JSON.stringify(navigation)}] ${selector}')?.textContent.trim() === ${JSON.stringify(name)}`;
   const deadline = Date.now() + 15000;
@@ -988,6 +988,19 @@ async function openJudgedFinding(page: Page, session: string, title: string): Pr
   );
 }
 
+async function enableProfessionalMode(page: Page, session: string): Promise<void> {
+  await page.eval(session, `document.querySelector('button[aria-label="打开主导航"]')?.click()`);
+  await page.wait(session, `document.querySelector('button[aria-label="头像菜单"]')`);
+  await page.eval(session, `document.querySelector('button[aria-label="头像菜单"]')?.click()`);
+  await page.wait(session, `document.querySelector('[role=switch][aria-label="专业模式"]')`);
+  await page.eval(
+    session,
+    `document.querySelector('[role=switch][aria-label="专业模式"][aria-checked=false]')?.click()`,
+  );
+  await page.eval(session, `document.querySelector('button[aria-label="头像菜单"]')?.click()`);
+  await page.eval(session, `document.querySelector('[role=dialog] .ant-drawer-close')?.click()`);
+}
+
 async function openReviewSection(page: Page, session: string, section: string): Promise<void> {
   const drawer = section === "执行轨迹" ? "执行过程" : section === "来源与历史" ? "审查记录" : null;
   const existing = await page.eval(
@@ -1002,22 +1015,7 @@ async function openReviewSection(page: Page, session: string, section: string): 
       `[...document.querySelectorAll('button')].some((node) => node.textContent.trim() === '执行过程')`,
     );
     if (hasExecution !== "true") {
-      await page.eval(
-        session,
-        `document.querySelector('button[aria-label="打开主导航"]')?.click()`,
-      );
-      await page.wait(session, `document.querySelector('button[aria-label="头像菜单"]')`);
-      await page.eval(session, `document.querySelector('button[aria-label="头像菜单"]')?.click()`);
-      await page.wait(session, `document.querySelector('[role=switch][aria-label="专业模式"]')`);
-      await page.eval(
-        session,
-        `document.querySelector('[role=switch][aria-label="专业模式"][aria-checked=false]')?.click()`,
-      );
-      await page.eval(session, `document.querySelector('button[aria-label="头像菜单"]')?.click()`);
-      await page.eval(
-        session,
-        `document.querySelector('[role=dialog] .ant-drawer-close')?.click()`,
-      );
+      await enableProfessionalMode(page, session);
       await page.wait(
         session,
         `[...document.querySelectorAll('button')].some((node) => node.textContent.trim() === '执行过程')`,
@@ -1034,9 +1032,9 @@ async function openReviewSection(page: Page, session: string, section: string): 
 }
 
 // Case details keep only the selected section in the rendered text, so each
-// material assertion must first open the 材料与版本 section.
+// material assertion must first open the 材料 section.
 async function openCaseMaterials(page: Page, session: string): Promise<void> {
-  await openSection(page, session, "案件详情分区", "材料与版本");
+  await openSection(page, session, "案件详情分区", "材料");
 }
 
 async function clickText(page: Page, session: string, tag: string, text: string): Promise<void> {
@@ -1308,7 +1306,7 @@ async function waitParsedDocument(page: Page, session: string, filename: string)
     const row = [...document.querySelectorAll('.material-current-set .document-list li[data-material-id]')].find(
       (item) => item.innerText.includes(${JSON.stringify(filename)}),
     );
-    return row?.querySelector('.parsed-document-summary')?.dataset.status === 'ready';
+    return [...(row?.querySelectorAll('.document-actions span') ?? [])].some((status) => status.textContent.trim() === '已解析');
   })()`,
   );
 }
@@ -1318,6 +1316,13 @@ async function readDocumentMetadata(
   session: string,
   filename: string,
 ): Promise<DocumentMetadataSnapshot> {
+  if (
+    (await page.eval(session, "Boolean(document.querySelector('.parsed-document-summary'))")) !==
+    "true"
+  ) {
+    await enableProfessionalMode(page, session);
+    await waitParsedDocument(page, session, filename);
+  }
   const raw = await page.eval(
     session,
     `(() => {

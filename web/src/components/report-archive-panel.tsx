@@ -151,7 +151,7 @@ function ReviewChoiceSection({
       {choices.length === 0 && !historyLoading && !historyError ? (
         <p>
           {historyHasOlder
-            ? "当前已加载的审查中没有可用于生成报告的执行记录。请先读取更早审查记录；较早的审查如果没有保存当时使用的材料版本记录，不能用于生成报告。"
+            ? "请先读取更早审查记录。只有保留当时材料版本的审查才能生成报告。"
             : "没有可用于生成报告的执行记录。较早的审查如果没有保存当时使用的材料版本记录，不能用于生成报告。"}
         </p>
       ) : null}

@@ -104,8 +104,22 @@
 }
 
 .case-next-step-compact {
-  padding: var(--space-3) 0;
+  min-width: 0;
 }
+
+.case-next-step-line {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--state-insufficient-bg);
+}
+
+.case-next-step-preparation {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+}
+
 .case-next-step-line {
   display: flex;
   align-items: baseline;

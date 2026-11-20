@@ -205,7 +205,7 @@ try {
     new Set(Object.keys(scenario.fields)),
   );
 
-  await openCaseSection(page, "材料与版本", "case-template-generation");
+  await openCaseSection(page, "材料", "case-template-generation");
   const templateSelect = page.getByLabel("选择模板", { exact: true });
   await chooseAntSelect(page, templateSelect, templateOptionLabel(template));
   for (const field of template.fields) {
@@ -281,7 +281,7 @@ try {
     }
   }
 
-  await openCaseSection(page, "审查记录");
+  await openCaseSection(page, "审查记录", "case-review-preparation");
   await enterC1BBusinessAt(page);
   const firstReviewResponsePromise = page.waitForResponse(
     (response) =>
@@ -416,7 +416,7 @@ try {
 
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
-  await openCaseSection(page, "协作与归档", "case-report-archive");
+  await openCaseSection(page, "整改与报告", "case-report-archive");
   await selectReviewAttempt(
     page,
     web,
@@ -429,7 +429,7 @@ try {
   const firstReport = await waitForReport(page, caseID, firstRunID, firstAttemptID);
   const firstReportBytes = await readReportLinks(page, firstReport.id as string);
 
-  await openCaseSection(page, "协作与归档", "case-remediation");
+  await openCaseSection(page, "整改与报告", "case-remediation");
   await selectReviewAttempt(
     page,
     web,
@@ -483,7 +483,7 @@ try {
     (document) => document.id === primaryMaterial.current_document_id,
   );
   assert.ok(primaryDocument, "current primary document is absent from case detail");
-  await openCaseSection(page, "材料与版本");
+  await openCaseSection(page, "材料");
   const replacement = await replacePrimaryMaterial(
     page,
     {
@@ -526,7 +526,7 @@ try {
   );
 
   let attachmentA2: Awaited<ReturnType<typeof replaceMaterial>> | null = null;
-  await openCaseSection(page, "审查记录");
+  await openCaseSection(page, "审查记录", "case-review-preparation");
   await enterC1BBusinessAt(page);
   const reReviewResponsePromise = page.waitForResponse(
     (response) =>
@@ -577,7 +577,7 @@ try {
   assertRelations(secondWorkspace, compatible.expected_relations);
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
-  await openCaseSection(page, "协作与归档", "case-remediation");
+  await openCaseSection(page, "整改与报告", "case-remediation");
   const itemForm = page.getByRole("group", { name: "本案当前的拟签合同修改稿", exact: true });
   await itemForm.locator(`input[type="radio"][value="${revisedID}"]`).check();
   await page.getByLabel("提交理由", { exact: true }).fill("已按采购材料修订并生成新的审查运行。");
@@ -775,7 +775,7 @@ try {
 
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
-  await openCaseSection(page, "协作与归档", "case-report-archive");
+  await openCaseSection(page, "整改与报告", "case-report-archive");
   // Record 1 is the newest saved run, which is the re-review after run 1.
   await selectReviewAttempt(
     page,
@@ -805,7 +805,7 @@ try {
   const secondAttachmentDiagnostics = secondReviewDiagnostics;
 
   if (samePurposePair) {
-    await openCaseSection(page, "材料与版本");
+    await openCaseSection(page, "材料");
     const attachmentTarget = afterReplacement.materials?.find(
       (item) => item.material_id === samePurposePair.first.material_id,
     );
@@ -876,7 +876,7 @@ try {
     );
     await page.reload();
     await page.getByRole("heading", { name: title, exact: true }).waitFor();
-    await openCaseSection(page, "材料与版本");
+    await openCaseSection(page, "材料");
     const currentA = page.locator(
       `.material-current-set li[data-material-id="${samePurposePair.first.material_id}"]`,
     );
@@ -896,7 +896,7 @@ try {
   let thirdWorkspace: ReviewWorkspace | null = null;
   let thirdReviewDiagnostics: ReviewDiagnostics | null = null;
   if (samePurposePair && attachmentA2) {
-    await openCaseSection(page, "审查记录");
+    await openCaseSection(page, "审查记录", "case-review-preparation");
     await enterC1BBusinessAt(page);
     const thirdReviewResponsePromise = page.waitForResponse(
       (response) =>
@@ -1014,7 +1014,7 @@ try {
 
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
-  await openCaseSection(page, "协作与归档", "case-report-archive");
+  await openCaseSection(page, "整改与报告", "case-report-archive");
   const reportRunID = thirdRunID || secondRunID;
   const reportAttemptID = thirdAttemptID || secondAttemptID;
   await selectReviewAttempt(
@@ -1205,7 +1205,7 @@ async function postFromUI(
 async function openCaseSection(page: Page, section: string, disclosureID?: string): Promise<void> {
   const navigation = page.getByRole("navigation", { name: "案件详情分区" });
   const button = navigation.getByRole("tab", {
-    name: section === "主体与对象" || section === "适用依据" ? "主体与依据" : section,
+    name: section === "主体与对象" || section === "适用依据" ? "主体与活动" : section,
     exact: true,
   });
   await button.click();
@@ -1260,18 +1260,10 @@ async function waitForCase(
 }
 
 async function waitForCurrentMaterialParsed(page: Page, materialID: string): Promise<void> {
-  await page.waitForFunction(
-    (id) => {
-      const row = document.querySelector(
-        `.material-current-set li[data-material-id="${CSS.escape(id)}"]`,
-      );
-      return (
-        row?.querySelector<HTMLElement>(".parsed-document-summary")?.dataset.status === "ready"
-      );
-    },
-    materialID,
-    { timeout: 30000 },
+  const row = page.locator(
+    `.material-current-set li[data-material-id=${JSON.stringify(materialID)}]`,
   );
+  await row.getByText("已解析", { exact: true }).waitFor({ timeout: 30000 });
 }
 
 async function waitForWorkspace(

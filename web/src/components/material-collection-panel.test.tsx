@@ -19,6 +19,7 @@ import type {
   MaterialVersionProjection,
 } from "../api/types";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
+import { AdministrativeTechnicalDetails } from "./app-shell-preferences";
 import { MaterialCollectionPanel } from "./material-collection-panel";
 
 const mocks = vi.hoisted(() => ({
@@ -166,6 +167,21 @@ describe("material collection behavior", () => {
     expect(screen.queryByRole("button", { name: "编辑修改稿" })).not.toBeInTheDocument();
     view.rerender(<MaterialCollectionPanel caseDetail={detail} canWrite actorId="actor-1" />);
     expect(screen.getByRole("button", { name: "编辑修改稿" })).toBeInTheDocument();
+  });
+
+  it("keeps material diagnostics in the professional view while preserving the normal status", () => {
+    const document = doc("current", "合同.txt", "draft_contract");
+    const detail = {
+      ...emptyDetail,
+      documents: [document],
+      materials: [material({ current_document_id: document.id })],
+    };
+    const panel = <MaterialCollectionPanel caseDetail={detail} canWrite actorId="actor-1" />;
+    const view = render(panel);
+    expect(screen.getByText("已解析")).toBeVisible();
+    expect(screen.queryByText(/原件 SHA-256/)).not.toBeInTheDocument();
+    view.rerender(<AdministrativeTechnicalDetails>{panel}</AdministrativeTechnicalDetails>);
+    expect(screen.getByText(/原件 SHA-256/)).toBeVisible();
   });
 
   it("keeps upload success copy usable without exposing random identities", () => {
@@ -561,7 +577,11 @@ describe("material collection behavior", () => {
       },
     };
     const user = userEvent.setup();
-    renderPanel(detail);
+    render(
+      <AdministrativeTechnicalDetails>
+        <MaterialCollectionPanel caseDetail={detail} canWrite actorId="actor-1" />
+      </AdministrativeTechnicalDetails>,
+    );
     await user.click(screen.getByRole("button", { name: "版本历史" }));
     expect(screen.getByText(/v1 · 文件名未提供/)).toBeVisible();
     const technical = screen.getByText("版本文件标识").closest("details");

@@ -507,3 +507,7 @@
   height: auto;
   min-height: 0;
 }
+.page-review .workspace-view-immersive .doc-text {
+  font-size: 16px;
+  line-height: 1.75;
+}

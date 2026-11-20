@@ -21,7 +21,10 @@ import {
   selectedOutcome,
   unresolvedGapKinds,
 } from "../features/review/review-outcome";
-import { singleContractCoverage } from "../features/review/single-contract-coverage";
+import {
+  isLegacyPaymentCoverageFinding,
+  singleContractCoverage,
+} from "../features/review/single-contract-coverage";
 
 export function ReviewOutcomeSummary({
   workspace,
@@ -35,7 +38,10 @@ export function ReviewOutcomeSummary({
   const limited = limitedPrecheck(workspace);
   const partial = partialReportScope(workspace);
   const stage = agentStage(workspace);
-  const undecided = workspace.findings.filter((finding) => finding.decisions.length === 0).length;
+  const undecided = workspace.findings.filter(
+    (finding) =>
+      finding.decisions.length === 0 && !isLegacyPaymentCoverageFinding(workspace, finding),
+  ).length;
   const gaps =
     workspace.agent_review?.attempt_id === workspace.review_attempts?.attempt.id
       ? workspace.agent_review?.unresolved_gap_ids

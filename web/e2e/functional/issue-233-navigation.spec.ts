@@ -61,20 +61,37 @@ async function evidence(page: Page, info: TestInfo, name: string, id: string) {
   expect(result.target!.top).toBeLessThan(result.viewport.height);
 }
 
+async function openCurrentReviewRecord(page: Page) {
+  const record = page.getByRole("dialog", { name: "审查记录" });
+  if (new URL(page.url()).searchParams.get("drawer") !== "record") {
+    const controls = page.getByRole("navigation", { name: "审查操作" });
+    await controls.getByRole("button", { name: "审查记录", exact: true }).click();
+  }
+  await expect(record).toBeVisible();
+  const current = record.getByRole("tab", { name: /本次审查$/ });
+  const before = page.url();
+  await current.focus();
+  await page.keyboard.press("Enter");
+  console.log(`EVIDENCE review-record-tab ${JSON.stringify({ before, after: page.url() })}`);
+  await expect(current).toHaveAttribute("aria-selected", "true");
+  return record;
+}
+
 test("case anchors handle initial links, repeat activation, reload and browser history", async ({
   page,
 }, info) => {
-  await installNavigationFixture(page);
+  const fixture = await installNavigationFixture(page);
+  fixture.archived = true;
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`${web}${casePath}#remediation-title`);
   await expect(page.locator("#remediation-title")).toBeFocused();
   await evidence(page, info, "initial-remediation", "remediation-title");
-  await page.getByRole("link", { name: "跳转到审查报告与归档" }).click();
+  await page.getByRole("link", { name: "查看已有报告与归档记录" }).click();
   await expect(page.locator("#report-archive-title")).toBeFocused();
   await evidence(page, info, "report-click", "report-archive-title");
   await page.locator("#case-report-archive > summary").click();
   await expect(page.locator("#case-report-archive")).not.toHaveAttribute("open", "");
-  await page.getByRole("link", { name: "跳转到审查报告与归档" }).click();
+  await page.getByRole("link", { name: "查看已有报告与归档记录" }).click();
   await expect(page.locator("#report-archive-title")).toBeFocused();
   await page.goBack();
   await expect(page.locator("#remediation-title")).toBeFocused();
@@ -178,24 +195,22 @@ test("list, review, citation and return retain selection and actual reading posi
   await page.goto(
     `${web}/cases?q=${encodeURIComponent("导航样本")}&sort=title&direction=asc&page=2&page_size=25`,
   );
-  const row = page.getByRole("link", { name: "导航样本 37", exact: true });
+  const row = page.getByRole("row").filter({ hasText: "导航样本 37" }).getByRole("link");
   await row.scrollIntoViewIfNeeded();
   const listScroll = await page.evaluate(() => scrollY);
   expect(listScroll).toBeGreaterThan(0);
   await row.click();
-  const next = page.getByRole("link", { name: "核对原文并处理决定" });
+  const next = page.getByRole("link", { name: /^去判断 \(\d+\)$/ });
   await next.scrollIntoViewIfNeeded();
   const caseScroll = await page.evaluate(() => scrollY);
   await next.click();
   await expect(page).toHaveURL(new RegExp(`/cases/${caseId}/reviews/${runId}`));
   await expect(page.getByText("实时进度连接已关闭", { exact: false })).toBeVisible();
-  if (!(await page.getByRole("dialog", { name: "审查记录" }).isVisible())) {
-    await page.getByRole("button", { name: "审查记录", exact: true }).click();
-  }
-  await page.getByRole("tab", { name: "本次审查", exact: true }).click();
+  await openCurrentReviewRecord(page);
   const queue = page.getByRole("region", { name: "人工办理" });
   await queue.getByRole("button", { name: "查看判断与原文" }).click();
   await expect(page).toHaveURL(/work_kind=finding/);
+  await expect(page.getByRole("dialog", { name: "审查记录" })).not.toBeVisible();
   const pane = page.locator(".page-review .col-doc");
   const findingsPane = page.locator(".page-review .review-finding-queue");
   await expect(pane).toBeVisible();
@@ -211,11 +226,8 @@ test("list, review, citation and return retain selection and actual reading posi
   expect(documentScroll).toBeGreaterThan(0);
   // A short queue may not need scrolling; still verify its actual position is restored.
   await expect(page.getByText("实时进度连接已关闭", { exact: false })).toBeVisible();
-  if (!(await page.getByRole("dialog", { name: "审查记录" }).isVisible())) {
-    await page.getByRole("button", { name: "审查记录", exact: true }).click();
-  }
-  await page.getByRole("tab", { name: "本次审查", exact: true }).click();
-  await page.getByRole("button", { name: "读取本次原文" }).first().click();
+  const record = await openCurrentReviewRecord(page);
+  await record.getByRole("button", { name: "读取本次原文" }).first().click();
   await expect(page.locator(".frozen-citation-reader mark.hit-evidence").first()).toHaveText(
     "100万元",
   );
@@ -243,6 +255,8 @@ test("list, review, citation and return retain selection and actual reading posi
   console.log(
     `EVIDENCE after-back ${JSON.stringify({ url: page.url(), scroll: await pane.evaluate((element) => element.scrollTop) })}`,
   );
+  await record.getByRole("button", { name: "关闭" }).click();
+  await expect(record).not.toBeVisible();
   await page.getByRole("link", { name: "返回案件", exact: true }).click();
   await expect.poll(() => page.evaluate(() => scrollY)).toBe(caseScroll);
   await page
@@ -275,8 +289,8 @@ test("a tenant switch discards the former citation and list return state", async
   await page.goto(
     `${web}/cases?q=${encodeURIComponent("导航样本")}&sort=title&direction=asc&page=2&page_size=25`,
   );
-  await page.getByRole("link", { name: "导航样本 37", exact: true }).click();
-  await page.getByRole("link", { name: "核对原文并处理决定" }).click();
+  await page.getByRole("row").filter({ hasText: "导航样本 37" }).getByRole("link").click();
+  await page.getByRole("link", { name: /^去判断 \(\d+\)$/ }).click();
   await expect(page.getByText("实时进度连接已关闭", { exact: false })).toBeVisible();
   if (!(await page.getByRole("dialog", { name: "审查记录" }).isVisible())) {
     await page.getByRole("button", { name: "审查记录", exact: true }).click();
@@ -306,14 +320,17 @@ test("a tenant switch discards the former citation and list return state", async
 test("keyboard navigation works at narrow width and native 200 percent zoom", async ({
   page,
 }, info) => {
-  await installNavigationFixture(page);
+  const fixture = await installNavigationFixture(page);
+  fixture.archived = true;
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${web}${casePath}`);
-  const target = page.getByRole("link", { name: "跳转到整改与复核" });
+  await page.goto(`${web}${casePath}#remediation-title`);
+  await expect(page.locator("#remediation-title")).toBeFocused();
+  await evidence(page, info, "narrow-remediation-link", "remediation-title");
+  const target = page.getByRole("link", { name: "查看已有报告与归档记录" });
   await target.focus();
   await page.keyboard.press("Enter");
-  await expect(page.locator("#remediation-title")).toBeFocused();
-  await evidence(page, info, "narrow-keyboard", "remediation-title");
+  await expect(page.locator("#report-archive-title")).toBeFocused();
+  await evidence(page, info, "narrow-keyboard", "report-archive-title");
 
   await page.setViewportSize({ width: 1280, height: 720 });
   const title = `CAW-233-ZOOM-${process.pid}-${Date.now()}`;
@@ -344,7 +361,7 @@ test("keyboard navigation works at narrow width and native 200 percent zoom", as
       execFileSync("xdotool", ["key", "--clearmodifiers", "ctrl+plus"]);
     await expect.poll(() => page.evaluate(() => devicePixelRatio)).toBe(before.dpr * 2);
     await expect.poll(() => page.evaluate(() => innerWidth)).toBe(before.width / 2);
-    const report = page.getByRole("link", { name: "跳转到审查报告与归档" });
+    const report = page.getByRole("link", { name: "查看已有报告与归档记录" });
     await report.focus();
     await page.keyboard.press("Enter");
     await expect(page.locator("#report-archive-title")).toBeFocused();

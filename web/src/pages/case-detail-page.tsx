@@ -40,22 +40,23 @@ import { EvidenceSLADashboard } from "../components/evidence-sla-dashboard";
 import { RemediationPanel } from "../components/remediation-panel";
 import { TemplateGenerationPanel } from "../components/template-generation-panel";
 import { StatusText } from "../components/status-text";
-import { TechnicalDetail } from "../components/technical-detail";
-import { businessLineLabel, businessScopeLabel, scenarioLabel } from "../domain/business-labels";
+import { scenarioLabel } from "../domain/business-labels";
 import { CaseSupportGrantPanel } from "./support-grant-pages";
 import { canReadmitCancelledPreparation } from "../features/review/review-outcome";
 import { readWorkReturn } from "../features/review/work-items";
 import { actorReadContextKey } from "../domain/actor-read-context";
 import { recordRecentCaseVisit } from "../features/home/recent-cases";
 import {
-  businessStatusLabel,
-  businessStatusTone,
+  caseHref,
   contractTypeLabel,
+  roleLabel,
   formatDateTime,
   readyDocumentCount,
   runLabel,
   runTone,
 } from "../domain/review";
+import { compactTime } from "../domain/time";
+import "./case-detail-page.css";
 import { contractDeskReturnHref } from "./contract-desk-page";
 
 const navigationStores = new WeakMap<
@@ -66,18 +67,33 @@ const navigationStores = new WeakMap<
     previousActor: string;
   }
 >();
-type CaseSection = "overview" | "materials" | "reviews" | "subjects" | "legal" | "collaboration";
-const sectionLabels: Record<CaseSection, string> = {
-  overview: "案件概览",
-  materials: "材料与版本",
-  reviews: "审查记录",
-  subjects: "主体与对象",
-  legal: "适用依据",
-  collaboration: "协作与归档",
-};
+type CaseSection = "materials" | "reviews" | "work" | "subjects";
+
+function restoredCaseSection(value: unknown, defaultSection: CaseSection): CaseSection | null {
+  switch (value) {
+    case "materials":
+    case "reviews":
+    case "work":
+    case "subjects":
+      return value;
+    case "legal":
+      return "subjects";
+    case "collaboration":
+      return "work";
+    case "overview":
+      return defaultSection;
+    default:
+      return null;
+  }
+}
+
 export function CaseDetailPage() {
   const { caseId = "" } = useParams();
   const [actionTarget, setActionTarget] = useState<HTMLDivElement | null>(null);
+  const [stageTarget, setStageTarget] = useState<HTMLSpanElement | null>(null);
+  const [preparationActionTarget, setPreparationActionTarget] = useState<HTMLDivElement | null>(
+    null,
+  );
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -168,76 +184,63 @@ export function CaseDetailPage() {
     location.state && typeof location.state === "object" && "caseSection" in location.state
       ? location.state.caseSection
       : null;
-  const validSavedSection =
-    caseReadingPosition &&
-    typeof savedSection === "string" &&
-    Object.hasOwn(sectionLabels, savedSection)
-      ? (savedSection as CaseSection)
-      : null;
-  const [activeSection, setActiveSection] = useState<CaseSection>(() =>
-    selectedRemediationId && !location.hash ? "collaboration" : (validSavedSection ?? "overview"),
-  );
-  const activeSectionRef = useRef(activeSection);
-  const manualSectionVisit = useRef("");
-  const restoredSectionVisit = useRef("");
+  const defaultSection = detail.data?.latest_run ? "reviews" : "materials";
+  const validSavedSection = caseReadingPosition
+    ? restoredCaseSection(savedSection, defaultSection)
+    : null;
+  const [sectionSelection, setSectionSelection] = useState<{
+    visit: string;
+    section: CaseSection;
+  } | null>(null);
   const sectionVisit = JSON.stringify([location.key, caseId, navigationScope]);
-  activeSectionRef.current = activeSection;
-  const revealTarget = useCallback((id: string, target: HTMLElement | null) => {
-    const owner = target?.closest<HTMLElement>("[data-case-section]")?.dataset.caseSection as
-      CaseSection | undefined;
-    const section =
-      owner ??
-      (id.startsWith("legal-fact-")
-        ? "legal"
-        : id === "review-business-time"
-          ? "reviews"
-          : undefined);
-    if (!section) return true;
-    if (activeSectionRef.current !== section) {
-      setActiveSection(section);
-      return false;
-    }
-    return !target || !target.closest("[hidden]");
-  }, []);
-  useLayoutEffect(() => {
-    if (
-      !workActorScope ||
-      location.hash ||
-      manualSectionVisit.current === sectionVisit ||
-      restoredSectionVisit.current === sectionVisit
-    )
+  const remembered = caseSections.get(location.key);
+  const rememberedSection =
+    remembered?.caseId === caseId && remembered.actorScope === workActorScope
+      ? remembered.section
+      : null;
+  const activeSection =
+    (sectionSelection?.visit === sectionVisit ? sectionSelection.section : null) ??
+    (!location.hash
+      ? selectedRemediationId
+        ? "work"
+        : (validSavedSection ?? rememberedSection)
+      : null) ??
+    defaultSection;
+  const revealTarget = useCallback(
+    (id: string, target: HTMLElement | null) => {
+      const owner = target?.closest<HTMLElement>("[data-case-section]")?.dataset.caseSection as
+        CaseSection | undefined;
+      const section =
+        owner ??
+        (id.startsWith("legal-fact-")
+          ? "subjects"
+          : id === "review-business-time"
+            ? "reviews"
+            : undefined);
+      if (!section) return true;
+      if (activeSection !== section) {
+        setSectionSelection({ visit: sectionVisit, section });
+        return false;
+      }
+      return !target || !target.closest("[hidden]");
+    },
+    [activeSection, sectionVisit],
+  );
+  useEffect(() => {
+    if (!workActorScope || !detail.isSuccess || detail.isFetching || detail.data.id !== caseId)
       return;
-    const remembered = caseSections.get(location.key);
-    const section =
-      validSavedSection ??
-      (remembered?.caseId === caseId && remembered.actorScope === workActorScope
-        ? remembered.section
-        : selectedRemediationId
-          ? "collaboration"
-          : "overview");
-    restoredSectionVisit.current = sectionVisit;
-    setActiveSection(section);
+    caseSections.set(location.key, { caseId, actorScope: workActorScope, section: activeSection });
+    if (caseSections.size > 30) caseSections.delete(caseSections.keys().next().value!);
   }, [
     location.key,
     caseId,
     workActorScope,
-    selectedRemediationId,
-    validSavedSection,
-    location.hash,
-    sectionVisit,
+    activeSection,
+    detail.isSuccess,
+    detail.isFetching,
+    detail.data,
+    caseSections,
   ]);
-  useEffect(
-    () => () => {
-      if (!navigationScope) return;
-      caseSections.set(location.key, {
-        caseId,
-        actorScope: navigationScope,
-        section: activeSectionRef.current,
-      });
-      if (caseSections.size > 30) caseSections.delete(caseSections.keys().next().value!);
-    },
-    [location.key, caseId, navigationScope],
-  );
   const reviewReadingPosition = workReturn
     ? reviewPositionForPath(location.state, workReturn, caseId, workActorScope)
     : null;
@@ -422,7 +425,6 @@ export function CaseDetailPage() {
   );
   const materialCountsKnown =
     hasMaterialProjection && item.material_selection?.status !== "pending_confirmation";
-  const unavailableMaterialCount = hasMaterialProjection ? "待确认" : "未提供";
   const confirmedDocumentIds = new Set(
     materialCountsKnown ? (item.material_selection?.document_ids ?? []) : [],
   );
@@ -432,11 +434,7 @@ export function CaseDetailPage() {
   const ready = readyDocumentCount(current.map((document) => document.parse_status));
   const pendingParse = current.filter((document) => document.parse_status === "pending").length;
   const failedCount = current.filter((document) => document.parse_status === "failed").length;
-  const failed = failedCount > 0;
-  const run = item.latest_run;
   const archived = item.archived_at !== null;
-  const subjectContextUnknown =
-    run !== null && item.subject_context_changed_after_latest_run === undefined;
   const actorRole = session.data?.role ?? "";
   const canUpload = !archived && (actorRole === "admin" || actorRole === "clerk");
   const canWriteRemediation =
@@ -463,6 +461,43 @@ export function CaseDetailPage() {
     canReadmitCancelledPreparation(latestWorkspace)
       ? latestWorkspace.review_attempts?.attempt
       : undefined;
+  const updated = compactTime(item.updated_at);
+  const scenario = item.scenario?.trim() ? scenarioLabel(item.scenario) : "";
+  const contractType =
+    item.contract_type && item.contract_type !== "unspecified"
+      ? contractTypeLabel(item.contract_type)
+      : "";
+  const properties = [
+    { label: "类型", value: contractType === "合同类型待核对" ? "" : contractType },
+    { label: "场景", value: scenario === "—" || scenario.endsWith("待核对") ? "" : scenario },
+    {
+      label: "材料",
+      value: materialCountsKnown
+        ? failedCount > 0
+          ? `${failedCount} 份解析失败`
+          : pendingParse > 0
+            ? `${pendingParse} 份待解析`
+            : ready > 0
+              ? `${ready} 份已解析`
+              : ""
+        : "",
+    },
+    { label: "更新", value: updated === "—" ? "" : updated },
+    { label: "编号", value: item.case_number?.trim() },
+    { label: "负责人", value: item.owner_name?.trim() },
+  ].filter((property) => property.value);
+  const readinessScope = readiness.data?.scopes.find((entry) => entry.id === reviewScope);
+  const readinessReady =
+    !readiness.isFetching &&
+    !readiness.isError &&
+    readinessScope?.can_start === true &&
+    !readinessScope.blockers.length &&
+    (!requiresBusinessAt || validBusinessAt);
+  const loadedReviews = (history.data ?? []).filter(
+    ({ workspace }) => workspace.run.case_id === item.id,
+  );
+  const historyComplete = !history.hasOlder && !history.olderError && !history.cycleDetected;
+
   function onStartReview() {
     if (playbookRef && !playbookRefAvailable) return;
     start.mutate(
@@ -507,33 +542,39 @@ export function CaseDetailPage() {
         contentRef={readingContent}
         className="case-detail-page"
         before={
-          <nav className="page-back" aria-label="案件导航">
-            {location.hash === "#case-material-source" ? (
-              <Link to={contractDeskReturnHref(location.state, workActorScope)}>返回合同清单</Link>
-            ) : null}
-            {workReturn ? (
-              <Link
-                to={workReturn}
-                state={{ ...(listReturn ?? {}), caseReadingPosition, reviewReadingPosition }}
-              >
-                返回人工办理
-              </Link>
-            ) : null}
-          </nav>
+          location.hash === "#case-material-source" || workReturn ? (
+            <nav className="page-back" aria-label="案件导航">
+              {location.hash === "#case-material-source" ? (
+                <Link to={contractDeskReturnHref(location.state, workActorScope)}>
+                  返回合同清单
+                </Link>
+              ) : null}
+              {workReturn ? (
+                <Link
+                  to={workReturn}
+                  state={{ ...(listReturn ?? {}), caseReadingPosition, reviewReadingPosition }}
+                >
+                  返回人工办理
+                </Link>
+              ) : null}
+            </nav>
+          ) : null
         }
         title={item.title}
-        description={contractTypeLabel(item.contract_type)}
-        status={
-          <StatusText tone={businessStatusTone(item.business_status ?? "")}>
-            {businessStatusLabel(item.business_status ?? "")}
-          </StatusText>
-        }
+        status={<span ref={setStageTarget} />}
         actions={
           <>
-            <EvidenceSLADashboard mode="reminder" cases={[{ id: item.id, title: item.title }]} />
             <Dropdown
               menu={{
                 items: [
+                  {
+                    key: "compare",
+                    label: (
+                      <Link to={`/compare?${new URLSearchParams({ case_id: item.id })}`}>
+                        版本对照
+                      </Link>
+                    ),
+                  },
                   {
                     key: "legal",
                     label: (
@@ -542,6 +583,32 @@ export function CaseDetailPage() {
                       </Link>
                     ),
                   },
+                  {
+                    key: "support",
+                    label: (
+                      <Link
+                        to={{ hash: "#case-support-grants", search: location.search }}
+                        state={location.state}
+                      >
+                        只读支援
+                      </Link>
+                    ),
+                  },
+                  ...(canArchive
+                    ? [
+                        {
+                          key: "archive",
+                          label: (
+                            <Link
+                              to={{ hash: "#case-report-archive", search: location.search }}
+                              state={location.state}
+                            >
+                              归档
+                            </Link>
+                          ),
+                        },
+                      ]
+                    : []),
                 ],
               }}
               trigger={["click"]}
@@ -551,369 +618,365 @@ export function CaseDetailPage() {
             <div ref={setActionTarget} />
           </>
         }
-        facts={
-          <dl className="case-detail-facts" aria-label="案件信息">
-            <div>
-              <dt>业务编号</dt>
-              <dd>{item.case_number?.trim() || "未提供"}</dd>
-            </div>
-            <div>
-              <dt>业务场景</dt>
-              <dd>{businessScopeLabel(item.business_line, item.scenario)}</dd>
-            </div>
-            <div>
-              <dt>责任人</dt>
-              <dd>{item.owner_name?.trim() || "未提供"}</dd>
-            </div>
-            <div>
-              <dt>更新时间</dt>
-              <dd>{formatDateTime(item.updated_at)}</dd>
-            </div>
-          </dl>
-        }
         nextStep={
-          <CaseNextStep
-            compact
-            actionTarget={actionTarget}
-            caseDetail={item}
-            actorRole={actorRole}
-            sessionReady={session.isSuccess}
-            sessionLoading={session.isLoading}
-            sessionError={session.isError ? session.error : null}
-            readiness={readiness.data}
-            readinessLoading={readiness.isFetching}
-            readinessError={readiness.isError ? readiness.error : null}
-            selectedScope={reviewScope}
-            businessAtInput={businessAt}
-            validBusinessAt={validBusinessAt}
-            historyLoading={history.isLoading}
-            historyError={history.isError ? history.error : null}
-            latestWorkspace={latestWorkspace}
-            startPending={start.isPending}
-            startError={start.isError ? start.error : null}
-            startDisabled={Boolean(playbookRef && !playbookRefAvailable)}
-            startControls={
-              !archived ? (
-                <PlaybookPicker
-                  caseId={item.id}
-                  value={playbookRef}
-                  onChange={setPlaybookRef}
-                  onAvailabilityChange={setPlaybookRefAvailable}
-                  disabled={start.isPending}
-                />
-              ) : null
-            }
-            onRetrySession={() => void session.refetch()}
-            onRefreshReadiness={() => {
-              start.reset();
-              void Promise.all([
-                readiness.refetch(),
-                detail.refetch(),
-                ...(item.latest_run ? [history.refetch()] : []),
-              ]);
-            }}
-            onRefreshHistory={() => void history.refetch()}
-            onStartReview={onStartReview}
-            onNavigateReview={(href) => void navigate(href, { state: reviewNavigationState() })}
-          />
+          <>
+            <dl className="case-detail-properties" id="case-business-title" aria-label="案件信息">
+              {properties.length ? (
+                properties.map(({ label, value }) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))
+              ) : (
+                <div>
+                  <dt>案件信息</dt>
+                  <dd>—</dd>
+                </div>
+              )}
+            </dl>
+            <CaseNextStep
+              compact
+              actionTarget={actionTarget}
+              stageTarget={stageTarget}
+              preparationActionTarget={preparationActionTarget}
+              caseDetail={item}
+              actorRole={actorRole}
+              sessionReady={session.isSuccess}
+              sessionLoading={session.isLoading}
+              sessionError={session.isError ? session.error : null}
+              readiness={readiness.data}
+              readinessLoading={readiness.isFetching}
+              readinessError={readiness.isError ? readiness.error : null}
+              selectedScope={reviewScope}
+              businessAtInput={businessAt}
+              validBusinessAt={validBusinessAt}
+              historyLoading={history.isLoading}
+              historyError={history.isError ? history.error : null}
+              latestWorkspace={latestWorkspace}
+              startPending={start.isPending}
+              startError={start.isError ? start.error : null}
+              startDisabled={Boolean(playbookRef && !playbookRefAvailable)}
+              startControls={
+                !archived ? (
+                  <PlaybookPicker
+                    caseId={item.id}
+                    value={playbookRef}
+                    onChange={setPlaybookRef}
+                    onAvailabilityChange={setPlaybookRefAvailable}
+                    disabled={start.isPending}
+                  />
+                ) : null
+              }
+              onRetrySession={() => void session.refetch()}
+              onRefreshReadiness={() => {
+                start.reset();
+                void Promise.all([
+                  readiness.refetch(),
+                  detail.refetch(),
+                  ...(item.latest_run ? [history.refetch()] : []),
+                ]);
+              }}
+              onRefreshHistory={() => void history.refetch()}
+              onStartReview={onStartReview}
+              onNavigateReview={(href) => void navigate(href, { state: reviewNavigationState() })}
+            />
+          </>
         }
         navigation={
-          <nav className="case-detail-sections" aria-label="案件详情分区">
-            <Tabs
-              activeKey={activeSection === "legal" ? "subjects" : activeSection}
-              destroyOnHidden={false}
-              items={[
-                {
-                  key: "overview",
-                  label: "案件概览",
-                  forceRender: true,
-                  children: (
-                    <section
-                      data-case-section="overview"
-                      aria-label="案件概览"
-                      hidden={activeSection !== "overview"}
-                    >
-                      <ol className="case-chain" aria-label="案件材料链路">
-                        <li data-state={current.length > 0 ? "filled" : "open"}>
-                          <span className="case-chain-mark" aria-hidden="true" />
-                          <span className="case-chain-label">材料</span>
-                          <strong>
-                            {materialCountsKnown ? current.length : unavailableMaterialCount}
-                          </strong>
-                        </li>
-                        <li data-state={ready > 0 ? "filled" : "open"}>
-                          <span className="case-chain-mark" aria-hidden="true" />
-                          <span className="case-chain-label">已解析</span>
-                          <strong>{materialCountsKnown ? ready : unavailableMaterialCount}</strong>
-                        </li>
-                        <li
-                          data-state={!materialCountsKnown || pendingParse > 0 ? "open" : "filled"}
-                        >
-                          <span className="case-chain-mark" aria-hidden="true" />
-                          <span className="case-chain-label">待解析</span>
-                          <strong>
-                            {materialCountsKnown ? pendingParse : unavailableMaterialCount}
-                          </strong>
-                        </li>
-                        <li data-state={!materialCountsKnown || failed ? "open" : "filled"}>
-                          <span className="case-chain-mark" aria-hidden="true" />
-                          <span className="case-chain-label">解析失败</span>
-                          <strong>
-                            {materialCountsKnown ? failedCount : unavailableMaterialCount}
-                          </strong>
-                        </li>
-                        <li data-state={run ? "filled" : "open"}>
-                          <span className="case-chain-mark" aria-hidden="true" />
-                          <span className="case-chain-label">最新运行</span>
-                          <strong>{run ? runLabel(run.state) : "尚无运行"}</strong>
-                        </li>
-                      </ol>
-                      {archived ? (
-                        <p className="callout">
-                          案件已归档，目前仅可查看案件、审查历史和已有报告。
-                        </p>
-                      ) : null}
-                      {pendingParse > 0 ? (
-                        <p className="meta">
-                          待解析材料将在审查受理后处理，解析失败会保留失败状态。
-                        </p>
-                      ) : null}
-                      {failed ? (
-                        <p className="callout">
-                          有材料解析失败。文件仍保留在案件里，不会被当成无风险。
-                        </p>
-                      ) : null}
-                      {item.revision_pending ? (
-                        <p className="callout">
-                          材料已更新。开始复审会创建新的审查记录，之前的审查和人工判断都会保留。
-                        </p>
-                      ) : null}
-                      {item.configuration_pending ? (
-                        <p className="callout">
-                          规则或模型配置已更新。开始复审会记录当前配置，保留历史运行。
-                        </p>
-                      ) : null}
-                      {item.subject_context_changed_after_latest_run === true ? (
-                        <p className="callout">
-                          主体信息已变更，需发起新审查。新审查会留存当前主体信息，之前的审查和报告保持不变。
-                        </p>
-                      ) : null}
-                      {subjectContextUnknown ? (
-                        <p className="callout">
-                          暂无主体信息变化状态，无法确认当前主体信息是否与最近审查一致。请刷新或联系管理员。
-                        </p>
-                      ) : null}
-                      {item.material_selection?.status === "pending_confirmation" ? (
-                        <p className="callout">
-                          请先确认后续审查使用的旧材料集合。确认前不会按角色推断选中文档，也不会启动新审查。
-                        </p>
-                      ) : null}
-                      {!hasMaterialProjection ? (
-                        <p className="callout">暂无材料集合与版本信息，当前不能启动新审查。</p>
-                      ) : null}
-                      {run && run.state !== "queued" && run.state !== "running" ? (
-                        <p className="meta">新上传的材料不会加入已经开始的审查。</p>
-                      ) : null}
-
+          <div className="case-detail-content">
+            <nav className="case-detail-sections" aria-label="案件详情分区">
+              <Tabs
+                activeKey={activeSection}
+                classNames={{ header: "case-detail-tab-header", item: "case-detail-tab" }}
+                destroyOnHidden={false}
+                tabBarGutter={12}
+                tabBarExtraContent={
+                  activeSection === "reviews" &&
+                  !archived &&
+                  ["admin", "clerk", "reviewer"].includes(actorRole) ? (
+                    <a className="case-new-review" href="#review-readiness">
+                      发起新审查
+                    </a>
+                  ) : undefined
+                }
+                items={[
+                  {
+                    key: "materials",
+                    label: "材料",
+                    forceRender: true,
+                    children: (
                       <section
-                        className="case-business-overview"
-                        aria-labelledby="case-business-title"
+                        data-case-section="materials"
+                        aria-label="材料"
+                        hidden={activeSection !== "materials"}
                       >
-                        <h2 id="case-business-title">业务信息</h2>
-                        <dl className="execution-dl">
-                          <div>
-                            <dt>业务条线</dt>
-                            <dd>{businessLineLabel(item.business_line)}</dd>
-                          </div>
-                          <div>
-                            <dt>场景</dt>
-                            <dd>{scenarioLabel(item.scenario)}</dd>
-                          </div>
-                          <div>
-                            <dt>业务状态</dt>
-                            <dd>{businessStatusLabel(item.business_status)}</dd>
-                          </div>
-                          <div>
-                            <dt>归档状态</dt>
-                            <dd>
-                              {archived
-                                ? `已归档，${formatDateTime(item.archived_at ?? "")}`
-                                : "未归档"}
-                            </dd>
-                          </div>
-                        </dl>
-                        <TechnicalDetail
-                          label="业务范围编码"
-                          value={[
-                            item.business_line,
-                            item.scenario,
-                            item.contract_type,
-                            item.business_status,
-                          ]
-                            .filter(Boolean)
-                            .join(" / ")}
-                        />
-                      </section>
-                    </section>
-                  ),
-                },
-                {
-                  key: "materials",
-                  label: "材料与版本",
-                  forceRender: true,
-                  children: (
-                    <section
-                      data-case-section="materials"
-                      aria-label="材料与版本"
-                      hidden={activeSection !== "materials"}
-                    >
-                      <MaterialCollectionPanel
-                        key={`materials:${item.id}:${actorScope}`}
-                        caseDetail={item}
-                        canWrite={canUpload}
-                        actorId={session.data?.id ?? ""}
-                        source={
-                          location.hash === "#case-material-source"
-                            ? {
-                                documentId: searchParams.get("source_document") ?? "",
-                                visit: location.key,
-                              }
-                            : undefined
-                        }
-                      />
-                      <CollapsibleSection
-                        id="case-template-generation"
-                        title="模板生成"
-                        summaryLabel="展开模板生成"
-                      >
-                        <TemplateGenerationPanel
-                          key={`generation:${item.id}:${session.data?.id ?? ""}`}
-                          caseId={caseId}
-                          records={item.generations}
-                          materials={item.materials}
-                          documents={item.documents}
-                          materialSelection={item.material_selection}
+                        <MaterialCollectionPanel
+                          key={`materials:${item.id}:${actorScope}`}
+                          caseDetail={item}
+                          canWrite={canUpload}
                           actorId={session.data?.id ?? ""}
-                          canWrite={actorRole === "admin" || actorRole === "clerk"}
-                          archived={archived}
+                          source={
+                            location.hash === "#case-material-source"
+                              ? {
+                                  documentId: searchParams.get("source_document") ?? "",
+                                  visit: location.key,
+                                }
+                              : undefined
+                          }
                         />
-                      </CollapsibleSection>
-                    </section>
-                  ),
-                },
-                {
-                  key: "reviews",
-                  label: "审查记录",
-                  forceRender: true,
-                  children: (
-                    <section
-                      data-case-section="reviews"
-                      aria-label="审查记录"
-                      hidden={activeSection !== "reviews"}
-                    >
-                      {item.latest_run ? (
-                        <section className="workflow-panel" aria-label="审查历史加载范围">
-                          <p className="meta">
-                            默认先读取最新审查记录；更早记录按需读取，未读取的旧记录不会出现在整改或报告选择中。
-                          </p>
-                          {history.cycleDetected ? (
-                            <p role="alert">
-                              审查历史存在循环引用，已保留当前可读取记录，不能继续读取更早记录。
-                            </p>
-                          ) : null}
-                          {history.olderError ? (
-                            <p className="workflow-error" role="alert">
-                              更早的审查记录没有加载：{errorMessage(history.olderError)}
-                            </p>
-                          ) : null}
-                          {history.hasOlder ? (
-                            <Button
-                              htmlType="button"
-                              loading={history.isLoadingOlder}
-                              onClick={() => void history.fetchOlder()}
-                            >
-                              读取更早审查记录
-                            </Button>
-                          ) : null}
-                        </section>
-                      ) : null}
-                      {requiresBusinessAt ? (
-                        <label className="field" id="review-business-time">
-                          审查业务时间（北京时间）
-                          <Input
-                            aria-label="审查业务时间（北京时间）"
-                            type="datetime-local"
-                            required
-                            disabled={archived}
-                            value={businessAt}
-                            onChange={(event) => setBusinessAt(event.target.value)}
+                        <CollapsibleSection
+                          id="case-template-generation"
+                          title="模板生成"
+                          summaryLabel="展开模板生成"
+                        >
+                          <TemplateGenerationPanel
+                            key={`generation:${item.id}:${session.data?.id ?? ""}`}
+                            caseId={caseId}
+                            records={item.generations}
+                            materials={item.materials}
+                            documents={item.documents}
+                            materialSelection={item.material_selection}
+                            actorId={session.data?.id ?? ""}
+                            canWrite={actorRole === "admin" || actorRole === "clerk"}
+                            archived={archived}
                           />
-                          <span className="meta">
-                            按北京时间（UTC+08:00）选择适用的业务时点，不以服务器当前时间代替。
-                          </span>
-                          {businessAt !== "" && !validBusinessAt ? (
-                            <span role="alert">请输入有效的北京时间。</span>
-                          ) : null}
-                        </label>
-                      ) : null}
-                      <ReviewReadinessPanel
-                        caseId={item.id}
-                        data={readiness.data}
-                        loading={readiness.isFetching}
-                        error={readiness.isError ? readiness.error : null}
-                        onRefresh={() => void readiness.refetch()}
-                        selectedScope={reviewScope}
-                        onSelectScope={setReviewScope}
-                        business={{
-                          business_line: item.business_line,
-                          scenario: item.scenario,
-                          contract_type: item.contract_type,
-                        }}
-                      />
-                      <section>
-                        <h2>问题摘要</h2>
-                        {run ? (
-                          <p>
-                            最新运行{" "}
-                            <StatusText tone={runTone(run.state)}>{runLabel(run.state)}</StatusText>
-                          </p>
-                        ) : (
-                          <p>尚未审查。没有运行结果，不能写成无风险。</p>
-                        )}
-                        {item.finding_counts ? (
-                          <ul className="count-list">
-                            <li>线索 {item.finding_counts.total}</li>
-                            <li>冲突 {item.finding_counts.conflict}</li>
-                            <li>信息不足 {item.finding_counts.insufficient}</li>
-                            <li>待裁决 {item.finding_counts.undecided}</li>
-                          </ul>
-                        ) : (
-                          <p>服务没有返回问题摘要。</p>
-                        )}
-                        {item.finding_counts?.total === 0 && run ? (
-                          <p>这次运行没有形成风险线索；如需确认，请继续核对材料与检查覆盖。</p>
-                        ) : null}
+                        </CollapsibleSection>
                       </section>
-                    </section>
-                  ),
-                },
-                {
-                  key: "subjects",
-                  label: "主体与依据",
-                  forceRender: true,
-                  children: (
-                    <>
+                    ),
+                  },
+                  {
+                    key: "reviews",
+                    label: "审查记录",
+                    forceRender: true,
+                    children: (
+                      <section
+                        data-case-section="reviews"
+                        aria-label="审查记录"
+                        hidden={activeSection !== "reviews"}
+                      >
+                        {item.latest_run ? (
+                          <>
+                            {history.isLoading ? <p role="status">正在读取审查记录…</p> : null}
+                            {history.isError ? (
+                              <p role="alert">审查记录未能读取：{errorMessage(history.error)}</p>
+                            ) : null}
+                            {loadedReviews.length ? (
+                              <table className="case-review-history" aria-label="历次审查">
+                                <thead>
+                                  <tr>
+                                    <th scope="col">审查次序</th>
+                                    <th scope="col">纳入材料</th>
+                                    <th scope="col">结论进度</th>
+                                    <th scope="col">发起时间</th>
+                                    <th scope="col">操作</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {loadedReviews.map(({ runId, workspace }, index) => {
+                                    const recordedAttempt = workspace.review_attempts?.attempt;
+                                    const attempt =
+                                      recordedAttempt?.run_id === runId ? recordedAttempt : null;
+                                    const stage = attempt?.state ?? workspace.run.state;
+                                    const roles = [
+                                      ...new Set(
+                                        workspace.documents.map((document) =>
+                                          roleLabel(document.role),
+                                        ),
+                                      ),
+                                    ];
+                                    const label = historyComplete
+                                      ? `第 ${loadedReviews.length - index} 次审查`
+                                      : index === 0
+                                        ? "最新审查"
+                                        : "较早审查";
+                                    const href = caseHref(item.id, runId, attempt?.id ?? null);
+                                    return (
+                                      <tr key={runId}>
+                                        <th scope="row">{label}</th>
+                                        <td>{roles.length ? roles.join(" · ") : "—"}</td>
+                                        <td>
+                                          <StatusText
+                                            tone={
+                                              stage === "partial" ? "attention" : runTone(stage)
+                                            }
+                                          >
+                                            {runLabel(stage)}
+                                          </StatusText>
+                                        </td>
+                                        <td>
+                                          {compactTime(
+                                            attempt?.accepted_at ?? workspace.run.started_at,
+                                          )}
+                                        </td>
+                                        <td>
+                                          <Link
+                                            to={href}
+                                            aria-label={`进入工作区：${label}`}
+                                            state={reviewNavigationState()}
+                                            onClick={(event) => {
+                                              if (
+                                                event.button !== 0 ||
+                                                event.metaKey ||
+                                                event.ctrlKey ||
+                                                event.altKey ||
+                                                event.shiftKey
+                                              )
+                                                return;
+                                              event.preventDefault();
+                                              void navigate(href, {
+                                                state: reviewNavigationState(),
+                                              });
+                                            }}
+                                          >
+                                            进入工作区
+                                          </Link>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            ) : null}
+                            {history.cycleDetected ? (
+                              <p role="alert">审查记录之间存在循环引用，无法继续读取更早的记录。</p>
+                            ) : null}
+                            {history.olderError ? (
+                              <p role="alert">
+                                更早的审查记录未能读取：{errorMessage(history.olderError)}
+                              </p>
+                            ) : null}
+                            {history.hasOlder ? (
+                              <Button
+                                htmlType="button"
+                                loading={history.isLoadingOlder}
+                                onClick={() => void history.fetchOlder()}
+                              >
+                                读取更早审查记录
+                              </Button>
+                            ) : null}
+                          </>
+                        ) : (
+                          <p>尚未发起审查。</p>
+                        )}
+                        <CollapsibleSection
+                          id="case-review-preparation"
+                          title="审查准备"
+                          meta={
+                            readinessReady ? (
+                              <StatusText tone="good">材料与规则已就绪</StatusText>
+                            ) : undefined
+                          }
+                        >
+                          {requiresBusinessAt ? (
+                            <label className="field" id="review-business-time">
+                              审查业务时间（北京时间）
+                              <Input
+                                aria-label="审查业务时间（北京时间）"
+                                type="datetime-local"
+                                required
+                                disabled={archived}
+                                value={businessAt}
+                                onChange={(event) => setBusinessAt(event.target.value)}
+                              />
+                              <span className="meta">选择材料与规则适用的业务时点。</span>
+                              {businessAt !== "" && !validBusinessAt ? (
+                                <span role="alert">请输入有效的北京时间。</span>
+                              ) : null}
+                            </label>
+                          ) : null}
+                          <ReviewReadinessPanel
+                            caseId={item.id}
+                            data={readiness.data}
+                            loading={readiness.isFetching}
+                            error={readiness.isError ? readiness.error : null}
+                            onRefresh={() => void readiness.refetch()}
+                            selectedScope={reviewScope}
+                            onSelectScope={setReviewScope}
+                            business={{
+                              business_line: item.business_line,
+                              scenario: item.scenario,
+                              contract_type: item.contract_type,
+                            }}
+                          />
+                          <div ref={setPreparationActionTarget} />
+                        </CollapsibleSection>
+                      </section>
+                    ),
+                  },
+                  {
+                    key: "work",
+                    label: "整改与报告",
+                    forceRender: true,
+                    children: (
+                      <section
+                        data-case-section="work"
+                        aria-label="整改与报告"
+                        hidden={activeSection !== "work"}
+                      >
+                        <CollapsibleSection
+                          id="case-remediation"
+                          title="整改与复核"
+                          summaryLabel="展开整改与复核"
+                          defaultOpen={Boolean(selectedRemediationId)}
+                          openRequest={
+                            session.isSuccess &&
+                            !session.isFetching &&
+                            detail.isSuccess &&
+                            !detail.isFetching
+                              ? (selectedRemediationId ?? undefined)
+                              : undefined
+                          }
+                        >
+                          <RemediationPanel
+                            caseId={caseId}
+                            detail={item}
+                            history={history.data ?? []}
+                            historyLoading={history.isLoading}
+                            historyError={history.isError ? history.error : null}
+                            historyHasOlder={history.hasOlder}
+                            canWrite={canWriteRemediation}
+                            archived={archived}
+                            selectedRemediationId={
+                              session.isSuccess && !session.isFetching && !detail.isFetching
+                                ? selectedRemediationId
+                                : null
+                            }
+                          />
+                        </CollapsibleSection>
+                        <CollapsibleSection
+                          id="case-report-archive"
+                          title="审查报告与归档"
+                          summaryLabel="展开审查报告与归档"
+                        >
+                          <ReportArchivePanel
+                            caseId={caseId}
+                            detail={item}
+                            history={history.data ?? []}
+                            historyLoading={history.isLoading}
+                            historyError={history.isError ? history.error : null}
+                            historyHasOlder={history.hasOlder}
+                            canCreateReport={canCreateReport}
+                            canArchive={canArchive}
+                            canReadReports={canCreateReport}
+                            archived={archived}
+                          />
+                        </CollapsibleSection>
+                      </section>
+                    ),
+                  },
+                  {
+                    key: "subjects",
+                    label: "主体与活动",
+                    forceRender: true,
+                    children: (
                       <section
                         data-case-section="subjects"
-                        aria-label="主体与对象"
-                        hidden={activeSection !== "subjects" && activeSection !== "legal"}
+                        aria-label="主体与活动"
+                        hidden={activeSection !== "subjects"}
                       >
                         <div id="case-subjects">
-                          <CollapsibleSection
-                            id="case-subject-roles"
-                            title="案件主体与角色"
-                            summaryLabel="展开案件主体与角色"
-                          >
+                          <CollapsibleSection id="case-subject-roles" title="签约主体" defaultOpen>
                             <CaseSubjectRolesPanel
                               key={`subjects:${item.id}:${actorScope}`}
                               caseId={item.id}
@@ -923,8 +986,8 @@ export function CaseDetailPage() {
                         <div id="case-subject-corrections">
                           <CollapsibleSection
                             id="case-subject-corrections-section"
-                            title="主体更正与复核"
-                            summaryLabel="展开主体更正与复核"
+                            title="主体信息更正"
+                            summaryLabel="展开主体信息更正"
                           >
                             <CaseSubjectCorrectionsPanel
                               key={`subject-corrections:${item.id}:${actorScope}`}
@@ -932,108 +995,57 @@ export function CaseDetailPage() {
                             />
                           </CollapsibleSection>
                         </div>
-                      </section>
-                      <section
-                        data-case-section="legal"
-                        aria-label="适用依据"
-                        hidden={activeSection !== "subjects" && activeSection !== "legal"}
-                      >
-                        <div id="case-legal-applicability">
+                        <CollapsibleSection
+                          id="case-legal-applicability"
+                          title="适用依据"
+                          summaryLabel="展开适用依据"
+                        >
                           <CaseLegalApplicabilityPanel
                             key={`legal-applicability:${item.id}:${actorScope}`}
                             caseId={item.id}
                           />
-                        </div>
+                        </CollapsibleSection>
+                        <CollapsibleSection
+                          id="case-support-grants"
+                          title="只读支援"
+                          summaryLabel="展开只读支援"
+                        >
+                          <CaseSupportGrantPanel
+                            key={`support:${item.id}:${actorScope}`}
+                            caseId={item.id}
+                          />
+                          <EvidenceSLADashboard
+                            mode="reminder"
+                            cases={[{ id: item.id, title: item.title }]}
+                          />
+                        </CollapsibleSection>
+                        <CollapsibleSection
+                          id="case-recent-activity"
+                          title="最近活动"
+                          defaultOpen
+                          summaryLabel="展开最近活动"
+                          count={item.activity.length}
+                        >
+                          {item.activity.length === 0 ? <p>还没有活动记录。</p> : null}
+                          <ol className="history">
+                            {item.activity.map((entry) => (
+                              <li key={entry.id}>
+                                <time dateTime={entry.at}>{formatDateTime(entry.at)}</time>
+                                <p>{entry.summary}</p>
+                              </li>
+                            ))}
+                          </ol>
+                        </CollapsibleSection>
                       </section>
-                    </>
-                  ),
-                },
-                {
-                  key: "collaboration",
-                  label: "协作与归档",
-                  forceRender: true,
-                  children: (
-                    <section
-                      data-case-section="collaboration"
-                      aria-label="协作与归档"
-                      hidden={activeSection !== "collaboration"}
-                    >
-                      <CaseSupportGrantPanel caseId={item.id} />
-                      <CollapsibleSection
-                        id="case-remediation"
-                        title="整改与复核"
-                        summaryLabel="展开整改与复核"
-                        defaultOpen={Boolean(selectedRemediationId)}
-                        openRequest={
-                          session.isSuccess &&
-                          !session.isFetching &&
-                          detail.isSuccess &&
-                          !detail.isFetching
-                            ? (selectedRemediationId ?? undefined)
-                            : undefined
-                        }
-                      >
-                        <RemediationPanel
-                          caseId={caseId}
-                          detail={item}
-                          history={history.data ?? []}
-                          historyLoading={history.isLoading}
-                          historyError={history.isError ? history.error : null}
-                          historyHasOlder={history.hasOlder}
-                          canWrite={canWriteRemediation}
-                          archived={archived}
-                          selectedRemediationId={
-                            session.isSuccess && !session.isFetching && !detail.isFetching
-                              ? selectedRemediationId
-                              : null
-                          }
-                        />
-                      </CollapsibleSection>
-                      <CollapsibleSection
-                        id="case-report-archive"
-                        title="审查报告与归档"
-                        summaryLabel="展开审查报告与归档"
-                      >
-                        <ReportArchivePanel
-                          caseId={caseId}
-                          detail={item}
-                          history={history.data ?? []}
-                          historyLoading={history.isLoading}
-                          historyError={history.isError ? history.error : null}
-                          historyHasOlder={history.hasOlder}
-                          canCreateReport={canCreateReport}
-                          canArchive={canArchive}
-                          canReadReports={canCreateReport}
-                          archived={archived}
-                        />
-                      </CollapsibleSection>
-
-                      <CollapsibleSection
-                        id="case-recent-activity"
-                        title="最近活动"
-                        summaryLabel="展开最近活动"
-                        count={item.activity.length}
-                      >
-                        {item.activity.length === 0 ? <p>还没有活动记录。</p> : null}
-                        <ol className="history">
-                          {item.activity.map((entry) => (
-                            <li key={entry.id}>
-                              <time dateTime={entry.at}>{formatDateTime(entry.at)}</time>
-                              <p>{entry.summary}</p>
-                            </li>
-                          ))}
-                        </ol>
-                      </CollapsibleSection>
-                    </section>
-                  ),
-                },
-              ]}
-              onChange={(key) => {
-                manualSectionVisit.current = sectionVisit;
-                setActiveSection(key as CaseSection);
-              }}
-            />
-          </nav>
+                    ),
+                  },
+                ]}
+                onChange={(key) => {
+                  setSectionSelection({ visit: sectionVisit, section: key as CaseSection });
+                }}
+              />
+            </nav>
+          </div>
         }
       />
     </SectionNavigationProvider>
