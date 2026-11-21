@@ -334,25 +334,3 @@ func fingerprintWithKey(b Binding, plaintext []byte, key Key, ref KeyRef, keyErr
 	mac.Write(plaintext)
 	return FingerprintValue{Algorithm: FingerprintAlgorithm, Ref: key.Ref, Digest: hex.EncodeToString(mac.Sum(nil))}, nil
 }
-
-// Dependencies describes unverified header references for inventory only. An
-// inventory with a legacy/unknown dependency must not authorize key deletion.
-func Dependencies(sealed string) ([]Dependency, error) {
-	if strings.HasPrefix(sealed, LegacyPrefix) {
-		return nil, ErrLegacyKeyRequired
-	}
-	e, err := decodeEnvelope(sealed)
-	if err != nil {
-		return nil, err
-	}
-	if _, _, _, err = envelopeBytes(e); err != nil {
-		return nil, err
-	}
-	return []Dependency{{TenantID: e.Binding.TenantID, Purpose: e.Binding.Purpose, Kind: WrapKey, Ref: e.WrapKey}}, nil
-}
-func LegacyDependency(b Binding, ref KeyRef) (Dependency, error) {
-	if !validBinding(b) || !validRef(ref) {
-		return Dependency{}, ErrLegacyKeyRequired
-	}
-	return Dependency{TenantID: b.TenantID, Purpose: b.Purpose, Kind: LegacyDataKey, Ref: ref}, nil
-}

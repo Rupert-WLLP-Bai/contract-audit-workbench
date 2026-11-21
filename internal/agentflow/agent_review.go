@@ -477,16 +477,6 @@ func matchesPlannerConfigurationID(configuration PlannerConfiguration) bool {
 	return err == nil && configuration.ConfigurationID == identity
 }
 
-// HashEvidenceSnapshot binds attempt input references without copying document
-// content into planner metadata.
-func HashEvidenceSnapshot(snapshot SourceSnapshot) (string, error) {
-	encoded, err := json.Marshal(snapshot)
-	if err != nil {
-		return "", err
-	}
-	return digestBytes(encoded), nil
-}
-
 func digestBytes(value []byte) string {
 	digest := sha256.Sum256(value)
 	return hex.EncodeToString(digest[:])

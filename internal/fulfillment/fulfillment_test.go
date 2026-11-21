@@ -31,9 +31,6 @@ func validScope() auditext.AuthorizedScope {
 	}
 }
 
-//go:fix inline
-func strPtr(value string) *string { return new(value) }
-
 func documentEvidence(value string) auditext.EvidenceRef {
 	return auditext.EvidenceRef{
 		Kind:              auditext.EvidenceDocument,

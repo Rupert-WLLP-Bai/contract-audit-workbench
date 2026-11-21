@@ -19,12 +19,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const (
-	clmRouteCreateAssetHandover = assetapp.HandoverRoute
-	clmEventAssetHandover       = assetapp.HandoverEvent
-	clmEventAssetReceipt        = assetapp.ReceiptEvent
-)
-
 type ContractAssetHandoverInput = assetapp.ContractAssetHandoverInput
 type ContractAssetSource = assetapp.ContractAssetSource
 type ContractAssetReceiptInput = assetapp.ContractAssetReceiptInput

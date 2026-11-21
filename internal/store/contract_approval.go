@@ -55,10 +55,6 @@ func (s *Store) PublishWorkflowTemplate(ctx context.Context, user accounts.User,
 	return summary, nil
 }
 
-func loadWorkflowTemplateVersion(ctx context.Context, tx pgx.Tx, tenantID, templateID, version string) (WorkflowTemplateSummary, bool, error) {
-	return approvalpg.NewGovernance(platformpg.Bind(tx)).LoadTemplate(ctx, tenantID, templateID, version)
-}
-
 // ReplaceWorkflowRoleBindings replaces every binding of one role. The write is
 // serialized tenant-wide by the admin transaction; the returned row_version
 // lets an operator detect that another administrator changed the role after

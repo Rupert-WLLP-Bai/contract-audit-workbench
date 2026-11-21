@@ -46,10 +46,6 @@ func parseLegalFactTime(raw string) (time.Time, error) {
 	return legalModel.ParseFactTime(raw)
 }
 
-func legalApplicabilityBasisProvided(raw json.RawMessage) (bool, error) {
-	return legalModel.LegalApplicabilityBasisProvided(raw)
-}
-
 func legalApplicabilityRequestDigest(tenantID, orgID, caseID, actorID, key string, input LegalApplicabilityFactInput) (string, error) {
 	return legalModel.LegalApplicabilityRequestDigest(tenantID, orgID, caseID, actorID, key, input)
 }
@@ -171,9 +167,6 @@ func (s *Store) RecordLegalApplicabilityFact(ctx context.Context, user accounts.
 
 func verifyLegalApplicabilityBasisManifest(raw []byte, digest string) (json.RawMessage, error) {
 	return legalModel.VerifyApplicabilityBasisManifest(raw, digest)
-}
-func loadLegalApplicabilityVersion(ctx context.Context, tx pgx.Tx, tenantID, orgID, caseID, dimension string, version int64) (LegalApplicabilityFactVersion, error) {
-	return legalApp.ReadRecordVersion(ctx, legalPostgres.NewApplicability(platformpostgres.Bind(tx)), legalApp.RecordIdentity{TenantID: tenantID, OrgID: orgID, CaseID: caseID}, dimension, version)
 }
 
 // ResolveLegalApplicabilityFacts returns selected immutable versions alongside

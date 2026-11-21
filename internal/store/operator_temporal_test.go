@@ -127,6 +127,3 @@ func TestOperatorObservationsForEvaluationRequiresCutoffAndTemporalProof(t *test
 		t.Fatalf("missing historical proof did not reach the user-facing insufficient result: checks=%+v err=%v", checks, err)
 	}
 }
-
-//go:fix inline
-func timePointer(value time.Time) *time.Time { return new(value) }

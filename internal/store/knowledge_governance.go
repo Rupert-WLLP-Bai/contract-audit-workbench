@@ -30,139 +30,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// knowledgeGovernanceSchemaSQL is registered by the main migration after the
-// base, case and RulePack schemas. These are Core-owned tables; the migrator must
-// additionally install forced tenant RLS and grant Execution/Worker read-only
-// access. No legacy business_knowledge row is promoted by this schema.
-const knowledgeGovernanceSchemaSQL = `
-CREATE TABLE IF NOT EXISTS governed_knowledge_versions (
- tenant_id text NOT NULL,
- knowledge_id text NOT NULL,
- version_id text NOT NULL CHECK (version_id ~ '^[0-9a-f]{64}$'),
- display_version text NOT NULL,
- scope_key text NOT NULL CHECK (scope_key ~ '^[0-9a-f]{64}$'),
- kind text NOT NULL CHECK (kind IN ('policy','guidance','exception','experience')),
- scope_org_id text,
- scope_case_id text,
- source_org_id text,
- source_case_id text,
- candidate_id text,
- candidate_version_id text,
- candidate_content_sha256 text,
- content_sha256 text NOT NULL CHECK (content_sha256 ~ '^[0-9a-f]{64}$'),
- content bytea NOT NULL,
- created_by text NOT NULL,
- created_at timestamptz NOT NULL,
- PRIMARY KEY (tenant_id, knowledge_id, version_id),
- UNIQUE (tenant_id, knowledge_id, display_version),
- UNIQUE (tenant_id, knowledge_id, version_id, scope_key),
- CHECK (scope_case_id IS NULL OR scope_org_id IS NOT NULL),
- CHECK ((source_org_id IS NULL) = (source_case_id IS NULL)),
- CHECK ((candidate_id IS NULL AND candidate_version_id IS NULL AND candidate_content_sha256 IS NULL) OR
-        (kind='experience' AND candidate_id IS NOT NULL AND candidate_version_id IS NOT NULL AND candidate_content_sha256 IS NOT NULL)),
- FOREIGN KEY (tenant_id, scope_org_id, scope_case_id) REFERENCES cases (tenant_id, org_id, id),
- FOREIGN KEY (tenant_id, source_org_id, source_case_id) REFERENCES cases (tenant_id, org_id, id),
- FOREIGN KEY (tenant_id, candidate_id, candidate_version_id, candidate_content_sha256) REFERENCES experience_candidate_versions (tenant_id, candidate_id, version_id, content_sha256)
-);
-CREATE INDEX IF NOT EXISTS governed_knowledge_versions_scope ON governed_knowledge_versions (tenant_id, scope_key, knowledge_id, kind);
-CREATE TABLE IF NOT EXISTS governed_knowledge_state (
- tenant_id text NOT NULL,
- knowledge_id text NOT NULL,
- version_id text NOT NULL,
- status text NOT NULL CHECK (status IN ('draft','submitted','validated','approved','published','withdrawn')),
- revision bigint NOT NULL CHECK (revision > 0),
- approved_digest text NOT NULL DEFAULT '',
- approval_actor_id text NOT NULL DEFAULT '',
- approval_reason text NOT NULL DEFAULT '',
- cross_case_reviewed boolean NOT NULL DEFAULT false,
- PRIMARY KEY (tenant_id, knowledge_id, version_id),
- FOREIGN KEY (tenant_id, knowledge_id, version_id) REFERENCES governed_knowledge_versions (tenant_id, knowledge_id, version_id)
-);
-CREATE TABLE IF NOT EXISTS governed_knowledge_pointers (
- tenant_id text NOT NULL,
- knowledge_id text NOT NULL,
- scope_key text NOT NULL,
- version_id text NOT NULL,
- active boolean NOT NULL,
- pointer_revision bigint NOT NULL CHECK (pointer_revision > 0),
- updated_by text NOT NULL,
- updated_at timestamptz NOT NULL,
- PRIMARY KEY (tenant_id, knowledge_id, scope_key),
- FOREIGN KEY (tenant_id, knowledge_id, version_id, scope_key) REFERENCES governed_knowledge_versions (tenant_id, knowledge_id, version_id, scope_key)
-);
-CREATE TABLE IF NOT EXISTS governed_policy_rule_bindings (
- tenant_id text NOT NULL,
- knowledge_id text NOT NULL,
- version_id text NOT NULL,
- pack_id text NOT NULL,
- pack_version text NOT NULL,
- binding bytea NOT NULL,
- PRIMARY KEY (tenant_id, knowledge_id, version_id),
- FOREIGN KEY (tenant_id, knowledge_id, version_id) REFERENCES governed_knowledge_versions (tenant_id, knowledge_id, version_id),
- FOREIGN KEY (tenant_id, pack_id, pack_version) REFERENCES rule_pack_versions (tenant_id, pack_id, version)
-);
-CREATE TABLE IF NOT EXISTS governed_knowledge_history (
- seq bigserial PRIMARY KEY,
- tenant_id text NOT NULL,
- knowledge_id text NOT NULL,
- version_id text NOT NULL,
- action text NOT NULL CHECK (action IN ('create','submit','validate','approve','publish','withdraw','rollback')),
- revision bigint NOT NULL CHECK (revision > 0),
- pointer_revision bigint NOT NULL CHECK (pointer_revision >= 0),
- actor_id text NOT NULL,
- reason text NOT NULL,
- content_sha256 text NOT NULL CHECK (content_sha256 ~ '^[0-9a-f]{64}$'),
- previous_version_id text NOT NULL DEFAULT '',
- previous_active boolean NOT NULL DEFAULT false,
- resulting_version_id text NOT NULL DEFAULT '',
- resulting_active boolean NOT NULL DEFAULT false,
- occurred_at timestamptz NOT NULL,
- FOREIGN KEY (tenant_id, knowledge_id, version_id) REFERENCES governed_knowledge_versions (tenant_id, knowledge_id, version_id)
-);
-CREATE INDEX IF NOT EXISTS governed_knowledge_history_order ON governed_knowledge_history (tenant_id, knowledge_id, seq);
-CREATE TABLE IF NOT EXISTS governed_knowledge_idempotency (
- tenant_id text NOT NULL,
- actor_id text NOT NULL,
- idem_key text NOT NULL,
- request_digest text NOT NULL CHECK (request_digest ~ '^[0-9a-f]{64}$'),
- response bytea NOT NULL,
- created_at timestamptz NOT NULL,
- PRIMARY KEY (tenant_id, actor_id, idem_key)
-);
-CREATE OR REPLACE FUNCTION guard_governed_knowledge_pointer() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
- IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'knowledge pointer tombstone must be retained'; END IF;
- IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.knowledge_id IS DISTINCT FROM OLD.knowledge_id OR
-    NEW.scope_key IS DISTINCT FROM OLD.scope_key OR NEW.pointer_revision <> OLD.pointer_revision + 1 THEN
-   RAISE EXCEPTION 'knowledge pointer revision or identity invalid';
- END IF;
- RETURN NEW;
-END $$;
-DROP TRIGGER IF EXISTS governed_knowledge_pointer_guard ON governed_knowledge_pointers;
-CREATE TRIGGER governed_knowledge_pointer_guard BEFORE UPDATE OR DELETE ON governed_knowledge_pointers FOR EACH ROW EXECUTE FUNCTION guard_governed_knowledge_pointer();
-CREATE OR REPLACE FUNCTION guard_governed_knowledge_state() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
- IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'knowledge state cannot be deleted'; END IF;
- IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.knowledge_id IS DISTINCT FROM OLD.knowledge_id OR
-    NEW.version_id IS DISTINCT FROM OLD.version_id OR NEW.revision <> OLD.revision + 1 THEN
-   RAISE EXCEPTION 'knowledge revision or identity invalid';
- END IF;
- RETURN NEW;
-END $$;
-DROP TRIGGER IF EXISTS governed_knowledge_state_guard ON governed_knowledge_state;
-CREATE TRIGGER governed_knowledge_state_guard BEFORE UPDATE OR DELETE ON governed_knowledge_state FOR EACH ROW EXECUTE FUNCTION guard_governed_knowledge_state();
-DROP TRIGGER IF EXISTS governed_knowledge_versions_append_only ON governed_knowledge_versions;
-CREATE TRIGGER governed_knowledge_versions_append_only BEFORE UPDATE OR DELETE ON governed_knowledge_versions FOR EACH ROW EXECUTE FUNCTION forbid_append_only();
-DROP TRIGGER IF EXISTS governed_policy_rule_bindings_append_only ON governed_policy_rule_bindings;
-CREATE TRIGGER governed_policy_rule_bindings_append_only BEFORE UPDATE OR DELETE ON governed_policy_rule_bindings FOR EACH ROW EXECUTE FUNCTION forbid_append_only();
-DROP TRIGGER IF EXISTS governed_knowledge_history_append_only ON governed_knowledge_history;
-CREATE TRIGGER governed_knowledge_history_append_only BEFORE UPDATE OR DELETE ON governed_knowledge_history FOR EACH ROW EXECUTE FUNCTION forbid_append_only();
-DROP TRIGGER IF EXISTS governed_knowledge_idempotency_append_only ON governed_knowledge_idempotency;
-CREATE TRIGGER governed_knowledge_idempotency_append_only BEFORE UPDATE OR DELETE ON governed_knowledge_idempotency FOR EACH ROW EXECUTE FUNCTION forbid_append_only();
-`
-
 const knowledgeContentEncoding = knowledgeModel.ContentEncoding
-const policyThresholdCompilerRef = knowledgeModel.PolicyThresholdCompilerRef
 
 // These aliases keep the Store's keyed-literal and wire surface while the
 // Knowledge module owns the values and their pure rules.
@@ -227,10 +95,6 @@ func loadKnowledgeCase(ctx context.Context, tx pgx.Tx, user accounts.User, caseI
 		return Case{}, fault.NotFound("没有找到对应记录")
 	}
 	return item, nil
-}
-
-func authorizeKnowledgeSource(ctx context.Context, tx pgx.Tx, admin accounts.User, content GovernedKnowledgeContent) error {
-	return authorizeKnowledgeSourceWithCaseLocks(ctx, tx, admin, content, true)
 }
 
 func authorizeKnowledgeSourceWithCaseLocks(ctx context.Context, tx pgx.Tx, admin accounts.User, content GovernedKnowledgeContent, lockCases bool) error {
@@ -335,13 +199,6 @@ func authorizeKnowledgeAdoptionWithCaseLocks(ctx context.Context, tx pgx.Tx, use
 		return nil
 	}
 	return authorizeKnowledgeReadWithCaseLocks(ctx, tx, user, version.Content, lockCases)
-}
-
-func nullableKnowledgeID(value string) any {
-	if value == "" {
-		return nil
-	}
-	return value
 }
 
 // CreateGovernedKnowledge persists a new immutable draft, never mutating or
@@ -539,42 +396,10 @@ func knowledgeNullableString(value *string) string {
 	return *value
 }
 
-// validateKnowledgeBinding checks the exact published, active RulePack and the
-// rule/source mapping, under the same transaction and schema lock as a publish.
-func validateKnowledgeBinding(ctx context.Context, tx pgx.Tx, tenant string, content GovernedKnowledgeContent) error {
-	if content.Kind == "template" {
-		return knowledgeModel.ValidateContent(content)
-	}
-	if content.Kind == "legal" {
-		return validateLegalCaptureReference(ctx, tx, tenant, content)
-	}
-	b := content.Binding
-	var raw []byte
-	var hash, digest, status, pointerVersion string
-	var active bool
-	err := tx.QueryRow(ctx, `SELECT v.manifest,v.content_hash,v.snapshot_digest,v.status,COALESCE(p.version,''),COALESCE(p.active,false)
-		FROM rule_pack_versions v LEFT JOIN rule_pack_pointers p ON p.tenant_id=v.tenant_id AND p.pack_id=v.pack_id
-		WHERE v.tenant_id=$1 AND v.pack_id=$2 AND v.version=$3`, tenant, b.PackID, b.PackVersion).
-		Scan(&raw, &hash, &digest, &status, &pointerVersion, &active)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return fault.Conflict("制度没有对应的已发布规则包")
-	}
-	if err != nil {
-		return err
-	}
-	return knowledgeApp.ValidateRulePackBinding(tenant, content, knowledgeApp.RulePackBindingFacts{
-		Manifest: raw, ContentHash: hash, SnapshotDigest: digest, Status: status, PointerVersion: pointerVersion, Active: active,
-	})
-}
-
 type PolicyThresholdCandidate = knowledgeModel.PolicyThresholdCandidate
 type PolicyRuleComparison = knowledgeModel.PolicyRuleComparison
 type PolicyTextIssue = knowledgeModel.PolicyTextIssue
 type GovernedPolicyPreview = knowledgeModel.GovernedPolicyPreview
-
-func extractGovernedPolicyThresholds(body string) (map[string][]PolicyThresholdCandidate, []PolicyTextIssue, []PolicyTextIssue) {
-	return knowledgeModel.ExtractGovernedPolicyThresholds(body)
-}
 
 func compareGovernedPolicyThresholds(content GovernedKnowledgeContent, manifest rulepack.Manifest) GovernedPolicyPreview {
 	return knowledgeModel.CompareGovernedPolicyThresholds(content, manifest)
@@ -698,10 +523,6 @@ func (s *Store) ListGovernedKnowledgeHistory(user accounts.User, knowledgeID str
 	return out, err
 }
 
-func knowledgeApplies(content GovernedKnowledgeContent, item Case, at time.Time) (bool, error) {
-	return knowledgeModel.KnowledgeApplies(content, knowledgeModel.ReviewCaseFacts{CaseID: item.ID, OrgID: item.OwnerOrgID, BusinessLine: item.BusinessLine, Scenario: item.Scenario, ContractType: item.ContractType, BusinessStatus: item.BusinessStatus}, at)
-}
-
 func knowledgeSelection(v GovernedKnowledgeVersion) GovernedKnowledgeSelection {
 	return knowledgeModel.KnowledgeSelection(v)
 }
@@ -730,13 +551,6 @@ func sealKnowledgeSnapshot(snapshot ReviewKnowledgeSnapshot) (ReviewKnowledgeSna
 		return ReviewKnowledgeSnapshot{}, err
 	}
 	return knowledgeModel.SealReviewSnapshot(snapshot)
-}
-
-// resolveGovernedKnowledgeTx is also the acceptance integration seam. Caller
-// must hold the schema lock, then the case lock, and commit the returned snapshot
-// with the new attempt in this same transaction. It reads only governed rows.
-func resolveGovernedKnowledgeTx(ctx context.Context, tx pgx.Tx, user accounts.User, caseID, businessAt string, optionalLimit int) (ReviewKnowledgeSnapshot, error) {
-	return resolveGovernedKnowledgeTxWithEvidenceCutoff(ctx, tx, user, caseID, businessAt, optionalLimit, time.Time{}, "", "")
 }
 
 func resolveGovernedKnowledgeTxWithEvidenceCutoff(ctx context.Context, tx pgx.Tx, user accounts.User, caseID, businessAt string, optionalLimit int,
@@ -784,7 +598,7 @@ func resolveGovernedKnowledgeWithCaseLocks(ctx context.Context, tx pgx.Tx, user 
 }
 
 // ResolveGovernedKnowledge resolves for a real authorized case and explicit
-// business time. Acceptance must use resolveGovernedKnowledgeTx instead.
+// business time. Acceptance must use resolveGovernedKnowledgeTxWithEvidenceCutoff instead.
 func (s *Store) ResolveGovernedKnowledge(ctx context.Context, user accounts.User, caseID, businessAt string, optionalLimit int) (ReviewKnowledgeSnapshot, error) {
 	ctx = commandContext(ctx, user)
 	if ctx == nil {

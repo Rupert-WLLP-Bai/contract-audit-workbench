@@ -266,6 +266,3 @@ func (*replaceRepositoryStub) LockContract(context.Context, string) error { retu
 func (*replaceRepositoryStub) ReplaceDraft(context.Context, clmcontract.Aggregate, int64, []byte, string) (clmcontract.Aggregate, error) {
 	return clmcontract.Aggregate{}, errors.New("unexpected replacement")
 }
-
-//go:fix inline
-func str(value string) *string { return new(value) }

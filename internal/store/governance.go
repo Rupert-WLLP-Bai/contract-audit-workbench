@@ -32,7 +32,6 @@ import (
 
 var (
 	errGovernanceVersionMissing      = errors.New("rule pack version is unavailable")
-	errGovernancePointerMissing      = errors.New("rule pack active pointer is unavailable")
 	errGovernanceIdempotencyConflict = errors.New("idempotency key was already used with a different request")
 )
 

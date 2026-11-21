@@ -158,14 +158,6 @@ func (s *Store) CreateSubjectSourceSnapshot(ctx context.Context, user accounts.U
 	return result, replayed, err
 }
 
-func decodeFrozenSubjectSourceSnapshot(item SubjectSourceSnapshot) (SubjectSourceManifest, error) {
-	return subjectApp.DecodeFrozenSource(item)
-}
-
-func subjectSourceSnapshotResult(item SubjectSourceSnapshot) (SubjectSourceSnapshotResult, error) {
-	return subjectApp.SourceSnapshotResult(item)
-}
-
 func (s *Store) ListSubjectSourceSnapshots(ctx context.Context, user accounts.User, caseID, cursor string, limit int) (SubjectSourceSnapshotListResult, error) {
 	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {

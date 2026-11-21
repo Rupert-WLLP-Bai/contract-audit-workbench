@@ -89,14 +89,6 @@ func (s *Store) writableCase(st *state, user accounts.User, caseID string, actio
 	return nil, fault.NotFound("没有找到对应记录")
 }
 
-// updateCaseAsWith is updateCaseAs with a transaction hook that runs after the
-// case lock and before the state snapshot. Acceptance uses it to select the
-// governed active pack inside the same transaction that freezes it, so the
-// selection and the freeze are one linearised operation.
-func (s *Store) updateCaseAsWith(user accounts.User, caseID string, hook func(pgx.Tx) error, fn func(*state) error) error {
-	return s.scopedCaseWrite(context.Background(), user, caseID, "", "", true, true, hook, fn)
-}
-
 func (s *Store) updateCaseAs(user accounts.User, caseID string, fn func(*state) error) error {
 	return s.scopedCaseWrite(context.Background(), user, caseID, "", "", true, false, nil, fn)
 }

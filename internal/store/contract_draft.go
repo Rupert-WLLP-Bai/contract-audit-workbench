@@ -326,13 +326,6 @@ func clmSummary(record clmContractRecord, name string, amount, currency *string)
 	return clmcontract.SummaryFromDraft(record, name, amount, currency)
 }
 
-func contractSourceRef(record clmContractRecord) *SourceRef {
-	if record.SourceSystem == nil || record.ExternalContractID == nil || record.SourceVersion == nil {
-		return nil
-	}
-	return &SourceRef{System: *record.SourceSystem, ID: *record.ExternalContractID, SourceVersion: *record.SourceVersion}
-}
-
 // resolveMaterialVersion verifies one material reference against the real
 // material_versions/documents rows under the caller's tenant scope, including
 // the stored documents.digest. The document ID is globally unique, so a

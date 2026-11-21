@@ -241,15 +241,6 @@ func renderTemplateSource(source string, values map[string]string) ([]byte, erro
 	return []byte(builder.String()), nil
 }
 
-func templateFieldByKey(key string) (TemplateField, bool) {
-	for _, field := range telecomTemplateFields {
-		if field.Key == key {
-			return field, true
-		}
-	}
-	return TemplateField{}, false
-}
-
 func validCircuitID(value string) bool {
 	if value == "" || !isASCIILetterOrDigit(value[0]) {
 		return false

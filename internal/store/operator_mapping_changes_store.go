@@ -19,8 +19,6 @@ import (
 	"contractaudit/internal/fault"
 	operatorApp "contractaudit/internal/operator/app"
 	operatorModel "contractaudit/internal/operator/model"
-	operatorPostgres "contractaudit/internal/operator/postgres"
-	platformpostgres "contractaudit/internal/platform/postgres"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -187,13 +185,4 @@ func (s *Store) DecideOperatorMappingChange(ctx context.Context, user accounts.U
 		return err
 	})
 	return result, replayed, err
-}
-
-func loadOperatorBindingRecordByVersion(ctx context.Context, tx pgx.Tx, tenantID, orgID, caseID, bindingVersion string) (operatorObjectBindingRecord, error) {
-	return operatorApp.ReadBindingVersion(ctx, operatorPostgres.NewReads(platformpostgres.Bind(tx)), operatorApp.ReadIdentity{TenantID: tenantID, OrgID: orgID, CaseID: caseID}, bindingVersion)
-}
-
-func loadOperatorBindingByVersion(ctx context.Context, tx pgx.Tx, tenantID, orgID, caseID, bindingVersion string) (OperatorObjectBinding, error) {
-	record, err := loadOperatorBindingRecordByVersion(ctx, tx, tenantID, orgID, caseID, bindingVersion)
-	return record.Value, err
 }

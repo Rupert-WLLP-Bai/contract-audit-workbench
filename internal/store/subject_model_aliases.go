@@ -81,4 +81,3 @@ type SubjectChangeDecisionResultWithReplay = subjectModel.SubjectChangeDecisionR
 type SubjectChangeImpactResult = subjectModel.SubjectChangeImpactResult
 type SubjectImpactCaseProjection = subjectModel.SubjectImpactCaseProjection
 type subjectAfterPayload = subjectModel.SubjectAfterPayload
-type bindingAfterPayload = subjectModel.BindingAfterPayload

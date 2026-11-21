@@ -59,14 +59,6 @@ func fixtureInputFromDemo(t *testing.T, mutate func(*FixtureInput)) FixtureInput
 	return input
 }
 
-func fixtureSetFact(input *FixtureInput, factID, value string) {
-	for i := range input.Facts {
-		if input.Facts[i].ID == factID {
-			input.Facts[i].Value = value
-		}
-	}
-}
-
 // fixtureSetFactText keeps the synthetic source, citation span and fact value
 // consistent so the engine can support the value from the quoted evidence.
 func fixtureSetFactText(input *FixtureInput, factID, value, text string) {

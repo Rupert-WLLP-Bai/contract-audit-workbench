@@ -98,9 +98,6 @@ func TestSubjectSourceAndPinnedParseMarshalFixtures(t *testing.T) {
 	}
 }
 
-//go:fix inline
-func intPointer(value int) *int { return new(value) }
-
 func TestSubjectSourceDirectoryWireOmitsRecordIdentity(t *testing.T) {
 	body, err := json.Marshal(SubjectSourceDirectoryResult{Items: []SubjectSourceDirectoryItem{{
 		SourceID: syntheticSubjectSourceID, SourceVersion: 1, DisplayName: "演示受控主体目录", VerificationScope: "synthetic_controlled",

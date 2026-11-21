@@ -68,10 +68,6 @@ func binaryReason(filename string) string {
 	}
 }
 
-func (s *Store) interpretImage(ctx context.Context, doc Document, body []byte) Interpreted {
-	return s.interpretImageWithModels(ctx, doc, body, s.currentModels())
-}
-
 func (s *Store) interpretImageWithModels(ctx context.Context, doc Document, body []byte, models Models) Interpreted {
 	text, err := s.transcribe(ctx, models, doc, body)
 	if err != nil {

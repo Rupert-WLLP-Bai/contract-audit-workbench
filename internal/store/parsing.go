@@ -536,10 +536,6 @@ func parsedInterpreted(doc Document, p ParsedDocument) Interpreted {
 	}
 }
 
-func (s *Store) interpretUnpersisted(ctx context.Context, doc Document) Interpreted {
-	return s.interpretUnpersistedWithModels(ctx, doc, s.currentModels())
-}
-
 func (s *Store) interpretUnpersistedWithModels(ctx context.Context, doc Document, models Models) Interpreted {
 	if err := ctx.Err(); err != nil {
 		return Interpreted{Document: doc, ParseError: err.Error(), FromOCR: fileKind(doc.Filename, doc.MediaType) == kindImage}

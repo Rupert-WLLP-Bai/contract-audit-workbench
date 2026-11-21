@@ -11,9 +11,6 @@
 package store
 
 import (
-	"time"
-
-	"contractaudit/internal/accounts"
 	approvalmodel "contractaudit/internal/approval/model"
 )
 
@@ -29,9 +26,6 @@ const (
 	clmWorkflowStartAction = "submit_contract"
 	clmWorkflowExecution   = "sequential"
 	clmApprovalNodeCount   = 7
-
-	clmRoutingSnapshotSchema         = "clm-routing-snapshot/v1"
-	clmRiskDispositionSnapshotSchema = "clm-risk-disposition-snapshot/v1"
 )
 
 // clmCanonicalApprovalNodeCodes is the audited seven-node order. Template
@@ -51,32 +45,10 @@ type SubmitContractApprovalInput = approvalmodel.SubmitContractApprovalInput
 type ApprovalTaskSummary = approvalmodel.ApprovalTaskSummary
 type ApprovalRoundSummary = approvalmodel.ApprovalRoundSummary
 type SubmitContractApprovalResult = approvalmodel.SubmitContractApprovalResult
-type clmWorkflowNodeSnapshot = approvalmodel.WorkflowNodeSnapshot
-type clmRoutingAssignee = approvalmodel.RoutingAssignee
-type clmRoutingSnapshot = approvalmodel.RoutingSnapshot
-
-// clmRiskDispositionSnapshot records that CLM-07 did not evaluate risk. It is
-// deliberately not a credibility claim; a later risk step may append its own
-// disposition evidence.
-type clmRiskDispositionSnapshot struct {
-	Schema string `json:"schema"`
-	Status string `json:"status"`
-	Items  []any  `json:"items"`
-}
-
-// clmRoleBindingRow is one persisted role binding used by routing resolution.
-type clmRoleBindingRow = approvalmodel.RoleBindingRow
 
 func normalizeWorkflowTemplateInput(input PublishWorkflowTemplateInput) PublishWorkflowTemplateInput {
 	return approvalmodel.NormalizeWorkflowTemplateInput(input)
 }
 func validateWorkflowTemplate(input PublishWorkflowTemplateInput) error {
 	return approvalmodel.ValidateWorkflowTemplate(input)
-}
-
-func resolveApprovalRouting(record clmContractRecord, initiatorID, templateID, templateVersion string, nodes []WorkflowTemplateNodeInput, bindings []clmRoleBindingRow, users []accounts.User, now time.Time) (clmRoutingSnapshot, error) {
-	return approvalmodel.ResolveApprovalRouting(record, initiatorID, templateID, templateVersion, nodes, bindings, users, now)
-}
-func clmNodeAssignees(node clmWorkflowNodeSnapshot) []string {
-	return approvalmodel.NodeAssignees(node)
 }

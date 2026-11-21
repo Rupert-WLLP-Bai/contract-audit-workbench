@@ -160,6 +160,3 @@ func TestExportProjectionMaterializesLabelsAndOnlySelectedFields(t *testing.T) {
 		t.Fatalf("render re-resolved the frozen label: %q", document)
 	}
 }
-
-//go:fix inline
-func stringPointer(value string) *string { return new(value) }

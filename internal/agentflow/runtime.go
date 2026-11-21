@@ -1703,23 +1703,6 @@ func (state *execution) plannerHistory() []PriorCall {
 	return out
 }
 
-func (state *execution) recordPlannerObservation(observation PlannerObservation) {
-	state.observations.PlannerCalls++
-	if observation.InputTokens == nil || observation.OutputTokens == nil || observation.TotalTokens == nil ||
-		*observation.InputTokens < 0 || *observation.OutputTokens < 0 || *observation.TotalTokens < 0 {
-		state.usageIncomplete = true
-		return
-	}
-	if state.observations.InputTokens == nil {
-		state.observations.InputTokens = new(int64)
-		state.observations.OutputTokens = new(int64)
-		state.observations.TotalTokens = new(int64)
-	}
-	*state.observations.InputTokens += *observation.InputTokens
-	*state.observations.OutputTokens += *observation.OutputTokens
-	*state.observations.TotalTokens += *observation.TotalTokens
-}
-
 func (state *execution) validateFactConsistency(findings []Finding) error {
 	seen := map[string]SemanticFact{}
 	for _, finding := range findings {

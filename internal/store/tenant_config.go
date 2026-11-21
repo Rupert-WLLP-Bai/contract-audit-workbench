@@ -128,10 +128,6 @@ type tenantConfigRow struct {
 	ModelSendsUpdatedAt string
 }
 
-type tenantPolicyCandidate struct {
-	TenantConfigCatalogEntry
-}
-
 func publicTemplateCandidate() TenantConfigCatalogEntry {
 	raw := []byte(`{"id":"public-contract-review","version":"1","template":"contract-review-template/v1"}`)
 	digest := sha256.Sum256(raw)

@@ -33,7 +33,6 @@ type operatorMappingCanonicalState = operatorModel.OperatorMappingCanonicalState
 type operatorMappingApprovedAfter = operatorModel.OperatorMappingApprovedAfter
 type operatorMappingIdentityAfter = operatorModel.OperatorMappingIdentityAfter
 type operatorMappingAssociationAfter = operatorModel.OperatorMappingAssociationAfter
-type operatorMappingChangeRecord = operatorModel.OperatorMappingChangeRecord
 
 const (
 	OperatorMappingReplace                   = operatorModel.OperatorMappingReplace

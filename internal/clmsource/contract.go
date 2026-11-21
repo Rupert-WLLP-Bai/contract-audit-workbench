@@ -153,14 +153,6 @@ type SourceIdentity struct {
 	KeyID    string `json:"key_id"`
 }
 
-// Validate checks only that a source identity is structurally complete.
-func (i SourceIdentity) Validate() error {
-	if strings.TrimSpace(i.TenantID) == "" || strings.TrimSpace(i.SourceID) == "" || strings.TrimSpace(i.KeyID) == "" {
-		return errors.New("tenant_id, source_id, and key_id are required")
-	}
-	return nil
-}
-
 // Receipt is the minimum stable identity needed to classify an incoming
 // source event against its previously persisted receipt.
 type Receipt struct {

@@ -59,15 +59,6 @@ func readyCount(docs []Interpreted) int {
 	return n
 }
 
-func decided(findings []Finding, st *state) bool {
-	for _, finding := range findings {
-		if len(st.decisions(finding.ID)) > 0 {
-			return true
-		}
-	}
-	return false
-}
-
 func publicModelError(err error) string {
 	return executionapp.PublicModelError(err, errModelNotConfigured)
 }

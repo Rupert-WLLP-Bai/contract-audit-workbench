@@ -283,9 +283,6 @@ func (r contractDraftRecoveryRowsStub) ListMyDraftRows(context.Context, string, 
 	return r.rows, nil
 }
 
-//go:fix inline
-func contractDraftStringPointer(value string) *string { return new(value) }
-
 func TestLegacyImportKeepsHistoryUnknownAndVerifiesMaterial(t *testing.T) {
 	fixture, recovery := newContractDraftTestEnv(t)
 	ctx := context.Background()

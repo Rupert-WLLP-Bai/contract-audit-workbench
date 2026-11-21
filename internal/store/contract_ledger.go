@@ -56,7 +56,6 @@ type ContractExportInput = ledger.ExportInput
 type ContractExport = ledger.Export
 type ContractExportDownload = ledger.ExportDownload
 
-func ledgerAmountScaled(value string) (int64, bool) { return ledger.AmountScaled(value) }
 func validateContractLedgerFilter(filter *ContractLedgerFilter) error {
 	return ledger.ValidateFilter(filter)
 }

@@ -109,25 +109,6 @@ func (v CaseSubjectRoleVersion) HasSubject(subjectID string) bool {
 	return v.SubjectID == subjectID && v.BindingState != "inactive"
 }
 
-func SubjectBinding(versions []CaseSubjectRoleVersion, heads []CaseSubjectRole, caseID, subjectID string, requireCurrent bool) (CaseSubjectRoleVersion, bool) {
-	var found CaseSubjectRoleVersion
-	for _, item := range versions {
-		if item.CaseID != caseID || item.SubjectID != subjectID || item.BindingState == "inactive" {
-			continue
-		}
-		if !requireCurrent {
-			return item, true
-		}
-		for _, head := range heads {
-			if head.CaseID == caseID && head.BindingID == item.BindingID && head.CurrentVersion == item.Version {
-				found = item
-				break
-			}
-		}
-	}
-	return found, found.BindingID != ""
-}
-
 func SubjectHasAnyBinding(versions []CaseSubjectRoleVersion, subjectID string) bool {
 	for _, binding := range versions {
 		if binding.SubjectID == subjectID {

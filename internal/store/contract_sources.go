@@ -26,8 +26,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const clmEventExternalSourceObserved = contractapp.ExternalSourceObservedEvent
-
 // Source observation types remain Store-compatible aliases while ownership
 // moves to Contract model and app.
 type ContractSourceCaseScope = clmcontract.ContractSourceCaseScope

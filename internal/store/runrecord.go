@@ -433,18 +433,6 @@ func (rec AuditRecord) event() audit.Event {
 	}
 }
 
-func appendEvaluation(st *state, caseID, runID string, ev engine.Evaluation, findingID string) error {
-	id, err := newID("evl_")
-	if err != nil {
-		return err
-	}
-	st.Evaluations = append(st.Evaluations, ConstraintEval{
-		ID: id, RunID: runID, CaseID: caseID, Domain: ev.Domain,
-		Relation: ev.Relation, RuleVersion: ev.RuleVersion, Reason: ev.Reason, FindingID: findingID,
-	})
-	return nil
-}
-
 func (st *state) snapshotOf(runID string) RunSnapshot {
 	for _, item := range st.Snapshots {
 		if item.RunID == runID {

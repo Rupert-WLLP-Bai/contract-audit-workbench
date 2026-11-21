@@ -63,33 +63,6 @@ func clmRestrictedFieldPath(path string) bool {
 	return slices.Contains(clmRestrictedFieldPaths, path)
 }
 
-// computeRestrictedFingerprints is called on the plaintext snapshot inside the
-// freeze transaction, before the sealed bytes are copied into the revision.
-// When no restricted field carries a value, the key is not required: every
-// field is recorded absent and the diff can still compare presence.
-func computeRestrictedFingerprints(draft *DraftContent) (clmRestrictedFingerprintSet, error) {
-	set := clmRestrictedFingerprintSet{
-		Algorithm: clmLegacyRestrictedFingerprintAlgorithm,
-		Fields:    make(map[string]clmRestrictedFingerprintState, len(clmRestrictedFieldPaths)),
-	}
-	present := false
-	if draft != nil && draft.Supplier != nil {
-		for _, path := range clmRestrictedFieldPaths {
-			if clmRestrictedFieldValue[path](draft) != "" {
-				present = true
-				break
-			}
-		}
-	}
-	if !present {
-		for _, path := range clmRestrictedFieldPaths {
-			set.Fields[path] = clmRestrictedFingerprintState{Present: false}
-		}
-		return set, nil
-	}
-	return clmRestrictedFingerprintSet{}, errCLMKeyUnavailable
-}
-
 func computeRestrictedFingerprintsBound(ctx context.Context, draft *DraftContent, binding clmenvelope.Binding, baseline *clmRestrictedFingerprintSet) (clmRestrictedFingerprintSet, error) {
 	if baseline != nil && baseline.Algorithm == clmLegacyRestrictedFingerprintAlgorithm {
 		set := clmRestrictedFingerprintSet{Algorithm: clmLegacyRestrictedFingerprintAlgorithm, Fields: make(map[string]clmRestrictedFingerprintState, len(clmRestrictedFieldPaths))}
@@ -274,14 +247,6 @@ func draftSealedRestrictedPresent(draft *DraftContent) bool {
 		}
 	}
 	return false
-}
-
-// unsealDraftForFreeze restores the plaintext needed to run StageFinal and to
-// fingerprint restricted fields. When restricted fields are present but the
-// data key is unavailable, it returns the explicit 503 key error instead of a
-// generic corruption error.
-func unsealDraftForFreeze(raw []byte) (DraftContent, error) {
-	return unsealDraftForFreezeBound(context.Background(), raw, "", "")
 }
 
 func unsealDraftForFreezeBound(ctx context.Context, raw []byte, tenant, objectID string) (DraftContent, error) {

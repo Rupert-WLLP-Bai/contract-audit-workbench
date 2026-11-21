@@ -380,6 +380,3 @@ func validAssociationCandidate(objectVersion, associationVersion int, materialID
 	candidate.Association.FactRefs[0].CanonicalFactSHA256, _ = canonicalRuleFactSHA256(candidate.Association.FactRefs[0].Fact)
 	return candidate
 }
-
-//go:fix inline
-func boolPointer(value bool) *bool { return new(value) }

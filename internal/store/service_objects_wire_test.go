@@ -102,6 +102,3 @@ func TestServiceObjectWireFixtures(t *testing.T) {
 		t.Fatalf("service-object Go wire changed; update shared fixture only with an approved contract change\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
 }
-
-//go:fix inline
-func boolPtrWire(v bool) *bool { return new(v) }

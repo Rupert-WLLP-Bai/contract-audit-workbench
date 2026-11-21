@@ -30,8 +30,6 @@ const (
 
 type DecideApprovalTaskInput = approvalmodel.DecideApprovalTaskInput
 type ApprovalDecisionResult = approvalmodel.ApprovalDecisionResult
-type clmApprovalRoundRecord = approvalmodel.ApprovalRoundRecord
-type clmApprovalTaskRecord = approvalmodel.ApprovalTaskRecord
 
 // DecideApprovalTask appends one approve/return decision, then advances the
 // sequential round or closes it. The contract advisory lock is always taken

@@ -12,7 +12,6 @@ package app
 
 import (
 	"context"
-	"time"
 
 	clmcontract "contractaudit/internal/contract/model"
 	"contractaudit/internal/fault"
@@ -177,6 +176,3 @@ func sourceRef(record clmcontract.Aggregate) *clmcontract.SourceRef {
 	}
 	return &clmcontract.SourceRef{System: *record.SourceSystem, ID: *record.ExternalContractID, SourceVersion: *record.SourceVersion}
 }
-
-//go:fix inline
-func timePointer(value time.Time) *time.Time { return new(value) }

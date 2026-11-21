@@ -51,8 +51,6 @@ const (
 	ServiceObjectInactive            = operatorModel.ServiceObjectInactive
 )
 
-var errInvalidServiceObjectAssociation = operatorModel.ErrInvalidServiceObjectAssociation
-
 func serviceObjectCandidatesSHA256(v serviceObjectCandidateDigestInput) (string, error) {
 	return operatorModel.ServiceObjectCandidatesSHA256(v)
 }
@@ -65,10 +63,6 @@ func canonicalServiceObjectIdentitySHA256(v ServiceObjectVersion) (string, error
 func canonicalServiceObjectFacts(v []ServiceObjectFactRef) ([]byte, string, error) {
 	return operatorModel.CanonicalServiceObjectFacts(v)
 }
-func validateServiceObjectFactRefs(v ServiceObjectContractAssociation) error {
-	return operatorModel.ValidateServiceObjectFactRefs(v)
-}
 func canonicalRuleFactSHA256(v rulepack.Fact) (string, error) {
 	return operatorModel.CanonicalRuleFactSHA256(v)
 }
-func validServiceObjectSHA256(v string) bool { return operatorModel.ValidServiceObjectSHA256(v) }

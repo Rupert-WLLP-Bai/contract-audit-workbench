@@ -979,6 +979,3 @@ func operatorManifestForRulePack(t *testing.T, rulePackID, rulePackVersion strin
 	}
 	return manifest
 }
-
-//go:fix inline
-func strPtr(value string) *string { return new(value) }

@@ -331,9 +331,6 @@ func TestChooseDoesNotLeakKeyInErrors(t *testing.T) {
 	}
 }
 
-//go:fix inline
-func floatPointer(value float64) *float64 { return new(value) }
-
 func testNoulQuestions() map[string]NoulQuestion {
 	return map[string]NoulQuestion{
 		"candidate_0_relevance": {

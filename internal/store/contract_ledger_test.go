@@ -28,9 +28,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-//go:fix inline
-func textPointer(value string) *string { return new(value) }
-
 func faultStatus(err error) int {
 	var item *fault.Error
 	if errors.As(err, &item) {

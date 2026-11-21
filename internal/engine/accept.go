@@ -36,16 +36,6 @@ type Proposal struct {
 	Quotes      []QuoteRef
 }
 
-// LocateQuote finds quote in text and returns Unicode offsets.
-// A quote that is not an exact substring is not given coordinates.
-func LocateQuote(text, quote string) (start, end int, ok bool) {
-	bound := docir.Locate(docir.Build(text), strings.TrimSpace(quote))
-	if bound.Status != docir.StatusLocated {
-		return 0, 0, false
-	}
-	return bound.Start, bound.End, true
-}
-
 // AcceptWarranty keeps the constraint evaluation when the model output is usable.
 // A failed or unreadable model call never reaches this function. A usable call
 // that disagrees does not relabel compatible, conflict, or insufficient.

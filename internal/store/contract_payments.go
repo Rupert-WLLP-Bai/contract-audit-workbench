@@ -126,4 +126,3 @@ func loadContractPaymentsTx(ctx context.Context, tx pgx.Tx, current accounts.Use
 	app := newPaymentApplication(tx, current)
 	return payment.ListPayments(ctx, record, app.contracts, app.repository)
 }
-func boundedVisibleText(value string, max int) bool { return payment.BoundedVisibleText(value, max) }

@@ -512,19 +512,6 @@ func Open(dir string) (*Store, error) {
 	return openStore(dir, sel, schema, false)
 }
 
-// OpenApplication connects with the application database identity and never runs migrations.
-func OpenApplication(dir string) (*Store, error) {
-	sel, err := config.FromProcess()
-	if err != nil {
-		return nil, err
-	}
-	schema, err := applicationSchema()
-	if err != nil {
-		return nil, err
-	}
-	return openApplicationStore(dir, sel, schema)
-}
-
 func (s *Store) acquireParseLock(ctx context.Context) error {
 	s.parseMuOnce.Do(func() { s.parseMu = make(chan struct{}, 1) })
 	select {

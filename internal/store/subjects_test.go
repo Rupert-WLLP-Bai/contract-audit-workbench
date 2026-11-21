@@ -285,9 +285,6 @@ func TestSubjectPaginationHandlesSmallAndOutOfRangePages(t *testing.T) {
 	}
 }
 
-//go:fix inline
-func timePtr(value time.Time) *time.Time { return new(value) }
-
 func TestSubjectPatchUsesFlatTypedUnionAndPreservesOmittedArrays(t *testing.T) {
 	current := SubjectVersion{
 		SubjectID: "subject-1", Version: 2, DisplayName: "旧名称", LegalName: "旧法定名称",

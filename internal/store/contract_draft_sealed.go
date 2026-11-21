@@ -159,12 +159,6 @@ func draftHasRestrictedFields(draft *DraftContent) bool {
 	return false
 }
 
-// sealDraftContent returns a copy whose restricted fields are sealed, together
-// with the exact JSON bytes that may be persisted and their SHA-256 digest.
-func sealDraftContent(draft DraftContent) (DraftContent, []byte, string, error) {
-	return sealDraftContentBound(context.Background(), draft, "", "")
-}
-
 func sealDraftContentBound(ctx context.Context, draft DraftContent, tenant, objectID string) (DraftContent, []byte, string, error) {
 	if draftHasRestrictedFields(&draft) {
 		if tenant == "" || objectID == "" {
@@ -209,13 +203,6 @@ func canonicalStoredJSON(ctx context.Context, tx pgx.Tx, raw []byte) ([]byte, er
 // or unexpectedly shaped row fails instead of projecting partially.
 func unmarshalStoredDraft(raw []byte, target any) error {
 	return clmcontract.UnmarshalStoredDraft(raw, target)
-}
-
-// unsealStoredDraft loads persisted content and restores restricted fields.
-// Persisted plaintext in a restricted field is treated as corruption and
-// rejected instead of silently returned.
-func unsealStoredDraft(raw []byte) (DraftContent, error) {
-	return unsealStoredDraftBound(context.Background(), raw, "", "")
 }
 
 func unsealStoredDraftBound(ctx context.Context, raw []byte, tenant, objectID string) (DraftContent, error) {

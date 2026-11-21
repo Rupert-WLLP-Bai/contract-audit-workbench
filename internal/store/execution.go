@@ -1158,10 +1158,6 @@ func (s *Store) launchAttempt(ctx context.Context, runID, attemptID string, mode
 	return nil
 }
 
-func (s *Store) executeAttempt(runID, attemptID string, models Models) {
-	s.executeAttemptContext(context.Background(), runID, attemptID, models)
-}
-
 func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID string, models Models) {
 	started := time.Now()
 	work, cancel := context.WithCancel(parent)

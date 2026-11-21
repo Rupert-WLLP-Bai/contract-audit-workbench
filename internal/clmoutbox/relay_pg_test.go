@@ -401,6 +401,3 @@ func dsnWithUserPassword(raw, username, password string) (string, error) {
 	parsed.User = url.UserPassword(username, password)
 	return parsed.String(), nil
 }
-
-//go:fix inline
-func boolPointer(value bool) *bool { return new(value) }

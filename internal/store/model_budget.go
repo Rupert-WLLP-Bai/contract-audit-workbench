@@ -29,72 +29,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const modelBudgetSchemaSQL = `
-CREATE TABLE IF NOT EXISTS model_call_leases (
-	lease_id text PRIMARY KEY,
-	tenant_id text NOT NULL,
-	actor_id text NOT NULL,
-	case_id text NOT NULL,
-	run_id text NOT NULL,
-	attempt_id text NOT NULL,
-	caller_identity text NOT NULL CHECK (caller_identity IN ('worker','document')),
-	model_ref text NOT NULL,
-	attempt_number integer NOT NULL CHECK (attempt_number > 0),
-	reserved_input_tokens bigint NOT NULL CHECK (reserved_input_tokens >= 0),
-	reserved_output_tokens bigint NOT NULL CHECK (reserved_output_tokens >= 0),
-	acquired_at timestamptz NOT NULL,
-	expires_at timestamptz NOT NULL
-);
-ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS attempt_number integer NOT NULL DEFAULT 1;
-ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS reserved_input_tokens bigint NOT NULL DEFAULT 0;
-ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS purpose text NOT NULL DEFAULT 'review';
-ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS job_id text NOT NULL DEFAULT '';
-ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS job_generation bigint NOT NULL DEFAULT 0;
-ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS input_sha256 text NOT NULL DEFAULT '';
-ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS reserved_output_tokens bigint NOT NULL DEFAULT 0;
-CREATE INDEX IF NOT EXISTS model_call_leases_expiry ON model_call_leases (expires_at);
-CREATE INDEX IF NOT EXISTS model_call_leases_tenant_expiry ON model_call_leases (tenant_id, expires_at);
-CREATE INDEX IF NOT EXISTS model_call_leases_acquired ON model_call_leases (acquired_at);
-CREATE TABLE IF NOT EXISTS model_usage (
-	call_id text PRIMARY KEY,
-	lease_id text NOT NULL UNIQUE,
-	tenant_id text NOT NULL,
-	actor_id text NOT NULL,
-	case_id text NOT NULL,
-	run_id text NOT NULL,
-	attempt_id text NOT NULL,
-	caller_identity text NOT NULL CHECK (caller_identity IN ('worker','document')),
-	model_ref text NOT NULL,
-	attempt_number integer NOT NULL,
-	call_status text NOT NULL,
-	error_code text NOT NULL DEFAULT '',
-	usage_source text,
-	input_tokens bigint,
-	output_tokens bigint,
-	total_tokens bigint,
-	occurred_at timestamptz NOT NULL,
-	reserved_at timestamptz,
-	reserved_input_tokens bigint,
-	reserved_output_tokens bigint,
-	charged_tokens bigint,
-	budget_released boolean NOT NULL DEFAULT false,
-	settlement_fingerprint text
-);
-ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS reserved_at timestamptz;
-ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS reserved_input_tokens bigint;
-ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS reserved_output_tokens bigint;
-ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS charged_tokens bigint;
-ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS budget_released boolean NOT NULL DEFAULT false;
-ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS settlement_fingerprint text;
-ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS purpose text NOT NULL DEFAULT 'review';
-ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS job_id text NOT NULL DEFAULT '';
-ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS job_generation bigint NOT NULL DEFAULT 0;
-ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS input_sha256 text NOT NULL DEFAULT '';
-CREATE INDEX IF NOT EXISTS model_usage_occurred ON model_usage (occurred_at);
-CREATE INDEX IF NOT EXISTS model_usage_tenant_occurred ON model_usage (tenant_id, occurred_at);
-CREATE INDEX IF NOT EXISTS model_usage_reserved_at ON model_usage (reserved_at);
-`
-
 var ErrModelBudgetExceeded = errors.New("model call budget is exhausted")
 var ErrModelScopeUnavailable = errors.New("current model execution scope is unavailable")
 var ErrModelConfigurationChanged = errors.New("frozen model configuration no longer matches the provider")
@@ -561,14 +495,6 @@ func (s *Store) ReauthorizeModelScope(ctx context.Context, caller string, scope 
 		return err
 	}
 	return tx.Commit(ctx)
-}
-
-func (s *Store) authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope model.DelegatedScope) error {
-	u, err := s.operationUser(ctx, scope)
-	if err != nil {
-		return ErrModelScopeUnavailable
-	}
-	return authorizeModelScope(ctx, tx, caller, scope, s.sel.Mode != config.ModeProduction, u)
 }
 
 // Only model ledger reservation and reauthorization may use an OCR child proof

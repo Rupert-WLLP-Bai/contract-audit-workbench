@@ -56,11 +56,6 @@ func invalidRequest(section string) string {
 	return invalidRequestText + ": " + section
 }
 
-//go:fix inline
-func ptr[T any](value T) *T {
-	return new(value)
-}
-
 func validField() Field {
 	return Field{
 		Name:          "configured_bandwidth",

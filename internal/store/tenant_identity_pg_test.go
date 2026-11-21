@@ -692,9 +692,6 @@ func waitForTenantIdentityLockWaiters(t *testing.T, ctx context.Context, st *Sto
 	t.Fatalf("identity advisory lock had fewer than %d blocked operations", count)
 }
 
-//go:fix inline
-func stringPtr(value string) *string { return new(value) }
-
 // Exercise the policy under its actual definer owner, not the superuser bypass.
 func assertAuthOwnerSessionScopeGuard(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
