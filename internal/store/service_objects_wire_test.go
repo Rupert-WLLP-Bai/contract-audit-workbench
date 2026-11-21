@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-21
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -102,6 +102,3 @@ func TestServiceObjectWireFixtures(t *testing.T) {
 		t.Fatalf("service-object Go wire changed; update shared fixture only with an approved contract change\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
 }
-
-//go:fix inline
-func boolPtrWire(v bool) *bool { return new(v) }

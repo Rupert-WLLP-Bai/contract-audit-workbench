@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-21
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -66,10 +66,6 @@ func binaryReason(filename string) string {
 	default:
 		return "这份材料不能解析成正文，不能编造坐标。"
 	}
-}
-
-func (s *Store) interpretImage(ctx context.Context, doc Document, body []byte) Interpreted {
-	return s.interpretImageWithModels(ctx, doc, body, s.currentModels())
 }
 
 func (s *Store) interpretImageWithModels(ctx context.Context, doc Document, body []byte, models Models) Interpreted {

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-13
-// Revision: r3
+// Updated: 2026-11-21
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -126,4 +126,3 @@ func loadContractPaymentsTx(ctx context.Context, tx pgx.Tx, current accounts.Use
 	app := newPaymentApplication(tx, current)
 	return payment.ListPayments(ctx, record, app.contracts, app.repository)
 }
-func boundedVisibleText(value string, max int) bool { return payment.BoundedVisibleText(value, max) }

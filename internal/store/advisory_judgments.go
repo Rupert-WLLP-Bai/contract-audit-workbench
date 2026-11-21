@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-21
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -26,40 +26,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 )
-
-const advisoryJudgmentSchemaSQL = `
-CREATE TABLE IF NOT EXISTS advisory_judgments (
-	tenant_id text NOT NULL,
-	org_id text NOT NULL,
-	case_id text NOT NULL,
-	run_id text NOT NULL,
-	attempt_id text NOT NULL,
-	judgment_id text NOT NULL CHECK (judgment_id ~ '^[0-9a-f]{64}$'),
-	feature text NOT NULL,
-	question_version text NOT NULL,
-	configuration_id text NOT NULL CHECK (configuration_id ~ '^[0-9a-f]{64}$'),
-	provider text NOT NULL,
-	model_requested text NOT NULL,
-	model_observed text NOT NULL,
-	frozen_input_sha256 text NOT NULL CHECK (frozen_input_sha256 ~ '^[0-9a-f]{64}$'),
-	snapshot_sha256 text NOT NULL CHECK (snapshot_sha256 ~ '^[0-9a-f]{64}$'),
-	request_sha256 text NOT NULL CHECK (request_sha256 ~ '^[0-9a-f]{64}$'),
-	state_sha256 text NOT NULL CHECK (state_sha256 ~ '^[0-9a-f]{64}$'),
-	data_classification text NOT NULL,
-	status text NOT NULL CHECK (status = 'completed'),
-	error_code text NOT NULL DEFAULT '',
-	response_json bytea NOT NULL,
-	usage_json bytea NOT NULL,
-	created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-	PRIMARY KEY (tenant_id, org_id, judgment_id),
-	FOREIGN KEY (tenant_id, org_id, case_id, run_id) REFERENCES review_runs (tenant_id, org_id, case_id, id),
-	FOREIGN KEY (tenant_id, org_id, run_id, attempt_id) REFERENCES review_attempts (tenant_id, org_id, run_id, id)
-);
-CREATE INDEX IF NOT EXISTS advisory_judgments_run ON advisory_judgments (tenant_id, org_id, run_id);
-DROP TRIGGER IF EXISTS advisory_judgments_append_only ON advisory_judgments;
-CREATE TRIGGER advisory_judgments_append_only BEFORE UPDATE OR DELETE ON advisory_judgments
-	FOR EACH ROW EXECUTE FUNCTION forbid_append_only();
-`
 
 type advisoryFailure struct {
 	code string

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-21
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -380,6 +380,3 @@ func validAssociationCandidate(objectVersion, associationVersion int, materialID
 	candidate.Association.FactRefs[0].CanonicalFactSHA256, _ = canonicalRuleFactSHA256(candidate.Association.FactRefs[0].Fact)
 	return candidate
 }
-
-//go:fix inline
-func boolPointer(value bool) *bool { return new(value) }

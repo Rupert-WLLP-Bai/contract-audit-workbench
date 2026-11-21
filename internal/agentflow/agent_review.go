@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-12
-// Revision: r2
+// Updated: 2026-11-21
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -475,16 +475,6 @@ func validatePlannerAdvisory(configuration *AdvisoryConfiguration) error {
 func matchesPlannerConfigurationID(configuration PlannerConfiguration) bool {
 	identity, err := plannerConfigurationID(configuration)
 	return err == nil && configuration.ConfigurationID == identity
-}
-
-// HashEvidenceSnapshot binds attempt input references without copying document
-// content into planner metadata.
-func HashEvidenceSnapshot(snapshot SourceSnapshot) (string, error) {
-	encoded, err := json.Marshal(snapshot)
-	if err != nil {
-		return "", err
-	}
-	return digestBytes(encoded), nil
 }
 
 func digestBytes(value []byte) string {

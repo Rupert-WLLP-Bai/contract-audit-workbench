@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-21
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -54,11 +54,6 @@ func checkValidateError(t *testing.T, err error, want string) {
 
 func invalidRequest(section string) string {
 	return invalidRequestText + ": " + section
-}
-
-//go:fix inline
-func ptr[T any](value T) *T {
-	return new(value)
 }
 
 func validField() Field {

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-14
-// Revision: r6
+// Updated: 2026-11-21
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -27,9 +27,6 @@ import (
 	"contractaudit/internal/fault"
 	"github.com/jackc/pgx/v5"
 )
-
-//go:fix inline
-func textPointer(value string) *string { return new(value) }
 
 func faultStatus(err error) int {
 	var item *fault.Error

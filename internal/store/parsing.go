@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r6
+// Updated: 2026-11-21
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -534,10 +534,6 @@ func parsedInterpreted(doc Document, p ParsedDocument) Interpreted {
 		Document: doc, Ready: p.Status == "ready", FromOCR: p.FromOCR,
 		ParseError: p.ParseError, Text: p.Text, IR: p.IR, ParsedDocument: &p,
 	}
-}
-
-func (s *Store) interpretUnpersisted(ctx context.Context, doc Document) Interpreted {
-	return s.interpretUnpersistedWithModels(ctx, doc, s.currentModels())
 }
 
 func (s *Store) interpretUnpersistedWithModels(ctx context.Context, doc Document, models Models) Interpreted {

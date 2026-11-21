@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: PublishWorkflowTemplate appends one immutable template version and points new submissions at it. Re-publishing the exact same version is a no-op; reusing a version string with… Related `store` operations include PublishWorkflowTemplate, loadWorkflowTemplateVersion, ReplaceWorkflowRoleBindings, normalizeWorkflowRoleBindings.
+// Purpose: PublishWorkflowTemplate appends one immutable template version and points new submissions at it. Re-publishing the exact same version is a no-op; reusing a version string with… Related `store` operations include PublishWorkflowTemplate, ReplaceWorkflowRoleBindings, normalizeWorkflowRoleBindings.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-14
-// Revision: r5
+// Updated: 2026-11-21
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -53,10 +53,6 @@ func (s *Store) PublishWorkflowTemplate(ctx context.Context, user accounts.User,
 		return WorkflowTemplateSummary{}, err
 	}
 	return summary, nil
-}
-
-func loadWorkflowTemplateVersion(ctx context.Context, tx pgx.Tx, tenantID, templateID, version string) (WorkflowTemplateSummary, bool, error) {
-	return approvalpg.NewGovernance(platformpg.Bind(tx)).LoadTemplate(ctx, tenantID, templateID, version)
 }
 
 // ReplaceWorkflowRoleBindings replaces every binding of one role. The write is

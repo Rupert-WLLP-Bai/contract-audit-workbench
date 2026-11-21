@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-20
-// Revision: r4
+// Updated: 2026-11-21
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -83,15 +83,6 @@ func legacyFrozenAuthoritySemantics(snapshot RunSnapshot, pack *rulepack.Pack) b
 		hasNormativeRulePackAuthority(pack)
 }
 
-func computeLegalReuseFingerprint(mode, explicit string, authorities []FrozenLegalAuthority) (string, error) {
-	return legalModel.ComputeLegalReuseFingerprint(mode, explicit, authorities)
-}
-func validateFrozenLegalAuthorities(a []FrozenLegalAuthority) error {
-	return legalModel.ValidateFrozenLegalAuthorities(a)
-}
-func validateFrozenLegalArticle(a FrozenLegalAuthority) error {
-	return legalModel.ValidateFrozenLegalArticle(a)
-}
 func evaluateLegalAuthorityApplicability(refs []rulepack.LegalAuthorityReference, facts LegalApplicabilityFactSet) (LegalApplicabilityEvaluation, error) {
 	return legalModel.EvaluateLegalAuthorityApplicability(refs, facts)
 }

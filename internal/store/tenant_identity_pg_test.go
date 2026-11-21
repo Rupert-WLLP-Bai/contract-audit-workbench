@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-21
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -691,9 +691,6 @@ func waitForTenantIdentityLockWaiters(t *testing.T, ctx context.Context, st *Sto
 	}
 	t.Fatalf("identity advisory lock had fewer than %d blocked operations", count)
 }
-
-//go:fix inline
-func stringPtr(value string) *string { return new(value) }
 
 // Exercise the policy under its actual definer owner, not the superuser bypass.
 func assertAuthOwnerSessionScopeGuard(t *testing.T, ctx context.Context, st *Store) {

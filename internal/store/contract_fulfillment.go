@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-13
-// Revision: r3
+// Updated: 2026-11-21
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,16 +12,11 @@ package store
 
 import (
 	"context"
-	"math/big"
-	"time"
 
 	"contractaudit/internal/accounts"
-	contractapp "contractaudit/internal/contract/app"
 	clmcontract "contractaudit/internal/contract/model"
-	contractpostgres "contractaudit/internal/contract/postgres"
 	"contractaudit/internal/fault"
 	fulfillmentapp "contractaudit/internal/fulfillment/app"
-	platformpostgres "contractaudit/internal/platform/postgres"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -218,66 +213,4 @@ func loadContractAcceptancesTx(ctx context.Context, tx pgx.Tx, current accounts.
 	services := newFulfillmentApplication(tx, current)
 	record.ContractID = id
 	return fulfillmentapp.ListContractAcceptances(ctx, record, services.contracts, services.repo, services.access)
-}
-
-// Narrow compatibility helpers used by the not-yet-migrated Payment and Asset
-// commands delegate rules or Contract-owned SQL to their assigned modules.
-func parseFulfillmentTime(field, raw string) (time.Time, error) {
-	return fulfillmentapp.ParseTime(field, raw)
-}
-
-func fulfillmentDecimal(field, raw string, allowZero bool) (*big.Rat, error) {
-	return fulfillmentapp.ParseDecimal(field, raw, allowZero)
-}
-
-func ratString(value *big.Rat) string { return fulfillmentapp.RationalString(value) }
-
-func fulfillmentResult(quantity, accepted string) (string, *big.Rat, *big.Rat, error) {
-	return fulfillmentapp.ResultForQuantity(quantity, accepted)
-}
-
-func validateFulfillmentText(field, value string, max int, required bool) error {
-	return fulfillmentapp.ValidateText(field, value, max, required)
-}
-
-func resolveFulfillmentEvidence(ctx context.Context, tx pgx.Tx, current accounts.User, refs []MaterialRef, purpose string) ([]ContractVersionMaterial, error) {
-	return fulfillmentapp.ResolveEvidence(ctx, refs, purpose, storeFulfillmentAccess{tx: tx, user: current})
-}
-
-func requireCLMFulfillmentManage(record clmContractRecord, current accounts.User) error {
-	return fulfillmentapp.RequireFulfillmentManage(context.Background(), record,
-		storeFulfillmentAccess{user: current})
-}
-
-func loadFrozenFulfillmentDraft(ctx context.Context, tx pgx.Tx, tenantID, contractID, revisionID string) (DraftContent, error) {
-	revision, err := contractpostgres.NewFulfillmentContracts(platformpostgres.Bind(tx)).LoadFulfillmentRevision(ctx, tenantID, contractID, revisionID)
-	if err != nil {
-		return DraftContent{}, err
-	}
-	return contractapp.DecodeFulfillmentSnapshot(revision)
-}
-
-func fulfillmentWriteRecord(ctx context.Context, tx pgx.Tx, current accounts.User, contractID string) (clmContractRecord, error) {
-	record, err := loadCLMContract(ctx, tx, accounts.Tenant(current), contractID)
-	if err != nil {
-		return clmContractRecord{}, err
-	}
-	if err := fulfillmentapp.RequireFulfillmentManage(ctx, record, storeFulfillmentAccess{tx: tx, user: current}); err != nil {
-		return clmContractRecord{}, err
-	}
-	return record, nil
-}
-
-func bumpFulfillmentRowVersion(ctx context.Context, tx pgx.Tx, record clmContractRecord, expected int64) (int64, error) {
-	advanced, err := contractpostgres.NewFulfillmentContracts(platformpostgres.Bind(tx)).AdvanceFulfillmentAggregate(ctx, record, expected)
-	return advanced.RowVersion, err
-}
-
-func fulfillmentMaterialSnapshot(ctx context.Context, tx pgx.Tx, current accounts.User, raw []byte) ([]ContractVersionMaterial, bool, error) {
-	return fulfillmentapp.ProjectEvidenceSnapshot(ctx, raw, storeFulfillmentAccess{tx: tx, user: current})
-}
-
-func insertFrozenContractRevisionItems(ctx context.Context, tx pgx.Tx, tenantID, contractID, revisionID string, items []DraftItem) error {
-	return contractpostgres.NewVersionCommands(platformpostgres.Bind(tx)).InsertFrozenRevisionItems(ctx,
-		tenantID, contractID, revisionID, clmcontract.FrozenRevisionPlanItems(items))
 }

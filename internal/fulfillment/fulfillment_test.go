@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-21
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -30,9 +30,6 @@ func validScope() auditext.AuthorizedScope {
 		GrantVersion: "grant-v1",
 	}
 }
-
-//go:fix inline
-func strPtr(value string) *string { return new(value) }
 
 func documentEvidence(value string) auditext.EvidenceRef {
 	return auditext.EvidenceRef{

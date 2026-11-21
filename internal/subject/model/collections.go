@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-21
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -107,25 +107,6 @@ func CaseRoleCurrent(versions []CaseSubjectRoleVersion, head CaseSubjectRole) Ca
 
 func (v CaseSubjectRoleVersion) HasSubject(subjectID string) bool {
 	return v.SubjectID == subjectID && v.BindingState != "inactive"
-}
-
-func SubjectBinding(versions []CaseSubjectRoleVersion, heads []CaseSubjectRole, caseID, subjectID string, requireCurrent bool) (CaseSubjectRoleVersion, bool) {
-	var found CaseSubjectRoleVersion
-	for _, item := range versions {
-		if item.CaseID != caseID || item.SubjectID != subjectID || item.BindingState == "inactive" {
-			continue
-		}
-		if !requireCurrent {
-			return item, true
-		}
-		for _, head := range heads {
-			if head.CaseID == caseID && head.BindingID == item.BindingID && head.CurrentVersion == item.Version {
-				found = item
-				break
-			}
-		}
-	}
-	return found, found.BindingID != ""
 }
 
 func SubjectHasAnyBinding(versions []CaseSubjectRoleVersion, subjectID string) bool {

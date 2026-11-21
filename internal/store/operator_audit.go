@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-29
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-21
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -41,7 +41,6 @@ type OperatorExternalObject = operatorModel.OperatorExternalObject
 
 type OperatorObjectBindingInput = operatorModel.OperatorObjectBindingInput
 type OperatorObjectBinding = operatorModel.OperatorObjectBinding
-type operatorObjectBindingRecord = operatorModel.OperatorObjectBindingRecord
 
 // Operator snapshot and job values belong to the Operator model.
 type OperatorSnapshotSet = operatorModel.OperatorSnapshotSet
@@ -507,22 +506,6 @@ func operatorObservationsForEvaluation(snapshot OperatorSnapshotSet, businessAt,
 	return operatorApp.ObservationsForEvaluation(snapshot, businessAt, cutoff)
 }
 
-func loadOperatorBindingRecordByKey(ctx context.Context, tx pgx.Tx, tenantID, orgID, caseID, actorID, key string) (operatorObjectBindingRecord, error) {
-	row, found, err := operatorPostgres.NewBinding(platformpostgres.Bind(tx)).BindingByKey(ctx, operatorApp.CreateIdentity{TenantID: tenantID, OrgID: orgID, CaseID: caseID, ActorID: actorID}, key)
-	if err != nil {
-		return operatorObjectBindingRecord{}, err
-	}
-	if !found {
-		return operatorObjectBindingRecord{}, pgx.ErrNoRows
-	}
-	return operatorApp.DecodeBindingRecord(row, "对象映射幂等回执损坏")
-}
-
-func loadOperatorBindingByKey(ctx context.Context, tx pgx.Tx, tenantID, orgID, caseID, actorID, key string) (OperatorObjectBinding, error) {
-	record, err := loadOperatorBindingRecordByKey(ctx, tx, tenantID, orgID, caseID, actorID, key)
-	return record.Value, err
-}
-
 func (s *Store) GetOperatorCollectionJob(ctx context.Context, user accounts.User, caseID, key string) (OperatorCollectionJob, error) {
 	ctx = commandContext(ctx, user)
 	key = strings.TrimSpace(key)
@@ -600,10 +583,6 @@ func (s *Store) operatorReadSnapshotSet(ctx context.Context, user accounts.User,
 
 func loadOperatorSnapshotSetByID(ctx context.Context, tx pgx.Tx, caseID, snapshotSetID string) (OperatorSnapshotSet, error) {
 	return operatorApp.ReadCollectionSnapshot(ctx, operatorPostgres.NewCollection(platformpostgres.Bind(tx)), caseID, snapshotSetID)
-}
-
-func loadOperatorObservations(ctx context.Context, tx pgx.Tx, caseID, snapshotSetID string) ([]auditext.Observation, error) {
-	return operatorApp.ReadCollectionObservations(ctx, operatorPostgres.NewCollection(platformpostgres.Bind(tx)), caseID, snapshotSetID)
 }
 
 func loadOperatorEvaluationByKey(ctx context.Context, tx pgx.Tx, tenantID, orgID, caseID, actorID, key string) (operatorEvaluationRecord, error) {

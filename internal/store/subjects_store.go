@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-21
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,9 +12,7 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
-	"time"
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
@@ -281,23 +279,6 @@ func paginateSubjectSummaries(items []SubjectSummary, cursor string, limit int) 
 	return subjectApp.PaginateSubjectSummaries(items, cursor, limit)
 }
 
-func normalizeSubjectCreateInput(input SubjectCreateInput) (SubjectCreateInput, error) {
-	return subjectModel.NormalizeSubjectCreateInput(input)
-}
-
-func newSubjectAggregate(actor accounts.User, input SubjectCreateInput, now time.Time) (Subject, SubjectVersion, error) {
-	subjectID, err := newID("sub_")
-	if err != nil {
-		return Subject{}, SubjectVersion{}, err
-	}
-	principal := TrustedPrincipalProjection{UserID: actor.ID, Issuer: actor.Issuer, Subject: actor.Subject}
-	return subjectModel.NewSubjectAggregate(actor.TenantID, subjectID, principal, input, now)
-}
-
-func hashSubjectVersion(version SubjectVersion) string {
-	return subjectModel.HashSubjectVersion(version)
-}
-
 func validateIdempotencyKey(key string) error {
 	if len(key) < 1 || len(key) > 200 {
 		return fault.Invalid("Idempotency-Key长度必须是1到200字符")
@@ -310,63 +291,6 @@ func validateIdempotencyKey(key string) error {
 	return nil
 }
 
-func canonicalSubjectHash(value any) (string, error) {
-	return subjectModel.CanonicalSubjectHash(value)
-}
-
-func readSubjectIdempotency(st state, actor accounts.User, operation, targetID, key, payloadHash string) (SubjectIdempotencyRecord, bool, error) {
-	for _, item := range st.SubjectIdempotency {
-		if item.TenantID != actor.TenantID || item.ActorUserID != actor.ID || item.Operation != operation || item.TargetID != targetID || item.Key != key {
-			continue
-		}
-		if item.PayloadHash != payloadHash {
-			return SubjectIdempotencyRecord{}, false, fault.Conflict("Idempotency-Key已用于不同请求内容")
-		}
-		return item, true, nil
-	}
-	return SubjectIdempotencyRecord{}, false, nil
-}
-
-func appendSubjectIdempotency(st *state, actor accounts.User, operation, targetID, key, payloadHash string, status int, response any, now time.Time) error {
-	body, err := json.Marshal(response)
-	if err != nil {
-		return err
-	}
-	st.SubjectIdempotency = append(st.SubjectIdempotency, SubjectIdempotencyRecord{TenantID: actor.TenantID, ActorUserID: actor.ID, Operation: operation, TargetID: targetID, Key: key, PayloadHash: payloadHash, Response: body, HTTPStatus: status, CreatedAt: now})
-	return nil
-}
-
-func subjectVisibleToUser(st state, user accounts.User, subjectID string) bool {
-	return subjectApp.SubjectVisible(subjectCommandSnapshot(&st), subjectCommandActor(user), subjectID, subjectReadFacts(&st, user, false))
-}
-
-func subjectHasAnyBinding(st state, subjectID string) bool {
-	return subjectModel.SubjectHasAnyBinding(st.CaseSubjectRoleVersions, subjectID)
-}
-
-func visibleSubject(st state, user accounts.User, subjectID string) (Subject, SubjectVersion, bool) {
-	return subjectApp.VisibleSubjectWithFacts(subjectCommandSnapshot(&st), subjectCommandActor(user), subjectID, subjectReadFacts(&st, user, false))
-}
-
-func subjectBinding(st state, caseID, subjectID string, requireCurrent bool) (CaseSubjectRoleVersion, bool) {
-	return subjectModel.SubjectBinding(st.CaseSubjectRoleVersions, st.CaseSubjectRoles, caseID, subjectID, requireCurrent)
-}
-
-func projectCaseSubjects(st state, user accounts.User, caseItem Case) CaseSubjectListProjection {
-	profile, found := profileFor(st, caseItem)
-	legacy := subjectApp.LegacyProfile{}
-	if found {
-		legacy = subjectApp.LegacyProfile{Found: true, Version: profile.Version, Customer: profile.Customer, Supplier: profile.Supplier}
-	}
-	facts := subjectReadFacts(&st, user, false, caseItem)
-	return subjectApp.ProjectCaseSubjects(subjectCommandSnapshot(&st), subjectCommandActor(user), facts,
-		subjectApp.CaseIdentity{TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseItem.ID}, legacy)
-}
-
 func caseRoleCurrent(st state, head CaseSubjectRole) CaseSubjectRoleVersion {
 	return subjectModel.CaseRoleCurrent(st.CaseSubjectRoleVersions, head)
-}
-
-func visibleSubjectEvents(st state, user accounts.User, subjectID string) []SubjectChangeEventSummary {
-	return subjectApp.SubjectEvents(subjectCommandSnapshot(&st), subjectID, subjectReadFacts(&st, user, false))
 }

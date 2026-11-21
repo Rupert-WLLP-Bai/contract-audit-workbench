@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-12
-// Updated: 2026-11-14
-// Revision: r1
+// Updated: 2026-11-21
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -61,20 +61,4 @@ func internalMetricStringAttr(attrs []*commonpb.KeyValue, key string) string {
 		}
 	}
 	return ""
-}
-
-func internalMetricPointCount(item *metricpb.Metric) int {
-	if item == nil {
-		return 0
-	}
-	switch data := item.GetData().(type) {
-	case *metricpb.Metric_Sum:
-		return len(data.Sum.GetDataPoints())
-	case *metricpb.Metric_Gauge:
-		return len(data.Gauge.GetDataPoints())
-	case *metricpb.Metric_Histogram:
-		return len(data.Histogram.GetDataPoints())
-	default:
-		return 0
-	}
 }

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-12
-// Revision: r2
+// Updated: 2026-11-21
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -42,13 +42,7 @@ type SourceRef = clmcontract.SourceRef
 // These expressions are retained for existing Store files that share the
 // money grammar without depending on the contract package's implementation.
 var (
-	moneyPattern     = regexp.MustCompile(`^(0|[1-9][0-9]{0,15})\.[0-9]{2}$`)
-	unitPricePattern = regexp.MustCompile(`^(0|[1-9][0-9]{0,13})\.[0-9]{4}$`)
-	quantityPattern  = regexp.MustCompile(`^(0|[1-9][0-9]{0,11})\.[0-9]{6}$`)
-	ratioPattern     = regexp.MustCompile(`^(0\.[0-9]{6}|1\.000000)$`)
-	taxRatePattern   = regexp.MustCompile(`^(0\.[0-9]{4}|1\.0000)$`)
-	currencyPattern  = regexp.MustCompile(`^[A-Z]{3}$`)
-	digestPattern    = regexp.MustCompile(`^[a-f0-9]{64}$`)
+	digestPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 )
 
 func newContractUUID() (string, error)    { return clmcontract.NewContractUUID() }
@@ -59,15 +53,7 @@ func normalizeContractUUID(value string) (string, error) {
 func optionalText(value string) *string              { return clmcontract.OptionalText(value) }
 func validateDraftContent(draft *DraftContent) error { return clmcontract.ValidateDraftContent(draft) }
 func sanitizeDraftReferences(draft *DraftContent)    { clmcontract.SanitizeDraftReferences(draft) }
-func validateDraftMoney(field, value string) error {
-	return clmcontract.ValidateDraftMoney(field, value)
-}
-func validateDraftDate(field, value string) error { return clmcontract.ValidateDraftDate(field, value) }
-func validateDraftText(field, value string, max int) error {
-	return clmcontract.ValidateDraftText(field, value, max)
-}
-func validateMaterialRef(ref *MaterialRef) error { return clmcontract.ValidateMaterialRef(ref) }
-func validateSourceRef(ref *SourceRef) error     { return clmcontract.ValidateSourceRef(ref) }
+func validateMaterialRef(ref *MaterialRef) error     { return clmcontract.ValidateMaterialRef(ref) }
 func caseRoleAllowsContractRole(contractRole, caseRole string) bool {
 	return clmcontract.CaseRoleAllowsContractRole(contractRole, caseRole)
 }

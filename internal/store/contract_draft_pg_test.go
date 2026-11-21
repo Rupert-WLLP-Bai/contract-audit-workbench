@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-14
-// Revision: r5
+// Updated: 2026-11-21
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -282,9 +282,6 @@ func (r contractDraftRecoveryRowsStub) LoadDraftDetailFacts(context.Context, clm
 func (r contractDraftRecoveryRowsStub) ListMyDraftRows(context.Context, string, string, int) ([]clmcontract.DraftRecoveryRow, error) {
 	return r.rows, nil
 }
-
-//go:fix inline
-func contractDraftStringPointer(value string) *string { return new(value) }
 
 func TestLegacyImportKeepsHistoryUnknownAndVerifiesMaterial(t *testing.T) {
 	fixture, recovery := newContractDraftTestEnv(t)

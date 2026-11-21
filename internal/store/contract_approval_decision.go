@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-13
-// Revision: r3
+// Updated: 2026-11-21
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -30,8 +30,6 @@ const (
 
 type DecideApprovalTaskInput = approvalmodel.DecideApprovalTaskInput
 type ApprovalDecisionResult = approvalmodel.ApprovalDecisionResult
-type clmApprovalRoundRecord = approvalmodel.ApprovalRoundRecord
-type clmApprovalTaskRecord = approvalmodel.ApprovalTaskRecord
 
 // DecideApprovalTask appends one approve/return decision, then advances the
 // sequential round or closes it. The contract advisory lock is always taken

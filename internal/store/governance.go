@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-25
-// Revision: r1
+// Updated: 2026-11-21
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -32,7 +32,6 @@ import (
 
 var (
 	errGovernanceVersionMissing      = errors.New("rule pack version is unavailable")
-	errGovernancePointerMissing      = errors.New("rule pack active pointer is unavailable")
 	errGovernanceIdempotencyConflict = errors.New("idempotency key was already used with a different request")
 )
 

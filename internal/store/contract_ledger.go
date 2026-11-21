@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-19
-// Revision: r6
+// Updated: 2026-11-21
+// Revision: r7
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -56,7 +56,6 @@ type ContractExportInput = ledger.ExportInput
 type ContractExport = ledger.Export
 type ContractExportDownload = ledger.ExportDownload
 
-func ledgerAmountScaled(value string) (int64, bool) { return ledger.AmountScaled(value) }
 func validateContractLedgerFilter(filter *ContractLedgerFilter) error {
 	return ledger.ValidateFilter(filter)
 }

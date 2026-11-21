@@ -3,70 +3,12 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-25
-// Revision: r1
+// Updated: 2026-11-21
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
 package store
-
-// Core and document append-only projections preserve a single authoritative writer
-// per table. Readers merge them with the unchanged historical execution rows.
-const serviceProjectionSchemaSQL = `
-CREATE TABLE IF NOT EXISTS business_run_events (
- seq bigserial PRIMARY KEY,
- run_id text NOT NULL,
- event_seq integer NOT NULL,
- event_type text NOT NULL,
- state text NOT NULL,
- tenant_id text NOT NULL DEFAULT current_setting('app.tenant_id',true),
- org_id text NOT NULL DEFAULT current_setting('app.org_id',true),
- UNIQUE (run_id,event_seq),
- FOREIGN KEY (tenant_id,org_id,run_id) REFERENCES review_runs(tenant_id,org_id,id)
-);
-CREATE TABLE IF NOT EXISTS business_audit_events (
- event_id text PRIMARY KEY,
- run_id text NOT NULL,
- actor text NOT NULL,
- seq integer NOT NULL,
- event_type text NOT NULL,
- prev_hash text NOT NULL DEFAULT '',
- hash text NOT NULL,
- correlation_ids text NOT NULL,
- tenant_id text NOT NULL DEFAULT current_setting('app.tenant_id',true),
- org_id text NOT NULL DEFAULT current_setting('app.org_id',true),
- UNIQUE (run_id,seq),
- FOREIGN KEY (tenant_id,org_id,run_id) REFERENCES review_runs(tenant_id,org_id,id)
-);
-CREATE TABLE IF NOT EXISTS document_activity (
- seq bigserial PRIMARY KEY,
- id text NOT NULL UNIQUE,
- case_id text NOT NULL,
- occurred_at text NOT NULL,
- summary text NOT NULL,
- tenant_id text NOT NULL DEFAULT current_setting('app.tenant_id',true),
- org_id text NOT NULL DEFAULT current_setting('app.org_id',true),
- FOREIGN KEY (tenant_id,org_id,case_id) REFERENCES cases(tenant_id,org_id,id)
-);
-CREATE TABLE IF NOT EXISTS execution_activity (
- seq bigserial PRIMARY KEY,
- id text NOT NULL UNIQUE,
- case_id text NOT NULL,
- occurred_at text NOT NULL,
- summary text NOT NULL,
- tenant_id text NOT NULL DEFAULT current_setting('app.tenant_id',true),
- org_id text NOT NULL DEFAULT current_setting('app.org_id',true),
- FOREIGN KEY (tenant_id,org_id,case_id) REFERENCES cases(tenant_id,org_id,id)
-);
-DROP TRIGGER IF EXISTS business_run_events_append_only ON business_run_events;
-CREATE TRIGGER business_run_events_append_only BEFORE UPDATE OR DELETE ON business_run_events FOR EACH ROW EXECUTE FUNCTION forbid_append_only();
-DROP TRIGGER IF EXISTS business_audit_events_append_only ON business_audit_events;
-CREATE TRIGGER business_audit_events_append_only BEFORE UPDATE OR DELETE ON business_audit_events FOR EACH ROW EXECUTE FUNCTION forbid_append_only();
-DROP TRIGGER IF EXISTS document_activity_append_only ON document_activity;
-CREATE TRIGGER document_activity_append_only BEFORE UPDATE OR DELETE ON document_activity FOR EACH ROW EXECUTE FUNCTION forbid_append_only();
-DROP TRIGGER IF EXISTS execution_activity_append_only ON execution_activity;
-CREATE TRIGGER execution_activity_append_only BEFORE UPDATE OR DELETE ON execution_activity FOR EACH ROW EXECUTE FUNCTION forbid_append_only();
-`
 
 // applyReadProjections derives human versions and material freshness without a
 // second service updating the authoritative Finding or Case row.

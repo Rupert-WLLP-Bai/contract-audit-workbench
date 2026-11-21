@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-21
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -156,14 +156,6 @@ func (s *Store) CreateSubjectSourceSnapshot(ctx context.Context, user accounts.U
 		return nil
 	})
 	return result, replayed, err
-}
-
-func decodeFrozenSubjectSourceSnapshot(item SubjectSourceSnapshot) (SubjectSourceManifest, error) {
-	return subjectApp.DecodeFrozenSource(item)
-}
-
-func subjectSourceSnapshotResult(item SubjectSourceSnapshot) (SubjectSourceSnapshotResult, error) {
-	return subjectApp.SourceSnapshotResult(item)
 }
 
 func (s *Store) ListSubjectSourceSnapshots(ctx context.Context, user accounts.User, caseID, cursor string, limit int) (SubjectSourceSnapshotListResult, error) {

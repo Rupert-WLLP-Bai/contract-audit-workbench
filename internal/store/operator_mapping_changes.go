@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-21
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -33,7 +33,6 @@ type operatorMappingCanonicalState = operatorModel.OperatorMappingCanonicalState
 type operatorMappingApprovedAfter = operatorModel.OperatorMappingApprovedAfter
 type operatorMappingIdentityAfter = operatorModel.OperatorMappingIdentityAfter
 type operatorMappingAssociationAfter = operatorModel.OperatorMappingAssociationAfter
-type operatorMappingChangeRecord = operatorModel.OperatorMappingChangeRecord
 
 const (
 	OperatorMappingReplace                   = operatorModel.OperatorMappingReplace

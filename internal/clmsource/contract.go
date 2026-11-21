@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-01
-// Revision: r1
+// Updated: 2026-11-21
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -151,14 +151,6 @@ type SourceIdentity struct {
 	TenantID string `json:"tenant_id"`
 	SourceID string `json:"source_id"`
 	KeyID    string `json:"key_id"`
-}
-
-// Validate checks only that a source identity is structurally complete.
-func (i SourceIdentity) Validate() error {
-	if strings.TrimSpace(i.TenantID) == "" || strings.TrimSpace(i.SourceID) == "" || strings.TrimSpace(i.KeyID) == "" {
-		return errors.New("tenant_id, source_id, and key_id are required")
-	}
-	return nil
 }
 
 // Receipt is the minimum stable identity needed to classify an incoming

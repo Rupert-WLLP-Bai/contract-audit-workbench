@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-21
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -485,23 +485,9 @@ func serviceObjectRequestSHA256(tenantID, orgID, caseID, actorID, operation stri
 	return operatorApp.ServiceObjectRequestSHA256(operatorApp.CreateIdentity{TenantID: tenantID, OrgID: orgID, CaseID: caseID, ActorID: actorID}, operation, payload)
 }
 
-func loadServiceObjectVersionValue(ctx context.Context, tx pgx.Tx, tenantID, orgID, caseID string, head ServiceObjectHead) (ServiceObjectVersion, error) {
-	return operatorApp.ReadServiceObjectVersionExact(ctx, operatorPostgres.NewReads(platformpostgres.Bind(tx)),
-		operatorApp.ReadIdentity{TenantID: tenantID, OrgID: orgID, CaseID: caseID}, head.ID, head.CurrentVersion)
-}
-
-func loadServiceObjectVersionExact(ctx context.Context, tx pgx.Tx, tenantID, orgID, caseID, objectID string, number int) (ServiceObjectVersion, error) {
-	return loadServiceObjectVersionValue(ctx, tx, tenantID, orgID, caseID, ServiceObjectHead{ID: objectID, CurrentVersion: number})
-}
-
 func loadServiceObjectHead(ctx context.Context, tx pgx.Tx, tenantID, orgID, caseID, objectID string) (ServiceObjectHead, error) {
 	return operatorApp.ReadServiceObjectHead(ctx, operatorPostgres.NewReads(platformpostgres.Bind(tx)),
 		operatorApp.ReadIdentity{TenantID: tenantID, OrgID: orgID, CaseID: caseID}, objectID)
-}
-
-func loadServiceObjectAssociation(ctx context.Context, tx pgx.Tx, tenantID, orgID, caseID, objectID string, number int) (ServiceObjectContractAssociation, error) {
-	return operatorApp.ReadServiceObjectAssociationExact(ctx, operatorPostgres.NewReads(platformpostgres.Bind(tx)),
-		operatorApp.ReadIdentity{TenantID: tenantID, OrgID: orgID, CaseID: caseID}, objectID, number)
 }
 
 func serviceObjectPageLimit(limit int) (int, error) {
@@ -542,13 +528,6 @@ func serviceObjectReadIdentity(user accounts.User, item Case) operatorApp.ReadId
 	return operatorApp.ReadIdentity{TenantID: accounts.Tenant(user), OrgID: item.OwnerOrgID, CaseID: item.ID}
 }
 
-func insertServiceObjectVersion(ctx context.Context, tx pgx.Tx, user accounts.User, item Case, version ServiceObjectVersion) error {
-	return operatorPostgres.NewConfirm(platformpostgres.Bind(tx)).AppendVersion(ctx, operatorApp.CreateIdentity{TenantID: accounts.Tenant(user), OrgID: item.OwnerOrgID, CaseID: item.ID, ActorID: user.ID}, version)
-}
 func insertServiceObjectAssociation(ctx context.Context, tx pgx.Tx, user accounts.User, item Case, association ServiceObjectContractAssociation) error {
 	return operatorPostgres.NewConfirm(platformpostgres.Bind(tx)).AppendAssociation(ctx, operatorApp.CreateIdentity{TenantID: accounts.Tenant(user), OrgID: item.OwnerOrgID, CaseID: item.ID, ActorID: user.ID}, association)
-}
-
-func canonicalServiceObjectAssociationSHA256(item ServiceObjectContractAssociation) (string, error) {
-	return operatorModel.CanonicalServiceObjectAssociationSHA256(item)
 }

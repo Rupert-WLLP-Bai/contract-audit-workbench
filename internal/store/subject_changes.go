@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-14
-// Revision: r3
+// Updated: 2026-11-21
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -239,31 +239,8 @@ func subjectChangeRequest(st state, tenantID, caseID, requestID string) (Subject
 	return subjectModel.FindSubjectChangeRequest(st.SubjectChangeRequests, tenantID, caseID, requestID)
 }
 
-func affectedSubjectCaseIDs(st state, request SubjectChangeRequest) []string {
-	return subjectModel.AffectedSubjectCaseIDs(subjectModel.SubjectCollections{
-		Subjects: st.Subjects, SubjectVersions: st.SubjectVersions,
-		CaseSubjectRoles: st.CaseSubjectRoles, CaseSubjectRoleVersions: st.CaseSubjectRoleVersions,
-	}, request)
-}
-
 func subjectChangeImpact(st state, user accounts.User, request SubjectChangeRequest) (SubjectChangeImpactResult, error) {
 	return subjectApp.DecisionImpact(subjectCommandSnapshot(&st), subjectCommandActor(user), request, subjectDecisionFacts(&st, user, request))
-}
-
-func subjectChangeSummary(st state, user accounts.User, request SubjectChangeRequest) SubjectChangeSummary {
-	return subjectApp.DecisionSummary(subjectCommandSnapshot(&st), subjectCommandActor(user), request, subjectDecisionFacts(&st, user, request))
-}
-
-func currentSubjectBinding(st state, bindingID string) (CaseSubjectRole, CaseSubjectRoleVersion, bool) {
-	return subjectModel.CurrentSubjectBinding(st.CaseSubjectRoles, st.CaseSubjectRoleVersions, bindingID)
-}
-
-func caseHasSubject(st *state, caseID, subjectID string) bool {
-	return subjectModel.CaseHasSubject(st.CaseSubjectRoles, st.CaseSubjectRoleVersions, caseID, subjectID)
-}
-
-func affectedSubjectBindings(st state, tenantID, subjectID, kind, bindingID string) []CaseSubjectRoleVersion {
-	return subjectModel.AffectedSubjectBindings(st.CaseSubjectRoles, st.CaseSubjectRoleVersions, tenantID, subjectID, kind, bindingID)
 }
 
 func hashJSON(value []byte) string {
@@ -286,17 +263,6 @@ func canonicalRawJSON(raw json.RawMessage) (json.RawMessage, error) {
 	}
 	encoded, err := json.Marshal(value)
 	return encoded, err
-}
-
-func subjectBindingVersionAt(st state, head CaseSubjectRole, version int64) (CaseSubjectRoleVersion, bool) {
-	return subjectModel.SubjectBindingVersionAt(st.CaseSubjectRoleVersions, head, version)
-}
-
-func projectSubjectBinding(st state, head CaseSubjectRole, binding CaseSubjectRoleVersion, full bool) CaseSubjectBindingProjection {
-	return subjectModel.ProjectSubjectBinding(subjectModel.SubjectCollections{
-		Subjects: st.Subjects, SubjectVersions: st.SubjectVersions,
-		CaseSubjectRoles: st.CaseSubjectRoles, CaseSubjectRoleVersions: st.CaseSubjectRoleVersions,
-	}, head, binding, full)
 }
 
 func validateSubjectBasisRefs(st state, caseItem *Case, raw json.RawMessage) (json.RawMessage, error) {

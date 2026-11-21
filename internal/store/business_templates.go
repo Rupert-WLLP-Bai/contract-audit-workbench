@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-21
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -239,15 +239,6 @@ func renderTemplateSource(source string, values map[string]string) ([]byte, erro
 		i += 2 + end + 2
 	}
 	return []byte(builder.String()), nil
-}
-
-func templateFieldByKey(key string) (TemplateField, bool) {
-	for _, field := range telecomTemplateFields {
-		if field.Key == key {
-			return field, true
-		}
-	}
-	return TemplateField{}, false
 }
 
 func validCircuitID(value string) bool {

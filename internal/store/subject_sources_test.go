@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-21
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -97,9 +97,6 @@ func TestSubjectSourceAndPinnedParseMarshalFixtures(t *testing.T) {
 		})
 	}
 }
-
-//go:fix inline
-func intPointer(value int) *int { return new(value) }
 
 func TestSubjectSourceDirectoryWireOmitsRecordIdentity(t *testing.T) {
 	body, err := json.Marshal(SubjectSourceDirectoryResult{Items: []SubjectSourceDirectoryItem{{

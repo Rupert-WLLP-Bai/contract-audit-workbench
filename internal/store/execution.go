@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-20
-// Revision: r10
+// Updated: 2026-11-21
+// Revision: r11
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1156,10 +1156,6 @@ func (s *Store) launchAttempt(ctx context.Context, runID, attemptID string, mode
 		s.executeAttemptContext(model.WithDelegatedScope(withEmbeddedAdmission(context.Background(), user, admitted), scope), runID, attemptID, models)
 	}()
 	return nil
-}
-
-func (s *Store) executeAttempt(runID, attemptID string, models Models) {
-	s.executeAttemptContext(context.Background(), runID, attemptID, models)
 }
 
 func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID string, models Models) {

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r5
+// Updated: 2026-11-21
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -510,19 +510,6 @@ func Open(dir string) (*Store, error) {
 		return nil, err
 	}
 	return openStore(dir, sel, schema, false)
-}
-
-// OpenApplication connects with the application database identity and never runs migrations.
-func OpenApplication(dir string) (*Store, error) {
-	sel, err := config.FromProcess()
-	if err != nil {
-		return nil, err
-	}
-	schema, err := applicationSchema()
-	if err != nil {
-		return nil, err
-	}
-	return openApplicationStore(dir, sel, schema)
 }
 
 func (s *Store) acquireParseLock(ctx context.Context) error {

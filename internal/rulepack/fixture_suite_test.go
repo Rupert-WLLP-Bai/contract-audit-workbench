@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-15
-// Updated: 2026-11-15
-// Revision: r1
+// Updated: 2026-11-21
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -57,14 +57,6 @@ func fixtureInputFromDemo(t *testing.T, mutate func(*FixtureInput)) FixtureInput
 		mutate(&input)
 	}
 	return input
-}
-
-func fixtureSetFact(input *FixtureInput, factID, value string) {
-	for i := range input.Facts {
-		if input.Facts[i].ID == factID {
-			input.Facts[i].Value = value
-		}
-	}
 }
 
 // fixtureSetFactText keeps the synthetic source, citation span and fact value

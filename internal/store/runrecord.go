@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-13
-// Revision: r4
+// Updated: 2026-11-21
+// Revision: r5
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -431,18 +431,6 @@ func (rec AuditRecord) event() audit.Event {
 		EventType: rec.EventType, PrevHash: rec.PrevHash, Hash: rec.Hash,
 		CorrelationIDs: cloneAuditCorrelationIDs(rec.CorrelationIDs),
 	}
-}
-
-func appendEvaluation(st *state, caseID, runID string, ev engine.Evaluation, findingID string) error {
-	id, err := newID("evl_")
-	if err != nil {
-		return err
-	}
-	st.Evaluations = append(st.Evaluations, ConstraintEval{
-		ID: id, RunID: runID, CaseID: caseID, Domain: ev.Domain,
-		Relation: ev.Relation, RuleVersion: ev.RuleVersion, Reason: ev.Reason, FindingID: findingID,
-	})
-	return nil
 }
 
 func (st *state) snapshotOf(runID string) RunSnapshot {

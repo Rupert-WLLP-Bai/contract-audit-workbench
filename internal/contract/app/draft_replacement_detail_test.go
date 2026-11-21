@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-14
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-21
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -266,6 +266,3 @@ func (*replaceRepositoryStub) LockContract(context.Context, string) error { retu
 func (*replaceRepositoryStub) ReplaceDraft(context.Context, clmcontract.Aggregate, int64, []byte, string) (clmcontract.Aggregate, error) {
 	return clmcontract.Aggregate{}, errors.New("unexpected replacement")
 }
-
-//go:fix inline
-func str(value string) *string { return new(value) }

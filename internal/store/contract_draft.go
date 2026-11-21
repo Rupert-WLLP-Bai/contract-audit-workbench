@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-12
-// Revision: r3
+// Updated: 2026-11-21
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -324,13 +324,6 @@ func draftContentSummaryFacts(contentJSON []byte) (string, *string, *string, err
 
 func clmSummary(record clmContractRecord, name string, amount, currency *string) ContractSummary {
 	return clmcontract.SummaryFromDraft(record, name, amount, currency)
-}
-
-func contractSourceRef(record clmContractRecord) *SourceRef {
-	if record.SourceSystem == nil || record.ExternalContractID == nil || record.SourceVersion == nil {
-		return nil
-	}
-	return &SourceRef{System: *record.SourceSystem, ID: *record.ExternalContractID, SourceVersion: *record.SourceVersion}
 }
 
 // resolveMaterialVersion verifies one material reference against the real

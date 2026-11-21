@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-21
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -84,30 +84,6 @@ func (s *Store) executionQueuePolicy() *queueConfiguration {
 	}
 	return defaultQueueConfiguration
 }
-
-const queueSchedulerSchemaSQL = `
-CREATE TABLE IF NOT EXISTS execution_queue_policies (
-	tenant_id text NOT NULL DEFAULT '__scheduler__',
-	policy_hash text PRIMARY KEY,
-	policy_json text NOT NULL,
-	created_at timestamptz NOT NULL DEFAULT clock_timestamp()
-);
-CREATE TABLE IF NOT EXISTS execution_queue_cursor (
-	tenant_id text PRIMARY KEY CHECK (tenant_id='__scheduler__'),
-	policy_hash text NOT NULL REFERENCES execution_queue_policies(policy_hash),
-	last_tenant text NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS execution_queue_tenants (
-	tenant_id text PRIMARY KEY,
-	deficit integer NOT NULL DEFAULT 0 CHECK (deficit >= 0)
-);
-ALTER TABLE worker_jobs ADD COLUMN IF NOT EXISTS policy_hash text NOT NULL DEFAULT '';
-ALTER TABLE worker_jobs ADD COLUMN IF NOT EXISTS claim_count integer NOT NULL DEFAULT 0;
-ALTER TABLE worker_jobs ADD COLUMN IF NOT EXISTS max_claims integer NOT NULL DEFAULT 3;
-ALTER TABLE worker_jobs ADD COLUMN IF NOT EXISTS deadline_at timestamptz NOT NULL DEFAULT (clock_timestamp()+interval '15 minutes');
-ALTER TABLE worker_jobs ADD COLUMN IF NOT EXISTS ready_at timestamptz NOT NULL DEFAULT to_timestamp(0);
-CREATE INDEX IF NOT EXISTS worker_jobs_tenant_ready ON worker_jobs (tenant_id,ready_at,created_at,id) WHERE state IN ('queued','running');
-`
 
 // lockQueue serializes only short admission/claim transactions. It is never held
 // during a tool/model call. Existing policy history is retained on a drained cutover.

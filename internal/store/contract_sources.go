@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-13
-// Revision: r2
+// Updated: 2026-11-21
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -25,8 +25,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 )
-
-const clmEventExternalSourceObserved = contractapp.ExternalSourceObservedEvent
 
 // Source observation types remain Store-compatible aliases while ownership
 // moves to Contract model and app.

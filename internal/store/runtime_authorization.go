@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: authorizeAttemptExecution resolves current grants for the frozen initiating actor. It applies to active execution; historical reads use their requesting user's grants. Related `store` operations include authorizeAttemptExecution, updateAuthorizedExecution, writableCase, updateCaseAsWith.
+// Purpose: authorizeAttemptExecution resolves current grants for the frozen initiating actor. It applies to active execution; historical reads use their requesting user's grants. Related `store` operations include authorizeAttemptExecution, updateAuthorizedExecution, writableCase.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r3
+// Updated: 2026-11-21
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -87,14 +87,6 @@ func (s *Store) writableCase(st *state, user accounts.User, caseID string, actio
 		}
 	}
 	return nil, fault.NotFound("没有找到对应记录")
-}
-
-// updateCaseAsWith is updateCaseAs with a transaction hook that runs after the
-// case lock and before the state snapshot. Acceptance uses it to select the
-// governed active pack inside the same transaction that freezes it, so the
-// selection and the freeze are one linearised operation.
-func (s *Store) updateCaseAsWith(user accounts.User, caseID string, hook func(pgx.Tx) error, fn func(*state) error) error {
-	return s.scopedCaseWrite(context.Background(), user, caseID, "", "", true, true, hook, fn)
 }
 
 func (s *Store) updateCaseAs(user accounts.User, caseID string, fn func(*state) error) error {

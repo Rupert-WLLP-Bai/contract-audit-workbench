@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-21
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1701,23 +1701,6 @@ func (state *execution) plannerHistory() []PriorCall {
 		out = append(out, prior)
 	}
 	return out
-}
-
-func (state *execution) recordPlannerObservation(observation PlannerObservation) {
-	state.observations.PlannerCalls++
-	if observation.InputTokens == nil || observation.OutputTokens == nil || observation.TotalTokens == nil ||
-		*observation.InputTokens < 0 || *observation.OutputTokens < 0 || *observation.TotalTokens < 0 {
-		state.usageIncomplete = true
-		return
-	}
-	if state.observations.InputTokens == nil {
-		state.observations.InputTokens = new(int64)
-		state.observations.OutputTokens = new(int64)
-		state.observations.TotalTokens = new(int64)
-	}
-	*state.observations.InputTokens += *observation.InputTokens
-	*state.observations.OutputTokens += *observation.OutputTokens
-	*state.observations.TotalTokens += *observation.TotalTokens
 }
 
 func (state *execution) validateFactConsistency(findings []Finding) error {
