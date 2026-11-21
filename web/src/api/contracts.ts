@@ -24,12 +24,10 @@ export type ContractSigningRegistration = WireSchemas["ContractSigningRegistrati
 export type ContractSupplement = WireSchemas["ContractSupplement"];
 export type ContractSupplementList = WireSchemas["ContractSupplementList"];
 export type ContractSupplementResult = WireSchemas["ContractSupplementResult"];
-export type ManualSigningComparison = WireSchemas["ManualSigningComparison"];
 export type ContractDelivery = WireSchemas["ContractDelivery"];
 export type ContractDeliveryList = WireSchemas["ContractDeliveryList"];
 export type ContractAcceptance = WireSchemas["ContractAcceptance"];
 export type ContractAcceptanceList = WireSchemas["ContractAcceptanceList"];
-export type ContractAcceptanceDefectInput = WireSchemas["ContractAcceptanceDefectInput"];
 export type ContractRectification = WireSchemas["ContractRectification"];
 export type ContractPaymentSummary = WireSchemas["ContractPaymentSummary"];
 export type ContractPaymentEligibility = WireSchemas["ContractPaymentEligibility"];
@@ -1635,18 +1633,6 @@ export function contractLedgerExportColumns(
 ): ContractExportColumn[] {
   return columns.flatMap((column) => READABLE_EXPORT_COLUMNS[column] ?? [column]);
 }
-
-export const CONTRACT_LEDGER_DEFAULT_COLUMNS: ContractLedgerColumn[] = [
-  "contract_number",
-  "contract_name",
-  "supplier_name",
-  "amount",
-  "currency",
-  "department_id",
-  "contract_state",
-  "workflow_state",
-  "updated_at",
-];
 
 type LedgerStateField = "authority_mode" | "contract_state" | "workflow_state";
 type LedgerFilterStateField = LedgerStateField | "validity_state";

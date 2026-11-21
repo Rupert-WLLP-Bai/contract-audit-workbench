@@ -32,7 +32,6 @@ export interface Actor {
 }
 
 export type MembershipChoice = WireSchemas["MembershipChoice"];
-export type ContextSwitchRequest = WireSchemas["ContextSwitchRequest"];
 export type ContextList = WireSchemas["ContextList"];
 
 export interface ReviewRunSummary {
@@ -91,7 +90,6 @@ export interface DocumentVersion {
 }
 
 export type MaterialPurpose = WireSchemas["MaterialProjection"]["purpose"];
-export type MaterialLegacyStatus = WireSchemas["MaterialProjection"]["legacy_status"];
 export type MaterialProjection = WireSchemas["MaterialProjection"];
 export type MaterialVersionProjection = WireSchemas["MaterialVersionProjection"];
 

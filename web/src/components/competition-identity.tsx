@@ -13,7 +13,7 @@ export function CompetitionIdentity() {
     <>
       <img
         className="competition-logo"
-        src={`${import.meta.env.BASE_URL}huangjueshu-competition-logo.png?v=20261028`}
+        src={`${import.meta.env.BASE_URL}huangjueshu-competition-logo.png?v=20261121`}
         alt=""
         width={38}
         height={38}

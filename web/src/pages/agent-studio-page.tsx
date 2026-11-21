@@ -44,11 +44,11 @@ import {
   eventStatusLabel,
   eventTypeLabel,
   instant,
+  nodeKindLabel,
   phaseLabel,
   tokenCount,
 } from "../domain/execution-labels";
 import { runLabel, runTone, type StatusTone } from "../domain/review";
-import { nodeKindLabel } from "../domain/swimlane";
 import "./agent-studio-page.css";
 
 export type StudioView = "capabilities" | "execution" | "events";

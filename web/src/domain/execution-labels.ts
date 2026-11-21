@@ -1,5 +1,5 @@
 // File metadata (manifest mirror):
-// Purpose: Formats review phase/event/status labels, elapsed duration and token counts for the execution timeline; unknown event values remain visible as unknown.
+// Purpose: Formats review phase, event, status and node-kind labels, elapsed duration and token counts for the execution timeline; unknown values remain visible as unknown.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
@@ -69,6 +69,15 @@ const EVENT_STATUS_LABELS: Record<string, string> = {
   interrupted: "已中断",
 };
 
+const NODE_KIND_LABELS: Record<string, string> = {
+  model_call: "模型调用",
+  tool_call: "工具调用",
+  Chain: "链式节点",
+  Lambda: "Lambda 节点",
+  attempt: "尝试",
+  agent_review: "智能体审查",
+};
+
 /** Unknown labels pass through; hasOwn keeps prototype keys from leaking in. */
 function labelFrom(labels: Record<string, string>, value: string): string {
   return Object.hasOwn(labels, value) ? (labels[value] ?? value) : value;
@@ -77,6 +86,7 @@ function labelFrom(labels: Record<string, string>, value: string): string {
 export const phaseLabel = (phase: string): string => labelFrom(PHASE_LABELS, phase);
 export const eventTypeLabel = (type: string): string => labelFrom(EVENT_TYPE_LABELS, type);
 export const eventStatusLabel = (status: string): string => labelFrom(EVENT_STATUS_LABELS, status);
+export const nodeKindLabel = (kind: string): string => labelFrom(NODE_KIND_LABELS, kind);
 
 export function elapsed(value: number | null): string {
   if (value === null) return "未报告";

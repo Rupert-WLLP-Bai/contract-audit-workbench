@@ -45,10 +45,6 @@ export function singleContractVersion(
   return null;
 }
 
-export function isSingleContractV1(scope: ReviewScopeIdentity | null | undefined): boolean {
-  return singleContractVersion(scope) === "1";
-}
-
 export type SingleContractCoverage =
   | { kind: "unknown" }
   | {
