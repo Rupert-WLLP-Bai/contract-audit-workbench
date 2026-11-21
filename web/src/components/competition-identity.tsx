@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-21
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,7 +13,7 @@ export function CompetitionIdentity() {
     <>
       <img
         className="competition-logo"
-        src={`${import.meta.env.BASE_URL}huangjueshu-competition-logo.png?v=20261028`}
+        src={`${import.meta.env.BASE_URL}huangjueshu-competition-logo.png?v=20261121`}
         alt=""
         width={38}
         height={38}

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r8
+// Updated: 2026-11-21
+// Revision: r9
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -52,7 +52,6 @@ import type {
   ReportCreateInput,
   SessionAudience,
   WorkbenchPeriod,
-  CaseProfileInput,
   WorkbenchTaskInput,
   WorkbenchTaskUpdateInput,
   CaseRelationInput,
@@ -455,18 +454,6 @@ function invalidateSubjectChangeViews(
     );
   }
   return Promise.all(invalidations);
-}
-
-export function useUpdateCaseProfile(caseId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: CaseProfileInput) => api.updateCaseProfile(caseId, input),
-    onSuccess: () =>
-      invalidateCaseViews(queryClient, caseId, {
-        caseList: true,
-        workbench: true,
-      }),
-  });
 }
 
 export function useCreateWorkbenchTask(caseId: string) {

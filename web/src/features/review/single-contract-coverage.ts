@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-19
-// Revision: r3
+// Updated: 2026-11-21
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -43,10 +43,6 @@ export function singleContractVersion(
   if (scope.rule_set_version === "1" && scope.rule_set_hash === SINGLE_CONTRACT_V1_HASH) return "1";
   if (scope.rule_set_version === "2" && scope.rule_set_hash === SINGLE_CONTRACT_V2_HASH) return "2";
   return null;
-}
-
-export function isSingleContractV1(scope: ReviewScopeIdentity | null | undefined): boolean {
-  return singleContractVersion(scope) === "1";
 }
 
 export type SingleContractCoverage =

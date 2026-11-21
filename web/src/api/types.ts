@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-19
-// Revision: r10
+// Updated: 2026-11-21
+// Revision: r11
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -32,7 +32,6 @@ export interface Actor {
 }
 
 export type MembershipChoice = WireSchemas["MembershipChoice"];
-export type ContextSwitchRequest = WireSchemas["ContextSwitchRequest"];
 export type ContextList = WireSchemas["ContextList"];
 
 export interface ReviewRunSummary {
@@ -91,7 +90,6 @@ export interface DocumentVersion {
 }
 
 export type MaterialPurpose = WireSchemas["MaterialProjection"]["purpose"];
-export type MaterialLegacyStatus = WireSchemas["MaterialProjection"]["legacy_status"];
 export type MaterialProjection = WireSchemas["MaterialProjection"];
 export type MaterialVersionProjection = WireSchemas["MaterialVersionProjection"];
 

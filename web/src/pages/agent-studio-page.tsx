@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-06
-// Updated: 2026-11-20
-// Revision: r5
+// Updated: 2026-11-21
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -44,11 +44,11 @@ import {
   eventStatusLabel,
   eventTypeLabel,
   instant,
+  nodeKindLabel,
   phaseLabel,
   tokenCount,
 } from "../domain/execution-labels";
 import { runLabel, runTone, type StatusTone } from "../domain/review";
-import { nodeKindLabel } from "../domain/swimlane";
 import "./agent-studio-page.css";
 
 export type StudioView = "capabilities" | "execution" | "events";

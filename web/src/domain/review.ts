@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-20
-// Revision: r5
+// Updated: 2026-11-21
+// Revision: r6
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,7 +14,6 @@ import type {
   DecisionAction,
   DecisionInput,
   Finding,
-  WorkbenchRun,
 } from "../api/types";
 import { caseSearchText } from "./case-identity";
 export { contractTypeLabel } from "./case-identity";
@@ -449,16 +448,6 @@ export function selectedFindingId(findings: Finding[], requested: string | null)
   if (requested && findings.some((finding) => finding.id === requested)) return requested;
   const ordered = sortFindings(findings);
   return ordered[0]?.id ?? null;
-}
-
-/** Most recent run wins; equal timestamps fall back to the descending id. */
-export function latestRun(runs: WorkbenchRun[]): WorkbenchRun | null {
-  return (
-    [...runs].sort(
-      (left, right) =>
-        right.updated_at.localeCompare(left.updated_at) || right.id.localeCompare(left.id),
-    )[0] ?? null
-  );
 }
 
 /** In-app review route; encoding lives here so every link agrees. */
