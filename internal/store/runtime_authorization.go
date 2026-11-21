@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: authorizeAttemptExecution resolves current grants for the frozen initiating actor. It applies to active execution; historical reads use their requesting user's grants. Related `store` operations include authorizeAttemptExecution, updateAuthorizedExecution, writableCase, updateCaseAsWith.
+// Purpose: authorizeAttemptExecution resolves current grants for the frozen initiating actor. It applies to active execution; historical reads use their requesting user's grants. Related `store` operations include authorizeAttemptExecution, updateAuthorizedExecution, writableCase.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r3
+// Updated: 2026-11-21
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

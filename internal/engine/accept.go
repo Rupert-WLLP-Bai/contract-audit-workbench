@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: ErrRejected means the proposal is not a usable warranty finding. Related `engine` operations include LocateQuote, AcceptWarranty, validateProposalQuotes, appendProposalQuotes.
+// Purpose: ErrRejected means the proposal is not a usable warranty finding. Related `engine` operations include AcceptWarranty, validateProposalQuotes, appendProposalQuotes.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-03
-// Revision: r3
+// Updated: 2026-11-21
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 

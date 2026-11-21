@@ -1,10 +1,10 @@
 // File metadata (manifest mirror):
-// Purpose: businessSchemaSQL is appended to the store schema migration after the core tenant-scoped tables and their candidate keys exist. Related `store` operations include loadBusinessState, loadBusinessGenerations, loadBusinessRemediations, loadBusinessReports.
+// Purpose: Loads persisted generations, remediations and frozen reports into store state, and checks each frozen report envelope against its run and agent review. Related `store` operations include loadBusinessState, loadBusinessGenerations, loadBusinessRemediations, loadBusinessReports.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-14
-// Revision: r2
+// Updated: 2026-11-21
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
